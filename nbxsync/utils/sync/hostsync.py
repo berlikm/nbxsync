@@ -334,7 +334,7 @@ class HostSync(ZabbixSyncBase):
 
         result = []
         for assigned_tag in self.context.get('all_objects', {}).get('tags'):
-            value, _ = assigned_tag.render()
+            value, _ = assigned_tag.render(object=sync_target)
             result.append({'tag': assigned_tag.zabbixtag.tag, 'value': value})
 
         # Deduplicate tags by (tag, value). The same tag value can be
