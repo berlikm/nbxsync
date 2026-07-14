@@ -6,6 +6,7 @@ from django.contrib.contenttypes.models import ContentType
 from nbxsync.choices.zabbixstatus import ZabbixHostStatus
 from nbxsync.settings import get_plugin_settings
 from nbxsync.utils import get_assigned_zabbixobjects
+from nbxsync.utils.host_binding import HostBindingDeleteProxy, iter_host_bindings
 from nbxsync.utils.sync import HostGroupSync, HostInterfaceSync, HostSync, ProxyGroupSync, ProxySync, run_zabbix_operation
 from nbxsync.utils.sync.safe_delete import safe_delete
 from nbxsync.utils.sync.safe_sync import safe_sync
@@ -47,7 +48,11 @@ class SyncHostJob:
         status_mapping = getattr(pluginsettings.statusmapping, object_type, {})
         zabbix_status = status_mapping.get(status)
 
+        assigned_server_ids = set()
+
         for assignment in zabbixserver_assignments:
+            assigned_server_ids.add(assignment.zabbixserver_id)
+
             if not assignment.sync_enabled or not assignment.zabbixserver.sync_enabled:
                 continue
 
@@ -61,6 +66,26 @@ class SyncHostJob:
                 self.check_default_hostinterface(assignment)
                 self.sync_host(assignment)
                 self.verify_hostinterfaces(assignment)
+
+        # Retire any durable bindings whose server assignment has disappeared.
+        # (This covers loss of all assignments, including inherited ones.)
+        self._retire_unassigned_bindings(assigned_server_ids)
+
+    def _retire_unassigned_bindings(self, assigned_server_ids):
+        for binding in iter_host_bindings(self.instance):
+            if binding.zabbixserver_id in assigned_server_ids:
+                continue
+            if not binding.zabbixserver.sync_enabled:
+                continue
+            proxy = HostBindingDeleteProxy(
+                zabbixserver=binding.zabbixserver,
+                hostid=binding.hostid,
+                assigned_object=self.instance,
+            )
+            try:
+                safe_delete(HostSync, proxy, extra_args={'all_objects': {'_instance': self.instance}})
+            except Exception as e:
+                logger.warning('Failed to retire binding %s for %s: %s', binding, self.instance, e)
 
     def delete_host(self, assignment):
         safe_delete(HostSync, assignment)
