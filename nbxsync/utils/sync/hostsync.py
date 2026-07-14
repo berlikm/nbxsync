@@ -560,7 +560,7 @@ class HostSync(ZabbixSyncBase):
                 pass
             return
 
-        assigned_object = self.obj.assigned_object
+        assigned_object = sync_target
 
         try:
             if assigned_object is not None:
@@ -594,7 +594,7 @@ class HostSync(ZabbixSyncBase):
             if not getattr(self.obj, '_is_inherited_copy', False):
                 try:
                     self.obj.hostid = None
-                    self.obj.save(update_fields=['hostid'])
+                    self.obj.save()
                 except (ValidationError, AttributeError):
                     pass
 

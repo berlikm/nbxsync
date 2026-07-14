@@ -51,6 +51,8 @@ class DeleteHostJob:
         for assignment in server_assignments:
             if assignment.zabbixserver_id in servers_seen:
                 continue
+            if not assignment.sync_enabled or not assignment.zabbixserver.sync_enabled:
+                continue
             servers_seen.add(assignment.zabbixserver_id)
             try:
                 safe_delete(HostSync, assignment, extra_args=extra_args)
