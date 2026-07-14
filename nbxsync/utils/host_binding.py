@@ -43,10 +43,7 @@ def set_host_binding(instance, zabbixserver, hostid, hostname=''):
             defaults={'hostid': hostid, 'hostname': hostname},
         )
     except IntegrityError as exc:
-        raise RuntimeError(
-            f'Host binding conflict for {instance} on {zabbixserver}: '
-            f'hostid {hostid} or object is already bound to another host'
-        ) from exc
+        raise RuntimeError(f'Host binding conflict for {instance} on {zabbixserver}: ' f'hostid {hostid} or object is already bound to another host') from exc
     return binding
 
 
@@ -103,14 +100,9 @@ def backfill_or_resolve_conflict(instance, zabbixserver, api):
         return int(matches[0]['hostid'])
 
     if len(hosts) == 1 and not matches:
-        raise RuntimeError(
-            f'Unmanaged host conflict: a Zabbix host named "{name}" exists '
-            f'but does not match the managed identity for {instance}.'
-        )
+        raise RuntimeError(f'Unmanaged host conflict: a Zabbix host named "{name}" exists ' f'but does not match the managed identity for {instance}.')
 
-    raise RuntimeError(
-        f'Ambiguous host conflict: {len(hosts)} Zabbix hosts found with name "{name}".'
-    )
+    raise RuntimeError(f'Ambiguous host conflict: {len(hosts)} Zabbix hosts found with name "{name}".')
 
 
 class HostBindingDeleteProxy:

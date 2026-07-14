@@ -158,8 +158,7 @@ class SyncObjectsJob(JobRunner):
             jobs_enqueued += 1
 
         logger.info(
-            'Zabbix host reconciliation complete: assignments=%d bindings=%d resolved=%d deduplicated=%d '
-            'active_skipped=%d enqueued=%d disabled=%d duration_seconds=%.3f',
+            'Zabbix host reconciliation complete: assignments=%d bindings=%d resolved=%d deduplicated=%d ' 'active_skipped=%d enqueued=%d disabled=%d duration_seconds=%.3f',
             assignments_inspected,
             bindings_inspected,
             hosts_resolved,

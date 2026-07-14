@@ -62,9 +62,7 @@ class HostBindingTestCase(TestCase):
         sync = HostSync(api=api, netbox_obj=inherited, all_objects=self._all_objects())
         sync.sync()
 
-        binding = ZabbixHostBinding.objects.get(
-            assigned_object_id=self.device.pk, zabbixserver=self.server
-        )
+        binding = ZabbixHostBinding.objects.get(assigned_object_id=self.device.pk, zabbixserver=self.server)
         self.assertEqual(binding.hostid, 100)
 
     def test_second_sync_uses_same_hostid(self):
@@ -81,9 +79,7 @@ class HostBindingTestCase(TestCase):
         sync2.sync()
 
         api.host.create.assert_not_called()
-        binding = ZabbixHostBinding.objects.get(
-            assigned_object_id=self.device.pk, zabbixserver=self.server
-        )
+        binding = ZabbixHostBinding.objects.get(assigned_object_id=self.device.pk, zabbixserver=self.server)
         self.assertEqual(binding.hostid, 100)
 
     def test_rename_updates_same_hostid(self):
@@ -101,9 +97,7 @@ class HostBindingTestCase(TestCase):
         self._attach_assigned_objects(self.assignment)
         sync.sync()
 
-        binding = ZabbixHostBinding.objects.get(
-            assigned_object_id=self.device.pk, zabbixserver=self.server
-        )
+        binding = ZabbixHostBinding.objects.get(assigned_object_id=self.device.pk, zabbixserver=self.server)
         self.assertEqual(binding.hostid, 100)
         self.assertEqual(binding.hostname, 'renamed-binding-test')
 
@@ -157,11 +151,7 @@ class HostBindingTestCase(TestCase):
         sync.delete()
 
         api.host.delete.assert_called_once_with([100])
-        self.assertFalse(
-            ZabbixHostBinding.objects.filter(
-                assigned_object_id=self.device.pk, zabbixserver=self.server
-            ).exists()
-        )
+        self.assertFalse(ZabbixHostBinding.objects.filter(assigned_object_id=self.device.pk, zabbixserver=self.server).exists())
 
     def test_missing_remote_host_is_idempotent(self):
         ZabbixHostBinding.objects.create(
@@ -177,9 +167,7 @@ class HostBindingTestCase(TestCase):
         sync = HostSync(api=api, netbox_obj=self.assignment, all_objects=self._all_objects())
         sync.sync()
 
-        binding = ZabbixHostBinding.objects.get(
-            assigned_object_id=self.device.pk, zabbixserver=self.server
-        )
+        binding = ZabbixHostBinding.objects.get(assigned_object_id=self.device.pk, zabbixserver=self.server)
         self.assertEqual(binding.hostid, 100)
 
     def test_direct_assignment_hostid_migrates_to_binding(self):
@@ -203,9 +191,7 @@ class HostBindingTestCase(TestCase):
         sync = HostSync(api=api, netbox_obj=self.assignment, all_objects=self._all_objects())
         sync.sync()
 
-        binding = ZabbixHostBinding.objects.get(
-            assigned_object_id=self.device.pk, zabbixserver=self.server
-        )
+        binding = ZabbixHostBinding.objects.get(assigned_object_id=self.device.pk, zabbixserver=self.server)
         self.assertEqual(binding.hostid, 222)
         self.assignment.refresh_from_db()
         self.assertIsNone(self.assignment.hostid)
@@ -215,15 +201,17 @@ class HostBindingTestCase(TestCase):
             if kwargs.get('hostids'):
                 return []
             if kwargs.get('filter', {}).get('host'):
-                return [{
-                    'hostid': '300',
-                    'host': 'binding-test',
-                    'name': 'binding-test',
-                    'tags': [
-                        {'tag': 'nb_type', 'value': 'device'},
-                        {'tag': 'nb_id', 'value': str(self.device.pk)},
-                    ],
-                }]
+                return [
+                    {
+                        'hostid': '300',
+                        'host': 'binding-test',
+                        'name': 'binding-test',
+                        'tags': [
+                            {'tag': 'nb_type', 'value': 'device'},
+                            {'tag': 'nb_id', 'value': str(self.device.pk)},
+                        ],
+                    }
+                ]
             return []
 
         api = MagicMock()
@@ -236,9 +224,7 @@ class HostBindingTestCase(TestCase):
         sync = HostSync(api=api, netbox_obj=self.assignment, all_objects=self._all_objects())
         sync.sync()
 
-        binding = ZabbixHostBinding.objects.get(
-            assigned_object_id=self.device.pk, zabbixserver=self.server
-        )
+        binding = ZabbixHostBinding.objects.get(assigned_object_id=self.device.pk, zabbixserver=self.server)
         self.assertEqual(binding.hostid, 300)
 
 
@@ -268,11 +254,7 @@ class BindingJobTestCase(TestCase):
         proxy = mock_safe_delete.call_args[0][1]
         self.assertIsInstance(proxy, HostBindingDeleteProxy)
         self.assertEqual(proxy.hostid, 888)
-        self.assertFalse(
-            ZabbixHostBinding.objects.filter(
-                assigned_object_id=self.device.pk, zabbixserver=self.server
-            ).exists()
-        )
+        self.assertFalse(ZabbixHostBinding.objects.filter(assigned_object_id=self.device.pk, zabbixserver=self.server).exists())
 
     def test_retire_unassigned_bindings(self):
         binding = ZabbixHostBinding.objects.create(

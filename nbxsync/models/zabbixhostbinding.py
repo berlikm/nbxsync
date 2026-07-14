@@ -10,6 +10,7 @@ __all__ = ('ZabbixHostBinding',)
 def _limit_assigned_objects():
     """Lazy import for ``limit_choices_to`` to avoid model/constants cycles."""
     from nbxsync.constants import DEVICE_OR_VM_ASSIGNMENT_MODELS
+
     return DEVICE_OR_VM_ASSIGNMENT_MODELS
 
 
