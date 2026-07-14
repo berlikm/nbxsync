@@ -10,7 +10,7 @@ from virtualization.models import Cluster, ClusterType, VirtualMachine
 from dcim.models import Device, DeviceRole, DeviceType, Manufacturer, Platform, Region, Site, SiteGroup
 from netbox.jobs import JobRunner, system_job
 
-from nbxsync.models import ZabbixConfigurationGroup, ZabbixServerAssignment
+from nbxsync.models import ZabbixConfigurationGroup, ZabbixHostBinding, ZabbixServerAssignment
 from nbxsync.settings import get_plugin_settings
 
 logger = logging.getLogger(__name__)
@@ -102,8 +102,10 @@ class SyncObjectsJob(JobRunner):
     def run(self, *args, **kwargs):
         started_at = monotonic()
         queue = None
+        candidate_instances = []
         enqueued_keys = set()
         assignments_inspected = 0
+        bindings_inspected = 0
         hosts_resolved = 0
         hosts_deduplicated = 0
         active_jobs_skipped = 0
@@ -121,36 +123,45 @@ class SyncObjectsJob(JobRunner):
 
             eligible_instances = _get_eligible_instances(assignment)
             hosts_resolved += len(eligible_instances)
+            candidate_instances.extend(eligible_instances)
 
-            for instance in eligible_instances:
-                ct = ContentType.objects.get_for_model(instance)
-                key = (ct.app_label, ct.model, instance.pk)
-                if key in enqueued_keys:
-                    hosts_deduplicated += 1
-                    continue
-                enqueued_keys.add(key)
+        bindings = ZabbixHostBinding.objects.select_related('assigned_object_type').prefetch_related('assigned_object')
+        for binding in bindings:
+            bindings_inspected += 1
+            if binding.assigned_object is not None:
+                candidate_instances.append(binding.assigned_object)
 
-                if queue is None:
-                    queue = get_queue('low')
+        for instance in candidate_instances:
+            ct = ContentType.objects.get_for_model(instance)
+            key = (ct.app_label, ct.model, instance.pk)
+            if key in enqueued_keys:
+                hosts_deduplicated += 1
+                continue
+            enqueued_keys.add(key)
 
-                job_id = _sync_job_id(ct, instance.pk)
-                if _job_is_active(queue, job_id):
-                    active_jobs_skipped += 1
-                    continue
+            if queue is None:
+                queue = get_queue('low')
 
-                queue.enqueue_job(
-                    queue.create_job(
-                        func='nbxsync.worker.synchost',
-                        args=[ct.app_label, ct.model, instance.pk],
-                        timeout=9000,
-                        job_id=job_id,
-                    )
+            job_id = _sync_job_id(ct, instance.pk)
+            if _job_is_active(queue, job_id):
+                active_jobs_skipped += 1
+                continue
+
+            queue.enqueue_job(
+                queue.create_job(
+                    func='nbxsync.worker.synchost',
+                    args=[ct.app_label, ct.model, instance.pk],
+                    timeout=9000,
+                    job_id=job_id,
                 )
-                jobs_enqueued += 1
+            )
+            jobs_enqueued += 1
 
         logger.info(
-            'Zabbix host reconciliation complete: assignments=%d resolved=%d deduplicated=%d ' 'active_skipped=%d enqueued=%d disabled=%d duration_seconds=%.3f',
+            'Zabbix host reconciliation complete: assignments=%d bindings=%d resolved=%d deduplicated=%d '
+            'active_skipped=%d enqueued=%d disabled=%d duration_seconds=%.3f',
             assignments_inspected,
+            bindings_inspected,
             hosts_resolved,
             hosts_deduplicated,
             active_jobs_skipped,

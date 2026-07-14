@@ -7,7 +7,7 @@ from virtualization.models import VirtualMachine
 from dcim.models import Device, Site, SiteGroup
 from utilities.testing import create_test_device
 
-from nbxsync.models import ZabbixConfigurationGroup, ZabbixServer, ZabbixServerAssignment
+from nbxsync.models import ZabbixConfigurationGroup, ZabbixHostBinding, ZabbixServer, ZabbixServerAssignment
 from nbxsync.systemjobs.sync_objects import SyncObjectsJob
 
 
@@ -185,6 +185,58 @@ class SyncObjectsSystemJobTestCase(TestCase):
         ZabbixServerAssignment.objects.create(zabbixserver=self.server, assigned_object_type=self.sitegroup_ct, assigned_object_id=sitegroup.pk)
         job = SyncObjectsJob(job=MagicMock())
         job.run()
+        mock_get_queue.assert_not_called()
+
+    @patch('nbxsync.systemjobs.sync_objects.get_queue')
+    def test_run_enqueues_bound_device_after_assignment_removed(self, mock_get_queue):
+        queue = MagicMock()
+        mock_get_queue.return_value = queue
+        ZabbixHostBinding.objects.create(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device1.pk,
+            hostid=123,
+            hostname=self.device1.name,
+        )
+
+        SyncObjectsJob(job=MagicMock()).run()
+
+        self.assertEqual(self._enqueued_refs(queue), [self._ref(self.device1)])
+
+    @patch('nbxsync.systemjobs.sync_objects.get_queue')
+    def test_run_deduplicates_assignment_and_binding_candidates(self, mock_get_queue):
+        queue = MagicMock()
+        mock_get_queue.return_value = queue
+        ZabbixServerAssignment.objects.create(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device1.pk,
+        )
+        ZabbixHostBinding.objects.create(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device1.pk,
+            hostid=456,
+            hostname=self.device1.name,
+        )
+
+        SyncObjectsJob(job=MagicMock()).run()
+
+        self.assertEqual(queue.create_job.call_count, 1)
+        self.assertEqual(self._enqueued_refs(queue), [self._ref(self.device1)])
+
+    @patch('nbxsync.systemjobs.sync_objects.get_queue')
+    def test_run_skips_binding_whose_object_no_longer_exists(self, mock_get_queue):
+        ZabbixHostBinding.objects.create(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=999999,
+            hostid=789,
+            hostname='deleted-device',
+        )
+
+        SyncObjectsJob(job=MagicMock()).run()
+
         mock_get_queue.assert_not_called()
 
     @patch('nbxsync.systemjobs.sync_objects.get_queue')
