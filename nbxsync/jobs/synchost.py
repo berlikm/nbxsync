@@ -75,11 +75,10 @@ class SyncHostJob:
         # Excluded objects must retire every active binding instead of merely
         # skipping future synchronization.
         if self._is_excluded(pluginsettings, all_objects):
-            if zabbix_status != ZabbixHostStatus.DELETED:
-                for assignment in zabbixserver_assignments:
-                    if assignment.sync_enabled and assignment.zabbixserver.sync_enabled:
-                        assignment = self._prepare_assignment(assignment)
-                        self.delete_host(assignment)
+            for assignment in zabbixserver_assignments:
+                if assignment.sync_enabled and assignment.zabbixserver.sync_enabled:
+                    assignment = self._prepare_assignment(assignment)
+                    self.delete_host(assignment)
             self._retire_unassigned_bindings(assigned_server_ids)
             logger.info('Skipping sync for %s (excluded)', self.instance)
             return

@@ -188,7 +188,7 @@ class SyncHostExclusionTestCase(TestCase):
 
     @patch('nbxsync.jobs.synchost.get_plugin_settings')
     @patch('nbxsync.jobs.synchost.safe_delete')
-    def test_run_does_not_delete_when_excluded_and_status_deleted(self, mock_safe_delete, mock_settings):
+    def test_run_deletes_once_when_excluded_and_status_deleted(self, mock_safe_delete, mock_settings):
         mock_settings.return_value.exclude_tag = 'do_not_monitor'
         mock_settings.return_value.statusmapping = MagicMock()
         mock_settings.return_value.statusmapping.device = {'decommissioning': 'deleted'}
@@ -207,4 +207,4 @@ class SyncHostExclusionTestCase(TestCase):
         job = SyncHostJob(instance=self.device)
         job.run()
 
-        mock_safe_delete.assert_not_called()
+        mock_safe_delete.assert_called_once()
