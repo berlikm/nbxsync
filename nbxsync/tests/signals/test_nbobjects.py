@@ -6,7 +6,7 @@ from django.test import TestCase
 from dcim.models import Device
 from utilities.testing import create_test_device
 
-from nbxsync.models import ZabbixHostBinding, ZabbixServer
+from nbxsync.models import ZabbixHostBinding, ZabbixServer, ZabbixServerAssignment
 from nbxsync.signals.nbobjects import handle_deleted_object
 
 
@@ -39,6 +39,29 @@ class NetBoxObjectDeleteSignalTestCase(TestCase):
         self.assertEqual(kwargs['args'], [(binding.pk,)])
         self.assertEqual(kwargs['retry'].max, 5)
         self.assertTrue(ZabbixHostBinding.objects.filter(pk=binding.pk).exists())
+
+    @patch('nbxsync.signals.nbobjects.get_queue')
+    def test_delete_migrates_legacy_direct_hostid_before_commit(self, mock_get_queue):
+        assignment = ZabbixServerAssignment.objects.create(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.pk,
+            hostid=4_000_000_004,
+        )
+        queue = MagicMock()
+        mock_get_queue.return_value = queue
+
+        with self.captureOnCommitCallbacks(execute=True):
+            handle_deleted_object(Device, self.device)
+
+        binding = ZabbixHostBinding.objects.get(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.pk,
+        )
+        self.assertEqual(binding.hostid, assignment.hostid)
+        _, kwargs = queue.create_job.call_args
+        self.assertEqual(kwargs['args'], [(binding.pk,)])
 
     @patch('nbxsync.signals.nbobjects.get_queue')
     def test_delete_without_binding_does_not_enqueue_unsafe_name_lookup(self, mock_get_queue):

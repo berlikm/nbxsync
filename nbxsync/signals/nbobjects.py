@@ -11,6 +11,7 @@ from dcim.models import Device, VirtualDeviceContext
 from nbxsync.choices.syncsot import SyncSOT
 from nbxsync.models import ZabbixHostBinding, ZabbixHostgroupAssignment, ZabbixHostInterface, ZabbixHostInventory, ZabbixMacroAssignment, ZabbixServerAssignment, ZabbixTagAssignment, ZabbixTemplateAssignment
 from nbxsync.settings import get_plugin_settings
+from nbxsync.utils.host_binding import set_host_binding
 
 __all__ = ('handle_deleted_object',)
 
@@ -37,12 +38,31 @@ def handle_deleted_object(sender, instance, **kwargs):
 
     host_sot = getattr(pluginsettings.sot, 'host', None)
     if host_sot == SyncSOT.NETBOX:
-        binding_ids = tuple(
+        bindings = list(
             ZabbixHostBinding.objects.filter(
                 assigned_object_type=instance_ct,
                 assigned_object_id=instance.pk,
-            ).values_list('pk', flat=True)
+            )
         )
+        bound_server_ids = {binding.zabbixserver_id for binding in bindings}
+        legacy_assignments = ZabbixServerAssignment.objects.filter(
+            assigned_object_type=instance_ct,
+            assigned_object_id=instance.pk,
+            hostid__isnull=False,
+        ).select_related('zabbixserver')
+        for assignment in legacy_assignments:
+            if assignment.zabbixserver_id in bound_server_ids:
+                continue
+            binding = set_host_binding(
+                instance,
+                assignment.zabbixserver,
+                int(assignment.hostid),
+                hostname=str(instance),
+            )
+            bindings.append(binding)
+            bound_server_ids.add(assignment.zabbixserver_id)
+
+        binding_ids = tuple(sorted(binding.pk for binding in bindings))
 
         if binding_ids:
 

@@ -8,7 +8,6 @@ import nbxsync.models.zabbixhostbinding
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('contenttypes', '0002_remove_content_type_name'),
         ('extras', '0122_charfield_null_choices'),
@@ -44,5 +43,10 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='zabbixhostbinding',
             constraint=models.UniqueConstraint(fields=('zabbixserver', 'hostid'), name='nbxsync_zabbixhostbinding_unique_hostid_per_server', violation_error_message='The same Zabbix host ID cannot be bound to multiple objects on a server.'),
+        ),
+        migrations.AlterField(
+            model_name='zabbixserverassignment',
+            name='hostid',
+            field=models.PositiveBigIntegerField(blank=True, null=True),
         ),
     ]
