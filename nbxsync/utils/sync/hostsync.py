@@ -419,7 +419,7 @@ class HostSync(ZabbixSyncBase):
             # Zabbix.
             if exclude_tag and assigned_tag.zabbixtag.tag == exclude_tag:
                 continue
-            value, _ = assigned_tag.render(object=sync_target)
+            value, _ = assigned_tag.render()
             result.append({'tag': assigned_tag.zabbixtag.tag, 'value': value})
 
         # Deduplicate tags by (tag, value). The same tag value can be
