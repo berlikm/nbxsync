@@ -42,7 +42,7 @@ class ZabbixHostBinding(NetBoxModel):
         fk_field='assigned_object_id',
     )
 
-    hostid = models.IntegerField()
+    hostid = models.PositiveBigIntegerField()
     hostname = models.CharField(max_length=255, blank=True)
 
     class Meta:

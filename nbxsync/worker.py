@@ -27,8 +27,12 @@ def synchost(app_label, model_name, object_id):
 
 
 @job('low')
-def deletehost(instance):
-    worker = DeleteHostJob(instance=instance)
+def deletehost(binding_ids):
+    if isinstance(binding_ids, (list, tuple, set)):
+        worker = DeleteHostJob(binding_ids=list(binding_ids))
+    else:
+        # Compatibility for jobs queued by versions before durable binding IDs.
+        worker = DeleteHostJob(instance=binding_ids)
     worker.run()
 
 

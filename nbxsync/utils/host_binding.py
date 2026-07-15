@@ -12,6 +12,7 @@ __all__ = (
     'get_host_binding',
     'set_host_binding',
     'delete_host_binding',
+    'delete_host_binding_by_id',
     'iter_host_bindings',
     'backfill_or_resolve_conflict',
     'HostBindingDeleteProxy',
@@ -54,6 +55,11 @@ def delete_host_binding(instance, zabbixserver=None):
     if zabbixserver is not None:
         qs = qs.filter(zabbixserver=zabbixserver)
     qs.delete()
+
+
+def delete_host_binding_by_id(binding_id):
+    """Delete one binding after its remote host has been retired successfully."""
+    ZabbixHostBinding.objects.filter(pk=binding_id).delete()
 
 
 def iter_host_bindings(instance):
@@ -106,21 +112,17 @@ def backfill_or_resolve_conflict(instance, zabbixserver, api):
 
 
 class HostBindingDeleteProxy:
-    """Minimal stand-in for ``ZabbixServerAssignment`` when deleting by binding.
-
-    ``HostSync.delete`` expects an assignment-like object with ``zabbixserver``,
-    ``hostid``, ``assigned_object``, and update/sync methods. This proxy lets us
-    reuse the same delete path when only a ``ZabbixHostBinding`` is available.
-    """
+    """Assignment-like delete target backed by a durable host binding."""
 
     _is_inherited_copy = False
 
-    def __init__(self, zabbixserver, hostid, assigned_object):
-        self.zabbixserver = zabbixserver
-        self.hostid = hostid
-        self.assigned_object = assigned_object
-        self.assigned_object_type = ContentType.objects.get_for_model(assigned_object)
-        self.assigned_object_id = assigned_object.pk
+    def __init__(self, binding, assigned_object=None):
+        self.binding_id = binding.pk
+        self.zabbixserver = binding.zabbixserver
+        self.hostid = binding.hostid
+        self.assigned_object = assigned_object if assigned_object is not None else binding.assigned_object
+        self.assigned_object_type = binding.assigned_object_type
+        self.assigned_object_id = binding.assigned_object_id
 
     def update_sync_info(self, *args, **kwargs):
         pass

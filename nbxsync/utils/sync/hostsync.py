@@ -11,7 +11,7 @@ from nbxsync.choices import HostInterfaceRequirementChoices, ZabbixHostInterface
 from nbxsync.choices.syncsot import SyncSOT
 from nbxsync.choices.zabbixstatus import ZabbixHostStatus
 from nbxsync.models import ZabbixHostInterface, ZabbixMaintenance, ZabbixMaintenanceObjectAssignment, ZabbixMaintenancePeriod
-from nbxsync.utils.host_binding import backfill_or_resolve_conflict, delete_host_binding, get_host_binding, set_host_binding
+from nbxsync.utils.host_binding import backfill_or_resolve_conflict, delete_host_binding, delete_host_binding_by_id, get_host_binding, set_host_binding
 from nbxsync.utils.sync.hostinterfacesync import HostInterfaceSync
 
 logger = logging.getLogger(__name__)
@@ -411,8 +411,15 @@ class HostSync(ZabbixSyncBase):
         zabbix_status = status_mapping.get(status)
 
         result = []
+        exclude_tag = self.pluginsettings.exclude_tag
         for assigned_tag in self.context.get('all_objects', {}).get('tags'):
-            value, _ = assigned_tag.render()
+            # Skip the exclusion tag before rendering — it is a sync-time
+            # signal, not a Zabbix host tag. Filtering here avoids
+            # unnecessary Jinja2 rendering of a tag that will never reach
+            # Zabbix.
+            if exclude_tag and assigned_tag.zabbixtag.tag == exclude_tag:
+                continue
+            value, _ = assigned_tag.render(object=sync_target)
             result.append({'tag': assigned_tag.zabbixtag.tag, 'value': value})
 
         # Deduplicate tags by (tag, value). The same tag value can be
@@ -533,26 +540,38 @@ class HostSync(ZabbixSyncBase):
                 )
             )
 
-    def delete(self):  # noqa: C901
-        """Delete the bound Zabbix host and clean up the local binding.
+    def _clear_deleted_host_state(self, sync_target, zabbixserver):
+        binding_id = getattr(self.obj, 'binding_id', None)
+        if binding_id is not None:
+            delete_host_binding_by_id(binding_id)
+        elif sync_target is not None:
+            delete_host_binding(sync_target, zabbixserver)
 
-        The hostid is resolved from ``ZabbixHostBinding`` first, falling back to
-        a legacy direct-assignment hostid. If neither exists the call is
-        idempotent and returns.
-        """
+        if binding_id is None and not getattr(self.obj, '_is_inherited_copy', False):
+            try:
+                self.obj.hostid = None
+                self.obj.save()
+            except (ValidationError, AttributeError):
+                pass
+
+        if sync_target is not None:
+            try:
+                object_ct = ContentType.objects.get_for_model(sync_target)
+                ZabbixHostInterface.objects.filter(
+                    assigned_object_type=object_ct,
+                    assigned_object_id=sync_target.pk,
+                    zabbixserver=zabbixserver,
+                ).update(interfaceid=None)
+            except Exception:
+                pass
+
+    def delete(self):  # noqa: C901
+        """Delete a host by durable ID and remove its binding only after success."""
         sync_target = self._get_sync_target()
         zabbixserver = self.obj.zabbixserver
 
-        # Resolve hostid: binding wins, then legacy direct assignment.
-        hostid = None
-        binding = None
-        if sync_target is not None:
-            binding = get_host_binding(sync_target, zabbixserver)
-        if binding:
-            hostid = binding.hostid
-        elif self.obj.hostid:
-            hostid = self.obj.hostid
-
+        binding = get_host_binding(sync_target, zabbixserver) if sync_target is not None else None
+        hostid = binding.hostid if binding else self.obj.hostid
         if not hostid:
             try:
                 self.obj.update_sync_info(success=False, message='Host already deleted or missing host ID.')
@@ -560,62 +579,48 @@ class HostSync(ZabbixSyncBase):
                 pass
             return
 
-        assigned_object = sync_target
-
         try:
-            if assigned_object is not None:
-                object_ct = ContentType.objects.get_for_model(assigned_object)
-                maintenances = self.api.maintenance.get(hostids=[hostid], selectHosts='extend')
-                for mw in maintenances:
-                    # Check per maintenance window if this host is the only host in the window or not. If it is, we can delete it
-                    # If not, we should delete the host from the Netbox window
-                    if len(mw['hosts']) > 1:
-                        # Filter out the hostid
-                        hosts = [{'hostid': host['hostid']} for host in mw['hosts'] if int(host['hostid']) != hostid]
-                        # Update the maintenance window in Zabbix without our hostid in it
-                        self.api.maintenance.update(maintenanceid=mw['maintenanceid'], hosts=hosts)
-                        for assignment in ZabbixMaintenanceObjectAssignment.objects.filter(maintenanceid=mw['maintenanceid'], assigned_object_type=object_ct, assigned_object_id=assigned_object.id):
-                            assignment.delete()  # Delete the Assignment from Netbox;
+            remote_hosts = self.api_object().get(hostids=[hostid])
+            if isinstance(remote_hosts, dict):
+                remote_hosts = remote_hosts.get('result', [])
 
-                    # If our host is the only one in the Maintenance Object
-                    # Delete it...
-                    else:
-                        self.api.maintenance.delete([mw['maintenanceid']])
-                        ZabbixMaintenance.objects.get(maintenanceid=mw['maintenanceid']).delete()
-
-            # Delete from Zabbix
-            self.api_object().delete([hostid])
-
-            # Always remove the durable binding if we have enough information.
-            if sync_target is not None:
-                delete_host_binding(sync_target, zabbixserver)
-
-            # Clear legacy hostid from the direct assignment row.
-            if not getattr(self.obj, '_is_inherited_copy', False):
+            if not remote_hosts:
+                self._clear_deleted_host_state(sync_target, zabbixserver)
                 try:
-                    self.obj.hostid = None
-                    self.obj.save()
-                except (ValidationError, AttributeError):
+                    self.obj.update_sync_info(success=True, message='Host was already absent from Zabbix.')
+                except Exception:
                     pass
+                return
 
-                # Also clear host IDs from related interfaces
-                if assigned_object is not None:
-                    try:
-                        ZabbixHostInterface.objects.filter(assigned_object_type=self.obj.assigned_object_type, assigned_object_id=assigned_object.id, zabbixserver=zabbixserver).update(interfaceid=None)
-                    except Exception:
-                        pass
+            if sync_target is not None:
+                object_ct = ContentType.objects.get_for_model(sync_target)
+                maintenances = self.api.maintenance.get(hostids=[hostid], selectHosts='extend')
+                for maintenance in maintenances:
+                    if len(maintenance['hosts']) > 1:
+                        hosts = [{'hostid': host['hostid']} for host in maintenance['hosts'] if int(host['hostid']) != int(hostid)]
+                        self.api.maintenance.update(maintenanceid=maintenance['maintenanceid'], hosts=hosts)
+                        ZabbixMaintenanceObjectAssignment.objects.filter(
+                            maintenanceid=maintenance['maintenanceid'],
+                            assigned_object_type=object_ct,
+                            assigned_object_id=sync_target.pk,
+                        ).delete()
+                    else:
+                        self.api.maintenance.delete([maintenance['maintenanceid']])
+                        ZabbixMaintenance.objects.get(maintenanceid=maintenance['maintenanceid']).delete()
+
+            self.api_object().delete([hostid])
+            self._clear_deleted_host_state(sync_target, zabbixserver)
 
             try:
                 self.obj.update_sync_info(success=True, message='Host deleted from Zabbix.')
             except Exception:
                 pass
-
-        except Exception as e:
+        except Exception as exc:
             try:
-                self.obj.update_sync_info(success=False, message=f'Failed to delete host: {e}')
+                self.obj.update_sync_info(success=False, message=f'Failed to delete host: {exc}')
             except Exception:
                 pass
-            raise RuntimeError(f'Failed to delete host {hostid} from Zabbix: {e}')
+            raise RuntimeError(f'Failed to delete host {hostid} from Zabbix: {exc}') from exc
 
     def check_default_hostinterface(self):  # noqa: C901
         if not self.obj.hostid:

@@ -2,9 +2,9 @@ import logging
 
 from django.contrib.contenttypes.models import ContentType
 
-from nbxsync.models import ZabbixServerAssignment
+from nbxsync.models import ZabbixHostBinding, ZabbixServerAssignment
 from nbxsync.utils import get_assigned_zabbixobjects
-from nbxsync.utils.host_binding import HostBindingDeleteProxy, delete_host_binding, iter_host_bindings
+from nbxsync.utils.host_binding import HostBindingDeleteProxy, iter_host_bindings
 from nbxsync.utils.sync import HostSync
 from nbxsync.utils.sync.safe_delete import safe_delete
 
@@ -15,28 +15,44 @@ __all__ = ('DeleteHostJob',)
 
 class DeleteHostJob:
     def __init__(self, **kwargs):
-        self.instance = kwargs.get('instance')  # This is the Device or VirtualMachine object
+        self.binding_ids = tuple(kwargs.get('binding_ids') or ())
+        self.instance = kwargs.get('instance')
+
+    def _bindings(self):
+        if self.binding_ids:
+            return ZabbixHostBinding.objects.filter(pk__in=self.binding_ids).select_related(
+                'zabbixserver',
+                'assigned_object_type',
+            )
+        if self.instance is not None:
+            return iter_host_bindings(self.instance)
+        return ZabbixHostBinding.objects.none()
 
     def run(self):
-        extra_args = {'all_objects': {'_instance': self.instance}}
+        failures = []
         servers_seen = set()
 
-        # Primary path: delete every durable binding for this instance.
-        for binding in iter_host_bindings(self.instance):
+        for binding in self._bindings():
             servers_seen.add(binding.zabbixserver_id)
-            proxy = HostBindingDeleteProxy(
-                zabbixserver=binding.zabbixserver,
-                hostid=binding.hostid,
-                assigned_object=self.instance,
-            )
+            assigned_object = self.instance if self.instance is not None else binding.assigned_object
+            proxy = HostBindingDeleteProxy(binding, assigned_object=assigned_object)
+            extra_args = {'all_objects': {'_instance': assigned_object}} if assigned_object is not None else None
             try:
-                safe_delete(HostSync, proxy, extra_args=extra_args)
-            except Exception as e:
-                logger.warning('Failed to delete bound host %s for %s: %s', binding, self.instance, e)
+                safe_delete(HostSync, proxy, **({'extra_args': extra_args} if extra_args else {}))
+            except Exception as exc:
+                failures.append((binding.pk, exc))
+                logger.warning('Failed to delete bound host %s: %s', binding, exc)
 
-        # Legacy fallback: direct assignments that still carry a hostid but
-        # have no binding yet. Inherited assignments are also handled here when
-        # the binding is missing for any reason.
+        # Compatibility for jobs queued before deletion signals captured binding IDs.
+        if self.instance is not None and not self.binding_ids:
+            self._delete_legacy_assignments(servers_seen, failures)
+
+        if failures:
+            binding_ids = ', '.join(str(binding_id) for binding_id, _ in failures)
+            raise RuntimeError(f'Failed to delete Zabbix host bindings: {binding_ids}')
+
+    def _delete_legacy_assignments(self, servers_seen, failures):
+        extra_args = {'all_objects': {'_instance': self.instance}}
         try:
             all_objects = get_assigned_zabbixobjects(self.instance)
             server_assignments = all_objects.get('server_assignments', [])
@@ -56,8 +72,6 @@ class DeleteHostJob:
             servers_seen.add(assignment.zabbixserver_id)
             try:
                 safe_delete(HostSync, assignment, extra_args=extra_args)
-            except Exception as e:
-                logger.warning('Failed to delete host for %s via assignment %s: %s', self.instance, assignment, e)
-
-        # Make sure no stale bindings remain for the now-deleted object.
-        delete_host_binding(self.instance)
+            except Exception as exc:
+                failures.append((f'legacy:{assignment.pk}', exc))
+                logger.warning('Failed to delete host for %s via assignment %s: %s', self.instance, assignment, exc)

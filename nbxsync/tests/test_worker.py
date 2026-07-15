@@ -4,7 +4,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 
 from nbxsync.models import ZabbixServer
-from nbxsync.worker import synchost, syncproxy, syncproxygroup, synctemplates
+from nbxsync.worker import deletehost, synchost, syncproxy, syncproxygroup, synctemplates
 
 
 class RQJobTests(TestCase):
@@ -18,6 +18,26 @@ class RQJobTests(TestCase):
         mock_job_class.return_value = mock_job
 
         synchost(self.content_type.app_label, self.content_type.model, self.instance.pk)
+
+        mock_job_class.assert_called_once_with(instance=self.instance)
+        mock_job.run.assert_called_once()
+
+    @patch('nbxsync.worker.DeleteHostJob')
+    def test_deletehost_runs_job_with_binding_ids(self, mock_job_class):
+        mock_job = MagicMock()
+        mock_job_class.return_value = mock_job
+
+        deletehost([11, 12])
+
+        mock_job_class.assert_called_once_with(binding_ids=[11, 12])
+        mock_job.run.assert_called_once()
+
+    @patch('nbxsync.worker.DeleteHostJob')
+    def test_deletehost_preserves_legacy_instance_job_compatibility(self, mock_job_class):
+        mock_job = MagicMock()
+        mock_job_class.return_value = mock_job
+
+        deletehost(self.instance)
 
         mock_job_class.assert_called_once_with(instance=self.instance)
         mock_job.run.assert_called_once()

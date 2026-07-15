@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
                 ('created', models.DateTimeField(auto_now_add=True, null=True)),
                 ('last_updated', models.DateTimeField(auto_now=True, null=True)),
                 ('custom_field_data', models.JSONField(blank=True, default=dict, encoder=utilities.json.CustomFieldJSONEncoder)),
-                ('hostid', models.IntegerField()),
+                ('hostid', models.PositiveBigIntegerField()),
                 ('hostname', models.CharField(blank=True, max_length=255)),
                 ('assigned_object_id', models.PositiveBigIntegerField(blank=True, null=True)),
                 ('assigned_object_type', models.ForeignKey(blank=True, limit_choices_to=nbxsync.models.zabbixhostbinding._limit_assigned_objects, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='+', to='contenttypes.contenttype')),

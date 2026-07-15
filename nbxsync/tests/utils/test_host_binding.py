@@ -144,7 +144,7 @@ class HostBindingTestCase(TestCase):
             hostid=100,
             hostname='binding-test',
         )
-        api = self._api()
+        api = self._api(host_get=[{'hostid': '100', 'host': 'binding-test', 'name': 'binding-test'}])
         self._attach_assigned_objects(self.assignment)
 
         sync = HostSync(api=api, netbox_obj=self.assignment, all_objects=self._all_objects())
@@ -227,6 +227,55 @@ class HostBindingTestCase(TestCase):
         binding = ZabbixHostBinding.objects.get(assigned_object_id=self.device.pk, zabbixserver=self.server)
         self.assertEqual(binding.hostid, 300)
 
+    def test_hard_delete_after_netbox_object_is_missing(self):
+        binding = ZabbixHostBinding.objects.create(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=9_000_001,
+            hostid=4_000_000_001,
+            hostname='deleted-binding-test',
+        )
+        proxy = HostBindingDeleteProxy(binding)
+        api = self._api(host_get=[{'hostid': str(binding.hostid), 'host': binding.hostname}])
+
+        HostSync(api=api, netbox_obj=proxy).delete()
+
+        api.host.delete.assert_called_once_with([binding.hostid])
+        self.assertFalse(ZabbixHostBinding.objects.filter(pk=binding.pk).exists())
+
+    def test_hard_delete_failure_retains_binding(self):
+        binding = ZabbixHostBinding.objects.create(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=9_000_002,
+            hostid=4_000_000_002,
+            hostname='retry-binding-test',
+        )
+        proxy = HostBindingDeleteProxy(binding)
+        api = self._api(host_get=[{'hostid': str(binding.hostid), 'host': binding.hostname}])
+        api.host.delete.side_effect = RuntimeError('temporary Zabbix failure')
+
+        with self.assertRaises(RuntimeError):
+            HostSync(api=api, netbox_obj=proxy).delete()
+
+        self.assertTrue(ZabbixHostBinding.objects.filter(pk=binding.pk).exists())
+
+    def test_hard_delete_missing_remote_is_idempotent(self):
+        binding = ZabbixHostBinding.objects.create(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=9_000_003,
+            hostid=4_000_000_003,
+            hostname='missing-binding-test',
+        )
+        proxy = HostBindingDeleteProxy(binding)
+        api = self._api(host_get=[])
+
+        HostSync(api=api, netbox_obj=proxy).delete()
+
+        api.host.delete.assert_not_called()
+        self.assertFalse(ZabbixHostBinding.objects.filter(pk=binding.pk).exists())
+
 
 class BindingJobTestCase(TestCase):
     @classmethod
@@ -235,8 +284,8 @@ class BindingJobTestCase(TestCase):
         cls.device = create_test_device(name='binding-job-test')
         cls.device_ct = ContentType.objects.get_for_model(cls.device)
 
-    def test_deletejob_hard_deletes_by_binding(self):
-        ZabbixHostBinding.objects.create(
+    def test_deletejob_uses_stable_binding_id(self):
+        binding = ZabbixHostBinding.objects.create(
             zabbixserver=self.server,
             assigned_object_type=self.device_ct,
             assigned_object_id=self.device.pk,
@@ -247,14 +296,31 @@ class BindingJobTestCase(TestCase):
         from nbxsync.jobs.deletehost import DeleteHostJob
 
         with patch('nbxsync.jobs.deletehost.safe_delete') as mock_safe_delete:
-            job = DeleteHostJob(instance=self.device)
-            job.run()
+            DeleteHostJob(binding_ids=[binding.pk]).run()
 
         self.assertEqual(mock_safe_delete.call_count, 1)
         proxy = mock_safe_delete.call_args[0][1]
         self.assertIsInstance(proxy, HostBindingDeleteProxy)
+        self.assertEqual(proxy.binding_id, binding.pk)
         self.assertEqual(proxy.hostid, 888)
-        self.assertFalse(ZabbixHostBinding.objects.filter(assigned_object_id=self.device.pk, zabbixserver=self.server).exists())
+        self.assertTrue(ZabbixHostBinding.objects.filter(pk=binding.pk).exists())
+
+    def test_deletejob_failure_keeps_binding_and_raises_for_retry(self):
+        binding = ZabbixHostBinding.objects.create(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.pk,
+            hostid=889,
+            hostname='binding-job-test',
+        )
+
+        from nbxsync.jobs.deletehost import DeleteHostJob
+
+        with patch('nbxsync.jobs.deletehost.safe_delete', side_effect=RuntimeError('temporary failure')):
+            with self.assertRaises(RuntimeError):
+                DeleteHostJob(binding_ids=[binding.pk]).run()
+
+        self.assertTrue(ZabbixHostBinding.objects.filter(pk=binding.pk).exists())
 
     def test_retire_unassigned_bindings(self):
         binding = ZabbixHostBinding.objects.create(
