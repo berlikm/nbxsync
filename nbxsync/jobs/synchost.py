@@ -49,7 +49,7 @@ class SyncHostJob:
 
         Returns True if the host should be excluded.
         """
-        exclude_tag = pluginsettings.exclude_tag
+        exclude_tag = getattr(pluginsettings, 'exclude_tag', '')
         if not exclude_tag:
             return False
 

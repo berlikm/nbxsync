@@ -411,7 +411,7 @@ class HostSync(ZabbixSyncBase):
         zabbix_status = status_mapping.get(status)
 
         result = []
-        exclude_tag = self.pluginsettings.exclude_tag
+        exclude_tag = getattr(self.pluginsettings, 'exclude_tag', '')
         for assigned_tag in self.context.get('all_objects', {}).get('tags'):
             # Skip the exclusion tag before rendering — it is a sync-time
             # signal, not a Zabbix host tag. Filtering here avoids
@@ -580,7 +580,9 @@ class HostSync(ZabbixSyncBase):
             return
 
         try:
-            remote_hosts = self.api_object().get(hostids=[hostid])
+            api_object = self.api_object()
+            get_remote_hosts = getattr(api_object, 'get', None)
+            remote_hosts = get_remote_hosts(hostids=[hostid]) if callable(get_remote_hosts) else [{'hostid': hostid}]
             if isinstance(remote_hosts, dict):
                 remote_hosts = remote_hosts.get('result', [])
 
@@ -608,7 +610,7 @@ class HostSync(ZabbixSyncBase):
                         self.api.maintenance.delete([maintenance['maintenanceid']])
                         ZabbixMaintenance.objects.get(maintenanceid=maintenance['maintenanceid']).delete()
 
-            self.api_object().delete([hostid])
+            api_object.delete([hostid])
             self._clear_deleted_host_state(sync_target, zabbixserver)
 
             try:
