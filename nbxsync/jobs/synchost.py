@@ -169,7 +169,7 @@ class SyncHostJob:
             for hostinterface in hostinterfaces_sorted:
                 try:
                     safe_sync(HostInterfaceSync, hostinterface, extra_args={'hostid': assignment.hostid, '_instance': self.instance})
-                except Exception as e:
+                except RuntimeError as e:
                     # Continue syncing remaining interfaces even if one fails.
                     # A common case: device inherits both Agent and SNMP
                     # interfaces but the SNMP credentials are wrong — this

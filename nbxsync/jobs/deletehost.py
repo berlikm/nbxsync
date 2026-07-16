@@ -43,7 +43,10 @@ class DeleteHostJob:
                 failures.append((binding.pk, exc))
                 logger.warning('Failed to delete bound host %s: %s', binding, exc)
 
-        # Compatibility for jobs queued before deletion signals captured binding IDs.
+        # Legacy compatibility: jobs queued before deletion signals captured
+        # binding IDs pass an instance here (no binding_ids). Fall back to
+        # resolving assignments from the instance directly. Safe to remove
+        # once no pre-binding-ID RQ jobs remain in-flight.
         if self.instance is not None and not self.binding_ids:
             self._delete_legacy_assignments(servers_seen, failures)
 

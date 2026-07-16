@@ -84,7 +84,7 @@ class HostSync(ZabbixSyncBase):
 
     def _clear_direct_hostid(self):
         """After migrating to bindings, clear the legacy hostid from direct assignments."""
-        if getattr(self.obj, '_is_inherited_copy', False):
+        if not self._should_persist():
             return
         if not self.obj.pk:
             return
@@ -547,7 +547,7 @@ class HostSync(ZabbixSyncBase):
         elif sync_target is not None:
             delete_host_binding(sync_target, zabbixserver)
 
-        if binding_id is None and not getattr(self.obj, '_is_inherited_copy', False):
+        if binding_id is None and self._should_persist():
             try:
                 self.obj.hostid = None
                 self.obj.save()
