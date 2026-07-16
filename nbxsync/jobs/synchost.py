@@ -135,8 +135,12 @@ class SyncHostJob:
             assignment.assigned_objects = all_objects
             all_objects['_instance'] = self.instance
 
-            # Create all hostgroups
+            # Create all hostgroups (skip template-based assignments — they are
+            # created on-demand during HostSync.get_groups() with the actual
+            # device as render context)
             for hostgroup in all_objects['hostgroups']:
+                if hasattr(hostgroup, 'is_template') and hostgroup.is_template():
+                    continue
                 safe_sync(HostGroupSync, hostgroup)
 
             # Sync ProxyGroups and proxies (in that order!)
@@ -175,9 +179,13 @@ class SyncHostJob:
                     # interfaces but the SNMP credentials are wrong — this
                     # should not prevent the Agent interface and templates
                     # from being synced.
-                    logger.warning(f'HostInterfaceSync failed for {self.instance}: {e}')
-
-            safe_sync(HostSync, assignment, extra_args={'all_objects': all_objects})
+            # Final HostSync to link templates etc — wrapped in try/except
+            # because template conflicts (e.g. "Cannot inherit item with key
+            # snmptrap.fallback") should not abort the entire sync.
+            try:
+                safe_sync(HostSync, assignment, extra_args={'all_objects': all_objects})
+            except Exception as e:
+                logger.warning(f'Final HostSync failed for {self.instance}: {e}')
 
         except Exception as e:
             raise RuntimeError(f'Unexpected error: {e}')
