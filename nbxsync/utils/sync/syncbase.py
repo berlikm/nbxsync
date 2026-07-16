@@ -86,8 +86,11 @@ class ZabbixSyncBase:
                 self.obj.update_sync_info(success=True)
 
     def try_create(self):
+        params = self.get_create_params()
+        if not params:
+            return None
         try:
-            result = self.api_object().create(**self.get_create_params())
+            result = self.api_object().create(**params)
             return result.get(self.result_key(), [None])[0]
         except Exception as err:
             # Race condition: another concurrent job may have created the
