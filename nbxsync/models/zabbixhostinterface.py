@@ -70,6 +70,8 @@ class ZabbixHostInterface(SyncInfoModel, NetBoxModel):
     snmp_community = models.CharField(max_length=75, blank=True, verbose_name=_('SNMPv1/2 Community'))
     snmp_pushcommunity = models.BooleanField(default=True)
 
+    use_oob_ip = models.BooleanField(default=False, verbose_name=_('Use OOB IP'), help_text=_('When enabled and no static IP is set, the interface IP will be resolved from the device oob_ip field instead of primary_ip4.'))
+
     # SNMPv3-specific fields
     snmpv3_context_name = models.CharField(max_length=50, blank=True, verbose_name=_('Context Name'))
     snmpv3_security_name = models.CharField(max_length=50, blank=True, verbose_name=_('Security Name'))
@@ -164,8 +166,8 @@ class ZabbixHostInterface(SyncInfoModel, NetBoxModel):
         if self.assigned_object_type != ContentType.objects.get_for_model(ZabbixConfigurationGroup):
             # Validate based on connection method
             if self.useip == ZabbixInterfaceUseChoices.IP:
-                if not self.ip:
-                    errors['ip'] = _('An IP address is required when "Connect via" is set to IP.')
+                if not self.ip and not self.use_oob_ip:
+                    errors['ip'] = _('An IP address is required when "Connect via" is set to IP (unless "Use OOB IP" is enabled).')
 
             if self.useip == ZabbixInterfaceUseChoices.DNS:
                 if not self.dns:
