@@ -335,16 +335,10 @@ class HostSync(ZabbixSyncBase):
         return result
 
     def get_hostinterface_types(self):
+        # use_oob_ip interfaces without a resolvable OOB IP are filtered out once
+        # in SyncHostJob.sync_host(), so every interface here is expected to sync.
         hostinterfaces = self.context.get('all_objects', {}).get('hostinterfaces', []) or []
-        sync_target = self._get_sync_target()
-        types = set()
-        for interface in hostinterfaces:
-            # Skip use_oob_ip interfaces when the device has no oob_ip
-            if getattr(interface, 'use_oob_ip', False):
-                if not getattr(sync_target, 'oob_ip', None):
-                    continue
-            types.add(interface.type)
-        return list(types)
+        return list({interface.type for interface in hostinterfaces})
 
     def get_templates_clear_attributes(self):
         result = []

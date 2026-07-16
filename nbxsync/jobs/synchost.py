@@ -131,6 +131,14 @@ class SyncHostJob:
     def sync_host(self, assignment):
         try:
             all_objects = get_assigned_zabbixobjects(self.instance, zabbixserver=assignment.zabbixserver)
+            # Filter out use_oob_ip interfaces when the device has no oob_ip.
+            # This prevents SNMP templates from being linked to hosts that
+            # won't actually get an SNMP interface (e.g. VMs without OOB).
+            all_objects['hostinterfaces'] = [
+                hi for hi in all_objects['hostinterfaces']
+                if not getattr(hi, 'use_oob_ip', False)
+                or (hasattr(self.instance, 'oob_ip') and self.instance.oob_ip)
+            ]
             # Add the assigned_objects attribute, so we dont have to do this expensive calculation again later on :)
             assignment.assigned_objects = all_objects
             all_objects['_instance'] = self.instance
