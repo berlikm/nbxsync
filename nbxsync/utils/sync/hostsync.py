@@ -713,11 +713,15 @@ class HostSync(ZabbixSyncBase):
 
         # For expected interfaces without an interfaceid (e.g. inherited from a
         # ConfigGroup), match by type to the Zabbix interfaces so they are not deleted.
-        # Since zabbix_utils wraps responses differently in worker vs shell, just don't
-        # delete any interfaces that might be linked to items. The ConfigGroup-expanded
-        # interface has interfaceid=None, so it's not in expected_ids — but trying to
-        # delete it fails when items are linked. Skip deletion for inherited copies.
-        if getattr(self.obj, '_is_inherited_copy', False):
+        expected_types = {int(hi.type) for hi in expected_hostinterfaces}
+        # Match by type so ConfigGroup-inherited interfaces (which have no
+        # persisted interfaceid) are not treated as stale and deleted.
+        # Since zabbix_utils wraps responses differently in worker vs shell,
+        # just don't delete any interfaces that might be linked to items.
+        # The ConfigGroup-expanded interface has interfaceid=None, so it's
+        # not in expected_ids — but trying to delete it fails when items are linked.
+        # Skip deletion entirely for inherited copies.
+        if not self._should_persist():
             return
 
         to_be_deleted = current_ids - expected_ids
