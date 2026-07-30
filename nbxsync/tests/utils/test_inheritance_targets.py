@@ -7,6 +7,7 @@ Zabbix type but describe different endpoints.
 """
 
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from dcim.models import Region, Site, SiteGroup
@@ -81,13 +82,14 @@ class ConfigGroupInterfaceExpansionTestCase(TestCase):
             assigned_object_id=self.device.pk,
         )
 
-    def _cg_interface(self, port, interface_type=ZabbixInterfaceTypeChoices.DEFAULT):
+    def _cg_interface(self, port, interface_type=ZabbixInterfaceTypeChoices.DEFAULT, use_oob_ip=False):
         return ZabbixHostInterface.objects.create(
             zabbixserver=self.server,
             type=ZabbixHostInterfaceTypeChoices.SNMP,
             useip=ZabbixInterfaceUseChoices.IP,
             interface_type=interface_type,
             port=port,
+            use_oob_ip=use_oob_ip,
             assigned_object_type=ContentType.objects.get_for_model(ZabbixConfigurationGroup),
             assigned_object_id=self.configgroup.pk,
         )
@@ -119,6 +121,7 @@ class ConfigGroupInterfaceExpansionTestCase(TestCase):
 
         self.assertEqual([interface.pk for interface in result['hostinterfaces']], [direct.pk])
 
+<<<<<<< HEAD
     def test_configgroup_interfaces_are_filtered_by_zabbixserver(self):
         other = ZabbixServer.objects.create(name='Other CG Server', url='http://other.local', token='xyz', validate_certs=True)
         self._cg_interface(port=161)
@@ -137,3 +140,37 @@ class ConfigGroupInterfaceExpansionTestCase(TestCase):
         ports = [interface.port for interface in result['hostinterfaces']]
         self.assertEqual(ports, [161])
 
+=======
+    def test_oob_interface_keeps_resolving_from_the_oob_ip(self):
+        self._cg_interface(port=161, use_oob_ip=True)
+
+        result = get_assigned_zabbixobjects(self.device)
+
+        interface = result['hostinterfaces'][0]
+        self.assertTrue(interface.use_oob_ip)
+        # The primary IP must not be substituted for an OOB interface.
+        self.assertIsNone(interface.ip)
+
+    def test_use_oob_ip_is_rejected_for_virtual_machines(self):
+        from virtualization.models import Cluster, ClusterType, VirtualMachine
+
+        cluster_type = ClusterType.objects.create(name='Test Type', slug='test-type')
+        cluster = Cluster.objects.create(name='Test Cluster', type=cluster_type)
+        vm = VirtualMachine.objects.create(name='oob-vm', cluster=cluster)
+
+        interface = ZabbixHostInterface(
+            zabbixserver=self.server,
+            type=ZabbixHostInterfaceTypeChoices.AGENT,
+            useip=ZabbixInterfaceUseChoices.IP,
+            interface_type=ZabbixInterfaceTypeChoices.DEFAULT,
+            port=10050,
+            use_oob_ip=True,
+            assigned_object_type=ContentType.objects.get_for_model(VirtualMachine),
+            assigned_object_id=vm.pk,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            interface.full_clean()
+
+        self.assertIn('use_oob_ip', context.exception.message_dict)
+>>>>>>> 3e9a32e (feat(use_oob_ip): vendor-agnostic OOB interface IP resolution)

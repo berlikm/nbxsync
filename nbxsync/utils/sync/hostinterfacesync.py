@@ -37,6 +37,18 @@ class HostInterfaceSync(ZabbixSyncBase):
         ipaddr = ''
         if self.obj.ip_id:
             ipaddr = IPAddress.objects.get(id=self.obj.ip_id).address.ip
+        elif self.obj.use_oob_ip:
+            # Resolve from the device's oob_ip field (canonical NetBox OOB IP).
+            # use_oob_ip never falls back to the primary IP: the OOB interface
+            # would otherwise silently monitor the wrong address.
+            instance = self.context.get('_instance')
+            if instance:
+                oob_ip = getattr(instance, 'oob_ip', None)
+                if oob_ip:
+                    ipaddr = oob_ip.address.ip
+                else:
+                    # No OOB IP on this device — skip interface creation.
+                    return {}
         elif self.context.get('_instance'):
             # If the interface is inherited (e.g. from SiteGroup or Role)
             # and has no IP assigned, fall back to the device's primary IP

@@ -79,14 +79,23 @@ Describes how NetBox IP/DNS maps to Zabbix interfaces.
 
 Includes rich SNMP and TLS configuration fields.
 
-| Field            | Description                                |
-|------------------|--------------------------------------------|
-| `ip` / `dns`     | IP or DNS to use                           |
-| `type`           | Zabbix type (agent, SNMP, IPMI...)         |
-| `port`           | Connection port                            |
-| `tls_*`          | TLS credentials if applicable              |
-| `snmp_*`         | SNMPv3 credentials                         |
-| `assigned_object`| Mapped to NetBox interface or device       |
+| Field            | Description                                                          |
+|------------------|----------------------------------------------------------------------|
+| `ip` / `dns`     | IP or DNS to use                                                     |
+| `type`           | Zabbix type (agent, SNMP, IPMI...)                                   |
+| `port`           | Connection port                                                      |
+| `use_oob_ip`     | Resolve the IP from the device's `oob_ip` instead of a static IP      |
+| `tls_*`          | TLS credentials if applicable                                        |
+| `snmp_*`         | SNMPv3 credentials                                                   |
+| `assigned_object`| Mapped to NetBox interface or device                                  |
+
+#### Out-of-band interfaces
+
+`use_oob_ip` makes an interface follow the device's out-of-band IP instead of a static `ip` or the primary IP, which is how switches, PDUs and servers with a dedicated management port are usually monitored. It is vendor-agnostic: any device with an `oob_ip` works, and setting it on a Configuration Group applies it to every device in that group.
+
+Only Devices have an out-of-band IP, so the field is rejected on Virtual Machines and Virtual Device Contexts.
+
+When a device has no `oob_ip`, the interface is skipped for that device: it is not created, and templates that require it are not linked, so the rest of the host still syncs. An interface that already exists in Zabbix is retained and the skip is logged; it is deleted only when `allow_inherited_deletion` is enabled. This keeps a Configuration Group with an OOB interface usable across a mixed fleet where only part of it is cabled for out-of-band access.
 
 ## Sync & Assignment Models
 
