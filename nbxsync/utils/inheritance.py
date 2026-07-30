@@ -55,7 +55,7 @@ def _hostinterface_identity(interface):
         interface.useip,
         interface.port,
         interface.dns,
-        bool(getattr(interface, 'use_oob_ip', False)),
+        bool(interface.use_oob_ip),
     )
 
 
@@ -141,7 +141,7 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
             child._is_inherited_copy = True
             child.assigned_object_type = content_type
             child.assigned_object_id = instance.id
-            if not getattr(cg_iface, 'use_oob_ip', False):
+            if not cg_iface.use_oob_ip:
                 # Clone the interface with the device's primary IP. OOB
                 # interfaces keep resolving from the device's oob_ip instead.
                 child.ip = primary_ip if primary_ip else None
