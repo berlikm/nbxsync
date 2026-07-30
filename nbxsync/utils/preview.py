@@ -14,7 +14,7 @@ cleanly, as if it were static.
 """
 from __future__ import annotations
 
-import functools
+import time
 from typing import TYPE_CHECKING
 
 from dcim.models import Device, Site
@@ -26,6 +26,9 @@ if TYPE_CHECKING:
     from nbxsync.models import ZabbixHostgroupAssignment, ZabbixTagAssignment
 
 _SENTINEL = object()  # marks a cached "None" so we don't re-query
+_CACHE: dict[tuple[str, int], tuple[float, object]] = {}
+_CACHE_MAXSIZE = 64
+_CACHE_TTL = 60  # seconds
 
 
 def get_representative_device(
@@ -52,19 +55,28 @@ def get_representative_device(
     return None if resolved is _SENTINEL else resolved
 
 
-@functools.lru_cache(maxsize=64)
 def _resolve_cached(model_name: str, target_pk: int):
     """Resolve a representative device for an assignment target.
 
-    Cached on ``(model_name, target_pk)`` — the ObjectViewTable renders
-    each row against a different assignment, so ``maxsize=64`` covers a
-    typical page without unbounded growth. ``None`` results are stored as
-    ``_SENTINEL`` to avoid re-querying empty roles/sites on every row.
+    Cached on ``(model_name, target_pk)`` because the ObjectViewTable renders
+    each row against a different assignment, and ``None`` results are stored as
+    ``_SENTINEL`` to avoid re-querying empty roles/sites on every row. The
+    entries expire so a long-lived worker cannot keep previewing a device that
+    has since been renamed, moved or deleted.
     """
+    key = (model_name, target_pk)
+    now = time.monotonic()
+    cached = _CACHE.get(key)
+    if cached is not None and cached[0] > now:
+        return cached[1]
+
     resolver = _RESOLVERS.get(model_name)
-    if resolver is None:
-        return _SENTINEL
-    return resolver(target_pk) or _SENTINEL
+    resolved = _SENTINEL if resolver is None else (resolver(target_pk) or _SENTINEL)
+
+    if len(_CACHE) >= _CACHE_MAXSIZE:
+        _CACHE.clear()
+    _CACHE[key] = (now + _CACHE_TTL, resolved)
+    return resolved
 
 
 def _fetch(model, **lookup):
@@ -115,12 +127,20 @@ def _resolve_site(pk):
             or _fetch(VirtualMachine, cluster__site=site))
 
 
-def _resolve_sitegroup_or_region(pk):
-    from dcim.models import Region, SiteGroup
-    group = _fetch(SiteGroup, pk=pk) or _fetch(Region, pk=pk)
+def _resolve_sitegroup(pk):
+    from dcim.models import SiteGroup
+    group = _fetch(SiteGroup, pk=pk)
     if group is None:
         return None
-    return _device_under_tree(group)
+    return _device_under_sites(Site.objects.filter(group__in=_tree_pks(group)))
+
+
+def _resolve_region(pk):
+    from dcim.models import Region
+    region = _fetch(Region, pk=pk)
+    if region is None:
+        return None
+    return _device_under_sites(Site.objects.filter(region__in=_tree_pks(region)))
 
 
 def _resolve_cluster(pk):
@@ -148,28 +168,23 @@ _RESOLVERS = {
     'Manufacturer': _resolve_manufacturer,
     'DeviceType': _resolve_device_type,
     'Site': _resolve_site,
-    'SiteGroup': _resolve_sitegroup_or_region,
-    'Region': _resolve_sitegroup_or_region,
+    'SiteGroup': _resolve_sitegroup,
+    'Region': _resolve_region,
     'Cluster': _resolve_cluster,
     'ClusterType': _resolve_cluster_type,
 }
 
 
-def _device_under_tree(group_or_region) -> Device | VirtualMachine | None:
-    """Find a device under a SiteGroup or Region (recursively)."""
-    if hasattr(group_or_region, 'get_descendants'):
-        descendant_pks = list(
-            group_or_region.get_descendants()
-            .values_list('pk', flat=True)
-        )
-        group_ids = [group_or_region.pk] + descendant_pks
-    else:
-        group_ids = [group_or_region.pk]
+def _tree_pks(node) -> list[int]:
+    """The node itself plus its descendants, matching how sync inherits."""
+    pks = [node.pk]
+    if hasattr(node, 'get_descendants'):
+        pks += list(node.get_descendants().values_list('pk', flat=True))
+    return pks
 
-    site_ids = list(
-        Site.objects.filter(group__in=group_ids)
-        .values_list('pk', flat=True)
-    )
+
+def _device_under_sites(sites) -> Device | VirtualMachine | None:
+    site_ids = list(sites.values_list('pk', flat=True))
     if not site_ids:
         return None
 
@@ -177,6 +192,4 @@ def _device_under_tree(group_or_region) -> Device | VirtualMachine | None:
     if dev:
         return dev
 
-    return VirtualMachine.objects.filter(
-        cluster__site__in=site_ids
-    ).first()
+    return VirtualMachine.objects.filter(cluster__site__in=site_ids).first()

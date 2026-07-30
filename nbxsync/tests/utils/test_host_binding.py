@@ -10,7 +10,19 @@ from nbxsync.utils.host_binding import HostBindingDeleteProxy
 from nbxsync.utils.sync import HostSync
 
 
-class HostBindingTestCase(TestCase):
+class PluginSettingMixin:
+    """Temporarily override a validated plugin setting for one test."""
+
+    def _set_plugin_setting(self, name, value):
+        from nbxsync.settings import get_plugin_settings
+
+        pluginsettings = get_plugin_settings()
+        original = getattr(pluginsettings, name)
+        setattr(pluginsettings, name, value)
+        self.addCleanup(setattr, pluginsettings, name, original)
+
+
+class HostBindingTestCase(PluginSettingMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.server = ZabbixServer.objects.create(name='Zabbix', url='http://zabbix.local', token='t')
@@ -197,6 +209,8 @@ class HostBindingTestCase(TestCase):
         self.assertIsNone(self.assignment.hostid)
 
     def test_existing_hosts_backfill(self):
+        self._set_plugin_setting('adopt_existing_hosts', True)
+
         def host_get(**kwargs):
             if kwargs.get('hostids'):
                 return []
@@ -226,6 +240,41 @@ class HostBindingTestCase(TestCase):
 
         binding = ZabbixHostBinding.objects.get(assigned_object_id=self.device.pk, zabbixserver=self.server)
         self.assertEqual(binding.hostid, 300)
+
+    def test_existing_host_is_not_adopted_by_default(self):
+        """Without adopt_existing_hosts, an unbound managed host is a reported conflict."""
+
+        def host_get(**kwargs):
+            if kwargs.get('hostids'):
+                return []
+            if kwargs.get('filter', {}).get('host'):
+                return [
+                    {
+                        'hostid': '300',
+                        'host': 'binding-test',
+                        'name': 'binding-test',
+                        'tags': [
+                            {'tag': 'nb_type', 'value': 'device'},
+                            {'tag': 'nb_id', 'value': str(self.device.pk)},
+                        ],
+                    }
+                ]
+            return []
+
+        api = MagicMock()
+        api.host.get.side_effect = host_get
+        api.hostinterface.get.return_value = []
+        api.template.get.return_value = []
+        api.maintenance.get.return_value = []
+        self._attach_assigned_objects(self.assignment)
+
+        sync = HostSync(api=api, netbox_obj=self.assignment, all_objects=self._all_objects())
+        with self.assertRaises(RuntimeError) as context:
+            sync.sync()
+
+        self.assertIn('adopt_existing_hosts', str(context.exception))
+        self.assertFalse(ZabbixHostBinding.objects.filter(assigned_object_id=self.device.pk, zabbixserver=self.server).exists())
+        api.host.create.assert_not_called()
 
     def test_hard_delete_after_netbox_object_is_missing(self):
         binding = ZabbixHostBinding.objects.create(
@@ -277,7 +326,7 @@ class HostBindingTestCase(TestCase):
         self.assertFalse(ZabbixHostBinding.objects.filter(pk=binding.pk).exists())
 
 
-class BindingJobTestCase(TestCase):
+class BindingJobTestCase(PluginSettingMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.server = ZabbixServer.objects.create(name='Zabbix', url='http://zabbix.local', token='t')
@@ -323,6 +372,7 @@ class BindingJobTestCase(TestCase):
         self.assertTrue(ZabbixHostBinding.objects.filter(pk=binding.pk).exists())
 
     def test_retire_unassigned_bindings(self):
+        self._set_plugin_setting('allow_inherited_deletion', True)
         binding = ZabbixHostBinding.objects.create(
             zabbixserver=self.server,
             assigned_object_type=self.device_ct,
@@ -343,3 +393,24 @@ class BindingJobTestCase(TestCase):
         self.assertEqual(proxy.zabbixserver, self.server)
         self.assertEqual(proxy.hostid, binding.hostid)
         self.assertEqual(proxy.assigned_object, self.device)
+
+    def test_unassigned_binding_is_kept_when_inherited_deletion_disabled(self):
+        """The default configuration reports the impact instead of deleting the host."""
+        binding = ZabbixHostBinding.objects.create(
+            zabbixserver=self.server,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.pk,
+            hostid=556,
+            hostname='binding-job-test',
+        )
+
+        from nbxsync.jobs.synchost import SyncHostJob
+
+        with patch('nbxsync.jobs.synchost.safe_delete') as mock_safe_delete:
+            with self.assertLogs('nbxsync.jobs.synchost', level='WARNING') as logs:
+                job = SyncHostJob(instance=self.device)
+                job._retire_unassigned_bindings(set())
+
+        mock_safe_delete.assert_not_called()
+        self.assertIn('allow_inherited_deletion', ' '.join(logs.output))
+        self.assertTrue(ZabbixHostBinding.objects.filter(pk=binding.pk).exists())
