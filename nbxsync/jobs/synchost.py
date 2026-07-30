@@ -19,6 +19,7 @@ __all__ = ('SyncHostJob',)
 class SyncHostJob:
     def __init__(self, **kwargs):
         self.instance = kwargs.get('instance')  # This is the Device or VirtualMachine object
+        self.partial_errors = []
 
     def _prepare_assignment(self, assignment):
         """
@@ -61,6 +62,11 @@ class SyncHostJob:
         return False
 
     def run(self):
+        # Recoverable per-host errors are collected so that independent work
+        # (other interfaces, other Zabbix servers, binding retirement) still
+        # runs, while the job as a whole still reports the failure.
+        self.partial_errors = []
+
         all_objects = get_assigned_zabbixobjects(self.instance)
         zabbixserver_assignments = all_objects.get('server_assignments', [])
 
@@ -81,6 +87,7 @@ class SyncHostJob:
                     self.delete_host(assignment)
             self._retire_unassigned_bindings(assigned_server_ids)
             logger.info('Skipping sync for %s (excluded)', self.instance)
+            self._raise_on_partial_failure()
             return
         for assignment in zabbixserver_assignments:
             assigned_server_ids.add(assignment.zabbixserver_id)
@@ -103,6 +110,29 @@ class SyncHostJob:
         # (This covers loss of all assignments, including inherited ones.)
         self._retire_unassigned_bindings(assigned_server_ids)
 
+        self._raise_on_partial_failure()
+
+    def _record_partial_failure(self, assignment, message):
+        """Remember a recoverable failure and surface it on the assignment row."""
+        self.partial_errors.append(message)
+        logger.warning('%s: %s', self.instance, message)
+        if assignment is not None:
+            assignment.update_sync_info(success=False, message=message[:3000])
+
+    def _raise_on_partial_failure(self):
+        """Fail the job when independent work completed but something was lost.
+
+        Without this, an operator sees a successful reconciliation for a host
+        whose interfaces or template linkage never made it into Zabbix.
+        """
+        errors = getattr(self, 'partial_errors', [])
+        if not errors:
+            return
+        summary = '; '.join(errors[:10])
+        if len(errors) > 10:
+            summary = f'{summary}; (+{len(errors) - 10} more)'
+        raise RuntimeError(f'Partial sync failure for {self.instance}: {summary}')
+
     def _retire_unassigned_bindings(self, assigned_server_ids):
         for binding in iter_host_bindings(self.instance):
             if binding.zabbixserver_id in assigned_server_ids:
@@ -113,7 +143,7 @@ class SyncHostJob:
             try:
                 safe_delete(HostSync, proxy, extra_args={'all_objects': {'_instance': self.instance}})
             except Exception as e:
-                logger.warning('Failed to retire binding %s for %s: %s', binding, self.instance, e)
+                self._record_partial_failure(None, f'Failed to retire binding {binding}: {e}')
 
     def delete_host(self, assignment):
         safe_delete(HostSync, assignment, extra_args={'all_objects': {'_instance': self.instance}})
@@ -186,14 +216,17 @@ class SyncHostJob:
                     # A common case: device inherits both Agent and SNMP
                     # interfaces but the SNMP credentials are wrong — this
                     # should not prevent the Agent interface and templates
-                    # from being synced.
-            # Final HostSync to link templates etc — wrapped in try/except
-            # because template conflicts (e.g. "Cannot inherit item with key
-            # snmptrap.fallback") should not abort the entire sync.
+                    # from being synced. The failure is still reported at the
+                    # end of the job so it cannot pass as a successful sync.
+                    self._record_partial_failure(assignment, f'HostInterfaceSync failed for interface {hostinterface}: {e}')
+
+            # Final HostSync to link templates etc — a template conflict here
+            # (e.g. "Cannot inherit item with key snmptrap.fallback") must not
+            # abort the remaining work, but it is a real failure to report.
             try:
                 safe_sync(HostSync, assignment, extra_args={'all_objects': all_objects})
             except Exception as e:
-                logger.warning(f'Final HostSync failed for {self.instance}: {e}')
+                self._record_partial_failure(assignment, f'Final HostSync failed: {e}')
 
         except Exception as e:
             raise RuntimeError(f'Unexpected error: {e}')
