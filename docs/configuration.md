@@ -190,7 +190,9 @@ Either true or false (default: True). When enabled, a periodic job enumerates al
 
 Used to determine the interval to sync Devices and Virtual Machines to/from Zabbix, in minutes (default: 60)
 
-Set `objects.interval` to at least 360 (6 hours) for production — a full reconciliation of ~1127 hosts takes ~80 minutes at ~14 hosts/min; intervals shorter than 90 minutes will cause queue overlap.
+Size the interval so a full reconciliation finishes well before the next one starts, otherwise runs queue up behind each other. Throughput depends on your Zabbix server, the number of interfaces and templates per host, and network latency, so measure it on your own installation: the job logs `duration_seconds` and the number of hosts enqueued on every run.
+
+As one measured example, an installation of ~1127 hosts reconciled in ~80 minutes (~14 hosts/min), for which an interval of 360 (6 hours) leaves ample headroom while anything under 90 minutes overlapped.
 
 #### templates
 
