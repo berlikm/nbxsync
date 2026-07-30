@@ -87,13 +87,17 @@ class ZabbixSyncBase:
 
     def try_create(self):
         try:
-            # print('Create params:')
-            # print(self.get_create_params())
             result = self.api_object().create(**self.get_create_params())
-            # print('Zabbix result: ')
-            # print(result)
             return result.get(self.result_key(), [None])[0]
         except Exception as err:
+            # Race condition: another concurrent job may have created the
+            # object between our find_by_name() check and this create().
+            # If so, retry by name instead of failing.
+            if 'already exists' in str(err).lower():
+                found_by_name = self.find_by_name()
+                if len(found_by_name) == 1:
+                    logger.debug(f'{self.__class__.__name__} already existed (race), reusing ID')
+                    return found_by_name[0].get(self.id_field.split('.')[-1])
             msg = f'{self.__class__.__name__} creation failed: {err}'
             raise RuntimeError(msg)
 
