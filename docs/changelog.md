@@ -4,7 +4,29 @@
 
 ### New features
 
+- Site, SiteGroup and Region are first-class assignment targets: proxies, templates, hostgroups, tags, macros, inventory and configuration groups assigned there are inherited by every Device/VM at or below that level
+- Added `ZabbixTemplateRule`: regex rules that assign a template — and optionally a hostgroup and tag — based on the Platform name, with UI, filters and REST API
 - Added `exclude_tag` configuration setting to exclude hosts from Zabbix sync entirely via a ZabbixTag assigned to any object in the inheritance chain
+- Added `use_oob_ip` on Zabbix Host Interfaces to resolve the interface IP from a device's out-of-band IP, usable on Configuration Groups for fleet-wide out-of-band monitoring
+- Added `ZabbixHostBinding`: a durable record of the Zabbix host owned by each NetBox object, so a host can still be retired after its (inherited) assignment disappears
+- Added a background sync job that enumerates Devices/VMs inheriting a Zabbix server assignment, providing zero-touch provisioning for newly created inventory
+- Added `allow_inherited_deletion` (default `False`) so inheritance-driven host deletions are reported with their impact before any Zabbix history is discarded
+- Added `adopt_existing_hosts` (default `False`) so binding to a pre-existing Zabbix host is an explicit decision instead of a silent takeover
+
+### Improvements
+
+- Hostgroup and tag values are rendered with the synced Device/VM as Jinja2 context, and the UI preview discloses which device a hierarchy-level value was rendered with
+- Inherited assignment resolution issues one query per assignment type instead of one per ancestor
+- Inherited assignments are synced as detached copies, so hostids and sync state are never written back to the Site- or Platform-level row
+- Template-rule matching is time-bounded in every calling context and fails closed on timeout, oversized input or an invalid stored pattern
+- Recovery from a concurrent create in Zabbix is limited to Zabbix's own duplicate-object error instead of any failure mentioning "already exists"
+
+### Bug fixes
+
+- A failing host interface no longer hides the failure: per-interface and template-linkage failures are recorded on the assignment and reported as an aggregated job error
+- Configuration Group interfaces are deduplicated by interface identity, so a second interface of the same Zabbix type (e.g. a separate out-of-band interface) is no longer dropped
+- Configuration Group interfaces are no longer deleted from Zabbix and recreated on every sync run
+- Region previews resolve Regions instead of the SiteGroup that happened to share their primary key
 
 
 ## [1.0.0] - Initial Release
