@@ -23,6 +23,8 @@ class ZabbixTemplateRuleListView(ObjectListView):
     table = ZabbixTemplateRuleTable
     filterset = ZabbixTemplateRuleFilterSet
     filterset_form = ZabbixTemplateRuleFilterForm
+
+
 @register_model_view(ZabbixTemplateRule)
 class ZabbixTemplateRuleView(ObjectView):
     queryset = ZabbixTemplateRule.objects.all()

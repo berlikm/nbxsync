@@ -12,10 +12,13 @@ descendants so the preview renders the same value the sync engine would
 produce. The representative is arbitrary — the UI shows the rendered value
 cleanly, as if it were static.
 """
+
 from __future__ import annotations
 
 import time
 from typing import TYPE_CHECKING
+
+from django.db.models import Q
 
 from dcim.models import Device, Site
 from virtualization.models import VirtualMachine
@@ -84,26 +87,36 @@ def _fetch(model, **lookup):
     return model.objects.filter(**lookup).first()
 
 
+def _vm_site_filter(site_ids) -> Q:
+    """Match virtual machines placed at any of *site_ids*.
+
+    A VM carries its own site, and its cluster records the site it is scoped to
+    in a cached relation, so both are consulted.
+    """
+    return Q(site__in=site_ids) | Q(cluster___site__in=site_ids)
+
+
 def _resolve_role(pk):
     from dcim.models import DeviceRole
+
     role = _fetch(DeviceRole, pk=pk)
     if role is None:
         return None
-    return (_fetch(Device, role=role)
-            or _fetch(VirtualMachine, role=role))
+    return _fetch(Device, role=role) or _fetch(VirtualMachine, role=role)
 
 
 def _resolve_platform(pk):
     from dcim.models import Platform
+
     platform = _fetch(Platform, pk=pk)
     if platform is None:
         return None
-    return (_fetch(Device, platform=platform)
-            or _fetch(VirtualMachine, platform=platform))
+    return _fetch(Device, platform=platform) or _fetch(VirtualMachine, platform=platform)
 
 
 def _resolve_manufacturer(pk):
     from dcim.models import Manufacturer
+
     mfr = _fetch(Manufacturer, pk=pk)
     if mfr is None:
         return None
@@ -112,6 +125,7 @@ def _resolve_manufacturer(pk):
 
 def _resolve_device_type(pk):
     from dcim.models import DeviceType
+
     dt = _fetch(DeviceType, pk=pk)
     if dt is None:
         return None
@@ -120,15 +134,16 @@ def _resolve_device_type(pk):
 
 def _resolve_site(pk):
     from dcim.models import Site as SiteModel
+
     site = _fetch(SiteModel, pk=pk)
     if site is None:
         return None
-    return (_fetch(Device, site=site)
-            or _fetch(VirtualMachine, cluster__site=site))
+    return _fetch(Device, site=site) or VirtualMachine.objects.filter(_vm_site_filter([site.pk])).first()
 
 
 def _resolve_sitegroup(pk):
     from dcim.models import SiteGroup
+
     group = _fetch(SiteGroup, pk=pk)
     if group is None:
         return None
@@ -137,6 +152,7 @@ def _resolve_sitegroup(pk):
 
 def _resolve_region(pk):
     from dcim.models import Region
+
     region = _fetch(Region, pk=pk)
     if region is None:
         return None
@@ -145,20 +161,20 @@ def _resolve_region(pk):
 
 def _resolve_cluster(pk):
     from virtualization.models import Cluster
+
     cluster = _fetch(Cluster, pk=pk)
     if cluster is None:
         return None
-    return (_fetch(Device, cluster=cluster)
-            or _fetch(VirtualMachine, cluster=cluster))
+    return _fetch(Device, cluster=cluster) or _fetch(VirtualMachine, cluster=cluster)
 
 
 def _resolve_cluster_type(pk):
     from virtualization.models import ClusterType
+
     ct = _fetch(ClusterType, pk=pk)
     if ct is None:
         return None
-    return (_fetch(Device, cluster__type=ct)
-            or _fetch(VirtualMachine, cluster__type=ct))
+    return _fetch(Device, cluster__type=ct) or _fetch(VirtualMachine, cluster__type=ct)
 
 
 # Dispatch table — keeps _resolve_cached's McCabe complexity low.
@@ -192,4 +208,4 @@ def _device_under_sites(sites) -> Device | VirtualMachine | None:
     if dev:
         return dev
 
-    return VirtualMachine.objects.filter(cluster__site__in=site_ids).first()
+    return VirtualMachine.objects.filter(_vm_site_filter(site_ids)).first()
