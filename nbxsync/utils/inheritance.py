@@ -43,6 +43,22 @@ def get_zabbixassignments_for_request(instance, request):
     }
 
 
+def _hostinterface_identity(interface):
+    """Identity of a host interface as Zabbix sees it.
+
+    Zabbix allows multiple interfaces of one type per host, distinguished by
+    their endpoint and role, so deduplication must compare all of it.
+    """
+    return (
+        interface.type,
+        interface.interface_type,
+        interface.useip,
+        interface.port,
+        interface.dns,
+        bool(interface.use_oob_ip),
+    )
+
+
 def get_assigned_zabbixobjects(instance, zabbixserver=None):
     """
     Return raw Zabbix assignment lists (direct + inherited) without any table formatting.
@@ -109,18 +125,26 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
             assigned_object_type=cg_ct,
             assigned_object_id=configurationgroup.zabbixconfigurationgroup_id,
         )
-        existing_types = {hi.type for hi in hostinterfaces}
+        # A host can legitimately carry several interfaces of the same Zabbix
+        # type (two SNMP interfaces on different ports, an in-band and an OOB
+        # agent interface, ...), so ConfigGroup interfaces are suppressed only
+        # when an interface with the same identity is already present.
+        existing_identities = {_hostinterface_identity(hi) for hi in hostinterfaces}
         primary_ip = getattr(instance, 'primary_ip4', None) or getattr(instance, 'primary_ip6', None)
         for cg_iface in cg_interfaces:
-            if cg_iface.type not in existing_types:
-                # Clone the interface with the device's primary IP
-                child = _copy.copy(cg_iface)
-                child.pk = None
-                child._is_inherited_copy = True
-                child.assigned_object_type = content_type
-                child.assigned_object_id = instance.id
+            if _hostinterface_identity(cg_iface) in existing_identities:
+                continue
+            child = _copy.copy(cg_iface)
+            child.pk = None
+            child._is_inherited_copy = True
+            child.assigned_object_type = content_type
+            child.assigned_object_id = instance.id
+            if not cg_iface.use_oob_ip:
+                # Clone the interface with the device's primary IP. OOB
+                # interfaces keep resolving from the device's oob_ip instead.
                 child.ip = primary_ip if primary_ip else None
-                hostinterfaces.append(child)
+            hostinterfaces.append(child)
+            existing_identities.add(_hostinterface_identity(child))
 
     # Resolve regex-based template rules (matched against platform name)
     # These are applied after direct + inherited, so explicit assignments always win

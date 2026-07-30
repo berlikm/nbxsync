@@ -327,15 +327,23 @@ class SyncHostJobTestCase(TestCase):
 
     @patch('nbxsync.jobs.synchost.safe_sync')
     @patch.object(SyncHostJob, 'verify_hostinterfaces')
-    def test_interface_sync_runtimeerror_continues(self, mock_verify_interfaces, mock_safe_sync):
-        """A RuntimeError from HostInterfaceSync is logged and the job continues (resilience to sync failures)."""
-        call_log = {'hostiface_calls': 0}
+    def test_interface_sync_runtimeerror_continues_then_reports(self, mock_verify_interfaces, mock_safe_sync):
+        """A RuntimeError from HostInterfaceSync does not stop the remaining work, but the job still fails.
+
+        Independent work (other interfaces, the final template linkage, binding
+        retirement) must complete, and the recoverable failure must be reported
+        as an aggregated error so a host with a missing interface cannot be
+        mistaken for a successful reconciliation.
+        """
+        call_log = {'hostiface_calls': 0, 'hostsync_calls': 0}
 
         def side_effect(sync_class, *args, **kwargs):
             name = getattr(sync_class, '__name__', None)
             if name == 'HostInterfaceSync':
                 call_log['hostiface_calls'] += 1
                 raise RuntimeError('Error syncing HostInterfaceSync: SNMP credentials wrong')
+            if name == 'HostSync':
+                call_log['hostsync_calls'] += 1
             return None
 
         mock_safe_sync.side_effect = side_effect
@@ -354,6 +362,11 @@ class SyncHostJobTestCase(TestCase):
                 'configurationgroup': None,
             }
 
-            job.run()  # must not raise
+            with self.assertRaises(RuntimeError) as context:
+                job.run()
 
+        self.assertIn('Partial sync failure', str(context.exception))
+        self.assertIn('SNMP credentials wrong', str(context.exception))
         self.assertGreater(call_log['hostiface_calls'], 0)
+        # The final HostSync still ran after the interface failure.
+        self.assertGreaterEqual(call_log['hostsync_calls'], 2)

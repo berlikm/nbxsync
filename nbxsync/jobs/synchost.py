@@ -84,6 +84,8 @@ class SyncHostJob:
             for assignment in zabbixserver_assignments:
                 if assignment.sync_enabled and assignment.zabbixserver.sync_enabled:
                     assignment = self._prepare_assignment(assignment)
+                    if self._deletion_blocked(f'exclusion tag "{pluginsettings.exclude_tag}"', assignment.zabbixserver, assignment.hostid):
+                        continue
                     self.delete_host(assignment)
             self._retire_unassigned_bindings(assigned_server_ids)
             logger.info('Skipping sync for %s (excluded)', self.instance)
@@ -112,6 +114,25 @@ class SyncHostJob:
 
         self._raise_on_partial_failure()
 
+    def _deletion_blocked(self, reason, zabbixserver, hostid):
+        """Report whether an inheritance-driven deletion may proceed.
+
+        Deleting a Zabbix host discards its measurement history, and the
+        trigger can be as indirect as moving a Site into another SiteGroup. When
+        ``allow_inherited_deletion`` is off, the host is kept and the impact is
+        logged so operators can review it before enabling the setting.
+        """
+        if get_plugin_settings().allow_inherited_deletion:
+            return False
+        logger.warning(
+            'Not deleting Zabbix host for %s on %s (hostid %s): %s requires deletion, but allow_inherited_deletion is disabled. Enable it to let nbxsync remove the host and its history.',
+            self.instance,
+            zabbixserver,
+            hostid or 'unknown',
+            reason,
+        )
+        return True
+
     def _record_partial_failure(self, assignment, message):
         """Remember a recoverable failure and surface it on the assignment row."""
         self.partial_errors.append(message)
@@ -138,6 +159,8 @@ class SyncHostJob:
             if binding.zabbixserver_id in assigned_server_ids:
                 continue
             if not binding.zabbixserver.sync_enabled:
+                continue
+            if self._deletion_blocked('no remaining Zabbix server assignment', binding.zabbixserver, binding.hostid):
                 continue
             proxy = HostBindingDeleteProxy(binding, assigned_object=self.instance)
             try:

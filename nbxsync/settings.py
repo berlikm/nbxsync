@@ -126,6 +126,18 @@ class PluginSettingsModel(BaseModel):
     # chain as templates, hostgroups, and other tag assignments.
     exclude_tag: str = Field(default='')
 
+    # Deleting a host in Zabbix destroys its history, so inheritance-driven
+    # deletions are opt-in. While disabled, nbxsync logs the hosts it would
+    # have deleted (exclusion tags, disappeared assignments) and leaves them
+    # untouched, which lets operators review the impact of a new exclusion tag
+    # or a moved Site before any data is lost.
+    allow_inherited_deletion: bool = Field(default=False)
+
+    # Bind to a pre-existing Zabbix host that carries matching nb_type/nb_id
+    # tags instead of failing. Off by default: adopting a host that nbxsync did
+    # not create means NetBox immediately starts overwriting its configuration.
+    adopt_existing_hosts: bool = Field(default=False)
+
 
 # Helper function
 def get_plugin_settings() -> PluginSettingsModel:

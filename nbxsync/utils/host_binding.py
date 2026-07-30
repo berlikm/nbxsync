@@ -90,6 +90,10 @@ def backfill_or_resolve_conflict(instance, zabbixserver, api):
     caller can create a new one. If an unmanaged host with the same name
     exists, or if the matching host belongs to another NetBox object, a
     ``RuntimeError`` is raised.
+
+    Adoption is gated by the ``adopt_existing_hosts`` setting: taking over a
+    host makes NetBox authoritative over its configuration, so operators opt in
+    explicitly instead of discovering it after the first sync.
     """
     name = str(instance.name) if hasattr(instance, 'name') else str(instance)
     hosts = api.host.get(filter={'host': name}, selectTags='extend')
@@ -103,6 +107,12 @@ def backfill_or_resolve_conflict(instance, zabbixserver, api):
     matches = [host for host in hosts if all(_host_tags_to_dict(host).get(k) == v for k, v in expected.items())]
 
     if len(matches) == 1:
+        if not get_plugin_settings().adopt_existing_hosts:
+            raise RuntimeError(
+                f'Zabbix host "{name}" (hostid {matches[0]["hostid"]}) already carries the managed identity for {instance} but is not bound in NetBox. '
+                f'Set nbxsync adopt_existing_hosts = True to let nbxsync take ownership of it, or remove the host from Zabbix first.'
+            )
+        logger.info('Adopting existing Zabbix host %s (hostid %s) for %s on %s', name, matches[0]['hostid'], instance, zabbixserver)
         return int(matches[0]['hostid'])
 
     if len(hosts) == 1 and not matches:
