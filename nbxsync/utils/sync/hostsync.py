@@ -212,7 +212,7 @@ class HostSync(ZabbixSyncBase):
 
     def get_defined_macros(self):
         result = []
-        for macro in self.context.get('all_objects', {}).get('macros'):
+        for macro in (self.context.get('all_objects', {}).get('macros', []) or []):
             rendered_value, _ = macro.render(object=self._get_sync_target())
             result.append(
                 {
@@ -244,7 +244,7 @@ class HostSync(ZabbixSyncBase):
 
     def get_snmp_macros(self):
         result = []
-        hostinterfaces = self.context.get('all_objects', {}).get('hostinterfaces', [])
+        hostinterfaces = (self.context.get('all_objects', {}).get('hostinterfaces', []) or [])
         snmpconf = self.pluginsettings.snmpconfig
 
         for hostinterface in hostinterfaces:
@@ -315,7 +315,7 @@ class HostSync(ZabbixSyncBase):
 
     def get_hostinterface_attributes(self):
         result = {}
-        for hostinterface in self.context.get('all_objects', {}).get('hostinterfaces', []):
+        for hostinterface in (self.context.get('all_objects', {}).get('hostinterfaces', []) or []):
             if hostinterface.type == ZabbixHostInterfaceTypeChoices.AGENT:
                 result['tls_connect'] = hostinterface.tls_connect
                 result['tls_accept'] = 0
@@ -335,7 +335,7 @@ class HostSync(ZabbixSyncBase):
         return result
 
     def get_hostinterface_types(self):
-        hostinterfaces = self.context.get('all_objects', {}).get('hostinterfaces', [])
+        hostinterfaces = (self.context.get('all_objects', {}).get('hostinterfaces', []) or [])
         return list({interface.type for interface in hostinterfaces})
 
     def get_templates_clear_attributes(self):
@@ -378,7 +378,7 @@ class HostSync(ZabbixSyncBase):
         result = []
         hostinterface_types = set(self.get_hostinterface_types() or [])
 
-        for assigned_template in self.context.get('all_objects', {}).get('templates', []):
+        for assigned_template in (self.context.get('all_objects', {}).get('templates', []) or []):
             required = set(assigned_template.zabbixtemplate.interface_requirements or [])
 
             # Extract special modifiers
@@ -632,7 +632,7 @@ class HostSync(ZabbixSyncBase):
             return
 
         hostid = str(int(self.obj.hostid))
-        netbox_hostinterfaces = self.context.get('all_objects', {}).get('hostinterfaces', [])
+        netbox_hostinterfaces = (self.context.get('all_objects', {}).get('hostinterfaces', []) or [])
         zabbix_hostinterfaces = self.api.hostinterface.get(hostids=hostid)
 
         netbox_default_obj_by_type = {}
@@ -707,7 +707,7 @@ class HostSync(ZabbixSyncBase):
             return {}
 
         # Extract the currently expected interfaces
-        expected_hostinterfaces = self.context.get('all_objects', {}).get('hostinterfaces', [])
+        expected_hostinterfaces = (self.context.get('all_objects', {}).get('hostinterfaces', []) or [])
         expected_ids = {int(expected_hostinterface.interfaceid) for expected_hostinterface in expected_hostinterfaces if expected_hostinterface.interfaceid}
 
         # Get currently assigned hostinterface from Zabbix
