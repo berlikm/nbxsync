@@ -8,6 +8,7 @@
 - Added `ZabbixHostBinding`: a durable record of the Zabbix host owned by each NetBox object, so a host can still be retired after its (inherited) assignment disappears
 - Added a background sync job that enumerates Devices/VMs inheriting a Zabbix server assignment, providing zero-touch provisioning for newly created inventory
 - Added `allow_inherited_deletion` (default `False`) so inheritance-driven host deletions are reported with their impact before any Zabbix history is discarded
+- Added `use_oob_ip` on Zabbix Host Interfaces to resolve the interface IP from a device's out-of-band IP, usable on Configuration Groups for fleet-wide out-of-band monitoring
 - Added `adopt_existing_hosts` (default `False`) so binding to a pre-existing Zabbix host is an explicit decision instead of a silent takeover
 
 ### Improvements
