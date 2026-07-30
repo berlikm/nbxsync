@@ -162,6 +162,13 @@ class ZabbixHostInterface(SyncInfoModel, NetBoxModel):
             if self.snmpv3_privacy_passphrase and len(self.snmpv3_privacy_passphrase) < 8:
                 errors['snmpv3_privacy_passphrase'] = _('Privacy passphrase must be at least 8 characters long.')
 
+        # Only devices carry an oob_ip field; a VM or Virtual Device Context can
+        # never resolve one, so the flag would silently suppress the interface.
+        if self.use_oob_ip and self.assigned_object is not None:
+            is_configgroup = isinstance(self.assigned_object, ZabbixConfigurationGroup)
+            if not is_configgroup and not hasattr(self.assigned_object, 'oob_ip'):
+                errors['use_oob_ip'] = _('"Use OOB IP" is only supported for Devices and Configuration Groups, because only Devices have an out-of-band IP.')
+
         # If the assigned object type is *not* a ZabbixConfigurationGroup, we validate the IP and/or DNS entry
         if self.assigned_object_type != ContentType.objects.get_for_model(ZabbixConfigurationGroup):
             # Validate based on connection method

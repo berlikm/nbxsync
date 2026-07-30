@@ -714,24 +714,32 @@ class HostSync(ZabbixSyncBase):
 
         # Get currently assigned hostinterface from Zabbix
         current_hostinterfaces = self.api.hostinterface.get(output=['extend'], hostids=self.obj.hostid)
-        current_ids = {int(current_hostinterface['interfaceid']) for current_hostinterface in current_hostinterfaces}
 
-        # For expected interfaces without an interfaceid (e.g. inherited from a
-        # ConfigGroup), match by type to the Zabbix interfaces so they are not deleted.
-        expected_types = {int(hi.type) for hi in expected_hostinterfaces}
-        # Match by type so ConfigGroup-inherited interfaces (which have no
-        # persisted interfaceid) are not treated as stale and deleted.
-        # Since zabbix_utils wraps responses differently in worker vs shell,
-        # just don't delete any interfaces that might be linked to items.
-        # The ConfigGroup-expanded interface has interfaceid=None, so it's
-        # not in expected_ids — but trying to delete it fails when items are linked.
+        # Interfaces inherited from a ConfigGroup are transient copies without a
+        # persisted interfaceid, so they must be recognised by what Zabbix stores
+        # instead. Deleting them here would remove an interface that the very
+        # next sync recreates, and fail outright once items are linked to it.
+        # Interfaces that could not be synced this run (e.g. an OOB interface on
+        # a device whose oob_ip was cleared) are retained rather than deleted.
+        retained_hostinterfaces = self.context.get('all_objects', {}).get('retained_hostinterfaces', []) or []
+        expected_identities = {(int(hi.type), int(hi.useip), str(hi.port)) for hi in list(expected_hostinterfaces) + list(retained_hostinterfaces) if not hi.interfaceid}
+
         # Skip deletion entirely for inherited copies.
         if not self._should_persist():
             return
 
-        to_be_deleted = current_ids - expected_ids
-        for id_to_delete in to_be_deleted:
-            self.api.hostinterface.delete(id_to_delete)
+        for current_hostinterface in current_hostinterfaces:
+            interfaceid = int(current_hostinterface['interfaceid'])
+            if interfaceid in expected_ids:
+                continue
+            identity = (
+                int(current_hostinterface.get('type', 0)),
+                int(current_hostinterface.get('useip', 0)),
+                str(current_hostinterface.get('port', '')),
+            )
+            if identity in expected_identities:
+                continue
+            self.api.hostinterface.delete(interfaceid)
 
     def sanitize_string(self, input_str, replacement='_'):
         """

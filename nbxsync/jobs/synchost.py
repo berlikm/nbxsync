@@ -171,27 +171,53 @@ class SyncHostJob:
     def delete_host(self, assignment):
         safe_delete(HostSync, assignment, extra_args={'all_objects': {'_instance': self.instance}})
 
-    def verify_hostinterfaces(self, assignment):
+    def _resolve_all_objects(self, assignment):
+        """Resolve the assignments for one Zabbix server, OOB filtering included.
+
+        Every caller must see the same interface set: an interface that sync_host
+        skips but verify_hostinterfaces still considers unexpected would be
+        deleted from Zabbix on every run and recreated on the next one.
+        """
         all_objects = get_assigned_zabbixobjects(self.instance, zabbixserver=assignment.zabbixserver)
         all_objects['_instance'] = self.instance
+
+        # use_oob_ip interfaces cannot be synced when the object has no OOB IP:
+        # a VM never has one, and a device may not have one yet. Syncing them
+        # anyway would link SNMP templates to a host without an SNMP interface.
+        has_oob_ip = bool(getattr(self.instance, 'oob_ip', None))
+        unresolvable = [hi for hi in all_objects['hostinterfaces'] if hi.use_oob_ip and not has_oob_ip]
+        if unresolvable:
+            all_objects['hostinterfaces'] = [hi for hi in all_objects['hostinterfaces'] if hi not in unresolvable]
+            if get_plugin_settings().allow_inherited_deletion:
+                logger.warning(
+                    'Skipping %s OOB interface(s) for %s: no out-of-band IP. Any interface already present in Zabbix will be removed because allow_inherited_deletion is enabled.',
+                    len(unresolvable),
+                    self.instance,
+                )
+            else:
+                # Keep whatever Zabbix already has: an OOB IP that disappeared
+                # from NetBox is usually a data-entry gap, not an instruction to
+                # discard the interface and its item history.
+                all_objects['retained_hostinterfaces'] = unresolvable
+                logger.warning(
+                    'Skipping %s OOB interface(s) for %s: no out-of-band IP. Existing Zabbix interfaces are retained; enable allow_inherited_deletion to let nbxsync remove them.',
+                    len(unresolvable),
+                    self.instance,
+                )
+
+        return all_objects
+
+    def verify_hostinterfaces(self, assignment):
+        all_objects = self._resolve_all_objects(assignment)
         run_zabbix_operation(HostSync, assignment, 'verify_hostinterfaces', extra_args={'all_objects': all_objects})
 
     def check_default_hostinterface(self, assignment):
-        all_objects = get_assigned_zabbixobjects(self.instance, zabbixserver=assignment.zabbixserver)
-        all_objects['_instance'] = self.instance
+        all_objects = self._resolve_all_objects(assignment)
         run_zabbix_operation(HostSync, assignment, 'check_default_hostinterface', extra_args={'all_objects': all_objects})
 
     def sync_host(self, assignment):
         try:
-            all_objects = get_assigned_zabbixobjects(self.instance, zabbixserver=assignment.zabbixserver)
-            # Filter out use_oob_ip interfaces when the device has no oob_ip.
-            # This prevents SNMP templates from being linked to hosts that
-            # won't actually get an SNMP interface (e.g. VMs without OOB).
-            all_objects['hostinterfaces'] = [
-                hi for hi in all_objects['hostinterfaces']
-                if not getattr(hi, 'use_oob_ip', False)
-                or (hasattr(self.instance, 'oob_ip') and self.instance.oob_ip)
-            ]
+            all_objects = self._resolve_all_objects(assignment)
             # Add the assigned_objects attribute, so we dont have to do this expensive calculation again later on :)
             assignment.assigned_objects = all_objects
             all_objects['_instance'] = self.instance
