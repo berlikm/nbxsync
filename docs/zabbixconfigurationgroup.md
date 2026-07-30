@@ -14,7 +14,7 @@ Think of it as a "profile": you attach Zabbix servers, templates, tags, host gro
 
 ```python
 class ZabbixConfigurationGroup(NetBoxModel):
-    name        = CharField(max_length=512)
+    name = CharField(max_length=512)
     description = CharField(max_length=1024, blank=True)
 ```
 

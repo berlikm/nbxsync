@@ -326,6 +326,42 @@ nbxSync integrates with the [Netbox Permission system](https://netbox.readthedoc
 - delete_zabbixtemplateassignment
 - view_zabbixtemplateassignment
 
+## Zabbix Template Rule
+
+**What it is:** A regex rule that assigns a Zabbix template (and optionally a host group and tag) based on the Platform name of a Device/VM.
+
+**How it’s used:** Covers platform names that change over time — firmware or build numbers in the name — without curating a template assignment per variant.
+
+**Typical permissions:**
+
+- _view_ for operators verifying why a host received a template.
+- _add/change/delete_ for engineers owning the monitoring policy; a rule applies to every matching host, so treat it like a global policy object.
+
+### Permissions
+
+- add_zabbixtemplaterule
+- change_zabbixtemplaterule
+- delete_zabbixtemplaterule
+- view_zabbixtemplaterule
+
+## Zabbix Host Binding
+
+**What it is:** The durable record of which Zabbix host a NetBox object owns on a given Zabbix server.
+
+**How it’s used:** Maintained by nbxsync so a host can still be retired when its assignment disappears. It is a system-managed bookkeeping object; operators normally only need _view_ to inspect or troubleshoot a binding.
+
+**Typical permissions:**
+
+- _view_ for troubleshooting which Zabbix host an object is bound to.
+- _change/delete_ only for administrators repairing a mis-bound host — editing a binding changes which Zabbix host NetBox will overwrite or delete.
+
+### Permissions
+
+- add_zabbixhostbinding
+- change_zabbixhostbinding
+- delete_zabbixhostbinding
+- view_zabbixhostbinding
+
 ## Zabbix Configuration Group
 
 **What it is:** Groups together multiple Zabbix objects which are then replicated to all Assigned Objects

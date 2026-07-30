@@ -5,6 +5,15 @@
 ### New features
 
 - Added `exclude_tag` configuration setting to exclude hosts from Zabbix sync entirely via a ZabbixTag assigned to any object in the inheritance chain
+- Added `ZabbixHostBinding`: a durable record of the Zabbix host owned by each NetBox object, so a host can still be retired after its (inherited) assignment disappears
+- Added a background sync job that enumerates Devices/VMs inheriting a Zabbix server assignment, providing zero-touch provisioning for newly created inventory
+- Added `allow_inherited_deletion` (default `False`) so inheritance-driven host deletions are reported with their impact before any Zabbix history is discarded
+- Added `adopt_existing_hosts` (default `False`) so binding to a pre-existing Zabbix host is an explicit decision instead of a silent takeover
+
+### Improvements
+
+- Configuration Group interfaces are deduplicated by interface identity, so a second interface of the same Zabbix type is no longer dropped
+- A failing host interface no longer hides the failure: per-interface and template-linkage failures are recorded on the assignment and reported as an aggregated job error
 
 
 ## [1.0.0] - Initial Release
