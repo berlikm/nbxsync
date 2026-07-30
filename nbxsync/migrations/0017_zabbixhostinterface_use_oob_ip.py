@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('nbxsync', '0012_zabbixserver_skip_version_check'),
+        ('nbxsync', '0016_zabbixhostbinding'),
     ]
 
     operations = [
