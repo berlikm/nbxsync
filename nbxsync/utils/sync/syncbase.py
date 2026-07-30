@@ -66,7 +66,8 @@ class ZabbixSyncBase:
                 self.sync_from_zabbix(found)
             elif self.sot == SyncSOT.NETBOX:
                 self.sync_to_zabbix(object_id)
-            if self._should_persist(): self.obj.save()
+            if self._should_persist():
+                self.obj.save()
             logger.debug(f'Found and synced {self.__class__.__name__} ID: {object_id}')
         else:
             # Object not found: create in Zabbix, always
