@@ -9,13 +9,27 @@ class HostGroupSync(ZabbixSyncBase):
 
     def get_name_value(self):
         name, _state = self.obj.render()
+        if not _state and self.obj.is_template():
+            return None
         return name
+
+    def try_create(self):
+        # For template-based assignments that can't render against the
+        # assigned object (e.g. {{ object.role.name }} on a DeviceRole),
+        # skip creation — the group is created on-demand during host sync.
+        if self.obj.is_template():
+            name, _state = self.obj.render()
+            if not _state:
+                return None
+        return super().try_create()
 
     def api_object(self):
         return self.api.hostgroup
 
     def get_create_params(self):
         name, _state = self.obj.render()
+        if not _state and self.obj.is_template():
+            return {}
         return {
             'name': name,
         }
@@ -64,6 +78,8 @@ class HostGroupSync(ZabbixSyncBase):
             return
 
         name, _state = self.obj.render()
+        if not _state and self.obj.is_template():
+            return  # Cannot render template against assignment object
 
         zabbixserver = self.obj.zabbixhostgroup.zabbixserver
         # Try to find an existing local representation for the rendered Zabbix group.
