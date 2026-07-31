@@ -168,6 +168,8 @@ class ZabbixHostInterface(SyncInfoModel, NetBoxModel):
             is_configgroup = isinstance(self.assigned_object, ZabbixConfigurationGroup)
             if not is_configgroup and not hasattr(self.assigned_object, 'oob_ip'):
                 errors['use_oob_ip'] = _('"Use OOB IP" is only supported for Devices and Configuration Groups, because only Devices have an out-of-band IP.')
+            if self.useip != ZabbixInterfaceUseChoices.IP:
+                errors['useip'] = _('"Use OOB IP" requires "Connect via" to be set to IP; DNS mode would ignore the resolved OOB address.')
 
         # If the assigned object type is *not* a ZabbixConfigurationGroup, we validate the IP and/or DNS entry
         if self.assigned_object_type != ContentType.objects.get_for_model(ZabbixConfigurationGroup):
