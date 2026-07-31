@@ -17,6 +17,10 @@ def _limit_assigned_objects():
 class ZabbixHostBinding(NetBoxModel):
     """Durable mapping from a NetBox Device/VM/VDC to a Zabbix host ID.
 
+    Internal sync-identity record — not a user-facing NetBox object. There is
+    intentionally no form/table/view/API surface; bindings are created and
+    removed only by the host sync / delete path.
+
     This model is the source of truth for host identity during sync:
     it survives inherited assignments (which are transient copies), renames,
     and device deletion so the matching Zabbix host can always be found by
