@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
                 ('pattern', models.CharField(max_length=500)),
                 ('enabled', models.BooleanField(default=True)),
                 ('priority', models.IntegerField(default=100)),
-                ('zabbixtemplate', models.ForeignKey(on_delete=models.deletion.CASCADE, related_name='zabbixtemplaterules', to='nbxsync.zabbixtemplate')),
+                ('zabbixtemplate', models.ForeignKey(on_delete=models.deletion.PROTECT, related_name='zabbixtemplaterules', to='nbxsync.zabbixtemplate')),
                 ('tags', taggit.managers.TaggableManager(through='extras.TaggedItem', to='extras.Tag')),
             ],
             options={

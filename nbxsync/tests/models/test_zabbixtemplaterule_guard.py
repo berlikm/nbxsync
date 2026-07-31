@@ -1,18 +1,17 @@
-"""Tests for the bounded regex evaluation behind template rules.
+"""Tests for safe regex evaluation behind template rules.
 
 Rule patterns are operator-supplied and matched against every synced platform
-name, so evaluation must be time-bounded and must never match when it cannot be
-evaluated: linking a wrong template is worse than linking none.
+name. Evaluation must never raise, must reject nested-quantifier ReDoS shapes
+at save time, and must not touch process-global signals (RQ job timeouts).
 """
 
 import threading
-from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from nbxsync.models import ZabbixHostgroup, ZabbixServer, ZabbixTemplate, ZabbixTemplateRule
-from nbxsync.models.zabbixtemplaterule import _MAX_MATCH_INPUT, _timed_regex_search
+from nbxsync.models.zabbixtemplaterule import _MAX_MATCH_INPUT
 
 
 class TemplateRuleRegexGuardTestCase(TestCase):
@@ -26,20 +25,12 @@ class TemplateRuleRegexGuardTestCase(TestCase):
         self.assertFalse(self.rule.matches('Windows Server 2022'))
 
     def test_matches_from_a_worker_thread(self):
-        """Signals cannot be installed off the main thread; matching still works."""
         results = []
         thread = threading.Thread(target=lambda: results.append(self.rule.matches('Ubuntu 24.04 LTS')))
         thread.start()
         thread.join()
 
         self.assertEqual(results, [True])
-
-    def test_timeout_does_not_match(self):
-        with patch('nbxsync.models.zabbixtemplaterule._timed_regex_search', side_effect=TimeoutError('boom')):
-            with self.assertLogs('nbxsync.models.zabbixtemplaterule', level='WARNING') as logs:
-                self.assertFalse(self.rule.matches('Ubuntu 24.04 LTS'))
-
-        self.assertIn('Regex timeout', ' '.join(logs.output))
 
     def test_oversized_input_does_not_match(self):
         with self.assertLogs('nbxsync.models.zabbixtemplaterule', level='WARNING'):
@@ -60,12 +51,13 @@ class TemplateRuleRegexGuardTestCase(TestCase):
 
         self.assertIn('pattern', context.exception.message_dict)
 
-    def test_search_helper_reports_a_timeout(self):
-        with patch('nbxsync.models.zabbixtemplaterule._search_with_signal', side_effect=ValueError('not main thread')):
-            with patch('nbxsync.models.zabbixtemplaterule._compiled_pattern') as mock_compile:
-                mock_compile.return_value.search.side_effect = lambda text: threading.Event().wait(5)
-                with self.assertRaises(TimeoutError):
-                    _timed_regex_search('Ubuntu', 'Ubuntu', timeout=1)
+    def test_nested_quantifier_pattern_is_rejected_on_save(self):
+        rule = ZabbixTemplateRule(name='ReDoS', pattern=r'(a+)+$', zabbixtemplate=self.template)
+
+        with self.assertRaises(ValidationError) as context:
+            rule.full_clean()
+
+        self.assertIn('pattern', context.exception.message_dict)
 
     def test_hostgroup_must_share_the_template_server(self):
         other = ZabbixServer.objects.create(name='Other Server', url='http://other.local', token='xyz', validate_certs=True)
