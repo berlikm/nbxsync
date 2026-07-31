@@ -11,14 +11,14 @@ from unittest.mock import patch
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
-from nbxsync.models import ZabbixServer, ZabbixTemplate, ZabbixTemplateRule
+from nbxsync.models import ZabbixHostgroup, ZabbixServer, ZabbixTemplate, ZabbixTemplateRule
 from nbxsync.models.zabbixtemplaterule import _MAX_MATCH_INPUT, _timed_regex_search
 
 
 class TemplateRuleRegexGuardTestCase(TestCase):
     def setUp(self):
-        server = ZabbixServer.objects.create(name='Guard Server', url='http://zabbix.local', token='abc123', validate_certs=True)
-        self.template = ZabbixTemplate.objects.create(name='Linux by Zabbix agent', zabbixserver=server, templateid=10001)
+        self.server = ZabbixServer.objects.create(name='Guard Server', url='http://zabbix.local', token='abc123', validate_certs=True)
+        self.template = ZabbixTemplate.objects.create(name='Linux by Zabbix agent', zabbixserver=self.server, templateid=10001)
         self.rule = ZabbixTemplateRule.objects.create(name='Linux', pattern='Ubuntu', zabbixtemplate=self.template)
 
     def test_matches_in_the_main_thread(self):
@@ -66,3 +66,29 @@ class TemplateRuleRegexGuardTestCase(TestCase):
                 mock_compile.return_value.search.side_effect = lambda text: threading.Event().wait(5)
                 with self.assertRaises(TimeoutError):
                     _timed_regex_search('Ubuntu', 'Ubuntu', timeout=1)
+
+    def test_hostgroup_must_share_the_template_server(self):
+        other = ZabbixServer.objects.create(name='Other Server', url='http://other.local', token='xyz', validate_certs=True)
+        foreign_group = ZabbixHostgroup.objects.create(name='Foreign', zabbixserver=other, groupid=42)
+        rule = ZabbixTemplateRule(
+            name='Cross-server',
+            pattern='Ubuntu',
+            zabbixtemplate=self.template,
+            zabbixhostgroup=foreign_group,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            rule.full_clean()
+
+        self.assertIn('zabbixhostgroup', context.exception.message_dict)
+
+    def test_hostgroup_on_same_server_is_accepted(self):
+        group = ZabbixHostgroup.objects.create(name='Linux', zabbixserver=self.server, groupid=7)
+        rule = ZabbixTemplateRule(
+            name='Same-server',
+            pattern='Ubuntu',
+            zabbixtemplate=self.template,
+            zabbixhostgroup=group,
+        )
+
+        rule.full_clean()  # must not raise

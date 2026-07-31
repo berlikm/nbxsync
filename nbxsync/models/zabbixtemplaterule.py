@@ -44,14 +44,16 @@ def _search_with_signal(pattern, text, timeout):
 
 
 def _timed_regex_search(pattern, text, timeout=_REGEX_TIMEOUT):
-    """Run a regex search that cannot run longer than *timeout* for the caller.
+    """Best-effort bounded regex search for the *caller*.
 
-    In the main thread (RQ worker jobs, single-threaded WSGI) the search is
-    interrupted with signal.alarm. Signals can only be installed from the main
-    thread, so a threaded caller (e.g. a threaded WSGI worker rendering the
-    inheritance preview) instead waits on the search in a worker thread and
-    abandons it once the deadline passes. Either way the caller is never pinned
-    by a pathological pattern, and a timeout raises TimeoutError.
+    In the main thread (RQ worker jobs, single-threaded WSGI) ``signal.alarm``
+    interrupts the search after *timeout* seconds. Signals cannot be installed
+    from a non-main thread, so threaded callers (e.g. a threaded WSGI worker
+    rendering a preview) wait on a worker thread via ``Future.result(timeout=)``.
+    That returns control to the caller on deadline, but CPython's ``re`` engine
+    holds the GIL while matching, so the abandoned worker may keep running until
+    the match finishes. Prefer simple patterns; pathological input still fails
+    closed (``matches()`` returns ``False``) for the caller.
     """
     try:
         return _search_with_signal(pattern, text, timeout)
@@ -92,6 +94,10 @@ class ZabbixTemplateRule(NetBoxModel):
             re.compile(self.pattern)
         except re.error as e:
             raise ValidationError({'pattern': f'Invalid regex: {e}'})
+
+        if self.zabbixhostgroup_id and self.zabbixtemplate_id:
+            if self.zabbixhostgroup.zabbixserver_id != self.zabbixtemplate.zabbixserver_id:
+                raise ValidationError({'zabbixhostgroup': 'Hostgroup must belong to the same Zabbix server as the template.'})
 
     def matches(self, platform_name):
         """Whether this rule applies to *platform_name*.

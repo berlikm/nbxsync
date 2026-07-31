@@ -16,7 +16,13 @@ __all__ = (
 
 class ZabbixTemplateRuleForm(NetBoxModelForm):
     zabbixtemplate = DynamicModelChoiceField(queryset=ZabbixTemplate.objects.all(), selector=True, label=_('Zabbix Template'))
-    zabbixhostgroup = DynamicModelChoiceField(queryset=ZabbixHostgroup.objects.all(), required=False, selector=True, label=_('Zabbix Hostgroup'))
+    zabbixhostgroup = DynamicModelChoiceField(
+        queryset=ZabbixHostgroup.objects.all(),
+        required=False,
+        selector=True,
+        label=_('Zabbix Hostgroup'),
+        query_params={'zabbixserver_id': '$zabbixtemplate.zabbixserver'},
+    )
     zabbixtag = DynamicModelChoiceField(queryset=ZabbixTag.objects.all(), required=False, selector=True, label=_('Zabbix Tag'))
 
     class Meta:
