@@ -113,7 +113,7 @@ For example, assigning a `ZabbixServerAssignment` (proxy) to a `SiteGroup` means
 
 ## Zabbix Template Rules
 
-`ZabbixTemplateRule` allows automatic template assignment based on the device's or VM's platform name. Each rule has a regex pattern that is matched (case-insensitive) against the platform name. When a rule matches, the configured Zabbix template is assigned to the host.
+`ZabbixTemplateRule` allows automatic template assignment based on the device's or VM's platform name. Each rule has a regex pattern that is matched with case-insensitive `re.search` (substring match, not `fullmatch`) against the platform name. When a rule matches, the configured Zabbix template is assigned to the host.
 
 Rules are resolved after all direct and inherited assignments, so explicit `ZabbixTemplateAssignment` objects always take priority.
 
@@ -122,14 +122,14 @@ Each rule can optionally also assign a hostgroup and a tag when the pattern matc
 | Field | Description |
 |-------|-------------|
 | `name` | Human-readable name |
-| `pattern` | Regex pattern matched against platform name (case-insensitive) |
+| `pattern` | Regex pattern matched against platform name (`re.search`, case-insensitive) |
 | `zabbixtemplate` | Template assigned when the rule matches |
 | `zabbixhostgroup` | Optional hostgroup assigned on match (nullable) |
 | `zabbixtag` | Optional tag assigned on match (nullable) |
 | `enabled` | Enable/disable rule without deleting it |
 | `priority` | Lower value = higher priority (rules evaluated in order) |
 
-Patterns are validated at save time (`re.compile`). Matching uses a best-effort 2-second bound: in the main thread (`signal.alarm`) the search is interrupted; in other threads the caller stops waiting after 2s and the rule fails closed (does not match), though the abandoned `re` match may still run until it finishes. Prefer simple patterns. Optional hostgroups must belong to the same Zabbix server as the template.
+Patterns are validated at save time with `re.compile` (without `IGNORECASE`). Nested-quantifier shapes that invite catastrophic backtracking are rejected. Matching uses plain `re.search` with a 64-character platform-name cap — no process signals or thread timeouts. Prefer simple patterns. A rule that exceeds the input bound or has an invalid stored pattern does not match and is logged. Optional hostgroups must belong to the same Zabbix server as the template.
 
 ## Configuration values
 
