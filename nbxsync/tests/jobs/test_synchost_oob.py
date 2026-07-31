@@ -96,7 +96,6 @@ class OOBInterfaceSyncTestCase(PluginSettingMixin, TestCase):
 
         api.hostinterface.delete.assert_not_called()
 
-
     def test_retained_interface_types_keep_snmp_templates_linked(self):
         """Retained OOB SNMP must still count for template interface requirements."""
         from nbxsync.choices import HostInterfaceRequirementChoices
