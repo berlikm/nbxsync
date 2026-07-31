@@ -6,7 +6,7 @@ import utilities.json
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('extras', '0134_owner'),
+        ('extras', '0122_charfield_null_choices'),
         ('nbxsync', '0013_alter_zabbixhostgroupassignment_assigned_object_type_and_more'),
     ]
 
