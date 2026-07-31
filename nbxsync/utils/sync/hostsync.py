@@ -733,8 +733,12 @@ class HostSync(ZabbixSyncBase):
         # carries its interfaceid; omitting it here would delete the remote IF.
         expected_ids = {int(hi.interfaceid) for hi in considered_hostinterfaces if hi.interfaceid}
 
-        # Get currently assigned hostinterface from Zabbix
-        current_hostinterfaces = self.api.hostinterface.get(output=['extend'], hostids=self.obj.hostid)
+        # Get currently assigned hostinterface from Zabbix.
+        # output must be the string 'extend' — a one-element list ['extend'] is
+        # treated as a field name, so type/main/port come back empty and every
+        # transient ConfigGroup/hierarchy interface fails identity matching and
+        # is deleted on the same sync that created it.
+        current_hostinterfaces = self.api.hostinterface.get(output='extend', hostids=self.obj.hostid)
 
         # Interfaces inherited from a ConfigGroup are transient copies without a
         # persisted interfaceid, so they must be recognised by what Zabbix stores
