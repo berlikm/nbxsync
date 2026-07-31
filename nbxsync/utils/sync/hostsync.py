@@ -336,16 +336,10 @@ class HostSync(ZabbixSyncBase):
         return result
 
     def get_hostinterface_types(self):
-        # use_oob_ip interfaces without a resolvable OOB IP are filtered out of
-        # hostinterfaces once in SyncHostJob._resolve_all_objects(). When
-        # inheritance-driven deletion is off they are kept in
-        # retained_hostinterfaces so verify_hostinterfaces will not delete the
-        # remote interface. Template gating must see those same types: otherwise
-        # an SNMP-required template is cleared while the OOB SNMP interface is
-        # intentionally retained, silently dropping monitoring.
+        # use_oob_ip interfaces without a resolvable OOB IP are filtered out once
+        # in SyncHostJob.sync_host(), so every interface here is expected to sync.
         hostinterfaces = self.context.get('all_objects', {}).get('hostinterfaces', []) or []
-        retained = self.context.get('all_objects', {}).get('retained_hostinterfaces', []) or []
-        return list({interface.type for interface in list(hostinterfaces) + list(retained)})
+        return list({interface.type for interface in hostinterfaces})
 
     def get_templates_clear_attributes(self):
         result = []

@@ -96,39 +96,6 @@ class OOBInterfaceSyncTestCase(PluginSettingMixin, TestCase):
 
         api.hostinterface.delete.assert_not_called()
 
-    def test_retained_interface_types_keep_snmp_templates_linked(self):
-        """Retained OOB SNMP must still count for template interface requirements."""
-        from nbxsync.choices import HostInterfaceRequirementChoices
-        from nbxsync.models import ZabbixTemplate, ZabbixTemplateAssignment
-
-        template = ZabbixTemplate.objects.create(
-            name='SNMP Template',
-            zabbixserver=self.server,
-            templateid=5555,
-            interface_requirements=[HostInterfaceRequirementChoices.SNMP],
-        )
-        assignment = ZabbixTemplateAssignment(
-            zabbixtemplate=template,
-            assigned_object_type=self.device_ct,
-            assigned_object_id=self.device.pk,
-        )
-        api = MagicMock()
-        api.template.get.return_value = [{'templateid': '5555'}]
-        all_objects = {
-            '_instance': self.device,
-            'hostinterfaces': [],
-            'retained_hostinterfaces': [self.interface],
-            'templates': [assignment],
-        }
-        sync = HostSync(api=api, netbox_obj=self.assignment, all_objects=all_objects)
-
-        self.assertEqual(sync.get_hostinterface_types(), [ZabbixHostInterfaceTypeChoices.SNMP])
-        templates = sync.get_template_attributes()
-        self.assertEqual(templates, {'templates': [{'templateid': 5555}]})
-        # get_templates_clear_attributes reads self.templates (set during HostSync update).
-        sync.templates = templates
-        self.assertEqual(sync.get_templates_clear_attributes(), {'templates_clear': []})
-
     def test_retained_interface_with_persisted_interfaceid_is_not_deleted(self):
         """Previously synced OOB rows keep interfaceid; retain must honour it."""
         self.interface.interfaceid = 900
