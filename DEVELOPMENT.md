@@ -6,6 +6,7 @@ We use a simple GitFlow-lite:
 - **Release branch:** `main`
 - **Feature branches:** branch off `development`, merge back into `development`
 - **Releases:** done via a PR from `development` → `main`, then a version tag on `main`
+- **Integration tip:** `integration-test` — stacked zero-touch candidate (#110/#115/#117/#122/#125/#129 + follow-up sync fixes). CI runs on pushes to this branch. Prefer reviewing/merging the individual PRs into `development` in order rather than merging this tip as one blob, unless cutting a coordinated land.
 
 ## Daily development
 
