@@ -29,11 +29,7 @@ class HostInterfaceSync(ZabbixSyncBase):
         port = str(self.obj.port)
         useip = str(int(self.obj.useip))
         main = str(int(self.obj.interface_type))
-        return [
-            iface
-            for iface in candidates
-            if str(iface.get('port', '')) == port and str(iface.get('useip', '')) == useip and str(iface.get('main', '')) == main
-        ]
+        return [iface for iface in candidates if str(iface.get('port', '')) == port and str(iface.get('useip', '')) == useip and str(iface.get('main', '')) == main]
 
     def get_create_params(self):
         hostid = self.context.get('hostid', None)
