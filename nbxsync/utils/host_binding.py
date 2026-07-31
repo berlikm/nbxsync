@@ -1,7 +1,7 @@
 import logging
 
 from django.contrib.contenttypes.models import ContentType
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
 from nbxsync.models import ZabbixHostBinding
 from nbxsync.settings import get_plugin_settings
@@ -37,12 +37,14 @@ def set_host_binding(instance, zabbixserver, hostid, hostname=''):
     """
     ct = ContentType.objects.get_for_model(instance)
     try:
-        binding, _ = ZabbixHostBinding.objects.update_or_create(
-            zabbixserver=zabbixserver,
-            assigned_object_type=ct,
-            assigned_object_id=instance.pk,
-            defaults={'hostid': hostid, 'hostname': hostname},
-        )
+        # Own savepoint so a uniqueness conflict does not abort an outer atomic block.
+        with transaction.atomic():
+            binding, _ = ZabbixHostBinding.objects.update_or_create(
+                zabbixserver=zabbixserver,
+                assigned_object_type=ct,
+                assigned_object_id=instance.pk,
+                defaults={'hostid': hostid, 'hostname': hostname},
+            )
     except IntegrityError as exc:
         raise RuntimeError(f'Host binding conflict for {instance} on {zabbixserver}: hostid {hostid} or object is already bound to another host') from exc
     return binding

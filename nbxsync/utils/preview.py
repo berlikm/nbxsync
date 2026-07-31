@@ -90,8 +90,8 @@ def _fetch(model, **lookup):
 def _vm_site_filter(site_ids) -> Q:
     """Match virtual machines placed at any of *site_ids*.
 
-    A VM carries its own site, and its cluster records the site it is scoped to
-    in a cached relation, so both are consulted.
+    A VM carries its own site. Cluster site uses CachedScopeMixin._site
+    (NetBox ≥4.2), matching inheritance_chain path ``('cluster', '_site')``.
     """
     return Q(site__in=site_ids) | Q(cluster___site__in=site_ids)
 
