@@ -5,7 +5,7 @@ from netbox.forms import NetBoxModelBulkEditForm, NetBoxModelFilterSetForm, NetB
 from utilities.forms.fields import DynamicModelChoiceField
 from utilities.forms.rendering import FieldSet
 
-from nbxsync.models import ZabbixHostgroup, ZabbixTag, ZabbixTemplate, ZabbixTemplateRule
+from nbxsync.models import ZabbixHostgroup, ZabbixServer, ZabbixTag, ZabbixTemplate, ZabbixTemplateRule
 
 __all__ = (
     'ZabbixTemplateRuleForm',
@@ -15,13 +15,27 @@ __all__ = (
 
 
 class ZabbixTemplateRuleForm(NetBoxModelForm):
-    zabbixtemplate = DynamicModelChoiceField(queryset=ZabbixTemplate.objects.all(), selector=True, label=_('Zabbix Template'))
+    # Form-only filter so NetBox APISelect can cascade template/hostgroup choices.
+    # Not persisted on ZabbixTemplateRule (server is implied by the template).
+    zabbixserver = DynamicModelChoiceField(
+        queryset=ZabbixServer.objects.all(),
+        required=False,
+        selector=True,
+        label=_('Zabbix Server'),
+        help_text=_('Filters the template and hostgroup lists. Not stored on the rule.'),
+    )
+    zabbixtemplate = DynamicModelChoiceField(
+        queryset=ZabbixTemplate.objects.all(),
+        selector=True,
+        label=_('Zabbix Template'),
+        query_params={'zabbixserver_id': '$zabbixserver'},
+    )
     zabbixhostgroup = DynamicModelChoiceField(
         queryset=ZabbixHostgroup.objects.all(),
         required=False,
         selector=True,
         label=_('Zabbix Hostgroup'),
-        query_params={'zabbixserver_id': '$zabbixtemplate.zabbixserver'},
+        query_params={'zabbixserver_id': '$zabbixserver'},
     )
     zabbixtag = DynamicModelChoiceField(queryset=ZabbixTag.objects.all(), required=False, selector=True, label=_('Zabbix Tag'))
 
@@ -37,6 +51,27 @@ class ZabbixTemplateRuleForm(NetBoxModelForm):
             'enabled',
             'priority',
         )
+
+    def __init__(self, *args, **kwargs):
+        instance = kwargs.get('instance')
+        initial = kwargs.get('initial', {}).copy()
+        if instance and getattr(instance, 'zabbixtemplate_id', None):
+            initial.setdefault('zabbixserver', instance.zabbixtemplate.zabbixserver_id)
+        kwargs['initial'] = initial
+        super().__init__(*args, **kwargs)
+        # zabbixserver is form-only; keep it next to the fields it filters.
+        preferred = (
+            'name',
+            'description',
+            'pattern',
+            'zabbixserver',
+            'zabbixtemplate',
+            'zabbixhostgroup',
+            'zabbixtag',
+            'enabled',
+            'priority',
+        )
+        self.fields = type(self.fields)((name, self.fields[name]) for name in preferred if name in self.fields)
 
 
 class ZabbixTemplateRuleFilterForm(NetBoxModelFilterSetForm):
