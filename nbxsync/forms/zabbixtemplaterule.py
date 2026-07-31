@@ -60,6 +60,9 @@ class ZabbixTemplateRuleForm(NetBoxModelForm):
         kwargs['initial'] = initial
         super().__init__(*args, **kwargs)
         # zabbixserver is form-only; keep it next to the fields it filters.
+        # Preserve any fields NetBoxModelForm added after Meta.fields (custom
+        # fields, tags, changelog_message, …) — dropping them silently breaks
+        # create/edit tests and CF persistence in the UI.
         preferred = (
             'name',
             'description',
@@ -71,7 +74,10 @@ class ZabbixTemplateRuleForm(NetBoxModelForm):
             'enabled',
             'priority',
         )
-        self.fields = type(self.fields)((name, self.fields[name]) for name in preferred if name in self.fields)
+        preferred_set = set(preferred)
+        ordered = [(name, self.fields[name]) for name in preferred if name in self.fields]
+        remaining = [(name, field) for name, field in self.fields.items() if name not in preferred_set]
+        self.fields = type(self.fields)(ordered + remaining)
 
 
 class ZabbixTemplateRuleFilterForm(NetBoxModelFilterSetForm):
