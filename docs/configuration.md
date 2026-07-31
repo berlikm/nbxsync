@@ -39,15 +39,6 @@ The plugin is configuration to do exactly what you want, by means of the plugin 
         'snmp_privpass': '{$SNMP_PRIVPASS}',
     },
     'inheritance_chain': [
-        ['device', 'site'],
-        ['site'],
-        ['site', 'group'],
-        ['group', 'parent'],
-        ['site', 'group', 'parent'],
-        ['site', 'region'],
-        ['region'],
-        ['region', 'parent'],
-        ['cluster', 'site'],
         ['device'],
         ['role'],
         ['device', 'role'],
@@ -64,6 +55,12 @@ The plugin is configuration to do exactly what you want, by means of the plugin 
         ['cluster'],
         ['cluster', 'type'],
         ['type'],
+        # Hierarchy appended after device/role/platform (first-seen wins)
+        ['device', 'site'],
+        ['site'],
+        ['site', 'group'],
+        ['site', 'region'],
+        ['cluster', '_site'],
     ],
     'backgroundsync': {
         'objects': {
@@ -96,23 +93,21 @@ The plugin is configuration to do exactly what you want, by means of the plugin 
 
 ## Inheritance Chain
 
-The `inheritance_chain` setting defines which NetBox objects are traversed when resolving Zabbix assignments. Assignments (templates, tags, hostgroups, macros, proxy/server, interfaces, inventory) made on any object in the chain are inherited by the device or VM being synced, with direct assignments taking priority.
+The `inheritance_chain` setting defines which NetBox objects are traversed when resolving Zabbix assignments. Assignments (templates, tags, hostgroups, macros, proxy/server, interfaces, inventory, configuration groups) made on any object in the chain are inherited by the device or VM being synced, with direct assignments taking priority. Within inherited sources, **first path wins** (leaf-first order as listed).
 
 ### Site, SiteGroup, and Region Inheritance
 
-The chain includes paths for site-level inheritance, allowing assignments made at the `Site`, `SiteGroup`, or `Region` level to be inherited by all devices and VMs at that site or below:
+Hierarchy paths are **appended after** device/role/platform/manufacturer/cluster paths so upgrading into Site inheritance does not silently override existing Role or Platform assignments. SiteGroup and Region ancestors are walked automatically when a group or region is reached (`get_descendants` / parent chain).
 
 | Path | Description |
 |------|-------------|
-| `['device', 'site']` | The device's site |
+| `['device', 'site']` | The device's site (also VDC → device → site) |
 | `['site']` | Site (direct) |
-| `['site', 'group']` | The site's SiteGroup |
-| `['group', 'parent']` | Parent SiteGroup (traverses the full hierarchy) |
-| `['site', 'group', 'parent']` | Full path: device → site → group → parent group |
-| `['site', 'region']` | The site's region |
-| `['region']` | Region (direct) |
-| `['region', 'parent']` | Parent region (traverses the full hierarchy) |
-| `['cluster', 'site']` | The cluster's site (for VMs) |
+| `['site', 'group']` | The site's SiteGroup (parents walked) |
+| `['site', 'region']` | The site's region (parents walked) |
+| `['cluster', '_site']` | The cluster's scoped site for VMs (NetBox ≥4.2 `CachedScopeMixin._site`) |
+
+**Upgrade note:** if you previously customized `inheritance_chain` with Site paths prepended ahead of Role/Platform, review hosts that have both a Site-level and a Role/Platform-level assignment — effective winners may change when adopting the default order above. Prefer appending hierarchy paths.
 
 For example, assigning a `ZabbixServerAssignment` (proxy) to a `SiteGroup` means every device at every site in that SiteGroup inherits the proxy — no per-device assignment needed.
 

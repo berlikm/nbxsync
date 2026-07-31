@@ -4,8 +4,12 @@
 
 ### New features
 
-- Added `exclude_tag` configuration setting to exclude hosts from Zabbix sync entirely via a ZabbixTag assigned to any object in the inheritance chain
+- Added `exclude_tag` configuration setting to exclude hosts from Zabbix sync entirely via a ZabbixTag assigned to any object in the inheritance chain (`ZabbixTag.tag` name match)
+- Added Site/SiteGroup/Region inheritance paths (appended after role/platform so upgrades do not change Role/Platform precedence); cluster site uses `cluster._site` (NetBox ≥4.2)
 
+### Improvements
+
+- Minimum documented NetBox version is 4.2.6 (matches `PluginConfig.min_version` and cluster `_site` scope)
 
 ## [1.0.0] - Initial Release
 
@@ -109,12 +113,6 @@ None
 - Ensure that the worker doesn't crash on certain race conditions with regards to the hostinterfacesync job ([#86])
 - Fix issue with DeleteHost so it now actually removed the device/object from Zabbix when its deleted from NetBox ([#88])
 
-
-## [Unreleased]
-
-### New features
-
-- Added Site, SiteGroup, and Region as assignment targets with inheritance. Assignments (proxy, templates, tags, hostgroups, interfaces, inventory) made at the Site/SiteGroup/Region level are now inherited by all devices and VMs at that site or below.
 ## [1.0.5] - Minor update
 
 ### New features

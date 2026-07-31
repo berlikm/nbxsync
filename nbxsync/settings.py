@@ -56,14 +56,10 @@ class PluginSettingsModel(BaseModel):
     snmpconfig: SNMPConfig = Field(default_factory=SNMPConfig)
     backgroundsync: BackgroundSync = Field(default_factory=BackgroundSync)
     inheritance_chain: List[Tuple[str, ...]] = Field(
+        # Leaf-first. Existing role/platform paths stay ahead of Site hierarchy so
+        # adding Site/SiteGroup/Region inheritance does not override Role/Platform
+        # assignments on upgrade. Cluster site uses CachedScopeMixin._site (NetBox ≥4.2).
         default_factory=lambda: [
-            ('device', 'site'),
-            ('site',),
-            ('site', 'group'),
-            ('site', 'region'),
-            ('region',),
-            ('region', 'parent'),
-            ('cluster', 'site'),
             ('device',),
             ('role',),
             (
@@ -109,6 +105,24 @@ class PluginSettingsModel(BaseModel):
                 'type',
             ),
             ('type',),
+            # Hierarchy targets for zero-touch (appended after device/role/platform)
+            (
+                'device',
+                'site',
+            ),  # VirtualDeviceContext → device → site
+            ('site',),
+            (
+                'site',
+                'group',
+            ),
+            (
+                'site',
+                'region',
+            ),
+            (
+                'cluster',
+                '_site',
+            ),  # NetBox ≥4.2 Cluster scope cache (not .site)
         ]
     )
     no_alerting_tag: str = Field(default='NO_ALERTING')

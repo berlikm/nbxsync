@@ -76,13 +76,6 @@ class nbxSync(PluginConfig):
             'snmp_privpass': '{$SNMP_PRIVPASS}',
         },
         'inheritance_chain': [
-            ['device', 'site'],
-            ['site'],
-            ['site', 'group'],
-            ['site', 'region'],
-            ['region'],
-            ['region', 'parent'],
-            ['cluster', 'site'],
             ['device'],
             ['role'],
             ['device', 'role'],
@@ -99,6 +92,12 @@ class nbxSync(PluginConfig):
             ['cluster'],
             ['cluster', 'type'],
             ['type'],
+            # Hierarchy (appended so Site does not override Role/Platform on upgrade)
+            ['device', 'site'],
+            ['site'],
+            ['site', 'group'],
+            ['site', 'region'],
+            ['cluster', '_site'],  # NetBox ≥4.2 Cluster CachedScopeMixin
         ],
         'backgroundsync': {
             'objects': {
