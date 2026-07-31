@@ -122,6 +122,31 @@ class OOBInterfaceSyncTestCase(PluginSettingMixin, TestCase):
 
         api.hostinterface.delete.assert_not_called()
 
+    def test_transient_interface_identity_survives_verify(self):
+        """Hierarchy/ConfigGroup copies have no interfaceid; match by identity."""
+        api = MagicMock()
+        api.hostinterface.get.return_value = [
+            {
+                'interfaceid': '900',
+                'type': str(int(ZabbixHostInterfaceTypeChoices.SNMP)),
+                'main': str(int(ZabbixInterfaceTypeChoices.DEFAULT)),
+                'useip': '1',
+                'port': '161',
+                'dns': '',
+            },
+        ]
+        # Simulate a fresh resolve: inherited copy without a persisted interfaceid.
+        self.interface.interfaceid = None
+        all_objects = {
+            '_instance': self.device,
+            'hostinterfaces': [self.interface],
+        }
+
+        HostSync(api=api, netbox_obj=self.assignment, all_objects=all_objects).verify_hostinterfaces()
+
+        api.hostinterface.get.assert_called_with(output='extend', hostids=self.assignment.hostid)
+        api.hostinterface.delete.assert_not_called()
+
     def test_unknown_interface_is_still_deleted_from_zabbix(self):
         api = MagicMock()
         api.hostinterface.get.return_value = [
