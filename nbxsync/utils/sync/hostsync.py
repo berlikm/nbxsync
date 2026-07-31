@@ -368,6 +368,7 @@ class HostSync(ZabbixSyncBase):
 
     def get_groups(self):
         groups = []
+        errors = []
         for group in self.obj.assigned_objects.get('hostgroups', []):
             # 1) If we already know the Zabbix groupid, use it (fast path).
             gid = getattr(getattr(group, 'zabbixhostgroup', None), 'groupid', None)
@@ -376,26 +377,32 @@ class HostSync(ZabbixSyncBase):
                 continue
 
             # 2) Otherwise, try to resolve by name (e.g., for template-like objects).
-            name, _status = ('', False)
+            name, status = ('', False)
             try:
-                name, _status = group.render(object=self._get_sync_target())
-            except Exception:
-                _status = False
-            if _status and name:
+                name, status = group.render(object=self._get_sync_target())
+            except Exception as exc:
+                errors.append(f'Failed to render hostgroup for {self._get_sync_target()}: {exc}')
+                continue
+            if not (status and name):
+                errors.append(f'Hostgroup for {self._get_sync_target()} rendered empty; refusing to omit it silently')
+                continue
+
+            try:
                 zbx_result = self.api.hostgroup.get(filter={'name': name}) or []
                 if zbx_result:
                     groups.append({'groupid': zbx_result[0]['groupid']})
+                    continue
+                created = self.api.hostgroup.create({'name': name})
+                gid = created.get('groupids', [None])[0]
+                if gid:
+                    groups.append({'groupid': gid})
                 else:
-                    # Group does not exist in Zabbix yet; create it now.
-                    try:
-                        created = self.api.hostgroup.create({'name': name})
-                        gid = created.get('groupids', [None])[0]
-                        if gid:
-                            groups.append({'groupid': gid})
-                    except Exception:
-                        pass
-            # If no gid and no resolvable name, skip silently
+                    errors.append(f'Zabbix did not return a groupid when creating hostgroup "{name}"')
+            except Exception as exc:
+                errors.append(f'Failed to resolve/create hostgroup "{name}": {exc}')
 
+        if errors:
+            raise RuntimeError('; '.join(errors))
         return groups
 
     def get_hostinventory(self):

@@ -6,7 +6,7 @@ from netbox.tables import NetBoxTable
 
 from nbxsync.models import ZabbixTagAssignment
 from nbxsync.tables import ZabbixInheritedAssignmentTable
-from nbxsync.tables.columns import ContentTypeModelNameColumn, InheritanceAwareActionsColumn, JinjaValueColumn
+from nbxsync.tables.columns import ContentTypeModelNameColumn, InheritanceAwareActionsColumn
 
 __all__ = ('ZabbixTagAssignmentTable', 'ZabbixTagAssignmentObjectViewTable')
 
@@ -51,7 +51,17 @@ class ZabbixTagAssignmentObjectViewTable(ZabbixInheritedAssignmentTable, NetBoxT
     zabbixtag = tables.Column(accessor='zabbixtag.name', verbose_name=_('Zabbix Tag'), linkify={'viewname': 'plugins:nbxsync:zabbixtag', 'args': [A('zabbixtag.pk')]})
     actions = InheritanceAwareActionsColumn()
 
-    rendered_output = JinjaValueColumn(accessor='value', default='', verbose_name='Value')
+    # Same representative-device path as hostgroup ObjectViewTable: hierarchy pages
+    # (Site/Role/…) must not render Jinja against the assignment target itself.
+    rendered_output = tables.TemplateColumn(
+        template_code="""
+        {% load zabbix_tags zabbix_preview %}
+        {% render_zabbix_tag_assignment record as rendered_output %}
+        {% zabbix_preview_representative record as preview_source %}
+        {% if preview_source %}<span title="Preview rendered with {{ preview_source|escape }}">{{ rendered_output|escape }}</span>{% else %}{{ rendered_output|escape }}{% endif %}
+        """,
+        verbose_name='Value',
+    )
 
     class Meta(NetBoxTable.Meta):
         model = ZabbixTagAssignment
