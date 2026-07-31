@@ -272,6 +272,21 @@ class SyncHostJob:
                     # end of the job so it cannot pass as a successful sync.
                     self._record_partial_failure(assignment, f'HostInterfaceSync failed for interface {hostinterface}: {e}')
 
+            # Reconcile main flags after individual IF updates. A main-flag flip
+            # can leave two defaults briefly when HostInterfaceSync updates one
+            # interface at a time; check_default_hostinterface applies the
+            # atomic host.update repair. Safe when NetBox has no default for a
+            # type that still exists remotely (guarded inside check_default).
+            try:
+                run_zabbix_operation(
+                    HostSync,
+                    assignment,
+                    'check_default_hostinterface',
+                    extra_args={'all_objects': all_objects},
+                )
+            except Exception as e:
+                self._record_partial_failure(assignment, f'check_default_hostinterface failed: {e}')
+
             # Final HostSync to link templates etc — a template conflict here
             # (e.g. "Cannot inherit item with key snmptrap.fallback") must not
             # abort the remaining work, but it is a real failure to report.
