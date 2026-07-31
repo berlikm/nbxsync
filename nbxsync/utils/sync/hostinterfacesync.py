@@ -15,10 +15,25 @@ class HostInterfaceSync(ZabbixSyncBase):
         return self.obj.assigned_object.name
 
     def find_by_name(self):
+        """Locate the remote interface that matches this NetBox interface.
+
+        Zabbix allows several interfaces of one type per host (e.g. in-band and
+        OOB SNMP). Matching on type alone is ambiguous, so narrow by port,
+        connect mode, and main/non-main role. Return an empty list when nothing
+        matches so the create path runs instead of updating the wrong interface.
+        """
         hostid = self.context.get('hostid', None)
         if not hostid:
             return []
-        return self.api_object().get(hostids=[hostid], filter={'type': str(self.obj.type)})
+        candidates = self.api_object().get(hostids=[hostid], filter={'type': str(self.obj.type)}) or []
+        port = str(self.obj.port)
+        useip = str(int(self.obj.useip))
+        main = str(int(self.obj.interface_type))
+        return [
+            iface
+            for iface in candidates
+            if str(iface.get('port', '')) == port and str(iface.get('useip', '')) == useip and str(iface.get('main', '')) == main
+        ]
 
     def get_create_params(self):
         hostid = self.context.get('hostid', None)

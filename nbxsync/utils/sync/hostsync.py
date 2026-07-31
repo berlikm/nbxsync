@@ -735,7 +735,20 @@ class HostSync(ZabbixSyncBase):
         # Interfaces that could not be synced this run (e.g. an OOB interface on
         # a device whose oob_ip was cleared) are retained rather than deleted.
         retained_hostinterfaces = self.context.get('all_objects', {}).get('retained_hostinterfaces', []) or []
-        expected_identities = {(int(hi.type), int(hi.useip), str(hi.port)) for hi in list(expected_hostinterfaces) + list(retained_hostinterfaces) if not hi.interfaceid}
+        # Match the ConfigGroup identity helper: type + main role + connect mode
+        # + port + dns. IP is omitted here because OOB interfaces resolve it at
+        # sync time and would otherwise look "stale" every run.
+        expected_identities = {
+            (
+                int(hi.type),
+                int(hi.interface_type),
+                int(hi.useip),
+                str(hi.port),
+                str(hi.dns or ''),
+            )
+            for hi in list(expected_hostinterfaces) + list(retained_hostinterfaces)
+            if not hi.interfaceid
+        }
 
         # Inherited server assignments must not persist ORM rows, but remote
         # stale-interface cleanup is still required for Site-level proxies.
@@ -749,8 +762,10 @@ class HostSync(ZabbixSyncBase):
                 continue
             identity = (
                 int(current_hostinterface.get('type', 0)),
+                int(current_hostinterface.get('main', 0)),
                 int(current_hostinterface.get('useip', 0)),
                 str(current_hostinterface.get('port', '')),
+                str(current_hostinterface.get('dns', '') or ''),
             )
             if identity in expected_identities:
                 continue
