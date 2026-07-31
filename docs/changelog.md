@@ -19,6 +19,15 @@
 - A failing host interface no longer hides the failure: per-interface and template-linkage failures are recorded on the assignment and reported as an aggregated job error
 - Background host reconciliation collects host primary keys with queryset iterators instead of materialising full Device/VM lists
 - Minimum documented NetBox version is 4.2.6 (matches `PluginConfig.min_version` and cluster `_site` scope)
+- Hierarchy and Configuration Group host interfaces are detached as per-device copies at resolve time; ConfigGroup templates expand without waiting on the RQ propagate job
+- Plugin defaults align with docs: `attach_objtag=True`, `sot.proxy=netbox`, and explicit `allow_inherited_deletion` / `adopt_existing_hosts` off
+
+### Bug fixes
+
+- `hostinterface.get` now requests `output='extend'` so transient interfaces keep type/main/port and are not deleted on the next verify
+- Retained OOB interfaces still count toward template interface requirements, so SNMP templates are not cleared while the remote IF is kept
+- Automatic maintenance windows resolve hosts from `ZabbixHostBinding` after identity migrates off `ZabbixServerAssignment.hostid`
+- `check_default_hostinterface` no longer fails when NetBox has no default for a type that still exists remotely; main flags are re-reconciled after interface sync
 
 ## [1.0.0] - Initial Release
 

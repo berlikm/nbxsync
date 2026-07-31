@@ -38,3 +38,9 @@ class DuplicateErrorDetectionTestCase(TestCase):
     def test_plain_exception_falls_back_to_the_message(self):
         self.assertTrue(ZabbixSyncBase._is_duplicate_error(Exception('Host group already exists')))
         self.assertFalse(ZabbixSyncBase._is_duplicate_error(Exception('Connection refused')))
+
+    def test_non_numeric_code_is_not_treated_as_duplicate(self):
+        """zabbix_utils occasionally attaches a non-int code; do not raise."""
+        err = _ApiError('Invalid params.', code='not-an-int', data='Host group "Linux servers" already exists.')
+
+        self.assertFalse(ZabbixSyncBase._is_duplicate_error(err))

@@ -11,7 +11,12 @@ class PluginSettingsModelTestCase(TestCase):
     def test_default_settings_model(self):
         settings = PluginSettingsModel()
         self.assertEqual(settings.sot.proxygroup, SyncSOT.NETBOX)
+        self.assertEqual(settings.sot.proxy, SyncSOT.NETBOX)
         self.assertEqual(settings.sot.hosttemplate, SyncSOT.NETBOX)
+        self.assertTrue(settings.attach_objtag)
+        self.assertFalse(settings.allow_inherited_deletion)
+        self.assertFalse(settings.adopt_existing_hosts)
+        self.assertEqual(settings.exclude_tag, '')
         self.assertIsInstance(settings.statusmapping.device, dict)
         self.assertIsInstance(settings.statusmapping.virtualmachine, dict)
         self.assertIsInstance(settings.snmpconfig, SNMPConfig)

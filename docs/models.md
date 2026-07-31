@@ -106,10 +106,21 @@ Links a NetBox object to a Zabbix server/host/proxy.
 | Field            | Description                                                       |
 |------------------|-------------------------------------------------------------------|
 | `zabbixserver`   | Destination server                                                |
-| `hostid`         | Zabbix host ID                                                    |
+| `hostid`         | Zabbix host ID (legacy; prefer `ZabbixHostBinding`)               |
 | `zabbixproxy`    | (Optional) specific proxy                                         |
 | `assigned_object`| Device, VM, etc.                                                  |
 | `sync_enabled`   | Determines if automatic synchronisation from/to Zabbix is enabled |
+
+### `ZabbixHostBinding`
+
+Internal sync identity for the Zabbix host owned by a NetBox Device/VM. There is no UI or public API for bindings by design — operators manage hosts via assignments and sync jobs. Bindings let reconciliation retire a host after an inherited assignment disappears, and they are the durable source for maintenance-window host lists.
+
+| Field             | Description                                      |
+|-------------------|--------------------------------------------------|
+| `zabbixserver`    | Destination server                               |
+| `assigned_object` | Device or VM                                     |
+| `hostid`          | Zabbix host ID                                   |
+| `hostname`        | Last synced host name                            |
 
 ---
 

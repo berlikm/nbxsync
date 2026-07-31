@@ -115,11 +115,21 @@ PLUGINS_CONFIG = {
         'attach_objtag': True,
         'objtag_type': 'nb_type',
         'objtag_id': 'nb_id',
+        # Zero-touch safety gates (safe defaults — leave off until reviewed)
+        'exclude_tag': '',
+        'allow_inherited_deletion': False,
+        'adopt_existing_hosts': False,
         'custom_field_hostname': '',
         'custom_field_display_name': '',
     }
 }
 ```
+
+!!! note "Large fleets"
+    With zero-touch enabled, `backgroundsync.objects.interval` of `60` (minutes)
+    can enqueue a full-fleet reconciliation every hour. For large inventories,
+    raise the interval (for example `360`) before turning on
+    `allow_inherited_deletion`.
 
 #### Run migrations
 
