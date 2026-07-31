@@ -7,9 +7,16 @@
 - Added `exclude_tag` configuration setting to exclude hosts from Zabbix sync entirely via a ZabbixTag assigned to any object in the inheritance chain (`ZabbixTag.tag` name match)
 - Added `ZabbixTemplateRule` model for regex-based template, hostgroup, and tag assignment by platform name (`re.search`, case-insensitive; nested-quantifier patterns rejected at save; 64-char platform-name cap)
 - Added Site/SiteGroup/Region inheritance paths (appended after role/platform so upgrades do not change Role/Platform precedence); cluster site uses `cluster._site` (NetBox ≥4.2)
+- Added `ZabbixHostBinding`: a durable record of the Zabbix host owned by each NetBox object, so a host can still be retired after its (inherited) assignment disappears
+- Added a background sync job that enumerates Devices/VMs inheriting a Zabbix server assignment, providing zero-touch provisioning for newly created inventory
+- Added `allow_inherited_deletion` (default `False`) so inheritance-driven host deletions are reported with their impact before any Zabbix history is discarded
+- Added `adopt_existing_hosts` (default `False`) so binding to a pre-existing Zabbix host is an explicit decision instead of a silent takeover
 
 ### Improvements
 
+- Configuration Group interfaces are deduplicated by interface identity, so a second interface of the same Zabbix type is no longer dropped
+- A failing host interface no longer hides the failure: per-interface and template-linkage failures are recorded on the assignment and reported as an aggregated job error
+- Background host reconciliation collects host primary keys with queryset iterators instead of materialising full Device/VM lists
 - Minimum documented NetBox version is 4.2.6 (matches `PluginConfig.min_version` and cluster `_site` scope)
 
 ## [1.0.0] - Initial Release
