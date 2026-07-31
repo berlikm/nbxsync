@@ -33,10 +33,8 @@ class ZabbixHostBinding(NetBoxModel):
         limit_choices_to=_limit_assigned_objects,
         on_delete=models.CASCADE,
         related_name='+',
-        blank=True,
-        null=True,
     )
-    assigned_object_id = models.PositiveBigIntegerField(blank=True, null=True)
+    assigned_object_id = models.PositiveBigIntegerField()
     assigned_object = GenericForeignKey(
         ct_field='assigned_object_type',
         fk_field='assigned_object_id',

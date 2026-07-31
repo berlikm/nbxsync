@@ -116,8 +116,12 @@ class ZabbixSyncBase:
         the specific reason, so both the code and the reason are checked.
         """
         code = getattr(err, 'code', None)
-        if code is not None and int(code) != -32602:
-            return False
+        if code is not None:
+            try:
+                if int(code) != -32602:
+                    return False
+            except (TypeError, ValueError):
+                return False
         detail = ' '.join(str(part) for part in (getattr(err, 'data', ''), getattr(err, 'message', ''), err) if part)
         return 'already exists' in detail.lower()
 
