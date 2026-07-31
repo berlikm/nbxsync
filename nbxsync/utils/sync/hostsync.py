@@ -683,9 +683,16 @@ class HostSync(ZabbixSyncBase):
                 continue
 
             if nb_default_hostinterface_id != zbx_default_hostinterfaceid:
+                # Zabbix still has a default of this type, but NetBox no longer
+                # does (e.g. OOB SNMP removed from the expected set and waiting
+                # for verify_hostinterfaces to delete it). Nothing to flip.
+                if not nb_default_hostinterface_obj:
+                    continue
+
+                instance = self.context.get('all_objects', {}).get('_instance')
                 # If NB default interface doesn't exist yet in Zabbix, create it as non-default first
                 if not nb_default_hostinterface_id:
-                    syncer = HostInterfaceSync(self.api, nb_default_hostinterface_obj, hostid=hostid)
+                    syncer = HostInterfaceSync(self.api, nb_default_hostinterface_obj, hostid=hostid, _instance=instance)
                     params = syncer.get_create_params()
                     if not params:
                         continue
@@ -713,13 +720,14 @@ class HostSync(ZabbixSyncBase):
                 # That way, we can update all interfaces at once
                 desired_hostinterfaces = []
                 for netbox_hostinterface in netbox_hostinterfaces:
-                    syncer = HostInterfaceSync(self.api, netbox_hostinterface, hostid=hostid)
+                    syncer = HostInterfaceSync(self.api, netbox_hostinterface, hostid=hostid, _instance=instance)
                     params = syncer.get_update_params()
                     if not params or not params.get('interfaceid'):
                         continue
                     desired_hostinterfaces.append(params)
 
-                self.api.host.update(hostid=hostid, interfaces=desired_hostinterfaces)
+                if desired_hostinterfaces:
+                    self.api.host.update(hostid=hostid, interfaces=desired_hostinterfaces)
         return
 
     def verify_hostinterfaces(self):

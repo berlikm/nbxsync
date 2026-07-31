@@ -125,6 +125,9 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
         child._is_inherited_copy = True
         child.assigned_object_type = content_type
         child.assigned_object_id = instance.id
+        if not child.use_oob_ip and not child.ip_id:
+            primary_ip = getattr(instance, 'primary_ip4', None) or getattr(instance, 'primary_ip6', None)
+            child.ip = primary_ip if primary_ip else None
         hostinterfaces.append(child)
 
     # Expand ConfigGroup-defined interfaces for this specific instance.

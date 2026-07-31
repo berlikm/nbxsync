@@ -123,8 +123,10 @@ class OOBInterfaceSyncTestCase(PluginSettingMixin, TestCase):
         sync = HostSync(api=api, netbox_obj=self.assignment, all_objects=all_objects)
 
         self.assertEqual(sync.get_hostinterface_types(), [ZabbixHostInterfaceTypeChoices.SNMP])
-        self.assertEqual(sync.get_template_attributes(), {'templates': [{'templateid': 5555}]})
-        # With NetBox as SoT, templates_clear must not uninstall the SNMP template.
+        templates = sync.get_template_attributes()
+        self.assertEqual(templates, {'templates': [{'templateid': 5555}]})
+        # get_templates_clear_attributes reads self.templates (set during HostSync update).
+        sync.templates = templates
         self.assertEqual(sync.get_templates_clear_attributes(), {'templates_clear': []})
 
     def test_retained_interface_with_persisted_interfaceid_is_not_deleted(self):
