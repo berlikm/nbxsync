@@ -121,7 +121,6 @@ class ConfigGroupInterfaceExpansionTestCase(TestCase):
 
         self.assertEqual([interface.pk for interface in result['hostinterfaces']], [direct.pk])
 
-<<<<<<< HEAD
     def test_configgroup_interfaces_are_filtered_by_zabbixserver(self):
         other = ZabbixServer.objects.create(name='Other CG Server', url='http://other.local', token='xyz', validate_certs=True)
         self._cg_interface(port=161)
@@ -140,7 +139,6 @@ class ConfigGroupInterfaceExpansionTestCase(TestCase):
         ports = [interface.port for interface in result['hostinterfaces']]
         self.assertEqual(ports, [161])
 
-=======
     def test_oob_interface_keeps_resolving_from_the_oob_ip(self):
         self._cg_interface(port=161, use_oob_ip=True)
 
@@ -173,4 +171,21 @@ class ConfigGroupInterfaceExpansionTestCase(TestCase):
             interface.full_clean()
 
         self.assertIn('use_oob_ip', context.exception.message_dict)
->>>>>>> 3e9a32e (feat(use_oob_ip): vendor-agnostic OOB interface IP resolution)
+
+    def test_use_oob_ip_requires_ip_connect_mode(self):
+        interface = ZabbixHostInterface(
+            zabbixserver=self.server,
+            type=ZabbixHostInterfaceTypeChoices.AGENT,
+            useip=ZabbixInterfaceUseChoices.DNS,
+            dns='mgmt.example.com',
+            interface_type=ZabbixInterfaceTypeChoices.DEFAULT,
+            port=10050,
+            use_oob_ip=True,
+            assigned_object_type=ContentType.objects.get_for_model(type(self.device)),
+            assigned_object_id=self.device.pk,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            interface.full_clean()
+
+        self.assertIn('useip', context.exception.message_dict)
