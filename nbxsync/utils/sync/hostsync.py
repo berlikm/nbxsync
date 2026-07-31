@@ -61,12 +61,13 @@ class HostSync(ZabbixSyncBase):
 
         # No binding and no legacy id: try to adopt an existing managed host.
         try:
-            existing_hostid = backfill_or_resolve_conflict(sync_target, zabbixserver, self.api)
+            technical_name = self.sanitize_string(input_str=str(self.get_name_value()))
+            existing_hostid = backfill_or_resolve_conflict(sync_target, zabbixserver, self.api, hostname=technical_name)
         except RuntimeError:
             raise
         if existing_hostid:
             self.obj.hostid = existing_hostid
-            set_host_binding(sync_target, zabbixserver, existing_hostid, hostname=str(sync_target))
+            set_host_binding(sync_target, zabbixserver, existing_hostid, hostname=technical_name)
 
     def _migrate_legacy_hostid(self, sync_target, zabbixserver):
         """Move a direct-assignment hostid into a durable binding."""
@@ -448,6 +449,7 @@ class HostSync(ZabbixSyncBase):
 
     def get_groups(self):
         groups = []
+        errors = []
         for group in self.obj.assigned_objects.get('hostgroups', []):
             # 1) If we already know the Zabbix groupid, use it (fast path).
             gid = getattr(getattr(group, 'zabbixhostgroup', None), 'groupid', None)
@@ -456,26 +458,32 @@ class HostSync(ZabbixSyncBase):
                 continue
 
             # 2) Otherwise, try to resolve by name (e.g., for template-like objects).
-            name, _status = ('', False)
+            name, status = ('', False)
             try:
-                name, _status = group.render(object=self._get_sync_target())
-            except Exception:
-                _status = False
-            if _status and name:
+                name, status = group.render(object=self._get_sync_target())
+            except Exception as exc:
+                errors.append(f'Failed to render hostgroup for {self._get_sync_target()}: {exc}')
+                continue
+            if not (status and name):
+                errors.append(f'Hostgroup for {self._get_sync_target()} rendered empty; refusing to omit it silently')
+                continue
+
+            try:
                 zbx_result = self.api.hostgroup.get(filter={'name': name}) or []
                 if zbx_result:
                     groups.append({'groupid': zbx_result[0]['groupid']})
+                    continue
+                created = self.api.hostgroup.create({'name': name})
+                gid = created.get('groupids', [None])[0]
+                if gid:
+                    groups.append({'groupid': gid})
                 else:
-                    # Group does not exist in Zabbix yet; create it now.
-                    try:
-                        created = self.api.hostgroup.create({'name': name})
-                        gid = created.get('groupids', [None])[0]
-                        if gid:
-                            groups.append({'groupid': gid})
-                    except Exception:
-                        pass
-            # If no gid and no resolvable name, skip silently
+                    errors.append(f'Zabbix did not return a groupid when creating hostgroup "{name}"')
+            except Exception as exc:
+                errors.append(f'Failed to resolve/create hostgroup "{name}": {exc}')
 
+        if errors:
+            raise RuntimeError('; '.join(errors))
         return groups
 
     def get_hostinventory(self):
@@ -683,7 +691,12 @@ class HostSync(ZabbixSyncBase):
                         raise RuntimeError(f'Failed to create interface for type={hostinterface_type}: {created}')
 
                     nb_default_hostinterface_obj.interfaceid = int(hostinterface_id)
-                    nb_default_hostinterface_obj.save()
+                    # Transient ConfigGroup clones are pk=None in-memory copies.
+                    # Saving them would INSERT a new HostInterface row without
+                    # ConfigGroup provenance. Keep the interfaceid on the
+                    # working object only; the next sync resolves by identity.
+                    if not getattr(nb_default_hostinterface_obj, '_is_inherited_copy', False) and nb_default_hostinterface_obj.pk:
+                        nb_default_hostinterface_obj.save()
 
                     # update local variable so the compare is correct for the flip step
                     nb_default_hostinterface_id = str(int(hostinterface_id))
@@ -724,8 +737,10 @@ class HostSync(ZabbixSyncBase):
         retained_hostinterfaces = self.context.get('all_objects', {}).get('retained_hostinterfaces', []) or []
         expected_identities = {(int(hi.type), int(hi.useip), str(hi.port)) for hi in list(expected_hostinterfaces) + list(retained_hostinterfaces) if not hi.interfaceid}
 
-        # Skip deletion entirely for inherited copies.
-        if not self._should_persist():
+        # Inherited server assignments must not persist ORM rows, but remote
+        # stale-interface cleanup is still required for Site-level proxies.
+        # Gate that destructive remote work on allow_inherited_deletion.
+        if not self._should_persist() and not self.pluginsettings.allow_inherited_deletion:
             return
 
         for current_hostinterface in current_hostinterfaces:

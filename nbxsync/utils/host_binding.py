@@ -83,7 +83,7 @@ def _expected_source_tags(instance):
     }
 
 
-def backfill_or_resolve_conflict(instance, zabbixserver, api):
+def backfill_or_resolve_conflict(instance, zabbixserver, api, hostname=None):
     """Adopt an existing Zabbix host by its managed source tags.
 
     If no host with the same technical name exists, returns ``None`` so the
@@ -91,11 +91,19 @@ def backfill_or_resolve_conflict(instance, zabbixserver, api):
     exists, or if the matching host belongs to another NetBox object, a
     ``RuntimeError`` is raised.
 
+    ``hostname`` must be the technical host name actually sent to Zabbix
+    (custom-field hostname when set, then sanitized) — the same value
+    ``HostSync.get_name_value()`` / ``sanitize_string()`` produce. Falling back
+    to the raw NetBox name would miss renamed or custom-hostname hosts.
+
     Adoption is gated by the ``adopt_existing_hosts`` setting: taking over a
     host makes NetBox authoritative over its configuration, so operators opt in
     explicitly instead of discovering it after the first sync.
     """
-    name = str(instance.name) if hasattr(instance, 'name') else str(instance)
+    if hostname is None:
+        name = str(instance.name) if hasattr(instance, 'name') else str(instance)
+    else:
+        name = str(hostname)
     hosts = api.host.get(filter={'host': name}, selectTags='extend')
     if isinstance(hosts, dict):
         hosts = hosts.get('result', [])

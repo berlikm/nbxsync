@@ -138,11 +138,7 @@ Each rule can optionally also assign a hostgroup and a tag when the pattern matc
 | `enabled` | Enable/disable rule without deleting it |
 | `priority` | Lower value = higher priority (rules evaluated in order) |
 
-<<<<<<< HEAD
-Patterns are validated at save time (`re.compile`). Matching uses a best-effort 2-second bound: in the main thread (`signal.alarm`) the search is interrupted; in other threads the caller stops waiting after 2s and the rule fails closed (does not match), though the abandoned `re` match may still run until it finishes. Prefer simple patterns. Optional hostgroups must belong to the same Zabbix server as the template.
-=======
-Patterns are validated at save time (`re.compile`) and every evaluation is bounded to 2 seconds, which protects the worker against catastrophic backtracking. Matching also fails closed: a rule that times out, exceeds the 200-character input bound, or has an invalid stored pattern does not match and is logged, because linking the wrong template is worse than linking none.
->>>>>>> 0d4cc5f (feat(lifecycle): durable host bindings, reconciliation and safety gates)
+Patterns are validated at save time (`re.compile`). Matching uses a best-effort 2-second bound: in the main thread (`signal.alarm`) the search is interrupted; in other threads the caller stops waiting after 2s and the rule fails closed (does not match), though the abandoned `re` match may still run until it finishes. Prefer simple patterns. A rule that times out, exceeds the 200-character input bound, or has an invalid stored pattern does not match and is logged. Optional hostgroups must belong to the same Zabbix server as the template.
 
 ## Configuration values
 

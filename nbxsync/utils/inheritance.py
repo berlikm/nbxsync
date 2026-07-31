@@ -125,6 +125,8 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
             assigned_object_type=cg_ct,
             assigned_object_id=configurationgroup.zabbixconfigurationgroup_id,
         )
+        if zabbixserver is not None:
+            cg_interfaces = cg_interfaces.filter(zabbixserver=zabbixserver)
         # A host can legitimately carry several interfaces of the same Zabbix
         # type (two SNMP interfaces on different ports, an in-band and an OOB
         # agent interface, ...), so ConfigGroup interfaces are suppressed only
