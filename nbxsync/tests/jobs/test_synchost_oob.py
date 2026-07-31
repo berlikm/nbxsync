@@ -77,7 +77,14 @@ class OOBInterfaceSyncTestCase(PluginSettingMixin, TestCase):
     def test_retained_interface_is_not_deleted_from_zabbix(self):
         api = MagicMock()
         api.hostinterface.get.return_value = [
-            {'interfaceid': '900', 'type': str(int(ZabbixHostInterfaceTypeChoices.SNMP)), 'useip': '1', 'port': '161'},
+            {
+                'interfaceid': '900',
+                'type': str(int(ZabbixHostInterfaceTypeChoices.SNMP)),
+                'main': str(int(ZabbixInterfaceTypeChoices.DEFAULT)),
+                'useip': '1',
+                'port': '161',
+                'dns': '',
+            },
         ]
         all_objects = {
             '_instance': self.device,
