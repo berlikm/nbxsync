@@ -80,7 +80,7 @@ class ZabbixHostInventoryForm(NetBoxModelForm):
     sitegroup = DynamicModelChoiceField(queryset=SiteGroup.objects.all(), required=False, selector=True, label=_('Site Group'))
     region = DynamicModelChoiceField(queryset=Region.objects.all(), required=False, label=_('Region'))
     platform = DynamicModelChoiceField(queryset=Platform.objects.all(), required=False, selector=True, label=_('Platform'))
-    devicerole = DynamicModelChoiceField(queryset=DeviceRole.objects.all(), required=False, selector=True, label=_('Device Role'))
+    role = DynamicModelChoiceField(queryset=DeviceRole.objects.all(), required=False, selector=True, label=_('Device Role'))
     devicetype = DynamicModelChoiceField(queryset=DeviceType.objects.all(), required=False, selector=True, label=_('Device Type'))
     manufacturer = DynamicModelChoiceField(queryset=Manufacturer.objects.all(), required=False, selector=True, label=_('Manufacturer'))
     cluster = DynamicModelChoiceField(queryset=Cluster.objects.all(), required=False, selector=True, label=_('Cluster'))
@@ -195,7 +195,7 @@ class ZabbixHostInventoryForm(NetBoxModelForm):
                 FieldSet('sitegroup', name=_('Site Group')),
                 FieldSet('region', name=_('Region')),
                 FieldSet('platform', name=_('Platform')),
-                FieldSet('devicerole', name=_('Device Role')),
+                FieldSet('role', name=_('Device Role')),
                 FieldSet('devicetype', name=_('Device Type')),
                 FieldSet('manufacturer', name=_('Manufacturer')),
                 FieldSet('cluster', name=_('Cluster')),
@@ -287,7 +287,7 @@ class ZabbixHostInventoryForm(NetBoxModelForm):
             'sitegroup',
             'region',
             'platform',
-            'devicerole',
+            'role',
             'devicetype',
             'manufacturer',
             'cluster',
