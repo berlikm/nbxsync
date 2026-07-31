@@ -723,7 +723,15 @@ class HostSync(ZabbixSyncBase):
 
         # Extract the currently expected interfaces
         expected_hostinterfaces = self.context.get('all_objects', {}).get('hostinterfaces', []) or []
-        expected_ids = {int(expected_hostinterface.interfaceid) for expected_hostinterface in expected_hostinterfaces if expected_hostinterface.interfaceid}
+        # Interfaces that could not be synced this run (e.g. an OOB interface on
+        # a device whose oob_ip was cleared) are retained rather than deleted.
+        retained_hostinterfaces = self.context.get('all_objects', {}).get('retained_hostinterfaces', []) or []
+        considered_hostinterfaces = list(expected_hostinterfaces) + list(retained_hostinterfaces)
+
+        # Include persisted interfaceids from both expected and retained rows.
+        # A previously synced OOB interface kept in retained_hostinterfaces still
+        # carries its interfaceid; omitting it here would delete the remote IF.
+        expected_ids = {int(hi.interfaceid) for hi in considered_hostinterfaces if hi.interfaceid}
 
         # Get currently assigned hostinterface from Zabbix
         current_hostinterfaces = self.api.hostinterface.get(output=['extend'], hostids=self.obj.hostid)
@@ -732,9 +740,6 @@ class HostSync(ZabbixSyncBase):
         # persisted interfaceid, so they must be recognised by what Zabbix stores
         # instead. Deleting them here would remove an interface that the very
         # next sync recreates, and fail outright once items are linked to it.
-        # Interfaces that could not be synced this run (e.g. an OOB interface on
-        # a device whose oob_ip was cleared) are retained rather than deleted.
-        retained_hostinterfaces = self.context.get('all_objects', {}).get('retained_hostinterfaces', []) or []
         # Match the ConfigGroup identity helper: type + main role + connect mode
         # + port + dns. IP is omitted here because OOB interfaces resolve it at
         # sync time and would otherwise look "stale" every run.
@@ -746,7 +751,7 @@ class HostSync(ZabbixSyncBase):
                 str(hi.port),
                 str(hi.dns or ''),
             )
-            for hi in list(expected_hostinterfaces) + list(retained_hostinterfaces)
+            for hi in considered_hostinterfaces
             if not hi.interfaceid
         }
 
