@@ -554,3 +554,78 @@ class HostSyncTestCase(TestCase):
         self.assertEqual(len(messages), 1)
         self.assertFalse(messages[0][0])  # success = False
         self.assertIn('Simulated API failure', messages[0][1])
+
+    def test_verify_hostinterfaces_skips_inherited_when_deletion_disabled(self):
+        self.obj.hostid = '12345'
+        self.obj._is_inherited_copy = True
+        self.sync.pluginsettings.allow_inherited_deletion = False
+        self.sync.context['all_objects']['hostinterfaces'] = [self.interface_agent]
+        self.interface_agent.interfaceid = 1001
+
+        deleted = []
+        self.sync.api.hostinterface.get = lambda **kwargs: [
+            {'interfaceid': 1001, 'type': 1, 'useip': 1, 'port': '10050'},
+            {'interfaceid': 2002, 'type': 2, 'useip': 1, 'port': '161'},
+        ]
+        self.sync.api.hostinterface.delete = lambda interfaceid: deleted.append(interfaceid)
+
+        self.sync.verify_hostinterfaces()
+        self.assertEqual(deleted, [])
+
+    def test_verify_hostinterfaces_deletes_stale_for_inherited_when_enabled(self):
+        self.obj.hostid = '12345'
+        self.obj._is_inherited_copy = True
+        self.sync.pluginsettings.allow_inherited_deletion = True
+        self.interface_agent.interfaceid = 1001
+        self.sync.context['all_objects']['hostinterfaces'] = [self.interface_agent]
+
+        deleted = []
+        self.sync.api.hostinterface.get = lambda **kwargs: [
+            {'interfaceid': 1001, 'type': 1, 'useip': 1, 'port': '10050'},
+            {'interfaceid': 2002, 'type': 2, 'useip': 1, 'port': '161'},
+        ]
+        self.sync.api.hostinterface.delete = lambda interfaceid: deleted.append(interfaceid)
+
+        self.sync.verify_hostinterfaces()
+        self.assertEqual(deleted, [2002])
+
+    def test_get_groups_raises_when_render_fails(self):
+        class BrokenGroup:
+            zabbixhostgroup = type('HG', (), {'groupid': None})()
+
+            def render(self, object=None):
+                raise RuntimeError('jinja boom')
+
+        self.obj.assigned_objects['hostgroups'] = [BrokenGroup()]
+
+        with self.assertRaises(RuntimeError) as context:
+            self.sync.get_groups()
+
+        self.assertIn('jinja boom', str(context.exception))
+
+    def test_check_default_does_not_insert_inherited_clone(self):
+        from nbxsync.models import ZabbixHostInterface as HI
+
+        self.obj.hostid = '12345'
+        clone = HI(
+            zabbixserver=self.zabbixserver,
+            type=ZabbixHostInterfaceTypeChoices.AGENT,
+            interface_type=ZabbixInterfaceTypeChoices.DEFAULT,
+            useip=ZabbixInterfaceUseChoices.IP,
+            port=10050,
+            ip=self.ip,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.id,
+        )
+        clone.pk = None
+        clone._is_inherited_copy = True
+        self.sync.context['all_objects']['hostinterfaces'] = [clone]
+
+        self.sync.api.hostinterface.get = lambda **kwargs: [{'interfaceid': '999', 'type': int(ZabbixHostInterfaceTypeChoices.AGENT), 'main': 1}]
+        self.sync.api.hostinterface.create = lambda **params: {'interfaceids': ['555']}
+        self.sync.api.host.update = lambda **kwargs: {}
+
+        before = HI.objects.count()
+        self.sync.check_default_hostinterface()
+        self.assertEqual(HI.objects.count(), before)
+        self.assertEqual(clone.interfaceid, 555)

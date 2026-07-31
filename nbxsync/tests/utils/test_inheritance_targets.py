@@ -118,3 +118,22 @@ class ConfigGroupInterfaceExpansionTestCase(TestCase):
         result = get_assigned_zabbixobjects(self.device)
 
         self.assertEqual([interface.pk for interface in result['hostinterfaces']], [direct.pk])
+
+    def test_configgroup_interfaces_are_filtered_by_zabbixserver(self):
+        other = ZabbixServer.objects.create(name='Other CG Server', url='http://other.local', token='xyz', validate_certs=True)
+        self._cg_interface(port=161)
+        ZabbixHostInterface.objects.create(
+            zabbixserver=other,
+            type=ZabbixHostInterfaceTypeChoices.SNMP,
+            useip=ZabbixInterfaceUseChoices.IP,
+            interface_type=ZabbixInterfaceTypeChoices.NOTDEFAULT,
+            port=1161,
+            assigned_object_type=ContentType.objects.get_for_model(ZabbixConfigurationGroup),
+            assigned_object_id=self.configgroup.pk,
+        )
+
+        result = get_assigned_zabbixobjects(self.device, zabbixserver=self.server)
+
+        ports = [interface.port for interface in result['hostinterfaces']]
+        self.assertEqual(ports, [161])
+

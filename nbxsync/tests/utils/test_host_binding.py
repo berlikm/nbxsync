@@ -6,7 +6,7 @@ from django.test import TestCase
 from utilities.testing import create_test_device
 
 from nbxsync.models import ZabbixHostBinding, ZabbixServer, ZabbixServerAssignment
-from nbxsync.utils.host_binding import HostBindingDeleteProxy
+from nbxsync.utils.host_binding import HostBindingDeleteProxy, backfill_or_resolve_conflict
 from nbxsync.utils.sync import HostSync
 
 
@@ -128,6 +128,25 @@ class HostBindingTestCase(PluginSettingMixin, TestCase):
         sync = HostSync(api=api, netbox_obj=self.assignment, all_objects=self._all_objects())
         with self.assertRaises(RuntimeError):
             sync.sync()
+
+    def test_adoption_looks_up_technical_hostname(self):
+        self._set_plugin_setting('adopt_existing_hosts', True)
+        api = MagicMock()
+        api.host.get.return_value = [
+            {
+                'hostid': '321',
+                'host': 'tech-host-01',
+                'tags': [
+                    {'tag': 'nb_type', 'value': 'device'},
+                    {'tag': 'nb_id', 'value': str(self.device.pk)},
+                ],
+            }
+        ]
+
+        hostid = backfill_or_resolve_conflict(self.device, self.server, api, hostname='tech-host-01')
+
+        self.assertEqual(hostid, 321)
+        api.host.get.assert_called_with(filter={'host': 'tech-host-01'}, selectTags='extend')
 
     def test_duplicate_managed_identity_conflict(self):
         other_device = create_test_device(name='other-binding-test')
