@@ -529,6 +529,40 @@ class HostSyncTestCase(TestCase):
         # Only the unexpected one should be deleted
         self.assertEqual(deleted_ids, [2002])
 
+    def test_verify_hostinterfaces_requests_output_extend(self):
+        """Transient IFs match by identity; output must be the string 'extend'."""
+        self.obj.hostid = '12345'
+        self.interface_snmp.interfaceid = None
+        self.interface_snmp.interface_type = ZabbixInterfaceTypeChoices.DEFAULT
+        self.interface_snmp.useip = 1
+        self.interface_snmp.port = 161
+        self.interface_snmp.dns = ''
+        self.sync.context['all_objects']['hostinterfaces'] = [self.interface_snmp]
+
+        get_kwargs = []
+
+        def fake_get(**kwargs):
+            get_kwargs.append(kwargs)
+            return [
+                {
+                    'interfaceid': '900',
+                    'type': str(int(ZabbixHostInterfaceTypeChoices.SNMP)),
+                    'main': str(int(ZabbixInterfaceTypeChoices.DEFAULT)),
+                    'useip': '1',
+                    'port': '161',
+                    'dns': '',
+                },
+            ]
+
+        deleted = []
+        self.sync.api.hostinterface.get = fake_get
+        self.sync.api.hostinterface.delete = lambda interfaceid: deleted.append(interfaceid)
+
+        self.sync.verify_hostinterfaces()
+
+        self.assertEqual(get_kwargs[0].get('output'), 'extend')
+        self.assertEqual(deleted, [])
+
     def test_delete_raises_runtimeerror_on_api_failure(self):
         self.obj.hostid = '12345'
 
