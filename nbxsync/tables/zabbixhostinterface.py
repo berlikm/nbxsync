@@ -45,6 +45,7 @@ class ZabbixHostInterfaceTable(NetBoxTable):
             'assigned_object',
             'type',
             'ip',
+            'use_oob_ip',
             'port',
         )
 

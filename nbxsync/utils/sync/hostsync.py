@@ -752,12 +752,6 @@ class HostSync(ZabbixSyncBase):
         # persisted interfaceid, so they must be recognised by what Zabbix stores
         # instead. Deleting them here would remove an interface that the very
         # next sync recreates, and fail outright once items are linked to it.
-<<<<<<< HEAD
-=======
-        # Interfaces that could not be synced this run (e.g. an OOB interface on
-        # a device whose oob_ip was cleared) are retained rather than deleted.
-        retained_hostinterfaces = self.context.get('all_objects', {}).get('retained_hostinterfaces', []) or []
->>>>>>> 0878100 (fix(use_oob_ip): require IP mode and disambiguate multi-interface match)
         # Match the ConfigGroup identity helper: type + main role + connect mode
         # + port + dns. IP is omitted here because OOB interfaces resolve it at
         # sync time and would otherwise look "stale" every run.
@@ -769,11 +763,7 @@ class HostSync(ZabbixSyncBase):
                 str(hi.port),
                 str(hi.dns or ''),
             )
-<<<<<<< HEAD
             for hi in considered_hostinterfaces
-=======
-            for hi in list(expected_hostinterfaces) + list(retained_hostinterfaces)
->>>>>>> 0878100 (fix(use_oob_ip): require IP mode and disambiguate multi-interface match)
             if not hi.interfaceid
         }
 
