@@ -168,8 +168,13 @@ class SyncObjectsJob(JobRunner):
 
         for binding in ZabbixHostBinding.objects.select_related('assigned_object_type').iterator():
             bindings_inspected += 1
-            if binding.assigned_object_type_id and binding.assigned_object_id:
-                keys.add((binding.assigned_object_type.app_label, binding.assigned_object_type.model, binding.assigned_object_id))
+            if not binding.assigned_object_type_id or not binding.assigned_object_id:
+                continue
+            # Orphan bindings (NetBox object already gone) must not enqueue sync jobs.
+            model_class = binding.assigned_object_type.model_class()
+            if model_class is None or not model_class.objects.filter(pk=binding.assigned_object_id).exists():
+                continue
+            keys.add((binding.assigned_object_type.app_label, binding.assigned_object_type.model, binding.assigned_object_id))
 
         hosts_deduplicated = max(0, hosts_resolved + bindings_inspected - len(keys))
 
