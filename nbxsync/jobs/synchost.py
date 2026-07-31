@@ -251,13 +251,22 @@ class SyncHostJob:
                 # Fail silently, so we can create the interface - and we'll sync the template on the next run...
                 logger.warning(f'Initial HostSync failed for {self.instance}: {e}')
 
-            # Once the Host exists and we have a HostId, time to sync the interfaces
-            # Sort by:
-            # - interface_type (defaults should be synced first)
-            # - type (group snmp, agent, jmx, etc)
-            # - id
-            hostinterfaces_sorted = sorted(all_objects['hostinterfaces'], key=lambda hostinterface: (-int(hostinterface.interface_type == 1), hostinterface.type, hostinterface.id))
-            for hostinterface in hostinterfaces_sorted:
+            # Once the Host exists and we have a HostId, time to sync the interfaces.
+            # Existing interfaces: demote (non-default) before promote, so a
+            # main-flag flip never briefly creates two defaults of one type.
+            # New interfaces: defaults first — Zabbix rejects a non-default when
+            # the host has no interface of that type yet.
+            existing = [hi for hi in all_objects['hostinterfaces'] if hi.interfaceid]
+            new = [hi for hi in all_objects['hostinterfaces'] if not hi.interfaceid]
+            existing_sorted = sorted(
+                existing,
+                key=lambda hi: (int(hi.interface_type == 1), hi.type, hi.id or 0),
+            )
+            new_sorted = sorted(
+                new,
+                key=lambda hi: (-int(hi.interface_type == 1), hi.type, hi.id or 0),
+            )
+            for hostinterface in existing_sorted + new_sorted:
                 try:
                     safe_sync(HostInterfaceSync, hostinterface, extra_args={'hostid': assignment.hostid, '_instance': self.instance})
                 except RuntimeError as e:
@@ -268,6 +277,15 @@ class SyncHostJob:
                     # from being synced. The failure is still reported at the
                     # end of the job so it cannot pass as a successful sync.
                     self._record_partial_failure(assignment, f'HostInterfaceSync failed for interface {hostinterface}: {e}')
+
+            # Repair main flags after individual interface updates/creates.
+            # check_default_hostinterface also runs before sync_host for the
+            # case where NetBox already had interfaceids; this second pass
+            # covers interfaces that only received an interfaceid just now.
+            try:
+                run_zabbix_operation(HostSync, assignment, 'check_default_hostinterface', extra_args={'all_objects': all_objects})
+            except Exception as e:
+                self._record_partial_failure(assignment, f'check_default_hostinterface failed: {e}')
 
             # Final HostSync to link templates etc — a template conflict here
             # (e.g. "Cannot inherit item with key snmptrap.fallback") must not
