@@ -14,9 +14,10 @@ class Migration(migrations.Migration):
             field=models.BooleanField(
                 default=False,
                 verbose_name='Use OOB IP',
-                help_text='When enabled and no static IP is set, the interface IP '
-                          'will be resolved from the device\'s oob_ip field '
-                          'instead of primary_ip4.',
+                help_text='When enabled and no static IP is set, resolve the interface IP '
+                          'from the device oob_ip field. If the device has no oob_ip, sync '
+                          'skips this interface and keeps any existing Zabbix interface '
+                          'unless inherited deletion is enabled.',
             ),
         ),
     ]

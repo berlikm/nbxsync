@@ -70,7 +70,11 @@ class ZabbixHostInterface(SyncInfoModel, NetBoxModel):
     snmp_community = models.CharField(max_length=75, blank=True, verbose_name=_('SNMPv1/2 Community'))
     snmp_pushcommunity = models.BooleanField(default=True)
 
-    use_oob_ip = models.BooleanField(default=False, verbose_name=_('Use OOB IP'), help_text=_('When enabled and no static IP is set, the interface IP will be resolved from the device oob_ip field instead of primary_ip4.'))
+    use_oob_ip = models.BooleanField(
+        default=False,
+        verbose_name=_('Use OOB IP'),
+        help_text=_('When enabled and no static IP is set, resolve the interface IP from the device oob_ip field. If the device has no oob_ip, sync skips this interface and keeps any existing Zabbix interface unless inherited deletion is enabled.'),
+    )
 
     # SNMPv3-specific fields
     snmpv3_context_name = models.CharField(max_length=50, blank=True, verbose_name=_('Context Name'))

@@ -96,6 +96,32 @@ class OOBInterfaceSyncTestCase(PluginSettingMixin, TestCase):
 
         api.hostinterface.delete.assert_not_called()
 
+    def test_retained_interface_with_persisted_interfaceid_is_not_deleted(self):
+        """Previously synced OOB rows keep interfaceid; retain must honour it."""
+        self.interface.interfaceid = 900
+        self.interface.save(update_fields=['interfaceid'])
+
+        api = MagicMock()
+        api.hostinterface.get.return_value = [
+            {
+                'interfaceid': '900',
+                'type': str(int(ZabbixHostInterfaceTypeChoices.SNMP)),
+                'main': str(int(ZabbixInterfaceTypeChoices.DEFAULT)),
+                'useip': '1',
+                'port': '161',
+                'dns': '',
+            },
+        ]
+        all_objects = {
+            '_instance': self.device,
+            'hostinterfaces': [],
+            'retained_hostinterfaces': [self.interface],
+        }
+
+        HostSync(api=api, netbox_obj=self.assignment, all_objects=all_objects).verify_hostinterfaces()
+
+        api.hostinterface.delete.assert_not_called()
+
     def test_unknown_interface_is_still_deleted_from_zabbix(self):
         api = MagicMock()
         api.hostinterface.get.return_value = [
