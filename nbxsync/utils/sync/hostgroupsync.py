@@ -1,5 +1,32 @@
+import logging
+
 from .syncbase import ZabbixSyncBase
 from nbxsync.models import ZabbixHostgroup
+
+logger = logging.getLogger(__name__)
+
+
+def ensure_parent_hostgroups(api, name):
+    """Materialize missing parent groups of a nested name, parent-first.
+
+    Zabbix treats nesting as a name convention: creating 'A/B/C' does not
+    auto-create 'A' and 'A/B' — they stay phantom groups that can never
+    hold hosts or permissions. Because Zabbix only inherits user-group
+    permissions and tag filters into a subgroup when its parent already
+    exists, parents must be created before their children.
+
+    Idempotent: existing parents are found by exact name and left alone.
+    Malformed names (empty segments, leading/trailing slashes) are skipped;
+    the Zabbix API rejects them on the leaf create either way."""
+    if '//' in name or name != name.strip('/'):
+        return
+    segments = name.split('/')
+    for depth in range(1, len(segments)):
+        parent = '/'.join(segments[:depth])
+        if api.hostgroup.get(filter={'name': parent}):
+            continue
+        result = api.hostgroup.create({'name': parent})
+        logger.info("Created parent hostgroup '%s' (groupid=%s)", parent, result['groupids'][0])
 
 
 class HostGroupSync(ZabbixSyncBase):
@@ -17,11 +44,18 @@ class HostGroupSync(ZabbixSyncBase):
         # For template-based assignments that can't render against the
         # assigned object (e.g. {{ object.role.name }} on a DeviceRole),
         # skip creation — the group is created on-demand during host sync.
-        if self.obj.is_template():
-            name, _state = self.obj.render()
-            if not _state:
-                return None
+        name, state = self.obj.render()
+        if not state and self.obj.is_template():
+            return None
+        self._ensure_parent_groups(name)
         return super().try_create()
+
+    def _ensure_parent_groups(self, name):
+        """Create missing parents for nested group names before the leaf.
+
+        Zabbix inherits user-group permissions and tag filters into a subgroup
+        only when its parent already exists — see ensure_parent_hostgroups()."""
+        ensure_parent_hostgroups(self.api, name)
 
     def api_object(self):
         return self.api.hostgroup
