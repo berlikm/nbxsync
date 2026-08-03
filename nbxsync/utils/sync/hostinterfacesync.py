@@ -48,7 +48,7 @@ class HostInterfaceSync(ZabbixSyncBase):
             return 'dns', self.obj.dns or ''
         ipaddr = ''
         if self.obj.ip_id:
-            ipaddr = self.obj.ip.address.ip
+            ipaddr = IPAddress.objects.get(id=self.obj.ip_id).address.ip
         elif self.obj.use_oob_ip:
             instance = self.context.get('_instance')
             oob_ip = getattr(instance, 'oob_ip', None) if instance else None
