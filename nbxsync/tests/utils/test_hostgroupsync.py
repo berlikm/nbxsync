@@ -103,10 +103,11 @@ class HostGroupSyncNestedTests(TestCase):
     def setUpTestData(cls):
         cls.zabbixserver = ZabbixServer.objects.create(name='Zabbix Nested', url='http://zabbix-nested.local', token='abc123', validate_certs=True)
         cls.device_ct = ContentType.objects.get_for_model(Device)
+        cls.device = create_test_device(name='Nested Hostgroup TestDev')
 
     def _nested_assignment(self, name):
         hostgroup = ZabbixHostgroup.objects.create(name=name, zabbixserver=self.zabbixserver, value=name)
-        return ZabbixHostgroupAssignment.objects.create(zabbixhostgroup=hostgroup, assigned_object_type=self.device_ct, assigned_object_id=999999)
+        return ZabbixHostgroupAssignment.objects.create(zabbixhostgroup=hostgroup, assigned_object_type=self.device_ct, assigned_object_id=self.device.id)
 
     def test_try_create_nested_creates_parents_before_leaf(self):
         from unittest.mock import call
