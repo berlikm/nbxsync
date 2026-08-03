@@ -116,7 +116,7 @@ Defines host groups and their mapping.
 Zabbix nesting is a naming convention: `Network/Region/Site` denotes a subgroup, but Zabbix stores no relation between groups. Three consequences:
 
 - Creating `A/B/C` never creates `A` or `A/B`, and Zabbix inherits user-group permissions into a subgroup only if the parent already exists. nbxsync therefore materializes missing path segments parent-first on both creation paths (assignment sync and on-demand creation during host sync).
-- Renaming a group never cascades to subgroups. To rename, edit the `ZabbixHostgroup` name in NetBox: the stored `groupid` lets sync rename the group in place, keeping hosts and permissions. Changing a Jinja template, by contrast, produces a new path; hosts migrate on the next sync and the old path remains as an empty group.
+- Renaming a group never cascades to subgroups. To rename, edit the `ZabbixHostgroup` `value` (the Zabbix-facing name; `name` is only the NetBox label): the stored `groupid` lets sync rename the group in place, keeping hosts and permissions. Changing a Jinja template, by contrast, produces a new path; hosts migrate on the next sync and the old path remains as an empty group.
 - Path segments must be non-empty (no leading/trailing/double slashes, no slash escaping); Zabbix rejects such names at the API.
 
 Because nbxsync follows the additive model and never deletes groups, empty groups left behind by template changes are housekeeping handled outside the plugin's sync core.
