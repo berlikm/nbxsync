@@ -263,3 +263,62 @@ class HostInterfaceConvergenceTests(TestCase):
         api.hostinterface.get.return_value = []
         self.assertEqual(self._sync(api).find_by_name(), [])
         api.hostinterface.delete.assert_not_called()
+
+
+class HostInterfaceOOBRefetchTests(TestCase):
+    """use_oob_ip / primary IP resolution must refetch IPAddress by id.
+
+    In-memory related objects can expose ``address`` as a raw string before
+    refresh; creating params via ``.address.ip`` then raises AttributeError.
+    """
+
+    def setUp(self):
+        self.zabbixserver = ZabbixServer.objects.create(name='OOB Refetch Server', url='http://oob.example.com', token='dummy-token')
+        self.device = create_test_device(name='OOB Refetch Dev')
+        self.device_ct = ContentType.objects.get_for_model(Device)
+        self.primary = IPAddress.objects.create(address='10.50.1.10/32')
+        self.oob = IPAddress.objects.create(address='10.50.254.10/32')
+        self.device.primary_ip4 = self.primary
+        self.device.oob_ip = self.oob
+        self.device.save()
+        self.iface = ZabbixHostInterface.objects.create(
+            zabbixserver=self.zabbixserver,
+            type=ZabbixHostInterfaceTypeChoices.SNMP,
+            interface_type=ZabbixInterfaceTypeChoices.DEFAULT,
+            useip=ZabbixInterfaceUseChoices.IP,
+            dns='',
+            port=161,
+            use_oob_ip=True,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.id,
+        )
+        ZabbixServerAssignment.objects.create(
+            zabbixserver=self.zabbixserver,
+            hostid='9090',
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.id,
+        )
+
+    def test_get_create_params_resolves_oob_via_id_refetch(self):
+        # Poison the in-memory related object the way a stale cache can.
+        self.device.oob_ip.address = '10.50.254.10/32'
+        sync = HostInterfaceSync(api=None, netbox_obj=self.iface)
+        sync.context = {'hostid': '9090', '_instance': self.device}
+        params = sync.get_create_params()
+        self.assertEqual(params['ip'], '10.50.254.10')
+        self.assertEqual(params['type'], ZabbixHostInterfaceTypeChoices.SNMP)
+
+    def test_desired_endpoint_resolves_oob_via_id_refetch(self):
+        self.device.oob_ip.address = '10.50.254.10/32'
+        sync = HostInterfaceSync(api=None, netbox_obj=self.iface)
+        sync.context = {'hostid': '9090', '_instance': self.device}
+        field, value = sync._desired_endpoint()
+        self.assertEqual(field, 'ip')
+        self.assertEqual(value, '10.50.254.10')
+
+    def test_get_create_params_skips_when_no_oob_ip(self):
+        self.device.oob_ip = None
+        self.device.save()
+        sync = HostInterfaceSync(api=None, netbox_obj=self.iface)
+        sync.context = {'hostid': '9090', '_instance': self.device}
+        self.assertEqual(sync.get_create_params(), {})
