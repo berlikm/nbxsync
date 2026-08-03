@@ -4,6 +4,7 @@ from collections import OrderedDict
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q, QuerySet
 from django.db.models.manager import BaseManager
+from virtualization.models import VirtualMachine
 
 from dcim.models import DeviceRole, Region, SiteGroup
 
@@ -331,6 +332,15 @@ def resolve_inherited_zabbix_assignments(assigned_object, zabbixserver=None):  #
     triples = []
     seen_objects = set()
     for path in pluginsettings.inheritance_chain:
+        # 'device'-prefixed paths describe the *associated physical device*
+        # (the VDC's parent, or — since NetBox 4.3 — a VM's hosting device).
+        # For a VirtualMachine that association is the hypervisor/sidecar, so
+        # walking these paths would leak host properties (manufacturer, role,
+        # hardware templates) onto the guest. VDCs keep the paths: a VDC is
+        # part of its parent device by definition.
+        if path and path[0] == 'device' and isinstance(assigned_object, VirtualMachine):
+            continue
+
         related_obj = resolve_path(assigned_object, path)
 
         if not related_obj:
