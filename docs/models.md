@@ -139,7 +139,7 @@ Zabbix nesting is a naming convention: `Network/Region/Site` denotes a subgroup,
 - Renaming a group never cascades to subgroups. To rename, edit the `ZabbixHostgroup` name in NetBox: the stored `groupid` lets sync rename the group in place, keeping hosts and permissions. Changing a Jinja template, by contrast, produces a new path; hosts migrate on the next sync and the old path remains as an empty group.
 - Path segments must be non-empty (no leading/trailing/double slashes, no slash escaping); Zabbix rejects such names at the API.
 
-Because nbxsync follows the additive model and never deletes groups, empty groups left behind by renames/templates are housekeeping: `contrib/purge_empty_hostgroups.py` reports empty groups known to nbxsync (dry-run) and deletes them on request.
+Because nbxsync follows the additive model and never deletes groups, empty groups left behind by template changes are housekeeping handled outside the plugin's sync core.
 
 ---
 
