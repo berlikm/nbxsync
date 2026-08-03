@@ -198,3 +198,33 @@ class TagAssignmentTargetTestCase(TestCase):
         self.device.tags.add(self.netbox_tag)
         result = get_assigned_zabbixobjects(self.device, zabbixserver=self.other_server)
         self.assertNotIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in result['hostgroups']])
+
+    def test_tag_targeted_hostinterface_resolves_with_device_ip(self):
+        from ipam.models import IPAddress
+
+        from nbxsync.choices import ZabbixHostInterfaceTypeChoices, ZabbixInterfaceTypeChoices, ZabbixInterfaceUseChoices
+        from nbxsync.models import ZabbixHostInterface
+
+        tag_if = ZabbixHostInterface(
+            zabbixserver=self.server,
+            type=ZabbixHostInterfaceTypeChoices.SNMP,
+            interface_type=ZabbixInterfaceTypeChoices.DEFAULT,
+            useip=ZabbixInterfaceUseChoices.IP,
+            port=161,
+            dns='',
+            assigned_object_type=self.tag_ct,
+            assigned_object_id=self.netbox_tag.pk,
+        )
+        tag_if.full_clean()
+        tag_if.save()
+        self.assertIsNone(tag_if.ip)  # endpoint cleared — resolved per device
+
+        self.device.tags.add(self.netbox_tag)
+        result = get_assigned_zabbixobjects(self.device)
+        matches = [hi for hi in result['hostinterfaces'] if int(hi.type) == ZabbixHostInterfaceTypeChoices.SNMP and int(hi.port) == 161]
+        self.assertEqual(len(matches), 1)
+        self.assertTrue(getattr(matches[0], '_is_inherited_copy', False))
+        self.assertEqual(getattr(matches[0], '_inherited_from', None), 'Tag: critical')
+
+        self.untagged_ifaces = [hi for hi in get_assigned_zabbixobjects(self.untagged)['hostinterfaces'] if int(hi.port) == 161]
+        self.assertEqual(self.untagged_ifaces, [])

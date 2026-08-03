@@ -21,3 +21,5 @@ MAINTENANCE_ASSIGNMENT_OBJECTS = Q(Q(Q(app_label='nbxsync', model='zabbixhostgro
 MAINTENANCE_ASSIGNMENT_TAGS = Q(app_label='nbxsync', model='zabbixtag')
 
 CONFIGGROUP_OBJECTS = Q(app_label='nbxsync', model='zabbixconfigurationgroup')
+
+TAG_OBJECTS = Q(app_label='extras', model='tag')
