@@ -25,6 +25,8 @@ class ZabbixTemplateRuleSerializer(NetBoxModelSerializer):
             'name',
             'description',
             'pattern',
+            'role_pattern',
+            'require_tags',
             'zabbixtemplate',
             'zabbixhostgroup',
             'zabbixtag',

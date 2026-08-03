@@ -45,6 +45,8 @@ class ZabbixTemplateRuleForm(NetBoxModelForm):
             'name',
             'description',
             'pattern',
+            'role_pattern',
+            'require_tags',
             'zabbixtemplate',
             'zabbixhostgroup',
             'zabbixtag',
