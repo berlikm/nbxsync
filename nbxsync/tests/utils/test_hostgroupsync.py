@@ -180,6 +180,7 @@ class HostGroupSyncRenameTests(TestCase):
         cls.assignment = ZabbixHostgroupAssignment.objects.create(zabbixhostgroup=cls.hostgroup, assigned_object_type=cls.device_ct, assigned_object_id=cls.device.id)
 
     def test_static_rename_updates_in_place_keeping_groupid(self):
+        self.hostgroup.value = 'Renamed Static Group'
         self.hostgroup.name = 'Renamed Static Group'
         self.hostgroup.save()
         sync = HostGroupSync(api=MagicMock(), netbox_obj=self.assignment)
