@@ -51,15 +51,15 @@ class HostInterfaceSync(ZabbixSyncBase):
             ipaddr = IPAddress.objects.get(id=self.obj.ip_id).address.ip
         elif self.obj.use_oob_ip:
             instance = self.context.get('_instance')
-            oob_ip = getattr(instance, 'oob_ip', None) if instance else None
-            if oob_ip:
-                ipaddr = oob_ip.address.ip
+            oob_ip_id = getattr(instance, 'oob_ip_id', None) if instance else None
+            if oob_ip_id:
+                ipaddr = IPAddress.objects.get(id=oob_ip_id).address.ip
         else:
             instance = self.context.get('_instance')
             if instance:
-                primary_ip = getattr(instance, 'primary_ip4', None) or getattr(instance, 'primary_ip6', None)
-                if primary_ip:
-                    ipaddr = primary_ip.address.ip
+                primary_id = getattr(instance, 'primary_ip4_id', None) or getattr(instance, 'primary_ip6_id', None)
+                if primary_id:
+                    ipaddr = IPAddress.objects.get(id=primary_id).address.ip
         return 'ip', str(ipaddr) if ipaddr else ''
 
     def _canonical_interface(self, matches):
@@ -107,21 +107,26 @@ class HostInterfaceSync(ZabbixSyncBase):
             # Resolve from the device's oob_ip field (canonical NetBox OOB IP).
             # use_oob_ip never falls back to the primary IP: the OOB interface
             # would otherwise silently monitor the wrong address.
+            # Always refetch by id — the in-memory GFK/related object can expose
+            # address as a raw string before refresh (same pattern as ip_id above).
             instance = self.context.get('_instance')
-            if instance:
-                oob_ip = getattr(instance, 'oob_ip', None)
-                if oob_ip:
-                    ipaddr = oob_ip.address.ip
-                else:
-                    # No OOB IP on this device — skip interface creation.
-                    return {}
+            oob_ip_id = getattr(instance, 'oob_ip_id', None) if instance else None
+            if oob_ip_id:
+                ipaddr = IPAddress.objects.get(id=oob_ip_id).address.ip
+            else:
+                # No OOB IP on this device — skip interface creation.
+                return {}
         elif self.context.get('_instance'):
             # If the interface is inherited (e.g. from SiteGroup or Role)
             # and has no IP assigned, fall back to the device's primary IP
             instance = self.context.get('_instance')
             primary_ip = getattr(instance, 'primary_ip4', None) or getattr(instance, 'primary_ip6', None)
             if primary_ip:
-                ipaddr = primary_ip.address.ip
+                primary_id = getattr(primary_ip, 'pk', None) or getattr(instance, 'primary_ip4_id', None) or getattr(instance, 'primary_ip6_id', None)
+                if primary_id:
+                    ipaddr = IPAddress.objects.get(id=primary_id).address.ip
+                else:
+                    ipaddr = primary_ip.address.ip
 
         dns_name, _ = self.obj.render_dns()
         result = {
