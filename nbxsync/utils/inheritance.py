@@ -131,49 +131,53 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
     merged_tags = merge(direct_tags, inherited['tags'], 'id')
     resolved_tag_ids = {obj.zabbixtag_id for obj in merged_tags}
     platform = getattr(instance, 'platform', None)
-    if platform:
-        rules_qs = ZabbixTemplateRule.objects.filter(enabled=True).select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag')
-        if zabbixserver:
-            rules_qs = rules_qs.filter(zabbixtemplate__zabbixserver=zabbixserver)
-        for rule in rules_qs.order_by('priority', 'name'):
-            if not rule.matches(platform.name):
-                continue
-            inherited_from = f'Regex: {rule.name}'
-            if rule.zabbixtemplate_id and rule.zabbixtemplate_id not in resolved_template_ids:
-                # Create an unsaved ZabbixTemplateAssignment wrapper so downstream
-                # code (table rendering, sync) sees the same interface as real assignments.
-                wrapper = ZabbixTemplateAssignment(
-                    zabbixtemplate=rule.zabbixtemplate,
-                    assigned_object_type=content_type,
-                    assigned_object_id=instance.id,
-                )
-                wrapper.pk = None
-                wrapper._is_inherited_copy = True
-                wrapper._inherited_from = inherited_from
-                merged_templates.append(wrapper)
-                resolved_template_ids.add(rule.zabbixtemplate_id)
-            if rule.zabbixhostgroup_id and rule.zabbixhostgroup_id not in resolved_hostgroup_ids:
-                wrapper = ZabbixHostgroupAssignment(
-                    zabbixhostgroup=rule.zabbixhostgroup,
-                    assigned_object_type=content_type,
-                    assigned_object_id=instance.id,
-                )
-                wrapper.pk = None
-                wrapper._is_inherited_copy = True
-                wrapper._inherited_from = inherited_from
-                merged_hostgroups.append(wrapper)
-                resolved_hostgroup_ids.add(rule.zabbixhostgroup_id)
-            if rule.zabbixtag_id and rule.zabbixtag_id not in resolved_tag_ids:
-                wrapper = ZabbixTagAssignment(
-                    zabbixtag=rule.zabbixtag,
-                    assigned_object_type=content_type,
-                    assigned_object_id=instance.id,
-                )
-                wrapper.pk = None
-                wrapper._is_inherited_copy = True
-                wrapper._inherited_from = inherited_from
-                merged_tags.append(wrapper)
-                resolved_tag_ids.add(rule.zabbixtag_id)
+    role = getattr(instance, 'role', None)
+    try:
+        object_tag_slugs = {tag.slug for tag in instance.tags.all()} if hasattr(instance, 'tags') else set()
+    except Exception:
+        object_tag_slugs = set()
+    rules_qs = ZabbixTemplateRule.objects.filter(enabled=True).select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag')
+    if zabbixserver:
+        rules_qs = rules_qs.filter(zabbixtemplate__zabbixserver=zabbixserver)
+    for rule in rules_qs.order_by('priority', 'name'):
+        if not rule.matches(platform.name if platform else None, role_name=role.name if role else None, netbox_tags=object_tag_slugs):
+            continue
+        inherited_from = f'Regex: {rule.name}'
+        if rule.zabbixtemplate_id and rule.zabbixtemplate_id not in resolved_template_ids:
+            # Create an unsaved ZabbixTemplateAssignment wrapper so downstream
+            # code (table rendering, sync) sees the same interface as real assignments.
+            wrapper = ZabbixTemplateAssignment(
+                zabbixtemplate=rule.zabbixtemplate,
+                assigned_object_type=content_type,
+                assigned_object_id=instance.id,
+            )
+            wrapper.pk = None
+            wrapper._is_inherited_copy = True
+            wrapper._inherited_from = inherited_from
+            merged_templates.append(wrapper)
+            resolved_template_ids.add(rule.zabbixtemplate_id)
+        if rule.zabbixhostgroup_id and rule.zabbixhostgroup_id not in resolved_hostgroup_ids:
+            wrapper = ZabbixHostgroupAssignment(
+                zabbixhostgroup=rule.zabbixhostgroup,
+                assigned_object_type=content_type,
+                assigned_object_id=instance.id,
+            )
+            wrapper.pk = None
+            wrapper._is_inherited_copy = True
+            wrapper._inherited_from = inherited_from
+            merged_hostgroups.append(wrapper)
+            resolved_hostgroup_ids.add(rule.zabbixhostgroup_id)
+        if rule.zabbixtag_id and rule.zabbixtag_id not in resolved_tag_ids:
+            wrapper = ZabbixTagAssignment(
+                zabbixtag=rule.zabbixtag,
+                assigned_object_type=content_type,
+                assigned_object_id=instance.id,
+            )
+            wrapper.pk = None
+            wrapper._is_inherited_copy = True
+            wrapper._inherited_from = inherited_from
+            merged_tags.append(wrapper)
+            resolved_tag_ids.add(rule.zabbixtag_id)
 
     return {
         'templates': merged_templates,
