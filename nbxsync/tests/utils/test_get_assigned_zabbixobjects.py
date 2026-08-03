@@ -150,3 +150,51 @@ class GetAssignedZabbixObjectsTestCase(TestCase):
         self.assertEqual(result['server_assignments'], [])
         self.assertIsNone(result['hostinventory'])
         self.assertIsNone(result['configurationgroup'])
+
+
+class TagAssignmentTargetTestCase(TestCase):
+    """NetBox Tags are assignment targets: an object carrying the tag inherits
+    the assignment at object level; removing the tag removes the membership."""
+
+    def setUp(self):
+        from virtualization.models import VirtualMachine
+
+        from extras.models import Tag as NetBoxTag
+
+        self.server = ZabbixServer.objects.create(name='TagTarget Zabbix', url='http://zabbix.local', token='abc123', validate_certs=True)
+        self.other_server = ZabbixServer.objects.create(name='Other Zabbix', url='http://zabbix2.local', token='def456', validate_certs=True)
+        self.hostgroup = ZabbixHostgroup.objects.create(name='Priority/Critical', value='Priority/Critical', zabbixserver=self.server)
+        self.netbox_tag = NetBoxTag.objects.create(name='critical', slug='critical')
+        self.tag_ct = ContentType.objects.get_for_model(NetBoxTag)
+        self.assignment = ZabbixHostgroupAssignment.objects.create(zabbixhostgroup=self.hostgroup, assigned_object_type=self.tag_ct, assigned_object_id=self.netbox_tag.pk)
+        self.device = create_test_device(name='TaggedDev')
+        self.vm = VirtualMachine.objects.create(name='TaggedVM')
+        self.untagged = create_test_device(name='PlainDev')
+
+    def test_tagged_device_inherits_with_tag_label(self):
+        self.device.tags.add(self.netbox_tag)
+        result = get_assigned_zabbixobjects(self.device)
+        groups = result['hostgroups']
+        self.assertIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in groups])
+        match = next(g for g in groups if g.zabbixhostgroup_id == self.hostgroup.pk)
+        self.assertEqual(getattr(match, '_inherited_from', None), 'Tag: critical')
+
+    def test_untagged_device_gets_nothing(self):
+        result = get_assigned_zabbixobjects(self.untagged)
+        self.assertNotIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in result['hostgroups']])
+
+    def test_tag_removed_membership_leaves(self):
+        self.device.tags.add(self.netbox_tag)
+        self.assertIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in get_assigned_zabbixobjects(self.device)['hostgroups']])
+        self.device.tags.remove(self.netbox_tag)
+        self.assertNotIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in get_assigned_zabbixobjects(self.device)['hostgroups']])
+
+    def test_tagged_vm_inherits(self):
+        self.vm.tags.add(self.netbox_tag)
+        result = get_assigned_zabbixobjects(self.vm)
+        self.assertIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in result['hostgroups']])
+
+    def test_server_scoping_filters_tag_targeted_hostgroups(self):
+        self.device.tags.add(self.netbox_tag)
+        result = get_assigned_zabbixobjects(self.device, zabbixserver=self.other_server)
+        self.assertNotIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in result['hostgroups']])

@@ -10,6 +10,7 @@ ASSIGNMENT_MODELS = Q(
     | Q(app_label='dcim', model='devicerole')
     | Q(app_label='dcim', model='devicetype')
     | Q(app_label='dcim', model='platform')
+    | Q(app_label='extras', model='tag')
     | Q(app_label='virtualization', model='virtualmachine')
     | Q(app_label='virtualization', model='cluster')
     | Q(app_label='virtualization', model='clustertype')

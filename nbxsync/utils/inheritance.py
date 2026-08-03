@@ -7,6 +7,7 @@ from django.db.models.manager import BaseManager
 from virtualization.models import VirtualMachine
 
 from dcim.models import DeviceRole, Region, SiteGroup
+from extras.models import Tag
 
 from nbxsync.constants import PATH_LABELS
 from nbxsync.models import ZabbixConfigurationGroupAssignment, ZabbixHostgroupAssignment, ZabbixHostInterface, ZabbixHostInventory, ZabbixMacroAssignment, ZabbixServerAssignment, ZabbixTagAssignment, ZabbixTemplateAssignment, ZabbixTemplateRule
@@ -331,6 +332,25 @@ def resolve_inherited_zabbix_assignments(assigned_object, zabbixserver=None):  #
     # dedup preserves the original "first path an object is seen on wins" semantics.
     triples = []
     seen_objects = set()
+
+    # Tag-targeted assignments resolve at object level: an object inherits every
+    # assignment pointed at a NetBox Tag it carries. Collected before the
+    # hierarchy chain so an attribute-level source beats a distant hierarchy
+    # source on first-seen dedup. Guarded: only taggable models enter, and the
+    # tagging manager is never allowed to abort resolution.
+    if hasattr(assigned_object, 'tags'):
+        tag_ct = ContentType.objects.get_for_model(Tag, for_concrete_model=False)
+        try:
+            object_tags = list(assigned_object.tags.all())
+        except Exception:
+            object_tags = []
+        for tag in object_tags:
+            object_key = (tag_ct.pk, tag.pk)
+            if object_key in seen_objects:
+                continue
+            seen_objects.add(object_key)
+            triples.append((tag_ct, tag.pk, f'Tag: {tag.name}'))
+
     for path in pluginsettings.inheritance_chain:
         # 'device'-prefixed paths describe the *associated physical device*
         # (the VDC's parent, or — since NetBox 4.3 — a VM's hosting device).
