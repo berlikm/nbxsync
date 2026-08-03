@@ -12,8 +12,8 @@ from nbxsync.choices.syncsot import SyncSOT
 from nbxsync.choices.zabbixstatus import ZabbixHostStatus
 from nbxsync.models import ZabbixHostInterface, ZabbixMaintenance, ZabbixMaintenanceObjectAssignment, ZabbixMaintenancePeriod
 from nbxsync.utils.host_binding import backfill_or_resolve_conflict, delete_host_binding, delete_host_binding_by_id, get_host_binding, set_host_binding
-from nbxsync.utils.sync.hostinterfacesync import HostInterfaceSync
 from nbxsync.utils.sync.hostgroupsync import ensure_parent_hostgroups
+from nbxsync.utils.sync.hostinterfacesync import HostInterfaceSync
 
 logger = logging.getLogger(__name__)
 
