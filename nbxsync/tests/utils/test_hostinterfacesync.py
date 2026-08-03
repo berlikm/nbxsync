@@ -239,9 +239,11 @@ class HostInterfaceConvergenceTests(TestCase):
         self.assertEqual([f['interfaceid'] for f in found], ['10'])
         api.hostinterface.delete.assert_not_called()
 
-    def test_identical_duplicates_converge_main_wins_extra_deleted(self):
+    def test_identical_duplicates_converge_main_oldest_wins_extra_deleted(self):
         api = MagicMock()
-        api.hostinterface.get.return_value = [self._remote(20, main='0'), self._remote(10)]
+        # Two fully identical remote rows (same tuple incl. main=1, same endpoint) —
+        # real duplicates: converge on the oldest (lowest interfaceid), delete the rest.
+        api.hostinterface.get.return_value = [self._remote(20), self._remote(10)]
         found = self._sync(api).find_by_name()
         self.assertEqual(found, [self._remote(10)])
         api.hostinterface.delete.assert_called_once_with([20])
@@ -249,9 +251,9 @@ class HostInterfaceConvergenceTests(TestCase):
     def test_distinct_endpoints_are_kept_chosen_deterministically(self):
         api = MagicMock()
         # in-band 10.9.9.8 vs our 10.9.9.9: same tuple, different endpoint
-        api.hostinterface.get.return_value = [self._remote(30, ip='10.9.9.8', main='0'), self._remote(25, ip='10.9.9.8')]
+        api.hostinterface.get.return_value = [self._remote(30, ip='10.9.9.8'), self._remote(25, ip='10.9.9.8')]
         found = self._sync(api).find_by_name()
-        # no exact endpoint match -> adopt deterministic pick (main interface)
+        # no exact endpoint match -> adopt deterministic pick (lowest interfaceid)
         self.assertEqual(found, [self._remote(25, ip='10.9.9.8')])
         api.hostinterface.delete.assert_not_called()
 
