@@ -6,6 +6,7 @@
 
 - Added `exclude_tag` configuration setting to exclude hosts from Zabbix sync entirely via a ZabbixTag assigned to any object in the inheritance chain (`ZabbixTag.tag` name match)
 - Added Site/SiteGroup/Region inheritance paths (appended after role/platform so upgrades do not change Role/Platform precedence); cluster site uses `cluster._site` (NetBox ≥4.2)
+- Added NetBox Tag as an assignment target: any assignment can be pointed at a Tag; tagged Devices/VMs/VDCs inherit it at object level with automatic add/remove lifecycle (`Tag: <name>` shown as source)
 
 ### Improvements
 

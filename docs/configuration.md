@@ -111,6 +111,15 @@ Hierarchy paths are **appended after** device/role/platform/manufacturer/cluster
 
 For example, assigning a `ZabbixServerAssignment` (proxy) to a `SiteGroup` means every device at every site in that SiteGroup inherits the proxy — no per-device assignment needed.
 
+### Tag-based assignments
+
+NetBox **Tags** are assignment targets: any assignment type (hostgroup, template, tag, macro, server, inventory, configuration group) can be pointed at a Tag instead of a hierarchy object. Every Device, VDC, or VirtualMachine carrying that tag then inherits the assignment at object level — attribute sources win over hierarchy sources on first-seen dedup, and only explicit direct assignments outrank them.
+
+The lifecycle is fully automatic: tagging an object adds the membership on its next sync; removing the tag removes it. This replaces per-object assignment bookkeeping for tag-driven classes (e.g. a `Priority/Critical` hostgroup assigned once to the `critical` tag).
+
+Example: assign hostgroup `Priority/Critical` to tag `critical` — tag a core switch and it joins on the next sync; untag and it leaves. The preview tables show the source as `Tag: critical`.
+
+
 ## Configuration values
 
 ### Source of Truth
