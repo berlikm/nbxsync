@@ -84,8 +84,9 @@ class SyncHostJob:
             for assignment in zabbixserver_assignments:
                 if assignment.sync_enabled and assignment.zabbixserver.sync_enabled:
                     assignment = self._prepare_assignment(assignment)
-                    if self._deletion_blocked(f'exclusion tag "{pluginsettings.exclude_tag}"', assignment.zabbixserver, assignment.hostid):
-                        continue
+                    # Exclusion is an explicit operator decision, so it deletes
+                    # unconditionally — unlike lost server assignments, which are
+                    # gated on allow_inherited_deletion (see _retire_unassigned_bindings).
                     self.delete_host(assignment)
             self._retire_unassigned_bindings(assigned_server_ids)
             logger.info('Skipping sync for %s (excluded)', self.instance)

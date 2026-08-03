@@ -270,7 +270,7 @@ You can use these fields to map the connection between NetBox and the Zabbix hos
 
 ### exclude_tag
 
-When set to a non-empty string (e.g. `'do_not_monitor'`), any `ZabbixTagAssignment` with a tag matching this name — whether assigned directly on a Device/VM or inherited from a Role, Platform, Site, SiteGroup, Region, Manufacturer, or Configuration Group — causes the host to be excluded from Zabbix sync entirely. No Zabbix host is created, and an already synced host is removed from Zabbix only when `allow_inherited_deletion` is enabled (see below).
+When set to a non-empty string (e.g. `'do_not_monitor'`), any `ZabbixTagAssignment` with a tag matching this name — whether assigned directly on a Device/VM or inherited from a Role, Platform, Site, SiteGroup, Region, Manufacturer, or Configuration Group — causes the host to be excluded from Zabbix sync entirely. No Zabbix host is created, and an already synced host is removed from Zabbix. Exclusion is an explicit operator decision, so — like a `statusmapping` entry that maps to `deleted` — it always deletes and is not affected by `allow_inherited_deletion` (see below).
 
 This is useful for excluding device classes that should never be monitored (e.g. desktop PCs, VDI sessions, test lab devices) without removing their Site or Platform assignments.
 
@@ -280,16 +280,16 @@ Defaults to `''` (empty string = feature disabled).
 
 ### allow_inherited_deletion
 
-Controls whether inheritance can delete an existing Zabbix host. Two situations trigger such a deletion: an `exclude_tag` appearing anywhere in the inheritance chain, and a host losing every `ZabbixServerAssignment` (for example because a Site was moved into another SiteGroup). Both can be caused by an edit far away from the device, and deleting a Zabbix host discards its measurement history.
+Controls whether losing every `ZabbixServerAssignment` can delete an existing Zabbix host — for example because a Site was moved into another SiteGroup. Such a deletion can be caused by an edit far away from the device, and deleting a Zabbix host discards its measurement history.
 
 While disabled (the default), nbxsync keeps those hosts and logs each one it would have deleted, with the reason and the Zabbix host ID:
 
 ```
-Not deleting Zabbix host for switch-01 on Zabbix EU (hostid 10842): exclusion tag "do_not_monitor" requires
+Not deleting Zabbix host for switch-01 on Zabbix EU (hostid 10842): no remaining Zabbix server assignment requires
 deletion, but allow_inherited_deletion is disabled. Enable it to let nbxsync remove the host and its history.
 ```
 
-Review those log lines after introducing an exclusion tag or restructuring the site hierarchy, then set the setting to `True` to let nbxsync reconcile. Explicit deletions are unaffected: a `statusmapping` entry that maps to `deleted`, and deleting the Device/VM in NetBox, always remove the Zabbix host.
+Review those log lines after restructuring the site hierarchy, then set the setting to `True` to let nbxsync reconcile. Explicit deletions are unaffected: a `statusmapping` entry that maps to `deleted`, an `exclude_tag` match, and deleting the Device/VM in NetBox always remove the Zabbix host.
 
 Defaults to `False`.
 

@@ -141,10 +141,12 @@ class PluginSettingsModel(BaseModel):
     exclude_tag: str = Field(default='')
 
     # Deleting a host in Zabbix destroys its history, so inheritance-driven
-    # deletions are opt-in. While disabled, nbxsync logs the hosts it would
-    # have deleted (exclusion tags, disappeared assignments) and leaves them
-    # untouched, which lets operators review the impact of a new exclusion tag
-    # or a moved Site before any data is lost.
+    # deletions from lost server assignments are opt-in. While disabled,
+    # nbxsync logs the hosts it would have deleted when their assignment
+    # disappeared and leaves them untouched, which lets operators review the
+    # impact of e.g. a moved Site before any data is lost. Explicit operator
+    # decisions (exclude tags, status mapped to deleted, NetBox deletion)
+    # always delete.
     allow_inherited_deletion: bool = Field(default=False)
 
     # Bind to a pre-existing Zabbix host that carries matching nb_type/nb_id
