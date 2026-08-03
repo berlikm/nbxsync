@@ -1,7 +1,11 @@
+import logging
+
 from ipam.models import IPAddress
-from nbxsync.models import ZabbixServerAssignment
 
 from .syncbase import ZabbixSyncBase
+from nbxsync.models import ZabbixServerAssignment
+
+logger = logging.getLogger(__name__)
 
 
 class HostInterfaceSync(ZabbixSyncBase):
@@ -21,6 +25,10 @@ class HostInterfaceSync(ZabbixSyncBase):
         OOB SNMP). Matching on type alone is ambiguous, so narrow by port,
         connect mode, and main/non-main role. Return an empty list when nothing
         matches so the create path runs instead of updating the wrong interface.
+
+        When several candidates share the whole match tuple, converge
+        deterministically instead of letting the generic 'not exactly one'
+        fallback create yet another copy: see _canonical_interface().
         """
         hostid = self.context.get('hostid', None)
         if not hostid:
@@ -29,7 +37,54 @@ class HostInterfaceSync(ZabbixSyncBase):
         port = str(self.obj.port)
         useip = str(int(self.obj.useip))
         main = str(int(self.obj.interface_type))
-        return [iface for iface in candidates if str(iface.get('port', '')) == port and str(iface.get('useip', '')) == useip and str(iface.get('main', '')) == main]
+        matches = [iface for iface in candidates if str(iface.get('port', '')) == port and str(iface.get('useip', '')) == useip and str(iface.get('main', '')) == main]
+        if len(matches) <= 1:
+            return matches
+        return [self._canonical_interface(matches)]
+
+    def _desired_endpoint(self):
+        """Return ('ip'|'dns', value) the synced interface should monitor."""
+        if int(self.obj.useip) == 0:  # DNS
+            return 'dns', self.obj.dns or ''
+        ipaddr = ''
+        if self.obj.ip_id:
+            ipaddr = self.obj.ip.address.ip
+        elif self.obj.use_oob_ip:
+            instance = self.context.get('_instance')
+            oob_ip = getattr(instance, 'oob_ip', None) if instance else None
+            if oob_ip:
+                ipaddr = oob_ip.address.ip
+        else:
+            instance = self.context.get('_instance')
+            if instance:
+                primary_ip = getattr(instance, 'primary_ip4', None) or getattr(instance, 'primary_ip6', None)
+                if primary_ip:
+                    ipaddr = primary_ip.address.ip
+        return 'ip', str(ipaddr) if ipaddr else ''
+
+    def _canonical_interface(self, matches):
+        """Pick the single remote interface identical to this NetBox interface.
+
+        Zabbix legitimately holds several interfaces sharing type/port/useip/main
+        with *different endpoints* (in-band vs OOB) — those are distinct objects
+        and must be kept. Only fully identical rows (same endpoint too) are true
+        duplicates. Among them the canonical one is deterministic: the main
+        interface first, then the lowest interfaceid (oldest = most likely the
+        original). Anything beyond it is deleted so the next sync does not widen
+        the split again; when nothing matches the desired endpoint exactly, the
+        deterministic pick is returned so the generic update path aligns its
+        endpoint to NetBox instead of creating another copy.
+        """
+        endpoint_field, endpoint_value = self._desired_endpoint()
+        exact = [i for i in matches if endpoint_value and str(i.get(endpoint_field, '')) == endpoint_value]
+        pool = exact or matches
+        mains = [i for i in pool if str(i.get('main')) == '1'] or pool
+        chosen = min(mains, key=lambda i: int(i['interfaceid']))
+        extras = [i for i in exact if int(i['interfaceid']) != int(chosen['interfaceid'])]
+        if extras:
+            self.api_object().delete([int(i['interfaceid']) for i in extras])
+            logger.warning('Deleted %d duplicate host interface(s) for hostid=%s (type=%s port=%s endpoint=%s)', len(extras), self.context.get('hostid'), self.obj.type, self.obj.port, endpoint_value)
+        return chosen
 
     def get_create_params(self):
         hostid = self.context.get('hostid', None)

@@ -210,3 +210,54 @@ class HostInterfaceSyncTests(TestCase):
         args, kwargs = self.hostinterface.update_sync_info.call_args
         assert kwargs.get('success') is False
         assert 'invalid literal' in kwargs.get('message')  # message from ValueError
+
+
+class HostInterfaceConvergenceTests(TestCase):
+    """find_by_name must converge to exactly one remote interface per NetBox
+    identity: identical rows are duplicates (adopt canonical, delete extras);
+    same-tuple rows with different endpoints are legitimate and kept."""
+
+    def setUp(self):
+        self.zabbixserver = ZabbixServer.objects.create(name='Conv Server', url='http://example.com', token='dummy-token')
+        self.device = create_test_device(name='Convergence Dev')
+        self.device_ct = ContentType.objects.get_for_model(Device)
+        self.ip = IPAddress.objects.create(address='10.9.9.9/32')
+        self.iface = ZabbixHostInterface.objects.create(zabbixserver=self.zabbixserver, type=ZabbixHostInterfaceTypeChoices.SNMP, interface_type=ZabbixInterfaceTypeChoices.DEFAULT, useip=ZabbixInterfaceUseChoices.IP, dns='', ip=self.ip, port=161, assigned_object_type=self.device_ct, assigned_object_id=self.device.id)
+
+    def _remote(self, interfaceid, ip='10.9.9.9', main='1'):
+        return {'interfaceid': str(interfaceid), 'type': '2', 'port': '161', 'useip': '1', 'main': main, 'ip': ip, 'dns': ''}
+
+    def _sync(self, api):
+        sync = HostInterfaceSync(api=api, netbox_obj=self.iface)
+        sync.context = {'hostid': 777, '_instance': self.device}
+        return sync
+
+    def test_unique_match_returned_untouched(self):
+        api = MagicMock()
+        api.hostinterface.get.return_value = [self._remote(10)]
+        found = self._sync(api).find_by_name()
+        self.assertEqual([f['interfaceid'] for f in found], ['10'])
+        api.hostinterface.delete.assert_not_called()
+
+    def test_identical_duplicates_converge_main_wins_extra_deleted(self):
+        api = MagicMock()
+        api.hostinterface.get.return_value = [self._remote(20, main='0'), self._remote(10)]
+        found = self._sync(api).find_by_name()
+        self.assertEqual(found, [self._remote(10)])
+        api.hostinterface.delete.assert_called_once_with([20])
+
+    def test_distinct_endpoints_are_kept_chosen_deterministically(self):
+        api = MagicMock()
+        # in-band 10.9.9.8 vs our 10.9.9.9: same tuple, different endpoint
+        api.hostinterface.get.return_value = [self._remote(30, ip='10.9.9.8', main='0'), self._remote(25, ip='10.9.9.8')]
+        found = self._sync(api).find_by_name()
+        # no exact endpoint match -> adopt deterministic pick (main interface)
+        self.assertEqual(found, [self._remote(25, ip='10.9.9.8')])
+        api.hostinterface.delete.assert_not_called()
+
+    def test_no_match_returns_empty_for_create_path(self):
+        api = MagicMock()
+        api.hostinterface.get.return_value = [self._remote(40, ip='192.0.2.5')]
+        api.hostinterface.get.return_value = []
+        self.assertEqual(self._sync(api).find_by_name(), [])
+        api.hostinterface.delete.assert_not_called()
