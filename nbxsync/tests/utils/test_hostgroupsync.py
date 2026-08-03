@@ -166,3 +166,21 @@ class HostGroupSyncNestedTests(TestCase):
         # No parents were probed/created for the malformed name
         api.hostgroup.get.assert_not_called()
         self.assertEqual(api.hostgroup.create.call_count, 1)
+
+
+class HostGroupSyncRenameTests(TestCase):
+    """Renames must flow through hostgroup.update with the stored groupid."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.device_ct = ContentType.objects.get_for_model(Device)
+        cls.device = create_test_device(name='Rename TestDev')
+        cls.zabbixserver = ZabbixServer.objects.create(name='Zabbix Rename', url='http://zabbix-rename.local', token='abc123', validate_certs=True)
+        cls.hostgroup = ZabbixHostgroup.objects.create(name='Static Group', groupid=123, zabbixserver=cls.zabbixserver, value='Static Group')
+        cls.assignment = ZabbixHostgroupAssignment.objects.create(zabbixhostgroup=cls.hostgroup, assigned_object_type=cls.device_ct, assigned_object_id=cls.device.id)
+
+    def test_static_rename_updates_in_place_keeping_groupid(self):
+        self.hostgroup.name = 'Renamed Static Group'
+        self.hostgroup.save()
+        sync = HostGroupSync(api=MagicMock(), netbox_obj=self.assignment)
+        self.assertEqual(sync.get_update_params(), {'name': 'Renamed Static Group', 'groupid': 123})
