@@ -32,7 +32,7 @@ We keep country Site Groups as the control plane. Proxy, Zabbix server assignmen
 
 ## Manufacturers vs Device types (templates)
 
-Templates should sit at the most specific level that is still generally true—not on every individual device by default, and not on Manufacturer when the template is only true for some models.
+Templates should sit at the most specific level that is still generally true. We automate at the highest safe level, then overwrite where a class of device needs something different—not by listing every server by hand.
 
 | Level | When we use it | Example |
 |---|---|---|
@@ -107,15 +107,43 @@ That keeps one clear transport profile per host and avoids two nearly identical 
 
 ---
 
-## Hostgroups (continents, database groups, nesting)
+## Hostgroups (continents, database groups, nesting, dashboards)
 
-We already use nested hostgroups: `Sites/<country>/<site>`, `Roles/<role>`, `OS/<family>`, `Priority/Critical`. Filtering and permissions on parent `Sites/CH` work with Zabbix’s “apply to subgroups” without putting every host into a flat country group.
+We use nested Zabbix hostgroups: location (`Sites/…`), function (`Roles/…`), OS (`OS/…`), and optionally `Priority/Critical`. A device is already in several groups at once; it is not limited to one.
+
+**Dashboards do not need the host to be a direct member of every level.**  
+Zabbix nesting means a dashboard (or permission) on a **parent** group includes nested children. Hosts stay in the leaf only (for example `Sites/CH-STA/CH-STA-L42`). A country- or campus-level board filters on the parent (`Sites/CH` or `Sites/CH-STA`); you do not also assign the host into flat `CH` and `CH-STA` groups. That dual membership is unnecessary and would fight the nested model.
 
 We are not adding continent hostgroups for now (see Regions above).
 
 For function we use `Roles/…` (for example `Roles/MSSQL`), not a parallel “Teams / Database” tree. If permissions later need a team-shaped group that is not the same as a Device Role, we can add that as an explicit extra axis then.
 
-Multi-group membership is already the design; a device is not limited to one hostgroup.
+### Why `Sites/CH` may be missing from the hierarchy
+
+The Sites template is:
+
+`Sites/{{ object.site.group.name }}/{{ object.site.name }}`
+
+That uses the site’s **immediate** Site Group (`site.group`), not the whole ancestor chain.
+
+In NetBox, many sites hang under a campus Site Group such as **CH-STA**, whose parent is country **CH**. Then the rendered group is:
+
+`Sites/CH-STA/CH-STA-L42`
+
+Parent-first create materializes `Sites` and `Sites/CH-STA`. It does **not** insert `Sites/CH`, because `CH` never appears in the rendered path.
+
+So:
+
+| NetBox site.group | Zabbix path you get | Parent you can dashboard on |
+|---|---|---|
+| Country CH (site directly under CH) | `Sites/CH/<site>` | `Sites/CH` |
+| Campus CH-STA (parent CH) | `Sites/CH-STA/<site>` | `Sites/CH-STA` (not `Sites/CH`) |
+
+That is why CH can be absent from the Sites tree even though CH exists as a Site Group in NetBox and holds proxy / Agent defaults.
+
+**Practical today:** build campus boards on `Sites/CH-STA`, `Sites/CH-NKN`, etc. Those parents exist and nested widgets include the leaf hosts.
+
+**If we need a true country parent `Sites/CH`:** either attach sites directly under the country Site Group, or change the hostgroup template so the path includes Site Group ancestors (country → campus → site). We can do that when country-level boards are required; until then campus-level parents are enough and match the data model we actually have.
 
 ---
 
@@ -139,6 +167,7 @@ Permission design stays in Zabbix: user groups get rights on parent hostgroups s
 | Template Rules | Keep; multi-group already in place |
 | Tags | Lean; do not mirror hostgroup names |
 | SNMP Linux/Windows | VM by SNMP + tag-gated Template Rules |
-| Nested groups / Zabbix permissions | Yes — finish in Zabbix user groups |
+| Nested groups / Zabbix permissions | Yes — dashboard/ACL on parent; hosts stay in leaf |
+| Why no `Sites/CH` sometimes | Template uses immediate `site.group` (e.g. CH-STA), not country ancestor |
 
 Country Site Group decides default transport and proxy; role decides transport exceptions; platform / manufacturer / device type decide templates at the right level; tags only add overlays.

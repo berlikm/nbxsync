@@ -404,7 +404,7 @@ Path: **Zabbix → Hostgroups → Add**, then assignments on each hostgroup or f
 |---|---|---|
 | Sites | `Sites/{{ object.site.group.name }}/{{ object.site.name }}` | Site Groups CH, HU, JP, KR, NL, US, CN |
 
-At sync time this renders against the device or VM (example: `Sites/CH-STA/CH-STA-L26`). A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
+At sync time this renders against the device or VM. The middle segment is the site’s **immediate** Site Group name. If the site hangs under campus group `CH-STA` (parent country `CH`), the path is `Sites/CH-STA/CH-STA-L26` — parents `Sites` and `Sites/CH-STA` are created; `Sites/CH` is not, because `CH` is not in the path. Dashboard on `Sites/CH-STA` (or on `Sites/CH` when sites sit directly under CH). Hosts stay in the leaf only; nested widgets still see them under the parent. A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
 
 ### 8.2 Roles
 
