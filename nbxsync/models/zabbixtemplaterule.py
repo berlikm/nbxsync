@@ -31,14 +31,14 @@ def _compiled_pattern(pattern):
 class ZabbixTemplateRule(NetBoxModel):
     name = models.CharField(max_length=100, blank=False)
     description = models.CharField(max_length=200, blank=True)
-    pattern = models.CharField(max_length=500, blank=False, help_text='Regex pattern matched against Platform name (case-insensitive substring search). Use .* as a catch-all when matching on role/tags instead.')
+    pattern = models.CharField(max_length=500, blank=False, help_text='Case-insensitive regex matched with re.search against the Platform name (not anchored). Use .* as a catch-all when matching on role/tags instead.')
     role_pattern = models.CharField(max_length=500, blank=True, help_text='Optional regex matched against the Device/VM role name (case-insensitive). Empty = any role.')
     require_tags = models.CharField(max_length=200, blank=True, help_text='Optional comma-separated NetBox tag slugs the object must carry (all of them). Empty = tag-independent.')
     zabbixtemplate = models.ForeignKey(to='nbxsync.ZabbixTemplate', on_delete=models.PROTECT, related_name='zabbixtemplaterules')
     zabbixhostgroup = models.ForeignKey(to='nbxsync.ZabbixHostgroup', on_delete=models.SET_NULL, related_name='zabbixtemplaterules', blank=True, null=True, help_text='Optional hostgroup assigned when the rule matches')
     zabbixtag = models.ForeignKey(to='nbxsync.ZabbixTag', on_delete=models.SET_NULL, related_name='zabbixtemplaterules', blank=True, null=True, help_text='Optional tag assigned when the rule matches')
     enabled = models.BooleanField(default=True)
-    priority = models.IntegerField(default=100, help_text='Lower value = higher priority')
+    priority = models.IntegerField(default=100, help_text='Evaluation order only (lower runs first). Every matching rule still contributes; a higher-priority rule does not suppress a different template from a lower-priority rule.')
 
     class Meta:
         verbose_name = 'Zabbix Template Rule'
