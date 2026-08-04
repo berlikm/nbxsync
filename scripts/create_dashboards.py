@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 """Create Zabbix country/role/OS dashboards from nested hostgroup parents.
 
-Uses raw HTTP requests (not zabbix_utils) because that library stringifies
-widget field values — Zabbix 7.0 requires numeric values for type=2
-(HOST_GROUP) fields.
+Uses raw HTTP (not zabbix_utils) so widget field ``value`` stays numeric —
+Zabbix 7.0 type=2 (HOST_GROUP) fields require integers.
+
+Widget field names follow Zabbix 7.0 docs (``groupids.N``, not
+``groupids.N.hostgroupid``). Host Navigator also requires a unique
+5-character ``reference`` field.
+
+Usage::
+
+    export NBX_ZABBIX_TOKEN=...   # or use ZabbixServer.token from NetBox
+    python scripts/create_dashboards.py
+    python scripts/create_dashboards.py --countries-only
+    python scripts/create_dashboards.py --dry-run
 """
 from __future__ import annotations
 
@@ -54,10 +64,10 @@ OS_LAYOUT = [
     ('hostnavigator', 'Host Navigator', 0, 5, 24, 5),
 ]
 
-# Zabbix 7.0 widget field types
-# 0=integer, 1=string, 2=host_group, 3=host, 4=item, ...
-HG_TYPE = 2
+# Zabbix 7.0 dashboard widget field types
+HG_TYPE = 2  # host group
 INT_TYPE = 0
+STR_TYPE = 1
 
 
 class RawZabbixAPI:
@@ -100,23 +110,38 @@ class RawZabbixAPI:
         return self._call('dashboard.delete', ids)
 
 
-def _build_widgets(layout, groupids):
-    """Build widget payload. Integers stay integers (not stringified)."""
+def _ref(prefix: str, index: int) -> str:
+    """Unique 5-char widget reference (required by several Zabbix 7 widgets)."""
+    # A-Z0-9 only, exactly 5 chars, unique within the dashboard.
+    alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    base = (abs(hash(prefix)) + index * 17) % (len(alphabet) ** 5)
+    chars = []
+    for _ in range(5):
+        chars.append(alphabet[base % len(alphabet)])
+        base //= len(alphabet)
+    return ''.join(chars)
+
+
+def _groupid_fields(groupids: list[int]) -> list[dict]:
+    """Zabbix 7 docs: Host groups → type 2, name groupids.N, value = id."""
+    return [
+        {'type': HG_TYPE, 'name': f'groupids.{j}', 'value': int(gid)}
+        for j, gid in enumerate(groupids)
+    ]
+
+
+def _build_widgets(layout, groupids, dash_key: str) -> list[dict]:
+    """Build widget payload with docs-correct field names and integer values."""
     widgets = []
-    for wtype, wname, x, y, w, h in layout:
+    for i, (wtype, wname, x, y, w, h) in enumerate(layout):
+        fields = _groupid_fields(groupids)
+        # Most filter widgets require a unique 5-char reference in Zabbix 7.
+        fields.append({'type': STR_TYPE, 'name': 'reference', 'value': _ref(dash_key + wtype, i)})
         if wtype == 'hostnavigator':
-            fields = []
-            for j, gid in enumerate(groupids):
-                fields.append({'type': HG_TYPE, 'name': f'groupids.{j}.hostgroupid', 'value': int(gid)})
+            # status: -1 = Any; maintenance: 0 = hide maintenance hosts (docs default)
             fields.append({'type': INT_TYPE, 'name': 'status', 'value': -1})
-            fields.append({'type': INT_TYPE, 'name': 'maintenance', 'value': -1})
-        else:
-            if len(groupids) == 1:
-                fields = [{'type': HG_TYPE, 'name': 'hostgroupid', 'value': int(groupids[0])}]
-            else:
-                fields = []
-                for j, gid in enumerate(groupids):
-                    fields.append({'type': HG_TYPE, 'name': f'hostgroupids.{j}.reference', 'value': int(gid)})
+            fields.append({'type': INT_TYPE, 'name': 'maintenance', 'value': 0})
+            fields.append({'type': INT_TYPE, 'name': 'show_problems', 'value': 1})
         widgets.append({
             'type': wtype,
             'name': wname,
@@ -124,7 +149,7 @@ def _build_widgets(layout, groupids):
             'y': y,
             'width': w,
             'height': h,
-            'view_mode': '0',
+            'view_mode': 0,
             'fields': fields,
         })
     return widgets
@@ -138,7 +163,7 @@ def create_dashboard(api, name, groupids, layout, *, dry_run=False):
     if dry_run:
         logger.info('  DRY-RUN: would create %r (%d groups)', name, len(groupids))
         return True
-    widgets = _build_widgets(layout, groupids)
+    widgets = _build_widgets(layout, groupids, dash_key=name)
     try:
         api.dashboard_create(
             name=name,
@@ -155,6 +180,10 @@ def create_dashboard(api, name, groupids, layout, *, dry_run=False):
 
 
 def _find_country_groups(api, country_code):
+    """Prefer parent ``Sites/CH`` (nested UI expands children); else Sites/CH-* leaves."""
+    parent = _find_single_group(api, f'Sites/{country_code}')
+    if parent:
+        return [parent]
     prefix = f'Sites/{country_code}-'
     groups = api.hostgroup_get(search={'name': prefix}, output=['groupid', 'name'], sortfield='name')
     top_level = []
@@ -170,24 +199,24 @@ def _find_single_group(api, name):
     return found[0]['groupid'] if found else None
 
 
-def run(*, countries_only=False, dry_run=False, lab=False):
+def run(*, countries_only=False, dry_run=False, recreate=False):
     server = ZabbixServer.objects.first()
     if server is None:
         logger.error('No ZabbixServer found in NetBox')
         return 1
 
     logger.info('=' * 60)
-    logger.info('Zabbix Dashboard Creation (raw API — preserves int types)')
+    logger.info('Zabbix Dashboard Creation (Zabbix 7 groupids.N + reference)')
     logger.info('=' * 60)
 
-    # Delete old custom dashboards first
-    stock = {'Global view', 'Zabbix server health', 'Zabbix server'}
     api = RawZabbixAPI(server.url, server.token)
-    all_dashes = api.dashboard_get(output=['dashboardid', 'name'])
-    custom = [d for d in all_dashes if d['name'] not in stock]
-    if custom:
-        api.dashboard_delete([d['dashboardid'] for d in custom])
-        logger.info('Deleted %d old custom dashboards', len(custom))
+    if recreate:
+        stock = {'Global view', 'Zabbix server health', 'Zabbix server'}
+        all_dashes = api.dashboard_get(output=['dashboardid', 'name'])
+        custom = [d for d in all_dashes if d['name'] not in stock]
+        if custom:
+            api.dashboard_delete([d['dashboardid'] for d in custom])
+            logger.info('Deleted %d old custom dashboards (--recreate)', len(custom))
 
     created = 0
     logger.info('Country dashboards:')
@@ -195,7 +224,7 @@ def run(*, countries_only=False, dry_run=False, lab=False):
         code = slug.upper()
         groupids = _find_country_groups(api, code)
         if not groupids:
-            logger.warning('  SKIP: no Sites/%s-* hostgroups found', code)
+            logger.warning('  SKIP: no Sites/%s (or Sites/%s-*) hostgroups found', code, code)
             continue
         name = f'{code} - Country Overview'
         if create_dashboard(api, name, groupids, WIDGET_LAYOUT, dry_run=dry_run):
@@ -238,9 +267,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--countries-only', action='store_true')
     parser.add_argument('--dry-run', action='store_true')
-    parser.add_argument('--lab', action='store_true')
+    parser.add_argument('--recreate', action='store_true', help='Delete non-stock dashboards before creating')
+    parser.add_argument('--lab', action='store_true', help='(compat) unused — hostgroups are resolved by name')
     args = parser.parse_args()
-    return run(countries_only=args.countries_only, dry_run=args.dry_run, lab=args.lab)
+    return run(countries_only=args.countries_only, dry_run=args.dry_run, recreate=args.recreate)
 
 
 if __name__ == '__main__':
