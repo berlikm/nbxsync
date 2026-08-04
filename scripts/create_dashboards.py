@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Create Zabbix country/role/OS dashboards from nested hostgroup parents."""
+"""Create Zabbix country/role/OS dashboards from nested hostgroup parents.
+
+Uses raw HTTP requests (not zabbix_utils) because that library stringifies
+widget field values — Zabbix 7.0 requires numeric values for type=2
+(HOST_GROUP) fields.
+"""
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
+import urllib.request
 from pathlib import Path
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'netbox.settings')
@@ -22,7 +29,6 @@ import django  # noqa: E402
 django.setup()
 
 from nbxsync.models import ZabbixServer  # noqa: E402
-from nbxsync.utils.zabbixconnection import ZabbixConnection  # noqa: E402
 
 logger = logging.getLogger('create_dashboards')
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -49,15 +55,53 @@ OS_LAYOUT = [
 ]
 
 # Zabbix 7.0 widget field types
-# 0=integer, 1=string, 2=host_group (HOST_GROUP),
-# 3=host, 4=item, 5=item_prototype, 6=graph, 7=graph_prototype,
-# 8=map, 9=service, 10=sla, 11=user, 12=action, 13=media_type
-HG_TYPE = 2  # ZBX_WIDGET_FIELD_TYPE_HOST_GROUP
-INT_TYPE = 0  # ZBX_WIDGET_FIELD_TYPE_INTEGER
+# 0=integer, 1=string, 2=host_group, 3=host, 4=item, ...
+HG_TYPE = 2
+INT_TYPE = 0
+
+
+class RawZabbixAPI:
+    """Minimal Zabbix JSON-RPC client that preserves integer types."""
+
+    def __init__(self, url, token):
+        self._url = url.rstrip('/') + '/api_jsonrpc.php'
+        self._token = token
+        self._id = 0
+
+    def _call(self, method, params):
+        self._id += 1
+        payload = json.dumps({
+            'jsonrpc': '2.0',
+            'method': method,
+            'params': params,
+            'auth': self._token,
+            'id': self._id,
+        }).encode('utf-8')
+        req = urllib.request.Request(
+            self._url, data=payload,
+            headers={'Content-Type': 'application/json'},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+        if 'error' in data:
+            raise Exception(f"{method}: {data['error'].get('data', data['error'])}")
+        return data.get('result')
+
+    def hostgroup_get(self, **params):
+        return self._call('hostgroup.get', params)
+
+    def dashboard_get(self, **params):
+        return self._call('dashboard.get', params)
+
+    def dashboard_create(self, **params):
+        return self._call('dashboard.create', params)
+
+    def dashboard_delete(self, ids):
+        return self._call('dashboard.delete', ids)
 
 
 def _build_widgets(layout, groupids):
-    """Build Zabbix 7.0 dashboard widget payload with hostgroup filter."""
+    """Build widget payload. Integers stay integers (not stringified)."""
     widgets = []
     for wtype, wname, x, y, w, h in layout:
         if wtype == 'hostnavigator':
@@ -87,7 +131,7 @@ def _build_widgets(layout, groupids):
 
 
 def create_dashboard(api, name, groupids, layout, *, dry_run=False):
-    existing = api.dashboard.get(filter={'name': [name]}, output=['dashboardid'])
+    existing = api.dashboard_get(filter={'name': [name]}, output=['dashboardid'])
     if existing:
         logger.info('  EXISTS: %r', name)
         return False
@@ -96,7 +140,7 @@ def create_dashboard(api, name, groupids, layout, *, dry_run=False):
         return True
     widgets = _build_widgets(layout, groupids)
     try:
-        api.dashboard.create(
+        api.dashboard_create(
             name=name,
             userid=1,
             display_period=60,
@@ -112,7 +156,7 @@ def create_dashboard(api, name, groupids, layout, *, dry_run=False):
 
 def _find_country_groups(api, country_code):
     prefix = f'Sites/{country_code}-'
-    groups = api.hostgroup.get(search={'name': prefix}, output=['groupid', 'name'], sortfield='name')
+    groups = api.hostgroup_get(search={'name': prefix}, output=['groupid', 'name'], sortfield='name')
     top_level = []
     for g in groups:
         remainder = g['name'][len(prefix):]
@@ -122,7 +166,7 @@ def _find_country_groups(api, country_code):
 
 
 def _find_single_group(api, name):
-    found = api.hostgroup.get(filter={'name': [name]}, output=['groupid'])
+    found = api.hostgroup_get(filter={'name': [name]}, output=['groupid'])
     return found[0]['groupid'] if found else None
 
 
@@ -133,49 +177,57 @@ def run(*, countries_only=False, dry_run=False, lab=False):
         return 1
 
     logger.info('=' * 60)
-    logger.info('Zabbix Dashboard Creation (nested hostgroup parents)')
+    logger.info('Zabbix Dashboard Creation (raw API — preserves int types)')
     logger.info('=' * 60)
 
+    # Delete old custom dashboards first
+    stock = {'Global view', 'Zabbix server health', 'Zabbix server'}
+    api = RawZabbixAPI(server.url, server.token)
+    all_dashes = api.dashboard_get(output=['dashboardid', 'name'])
+    custom = [d for d in all_dashes if d['name'] not in stock]
+    if custom:
+        api.dashboard_delete([d['dashboardid'] for d in custom])
+        logger.info('Deleted %d old custom dashboards', len(custom))
+
     created = 0
-    with ZabbixConnection(server) as api:
-        logger.info('Country dashboards:')
-        for slug in COUNTRY_SLUGS:
-            code = slug.upper()
-            groupids = _find_country_groups(api, code)
-            if not groupids:
-                logger.warning('  SKIP: no Sites/%s-* hostgroups found', code)
+    logger.info('Country dashboards:')
+    for slug in COUNTRY_SLUGS:
+        code = slug.upper()
+        groupids = _find_country_groups(api, code)
+        if not groupids:
+            logger.warning('  SKIP: no Sites/%s-* hostgroups found', code)
+            continue
+        name = f'{code} - Country Overview'
+        if create_dashboard(api, name, groupids, WIDGET_LAYOUT, dry_run=dry_run):
+            created += 1
+
+    if countries_only:
+        logger.info('Skipping role/OS dashboards (--countries-only)')
+    else:
+        from dcim.models import DeviceRole
+        role_names = sorted(set(
+            DeviceRole.objects.exclude(tags__slug='do_not_monitor')
+            .values_list('name', flat=True)
+        ))
+        logger.info('Role dashboards:')
+        for rn in role_names:
+            gid = _find_single_group(api, f'Roles/{rn}')
+            if not gid:
                 continue
-            name = f'{code} - Country Overview'
-            if create_dashboard(api, name, groupids, WIDGET_LAYOUT, dry_run=dry_run):
+            name = f'{rn} - Role Overview'
+            if create_dashboard(api, name, [gid], ROLE_LAYOUT, dry_run=dry_run):
                 created += 1
 
-        if countries_only:
-            logger.info('Skipping role/OS dashboards (--countries-only)')
-        else:
-            from dcim.models import DeviceRole
-            role_names = sorted(set(
-                DeviceRole.objects.exclude(tags__slug='do_not_monitor')
-                .values_list('name', flat=True)
-            ))
-            logger.info('Role dashboards:')
-            for rn in role_names:
-                gid = _find_single_group(api, f'Roles/{rn}')
-                if not gid:
-                    continue
-                name = f'{rn} - Role Overview'
-                if create_dashboard(api, name, [gid], ROLE_LAYOUT, dry_run=dry_run):
-                    created += 1
+        logger.info('OS dashboards:')
+        for os_name in ['Windows', 'Linux', 'Network', 'VMware']:
+            gid = _find_single_group(api, f'OS/{os_name}')
+            if not gid:
+                continue
+            name = f'{os_name} - OS Overview'
+            if create_dashboard(api, name, [gid], OS_LAYOUT, dry_run=dry_run):
+                created += 1
 
-            logger.info('OS dashboards:')
-            for os_name in ['Windows', 'Linux', 'Network', 'VMware']:
-                gid = _find_single_group(api, f'OS/{os_name}')
-                if not gid:
-                    continue
-                name = f'{os_name} - OS Overview'
-                if create_dashboard(api, name, [gid], OS_LAYOUT, dry_run=dry_run):
-                    created += 1
-
-        total = len(api.dashboard.get(output=['dashboardid']))
+    total = len(api.dashboard_get(output=['dashboardid']))
     logger.info('=' * 60)
     logger.info('DONE: %d created, %d total dashboards', created, total)
     logger.info('=' * 60)
