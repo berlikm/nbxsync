@@ -82,9 +82,27 @@ def _resolve_cached(model_name: str, target_pk: int):
     return resolved
 
 
-def _fetch(model, **lookup):
-    """Fetch a single object or None."""
-    return model.objects.filter(**lookup).first()
+def _exclude_tag_slug() -> str:
+    """The configured exclude_tag (default 'do_not_monitor').
+
+    Devices/VMs carrying this tag never sync to Zabbix, so they should not
+    serve as representative previews — picking one would render values that
+    never appear in Zabbix (e.g. Roles/Messpc for a SiteGroup assignment).
+    """
+    from nbxsync.settings import get_plugin_settings
+    return get_plugin_settings().exclude_tag or 'do_not_monitor'
+
+def _fetch(model, *args, **lookup):
+    """Fetch a single object or None.
+
+    When fetching Devices or VMs, exclude objects carrying the configured
+    exclude_tag — they are excluded from sync and would produce misleading
+    preview values (e.g. Roles/Messpc, Roles/Sd Wan Socket).
+    """
+    qs = model.objects.filter(*args, **lookup)
+    if model in (Device, VirtualMachine):
+        qs = qs.exclude(tags__slug=_exclude_tag_slug())
+    return qs.first()
 
 
 def _vm_site_filter(site_ids) -> Q:
@@ -138,7 +156,7 @@ def _resolve_site(pk):
     site = _fetch(SiteModel, pk=pk)
     if site is None:
         return None
-    return _fetch(Device, site=site) or VirtualMachine.objects.filter(_vm_site_filter([site.pk])).first()
+    return _fetch(Device, site=site) or _fetch(VirtualMachine, _vm_site_filter([site.pk]))
 
 
 def _resolve_sitegroup(pk):
@@ -204,8 +222,15 @@ def _device_under_sites(sites) -> Device | VirtualMachine | None:
     if not site_ids:
         return None
 
-    dev = Device.objects.filter(site__in=site_ids).first()
+    exclude_tag = _exclude_tag_slug()
+
+    dev = Device.objects.filter(site__in=site_ids).exclude(tags__slug=exclude_tag).first()
     if dev:
         return dev
 
-    return VirtualMachine.objects.filter(_vm_site_filter(site_ids)).first()
+    return (
+        VirtualMachine.objects
+        .filter(_vm_site_filter(site_ids))
+        .exclude(tags__slug=exclude_tag)
+        .first()
+    )

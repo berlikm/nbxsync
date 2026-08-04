@@ -118,6 +118,53 @@ class RepresentativeDeviceTestCase(TestCase):
         self.assertIsNotNone(rep)
         self.assertEqual(rep.pk, device.pk)
 
+    def test_excluded_device_not_picked_as_representative(self):
+        """Devices tagged do_not_monitor are never the representative.
+
+        SiteGroup-level assignments (e.g. Roles Jinja) must skip excluded
+        devices — picking a Messpc would render Roles/Messpc in the UI, a
+        value that never appears in Zabbix.
+        """
+        from extras.models import Tag
+
+        excluded_role = DeviceRole.objects.create(name='Excluded Role', slug='excluded-role')
+        real_role = DeviceRole.objects.create(name='Real Role', slug='real-role')
+
+        # Device with the exclude_tag — should be skipped
+        excluded_dev = _make_device(name='excluded-1', role=excluded_role)
+        tag = Tag.objects.create(name='do_not_monitor', slug='do_not_monitor')
+        excluded_dev.tags.add(tag)
+
+        # Device without the tag — should be picked
+        real_dev = _make_device(name='real-1', role=real_role)
+
+        # Assignment on SiteGroup: representative must be real_dev, not excluded_dev
+        parent = SiteGroup.objects.create(name='Test Country', slug='test-country')
+        child = SiteGroup.objects.create(name='Test Site', slug='test-site', parent=parent)
+        site = Site.objects.create(name='Test Site L1', slug='test-site-l1', group=child)
+        real_dev.site = site
+        real_dev.save()
+        excluded_dev.site = site
+        excluded_dev.save()
+
+        hg = ZabbixHostgroup.objects.create(
+            name='Roles',
+            value='Roles/{{ object.role.name }}',
+            zabbixserver=self.zabbixserver,
+        )
+        ct = ContentType.objects.get_for_model(SiteGroup)
+        assignment = ZabbixHostgroupAssignment.objects.create(
+            zabbixhostgroup=hg,
+            assigned_object_type=ct,
+            assigned_object_id=parent.id,
+        )
+
+        rep = get_representative_device(assignment)
+        self.assertIsNotNone(rep)
+        self.assertEqual(rep.pk, real_dev.pk)
+        self.assertNotEqual(rep.pk, excluded_dev.pk)
+
+
 
 class HostgroupPreviewRenderTestCase(TestCase):
     """End-to-end tests for render_zabbix_hostgroup_assignment tag."""
