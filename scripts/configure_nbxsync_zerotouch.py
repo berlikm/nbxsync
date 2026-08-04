@@ -5,25 +5,27 @@ nbxSync Zero-Touch Configuration Script
 Successor to the previous checklist script (configure_nbxsync.py that implemented
 docs/nbxsync/nbxsync-configuration-checklist.md step-for-step).
 
-Same functional outcomes as the checklist / previous script. Differences are
-only where automation + engine semantics require fewer / corrected rows:
+Hostgroup-first ops model (chosen scenario): Zabbix navigation and alerting hang
+off ``Sites/*`` × ``Roles/*`` × ``OS/*`` (+ lean ``Priority/Critical`` via tag).
+Transport stays on Configuration Groups (SiteGroup Agent default + role SNMP /
+Server Agent+OOB exceptions). Tags are for overlays only — never transport.
+
+Deltas vs the old checklist script:
 
   Δ5b  Agent CG → each top-level country SiteGroup (not 31 role→Agent rows)
   Δ5b  Pure Storage stays on SiteGroup Agent + HTTP template (ANY) — not SNMP CG
   Δ5b  Storage → SNMP CG; Cohesity → OOB SNMP Only
   Δ5b  Server BMC = one "Server Agent+OOB" CG (Agent + SNMP use_oob_ip) on Server
-       role — NOT Manufacturer Dell → separate OOB CG (one effective CG; Role
-       beats Manufacturer, so the old dual-CG pattern never merged)
-  Δ5   Keep checklist snmp-tag HostInterface + compound TemplateRules (6b)
-  Δ8.3 Roles/* Jinja assigned once per top SiteGroup (not per DeviceRole)
-  Δ0   NetBox inventory mutations (VM reassignment, device tagging) are OFF by
-       default (--mutate-netbox to restore previous step0 behaviour)
-  ΔP0  Templates/proxies resolved by Zabbix name; ensure() updates on re-run;
-       prune self-referencing secret macros; --verify census
-
-Unchanged vs previous script: §1–3 server/proxies/assignments, SNMP role
-exceptions, TemplateRules, app templates, Teams, tag hostgroups, env/cluster/
-exclude tags, inventory, macros (minus shadow secrets).
+       role — NOT Manufacturer Dell → separate OOB CG
+  Δ5   Drop snmp-tag HostInterface (transport stays on CGs; VM-by-SNMP CG remains)
+  Δ6   Platform TemplateRules attach OS/* hostgroups only — no os_family Zabbix tags
+  Δ6b  Drop compound snmp-tag TemplateRules (redundant with role/CG SNMP path)
+  Δ8   Hostgroups: Sites + Roles Jinja @ SiteGroup + Priority/Critical; drop
+       Managed/nbxSync and Teams/* (prefer Roles/* unless Zabbix RBAC needs Teams)
+  Δ10  Single inventory Jinja payload applied to every country SiteGroup
+  Δ0   NetBox inventory mutations OFF by default (--mutate-netbox to restore)
+  ΔP0  Templates/proxies by Zabbix name; ensure() updates; prune shadow macros;
+       --verify census (unprofiled / no-template / SNMP-role-on-Agent / …)
 
 Usage::
 
@@ -31,7 +33,7 @@ Usage::
   export NBX_ZABBIX_TOKEN=...
   python scripts/configure_nbxsync_zerotouch.py
 
-  # Read-only census (unprofiled / agent-without-platform / no primary IP)
+  # Read-only census (coverage gaps)
   python scripts/configure_nbxsync_zerotouch.py --verify
 
   # Lab proof against local Zabbix (prefixed synthetic estate)
@@ -348,10 +350,10 @@ def step0_cleanup(*, mutate_netbox: bool):
     )
     logger.info("  Tag 'do_not_monitor': %s (id=%s)", 'CREATED' if created else 'EXISTS', tag.id)
 
+    # Hostgroup-first: only Priority/Critical needs a NetBox tag overlay.
+    # Dropped: production_db (Teams/*), snmp (tag transport / compound 6b).
     for name, desc in [
         ('critical', 'Priority/Critical hostgroup membership (24/7 escalation)'),
-        ('production_db', 'Teams/Production DB hostgroup membership'),
-        ('snmp', 'SNMP monitoring profile: tag-targeted interface + compound template rule'),
     ]:
         # Reuse existing tag by slug OR name (NetBox auto-slugifies '_' -> '-')
         t = Tag.objects.filter(slug=name).first() or Tag.objects.filter(name=name).first()
@@ -518,7 +520,7 @@ def step4_configgroups():
 
 def step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group):
     logger.info('=' * 60)
-    logger.info('Step 5: ZabbixHostInterface (group-level + snmp tag)')
+    logger.info('Step 5: ZabbixHostInterface (Configuration Group profiles only)')
     logger.info('=' * 60)
     ct_cfg = ct(M.ZabbixConfigurationGroup)
 
@@ -587,7 +589,7 @@ def step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_
             **_snmp_v3_fields(),
         },
     )
-    # 5.4 VM by SNMP (complete profile)
+    # 5.4 VM by SNMP (complete profile — per-VM override, not a tag path)
     ensure_if(
         zabbixserver=server,
         assigned_object_type=ct_cfg,
@@ -619,24 +621,8 @@ def step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_
             **_snmp_v3_fields(),
         },
     )
-    # 5.5 Tag-targeted SNMP interface (checklist / previous script) — interface only, NOT a transport CG
-    try:
-        nb_tag = Tag.objects.get(slug='snmp')
-        ensure_if(
-            zabbixserver=server,
-            assigned_object_type=ct(Tag),
-            assigned_object_id=nb_tag.id,
-            type=ZabbixHostInterfaceTypeChoices.SNMP,
-            defaults={
-                'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
-                'port': 161,
-                'useip': ZabbixInterfaceUseChoices.IP,
-                'dns': '',
-                **_snmp_v3_fields(),
-            },
-        )
-    except Tag.DoesNotExist:
-        logger.warning("  NetBox tag 'snmp' missing — skipping tag-targeted interface")
+    # Δ: snmp-tag HostInterface removed — never put transport on tags (I7).
+    # Per-VM SNMP stays on the "VM by SNMP" CG assignment.
 
 
 def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oob_snmp_group=None, vm_snmp_group=None, country_slugs=None):
@@ -686,7 +672,7 @@ def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oo
 
 def step6_template_rules(server, country_slugs=None):
     logger.info('=' * 60)
-    logger.info('Step 6: ZabbixTemplateRules')
+    logger.info('Step 6: ZabbixTemplateRules (template + OS/* hostgroup, no os_family tags)')
     logger.info('=' * 60)
     country_slugs = country_slugs or COUNTRY_SLUGS
 
@@ -698,21 +684,6 @@ def step6_template_rules(server, country_slugs=None):
             defaults={'value': value},
             update_fields=['value'],
         )
-        return obj
-
-    def ztag(tag, value):
-        # Prefer name='os_family=Windows' identity; update tag/value on re-run.
-        obj, _ = ensure(
-            M.ZabbixTag,
-            name=f'{tag}={value}',
-            defaults={'tag': tag, 'value': value},
-            update_fields=['tag', 'value'],
-        )
-        # Drop legacy name='os_family' duplicates for the same tag/value.
-        legacy = M.ZabbixTag.objects.filter(tag=tag, value=value).exclude(pk=obj.pk)
-        if legacy.exists():
-            n, _ = legacy.delete()
-            logger.info('  PRUNED: %s legacy ZabbixTag row(s) for %s=%s', n, tag, value)
         return obj
 
     def make_template(zbx_id, zbx_name, req=None):
@@ -731,13 +702,7 @@ def step6_template_rules(server, country_slugs=None):
     hg_os_windows = hg('OS/Windows', 'OS/Windows')
     hg_os_linux = hg('OS/Linux', 'OS/Linux')
     hg_os_network = hg('OS/Network', 'OS/Network')
-    tag_windows = ztag('os_family', 'Windows')
-    tag_linux = ztag('os_family', 'Linux')
-    tag_exos = ztag('os_family', 'EXOS')
-    tag_voss = ztag('os_family', 'VOSS')
-    tag_iqengine = ztag('os_family', 'IQEngine')
-    tag_fortios = ztag('os_family', 'FortiOS')
-    tag_esxi = ztag('os_family', 'ESXi')
+    hg_os_vmware = hg('OS/VMware', 'OS/VMware')
 
     tpl_windows = make_template(*TPL['windows_agent'], req=[HostInterfaceRequirementChoices.AGENT])
     tpl_linux = make_template(*TPL['linux_agent'], req=[HostInterfaceRequirementChoices.AGENT])
@@ -746,8 +711,6 @@ def step6_template_rules(server, country_slugs=None):
     tpl_fortigate = make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     # HTTP/simple-check templates — ANY, not AGENT (ESXi often has no Zabbix agent)
     tpl_vmware = make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.ANY])
-    tpl_linux_snmp = make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    tpl_windows_snmp = make_template(*TPL['windows_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     if 'icmp_ping' in TPL:
         tpl_icmp = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
         for slug in country_slugs or COUNTRY_SLUGS:
@@ -764,44 +727,46 @@ def step6_template_rules(server, country_slugs=None):
                 defaults={},
             )
 
+    # Hostgroup-first: OS classification lives in OS/* groups, not os_family tags.
     rules = [
-        ('Windows Server', r'Windows Server', tpl_windows, hg_os_windows, tag_windows, 50),
-        ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, tag_windows, 200),
-        ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, tag_linux, 100),
-        ('Extreme EXOS', r'EXOS', tpl_exos, hg_os_network, tag_exos, 100),
-        ('Extreme VOSS', r'VOSS', tpl_netgeneric, hg_os_network, tag_voss, 100),
-        ('Extreme IQ Engine', r'IQ ENGINE', tpl_netgeneric, hg_os_network, tag_iqengine, 100),
-        ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, tag_fortios, 100),
-        ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, tag_fortios, 50),
-        ('VMware ESXi', r'ESXi|VMware ESX|vSphere', tpl_vmware, None, tag_esxi, 100),
-        ('VMware Photon', r'Photon', tpl_linux, hg_os_linux, tag_linux, 50),
+        ('Windows Server', r'Windows Server', tpl_windows, hg_os_windows, 50),
+        ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 200),
+        ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100),
+        ('Extreme EXOS', r'EXOS', tpl_exos, hg_os_network, 100),
+        ('Extreme VOSS', r'VOSS', tpl_netgeneric, hg_os_network, 100),
+        ('Extreme IQ Engine', r'IQ ENGINE', tpl_netgeneric, hg_os_network, 100),
+        ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100),
+        ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50),
+        ('VMware ESXi', r'ESXi|VMware ESX|vSphere', tpl_vmware, hg_os_vmware, 100),
+        ('VMware Photon', r'Photon', tpl_linux, hg_os_linux, 50),
     ]
-    for name, pattern, template, hostgroup, tag, priority in rules:
+    for name, pattern, template, hostgroup, priority in rules:
         defaults = {
             'pattern': pattern,
             'zabbixtemplate': template,
             'enabled': True,
             'priority': priority,
-            'zabbixtag': tag,
+            'zabbixtag': None,
             'zabbixhostgroup': hostgroup,
+            'require_tags': '',
         }
         ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
 
-    # 6b compound: platform + NetBox tag snmp (previous script)
-    for name, pattern, template, hostgroup, tag in [
-        ('SNMP Linux (tag)', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux_snmp, hg_os_linux, tag_linux),
-        ('SNMP Windows (tag)', r'Windows', tpl_windows_snmp, hg_os_windows, tag_windows),
-    ]:
-        defaults = {
-            'pattern': pattern,
-            'zabbixtemplate': template,
-            'zabbixhostgroup': hostgroup,
-            'zabbixtag': tag,
-            'require_tags': 'snmp',
-            'enabled': True,
-            'priority': 90,
-        }
-        ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
+    # Δ6b: drop compound snmp-tag rules (role SNMP CG + VM-by-SNMP CG cover SNMP).
+    pruned_rules, _ = M.ZabbixTemplateRule.objects.filter(
+        name__in=['SNMP Linux (tag)', 'SNMP Windows (tag)'],
+    ).delete()
+    if pruned_rules:
+        logger.info('  PRUNED: %s snmp-tag compound TemplateRule(s)', pruned_rules)
+
+    # Drop leftover os_family Zabbix tags from previous checklist / script runs.
+    orphan_tags = M.ZabbixTag.objects.filter(tag='os_family')
+    if orphan_tags.exists():
+        # Detach any remaining rule FKs first (rules above already set zabbixtag=None).
+        M.ZabbixTemplateRule.objects.filter(zabbixtag__in=orphan_tags).update(zabbixtag=None)
+        M.ZabbixTagAssignment.objects.filter(zabbixtag__in=orphan_tags).delete()
+        n, _ = orphan_tags.delete()
+        logger.info('  PRUNED: %s os_family ZabbixTag row(s)', n)
 
 
 def step7_template_assignments(server):
@@ -878,32 +843,29 @@ def step7_template_assignments(server):
 
 def step8_hostgroups(server, country_slugs=None):
     logger.info('=' * 60)
-    logger.info('Step 8: ZabbixHostgroups (zero-touch Roles Jinja)')
+    logger.info('Step 8: ZabbixHostgroups (Sites × Roles × Priority — hostgroup-first)')
     logger.info('=' * 60)
     country_slugs = country_slugs or COUNTRY_SLUGS
 
-    hg_managed, _ = get_or_create(
-        M.ZabbixHostgroup,
-        zabbixserver=server,
-        name='Managed',
-        defaults={'value': 'Managed/nbxSync'},
-    )
-    hg_sites, _ = get_or_create(
+    # Δ: drop Managed/nbxSync (noise) and Teams/* (prefer Roles/*; re-add only for Zabbix RBAC).
+    hg_sites, _ = ensure(
         M.ZabbixHostgroup,
         zabbixserver=server,
         name='Sites',
         defaults={'value': 'Sites/{{ object.site.group.name }}/{{ object.site.name }}'},
+        update_fields=['value'],
     )
-    # Δ: one Roles Jinja assignment per country SiteGroup (not per DeviceRole)
-    hg_roles, _ = get_or_create(
+    # One Roles Jinja assignment per country SiteGroup (not per DeviceRole)
+    hg_roles, _ = ensure(
         M.ZabbixHostgroup,
         zabbixserver=server,
         name='Roles',
         defaults={'value': 'Roles/{{ object.role.name }}'},
+        update_fields=['value'],
     )
     for slug in country_slugs:
         sg = get_sitegroup(slug)
-        for hg in (hg_managed, hg_sites, hg_roles):
+        for hg in (hg_sites, hg_roles):
             get_or_create(
                 M.ZabbixHostgroupAssignment,
                 zabbixhostgroup=hg,
@@ -912,50 +874,23 @@ def step8_hostgroups(server, country_slugs=None):
                 defaults={},
             )
 
-    team_groups = {
-        'Teams Network': (
-            'Teams/Network',
-            ['Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Access Point', 'Firewall', 'Network Device'],
-        ),
-        'Teams Infrastructure': (
-            'Teams/Infrastructure',
-            ['Server', 'Domain Controller', 'Fileserver', 'Print Server', 'SCCM', 'PKI', 'NAC', 'Acronis Management'],
-        ),
-        'Teams Database': ('Teams/Database Team', ['MSSQL', 'MSSQL Query Server', 'Nautilus']),
-        'Teams DevOps': ('Teams/DevOps', ['GitLab', 'GitHub Runner', 'TeamCity', 'HLK']),
-        'Teams Application': ('Teams/Application Team', ['SAP ME', 'SecsGem', 'Tableau', 'CellMap']),
-        'Teams Storage': ('Teams/Storage Team', ['Pure Storage', 'Cohesity', 'Storage', 'Production Backup']),
-    }
-    for hg_name, (hg_value, role_names) in team_groups.items():
-        hg, _ = get_or_create(M.ZabbixHostgroup, zabbixserver=server, name=hg_name, defaults={'value': hg_value})
-        for role_name in role_names:
-            try:
-                role = get_role(role_name)
-            except DeviceRole.DoesNotExist:
-                logger.warning('  Role not found: %s (team %s)', role_name, hg_name)
-                continue
-            get_or_create(
-                M.ZabbixHostgroupAssignment,
-                zabbixhostgroup=hg,
-                assigned_object_type=ct(DeviceRole),
-                assigned_object_id=role.id,
-                defaults={},
-            )
-
-    for hg_name, hg_value, tag_slug in [
-        ('Priority/Critical', 'Priority/Critical', 'critical'),
-        ('Teams/Production DB', 'Teams/Production DB', 'production_db'),
-    ]:
-        hg, _ = get_or_create(M.ZabbixHostgroup, zabbixserver=server, name=hg_name, defaults={'value': hg_value})
-        netbox_tag = Tag.objects.filter(slug=tag_slug).first() or Tag.objects.filter(name=tag_slug).first()
-        if netbox_tag is None:
-            logger.warning("  NetBox tag '%s' missing — skipping %s", tag_slug, hg_name)
-            continue
+    # OS/* hostgroups are attached by TemplateRules (step 6), not SiteGroup assignments.
+    hg_crit, _ = ensure(
+        M.ZabbixHostgroup,
+        zabbixserver=server,
+        name='Priority/Critical',
+        defaults={'value': 'Priority/Critical'},
+        update_fields=['value'],
+    )
+    crit_tag = Tag.objects.filter(slug='critical').first() or Tag.objects.filter(name='critical').first()
+    if crit_tag is None:
+        logger.warning("  NetBox tag 'critical' missing — skipping Priority/Critical")
+    else:
         get_or_create(
             M.ZabbixHostgroupAssignment,
-            zabbixhostgroup=hg,
+            zabbixhostgroup=hg_crit,
             assigned_object_type=ct(Tag),
-            assigned_object_id=netbox_tag.id,
+            assigned_object_id=crit_tag.id,
             defaults={},
         )
 
@@ -1019,30 +954,35 @@ def step9_tags(country_slugs=None):
         assign_tag(exclusion_tag, ct(DeviceRole), role.id)
 
 
+# Single inventory Jinja payload — applied identically to every country SiteGroup.
+INVENTORY_PAYLOAD = {
+    'inventory_mode': ZabbixHostInventoryModeChoices.AUTOMATIC,
+    'type': '{{ object.__class__.__name__ }}',
+    'serialno_a': '{{ object.serial }}',
+    'hardware': '{{ object.device_type.model if object.device_type else "" }}',
+    'hardware_full': '{{ object.device_type.manufacturer.name if object.device_type else "" }} {{ object.device_type.model if object.device_type else "" }}',
+    'tag': '{{ object.asset_tag }}',
+    'location': '{{ object.site.name }}',
+    'site_rack': '{{ object.rack.name if object.rack else "" }}',
+    'name': '{{ object.name }}',
+    'url_a': 'https://netbox.sensirion.lokal/dcim/devices/{{ object.id }}/',
+    'deployment_status': '{{ object.status }}',
+}
+
+
 def step10_host_inventory(country_slugs=None):
     logger.info('=' * 60)
-    logger.info('Step 10: ZabbixHostInventory')
+    logger.info('Step 10: ZabbixHostInventory (one payload × country SiteGroups)')
     logger.info('=' * 60)
     country_slugs = country_slugs or COUNTRY_SLUGS
     for slug in country_slugs:
         sg = get_sitegroup(slug)
-        get_or_create(
+        ensure(
             M.ZabbixHostInventory,
             assigned_object_type=ct(SiteGroup),
             assigned_object_id=sg.id,
-            defaults={
-                'inventory_mode': ZabbixHostInventoryModeChoices.AUTOMATIC,
-                'type': '{{ object.__class__.__name__ }}',
-                'serialno_a': '{{ object.serial }}',
-                'hardware': '{{ object.device_type.model if object.device_type else "" }}',
-                'hardware_full': '{{ object.device_type.manufacturer.name if object.device_type else "" }} {{ object.device_type.model if object.device_type else "" }}',
-                'tag': '{{ object.asset_tag }}',
-                'location': '{{ object.site.name }}',
-                'site_rack': '{{ object.rack.name if object.rack else "" }}',
-                'name': '{{ object.name }}',
-                'url_a': 'https://netbox.sensirion.lokal/dcim/devices/{{ object.id }}/',
-                'deployment_status': '{{ object.status }}',
-            },
+            defaults=dict(INVENTORY_PAYLOAD),
+            update_fields=list(INVENTORY_PAYLOAD.keys()),
         )
 
 
@@ -1121,17 +1061,18 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
         M.ZabbixMacro,
     ]:
         logger.info('  %s: %s', model.__name__, model.objects.count())
-    logger.info('Zero-touch deltas applied: SiteGroup Agent, Server Agent+OOB, storage→SNMP, Roles Jinja@SiteGroup')
+    logger.info('Zero-touch deltas: SiteGroup Agent, Server Agent+OOB, hostgroup-first (Sites×Roles×OS), no Teams/os_family/snmp-tag')
     return server
 
 
 AGENT_PLATFORM_HINT = re.compile(r'Windows|Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon', re.I)
+SNMP_ROLE_NAMES = set(SNMP_ROLES)
 
 
 def run_verify(*, limit: int | None = None) -> int:
-    """Production post-apply / pre-go-live census (design §12). Does not mutate."""
+    """Production post-apply / pre-go-live census. Does not mutate."""
     logger.info('=' * 60)
-    logger.info('Verify: resolution census (read-only)')
+    logger.info('Verify: resolution census (read-only, hostgroup-first)')
     logger.info('=' * 60)
     devices = list(Device.objects.filter(status='active').select_related('role', 'platform', 'site'))
     vms = list(VirtualMachine.objects.filter(status='active').select_related('role', 'platform', 'site'))
@@ -1142,29 +1083,52 @@ def run_verify(*, limit: int | None = None) -> int:
     unprofiled = 0
     agent_without_platform_fact = 0
     active_no_primary = 0
+    no_template = 0
+    snmp_role_on_agent_cg = 0
+    os_family_tags_remaining = M.ZabbixTag.objects.filter(tag='os_family').count()
+    snmp_tag_ifs = M.ZabbixHostInterface.objects.filter(assigned_object_type=ct(Tag)).count()
     agent_cg_name = 'Agent Monitoring'
+    snmp_ish_cgs = {'SNMP Monitoring', 'OOB SNMP Only', 'Server Agent+OOB', 'VM by SNMP'}
 
     for obj in objects:
         if getattr(obj, 'primary_ip4_id', None) is None and getattr(obj, 'primary_ip6_id', None) is None:
-            active_no_primary += 1
+            # OOB-only hardware (Cohesity) may still be valid — count for awareness.
+            if getattr(obj, 'oob_ip_id', None) is None:
+                active_no_primary += 1
         assigned = get_assigned_zabbixobjects(obj)
         cg = assigned.get('configurationgroup')
+        templates = assigned.get('templates') or []
         if cg is None:
             unprofiled += 1
             continue
+        if not templates:
+            no_template += 1
         cg_name = cg.zabbixconfigurationgroup.name
+        role_name = getattr(getattr(obj, 'role', None), 'name', '') or ''
+        if role_name in SNMP_ROLE_NAMES and cg_name == agent_cg_name:
+            snmp_role_on_agent_cg += 1
         if cg_name == agent_cg_name or cg_name.endswith('Agent Monitoring'):
             plat = getattr(getattr(obj, 'platform', None), 'name', '') or ''
             if not AGENT_PLATFORM_HINT.search(plat):
                 agent_without_platform_fact += 1
+        # Soft check: SNMP-ish roles should not sit on plain Agent without a template.
+        if role_name in SNMP_ROLE_NAMES and cg_name not in snmp_ish_cgs and not any(
+            n in cg_name for n in ('SNMP', 'OOB', 'VM by SNMP')
+        ):
+            # already counted snmp_role_on_agent_cg when exact Agent name matches
+            pass
 
     shadow = M.ZabbixMacro.objects.filter(macro__in=SHADOW_MACROS).count()
     print(json.dumps({
         'objects_scanned': len(objects),
         'unprofiled': unprofiled,
+        'no_template': no_template,
         'agent_cg_without_agent_platform_fact': agent_without_platform_fact,
-        'active_without_primary_ip': active_no_primary,
+        'snmp_role_resolved_to_agent_cg': snmp_role_on_agent_cg,
+        'active_without_primary_or_oob_ip': active_no_primary,
         'shadow_secret_macros_remaining': shadow,
+        'os_family_tags_remaining': os_family_tags_remaining,
+        'tag_targeted_host_interfaces_remaining': snmp_tag_ifs,
     }, indent=2))
     return 0
 
@@ -1290,8 +1254,7 @@ def run_simulate() -> int:
     try:
         Tag.objects.get_or_create(slug='do_not_monitor', defaults={'name': 'do_not_monitor'})
         Tag.objects.get_or_create(slug='critical', defaults={'name': f'{PREFIX}critical'})
-        Tag.objects.get_or_create(slug='production_db', defaults={'name': f'{PREFIX}production_db'})
-        Tag.objects.get_or_create(slug='snmp', defaults={'name': f'{PREFIX}snmp'})
+        # Hostgroup-first lab: no production_db / snmp tags
 
         # Create / refresh lab server only (never rename a foreign server onto lab URL)
         server = M.ZabbixServer.objects.filter(name=SIM_SERVER_NAME).first()
@@ -1556,6 +1519,7 @@ def run_simulate() -> int:
                 record('zbx_oob_ip', any(t == '2' and ip == oob for t, ip, _ in ifs) and any(t == '1' and ip == primary for t, ip, _ in ifs), f'{ifs} oob={oob}', group='zabbix')
                 groups = [g['name'] for g in h.get('groups', [])]
                 record('zbx_sites_roles', any(g.startswith('Sites/') for g in groups) and any(g.startswith('Roles/') for g in groups), str(groups), group='zabbix')
+                record('zbx_os_linux', any(g == 'OS/Linux' or g.endswith('/OS/Linux') for g in groups) or 'OS/Linux' in groups, str(groups), group='zabbix')
             else:
                 record('zbx_server_exists', False, 'missing', group='zabbix')
 
@@ -1566,6 +1530,12 @@ def run_simulate() -> int:
             h_ov = host(objects['vm_snmp'].name)
             ifs = [(i.get('type'), i.get('port')) for i in (h_ov.get('interfaces', []) if h_ov else [])]
             record('zbx_vm_snmp_only', any(t == '2' for t, _ in ifs) and not any(t == '1' for t, _ in ifs), str(ifs), group='zabbix')
+
+            # Hostgroup-first hygiene: no os_family tags, no snmp-tag compound rules
+            record('no_os_family_tags', M.ZabbixTag.objects.filter(tag='os_family').count() == 0, str(M.ZabbixTag.objects.filter(tag='os_family').count()), group='hygiene')
+            record('no_snmp_tag_rules', M.ZabbixTemplateRule.objects.filter(name__in=['SNMP Linux (tag)', 'SNMP Windows (tag)']).count() == 0, 'ok', group='hygiene')
+            record('no_teams_hostgroups', M.ZabbixHostgroup.objects.filter(zabbixserver=server, name__startswith='Teams').count() == 0, str(list(M.ZabbixHostgroup.objects.filter(zabbixserver=server, name__startswith='Teams').values_list('name', flat=True))), group='hygiene')
+            record('no_managed_hostgroup', not M.ZabbixHostgroup.objects.filter(zabbixserver=server, name='Managed').exists(), 'ok', group='hygiene')
 
         passed = sum(1 for r in RESULTS if r['ok'])
         total = len(RESULTS)
