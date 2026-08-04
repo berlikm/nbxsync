@@ -1477,11 +1477,11 @@ def run_simulate() -> int:
             zabbixserver=server,
             name=f'{PREFIX}Sites',
             defaults={
-            'value': (
-                'Sites/{{ object.site.group.get_ancestors(include_self=True) '
-                '| map(attribute="name") | join("/") }}/{{ object.site.name }}'
-            ),
-        },
+                'value': (
+                    'Sites/{{ object.site.group.get_ancestors(include_self=True) '
+                    '| map(attribute="name") | join("/") }}/{{ object.site.name }}'
+                ),
+            },
             update_fields=['value'],
         )
         hg_roles, _ = ensure(
