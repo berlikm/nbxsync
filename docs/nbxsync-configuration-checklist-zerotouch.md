@@ -402,9 +402,13 @@ Path: **Zabbix → Hostgroups → Add**, then assignments on each hostgroup or f
 
 | Name | Value | Assign to |
 |---|---|---|
-| Sites | `Sites/{{ object.site.group.name }}/{{ object.site.name }}` | Site Groups CH, HU, JP, KR, NL, US, CN |
+| Sites | `Sites/{{ object.site.group.get_ancestors(include_self=True) \| map(attribute="name") \| join("/") }}/{{ object.site.name }}` | Site Groups CH, HU, JP, KR, NL, US, CN |
 
-At sync time this renders against the device or VM. The middle segment is the site’s **immediate** Site Group name. If the site hangs under campus group `CH-STA` (parent country `CH`), the path is `Sites/CH-STA/CH-STA-L26` — parents `Sites` and `Sites/CH-STA` are created; `Sites/CH` is not, because `CH` is not in the path. Dashboard on `Sites/CH-STA` (or on `Sites/CH` when sites sit directly under CH). Hosts stay in the leaf only; nested widgets still see them under the parent. A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
+**Why this template:** `get_ancestors(include_self=True)` walks the Site Group tree from country down to the site’s own group, so a site under campus **CH-STA** (parent **CH**) becomes `Sites/CH/CH-STA/CH-STA-L42`. Parent-first create then materializes `Sites`, `Sites/CH`, and `Sites/CH-STA`. A site hanging directly under **CH** becomes `Sites/CH/<site>` (no empty segment).
+
+Hosts stay members of the **leaf** only. Country dashboards and permissions use parent `Sites/CH` (nested children included). A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
+
+*(Shorter path that only uses the immediate group — `Sites/{{ object.site.group.name }}/{{ object.site.name }}` — skips country when the site’s group is a campus like CH-STA. Prefer the ancestry form above.)*
 
 ### 8.2 Roles
 

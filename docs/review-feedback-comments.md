@@ -118,38 +118,25 @@ We are not adding continent hostgroups for now (see Regions above).
 
 For function we use `Roles/…` (for example `Roles/MSSQL`), not a parallel “Teams / Database” tree. If permissions later need a team-shaped group that is not the same as a Device Role, we can add that as an explicit extra axis then.
 
-### Why `Sites/CH` may be missing from the hierarchy
+### Why `Sites/CH` may be missing — and how to include the full chain
 
-The Sites template is:
+The short template `Sites/{{ object.site.group.name }}/{{ object.site.name }}` uses only the site’s **immediate** Site Group. If that is campus **CH-STA** (parent **CH**), Zabbix gets `Sites/CH-STA/…` and never `Sites/CH`.
 
-`Sites/{{ object.site.group.name }}/{{ object.site.name }}`
+**Easy fix (GUI only, no plugin change):** set the Sites hostgroup value to:
 
-That uses the site’s **immediate** Site Group (`site.group`), not the whole ancestor chain.
+```
+Sites/{{ object.site.group.get_ancestors(include_self=True) | map(attribute="name") | join("/") }}/{{ object.site.name }}
+```
 
-In NetBox, many sites hang under a campus Site Group such as **CH-STA**, whose parent is country **CH**. Then the rendered group is:
+NetBox Site Groups already support `get_ancestors()`. With `include_self=True` the path is country → … → campus → site name, for example `Sites/CH/CH-STA/CH-STA-L42`. Parent-first create then adds `Sites/CH` and `Sites/CH-STA`. Sites directly under CH still render cleanly as `Sites/CH/<site>`.
 
-`Sites/CH-STA/CH-STA-L42`
-
-Parent-first create materializes `Sites` and `Sites/CH-STA`. It does **not** insert `Sites/CH`, because `CH` never appears in the rendered path.
-
-So:
-
-| NetBox site.group | Zabbix path you get | Parent you can dashboard on |
-|---|---|---|
-| Country CH (site directly under CH) | `Sites/CH/<site>` | `Sites/CH` |
-| Campus CH-STA (parent CH) | `Sites/CH-STA/<site>` | `Sites/CH-STA` (not `Sites/CH`) |
-
-That is why CH can be absent from the Sites tree even though CH exists as a Site Group in NetBox and holds proxy / Agent defaults.
-
-**Practical today:** build campus boards on `Sites/CH-STA`, `Sites/CH-NKN`, etc. Those parents exist and nested widgets include the leaf hosts.
-
-**If we need a true country parent `Sites/CH`:** either attach sites directly under the country Site Group, or change the hostgroup template so the path includes Site Group ancestors (country → campus → site). We can do that when country-level boards are required; until then campus-level parents are enough and match the data model we actually have.
+Hosts remain in the leaf only; country dashboards filter on parent `Sites/CH`.
 
 ---
 
 ## User permissions (Zabbix)
 
-Permission design stays in Zabbix: user groups get rights on parent hostgroups such as `Sites/CH` (and optionally `Roles/…`) with apply-to-subgroups enabled. That depends on the nested `Sites/*` tree nbxSync creates. It does not require Tenants or continent Regions in NetBox.
+Permission design stays in Zabbix: user groups get rights on parent hostgroups such as `Sites/CH` or `Sites/CH-STA` (and optionally `Roles/…`) with apply-to-subgroups enabled. That depends on the nested `Sites/*` tree nbxSync creates from the rendered path. It does not require Tenants or continent Regions in NetBox.
 
 ---
 
@@ -168,6 +155,6 @@ Permission design stays in Zabbix: user groups get rights on parent hostgroups s
 | Tags | Lean; do not mirror hostgroup names |
 | SNMP Linux/Windows | VM by SNMP + tag-gated Template Rules |
 | Nested groups / Zabbix permissions | Yes — dashboard/ACL on parent; hosts stay in leaf |
-| Why no `Sites/CH` sometimes | Template uses immediate `site.group` (e.g. CH-STA), not country ancestor |
+| Why no `Sites/CH` sometimes | Immediate `site.group` only — fix: `get_ancestors(include_self=True)` in Sites Jinja |
 
 Country Site Group decides default transport and proxy; role decides transport exceptions; platform / manufacturer / device type decide templates at the right level; tags only add overlays.
