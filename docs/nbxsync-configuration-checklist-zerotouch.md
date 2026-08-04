@@ -401,9 +401,9 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 | Network Generic Device by SNMP | Device Role Switch Mgmt | |
 | Network Generic Device by SNMP | Device Role Access Point | |
 | FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule still adds when platform matches |
-| Dell iDRAC by SNMP | Manufacturer Dell | Complements Server Agent+OOB SNMP on `oob_ip` |
+| Dell iDRAC by SNMP | *(see note)* | Prefer TemplateRule: role Server ∧ NetBox tag `idrac` — not Manufacturer-wide |
 
-**Dell iDRAC (default automated):** assign Dell iDRAC by SNMP on **Manufacturer Dell** so new Dell servers pick up BMC monitoring with Server Agent+OOB. For other Dell hardware (e.g. storage), assign the correct model template on **Device type** (e.g. M5224 → HP MSA 2060). Inheritance is **additive** — Device type does not remove Manufacturer iDRAC — so confirm the OEM template is compatible with iDRAC, or remove Manufacturer iDRAC and scope BMC only where it belongs. Empty `oob_ip` skips the OOB SNMP interface for that host.
+**Dell iDRAC (scalable scoping):** do **not** assign iDRAC on Manufacturer Dell (additive merge pulls it onto Dell storage and other SNMP Dell hosts — lab-verified). Preferred pattern: TemplateRule with platform `.*`, `role_pattern` matching BMC roles (e.g. `^Server$`), `require_tags=idrac`, template Dell iDRAC; stamp tag `idrac` on Dell Server devices via bulk/onboarding automation. Transport stays **Server Agent+OOB** + `oob_ip`. OEM model templates stay on Device type (they **add**, they do not remove iDRAC). Full options analysis: `docs/dell-idrac-scoping-options.md`. Empty `oob_ip` skips the OOB SNMP interface only.
 
 ---
 
