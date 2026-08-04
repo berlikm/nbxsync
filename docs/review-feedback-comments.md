@@ -14,23 +14,19 @@ We can revisit Tenants when NetBox ownership of that model is clear and there is
 
 ---
 
-## Sites / Regions (continents) — regional permissions
+## Sites / Regions (continents)
 
-Agreed on the need if regional teams must see “all of APAC” (or EMEA / AMER) without granting the world: today there is no permission node between `Sites/` (everything) and `Sites/CH` (one country).
+We will **not** introduce continent or regional layers (NetBox Regions, continent Site Groups, or Zabbix-only continent hostgroups).
 
-We will **not** invent Zabbix-only continent groups or NetBox Regions solely for monitoring. We will add regional boundaries as **parent Site Groups in NetBox** above the existing country groups (for example `APAC` → `CN` / `JP` / `KR`, `EMEA` → `CH` / `HU` / `NL`, `AMER` → `US`).
+Our organisation is flat for monitoring access: permissions are global across resources, not split by APAC / EMEA / AMER (or similar). Country Site Groups already produce nested location hostgroups (`Sites/CH/…/<site>`). Country- and campus-level boards and filters use those parents; we do not need a permission node between `Sites/` and `Sites/CH`.
 
-The Sites hostgroup template already walks full Site Group ancestry (`get_ancestors(include_self=True)`), so the path becomes e.g. `Sites/APAC/CN/…/<site>` with **no new sync mechanism**. Zabbix permissions then use parent `Sites/APAC` with apply-to-subgroups.
-
-Tell us the regional permission boundaries you need and we will add that one Site Group level.
-
-**Control-plane note:** Agent Monitoring (and proxy / server assignment) stay on **country** Site Groups unless we deliberately move defaults to the continent. Do not assign Agent Monitoring on a mid-level campus group — that still wins over the country default. Continents are for nesting and permissions, not a second transport default, unless we redefine that explicitly.
+If that ever changes, parent Site Groups above countries would be the natural fit (ancestry Jinja already supports them). It is not in scope now.
 
 ---
 
 ## Sites / Site Groups
 
-We keep Site Groups as the control plane (countries today; optional continent parents as above). Proxy, Zabbix server assignment, default Agent configuration group, Sites and Roles hostgroup templates, environment tag, and host inventory hang on the country groups. That matches your assessment that Site Groups are working well.
+We keep country Site Groups as the control plane. Proxy, Zabbix server assignment, default Agent configuration group, Sites and Roles hostgroup templates, environment tag, and host inventory hang on the country groups. That matches your assessment that Site Groups are working well.
 
 ---
 
@@ -128,7 +124,7 @@ We use nested Zabbix hostgroups: location (`Sites/…`), function (`Roles/…`),
 **Dashboards do not need the host to be a direct member of every level.**  
 Zabbix nesting means a dashboard (or permission) on a **parent** group includes nested children. Hosts stay in the leaf only. A country- or campus-level board filters on the parent (`Sites/CH` or `Sites/CH/CH-STA`); you do not also assign the host into flat duplicate groups.
 
-Regional (continent) nesting, if required, is via parent Site Groups in NetBox — see Regions above — not a parallel Teams/Database or continent-only Zabbix tree.
+Regional (continent) nesting is out of scope — organisation access is flat/global (see Regions above).
 
 For function we use `Roles/…` (for example `Roles/MSSQL`). If permissions later need a team-shaped group that is not the same as a Device Role, we can add that as an explicit extra axis then.
 
@@ -140,15 +136,15 @@ The Sites hostgroup value uses the full Site Group ancestry:
 Sites/{{ object.site.group.get_ancestors(include_self=True) | map(attribute="name") | join("/") }}/{{ object.site.name }}
 ```
 
-A site under campus **CH-STA** (parent **CH**) becomes `Sites/CH/CH-STA/CH-STA-L42`. With a continent parent **EMEA** above CH it becomes `Sites/EMEA/CH/CH-STA/CH-STA-L42`. Parent-first create materializes each segment. Sites hanging directly under **CH** render as `Sites/CH/<site>`.
+A site under campus **CH-STA** (parent **CH**) becomes `Sites/CH/CH-STA/CH-STA-L42`. Parent-first create materializes each segment. Sites hanging directly under **CH** render as `Sites/CH/<site>`.
 
-Hosts remain in the leaf only; dashboards and permissions filter on the appropriate parent. Do not also assign hosts into a flat country group.
+Hosts remain in the leaf only; dashboards filter on the appropriate parent. Do not also assign hosts into a flat country group.
 
 ---
 
 ## User permissions (Zabbix)
 
-Permission design stays in Zabbix: user groups get rights on parent hostgroups such as `Sites/CH`, optional `Sites/APAC`, or `Roles/…`, with apply-to-subgroups enabled. That depends on the nested `Sites/*` tree produced from the NetBox Site Group path. It does not require Tenants.
+Permission design stays in Zabbix. Access is **global** across the monitored estate (flat organisation) — we are not splitting user groups by continent or region. Nested `Sites/CH/…` remains useful for **dashboards and filters** by location; it is not a regional RBAC tree. Optional tighter scopes (e.g. a single country parent) remain available if a team ever needs them, without introducing continent layers.
 
 ---
 
@@ -157,8 +153,8 @@ Permission design stays in Zabbix: user groups get rights on parent hostgroups s
 | Topic | Decision |
 |---|---|
 | Tenant | Not now — NetBox use unclear; not required for Zabbix yet |
-| Regional permissions | Parent Site Groups in NetBox (APAC/EMEA/AMER…); ancestry Jinja already includes them |
-| Site Groups | Keep as control plane; Agent/proxy stay on countries unless redefined |
+| Continent / regional permissions | Not needed — org is flat; access is global. No continent Site Groups or Regions for monitoring |
+| Site Groups | Country control plane; nested `Sites/CH/…` for location dashboards/filters |
 | Templates | Merge only — Device type **adds**, never replaces Manufacturer |
 | iDRAC | Manufacturer default for servers; verify compatibility where Device type adds OEM; narrow if needed |
 | Interface requirements | Structural safety net for wrong transport; not a fix for two SNMP templates colliding |
@@ -168,6 +164,6 @@ Permission design stays in Zabbix: user groups get rights on parent hostgroups s
 | Tags | Lean; add only for concrete action/widget gaps |
 | SNMP transport override | **SNMP by tag** + tag `snmp` (Device or VM) |
 | Nested groups / dashboards | Parent filter; hosts stay in leaf |
-| Nested Sites path | Full Site Group ancestry so country (and optional region) parents exist |
+| Nested Sites path | Full Site Group ancestry so country parents exist for location boards |
 
 Country Site Group decides default transport and proxy; role decides transport exceptions; platform / manufacturer / device type **add** templates at the right level (they do not override each other); tags only add overlays.
