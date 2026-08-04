@@ -49,14 +49,14 @@
                 {% if hostgroupassignment_table %}
                     {% render_table hostgroupassignment_table %}
                 {% else %}
-                    <div class="card-body text-muted">
-                        No direct assignments.
-                        {% if templaterule_table %}
-                            This group is attached via <strong>Template rules</strong> below when a host platform matches.
-                        {% endif %}
-                    </div>
+                    <div class="card-body text-muted">No objects assigned</div>
                 {% endif %}
             </div>
+            {% plugin_right_page object %}
+        </div>
+    </div>
+    <div class="row">
+        <div class="col col-md-12">
             <div class="card">
                 <h2 class="card-header">
                     Template rules
@@ -70,16 +70,11 @@
                     {% endif %}
                 </h2>
                 {% if templaterule_table %}
-                    <div class="card-body text-muted small pb-0">
-                        When a rule matches (platform pattern / optional NetBox tags),
-                        the host gets the rule's template <em>and</em> this hostgroup — no assignment row required.
-                    </div>
                     {% render_table templaterule_table %}
                 {% else %}
-                    <div class="card-body text-muted">No template rules reference this hostgroup.</div>
+                    <div class="card-body text-muted">No template rules</div>
                 {% endif %}
             </div>
-            {% plugin_right_page object %}
         </div>
     </div>
 {% endblock %}
