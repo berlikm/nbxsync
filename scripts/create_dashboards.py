@@ -1,29 +1,8 @@
 #!/usr/bin/env python3
-"""Create Zabbix country/role/OS dashboards from nested hostgroup parents.
-
-Dashboards filter on parent hostgroups (e.g. ``Sites/CH``). The Zabbix UI
-expands nested subgroups automatically, so a country dashboard shows every
-site under that country without listing each leaf group.
-
-Parent-first hostgroup creation is handled by the nbxsync sync engine
-(PR #125 ``ensure_parent_hostgroups``). This script only creates dashboards
-for groups that already exist in Zabbix (run after a full sync).
-
-Usage::
-
-    export NBX_ZABBIX_TOKEN=...
-    python scripts/create_dashboards.py                  # all dashboards
-    python scripts/create_dashboards.py --countries-only   # country boards
-    python scripts/create_dashboards.py --dry-run         # preview only
-
-    # Lab (prefixed groups)
-    PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \\
-      python scripts/create_dashboards.py --lab
-"""
+"""Create Zabbix country/role/OS dashboards from nested hostgroup parents."""
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import sys
@@ -50,7 +29,6 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 COUNTRY_SLUGS = ['ch', 'hu', 'jp', 'kr', 'nl', 'us', 'cn']
 
-# Widget layout: 2 columns × 2 rows (24-grid), each widget 12 wide × 5 tall.
 WIDGET_LAYOUT = [
     ('problemsbyseverity', 'Problems by Severity', 0, 0, 12, 5),
     ('problemhosts', 'Problem Hosts', 12, 0, 12, 5),
@@ -70,40 +48,24 @@ OS_LAYOUT = [
     ('hostnavigator', 'Host Navigator', 0, 5, 24, 5),
 ]
 
-PREFIX = ''  # '' for prod, 'ztc-' for lab
 
-
-def _read_token() -> str:
-    env = os.environ.get('NBX_ZABBIX_TOKEN')
-    if env:
-        return env.strip()
-    p = Path('/tmp/nbxsync_token.txt')
-    if p.exists():
-        return p.read_text().strip()
-    raise SystemExit('Set NBX_ZABBIX_TOKEN or provide /tmp/nbxsync_token.txt')
-
-
-def _find_hostgroup(api, name: str) -> str | None:
-    """Resolve a hostgroup name to its Zabbix groupid."""
-    found = api.hostgroup.get(filter={'name': [name]}, output=['groupid', 'name'])
-    return found[0]['groupid'] if found else None
-
-
-def _build_widgets(layout: list, groupid: str) -> list[dict]:
-    """Build Zabbix 7.0 dashboard widget payload with a hostgroup filter."""
+def _build_widgets(layout, groupids):
+    """Build Zabbix 7.0 dashboard widget payload with hostgroup filter."""
     widgets = []
-    for i, (wtype, wname, x, y, w, h) in enumerate(layout):
-        # hostnavigator uses 'groupids' multi-field; problem widgets use 'hostgroupid'
+    for wtype, wname, x, y, w, h in layout:
         if wtype == 'hostnavigator':
-            fields = [
-                {'type': '20', 'name': 'groupids.0.hostgroupid', 'value': groupid},
-                {'type': '0', 'name': 'status', 'value': ''},
-                {'type': '0', 'name': 'maintenance', 'value': ''},
-            ]
+            fields = []
+            for j, gid in enumerate(groupids):
+                fields.append({'type': 0, 'name': f'groupids.{j}.hostgroupid', 'value': int(gid)})
+            fields.append({'type': 0, 'name': 'status', 'value': 0})
+            fields.append({'type': 0, 'name': 'maintenance', 'value': 0})
         else:
-            fields = [
-                {'type': '20', 'name': 'hostgroupid', 'value': groupid},
-            ]
+            if len(groupids) == 1:
+                fields = [{'type': 0, 'name': 'hostgroupid', 'value': int(groupids[0])}]
+            else:
+                fields = []
+                for j, gid in enumerate(groupids):
+                    fields.append({'type': 0, 'name': f'hostgroupids.{j}.reference', 'value': int(gid)})
         widgets.append({
             'type': wtype,
             'name': wname,
@@ -117,51 +79,47 @@ def _build_widgets(layout: list, groupid: str) -> list[dict]:
     return widgets
 
 
-def create_dashboard(api, name: str, group_name: str, layout: list, *, dry_run: bool = False) -> bool:
-    """Create a Zabbix dashboard filtering on a parent hostgroup.
-
-    Returns True if created, False if already exists or group missing.
-    """
-    groupid = _find_hostgroup(api, group_name)
-    if groupid is None:
-        logger.warning('  SKIP: hostgroup %r not found — run sync first', group_name)
-        return False
-
+def create_dashboard(api, name, groupids, layout, *, dry_run=False):
     existing = api.dashboard.get(filter={'name': [name]}, output=['dashboardid'])
     if existing:
         logger.info('  EXISTS: %r', name)
         return False
-
     if dry_run:
-        logger.info('  DRY-RUN: would create %r (filter: %s gid=%s)', name, group_name, groupid)
+        logger.info('  DRY-RUN: would create %r (%d groups)', name, len(groupids))
         return True
-
-    widgets = _build_widgets(layout, groupid)
+    widgets = _build_widgets(layout, groupids)
     try:
         api.dashboard.create(
             name=name,
             userid=1,
             display_period=60,
             auto_start=1,
-            pages=[{
-                'widgets': widgets,
-                'name': '',
-                'display_period': 0,
-                'private': 0,
-            }],
+            pages=[{'widgets': widgets, 'name': '', 'display_period': 0}],
         )
-        logger.info('  CREATED: %r (filter: %s)', name, group_name)
+        logger.info('  CREATED: %r (%d groups)', name, len(groupids))
         return True
     except Exception as e:
         logger.warning('  FAILED: %r: %s', name, str(e)[:200])
         return False
 
 
-def run(*, countries_only: bool = False, dry_run: bool = False, lab: bool = False) -> int:
-    global PREFIX
-    if lab:
-        PREFIX = 'ztc-'
+def _find_country_groups(api, country_code):
+    prefix = f'Sites/{country_code}-'
+    groups = api.hostgroup.get(search={'name': prefix}, output=['groupid', 'name'], sortfield='name')
+    top_level = []
+    for g in groups:
+        remainder = g['name'][len(prefix):]
+        if '/' not in remainder:
+            top_level.append(g['groupid'])
+    return top_level
 
+
+def _find_single_group(api, name):
+    found = api.hostgroup.get(filter={'name': [name]}, output=['groupid'])
+    return found[0]['groupid'] if found else None
+
+
+def run(*, countries_only=False, dry_run=False, lab=False):
     server = ZabbixServer.objects.first()
     if server is None:
         logger.error('No ZabbixServer found in NetBox')
@@ -173,38 +131,41 @@ def run(*, countries_only: bool = False, dry_run: bool = False, lab: bool = Fals
 
     created = 0
     with ZabbixConnection(server) as api:
-        # Country dashboards: filter on Sites/<COUNTRY>
         logger.info('Country dashboards:')
         for slug in COUNTRY_SLUGS:
             code = slug.upper()
-            hg_name = f'Sites/{code}'
-            name = f'{code} — Country Overview'
-            if create_dashboard(api, name, hg_name, WIDGET_LAYOUT, dry_run=dry_run):
+            groupids = _find_country_groups(api, code)
+            if not groupids:
+                logger.warning('  SKIP: no Sites/%s-* hostgroups found', code)
+                continue
+            name = f'{code} - Country Overview'
+            if create_dashboard(api, name, groupids, WIDGET_LAYOUT, dry_run=dry_run):
                 created += 1
 
         if countries_only:
             logger.info('Skipping role/OS dashboards (--countries-only)')
         else:
-            # Role dashboards: filter on Roles/<role_name>
             from dcim.models import DeviceRole
             role_names = sorted(set(
                 DeviceRole.objects.exclude(tags__slug='do_not_monitor')
                 .values_list('name', flat=True)
             ))
-            # Filter to roles that actually have hostgroups in Zabbix
             logger.info('Role dashboards:')
             for rn in role_names:
-                hg_name = f'Roles/{rn}'
-                name = f'{rn} — Role Overview'
-                if create_dashboard(api, name, hg_name, ROLE_LAYOUT, dry_run=dry_run):
+                gid = _find_single_group(api, f'Roles/{rn}')
+                if not gid:
+                    continue
+                name = f'{rn} - Role Overview'
+                if create_dashboard(api, name, [gid], ROLE_LAYOUT, dry_run=dry_run):
                     created += 1
 
-            # OS dashboards: filter on OS/<os_name>
             logger.info('OS dashboards:')
             for os_name in ['Windows', 'Linux', 'Network', 'VMware']:
-                hg_name = f'OS/{os_name}'
-                name = f'{os_name} — OS Overview'
-                if create_dashboard(api, name, hg_name, OS_LAYOUT, dry_run=dry_run):
+                gid = _find_single_group(api, f'OS/{os_name}')
+                if not gid:
+                    continue
+                name = f'{os_name} - OS Overview'
+                if create_dashboard(api, name, [gid], OS_LAYOUT, dry_run=dry_run):
                     created += 1
 
         total = len(api.dashboard.get(output=['dashboardid']))
@@ -214,11 +175,11 @@ def run(*, countries_only: bool = False, dry_run: bool = False, lab: bool = Fals
     return 0
 
 
-def main() -> int:
+def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--countries-only', action='store_true', help='Only create country dashboards')
-    parser.add_argument('--dry-run', action='store_true', help='Preview what would be created')
-    parser.add_argument('--lab', action='store_true', help='Use prefixed lab hostgroups')
+    parser.add_argument('--countries-only', action='store_true')
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--lab', action='store_true')
     args = parser.parse_args()
     return run(countries_only=args.countries_only, dry_run=args.dry_run, lab=args.lab)
 
