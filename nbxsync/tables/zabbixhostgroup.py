@@ -41,13 +41,9 @@ class ZabbixHostgroupObjectViewTable(ZabbixInheritedAssignmentTable, NetBoxTable
     assigned_object_type = ContentTypeModelNameColumn(accessor='assigned_object_type', verbose_name=_('Object Type'), order_by=('assigned_object_type__model',))
 
     rendered_output = tables.TemplateColumn(
-        template_code="""
-        {% load zabbix_hostgroups zabbix_preview %}
-        {% render_zabbix_hostgroup_assignment record as rendered_output %}
-        {% zabbix_preview_representative record as preview_source %}
-        {% if preview_source %}<span title="Preview rendered with {{ preview_source|escape }}">{{ rendered_output|escape }}</span>{% else %}{{ rendered_output|escape }}{% endif %}
-        """,
-        verbose_name='Value',
+        template_name='nbxsync/inc/jinja_preview_cell.html',
+        extra_context={'preview_kind': 'hostgroup'},
+        verbose_name=_('Preview'),
     )
 
     class Meta(NetBoxTable.Meta):

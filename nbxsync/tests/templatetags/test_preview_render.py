@@ -206,6 +206,71 @@ class HostgroupPreviewRenderTestCase(TestCase):
         rendered = render_zabbix_hostgroup_assignment({}, assignment, object=explicit_device)
         self.assertEqual(rendered, 'Roles/Other Role')
 
+    def test_sitegroup_roles_preview_is_one_sample_not_all_roles(self):
+        """Roles Jinja on a SiteGroup previews one device; sync still renders per role.
+
+        Regression for the NetBox UI Assigned-objects 'Value' column looking like
+        every country maps to Roles/Switch Access — preview is a sample only.
+        """
+        parent = SiteGroup.objects.create(name='CH', slug='ch-preview')
+        site = Site.objects.create(name='CH-SITE', slug='ch-site-preview', group=parent)
+        role_sw = DeviceRole.objects.create(name='Switch Access', slug='sw-acc-preview')
+        role_fw = DeviceRole.objects.create(name='Firewall', slug='fw-preview')
+        _make_device(name='ch-sw-1', role=role_sw, site=site)
+        _make_device(name='ch-fw-1', role=role_fw, site=site)
+
+        hg = ZabbixHostgroup.objects.create(
+            name='Roles',
+            value='Roles/{{ object.role.name }}',
+            zabbixserver=self.zabbixserver,
+        )
+        ct = ContentType.objects.get_for_model(SiteGroup)
+        assignment = ZabbixHostgroupAssignment.objects.create(
+            zabbixhostgroup=hg,
+            assigned_object_type=ct,
+            assigned_object_id=parent.id,
+        )
+
+        preview = render_zabbix_hostgroup_assignment({}, assignment)
+        self.assertTrue(preview.startswith('Roles/'))
+        self.assertIn(preview, ('Roles/Switch Access', 'Roles/Firewall'))
+
+        # Sync path: each device under the SiteGroup gets its own role group.
+        synced = {assignment.render(object=d)[0] for d in Device.objects.filter(site=site)}
+        self.assertEqual(synced, {'Roles/Switch Access', 'Roles/Firewall'})
+
+
+class PreviewCellTemplateTestCase(TestCase):
+    """Assigned-objects Preview column must disclose the sample source visibly."""
+
+    def setUp(self):
+        self.zabbixserver = ZabbixServer.objects.create(name='Preview Cell Server')
+
+    def test_hostgroup_preview_cell_shows_example_from(self):
+        from django.template.loader import render_to_string
+
+        role = DeviceRole.objects.create(name='Switch Access', slug='sw-cell')
+        device = _make_device(name='cell-sw-1', role=role)
+        hg = ZabbixHostgroup.objects.create(
+            name='Roles',
+            value='Roles/{{ object.role.name }}',
+            zabbixserver=self.zabbixserver,
+        )
+        ct = ContentType.objects.get_for_model(DeviceRole)
+        assignment = ZabbixHostgroupAssignment.objects.create(
+            zabbixhostgroup=hg,
+            assigned_object_type=ct,
+            assigned_object_id=role.id,
+        )
+
+        html = render_to_string(
+            'nbxsync/inc/jinja_preview_cell.html',
+            {'record': assignment, 'preview_kind': 'hostgroup'},
+        )
+        self.assertIn('Roles/Switch Access', html)
+        self.assertIn('example from', html)
+        self.assertIn(str(device), html)
+
 
 class TagPreviewRenderTestCase(TestCase):
     """End-to-end tests for render_zabbix_tag_assignment tag."""

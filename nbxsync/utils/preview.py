@@ -8,9 +8,11 @@ so templates that traverse device-level attributes (``object.role.name``,
 ``object.site.group.name``, ...) fail with UndefinedError.
 
 These helpers pick a **representative** Device/VM from the assignment's
-descendants so the preview renders the same value the sync engine would
-produce. The representative is arbitrary — the UI shows the rendered value
-cleanly, as if it were static.
+descendants so the preview can render device-context templates without
+UndefinedError. The representative is arbitrary: for templates like
+``Roles/{{ object.role.name }}`` assigned to a SiteGroup, the preview shows
+one sample role only. Sync still renders the template per inherited Device/VM.
+Callers must disclose the sample source in the UI (see jinja_preview_cell).
 """
 
 from __future__ import annotations

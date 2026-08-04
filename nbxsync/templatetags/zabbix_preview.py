@@ -12,8 +12,8 @@ def zabbix_preview_representative(assignment):
     Values assigned to a Site, Role, Platform, ... are rendered per inherited
     Device/VM during sync, so the UI can only show one example. Returning the
     representative lets templates disclose which object produced the value
-    instead of presenting it as the single truth. Empty string when the
-    assignment targets a Device/VM directly, or when nothing inherits it.
+    (visible text, not only a tooltip). Empty string when the assignment
+    targets a Device/VM directly, or when nothing inherits it.
     """
     target = assignment.assigned_object
     if target is None:
