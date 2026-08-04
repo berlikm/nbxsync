@@ -46,7 +46,7 @@ Both templates are assigned on the **country Site Group**, not on every Device R
 
 Exactly **one** configuration group decides how the host is reached (agent vs SNMP vs OOB). Hostgroups and templates can stack freely; transport cannot. Tags are for overlays only (`critical`, `snmp` OS flavor, `do_not_monitor`). Putting transport on a tag would silently override role and site defaults.
 
-Role-level SNMP / Server Agent+OOB **overrides** the country Site Group’s Agent default. Assign Agent Monitoring on **country** Site Groups (not on campus mid-levels — those would win over the country default). If continent parent Site Groups exist for regional permissions (`APAC` / `EMEA` / …), keep Agent/proxy on the **country** unless you deliberately redefine defaults onto the continent.
+Role-level SNMP / Server Agent+OOB **overrides** the country Site Group’s Agent default. Assign Agent Monitoring on **country** Site Groups only — not on campus mid-levels (those would win over the country default).
 
 ### Where to look in the GUI
 
@@ -424,12 +424,9 @@ This is the configured Sites value. `get_ancestors(include_self=True)` walks the
 | NetBox layout | Rendered hostgroup | Parents created |
 |---|---|---|
 | Site under campus CH-STA (parent CH) | `Sites/CH/CH-STA/CH-STA-L42` | `Sites`, `Sites/CH`, `Sites/CH-STA` |
-| Site under CH under continent EMEA | `Sites/EMEA/CH/CH-STA/…` | `Sites`, `Sites/EMEA`, `Sites/EMEA/CH`, … |
 | Site directly under country CH | `Sites/CH/<site>` | `Sites`, `Sites/CH` |
 
-Hosts stay members of the **leaf** only. Country (or regional) dashboards and permissions filter on parent `Sites/CH` or `Sites/EMEA` (nested children included) — do not also put hosts in a flat country group. A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
-
-Optional continent Site Groups (APAC / EMEA / AMER as parents of countries) are for regional permissions; keep Agent Monitoring and proxy on **country** groups unless you redefine that deliberately.
+Hosts stay members of the **leaf** only. Country dashboards and location filters use parent `Sites/CH` (nested children included) — do not also put hosts in a flat country group. Monitoring access in Zabbix is **global** (flat organisation); nested Sites are for location views, not regional RBAC. A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
 
 ### 8.2 Roles
 
@@ -605,7 +602,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 These hang off the hostgroups and tags above; they are configured in Zabbix, not in nbxsync:
 
 1. Alert actions / escalations using `Priority/Critical`, `Roles/*`, and `Sites/*`
-2. User group permissions on parent groups such as `Sites/CH` with “apply to subgroups”
+2. User group permissions — **global** across the estate (flat organisation); nested `Sites/CH` remains available for location-scoped views if ever needed, but we are not splitting access by continent/region
 3. Dashboards filtered on parent groups (`Sites/CH`, `Roles/Switch Core`, `OS/Linux`, …) — nested site groups are included by the UI
 4. Extra proxies in CH Proxy Group if you need high availability
 5. Maintenance windows and trigger dependencies as needed
@@ -668,7 +665,7 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Sample Linux server | Server Agent+OOB; agent + oob SNMP; OS/Linux; Roles/Server; leaf under `Sites/CH/…` |
 | Sample switch | SNMP Monitoring; Network Generic and/or EXOS/FortiOS; OS/Network; leaf under `Sites/CH/…` |
 | Sample Windows VM | Agent; Windows by agent; OS/Windows; leaf under `Sites/CH/…` |
-| Country dashboard / ACL | Filter on parent `Sites/CH` — nested site/campus groups included; hosts are not direct members of `Sites/CH` |
+| Country dashboard / ACL | Filter on parent `Sites/CH` for location views; hosts are leaf members only. Org access is global — no regional permission split |
 | Host with `critical` | Also in Priority/Critical |
 | Role not listed in §5b SNMP/OOB | Still has Agent via Site Group |
 | VM without site | No useful profile until site/scope is set |
