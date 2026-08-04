@@ -898,7 +898,12 @@ def step8_hostgroups(server, country_slugs=None):
         M.ZabbixHostgroup,
         zabbixserver=server,
         name='Sites',
-        defaults={'value': 'Sites/{{ object.site.group.name }}/{{ object.site.name }}'},
+        defaults={
+            'value': (
+                'Sites/{{ object.site.group.get_ancestors(include_self=True) '
+                '| map(attribute="name") | join("/") }}/{{ object.site.name }}'
+            ),
+        },
         update_fields=['value'],
     )
     # One Roles Jinja assignment per country SiteGroup (not per DeviceRole)
@@ -1471,7 +1476,12 @@ def run_simulate() -> int:
             M.ZabbixHostgroup,
             zabbixserver=server,
             name=f'{PREFIX}Sites',
-            defaults={'value': 'Sites/{{ object.site.group.name }}/{{ object.site.name }}'},
+            defaults={
+            'value': (
+                'Sites/{{ object.site.group.get_ancestors(include_self=True) '
+                '| map(attribute="name") | join("/") }}/{{ object.site.name }}'
+            ),
+        },
             update_fields=['value'],
         )
         hg_roles, _ = ensure(
