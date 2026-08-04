@@ -388,9 +388,9 @@ Use together with configuration group **SNMP by tag** for the interface.
 Path: **Zabbix → Templates → [template] → Assigned objects → Add**  
 (or Device Role / Manufacturer → Zabbix tab)
 
-**Why here:** application and OEM templates are business knowledge (“MSSQL role gets MSSQL by ODBC”). They **merge** with OS templates from §6 — different template IDs all accumulate; nothing is subtracted. Role **floors** (Network Generic on switches, FortiGate on Firewall, Storage Generic on Storage/Cohesity) cover devices whose platform is missing or does not match a specialized rule; when the platform *does* match (e.g. EXOS, FortiOS), the Template Rule adds the specialized template as well.
+**Why here:** application and OEM templates are business knowledge (“MSSQL role gets MSSQL by ODBC”). They **merge** with OS / platform templates from §6 — different template IDs all accumulate; nothing is subtracted. Do **not** put Network Generic on Switch*/AP roles: those roles already get Extreme EXOS / VOSS / IQ Engine / FortiOS (etc.) from §6, and Network Generic + EXOS both define `icmpping` so Zabbix rejects the link. Use **Network Device** only as the no-platform fallback. Firewall keeps FortiGate on the role (same template the FortiOS rule would add). Storage Generic stays on Storage/Cohesity.
 
-**Interface requirements (silent drop):** each nbxsync Template can declare required interface types (Agent, SNMP, ANY, …). At sync, a template is **linked only if the host already has those interface types**. If the requirement is not met, the template is skipped with no dramatic error — it simply does not appear on the Zabbix host. That makes broad Role assignment safer across transport classes. It does **not** prevent two SNMP templates from both linking and colliding on item keys — that still needs compatible templates or narrower assignment (see Storage Generic vs iDRAC).
+**Interface requirements (silent drop):** each nbxsync Template can declare required interface types (Agent, SNMP, ANY, …). At sync, a template is **linked only if the host already has those interface types**. If the requirement is not met, the template is skipped with no dramatic error — it simply does not appear on the Zabbix host. That makes broad Role assignment safer across transport classes. It does **not** prevent two SNMP templates from both linking and colliding on item keys — avoid overlapping assignments (Switch+Network Generic vs EXOS; Storage Generic vs iDRAC).
 
 | Template | Assigned to | Notes |
 |---|---|---|
@@ -400,17 +400,12 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 | Pure Storage FlashArray v1 by HTTP | Device Role Pure Storage | Pure stays on Agent transport |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if platform does not match a rule |
-| Network Generic Device by SNMP | Device Role Network Device | Baseline |
+| Network Generic Device by SNMP | Device Role Network Device | Fallback when platform does not match a §6 rule |
 | Storage Generic Device by SNMP | Device Role Storage | Avoids item collision with iDRAC |
 | Storage Generic Device by SNMP | Device Role Cohesity | |
-| Network Generic Device by SNMP | Device Role Switch Core | Baseline if platform is missing |
-| Network Generic Device by SNMP | Device Role Switch Dist | |
-| Network Generic Device by SNMP | Device Role Switch Access | |
-| Network Generic Device by SNMP | Device Role Switch Mgmt | |
-| Network Generic Device by SNMP | Device Role Access Point | |
-| FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule still adds when platform matches |
+| FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule adds the same template when platform matches |
 
-Dell iDRAC is **not** in this table — use §6.3.
+Do **not** assign Network Generic to Switch Core / Dist / Access / Mgmt or Access Point. Dell iDRAC is **not** in this table — use §6.3.
 
 ---
 
@@ -670,7 +665,7 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Check | Expect |
 |---|---|
 | Sample Linux server | Server Agent+OOB; agent + oob SNMP; OS/Linux; Roles/Server; leaf under `Sites/CH/…` |
-| Sample switch | SNMP Monitoring; Network Generic and/or EXOS/FortiOS; OS/Network; leaf under `Sites/CH/…` |
+| Sample switch | SNMP Monitoring; Extreme EXOS (or other §6 platform template) — **not** Network Generic on the role; OS/Network; leaf under `Sites/CH/…` |
 | Sample Windows VM | Agent; Windows by agent; OS/Windows; leaf under `Sites/CH/…` |
 | Country dashboard / ACL | Filter on parent `Sites/CH` for location views; hosts are leaf members only. Org access is global — no regional permission split |
 | Host with `critical` | Also in Priority/Critical |

@@ -24,8 +24,9 @@ Deltas vs the old checklist script:
        (OS-correct templates; pairs with VM-by-SNMP CG for transport)
   Δ8   Hostgroups: Sites + Roles Jinja @ SiteGroup + Priority/Critical; drop
        Managed/nbxSync and Teams/* (prefer Roles/* unless Zabbix RBAC needs Teams)
-  Δ7   SNMP role-floor templates: Switch*/AP → Network Generic; Firewall → FortiGate
-       (platform TemplateRules still add specialized templates when platform matches)
+  Δ7   Role templates: Network Device → Network Generic fallback only; Firewall → FortiGate.
+       Do NOT floor Switch*/AP with Network Generic — platform TemplateRules (EXOS, …)
+       already attach specialized templates; both define icmpping and Zabbix rejects duplicates.
   Δ10  Single inventory Jinja payload applied to every country SiteGroup
   Δ0   NetBox inventory mutations OFF by default (--mutate-netbox to restore)
   ΔP0  Templates/proxies by Zabbix name; ensure() updates; prune shadow macros;
@@ -883,16 +884,12 @@ def step7_template_assignments(server):
         (make_template(*TPL['pure_storage_http'], req=[HostInterfaceRequirementChoices.ANY]), 'Pure Storage'),
         (make_template(*TPL['gitlab_http'], req=[HostInterfaceRequirementChoices.ANY]), 'GitLab'),
         (make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Virtual Appliance'),
+        # Network Generic only on Network Device (no platform / no regex match).
+        # Switch*/AP must NOT get this floor — EXOS (etc.) TemplateRules already attach
+        # specialized templates; pairing both yields duplicate icmpping item keys.
         (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Network Device'),
         (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Storage'),
         (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Cohesity'),
-        # SNMP role floors — cover devices with missing/non-matching platform.
-        # Specialized TemplateRules (EXOS, FortiOS, IQ Engine, …) still add when platform matches.
-        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Switch Core'),
-        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Switch Dist'),
-        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Switch Access'),
-        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Switch Mgmt'),
-        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Access Point'),
         (make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Firewall'),
     ]
     for template, role_name in assignments:
@@ -908,6 +905,21 @@ def step7_template_assignments(server):
             assigned_object_id=role.id,
             defaults={},
         )
+
+    # Prune legacy Switch*/AP → Network Generic floors (icmpping collision with EXOS/etc.).
+    tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+    for role_name in ('Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Access Point'):
+        try:
+            role = get_role(role_name)
+        except DeviceRole.DoesNotExist:
+            continue
+        deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+            zabbixtemplate=tpl_netgeneric,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=role.id,
+        ).delete()
+        if deleted:
+            logger.info('  PRUNED: %s Network Generic assignment(s) from role %s', deleted, role_name)
 
     # Dell iDRAC is scoped via TemplateRule (step 6: Dell ∧ Server), not Manufacturer.
 
@@ -1594,7 +1606,8 @@ def run_simulate() -> int:
         attach_dev(stor, next_ip())
         objects['storage'] = stor
 
-        # No platform — must still get role-floor SNMP templates (the production gap).
+        # No platform — Firewall keeps FortiGate role floor (same template as FortiOS rule).
+        # Access Point has no Network Generic role floor (platform rules only; see step 7).
         fw = Device.objects.create(name=f'{PREFIX}fw-zone-01', device_type=dtype, role=roles['Firewall'], site=site, status='active')
         attach_dev(fw, next_ip())
         objects['firewall'] = fw
@@ -1672,12 +1685,27 @@ def run_simulate() -> int:
             str(tpl_names(objects['firewall'])),
             group='resolve',
         )
+        switch_tpls = tpl_names(objects['switch'])
         record(
-            'ap_role_floor_netgeneric',
-            any('Network Generic' in n for n in tpl_names(objects['access_point'])),
-            str(tpl_names(objects['access_point'])),
+            'switch_exos_no_netgeneric',
+            any('EXOS' in n for n in switch_tpls) and not any('Network Generic' in n for n in switch_tpls),
+            str(switch_tpls),
             group='resolve',
         )
+        netgeneric_tpl = M.ZabbixTemplate.objects.filter(zabbixserver=server, name__icontains='Network Generic Device by SNMP').first()
+        switch_floor_left = 0
+        if netgeneric_tpl is not None:
+            for role_name in ('Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Access Point'):
+                try:
+                    role = get_role(role_name)
+                except DeviceRole.DoesNotExist:
+                    continue
+                switch_floor_left += M.ZabbixTemplateAssignment.objects.filter(
+                    zabbixtemplate=netgeneric_tpl,
+                    assigned_object_type=ct(DeviceRole),
+                    assigned_object_id=role.id,
+                ).count()
+        record('no_switch_ap_netgeneric_floor', switch_floor_left == 0, f'leftover={switch_floor_left}', group='resolve')
         agent_role_rows = M.ZabbixConfigurationGroupAssignment.objects.filter(
             zabbixconfigurationgroup=agent_group, assigned_object_type=ct(DeviceRole)
         ).count()
@@ -1728,9 +1756,14 @@ def run_simulate() -> int:
             h_fw = host(objects['firewall'].name)
             fw_tpls = [t.get('name') for t in (h_fw.get('parentTemplates', []) if h_fw else [])]
             record('zbx_firewall_fortigate', any('FortiGate' in (n or '') for n in fw_tpls), str(fw_tpls), group='zabbix')
-            h_ap = host(objects['access_point'].name)
-            ap_tpls = [t.get('name') for t in (h_ap.get('parentTemplates', []) if h_ap else [])]
-            record('zbx_ap_netgeneric', any('Network Generic' in (n or '') for n in ap_tpls), str(ap_tpls), group='zabbix')
+            h_sw = host(objects['switch'].name)
+            sw_tpls = [t.get('name') for t in (h_sw.get('parentTemplates', []) if h_sw else [])]
+            record(
+                'zbx_switch_exos_only',
+                any('EXOS' in (n or '') for n in sw_tpls) and not any('Network Generic' in (n or '') for n in sw_tpls),
+                str(sw_tpls),
+                group='zabbix',
+            )
 
             # Hostgroup-first hygiene
             record('no_os_family_tags', M.ZabbixTag.objects.filter(tag='os_family').count() == 0, str(M.ZabbixTag.objects.filter(tag='os_family').count()), group='hygiene')
