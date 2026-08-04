@@ -48,6 +48,13 @@ OS_LAYOUT = [
     ('hostnavigator', 'Host Navigator', 0, 5, 24, 5),
 ]
 
+# Zabbix 7.0 widget field types
+# 0=integer, 1=string, 2=host_group (HOST_GROUP),
+# 3=host, 4=item, 5=item_prototype, 6=graph, 7=graph_prototype,
+# 8=map, 9=service, 10=sla, 11=user, 12=action, 13=media_type
+HG_TYPE = 2  # ZBX_WIDGET_FIELD_TYPE_HOST_GROUP
+INT_TYPE = 0  # ZBX_WIDGET_FIELD_TYPE_INTEGER
+
 
 def _build_widgets(layout, groupids):
     """Build Zabbix 7.0 dashboard widget payload with hostgroup filter."""
@@ -56,16 +63,16 @@ def _build_widgets(layout, groupids):
         if wtype == 'hostnavigator':
             fields = []
             for j, gid in enumerate(groupids):
-                fields.append({'type': 0, 'name': f'groupids.{j}.hostgroupid', 'value': int(gid)})
-            fields.append({'type': 0, 'name': 'status', 'value': 0})
-            fields.append({'type': 0, 'name': 'maintenance', 'value': 0})
+                fields.append({'type': HG_TYPE, 'name': f'groupids.{j}.hostgroupid', 'value': int(gid)})
+            fields.append({'type': INT_TYPE, 'name': 'status', 'value': -1})
+            fields.append({'type': INT_TYPE, 'name': 'maintenance', 'value': -1})
         else:
             if len(groupids) == 1:
-                fields = [{'type': 0, 'name': 'hostgroupid', 'value': int(groupids[0])}]
+                fields = [{'type': HG_TYPE, 'name': 'hostgroupid', 'value': int(groupids[0])}]
             else:
                 fields = []
                 for j, gid in enumerate(groupids):
-                    fields.append({'type': 0, 'name': f'hostgroupids.{j}.reference', 'value': int(gid)})
+                    fields.append({'type': HG_TYPE, 'name': f'hostgroupids.{j}.reference', 'value': int(gid)})
         widgets.append({
             'type': wtype,
             'name': wname,
