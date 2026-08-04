@@ -1,8 +1,12 @@
 # nbxSync Configuration Checklist
 
-Step-by-step configuration in NetBox. Execute in order. Each section is a discrete task.
+Step-by-step configuration in NetBox. Execute in order for the initial build. Day-2 procedures are in §15; verification in §16.
 
 This checklist is for **GUI operators**. Fill in production URLs, tokens, and secrets when you apply it in the target environment.
+
+**Last verified:** 2026-08-04 against NetBox 4.x / Zabbix 7.0.x (lab). Update this stamp when you re-validate against production.
+
+**Canonical copy:** keep one authoritative home (this repo file or Confluence). If both exist, the other must be a pointer only — do not maintain two full copies by hand.
 
 ---
 
@@ -81,6 +85,8 @@ Path: **Zabbix → Servers → Add**
 | Validate certs | True |
 | Sync enabled | True |
 | Skip version check | False |
+
+**Validate certs = True** requires an **HTTPS** URL with a certificate chain trusted by the NetBox host. With HTTP, or with HTTPS and an untrusted/self-signed cert and validation left on, the first sync fails in a confusing way. Production (Zabbix Cloud) must use HTTPS + validation on.
 
 ---
 
@@ -286,6 +292,8 @@ Without these assignments, the group’s interfaces are not applied during sync.
 
 Active Cohesity VMs that have a primary IPv4 address need a **direct** assignment to **SNMP Monitoring** (they have no out-of-band IP, so OOB SNMP Only would not work). Assign each such VM individually.
 
+This is a standing manual task until a cleaner NetBox signal exists (for example a dedicated role or tag that selects SNMP Monitoring). When you invent Cohesity VMs, check this list; put it on the recurring ops checklist in §15.
+
 ### VM by SNMP (per VM)
 
 For each VM that must use SNMP instead of agent:
@@ -330,9 +338,14 @@ Ensure these Zabbix templates exist (create the nbxsync Template objects pointin
 | Pure Storage FlashArray v1 by HTTP |
 | GitLab by HTTP |
 
-**Storage Generic Device by SNMP** should be a clone of Network Generic Device by SNMP without items that collide with Dell iDRAC (`snmptrap.fallback` and `zabbix[host,snmp,available]`). Import Dell iDRAC from the Zabbix template library if it is not already installed.
+**Storage Generic Device by SNMP:** clone from Network Generic Device by SNMP **without** items that collide with Dell iDRAC (`snmptrap.fallback` and `zabbix[host,snmp,available]`). Preferred method in the Zabbix UI: **Export** the Network Generic template as YAML → delete those two items (and keep discovery rules, prototypes, triggers, value maps) → **Import** under the new name `Storage Generic Device by SNMP`. Do not recreate the template by copying items one-by-one in the UI — that drops LLD and related objects. Import Dell iDRAC from the Zabbix template library if it is not already installed.
 
-Matching is a case-insensitive substring search on the platform name. Lower priority number wins when more than one rule matches. Leave “require tags” empty unless noted.
+**How matching works**
+
+- The **pattern** is a **case-insensitive regular expression**, matched with `search` (substring of the platform name — **not** a full-string match, and **not** a plain text substring). Examples in the table (`Ubuntu|Debian|…`, `Other.*Linux`) are regex. A literal platform string pasted as the pattern (for example `Windows Server 2019 (x64)`) may never match or may be an invalid regex — write a real expression (for example `Windows Server`).
+- **Every matching rule contributes** its template and optional hostgroup. Priority only sets **evaluation order** (`order_by priority, name`). A template (or hostgroup) already resolved by an earlier rule or an explicit assignment is not added twice. A higher-priority rule does **not** suppress a lower-priority rule that points at a *different* template. To stop a catch-all from also applying, narrow its pattern or disable it — do not assume “lower number wins exclusively.” (Today Windows Server and Windows catch-all both point at the same template, so the collision is invisible.)
+
+Leave “require tags” empty unless noted.
 
 ### 6.1 Platform rules
 
@@ -368,6 +381,8 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 (or Device Role / Manufacturer → Zabbix tab)
 
 **Why here:** application and OEM templates are business knowledge (“MSSQL role gets MSSQL by ODBC”). They merge with OS templates from §6. Role **floors** (Network Generic on switches, FortiGate on Firewall, Storage Generic on Storage/Cohesity) cover devices whose platform is missing or does not match a specialized rule; when the platform *does* match (e.g. EXOS, FortiOS), the Template Rule adds the specialized template as well.
+
+**Interface requirements (silent drop):** each nbxsync Template can declare required interface types (Agent, SNMP, ANY, …). At sync, a template is **linked only if the host already has those interface types**. If the requirement is not met, the template is skipped with no dramatic error — it simply does not appear on the Zabbix host. That is why “Linux by SNMP” on Virtual Appliance is safe on SNMP-only hosts, and why assigning an agent-only template to an SNMP-only host looks like “nothing happened.” Check **Zabbix → Templates → [template] → interface requirements** and the host’s effective interfaces when debugging missing templates.
 
 | Template | Assigned to | Notes |
 |---|---|---|
@@ -469,6 +484,8 @@ Path: **Zabbix → Tags → Add**, then assign to each country Site Group.
 ```
 
 Renders against the device or VM at sync. Preview on a Site Group may show an error — cosmetic.
+
+**Failure mode:** names that do not match the `-p-` / `-d-` / … conventions resolve to **`Unknown` with no alert**. That is silent. If environment tagging matters for routing, spot-check hosts that look odd in naming, or tighten the convention.
 
 ### 9.2 Cluster
 
@@ -586,6 +603,72 @@ These hang off the hostgroups and tags above; they are configured in Zabbix, not
 3. Dashboards filtered on parent groups (`Sites/CH`, `Roles/Switch Core`, `OS/Linux`, …) — nested site groups are included by the UI
 4. Extra proxies in CH Proxy Group if you need high availability
 5. Maintenance windows and trigger dependencies as needed
+
+---
+
+## 15. Day-2 operations (after go-live)
+
+Initial build is §§1–14. After that, operators mostly do the following.
+
+### 15.1 New Device Role appeared
+
+1. Does it need a **transport exception**? If it is agent-class → nothing (Site Group Agent default). If SNMP-only network/storage → assign **SNMP Monitoring** (§5b). If dual-plane BMC server → **Server Agent+OOB**. If OOB-only → **OOB SNMP Only**.
+2. Does it need an **application template**? Add a Template assignment on the role (§7).
+3. Hostgroup `Roles/<name>` appears automatically from the Sites/Roles Jinja — do not create a per-role hostgroup assignment.
+
+### 15.2 New Platform appeared
+
+1. Does an existing Template Rule pattern already match? Check with the real platform name (regex `search`).
+2. If not, add or extend a rule in §6 (remember: every matching rule contributes — do not rely on priority to suppress another rule’s different template).
+3. Confirm the template’s **interface requirements** match the transport the host will have.
+
+### 15.3 New application template
+
+1. Import/create the template in Zabbix; create the nbxsync Template object.
+2. Set interface requirements (Agent / SNMP / ANY).
+3. Assign on the Device Role (or Device type / Manufacturer if that is the true scope) — §7.
+
+### 15.4 This host is not monitored / has the wrong templates
+
+Work top-down:
+
+1. **Excluded?** NetBox tag `do_not_monitor` (or role with that Zabbix tag) and plugin `exclude_tag`.
+2. **Site / Site Group?** Device or VM must resolve into a managed country (site set; cluster VMs need site or cluster site scope). No site → not profiled (§13).
+3. **Effective configuration group?** On the device/VM Zabbix tab (or inherited from role / Site Group). Wrong CG → wrong interfaces.
+4. **Interfaces present?** Agent and/or SNMP as expected; for BMC, is `oob_ip` set?
+5. **Template interface requirements?** Template needing Agent will not link on an SNMP-only host (silent drop) — §7.
+6. **Template Rules?** Platform name vs rule regex; `require_tags` (e.g. `snmp`); enabled flag. Remember all matching rules apply.
+7. **Status mapping?** Planned/offline/etc. may disable or delete the Zabbix host (§12).
+8. Re-sync the host and compare to the §13 expected-state row for that class.
+
+### 15.5 Recurring manual checks
+
+| Task | When |
+|---|---|
+| Cohesity VMs with primary IP → SNMP Monitoring (§5b) | When such VMs are created or found |
+| Spot-check `environment=Unknown` | After naming-convention drift |
+| Update “Last verified” stamp at top of this doc | After a production re-validation |
+
+---
+
+## 16. Verification
+
+After the initial build, and after major changes, confirm coverage against §13.
+
+**What “good” looks like (spot-check in GUI / Zabbix):**
+
+| Check | Expect |
+|---|---|
+| Sample Linux server | Server Agent+OOB; agent + oob SNMP; OS/Linux; Roles/Server; Sites/CH/… |
+| Sample switch | SNMP Monitoring; Network Generic and/or EXOS/FortiOS; OS/Network |
+| Sample Windows VM | Agent; Windows by agent; OS/Windows |
+| Host with `critical` | Also in Priority/Critical |
+| Role not listed in §5b SNMP/OOB | Still has Agent via Site Group |
+| VM without site | No useful profile until site/scope is set |
+
+**Unprofiled / wrong template symptoms:** host missing in Zabbix, empty template list, or only partial stack vs §13. Use the §15.4 ladder.
+
+**If you use the optional configure helper:** it can print a coverage census (`unprofiled`, hosts without templates, SNMP roles stuck on Agent, leftover shadow macros). Treat non-zero counts as tickets: map each metric back to §15.4. The GUI checklist remains the operator source of truth; the helper is a shortcut, not a second policy.
 
 ---
 
