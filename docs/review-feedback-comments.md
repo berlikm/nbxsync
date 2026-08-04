@@ -118,19 +118,19 @@ We are not adding continent hostgroups for now (see Regions above).
 
 For function we use `Roles/…` (for example `Roles/MSSQL`), not a parallel “Teams / Database” tree. If permissions later need a team-shaped group that is not the same as a Device Role, we can add that as an explicit extra axis then.
 
-### Why `Sites/CH` may be missing — and how to include the full chain
+### Nested Sites path (includes country)
 
-The short template `Sites/{{ object.site.group.name }}/{{ object.site.name }}` uses only the site’s **immediate** Site Group. If that is campus **CH-STA** (parent **CH**), Zabbix gets `Sites/CH-STA/…` and never `Sites/CH`.
-
-**Easy fix (GUI only, no plugin change):** set the Sites hostgroup value to:
+The Sites hostgroup value uses the full Site Group ancestry:
 
 ```
 Sites/{{ object.site.group.get_ancestors(include_self=True) | map(attribute="name") | join("/") }}/{{ object.site.name }}
 ```
 
-NetBox Site Groups already support `get_ancestors()`. With `include_self=True` the path is country → … → campus → site name, for example `Sites/CH/CH-STA/CH-STA-L42`. Parent-first create then adds `Sites/CH` and `Sites/CH-STA`. Sites directly under CH still render cleanly as `Sites/CH/<site>`.
+A site under campus **CH-STA** (parent **CH**) therefore becomes `Sites/CH/CH-STA/CH-STA-L42`. Parent-first create materializes `Sites`, `Sites/CH`, and `Sites/CH-STA`. Sites hanging directly under **CH** render as `Sites/CH/<site>`.
 
-Hosts remain in the leaf only; country dashboards filter on parent `Sites/CH`.
+Hosts remain in the leaf only; country dashboards and permissions filter on parent `Sites/CH` (nested children included). Do not also assign hosts into a flat `CH` group.
+
+*(A shorter template that only uses `object.site.group.name` would skip the country segment when the site’s group is a campus — that is not what we configure.)*
 
 ---
 
@@ -155,6 +155,6 @@ Permission design stays in Zabbix: user groups get rights on parent hostgroups s
 | Tags | Lean; do not mirror hostgroup names |
 | SNMP Linux/Windows | VM by SNMP + tag-gated Template Rules |
 | Nested groups / Zabbix permissions | Yes — dashboard/ACL on parent; hosts stay in leaf |
-| Why no `Sites/CH` sometimes | Immediate `site.group` only — fix: `get_ancestors(include_self=True)` in Sites Jinja |
+| Nested Sites path | Full Site Group ancestry (`get_ancestors`) so `Sites/CH/…` exists for country boards |
 
 Country Site Group decides default transport and proxy; role decides transport exceptions; platform / manufacturer / device type decide templates at the right level; tags only add overlays.

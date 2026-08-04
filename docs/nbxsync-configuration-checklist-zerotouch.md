@@ -423,7 +423,7 @@ Path: **Zabbix → Hostgroups → Add**, then assignments on each hostgroup or f
 
 Hosts stay members of the **leaf** only. Country dashboards and permissions use parent `Sites/CH` (nested children included). A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
 
-*(Shorter path that only uses the immediate group — `Sites/{{ object.site.group.name }}/{{ object.site.name }}` — skips country when the site’s group is a campus like CH-STA. Prefer the ancestry form above.)*
+Do not use the short form `Sites/{{ object.site.group.name }}/{{ object.site.name }}` — it omits the country when the site’s group is a campus (e.g. CH-STA).
 
 ### 8.2 Roles
 
