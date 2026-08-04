@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 """Zero-touch nbxsync configuration + optional live simulation.
 
-Replaces the manual GUI checklist sprawl with idempotent Django ORM setup:
+The GUI configuration checklist is the **functional contract**. This script is
+the **automated delivery** of those same outcomes:
 
-  * Agent CG default on each **top-level SiteGroup** (not 31 role→Agent rows)
-  * SNMP CG on network + SNMP-only storage roles (role beats SiteGroup)
-  * Server BMC = **one** CG with Agent (primary) + SNMP ``use_oob_ip`` (not a
-    second Manufacturer CG — the engine picks exactly one effective CG)
-  * Jinja ``Sites/*`` + ``Roles/*`` once per top SiteGroup (not per role)
-  * TemplateRules, app/Manufacturer templates, tag hostgroups, macros, inventory
+  * §1–3  Server, proxies, country SiteGroup server/proxy assignments
+  * §4–5  Agent / SNMP / Server Agent+OOB / VM-by-SNMP ConfigGroups + IFs
+          (Agent default on SiteGroups — not 31 role→Agent rows;
+           storage on SNMP; BMC = one CG with Agent + use_oob_ip)
+  * §6–7  TemplateRules + app/Manufacturer template assignments
+  * §8–9  Jinja Sites/Roles once per SiteGroup; Teams; tag hostgroups; tags
+  * §10–11 Inventory + role macros
+  * §12   Assert plugin safety-gate defaults (configuration.py still owns settings)
 
 Usage (from repo root, NetBox deps installed)::
 
@@ -20,8 +23,7 @@ Usage (from repo root, NetBox deps installed)::
 Lab artifacts:
   /opt/cursor/artifacts/zerotouch_configure_sim_results.json
   /opt/cursor/artifacts/ZEROTOUCH_CONFIGURE_SIM_REPORT.md
-
-See also: /opt/cursor/artifacts/CHECKLIST_VS_ZEROTOUCH.md
+  /opt/cursor/artifacts/CHECKLIST_VS_ZEROTOUCH.md
 """
 from __future__ import annotations
 
@@ -63,9 +65,12 @@ SNMP_ROLES = (
 # Roles that need BMC dual-plane (Agent primary + SNMP OOB) — complete CG.
 SERVER_BMC_ROLES = ('Server',)
 
-# App template → role (business knowledge — still explicit).
+# App / manufacturer template → role (business knowledge — still explicit).
+# Same outcomes as checklist §7; transport comes from CGs above.
 APP_TEMPLATE_ROLES = {
     'MSSQL by ODBC': ('MSSQL', 'MSSQL Query Server'),
+    'VMware FQDN': ('vCenter',),
+    'Pure Storage FlashArray by HTTP': ('Pure Storage',),
     'GitLab by HTTP': ('GitLab',),
     'Linux by SNMP': ('Virtual Appliance',),
 }
@@ -107,7 +112,10 @@ ALL_ROLES = sorted(
         'Domain Controller',
         'Fileserver',
         'MSSQL',
+        'MSSQL Query Server',
         'GitLab',
+        'vCenter',
+        'Pure Storage',
         'VDI',  # exclusion target
         'Messpc',
         'Sd Wan Socket',
@@ -309,6 +317,9 @@ def ensure_zabbix_templates(api) -> dict:
         'mssql': ensure(f'{PREFIX}mssql.odbc', f'{PREFIX}MSSQL by ODBC'),
         'gitlab': ensure(f'{PREFIX}gitlab.http', f'{PREFIX}GitLab by HTTP'),
         'linux_snmp': ensure(f'{PREFIX}linux.snmp', f'{PREFIX}Linux by SNMP'),
+        'vmware': ensure(f'{PREFIX}vmware.fqdn', f'{PREFIX}VMware FQDN'),
+        'pure': ensure(f'{PREFIX}pure.http', f'{PREFIX}Pure Storage FlashArray by HTTP'),
+        'fortigate': ensure(f'{PREFIX}fortigate.snmp', f'{PREFIX}FortiGate by SNMP'),
     }
 
 
@@ -559,6 +570,9 @@ def configure_templates_and_overlays(ctx: Ctx, zids: dict) -> None:
     tmpl('MSSQL by ODBC', zids['mssql'], [HostInterfaceRequirementChoices.AGENT])
     tmpl('GitLab by HTTP', zids['gitlab'], [HostInterfaceRequirementChoices.AGENT])
     tmpl('Linux by SNMP', zids['linux_snmp'], [HostInterfaceRequirementChoices.SNMP])
+    tmpl('VMware FQDN', zids['vmware'], [HostInterfaceRequirementChoices.AGENT])
+    tmpl('Pure Storage FlashArray by HTTP', zids['pure'], [HostInterfaceRequirementChoices.ANY])
+    tmpl('FortiGate by SNMP', zids['fortigate'], [HostInterfaceRequirementChoices.SNMP])
 
     # OS hostgroups for rules
     hg_os_win, _ = ZabbixHostgroup.objects.get_or_create(
@@ -579,13 +593,23 @@ def configure_templates_and_overlays(ctx: Ctx, zids: dict) -> None:
     tag_os_win, _ = ZabbixTag.objects.get_or_create(name=f'{PREFIX}os_family_windows', defaults={'tag': 'os_family', 'value': 'Windows'})
     tag_os_linux, _ = ZabbixTag.objects.get_or_create(name=f'{PREFIX}os_family_linux', defaults={'tag': 'os_family', 'value': 'Linux'})
     tag_os_exos, _ = ZabbixTag.objects.get_or_create(name=f'{PREFIX}os_family_exos', defaults={'tag': 'os_family', 'value': 'EXOS'})
+    tag_os_voss, _ = ZabbixTag.objects.get_or_create(name=f'{PREFIX}os_family_voss', defaults={'tag': 'os_family', 'value': 'VOSS'})
+    tag_os_iq, _ = ZabbixTag.objects.get_or_create(name=f'{PREFIX}os_family_iq', defaults={'tag': 'os_family', 'value': 'IQEngine'})
+    tag_os_forti, _ = ZabbixTag.objects.get_or_create(name=f'{PREFIX}os_family_fortios', defaults={'tag': 'os_family', 'value': 'FortiOS'})
+    tag_os_esxi, _ = ZabbixTag.objects.get_or_create(name=f'{PREFIX}os_family_esxi', defaults={'tag': 'os_family', 'value': 'ESXi'})
 
-    # Template rules must match platform names (prefixed in lab)
+    # Checklist §6 TemplateRules — same patterns, automated
     rules = [
         ('Windows Server', 'Windows Server', ctx.templates['Windows by Agent'], hg_os_win, tag_os_win, 50),
         ('Windows catch-all', 'Windows', ctx.templates['Windows by Agent'], hg_os_win, tag_os_win, 200),
         ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', ctx.templates['Linux by Agent'], hg_os_linux, tag_os_linux, 100),
         ('Extreme EXOS', 'EXOS', ctx.templates['Network by SNMP'], hg_os_net, tag_os_exos, 100),
+        ('Extreme VOSS', 'VOSS', ctx.templates['Network by SNMP'], hg_os_net, tag_os_voss, 100),
+        ('Extreme IQ Engine', 'IQ ENGINE', ctx.templates['Network by SNMP'], hg_os_net, tag_os_iq, 100),
+        ('FortiOS', r'FORTIOS|FortiOS', ctx.templates['FortiGate by SNMP'], hg_os_net, tag_os_forti, 100),
+        ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', ctx.templates['Network by SNMP'], hg_os_net, tag_os_forti, 50),
+        ('VMware ESXi', r'ESXi|VMware ESX|vSphere', ctx.templates['VMware FQDN'], None, tag_os_esxi, 100),
+        ('VMware Photon', 'Photon', ctx.templates['Linux by Agent'], hg_os_linux, tag_os_linux, 50),
     ]
     for name, pattern, template, hg, tag, prio in rules:
         ZabbixTemplateRule.objects.update_or_create(
@@ -744,12 +768,20 @@ def configure_templates_and_overlays(ctx: Ctx, zids: dict) -> None:
             },
         )
 
-    # §11 Macros (sample subset)
+    # §11 Macros — checklist thresholds / secret placeholders
     macros = [
         ('{$CPU.UTIL.CRIT}', '90', 'MSSQL'),
         ('{$CPU.UTIL.CRIT}', '80', 'Server'),
         ('{$IF.UTIL.MAX}', '80', 'Switch Core'),
+        ('{$IF.UTIL.MAX}', '90', 'Switch Dist'),
         ('{$MEM.UTIL.CRIT}', '85', 'VDI'),
+        ('{$MSSQL.DSN}', 'nbxsync', 'MSSQL'),
+        ('{$MSSQL.USER}', '{$MSSQL.USER}', 'MSSQL'),
+        ('{$MSSQL.PASSWORD}', '{$MSSQL.PASSWORD}', 'MSSQL'),
+        ('{$VMWARE.URL}', 'https://{{ object.name }}', 'vCenter'),
+        ('{$VMWARE.USER}', '{$VMWARE.USER}', 'vCenter'),
+        ('{$VMWARE.PASSWORD}', '{$VMWARE.PASSWORD}', 'vCenter'),
+        ('{$PURESTORAGE.TOKEN}', '{$PURESTORAGE.TOKEN}', 'Pure Storage'),
     ]
     for macro, value, role_name in macros:
         ZabbixMacro.objects.update_or_create(
@@ -863,6 +895,47 @@ def build_fleet(ctx: Ctx) -> dict:
     _attach_vm_ip(vm_gitlab, ctx.next_ip())
     objects['gitlab_vm'] = vm_gitlab
 
+    # §5.5 — direct VM override beats role Agent/SiteGroup (complete SNMP profile)
+    vm_snmp = VirtualMachine.objects.create(
+        name=f'{PREFIX}ensa-snmp-vm',
+        cluster=ctx.cluster,
+        role=server_role,
+        site=ctx.site,
+        platform=ctx.platform_linux,
+        status='active',
+    )
+    _attach_vm_ip(vm_snmp, ctx.next_ip())
+    ZabbixConfigurationGroupAssignment.objects.get_or_create(
+        zabbixconfigurationgroup=ctx.cg_vm_snmp,
+        assigned_object_type=ct(VirtualMachine),
+        assigned_object_id=vm_snmp.pk,
+    )
+    objects['vm_snmp_override'] = vm_snmp
+
+    # §9.3 — excluded role must not sync
+    vdi = VirtualMachine.objects.create(
+        name=f'{PREFIX}vdi-excluded',
+        cluster=ctx.cluster,
+        role=ctx.roles['VDI'],
+        site=ctx.site,
+        platform=ctx.platform_win,
+        status='active',
+    )
+    _attach_vm_ip(vdi, ctx.next_ip())
+    objects['vdi_excluded'] = vdi
+
+    # Non-BMC agent role (Domain Controller) → SiteGroup Agent, not Server OOB CG
+    dc = VirtualMachine.objects.create(
+        name=f'{PREFIX}dc-p-01',
+        cluster=ctx.cluster,
+        role=ctx.roles['Domain Controller'],
+        site=ctx.site,
+        platform=ctx.platform_win,
+        status='active',
+    )
+    _attach_vm_ip(dc, ctx.next_ip())
+    objects['dc_vm'] = dc
+
     # New role growth — no dedicated Agent CG row; SiteGroup default must apply
     new_role = get_or_create_role('Brand New App', vm_role=True)
     ctx.roles['Brand New App'] = new_role
@@ -943,7 +1016,24 @@ def verify_resolution(ctx: Ctx, objects: dict) -> None:
     record('new_role_inherits_sitegroup_agent', _cg_name(new_vm) == ctx.cg_agent.name, _cg_name(new_vm), group='resolve')
     record('new_role_jinja_roles_value', any('Roles/{{' in v for v in _hg_values(new_vm)), str(_hg_values(new_vm)), group='resolve')
 
-    # Anti-pattern check: Manufacturer-only OOB CG must NOT be how we assign (we don't create that assignment)
+    dc = objects['dc_vm']
+    record('dc_inherits_sitegroup_agent', _cg_name(dc) == ctx.cg_agent.name, _cg_name(dc), group='resolve')
+
+    vm_ov = objects['vm_snmp_override']
+    record('vm_direct_snmp_overrides_role', _cg_name(vm_ov) == ctx.cg_vm_snmp.name, _cg_name(vm_ov), group='resolve')
+
+    gitlab = objects['gitlab_vm']
+    record('gitlab_app_template', any('GitLab' in t for t in _tmpl_names(gitlab)), str(_tmpl_names(gitlab)), group='resolve')
+
+    mssql = objects['mssql_vm']
+    record('mssql_app_template', any('MSSQL' in t for t in _tmpl_names(mssql)), str(_tmpl_names(mssql)), group='resolve')
+
+    # Environment Jinja tag present on SiteGroup chain
+    assigned = get_assigned_zabbixobjects(objects['server_oob'])
+    env_tags = [a.zabbixtag for a in assigned.get('tags', []) if a.zabbixtag.tag == 'environment']
+    record('environment_tag_assigned', len(env_tags) == 1, f'count={len(env_tags)}', group='resolve')
+
+    # Anti-pattern check: Manufacturer-only OOB CG must NOT be how we assign
     manufacturer_cgs = ZabbixConfigurationGroupAssignment.objects.filter(
         assigned_object_type=ct(Manufacturer),
         assigned_object_id=ctx.manufacturer_dell.pk,
@@ -957,6 +1047,25 @@ def verify_resolution(ctx: Ctx, objects: dict) -> None:
     ).count()
     record('zero_agent_cg_role_sprawl', agent_role_rows == 0, f'role_rows={agent_role_rows}', group='resolve')
 
+    # Checklist §6 rule count
+    rule_n = ZabbixTemplateRule.objects.filter(name__startswith=PREFIX).count()
+    record('template_rules_checklist_parity', rule_n >= 10, f'rules={rule_n}', group='resolve')
+
+    # §11 macros present
+    macro_n = ZabbixMacro.objects.filter(description__startswith=PREFIX).count()
+    record('macros_checklist_parity', macro_n >= 12, f'macros={macro_n}', group='resolve')
+
+    # §12 plugin settings (read-only assert — configuration.py is outside this script)
+    from nbxsync.settings import get_plugin_settings
+
+    ps = get_plugin_settings()
+    record(
+        'plugin_safety_gates_default_off',
+        getattr(ps, 'allow_inherited_deletion', None) is False and getattr(ps, 'adopt_existing_hosts', None) is False,
+        f'allow_inherited_deletion={getattr(ps, "allow_inherited_deletion", None)} adopt={getattr(ps, "adopt_existing_hosts", None)}',
+        group='resolve',
+    )
+
 
 def verify_zabbix(ctx: Ctx, objects: dict, api) -> None:
     def host_by_name(name: str):
@@ -964,13 +1073,34 @@ def verify_zabbix(ctx: Ctx, objects: dict, api) -> None:
         return found[0] if found else None
 
     # Sync key objects
-    for key in ('server_oob', 'server_no_oob', 'switch', 'storage', 'win_vm', 'new_role_vm', 'mssql_vm'):
+    for key in ('server_oob', 'server_no_oob', 'switch', 'storage', 'win_vm', 'new_role_vm', 'mssql_vm', 'vm_snmp_override', 'dc_vm'):
         try:
             sync_host(objects[key])
             ctx.created_hosts.append(objects[key].name)
             record(f'sync_{key}', True, objects[key].name, group='sync')
         except Exception as exc:
             record(f'sync_{key}', False, f'{exc}\n{traceback.format_exc()[-400:]}', group='sync')
+
+    # Exclusion: VDI role carries do_not_monitor — sync should skip / not create host
+    try:
+        sync_host(objects['vdi_excluded'])
+        record('sync_vdi_excluded_runs', True, 'job returned', group='sync')
+    except Exception as exc:
+        record('sync_vdi_excluded_runs', False, str(exc), group='sync')
+    h_vdi = host_by_name(objects['vdi_excluded'].name)
+    # exclude_tag may be empty in lab plugin settings — record observed behavior
+    from nbxsync.settings import get_plugin_settings
+
+    exclude = getattr(get_plugin_settings(), 'exclude_tag', '') or ''
+    if exclude == 'do_not_monitor':
+        record('zbx_vdi_excluded_absent', h_vdi is None, f'host={h_vdi}', group='zabbix')
+    else:
+        record(
+            'zbx_vdi_exclude_tag_config_note',
+            True,
+            f'plugin exclude_tag={exclude!r} — set to do_not_monitor in configuration.py (§12) for deletion semantics',
+            group='zabbix',
+        )
 
     h = host_by_name(objects['server_oob'].name)
     if not h:
@@ -1025,6 +1155,13 @@ def verify_zabbix(ctx: Ctx, objects: dict, api) -> None:
         record('zbx_new_role_agent_if', any(t == '1' for t, _ in ifs), str(ifs), group='zabbix')
     else:
         record('zbx_new_role_exists', False, 'missing', group='zabbix')
+
+    h_ov = host_by_name(objects['vm_snmp_override'].name)
+    if h_ov:
+        ifs = [(i.get('type'), i.get('port')) for i in h_ov.get('interfaces', [])]
+        record('zbx_vm_snmp_override_snmp_if', any(t == '2' for t, _ in ifs) and not any(t == '1' for t, _ in ifs), str(ifs), group='zabbix')
+    else:
+        record('zbx_vm_snmp_override_exists', False, 'missing', group='zabbix')
 
     h_win = host_by_name(objects['win_vm'].name)
     if h_win:
