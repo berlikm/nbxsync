@@ -303,7 +303,7 @@ For each host that must use SNMP instead of agent (including physical Linux/Wind
 
 ### Manufacturer
 
-Dell iDRAC is a **template** via TemplateRule Dell ∧ Server (§6 / §7 note), not a Manufacturer-wide assignment and not a configuration group. Transport for Dell servers already comes from Server Agent+OOB on the Server role.
+Do **not** assign Dell iDRAC on Manufacturer Dell. Use Template Rule §6.3 (Dell ∧ Server). Transport for Dell servers already comes from Server Agent+OOB on the Server role.
 
 ---
 
@@ -345,7 +345,7 @@ Ensure these Zabbix templates exist (create the nbxsync Template objects pointin
 - The **pattern** is a **case-insensitive regular expression**, matched with `search` (substring of the platform name — **not** a full-string match, and **not** a plain text substring). Examples in the table (`Ubuntu|Debian|…`, `Other.*Linux`) are regex. A literal platform string pasted as the pattern (for example `Windows Server 2019 (x64)`) may never match or may be an invalid regex — write a real expression (for example `Windows Server`).
 - **Every matching rule contributes** its template and optional hostgroup. Priority only sets **evaluation order** (`order_by priority, name`). A template (or hostgroup) already resolved by an earlier rule or an explicit assignment is not added twice. A higher-priority rule does **not** suppress a lower-priority rule that points at a *different* template. To stop a catch-all from also applying, narrow its pattern or disable it — do not assume “lower number wins exclusively.” (Today Windows Server and Windows catch-all both point at the same template, so the collision is invisible.)
 
-Leave “require tags” empty unless noted.
+Leave “require tags”, “role pattern”, and “manufacturer” empty unless noted. Criteria are AND: every set field must match (missing role/manufacturer on the object fails closed).
 
 ### 6.1 Platform rules
 
@@ -373,6 +373,14 @@ Use together with configuration group **SNMP by tag** for the interface.
 | SNMP Linux (tag) | *(same Linux pattern as above)* | Linux by SNMP | OS/Linux | snmp | 40 | Yes |
 | SNMP Windows (tag) | `Windows` | Windows by SNMP | OS/Windows | snmp | 40 | Yes |
 
+### 6.3 Dell iDRAC (Manufacturer ∧ role)
+
+**Do not** assign Dell iDRAC on Manufacturer Dell — merge is additive and would attach iDRAC to Dell storage and other SNMP Dell hosts. Scope it here instead. Transport stays **Server Agent+OOB** (`oob_ip`); empty `oob_ip` skips the OOB SNMP interface only. OEM model templates stay on Device type (they add; they do not remove iDRAC).
+
+| Name | Pattern | Role pattern | Manufacturer | Template | Hostgroup | Require tags | Priority | Enabled |
+|---|---|---|---|---|---|---|---|---|
+| Dell iDRAC (Server) | `.*` | `^Server$` | Dell | Dell iDRAC by SNMP | — | — | 80 | Yes |
+
 ---
 
 ## 7. Template assignments (Role / Manufacturer)
@@ -380,9 +388,9 @@ Use together with configuration group **SNMP by tag** for the interface.
 Path: **Zabbix → Templates → [template] → Assigned objects → Add**  
 (or Device Role / Manufacturer → Zabbix tab)
 
-**Why here:** application and OEM templates are business knowledge (“MSSQL role gets MSSQL by ODBC”). They **merge** with OS templates from §6 and with Manufacturer templates — different template IDs all accumulate; nothing is subtracted. Role **floors** (Network Generic on switches, FortiGate on Firewall, Storage Generic on Storage/Cohesity) cover devices whose platform is missing or does not match a specialized rule; when the platform *does* match (e.g. EXOS, FortiOS), the Template Rule adds the specialized template as well.
+**Why here:** application and OEM templates are business knowledge (“MSSQL role gets MSSQL by ODBC”). They **merge** with OS templates from §6 — different template IDs all accumulate; nothing is subtracted. Role **floors** (Network Generic on switches, FortiGate on Firewall, Storage Generic on Storage/Cohesity) cover devices whose platform is missing or does not match a specialized rule; when the platform *does* match (e.g. EXOS, FortiOS), the Template Rule adds the specialized template as well.
 
-**Interface requirements (silent drop):** each nbxsync Template can declare required interface types (Agent, SNMP, ANY, …). At sync, a template is **linked only if the host already has those interface types**. If the requirement is not met, the template is skipped with no dramatic error — it simply does not appear on the Zabbix host. That makes broad Manufacturer/Role assignment safer across transport classes. It does **not** prevent two SNMP templates from both linking and colliding on item keys — that still needs compatible templates or narrower assignment (see Storage Generic vs iDRAC).
+**Interface requirements (silent drop):** each nbxsync Template can declare required interface types (Agent, SNMP, ANY, …). At sync, a template is **linked only if the host already has those interface types**. If the requirement is not met, the template is skipped with no dramatic error — it simply does not appear on the Zabbix host. That makes broad Role assignment safer across transport classes. It does **not** prevent two SNMP templates from both linking and colliding on item keys — that still needs compatible templates or narrower assignment (see Storage Generic vs iDRAC).
 
 | Template | Assigned to | Notes |
 |---|---|---|
@@ -401,9 +409,8 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 | Network Generic Device by SNMP | Device Role Switch Mgmt | |
 | Network Generic Device by SNMP | Device Role Access Point | |
 | FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule still adds when platform matches |
-| Dell iDRAC by SNMP | *(see note)* | Prefer TemplateRule: Manufacturer Dell ∧ role Server — not Manufacturer-wide |
 
-**Dell iDRAC (scalable scoping):** do **not** assign iDRAC on Manufacturer Dell (additive merge pulls it onto Dell storage and other SNMP Dell hosts — lab-verified). Preferred pattern: TemplateRule with platform `.*`, `role_pattern=^Server$`, **Manufacturer = Dell**, template Dell iDRAC (no NetBox tag required). Transport stays **Server Agent+OOB** + `oob_ip`. OEM model templates stay on Device type (they **add**, they do not remove iDRAC). Full options analysis: `docs/dell-idrac-scoping-options.md`. Empty `oob_ip` skips the OOB SNMP interface only.
+Dell iDRAC is **not** in this table — use §6.3.
 
 ---
 
@@ -589,7 +596,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 | Switch / AP / Firewall | SNMP Monitoring | Role baseline + specialized template if platform matches | SNMP on primary | Sites/CH/…, Roles/…, OS/Network |
 | Storage | SNMP Monitoring | Storage Generic by SNMP | SNMP | Sites/CH/…, Roles/Storage |
 | Pure Storage | Agent Monitoring (from Site Group) | Pure Storage by HTTP | Agent | Sites/CH/…, Roles/Pure Storage |
-| Cohesity physical (oob only) | OOB SNMP Only | Storage Generic (+ iDRAC if Dell) | SNMP on oob IP | Sites/CH/…, Roles/Cohesity |
+| Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP on oob IP | Sites/CH/…, Roles/Cohesity |
 | Cohesity VM with primary IP | SNMP Monitoring (direct) | Storage Generic | SNMP on primary | … |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
 | Brand-new role tomorrow | Agent Monitoring (from Site Group) unless listed in §5b | OS Template Rule if platform set | Agent | Roles/\<new name\> appears automatically |
