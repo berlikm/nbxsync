@@ -693,6 +693,23 @@ def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oo
     # Explicitly do NOT assign OOB CG to Manufacturer Dell (previous script pattern — broken).
     logger.info('  NOTE: Dell iDRAC remains a Manufacturer TEMPLATE (§7), not a transport CG')
 
+    # §5.5b Cohesity VMs with primary_ip4 → SNMP Monitoring (not OOB SNMP Only,
+    # which is for physical nodes with only oob_ip — VMs have no oob_ip).
+    cohesity_vms = list(VirtualMachine.objects.filter(
+        role__name__iexact='Cohesity', status='active',
+        primary_ip4__isnull=False,
+    ))
+    for vm in cohesity_vms:
+        get_or_create(
+            M.ZabbixConfigurationGroupAssignment,
+            zabbixconfigurationgroup=snmp_group,
+            assigned_object_type=ct(VirtualMachine),
+            assigned_object_id=vm.id,
+            defaults={},
+        )
+    if cohesity_vms:
+        logger.info('  %s Cohesity VM(s) → SNMP Monitoring (direct override, have primary_ip4)', len(cohesity_vms))
+
 
 def step6_template_rules(server, country_slugs=None):
     logger.info('=' * 60)
@@ -1045,6 +1062,50 @@ def step11_macros():
         )
 
 
+def ensure_storage_generic_template(server) -> None:
+    """Create 'Storage Generic Device by SNMP' in Zabbix if missing.
+
+    This is a clone of 'Network Generic Device by SNMP' without the
+    ``snmptrap.fallback`` and ``zabbix[host,snmp,available]`` items,
+    which collide with Dell iDRAC on Dell storage/Cohesity hardware.
+    """
+    name = TPL_NAMES['storage_generic_snmp']
+    with ZabbixConnection(server) as api:
+        found = api.template.get(filter={'name': [name]}, output=['templateid', 'name'])
+        if found:
+            return
+        src = api.template.get(filter={'name': ['Network Generic Device by SNMP']}, selectItems='extend')
+        if not src:
+            logger.warning('  Cannot create Storage Generic: source template %r not found', 'Network Generic Device by SNMP')
+            return
+        src = src[0]
+        groups = api.templategroup.get()
+        gid = groups[0]['groupid'] if groups else None
+        if not gid:
+            logger.warning('  Cannot create Storage Generic: no template group found')
+            return
+        result = api.template.create(host=name, name=name, groups=[{'groupid': gid}])
+        tpl_id = result['templateids'][0]
+        skip = {'snmptrap.fallback', 'zabbix[host,snmp,available]'}
+        copied = 0
+        for item in src.get('items', []):
+            if item['key_'] in skip:
+                continue
+            try:
+                api.item.create({
+                    'hostid': tpl_id,
+                    'name': item['name'],
+                    'key_': item['key_'],
+                    'type': int(item['type']),
+                    'value_type': int(item.get('value_type', 3)),
+                    'delay': item.get('delay', '1h'),
+                })
+                copied += 1
+            except Exception:
+                pass
+        logger.info('  CREATED: %r in Zabbix (%d items, id=%s)', name, copied, tpl_id)
+
+
 def run_production(*, mutate_netbox: bool = False, url: str | None = None, token: str | None = None, lab_http: bool = False):
     global TPL
     logger.info('=' * 60)
@@ -1053,6 +1114,7 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     logger.info('=' * 60)
     step0_cleanup(mutate_netbox=mutate_netbox)
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
+    ensure_storage_generic_template(server)
     required_names = {k: v for k, v in TPL_NAMES.items() if k != 'icmp_ping'}
     TPL = resolve_templates(server, names=required_names, required=True)
     TPL.update(resolve_templates(server, names={'icmp_ping': TPL_NAMES['icmp_ping']}, required=False))
