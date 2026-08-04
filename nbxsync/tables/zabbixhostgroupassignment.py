@@ -19,9 +19,12 @@ class ZabbixHostgroupAssignmentTable(ZabbixInheritedAssignmentTable, NetBoxTable
     actions = InheritanceAwareActionsColumn()
 
     rendered_output = tables.TemplateColumn(
-        template_name='nbxsync/inc/jinja_preview_cell.html',
-        extra_context={'preview_kind': 'hostgroup'},
-        verbose_name=_('Preview'),
+        template_code="""
+        {% load zabbix_hostgroups %}
+        {% render_zabbix_hostgroup_assignment record as rendered_output %}
+        {{ rendered_output|escape }}
+        """,
+        verbose_name=_('Value'),
     )
 
     class Meta(NetBoxTable.Meta):
@@ -48,9 +51,12 @@ class ZabbixHostgroupAssignmentObjectViewTable(ZabbixInheritedAssignmentTable, N
     actions = InheritanceAwareActionsColumn()
 
     rendered_output = tables.TemplateColumn(
-        template_name='nbxsync/inc/jinja_preview_cell.html',
-        extra_context={'preview_kind': 'hostgroup'},
-        verbose_name=_('Preview'),
+        template_code="""
+        {% load zabbix_hostgroups %}
+        {% render_zabbix_hostgroup_assignment record as rendered_output %}
+        {{ rendered_output|escape }}
+        """,
+        verbose_name=_('Value'),
     )
 
     class Meta(NetBoxTable.Meta):

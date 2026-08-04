@@ -7,7 +7,6 @@
 {% load plugins %}
 {% load render_table from django_tables2 %}
 {% load zabbix_tags %}
-{% load zabbix_preview %}
 {% block content %}
     <div class="row">
         <div class="col col-md-6">
@@ -41,17 +40,10 @@
         </div>
         <div class="col col-md-6">
             {% render_zabbix_tag_assignment object as rendered_output %}
-            {% zabbix_preview_representative object as preview_source %}
             <div class="card">
                 <div class="card-header">Rendered Value</div>
                 <div class="card-body">
                     {{ rendered_output|safe }}
-                    {% if preview_source %}
-                        <div class="text-muted small mt-2">
-                            Rendered per inherited Device/VM during sync — this is one example
-                            (from {{ preview_source }}), not the value for every host under this assignment.
-                        </div>
-                    {% endif %}
                 </div>
             </div>
             {% plugin_right_page object %}

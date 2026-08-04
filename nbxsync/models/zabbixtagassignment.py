@@ -11,6 +11,7 @@ from utilities.jinja2 import render_jinja2
 
 from nbxsync.constants import ASSIGNMENT_MODELS, CONFIGGROUP_OBJECTS
 from nbxsync.models import ZabbixConfigurationGroup
+from nbxsync.jinja_context import wrap_assignment_object
 
 __all__ = ('ZabbixTagAssignment',)
 
@@ -79,7 +80,7 @@ class ZabbixTagAssignment(NetBoxModel):
 
     def get_context(self, **extra_context):
         context = {
-            'object': self.assigned_object,
+            'object': wrap_assignment_object(self.assigned_object),
             'tag': self.zabbixtag.tag,
             'value': self.zabbixtag.value,
             'name': self.zabbixtag.name,

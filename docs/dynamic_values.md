@@ -50,7 +50,7 @@ Just like tags, hostgroups are rendered in a context:
 
 | Key         | Value                 | Explanation                                                                                  |
 |-------------|-----------------------|----------------------------------------------------------------------------------------------|
-| object      | assigned_object       | Refers to the assigned object; this could be a DeviceType, Device, VirtualMachine, etc.      |
+| object      | assigned_object       | Refers to the assigned object; this could be a DeviceType, Device, VirtualMachine, etc. During sync, this is overridden with the actual Device/VM being synced. For UI / HostGroupSync against a DeviceRole, Site, Platform, … the target is exposed in device-shaped form (`object.role`, `object.site`, …) so templates like `Roles/{{ object.role.name }}` resolve against that role without borrowing a descendant device. Targets that cannot fill a single device-shaped value (e.g. SiteGroup + `object.role`) leave the template unresolved. |
 | value       | zabbixhostgroup.value | The value of the Zabbix Hostgroup (typically the Jinja2 template)                            |
 | name        | zabbixhostgroup.name  | The name of the Zabbix Hostgroup                                                             |
 
