@@ -690,13 +690,16 @@ def step6_template_rules(server, country_slugs=None):
     logger.info('=' * 60)
     country_slugs = country_slugs or COUNTRY_SLUGS
 
-    def hg(name, value):
+    def hg(name, value, description=''):
         obj, _ = ensure(
             M.ZabbixHostgroup,
             zabbixserver=server,
             name=name,
-            defaults={'value': value},
-            update_fields=['value'],
+            defaults={
+                'value': value,
+                'description': description or 'Attached by TemplateRules when platform matches (no HostgroupAssignment needed)',
+            },
+            update_fields=['value', 'description'],
         )
         return obj
 
@@ -713,10 +716,10 @@ def step6_template_rules(server, country_slugs=None):
         )
         return obj
 
-    hg_os_windows = hg('OS/Windows', 'OS/Windows')
-    hg_os_linux = hg('OS/Linux', 'OS/Linux')
-    hg_os_network = hg('OS/Network', 'OS/Network')
-    hg_os_vmware = hg('OS/VMware', 'OS/VMware')
+    hg_os_windows = hg('OS/Windows', 'OS/Windows', 'OS class via TemplateRules (Windows platforms)')
+    hg_os_linux = hg('OS/Linux', 'OS/Linux', 'OS class via TemplateRules (Linux platforms)')
+    hg_os_network = hg('OS/Network', 'OS/Network', 'OS class via TemplateRules (network OS platforms)')
+    hg_os_vmware = hg('OS/VMware', 'OS/VMware', 'OS class via TemplateRules (ESXi / vSphere)')
 
     tpl_windows = make_template(*TPL['windows_agent'], req=[HostInterfaceRequirementChoices.AGENT])
     tpl_linux = make_template(*TPL['linux_agent'], req=[HostInterfaceRequirementChoices.AGENT])
