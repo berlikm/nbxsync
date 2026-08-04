@@ -42,24 +42,31 @@ Templates should sit at the most specific level that is still generally true —
 | Platform (Template Rule) | OS / network OS from platform name | Linux / Windows / EXOS / FortiOS → template + `OS/…` |
 | Individual device | Exceptions only | Avoid for normal onboarding |
 
-**Important: templates merge; they never override.**  
-Resolution is additive by template ID. A Device type assignment does **not** remove a Manufacturer template. A Dell M5224 with HP MSA 2060 on Device type **still receives Dell iDRAC by SNMP** from Manufacturer Dell whenever that host has an SNMP interface (for example from OOB SNMP Only or Server Agent+OOB).
+**Important: templates merge; they never override.** *(lab-verified)*  
+Resolution is additive by template ID. A Device type assignment does **not** remove a Manufacturer template.
 
-So Device type is a deliberate **add**, not an overwrite. Where two templates are incompatible (item-key collisions — the same class of problem that led us to **Storage Generic Device by SNMP** instead of Network Generic alongside iDRAC), we must either:
+We exercised this explicitly:
+
+- Manufacturer Dell Storage + Device type HP MSA + Manufacturer iDRAC on the same device → **all three** appeared in the resolved template set (proves add, not replace).
+- Corrected assignment (HP MSA on Device type + iDRAC on Manufacturer only) → both remain; live Zabbix retest linked **`bp HP MSA 2060` and `bp Dell iDRAC`** together on an SNMP storage host.
+
+So a Dell M5224 with HP MSA 2060 on Device type **still receives Dell iDRAC by SNMP** from Manufacturer Dell whenever that host has an SNMP interface (for example from OOB SNMP Only or Server Agent+OOB). Device type is a deliberate **add**, not an overwrite.
+
+Where two templates are incompatible (item-key collisions — the same class of problem that led us to **Storage Generic Device by SNMP** instead of Network Generic alongside iDRAC), we must either:
 
 1. Confirm the pair is safe together, or  
 2. Remove iDRAC from Manufacturer and place it only on Device types / roles / tags that should have BMC — keeping automation where it is safe.
 
 We will not answer “wrong template at Manufacturer” by implying Device type replaces it. Per-device assignment remains for true one-offs only; mass per-device linking is the hand-maintained membership pattern we are leaving behind.
 
-**Interface requirements (safety net):** each nbxsync Template can require Agent, SNMP, ANY, etc. At sync, a template is linked only if the host has those interface types; otherwise it is skipped silently. That is why broad Manufacturer or Role assignment is structurally safer than it looks: an SNMP-only template does not attach to an agent-only host. It does **not** solve two SNMP templates colliding with each other — that still needs compatibility checks or narrower assignment (as with Storage Generic vs iDRAC).
+**Interface requirements (safety net):** each nbxsync Template can require Agent, SNMP, ANY, etc. At sync, a template is linked only if the host has those interface types; otherwise it is skipped silently. That is why broad Manufacturer or Role assignment is structurally safer than it looks: an SNMP-only template does not attach to an agent-only host. It does **not** solve two SNMP templates colliding with each other — that still needs compatibility checks or narrower assignment (as with Storage Generic vs iDRAC). Lab note: the first OEM storage sync attempt only kept agent templates until the role had an **SNMP** configuration group — interface requirements dropped the SNMP templates until transport was fixed; after SNMP CG, both HP MSA and iDRAC linked.
 
 ### Dell iDRAC on Manufacturer
 
 **Default: we want iDRAC monitored automatically for Dell servers.**  
 Dell iDRAC by SNMP stays on **Manufacturer Dell**, with BMC transport from **Server Agent+OOB**. New Dell servers with `oob_ip` pick up iDRAC without per-device rows.
 
-For Dell storage / OEM models we add the correct model template on **Device type**. Because inheritance is additive, we will verify that template against iDRAC (or drop Manufacturer iDRAC for those models) before relying on both. If Manufacturer-level iDRAC proves too broad in practice, we move iDRAC off Manufacturer onto Device types or a tag — automate first, then narrow what does not work.
+For Dell storage / OEM models we add the correct model template on **Device type**. Because inheritance is additive *(verified: HP MSA + iDRAC both linked in lab)*, we will still treat item-key compatibility as an ops check — and if Manufacturer-level iDRAC proves too broad or collides, we move iDRAC off Manufacturer onto Device types or a tag. Automate first, then narrow what does not work.
 
 Without `oob_ip`, the OOB SNMP interface is skipped, so there is nothing to poll on the BMC network for that host. iDRAC remains a **template**, not a Manufacturer transport configuration group.
 
@@ -155,8 +162,8 @@ Permission design stays in Zabbix. Access is **global** across the monitored est
 | Tenant | Not now — NetBox use unclear; not required for Zabbix yet |
 | Continent / regional permissions | Not needed — org is flat; access is global. No continent Site Groups or Regions for monitoring |
 | Site Groups | Country control plane; nested `Sites/CH/…` for location dashboards/filters |
-| Templates | Merge only — Device type **adds**, never replaces Manufacturer |
-| iDRAC | Manufacturer default for servers; verify compatibility where Device type adds OEM; narrow if needed |
+| Templates | Merge only — Device type **adds**, never replaces Manufacturer *(lab-verified)* |
+| iDRAC | Manufacturer default for servers; Device type OEM **adds** alongside (lab: HP MSA + iDRAC both linked); narrow if collisions appear |
 | Interface requirements | Structural safety net for wrong transport; not a fix for two SNMP templates colliding |
 | Certs / version check | On / off as recommended for production |
 | Proxies | Keep CH proxy group plan |
