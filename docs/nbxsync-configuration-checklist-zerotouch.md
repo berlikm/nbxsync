@@ -596,7 +596,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 | Switch / AP / Firewall | SNMP Monitoring | Role baseline + specialized template if platform matches | SNMP on primary | Sites/CH/…, Roles/…, OS/Network |
 | Storage | SNMP Monitoring | Storage Generic by SNMP | SNMP | Sites/CH/…, Roles/Storage |
 | Pure Storage | Agent Monitoring (from Site Group) | Pure Storage by HTTP | Agent | Sites/CH/…, Roles/Pure Storage |
-| Cohesity physical (oob only) | OOB SNMP Only | Storage Generic (+ iDRAC if Dell) | SNMP on oob IP | Sites/CH/…, Roles/Cohesity |
+| Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP on oob IP | Sites/CH/…, Roles/Cohesity |
 | Cohesity VM with primary IP | SNMP Monitoring (direct) | Storage Generic | SNMP on primary | … |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
 | Brand-new role tomorrow | Agent Monitoring (from Site Group) unless listed in §5b | OS Template Rule if platform set | Agent | Roles/\<new name\> appears automatically |
