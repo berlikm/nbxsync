@@ -8,6 +8,6 @@ __all__ = ('ZabbixTemplateRuleViewSet',)
 
 
 class ZabbixTemplateRuleViewSet(NetBoxModelViewSet):
-    queryset = ZabbixTemplateRule.objects.all().select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag')
+    queryset = ZabbixTemplateRule.objects.all().select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'manufacturer')
     serializer_class = ZabbixTemplateRuleSerializer
     filterset_class = ZabbixTemplateRuleFilterSet

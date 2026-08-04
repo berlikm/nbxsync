@@ -12,6 +12,7 @@ class ZabbixTemplateRuleTable(NetBoxTable):
     zabbixtemplate = tables.Column(linkify=True)
     zabbixhostgroup = tables.Column(linkify=True)
     zabbixtag = tables.Column(linkify=True)
+    manufacturer = tables.Column(linkify=True)
 
     class Meta(NetBoxTable.Meta):
         model = ZabbixTemplateRule
@@ -20,6 +21,9 @@ class ZabbixTemplateRuleTable(NetBoxTable):
             'name',
             'description',
             'pattern',
+            'role_pattern',
+            'require_tags',
+            'manufacturer',
             'zabbixtemplate',
             'zabbixhostgroup',
             'zabbixtag',
@@ -32,6 +36,8 @@ class ZabbixTemplateRuleTable(NetBoxTable):
             'pk',
             'name',
             'pattern',
+            'role_pattern',
+            'manufacturer',
             'zabbixtemplate',
             'zabbixhostgroup',
             'enabled',
