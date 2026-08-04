@@ -730,21 +730,6 @@ def step6_template_rules(server, country_slugs=None):
     tpl_fortigate = make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     # HTTP/simple-check templates — ANY, not AGENT (ESXi often has no Zabbix agent)
     tpl_vmware = make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.ANY])
-    if 'icmp_ping' in TPL:
-        tpl_icmp = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
-        for slug in country_slugs or COUNTRY_SLUGS:
-            try:
-                sg = get_sitegroup(slug)
-            except SiteGroup.DoesNotExist:
-                logger.warning('  SiteGroup %s missing — skip ICMP assignment', slug)
-                continue
-            ensure(
-                M.ZabbixTemplateAssignment,
-                zabbixtemplate=tpl_icmp,
-                assigned_object_type=ct(SiteGroup),
-                assigned_object_id=sg.id,
-                defaults={},
-            )
 
     # Hostgroup-first: OS classification lives in OS/* groups, not os_family tags.
     rules = [
