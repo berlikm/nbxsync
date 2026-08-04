@@ -19,7 +19,7 @@ class ZabbixHostgroupTable(NetBoxTable):
         orderable=False,
     )
     rule_count = tables.Column(
-        verbose_name=_('Template rules'),
+        verbose_name=_('Rules'),
         empty_values=(),
         orderable=False,
     )
@@ -47,7 +47,6 @@ class ZabbixHostgroupTable(NetBoxTable):
         default_columns = (
             'pk',
             'name',
-            'description',
             'value',
             'assignment_count',
             'rule_count',

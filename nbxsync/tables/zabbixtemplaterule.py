@@ -40,14 +40,13 @@ class ZabbixTemplateRuleTable(NetBoxTable):
 
 
 class ZabbixTemplateRuleHostgroupViewTable(NetBoxTable):
-    """Compact rule table embedded on a ZabbixHostgroup detail page."""
+    """Rules that attach this hostgroup — embedded on the hostgroup detail page."""
 
     name = tables.Column(linkify=True)
+    pattern = tables.Column()
     zabbixtemplate = tables.Column(linkify=True, verbose_name=_('Template'))
-    pattern = tables.Column(verbose_name=_('Platform pattern'))
-    require_tags = tables.Column(verbose_name=_('Require tags'))
-    enabled = tables.BooleanColumn()
     priority = tables.Column()
+    enabled = tables.BooleanColumn()
 
     class Meta(NetBoxTable.Meta):
         model = ZabbixTemplateRule
@@ -55,16 +54,14 @@ class ZabbixTemplateRuleHostgroupViewTable(NetBoxTable):
             'pk',
             'name',
             'pattern',
-            'require_tags',
             'zabbixtemplate',
-            'enabled',
             'priority',
+            'enabled',
         )
         default_columns = (
             'name',
             'pattern',
-            'require_tags',
             'zabbixtemplate',
-            'enabled',
             'priority',
+            'enabled',
         )
