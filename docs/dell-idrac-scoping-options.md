@@ -168,32 +168,32 @@ Example rule: platform `.*`, role `Server`, manufacturer Dell → iDRAC.
 
 ## Recommended path
 
-### Near term (no plugin change)
+### Current (plugin: Manufacturer on TemplateRule)
 
-1. **Remove** Dell iDRAC from Manufacturer.
-2. Prefer **Option D**: TemplateRule  
+1. **Remove** Dell iDRAC from Manufacturer-wide template assignment.
+2. Prefer **Option H**: TemplateRule  
    - `pattern`: `.*`  
    - `role_pattern`: `^Server$` (extend if other BMC roles should get iDRAC)  
-   - `require_tags`: `idrac`  
+   - `manufacturer`: Dell  
    - template: Dell iDRAC by SNMP  
-3. **Stamp tag `idrac`** on Devices where `manufacturer=Dell` and role is Server (bulk once + onboarding script / NetBox automation). Do **not** stamp storage / switch roles.
-4. Keep **Server Agent+OOB** for transport (`oob_ip`).
-5. Keep OEM templates on **Device type**; they no longer fight Manufacturer iDRAC on storage.
-6. Optional safety net: also assign iDRAC on known Dell server Device types (**B**) so a missed tag still works — or audit “Dell Server without tag `idrac`”.
+3. Keep **Server Agent+OOB** for transport (`oob_ip`).
+4. Keep OEM templates on **Device type**; they no longer fight Manufacturer iDRAC on storage.
+5. Optional: tag-based rule (`require_tags=idrac`) only for exceptions; Device type list (**B**) as audit backup.
 
 ### Why not Manufacturer + hope Device type “overwrites”
 
 Already disproved in lab: merge is additive; HP MSA + iDRAC both linked.
 
-### Why tag rather than only Device types
+### Why Manufacturer ∧ Role (not tag-only)
 
-- New Dell **server** DT still needs a human row in B; with D3 automation, new Dell Server devices get the tag from Manufacturer+Role facts you already trust.
-- Tag is visible on the device (“BMC expected”) — same ops language as `critical` / `snmp`.
-- Storage Dell devices simply never get the tag.
+- Uses facts already on the Device (manufacturer + role) — zero extra tagging for the happy path.
+- Multi-vendor Server role stays safe (HPE Server does not get Dell iDRAC).
+- Storage Dell devices fail the role criterion and never get iDRAC.
+- Tag (`idrac`) remains available for overlays / exceptions.
 
-### Later (plugin)
+### Interim without this field
 
-**Option H:** Manufacturer (and optionally `oob_ip`) on TemplateRule → drop the tag for the happy path; keep tag for exceptions (`idrac` forced / `no_idrac` if you add deny semantics).
+**Option D** (role ∧ tag `idrac` + stamp automation) or **Option B** (Device type list) remain valid without the Manufacturer criterion.
 
 ---
 
@@ -208,4 +208,4 @@ Already disproved in lab: merge is additive; HP MSA + iDRAC both linked.
 
 ## One-line recommendation
 
-**Scope iDRAC by Server role ∧ NetBox tag `idrac` (TemplateRule), stamp that tag from Dell+Server automation; stop Manufacturer-wide iDRAC. Enumerate Device types only as backup. Add Manufacturer to TemplateRule later if you want zero tags.**
+**Scope iDRAC by Manufacturer Dell ∧ role Server (TemplateRule); stop Manufacturer-wide iDRAC. Tags/Device types only as backup or exceptions.**

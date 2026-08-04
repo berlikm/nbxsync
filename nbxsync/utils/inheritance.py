@@ -213,15 +213,22 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
 
     platform = getattr(instance, 'platform', None)
     role = getattr(instance, 'role', None)
+    device_type = getattr(instance, 'device_type', None)
+    manufacturer_id = getattr(device_type, 'manufacturer_id', None) if device_type is not None else None
     try:
         object_tag_slugs = {tag.slug for tag in instance.tags.all()} if hasattr(instance, 'tags') else set()
     except Exception:
         object_tag_slugs = set()
-    rules_qs = ZabbixTemplateRule.objects.filter(enabled=True).select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag')
+    rules_qs = ZabbixTemplateRule.objects.filter(enabled=True).select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'manufacturer')
     if zabbixserver:
         rules_qs = rules_qs.filter(zabbixtemplate__zabbixserver=zabbixserver)
     for rule in rules_qs.order_by('priority', 'name'):
-        if not rule.matches(platform.name if platform else None, role_name=role.name if role else None, netbox_tags=object_tag_slugs):
+        if not rule.matches(
+            platform.name if platform else None,
+            role_name=role.name if role else None,
+            netbox_tags=object_tag_slugs,
+            manufacturer_id=manufacturer_id,
+        ):
             continue
         inherited_from = f'Regex: {rule.name}'
         if rule.zabbixtemplate_id and rule.zabbixtemplate_id not in resolved_template_ids:

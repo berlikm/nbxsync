@@ -303,7 +303,7 @@ For each host that must use SNMP instead of agent (including physical Linux/Wind
 
 ### Manufacturer
 
-Dell iDRAC is a **template** on Manufacturer Dell (§7), not a configuration group. Transport for Dell servers already comes from Server Agent+OOB on the Server role.
+Dell iDRAC is a **template** via TemplateRule Dell ∧ Server (§6 / §7 note), not a Manufacturer-wide assignment and not a configuration group. Transport for Dell servers already comes from Server Agent+OOB on the Server role.
 
 ---
 
@@ -401,9 +401,9 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 | Network Generic Device by SNMP | Device Role Switch Mgmt | |
 | Network Generic Device by SNMP | Device Role Access Point | |
 | FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule still adds when platform matches |
-| Dell iDRAC by SNMP | *(see note)* | Prefer TemplateRule: role Server ∧ NetBox tag `idrac` — not Manufacturer-wide |
+| Dell iDRAC by SNMP | *(see note)* | Prefer TemplateRule: Manufacturer Dell ∧ role Server — not Manufacturer-wide |
 
-**Dell iDRAC (scalable scoping):** do **not** assign iDRAC on Manufacturer Dell (additive merge pulls it onto Dell storage and other SNMP Dell hosts — lab-verified). Preferred pattern: TemplateRule with platform `.*`, `role_pattern` matching BMC roles (e.g. `^Server$`), `require_tags=idrac`, template Dell iDRAC; stamp tag `idrac` on Dell Server devices via bulk/onboarding automation. Transport stays **Server Agent+OOB** + `oob_ip`. OEM model templates stay on Device type (they **add**, they do not remove iDRAC). Full options analysis: `docs/dell-idrac-scoping-options.md`. Empty `oob_ip` skips the OOB SNMP interface only.
+**Dell iDRAC (scalable scoping):** do **not** assign iDRAC on Manufacturer Dell (additive merge pulls it onto Dell storage and other SNMP Dell hosts — lab-verified). Preferred pattern: TemplateRule with platform `.*`, `role_pattern=^Server$`, **Manufacturer = Dell**, template Dell iDRAC (no NetBox tag required). Transport stays **Server Agent+OOB** + `oob_ip`. OEM model templates stay on Device type (they **add**, they do not remove iDRAC). Full options analysis: `docs/dell-idrac-scoping-options.md`. Empty `oob_ip` skips the OOB SNMP interface only.
 
 ---
 

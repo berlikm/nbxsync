@@ -68,13 +68,11 @@ Manufacturer-wide iDRAC is fully automatic but **too wide**: any Dell object wit
 **Direction (see `docs/dell-idrac-scoping-options.md`):**
 
 1. Remove iDRAC from Manufacturer Dell.  
-2. Attach Dell iDRAC via TemplateRule: platform `.*`, `role_pattern` for BMC server roles (e.g. `^Server$`), `require_tags=idrac`.  
-3. Stamp NetBox tag `idrac` on Dell **Server** devices (bulk + onboarding automation) — not on storage/switch roles.  
-4. Keep Server Agent+OOB for transport (`oob_ip`).  
-5. Optional backup: iDRAC on known Dell server Device types.  
-6. Later plugin improvement: Manufacturer (and/or `oob_ip`) as TemplateRule criteria so the happy path needs no tag.
+2. Attach Dell iDRAC via TemplateRule: platform `.*`, `role_pattern=^Server$`, **Manufacturer = Dell** (compound criteria; no NetBox tag required for the happy path).  
+3. Keep Server Agent+OOB for transport (`oob_ip`).  
+4. Optional backup: iDRAC on known Dell server Device types, or a tag-based rule for exceptions.  
 
-Until that cutover, treat Manufacturer iDRAC as transitional and do not claim Device type overwrites it.
+Manufacturer-wide iDRAC should not remain as the default once the Manufacturer criterion is available.
 
 ---
 
@@ -169,7 +167,7 @@ Permission design stays in Zabbix. Access is **global** across the monitored est
 | Continent / regional permissions | Not needed — org is flat; access is global. No continent Site Groups or Regions for monitoring |
 | Site Groups | Country control plane; nested `Sites/CH/…` for location dashboards/filters |
 | Templates | Merge only — Device type **adds**, never replaces Manufacturer *(lab-verified)* |
-| iDRAC | Move off Manufacturer → TemplateRule (Server ∧ tag `idrac`) + automation; see dell-idrac-scoping-options.md |
+| iDRAC | Move off Manufacturer → TemplateRule (Dell ∧ Server); see dell-idrac-scoping-options.md |
 | Interface requirements | Structural safety net for wrong transport; not a fix for two SNMP templates colliding |
 | Certs / version check | On / off as recommended for production |
 | Proxies | Keep CH proxy group plan |

@@ -705,7 +705,7 @@ def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oo
         assign_role(server_oob_group, role_name)
 
     # Explicitly do NOT assign OOB CG to Manufacturer Dell (previous script pattern — broken).
-    logger.info('  NOTE: Dell iDRAC remains a Manufacturer TEMPLATE (§7), not a transport CG')
+    logger.info('  NOTE: Dell iDRAC is TemplateRule Dell∧Server (§6), not Manufacturer-wide / not a transport CG')
 
     # §5.5b Cohesity VMs with primary_ip4 → SNMP Monitoring (not OOB SNMP Only,
     # which is for physical nodes with only oob_ip — VMs have no oob_ip).
@@ -795,6 +795,8 @@ def step6_template_rules(server, country_slugs=None):
             'zabbixtag': None,
             'zabbixhostgroup': hostgroup,
             'require_tags': '',
+            'role_pattern': '',
+            'manufacturer': None,
         }
         ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
 
@@ -811,10 +813,40 @@ def step6_template_rules(server, country_slugs=None):
             'zabbixhostgroup': hostgroup,
             'zabbixtag': None,
             'require_tags': 'snmp',
+            'role_pattern': '',
+            'manufacturer': None,
             'enabled': True,
             'priority': 40,
         }
         ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
+
+    # Dell iDRAC: Manufacturer ∧ Server role (no NetBox tag). Additive merge means
+    # Manufacturer-wide assignment is too wide — keep OEM templates on Device type.
+    dell = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug='dell').first()
+    tpl_idrac = make_template(*TPL['dell_idrac_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+    if dell is not None:
+        defaults = {
+            'pattern': '.*',
+            'role_pattern': '^Server$',
+            'require_tags': '',
+            'manufacturer': dell,
+            'zabbixtemplate': tpl_idrac,
+            'zabbixhostgroup': None,
+            'zabbixtag': None,
+            'enabled': True,
+            'priority': 80,
+        }
+        ensure(M.ZabbixTemplateRule, name='Dell iDRAC (Server)', defaults=defaults, update_fields=list(defaults.keys()))
+        # Prune legacy Manufacturer-wide iDRAC assignment if present.
+        deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+            zabbixtemplate=tpl_idrac,
+            assigned_object_type=ct(Manufacturer),
+            assigned_object_id=dell.id,
+        ).delete()
+        if deleted:
+            logger.info('  PRUNED: %s Manufacturer-wide Dell iDRAC assignment(s)', deleted)
+    else:
+        logger.warning("  Manufacturer 'Dell' not found, skipping Dell iDRAC TemplateRule")
 
     # Drop leftover os_family Zabbix tags from previous checklist / script runs.
     orphan_tags = M.ZabbixTag.objects.filter(tag='os_family')
@@ -877,18 +909,7 @@ def step7_template_assignments(server):
             defaults={},
         )
 
-    dell = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug='dell').first()
-    if dell is not None:
-        tpl_idrac = make_template(*TPL['dell_idrac_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-        ensure(
-            M.ZabbixTemplateAssignment,
-            zabbixtemplate=tpl_idrac,
-            assigned_object_type=ct(Manufacturer),
-            assigned_object_id=dell.id,
-            defaults={},
-        )
-    else:
-        logger.warning("  Manufacturer 'Dell' not found, skipping iDRAC template assignment")
+    # Dell iDRAC is scoped via TemplateRule (step 6: Dell ∧ Server), not Manufacturer.
 
     # VM by SNMP CG is transport-only — prune any leftover CG→template links
     # (Linux/Windows by SNMP come from tag compound TemplateRules in step 6).
@@ -1717,6 +1738,13 @@ def run_simulate() -> int:
                 'snmp_os_template_rules',
                 M.ZabbixTemplateRule.objects.filter(name__in=['SNMP Linux (tag)', 'SNMP Windows (tag)'], enabled=True).count() == 2,
                 str(list(M.ZabbixTemplateRule.objects.filter(name__startswith='SNMP ').values_list('name', flat=True))),
+                group='hygiene',
+            )
+            idrac_rule = M.ZabbixTemplateRule.objects.filter(name='Dell iDRAC (Server)', enabled=True).select_related('manufacturer').first()
+            record(
+                'dell_idrac_server_rule',
+                bool(idrac_rule and idrac_rule.manufacturer_id and idrac_rule.role_pattern == '^Server$'),
+                str(idrac_rule and (idrac_rule.manufacturer, idrac_rule.role_pattern, idrac_rule.pattern)),
                 group='hygiene',
             )
             record('vm_snmp_cg_transport_only', M.ZabbixTemplateAssignment.objects.filter(assigned_object_type=ct(M.ZabbixConfigurationGroup), assigned_object_id=vm_snmp_group.id).count() == 0, 'ok', group='hygiene')
