@@ -1,180 +1,95 @@
 # Response to configuration review
 
-Thank you for the detailed feedback. Below is how we are taking each point into the zero-touch nbxSync design.
+Thank you for the feedback. Current decisions:
 
 ---
 
 ## Tenancy
 
-We will not create a Tenant (for example “Sensirion”) at this stage.
-
-Tenancy in NetBox is not yet defined for our processes, and Zabbix does not need a tenant dimension for the current scope. Location, function, OS, and criticality are already expressed as hostgroups and cover dashboards, permissions, and alert routing.
-
-We can revisit Tenants when NetBox ownership of that model is clear and there is a concrete Zabbix use case that hostgroups cannot cover.
+Not now. NetBox tenancy is not defined for our processes, and Zabbix does not need it — location, function, OS, and criticality are already hostgroups.
 
 ---
 
-## Sites / Regions (continents)
+## Continents / regional permissions
 
-We will **not** introduce continent or regional layers (NetBox Regions, continent Site Groups, or Zabbix-only continent hostgroups).
-
-Our organisation is flat for monitoring access: permissions are global across resources, not split by APAC / EMEA / AMER (or similar). Country Site Groups already produce nested location hostgroups (`Sites/CH/…/<site>`). Country- and campus-level boards and filters use those parents; we do not need a permission node between `Sites/` and `Sites/CH`.
-
-If that ever changes, parent Site Groups above countries would be the natural fit (ancestry Jinja already supports them). It is not in scope now.
+Not needed. Access is global (flat org). Country Site Groups already give nested `Sites/CH/…` for location dashboards and filters. No Regions or continent Site Groups.
 
 ---
 
-## Sites / Site Groups
+## Site Groups
 
-We keep country Site Groups as the control plane. Proxy, Zabbix server assignment, default Agent configuration group, Sites and Roles hostgroup templates, environment tag, and host inventory hang on the country groups. That matches your assessment that Site Groups are working well.
+Keep as the control plane (proxy, server assignment, default Agent CG, Sites/Roles hostgroups, environment tag, inventory).
 
----
-
-## Manufacturers vs Device types (templates)
-
-Templates should sit at the most specific level that is still generally true — not by listing every device by hand.
-
-| Level | When we use it | Example |
-|---|---|---|
-| Manufacturer | When the template is true for that vendor class in the happy path | Dell → Dell iDRAC by SNMP (BMC) with Server Agent+OOB |
-| Device type | Model- or OEM-specific **additional** templates | Dell M5224 → HP MSA 2060 |
-| Device Role | Application or class baseline | MSSQL → MSSQL by ODBC; switches → Network Generic floor |
-| Platform (Template Rule) | OS / network OS from platform name | Linux / Windows / EXOS / FortiOS → template + `OS/…` |
-| Individual device | Exceptions only | Avoid for normal onboarding |
-
-**Important: templates merge; they never override.** *(lab-verified)*  
-Resolution is additive by template ID. A Device type assignment does **not** remove a Manufacturer template.
-
-We exercised this explicitly:
-
-- Manufacturer Dell Storage + Device type HP MSA + Manufacturer iDRAC on the same device → **all three** appeared in the resolved template set (proves add, not replace).
-- Corrected assignment (HP MSA on Device type + iDRAC on Manufacturer only) → both remain; live Zabbix retest linked **`bp HP MSA 2060` and `bp Dell iDRAC`** together on an SNMP storage host.
-
-So a Dell M5224 with HP MSA 2060 on Device type **still receives Dell iDRAC by SNMP** from Manufacturer Dell whenever that host has an SNMP interface (for example from OOB SNMP Only or Server Agent+OOB). Device type is a deliberate **add**, not an overwrite.
-
-Where two templates are incompatible (item-key collisions — the same class of problem that led us to **Storage Generic Device by SNMP** instead of Network Generic alongside iDRAC), we must either:
-
-1. Confirm the pair is safe together, or  
-2. Remove iDRAC from Manufacturer and place it only on Device types / roles / tags that should have BMC — keeping automation where it is safe.
-
-We will not answer “wrong template at Manufacturer” by implying Device type replaces it. Per-device assignment remains for true one-offs only; mass per-device linking is the hand-maintained membership pattern we are leaving behind.
-
-**Interface requirements (safety net):** each nbxsync Template can require Agent, SNMP, ANY, etc. At sync, a template is linked only if the host has those interface types; otherwise it is skipped silently. That is why broad Manufacturer or Role assignment is structurally safer than it looks: an SNMP-only template does not attach to an agent-only host. It does **not** solve two SNMP templates colliding with each other — that still needs compatibility checks or narrower assignment (as with Storage Generic vs iDRAC). Lab note: the first OEM storage sync attempt only kept agent templates until the role had an **SNMP** configuration group — interface requirements dropped the SNMP templates until transport was fixed; after SNMP CG, both HP MSA and iDRAC linked.
-
-### Dell iDRAC on Manufacturer — better scoping
-
-Manufacturer-wide iDRAC is fully automatic but **too wide**: any Dell object with an SNMP interface inherits iDRAC (storage OEM, etc.). Device type cannot remove it (merge is additive — lab-verified).
-
-**Direction (see `docs/dell-idrac-scoping-options.md`):**
-
-1. Remove iDRAC from Manufacturer Dell.  
-2. Attach Dell iDRAC via TemplateRule: platform `.*`, `role_pattern=^Server$`, **Manufacturer = Dell** (compound criteria; no NetBox tag required for the happy path).  
-3. Keep Server Agent+OOB for transport (`oob_ip`).  
-4. Optional backup: iDRAC on known Dell server Device types, or a tag-based rule for exceptions.  
-
-Manufacturer-wide iDRAC should not remain as the default once the Manufacturer criterion is available.
+Sites hostgroup value uses full Site Group ancestry so country parents exist (`Sites/CH/CH-STA/…`). Hosts stay in the leaf; boards filter on the parent.
 
 ---
 
-## Zabbix server (certificate / version check)
+## Templates (Manufacturer vs Device type)
 
-For production (Zabbix Cloud) we will enable HTTPS certificate validation and disable “Skip version check.” Automatic synchronization stays on. Lab or temporary HTTP environments may differ; production must not.
+Templates **merge** by ID — Device type **adds**, it never replaces Manufacturer *(lab-verified)*. Put each template at the level that is generally true; Device only for true one-offs.
+
+| Level | Use for |
+|---|---|
+| Device Role | Application / class baseline (MSSQL, switch floors, …) |
+| Manufacturer | Vendor-wide templates that are safe for the whole vendor class |
+| Device type | Model / OEM extras |
+| Template Rule | Platform OS, and compound cases (e.g. Dell ∧ Server → iDRAC) |
+
+**Dell iDRAC:** not on Manufacturer Dell (too wide — storage and other SNMP Dell hosts also got it). Configured as Template Rule: pattern `.*`, role `^Server$`, Manufacturer Dell → Dell iDRAC by SNMP. Transport stays Server Agent+OOB (`oob_ip`).
+
+Interface requirements still drop a template when the host lacks Agent/SNMP/etc.; they do not separate two SNMP templates that both qualify.
 
 ---
 
-## Proxies / Proxy groups
+## Zabbix server
 
-We keep the current model: CH uses a proxy group (two proxies in production as planned); other countries use a single proxy (JP via KR; NL and US via the CH group).
+Production: cert validation on, skip version check off, sync on.
+
+---
+
+## Proxies
+
+Unchanged: CH proxy group; JP via KR; NL/US via CH group.
 
 ---
 
 ## Template Rules
 
-We keep Template Rules for platform → OS template and `OS/…` hostgroup. No change needed there.
-
-A single device is already a member of multiple hostgroups: `Sites/…`, `Roles/…`, `OS/…`, and optionally `Priority/Critical`. Nested groups follow Zabbix’s parent/child model (for example under `Sites/CH`).
+Keep for platform → OS template + `OS/…`. Also used for SNMP-by-tag OS templates and Dell iDRAC (above). Multi-group membership is already the model.
 
 ---
 
 ## Tags
 
-We keep tags lean and do **not** duplicate hostgroup names as tags by default — that would be two sources of truth for the same dimension.
+Keep lean — do not mirror hostgroup names as tags.
 
-Hostgroups remain the primary axis for dashboards and permissions (`Sites/*`, `Roles/*`, `OS/*`, `Priority/Critical`).
-
-Tags we use:
-
-- NetBox `critical` → hostgroup Priority/Critical  
-- NetBox `snmp` → selects Linux/Windows by SNMP Template Rules (with **SNMP by tag** transport)  
-- NetBox `do_not_monitor` → exclusion from sync  
-- Zabbix `environment` (from hostname) and `cluster` (from cluster name)
-
-If a specific Zabbix **action condition** or widget can only be expressed with tag operators and not with hostgroup filters, tell us which one — we can add a targeted tag for that case cheaper than mirroring the whole group tree.
+In use: NetBox `critical`, `snmp`, `do_not_monitor`; Zabbix `environment`, `cluster`. Add a tag only if a specific action/widget cannot use hostgroup filters.
 
 ---
 
-## Configuration groups (SNMP Linux / SNMP Windows)
+## SNMP Linux / Windows CGs
 
-We do not create separate “SNMP Linux Monitoring” and “SNMP Windows Monitoring” configuration groups.
-
-Transport (the SNMP interface) is the same for Linux and Windows; only the OS template differs:
-
-- Configuration group **SNMP by tag** (SNMP interface only) — assign on any Device or VM that must use SNMP instead of agent.  
-- Template Rules “SNMP Linux” / “SNMP Windows”, gated by NetBox tag `snmp`, attach the correct OS SNMP template.
-
-(The group was previously named “VM by SNMP”; the mechanism was never VM-only. Physical Linux/Windows servers that must be SNMP-monitored use the same pair: **SNMP by tag** + tag `snmp`.)
-
-That keeps one clear transport profile per host. Zabbix server affinity continues to come from the country Site Group server assignment.
+No separate SNMP Linux/Windows configuration groups. One transport CG **SNMP by tag** + Template Rules gated by NetBox tag `snmp` (Device or VM).
 
 ---
 
-## Hostgroups (continents, database groups, nesting, dashboards)
+## Hostgroups / dashboards / permissions
 
-We use nested Zabbix hostgroups: location (`Sites/…`), function (`Roles/…`), OS (`OS/…`), and optionally `Priority/Critical`. A device is already in several groups at once; it is not limited to one.
-
-**Dashboards do not need the host to be a direct member of every level.**  
-Zabbix nesting means a dashboard (or permission) on a **parent** group includes nested children. Hosts stay in the leaf only. A country- or campus-level board filters on the parent (`Sites/CH` or `Sites/CH/CH-STA`); you do not also assign the host into flat duplicate groups.
-
-Regional (continent) nesting is out of scope — organisation access is flat/global (see Regions above).
-
-For function we use `Roles/…` (for example `Roles/MSSQL`). If permissions later need a team-shaped group that is not the same as a Device Role, we can add that as an explicit extra axis then.
-
-### Nested Sites path (includes country)
-
-The Sites hostgroup value uses the full Site Group ancestry:
-
-```
-Sites/{{ object.site.group.get_ancestors(include_self=True) | map(attribute="name") | join("/") }}/{{ object.site.name }}
-```
-
-A site under campus **CH-STA** (parent **CH**) becomes `Sites/CH/CH-STA/CH-STA-L42`. Parent-first create materializes each segment. Sites hanging directly under **CH** render as `Sites/CH/<site>`.
-
-Hosts remain in the leaf only; dashboards filter on the appropriate parent. Do not also assign hosts into a flat country group.
+Axes: `Sites/…`, `Roles/…`, `OS/…`, optional `Priority/Critical`. Dashboards and permissions on **parents** cover nested children; hosts stay in the leaf. Zabbix permissions stay global — nested Sites are for location views, not regional RBAC.
 
 ---
 
-## User permissions (Zabbix)
-
-Permission design stays in Zabbix. Access is **global** across the monitored estate (flat organisation) — we are not splitting user groups by continent or region. Nested `Sites/CH/…` remains useful for **dashboards and filters** by location; it is not a regional RBAC tree. Optional tighter scopes (e.g. a single country parent) remain available if a team ever needs them, without introducing continent layers.
-
----
-
-## Short summary
+## Summary
 
 | Topic | Decision |
 |---|---|
-| Tenant | Not now — NetBox use unclear; not required for Zabbix yet |
-| Continent / regional permissions | Not needed — org is flat; access is global. No continent Site Groups or Regions for monitoring |
-| Site Groups | Country control plane; nested `Sites/CH/…` for location dashboards/filters |
-| Templates | Merge only — Device type **adds**, never replaces Manufacturer *(lab-verified)* |
-| iDRAC | Move off Manufacturer → TemplateRule (Dell ∧ Server); see dell-idrac-scoping-options.md |
-| Interface requirements | Structural safety net for wrong transport; not a fix for two SNMP templates colliding |
-| Certs / version check | On / off as recommended for production |
-| Proxies | Keep CH proxy group plan |
-| Template Rules | Keep; multi-group already in place |
-| Tags | Lean; add only for concrete action/widget gaps |
-| SNMP transport override | **SNMP by tag** + tag `snmp` (Device or VM) |
-| Nested groups / dashboards | Parent filter; hosts stay in leaf |
-| Nested Sites path | Full Site Group ancestry so country parents exist for location boards |
-
-Country Site Group decides default transport and proxy; role decides transport exceptions; platform / manufacturer / device type **add** templates at the right level (they do not override each other); tags only add overlays.
+| Tenant | Not now |
+| Continents / regional ACL | Not needed — access global |
+| Site Groups | Country control plane; nested Sites for location |
+| Templates | Merge only; Device type adds |
+| iDRAC | Template Rule Dell ∧ Server (not Manufacturer-wide) |
+| Certs / version check | On / off for production |
+| Proxies | Keep current plan |
+| Tags | Lean |
+| SNMP override | SNMP by tag + tag `snmp` |
+| Nested groups | Parent filter; hosts in leaf |
