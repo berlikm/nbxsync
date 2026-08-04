@@ -1741,6 +1741,13 @@ def run_simulate() -> int:
 
             h_sw = host(objects['switch'].name)
             record('zbx_switch_critical', bool(h_sw) and 'Priority/Critical' in [g['name'] for g in h_sw.get('groups', [])], str(h_sw.get('groups') if h_sw else None), group='zabbix')
+            sw_tpls = [t.get('name') for t in (h_sw.get('parentTemplates', []) if h_sw else [])]
+            record(
+                'zbx_switch_exos_only',
+                any('EXOS' in (n or '') for n in sw_tpls) and not any('Network Generic' in (n or '') for n in sw_tpls),
+                str(sw_tpls),
+                group='zabbix',
+            )
             h_new = host(objects['new_role'].name)
             record('zbx_new_role_group', bool(h_new) and any('Brand New App' in g['name'] for g in h_new.get('groups', [])), str(h_new.get('groups') if h_new else None), group='zabbix')
             h_ov = host(objects['vm_snmp'].name)
@@ -1756,14 +1763,6 @@ def run_simulate() -> int:
             h_fw = host(objects['firewall'].name)
             fw_tpls = [t.get('name') for t in (h_fw.get('parentTemplates', []) if h_fw else [])]
             record('zbx_firewall_fortigate', any('FortiGate' in (n or '') for n in fw_tpls), str(fw_tpls), group='zabbix')
-            h_sw = host(objects['switch'].name)
-            sw_tpls = [t.get('name') for t in (h_sw.get('parentTemplates', []) if h_sw else [])]
-            record(
-                'zbx_switch_exos_only',
-                any('EXOS' in (n or '') for n in sw_tpls) and not any('Network Generic' in (n or '') for n in sw_tpls),
-                str(sw_tpls),
-                group='zabbix',
-            )
 
             # Hostgroup-first hygiene
             record('no_os_family_tags', M.ZabbixTag.objects.filter(tag='os_family').count() == 0, str(M.ZabbixTag.objects.filter(tag='os_family').count()), group='hygiene')
