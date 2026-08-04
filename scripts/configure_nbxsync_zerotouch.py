@@ -118,6 +118,10 @@ TPL = {
     'mssql_odbc': (10327, 'MSSQL by ODBC'),
     'pure_storage_http': (10663, 'Pure Storage FlashArray v1 by HTTP'),
     'gitlab_http': (10362, 'GitLab by HTTP'),
+    # Created in Zabbix: clone of Network Generic without snmptrap.fallback
+    # and zabbix[host,snmp,available] to avoid collision with Dell iDRAC
+    # on Dell storage/Cohesity devices.
+    'storage_generic_snmp': (11803, 'Storage Generic Device by SNMP'),
 }
 
 SNMP_ROLES = [
@@ -131,8 +135,6 @@ SNMP_ROLES = [
     'Virtual Appliance',
     # Δ vs previous: SNMP-only / HTTP storage must not stay on Agent CG
     'Pure Storage',
-    'Cohesity',
-    'Storage',
 ]
 
 # Previous script listed these under Agent; SiteGroup Agent default covers them now.
@@ -168,9 +170,8 @@ AGENT_DEFAULT_ROLES_DOC = [
     'Space Server',
 ]
 
-SERVER_BMC_ROLES = ['Server']
+SERVER_BMC_ROLES = ['Server', 'Cohesity']  # Cohesity: Dell nodes with only oob_ip
 
-# ---- Lab simulate constants ----
 LAB_JSON = Path('/home/ubuntu/zabbix-docker/lab.json')
 REPORT_JSON = Path('/opt/cursor/artifacts/zerotouch_configure_sim_results.json')
 REPORT_MD = Path('/opt/cursor/artifacts/ZEROTOUCH_CONFIGURE_SIM_REPORT.md')
@@ -237,8 +238,13 @@ def step0_cleanup(*, mutate_netbox: bool):
         ('production_db', 'Teams/Production DB hostgroup membership'),
         ('snmp', 'SNMP monitoring profile: tag-targeted interface + compound template rule'),
     ]:
-        t, c = Tag.objects.get_or_create(slug=name, defaults={'name': name, 'description': desc})
-        logger.info("  Tag '%s': %s (id=%s)", name, 'CREATED' if c else 'EXISTS', t.id)
+        # Reuse existing tag by slug OR name (NetBox auto-slugifies '_' -> '-')
+        t = Tag.objects.filter(slug=name).first() or Tag.objects.filter(name=name).first()
+        if t is None:
+            t = Tag.objects.create(slug=name, name=name, description=desc)
+            logger.info("  Tag '%s': CREATED (id=%s)", name, t.id)
+        else:
+            logger.info("  Tag '%s': EXISTS as slug=%s (id=%s)", name, t.slug, t.id)
 
     role, created = DeviceRole.objects.get_or_create(
         slug='virtual-appliance',
@@ -419,10 +425,16 @@ def step4_configgroups():
         name='VM by SNMP',
         defaults={'description': 'Direct VM override — complete SNMP profile'},
     )
-    return snmp_group, agent_group, server_oob_group, vm_snmp_group
+    # OOB-only SNMP: for hardware with only oob_ip (no primary_ip4) — e.g. Cohesity Dell nodes
+    oob_snmp_group, _ = get_or_create(
+        M.ZabbixConfigurationGroup,
+        name='OOB SNMP Only',
+        defaults={'description': 'SNMP @ oob_ip only — for hardware without primary_ip4'},
+    )
+    return snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group
 
 
-def step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_snmp_group):
+def step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group):
     logger.info('=' * 60)
     logger.info('Step 5: ZabbixHostInterface (group-level + snmp tag)')
     logger.info('=' * 60)
@@ -509,6 +521,22 @@ def step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_
             **_snmp_v3_fields(),
         },
     )
+    # 5.4b OOB SNMP Only (hardware without primary_ip4 — e.g. Cohesity Dell nodes)
+    ensure_if(
+        zabbixserver=server,
+        assigned_object_type=ct_cfg,
+        assigned_object_id=oob_snmp_group.id,
+        type=ZabbixHostInterfaceTypeChoices.SNMP,
+        use_oob_ip=True,
+        defaults={
+            'zabbixconfigurationgroup': oob_snmp_group,
+            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+            'port': 161,
+            'useip': ZabbixInterfaceUseChoices.IP,
+            'dns': '',
+            **_snmp_v3_fields(),
+        },
+    )
     # 5.5 Tag-targeted SNMP interface (checklist / previous script) — interface only, NOT a transport CG
     try:
         nb_tag = Tag.objects.get(slug='snmp')
@@ -529,7 +557,7 @@ def step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_
         logger.warning("  NetBox tag 'snmp' missing — skipping tag-targeted interface")
 
 
-def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, country_slugs=None):
+def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oob_snmp_group=None, vm_snmp_group=None, country_slugs=None):
     """Δ vs previous: SiteGroup Agent default; SNMP+storage exceptions; Server BMC CG."""
     logger.info('=' * 60)
     logger.info('Step 5b: ConfigurationGroupAssignment (zero-touch)')
@@ -564,6 +592,10 @@ def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, co
     for role_name in SNMP_ROLES:
         assign_role(snmp_group, role_name)
     for role_name in SERVER_BMC_ROLES:
+        # Cohesity goes to OOB SNMP Only (no primary_ip4 — only oob_ip)
+        if role_name == 'Cohesity' and oob_snmp_group is not None:
+            assign_role(oob_snmp_group, role_name)
+            continue
         assign_role(server_oob_group, role_name)
 
     # Explicitly do NOT assign OOB CG to Manufacturer Dell (previous script pattern — broken).
@@ -672,6 +704,10 @@ def step7_template_assignments(server):
         (make_template(*TPL['pure_storage_http'], req=[HostInterfaceRequirementChoices.ANY]), 'Pure Storage'),
         (make_template(*TPL['gitlab_http'], req=[HostInterfaceRequirementChoices.AGENT]), 'GitLab'),
         (make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Virtual Appliance'),
+        # SNMP catch-all for roles with no platform match (census gap coverage)
+        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Network Device'),
+        (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Storage'),
+        (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Cohesity'),
     ]
     for template, role_name in assignments:
         try:
@@ -699,6 +735,21 @@ def step7_template_assignments(server):
         )
     except Manufacturer.DoesNotExist:
         logger.warning("  Manufacturer 'Dell' not found, skipping iDRAC template assignment")
+
+    # §5.5 VM-by-SNMP CG: complete the profile with a template (finding #4)
+    try:
+        vm_snmp_cg = M.ZabbixConfigurationGroup.objects.get(name='VM by SNMP')
+        tpl_vm_snmp = make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+        get_or_create(
+            M.ZabbixTemplateAssignment,
+            zabbixtemplate=tpl_vm_snmp,
+            assigned_object_type=ct(M.ZabbixConfigurationGroup),
+            assigned_object_id=vm_snmp_cg.id,
+            defaults={},
+        )
+        logger.info('  VM by SNMP CG: linked Linux by SNMP template')
+    except M.ZabbixConfigurationGroup.DoesNotExist:
+        logger.warning("  ConfigGroup 'VM by SNMP' not found, skipping template")
 
 
 def step8_hostgroups(server, country_slugs=None):
@@ -913,9 +964,9 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
     proxies, ch_proxy_group = step2_proxies(server)
     step3_server_assignments(server, proxies, ch_proxy_group)
-    snmp_group, agent_group, server_oob_group, vm_snmp_group = step4_configgroups()
-    step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_snmp_group)
-    step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group)
+    snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group = step4_configgroups()
+    step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group)
+    step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oob_snmp_group, vm_snmp_group)
     step6_template_rules(server)
     step7_template_assignments(server)
     step8_hostgroups(server)
@@ -1096,9 +1147,10 @@ def run_simulate() -> int:
         agent_group, _ = M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring', defaults={'description': 'lab'})
         server_oob_group, _ = M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Server Agent+OOB', defaults={'description': 'lab'})
         vm_snmp_group, _ = M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}VM by SNMP', defaults={'description': 'lab'})
+        oob_snmp_group, _ = M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}OOB SNMP Only', defaults={'description': 'lab'})
 
-        step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_snmp_group)
-        step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, country_slugs=country_slugs)
+        step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group)
+        step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oob_snmp_group, vm_snmp_group, country_slugs=country_slugs)
 
         # Lab templates in Zabbix
         with ZabbixConnection(server) as api:
