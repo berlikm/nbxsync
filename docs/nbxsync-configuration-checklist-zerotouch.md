@@ -1,4 +1,4 @@
-# nbxSync Configuration Checklist (Zero-Touch)
+# nbxSync Configuration Checklist
 
 Step-by-step configuration in NetBox. Execute in order. Each section is a discrete task.
 
@@ -6,42 +6,48 @@ This checklist is for **GUI operators**. Fill in production URLs, tokens, and se
 
 ---
 
-## How this model works
+## Design (why it is built this way)
 
-| What you know about a host | How it is encoded in NetBox | What appears in Zabbix |
+Monitoring membership and transport should follow **facts already in NetBox** (site, role, platform, manufacturer, a few tags). Operators encode business knowledge once; new devices onboard without new hand-maintained rows.
+
+| Fact in NetBox | Encoded as | Effect in Zabbix |
 |---|---|---|
-| Country / site | Hostgroup template on each country Site Group | `Sites/<country>/<site>` |
+| Country / site | Hostgroup template on each country Site Group | Nested `Sites/<country>/<site>` |
 | Function (role) | Hostgroup template on each country Site Group | `Roles/<role name>` |
-| Operating system / platform | Template Rule (regex on platform name) | OS template + `OS/Linux`, `OS/Windows`, `OS/Network`, or `OS/VMware` |
-| Critical device | NetBox tag `critical` | Hostgroup `Priority/Critical` |
-| Default monitoring transport | Configuration group **Agent Monitoring** on each country Site Group | Zabbix agent on the primary IP |
+| Platform / OS | Template Rule (regex on platform name) | OS template + `OS/Linux`, `OS/Windows`, `OS/Network`, or `OS/VMware` |
+| Criticality | NetBox tag `critical` | Hostgroup `Priority/Critical` |
+| Default transport | Configuration group **Agent Monitoring** on each country Site Group | Zabbix agent on the primary IP |
 | Network / SNMP-only storage | Configuration group **SNMP Monitoring** on those roles | SNMP on the primary IP |
-| Server with BMC / iDRAC | Configuration group **Server Agent+OOB** on role Server | Agent on primary IP **and** SNMP on the out-of-band IP |
-| Cohesity physical node (OOB only) | Configuration group **OOB SNMP Only** on role Cohesity | SNMP on the out-of-band IP only |
+| Server with BMC | Configuration group **Server Agent+OOB** on role Server | Agent on primary IP **and** SNMP on the out-of-band IP |
+| Cohesity physical (OOB only) | Configuration group **OOB SNMP Only** on role Cohesity | SNMP on the out-of-band IP only |
 | VM monitored by SNMP | Configuration group **VM by SNMP** on that VM + NetBox tag `snmp` | SNMP interface + Linux/Windows by SNMP templates |
 | Application / OEM extras | Template assignment on Role or Manufacturer | Extra templates merged with the OS template |
 
-**Rules of thumb**
+### Why hostgroups hang on Site Groups (including Roles)
 
-- Exactly **one** configuration group decides transport (agent vs SNMP vs OOB). Hostgroups and templates can stack freely.
-- **Never** put a configuration group or host interface on a NetBox tag. Tags are for overlays (criticality, SNMP OS flavor, exclusion) only.
-- Role-level SNMP / Server Agent+OOB overrides the country Site Group’s Agent default.
-- Assign Agent Monitoring only to **top-level country** Site Groups — not to mid-level groups (a mid-level assignment would override the country default).
+Zabbix hostgroups are the primary axis for dashboards, permissions, and alert routing. Two orthogonal trees cover almost every view:
 
-**Where to look in the GUI**
+- **Location** — `Sites/…` (where the host lives)
+- **Function** — `Roles/…` (what the host is)
 
-- Role or Manufacturer **templates** show on the Role (or Template) page — not on the Hostgroup page.
-- `OS/*` membership comes from Template Rules. Inspect rules under **Zabbix → Template Rules**. On a hostgroup detail page you may also see a **Template rules** card when that view is available.
+Both templates are assigned on the **country Site Group**, not on every Device Role or every Site:
 
-**Do not recreate these obsolete patterns**
+1. **One row per country** — a new Device Role tomorrow still gets `Roles/<name>` automatically; you do not open the checklist again.
+2. **Same inheritance path as proxy and default transport** — country Site Group is already the control plane for “everything under this country.”
+3. **Jinja renders against the device/VM at sync** — `{{ object.role.name }}` and `{{ object.site… }}` resolve on the real host, so a Site Group assignment is enough.
 
-- Dozens of Device Role → Agent Monitoring rows (replaced by Site Group defaults)
-- Roles hostgroup assigned on every Device Role (replaced by one assignment per country Site Group)
-- Hostgroups `Managed/nbxSync`, `Teams/*`, or `Teams/Production DB`
-- Manufacturer Dell → a separate “OOB Management” configuration group (Dell iDRAC is a **template** only)
-- Host interface or configuration group on NetBox tag `snmp`
-- Zabbix tags named `os_family`
-- Country Site Group → ICMP Ping template (conflicts with SNMP templates)
+`OS/…` is a third tree for OS-centric views. It is attached by **Template Rules** (platform match), because OS is a property of the platform, not of the country.
+
+### Why transport uses configuration groups (not tags)
+
+Exactly **one** configuration group decides how the host is reached (agent vs SNMP vs OOB). Hostgroups and templates can stack freely; transport cannot. Tags are for overlays only (`critical`, `snmp` OS flavor, `do_not_monitor`). Putting transport on a tag would silently override role and site defaults.
+
+Role-level SNMP / Server Agent+OOB **overrides** the country Site Group’s Agent default. Assign Agent Monitoring only to **top-level country** Site Groups — a mid-level Site Group assignment would win over the country default.
+
+### Where to look in the GUI
+
+- Role or Manufacturer **templates** appear on the Role (or Template) page.
+- `OS/*` membership comes from Template Rules — inspect under **Zabbix → Template Rules**. A hostgroup detail page may also list those rules when that card is available.
 
 ---
 
@@ -82,7 +88,7 @@ Path: **Zabbix → Servers → Add**
 
 Path: **Zabbix → Proxies → Add**, **Zabbix → Proxy Groups → Add**
 
-JP, NL, and US do not have their own proxies. JP routes through KR; NL and US route through the CH proxy group.
+**Why:** collectors are a geography decision. Binding proxy (or proxy group) on the country Site Group means every device under that country inherits the collector without per-host proxy rows. JP has no local proxy, so it uses KR; NL and US share the CH proxy group.
 
 ### 2.1 Proxy group
 
@@ -107,7 +113,7 @@ Proxy IDs must match the proxies that already exist in Zabbix under these names.
 
 Path: **Site Group → Zabbix tab → Zabbix Servers → Add**
 
-Proxy assignment is done from the Site Group in NetBox, never from the Zabbix UI. Create one assignment per country Site Group. Set a **proxy or a proxy group** — not both.
+Create one assignment per country Site Group. Set a **proxy or a proxy group** — not both. Assignment always flows NetBox → Zabbix.
 
 | Site Group | Proxy | Proxy group | Sync enabled |
 |---|---|---|---|
@@ -125,7 +131,7 @@ Proxy assignment is done from the Site Group in NetBox, never from the Zabbix UI
 
 Path: **Zabbix → Configuration groups → Add**
 
-A configuration group is a named container. Interface settings are defined on host interfaces in section 5.
+**Why five groups:** each is one transport profile. Keeping Agent default, SNMP exception, dual-plane server BMC, per-VM SNMP, and OOB-only hardware as separate named profiles makes the effective profile obvious on the object and avoids mixing unrelated interface sets.
 
 | Name | Description |
 |---|---|
@@ -141,7 +147,7 @@ A configuration group is a named container. Interface settings are defined on ho
 
 Path: **Zabbix → Configuration groups → [group] → Host Interfaces → Add**
 
-Create interfaces on the configuration group, not per device. Leave the IP empty; sync fills the device’s primary IP or out-of-band IP.
+**Why on the group, not on every device:** the interface *shape* (agent port, SNMPv3 credentials, OOB flag) is shared; only the IP is per device. Sync fills primary IP or out-of-band IP at runtime. Leave the IP field empty on the definition.
 
 **Type** selects Agent or SNMP. **Interface type** = Default for the primary interface of that kind.
 
@@ -187,6 +193,8 @@ Define the real passphrase values as global macros in Zabbix (Administration →
 
 ### 5.3 Server Agent+OOB (two interfaces on the same group)
 
+**Why both on one group:** a server is one monitoring profile with two planes (OS on the production network, BMC on the management network). One configuration group keeps that pairing atomic — you cannot inherit agent from one place and OOB SNMP from another and lose one side.
+
 **Agent interface** (primary IP):
 
 | Field | Value |
@@ -213,16 +221,13 @@ If a device has no out-of-band IP, the SNMP interface is skipped; the agent inte
 
 ### 5.4 VM by SNMP
 
-Same as §5.1 (SNMP, port 161, Use OOB IP = No). Do **not** attach templates to this configuration group — OS templates come from Template Rules in §6 when the VM has NetBox tag `snmp`.
+Same as §5.1 (SNMP, port 161, Use OOB IP = No). Do not attach templates to this configuration group — OS templates come from Template Rules in §6 when the VM has NetBox tag `snmp`.
+
+**Why split transport and template:** the same SNMP interface serves Linux and Windows VMs; the correct OS SNMP template is chosen by platform + tag, not by a single generic “VM SNMP” template on the group.
 
 ### 5.5 OOB SNMP Only
 
-Same SNMPv3 as the Server Agent+OOB SNMP side (Use OOB IP = Yes). For hardware that only has an out-of-band IP.
-
-### 5.6 Do not create
-
-- Host interfaces assigned to a NetBox tag (including `snmp`)
-- Transport interfaces on Manufacturer Dell
+Same SNMPv3 as the Server Agent+OOB SNMP side (Use OOB IP = Yes). For hardware that only has an out-of-band IP (no primary IP to run an agent against).
 
 ---
 
@@ -235,6 +240,8 @@ Without these assignments, the group’s interfaces are not applied during sync.
 
 ### Agent Monitoring → each country Site Group
 
+**Why on the Site Group:** almost every server-class and application role speaks the Zabbix agent. Putting the default on the country once means unknown or brand-new roles are still monitored. Roles that must use SNMP (or dual-plane BMC) override this at the Device Role level below.
+
 | Configuration group | Assigned to |
 |---|---|
 | Agent Monitoring | Site Group CH |
@@ -245,11 +252,11 @@ Without these assignments, the group’s interfaces are not applied during sync.
 | Agent Monitoring | Site Group US |
 | Agent Monitoring | Site Group CN |
 
-This covers roles such as Domain Controller, Fileserver, MSSQL, GitLab, vCenter, Pure Storage, VDI, and any new role that is not listed under SNMP or Server Agent+OOB below.
-
-**Pure Storage** stays on this Agent default (plus its HTTP template in §7) — do **not** put Pure Storage on SNMP Monitoring.
+**Pure Storage** stays on this Agent default (plus its HTTP template in §7). It is polled over HTTP/agent paths, not as SNMP-only storage.
 
 ### SNMP Monitoring → Device Roles
+
+**Why role exceptions:** switches, APs, firewalls, and SNMP-only storage have no useful agent. Assigning SNMP on the role overrides the country Agent default for those classes only.
 
 | Configuration group | Device Role |
 |---|---|
@@ -288,13 +295,15 @@ For each VM that must use SNMP instead of agent:
 
 ### Manufacturer
 
-Do **not** assign any configuration group to Manufacturer Dell. Dell iDRAC is a template assignment only (§7).
+Dell iDRAC is a **template** on Manufacturer Dell (§7), not a configuration group. Transport for Dell servers already comes from Server Agent+OOB on the Server role.
 
 ---
 
 ## 6. Template Rules (platform → template + OS hostgroup)
 
 Path: **Zabbix → Template Rules → Add**
+
+**Why Template Rules:** OS and network OS family follow the platform name, which changes far less often than the device list. A regex rule attaches both the right stock template and the `OS/…` hostgroup in one place.
 
 First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and value are the same; leave description empty:
 
@@ -340,11 +349,11 @@ Matching is a case-insensitive substring search on the platform name. Lower prio
 | VMware ESXi | `ESXi\|VMware ESX\|vSphere` | VMware FQDN | OS/VMware | — | 100 | Yes |
 | VMware Photon | `Photon` | Linux by Zabbix agent | OS/Linux | — | 50 | Yes |
 
-Do **not** attach `os_family` (or similar) Zabbix tags on these rules. OS classification is the `OS/*` hostgroup.
-
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
 
 Use together with configuration group **VM by SNMP** for the interface.
+
+**Why a tag gate:** only selected VMs should switch from agent OS templates to SNMP OS templates. The tag is an explicit operator choice; the configuration group supplies the SNMP interface.
 
 | Name | Pattern | Template | Hostgroup | Require tags | Priority | Enabled |
 |---|---|---|---|---|---|---|
@@ -358,13 +367,13 @@ Use together with configuration group **VM by SNMP** for the interface.
 Path: **Zabbix → Templates → [template] → Assigned objects → Add**  
 (or Device Role / Manufacturer → Zabbix tab)
 
-These merge with OS templates from §6. Example: an MSSQL VM gets Windows by Zabbix agent (rule) plus MSSQL by ODBC (role).
+**Why here:** application and OEM templates are business knowledge (“MSSQL role gets MSSQL by ODBC”). They merge with OS templates from §6. Role **floors** (Network Generic on switches, FortiGate on Firewall, Storage Generic on Storage/Cohesity) cover devices whose platform is missing or does not match a specialized rule; when the platform *does* match (e.g. EXOS, FortiOS), the Template Rule adds the specialized template as well.
 
 | Template | Assigned to | Notes |
 |---|---|---|
 | MSSQL by ODBC | Device Role MSSQL | |
 | MSSQL by ODBC | Device Role MSSQL Query Server | |
-| VMware FQDN | Device Role vCenter | Used instead of a dedicated “vCenter by HTTP” template |
+| VMware FQDN | Device Role vCenter | Used when a dedicated vCenter HTTP template is not available |
 | Pure Storage FlashArray v1 by HTTP | Device Role Pure Storage | Pure stays on Agent transport |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if platform does not match a rule |
@@ -377,17 +386,15 @@ These merge with OS templates from §6. Example: an MSSQL VM gets Windows by Zab
 | Network Generic Device by SNMP | Device Role Switch Mgmt | |
 | Network Generic Device by SNMP | Device Role Access Point | |
 | FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule still adds when platform matches |
-| Dell iDRAC by SNMP | Manufacturer Dell | Template only — not a configuration group |
-
-Do **not** attach templates to configuration group **VM by SNMP**.
-
-Do **not** assign ICMP Ping on country Site Groups (item-key conflicts with SNMP templates).
+| Dell iDRAC by SNMP | Manufacturer Dell | Complements Server Agent+OOB SNMP on `oob_ip` |
 
 ---
 
 ## 8. Hostgroups
 
 Path: **Zabbix → Hostgroups → Add**, then assignments on each hostgroup or from the Site Group / tag Zabbix tab.
+
+**Why these four axes:** location, function, OS, and criticality are the views operations actually use. Keeping them as hostgroups (not duplicated as tags) matches how Zabbix dashboards, permissions, and actions filter.
 
 ### 8.1 Sites
 
@@ -403,30 +410,27 @@ At sync time this renders against the device or VM (example: `Sites/CH-STA/CH-ST
 |---|---|---|
 | Roles | `Roles/{{ object.role.name }}` | Site Groups CH, HU, JP, KR, NL, US, CN |
 
-Assign once per country Site Group — **not** once per Device Role. New roles create `Roles/<name>` automatically.
+Assigned on each country Site Group so every device under that country inherits the Roles template; the role *name* still comes from the device. See **Design** above.
 
 ### 8.3 OS hostgroups
 
-Created in §6. Membership is applied by Template Rules. Do **not** also assign `OS/*` to Site Groups.
+Created in §6. Membership is applied by Template Rules when the platform matches.
 
 ### 8.4 Priority / Critical
+
+**Why a tag → hostgroup:** criticality is an orthogonal overlay. Operators mark individual devices with NetBox tag `critical`; the single hostgroup assignment turns that into Zabbix membership for 24/7 escalation without maintaining per-device hostgroup rows.
 
 | Name | Value | Assign to |
 |---|---|---|
 | Priority/Critical | `Priority/Critical` | NetBox tag `critical` |
 
-To mark a device: add NetBox tag `critical`. To unmark: remove the tag. No per-device hostgroup rows.
-
-### 8.5 Do not create
-
-- `Managed` / `Managed/nbxSync`
-- `Teams/Network`, `Teams/Infrastructure`, `Teams/Database`, and other Teams hostgroups (use `Roles/*`; add Teams later only if Zabbix permissions need a separate axis)
-- `Teams/Production DB` or per-device rows driven by a `production_db` tag
-- Per-device Priority/Critical assignments (use the tag assignment above)
+To mark a device: add NetBox tag `critical`. To unmark: remove the tag.
 
 ---
 
 ## 9. Tags
+
+**Why few tags:** team, site, role, OS, and priority already live in hostgroups. Tags carry only what is not derivable from those trees and is still useful for filtering or gating rules.
 
 ### 9.0 NetBox tags (create under NetBox → Tags)
 
@@ -434,11 +438,13 @@ To mark a device: add NetBox tag `critical`. To unmark: remove the tag. No per-d
 |---|---|
 | `do_not_monitor` | Exclude from monitoring (see §9.3 and plugin settings) |
 | `critical` | Membership in hostgroup Priority/Critical |
-| `snmp` | Selects Linux/Windows by SNMP Template Rules; does **not** change transport by itself |
+| `snmp` | Selects Linux/Windows by SNMP Template Rules; does not change transport by itself |
 
 ### 9.1 Environment (Jinja on Site Groups)
 
 Path: **Zabbix → Tags → Add**, then assign to each country Site Group.
+
+**Why Jinja from the hostname:** environment is encoded in naming conventions already; deriving it avoids a second manual taxonomy.
 
 | Tag | Value | Assign to |
 |---|---|---|
@@ -472,18 +478,13 @@ Renders against the device or VM at sync. Preview on a Site Group may show an er
 
 Plugin setting `exclude_tag` must be set to `do_not_monitor` (section 12).
 
-### 9.4 Do not create
-
-- Zabbix tags named `os_family`
-- Tags that only copy hostgroup names for dashboards
-
 ---
 
 ## 10. Host inventory
 
 Path: Site Group → Zabbix tab → Host Inventory → Add
 
-Create the same mapping on every country Site Group.
+**Why one payload on every country Site Group:** inventory fields are the same mapping everywhere; only the device data changes. Country assignment keeps inventory on the same control plane as Sites, Roles, proxy, and Agent default.
 
 | Field | Value |
 |---|---|
@@ -509,6 +510,8 @@ Fields such as `os` and `os_full` are filled by Zabbix templates when inventory 
 
 Path: **Zabbix → Macros → Add**
 
+**Why on the role:** thresholds and DSN names are class-wide policy. Secrets stay as Zabbix global macros so they are not copied into NetBox.
+
 A macro is both definition and assignment (choose Device Role on the form).
 
 | Macro | Value | Device Role |
@@ -521,36 +524,32 @@ A macro is both definition and assignment (choose Device Role on the form).
 | `{$MSSQL.DSN}` | nbxsync | MSSQL |
 | `{$VMWARE.URL}` | `https://{{ object.name }}/sdk` | vCenter |
 
-**Do not** create host macros that only point at themselves (for example `{$MSSQL.USER}` = `{$MSSQL.USER}`). Define secrets once as **global** macros in Zabbix:
+Define secrets once as **global** macros in Zabbix:
 
 - `{$MSSQL.USER}`, `{$MSSQL.PASSWORD}`
 - `{$VMWARE.USER}`, `{$VMWARE.PASSWORD}`
 - `{$PURESTORAGE.TOKEN}`
 - `{$SNMP_AUTHPASS}`, `{$SNMP_PRIVPASS}`
 
-If self-referencing host macros already exist from an older setup, delete them.
-
 ---
 
 ## 12. Plugin settings
 
-Ask the NetBox administrator to set the following under `PLUGINS_CONFIG['nbxsync']` (adjust intervals if your environment differs). Values below are the intended production posture for this checklist.
+Ask the NetBox administrator to set the following under the nbxsync plugin configuration (adjust intervals if your environment differs).
 
 | Setting | Intended value |
 |---|---|
-| Source of truth for host, hostgroup, interface, template, tag, macro, proxy, maintenance | `netbox` |
-| `exclude_tag` | `do_not_monitor` |
-| `no_alerting_tag` | `NO_ALERTING` |
-| `no_alerting_tag_value` | `1` |
-| `attach_objtag` | True |
-| `objtag_type` / `objtag_id` | `nb_type` / `nb_id` |
-| `allow_inherited_deletion` | False |
-| `adopt_existing_hosts` | False |
+| Source of truth for host, hostgroup, interface, template, tag, macro, proxy, maintenance | NetBox |
+| Exclude tag | `do_not_monitor` |
+| No-alerting tag / value | `NO_ALERTING` / `1` |
+| Attach object identity tags | Yes (`nb_type` / `nb_id`) |
+| Allow inherited deletion | No |
+| Adopt existing Zabbix hosts | No |
 | Device status → Zabbix | active → enabled; planned/staged → disabled; failed/offline/inventory/decommissioning → deleted |
 | VM status → Zabbix | active → enabled; planned → enabled in maintenance; paused → enabled with no-alerting tag; failed/offline → deleted |
 | SNMP community / auth / priv macro names | `{$SNMP_COMMUNITY}`, `{$SNMP_AUTHPASS}`, `{$SNMP_PRIVPASS}` |
 
-Keep Site / Site Group inheritance **after** role and platform in the inheritance chain so country defaults do not override role SNMP or Server Agent+OOB.
+Keep Site / Site Group inheritance **after** role and platform in the inheritance order so country defaults do not override role SNMP or Server Agent+OOB.
 
 ---
 
@@ -574,7 +573,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 
 ## 14. After configuration (Zabbix side)
 
-These are not nbxsync objects, but they hang off the hostgroups and tags above:
+These hang off the hostgroups and tags above; they are configured in Zabbix, not in nbxsync:
 
 1. Alert actions / escalations using `Priority/Critical`, `Roles/*`, and `Sites/*`
 2. User group permissions on parent groups such as `Sites/CH` with “apply to subgroups”
@@ -586,4 +585,4 @@ These are not nbxsync objects, but they hang off the hostgroups and tags above:
 
 ## One-line standard
 
-**Country Site Group decides default transport and proxy; role decides transport exceptions; platform / manufacturer / device type decide templates; tags only add overlays — never transport.**
+**Country Site Group decides default transport and proxy; role decides transport exceptions; platform / manufacturer decide templates; tags only add overlays — never transport.**
