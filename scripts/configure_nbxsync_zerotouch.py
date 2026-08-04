@@ -9,7 +9,8 @@ Same functional outcomes as the checklist / previous script. Differences are
 only where automation + engine semantics require fewer / corrected rows:
 
   Δ5b  Agent CG → each top-level country SiteGroup (not 31 role→Agent rows)
-  Δ5b  Pure Storage / Cohesity / Storage → SNMP CG (SNMP templates need SNMP IF)
+  Δ5b  Pure Storage stays on SiteGroup Agent + HTTP template (ANY) — not SNMP CG
+  Δ5b  Storage → SNMP CG; Cohesity → OOB SNMP Only
   Δ5b  Server BMC = one "Server Agent+OOB" CG (Agent + SNMP use_oob_ip) on Server
        role — NOT Manufacturer Dell → separate OOB CG (one effective CG; Role
        beats Manufacturer, so the old dual-CG pattern never merged)
@@ -17,16 +18,21 @@ only where automation + engine semantics require fewer / corrected rows:
   Δ8.3 Roles/* Jinja assigned once per top SiteGroup (not per DeviceRole)
   Δ0   NetBox inventory mutations (VM reassignment, device tagging) are OFF by
        default (--mutate-netbox to restore previous step0 behaviour)
+  ΔP0  Templates/proxies resolved by Zabbix name; ensure() updates on re-run;
+       prune self-referencing secret macros; --verify census
 
 Unchanged vs previous script: §1–3 server/proxies/assignments, SNMP role
 exceptions, TemplateRules, app templates, Teams, tag hostgroups, env/cluster/
-exclude tags, inventory, macros.
+exclude tags, inventory, macros (minus shadow secrets).
 
 Usage::
 
-  # Production apply (real SiteGroups / roles / Zabbix template IDs)
+  # Production apply (resolves template/proxy IDs from live Zabbix by name)
   export NBX_ZABBIX_TOKEN=...
   python scripts/configure_nbxsync_zerotouch.py
+
+  # Read-only census (unprofiled / agent-without-platform / no primary IP)
+  python scripts/configure_nbxsync_zerotouch.py --verify
 
   # Lab proof against local Zabbix (prefixed synthetic estate)
   PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \\
@@ -38,6 +44,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import traceback
 from pathlib import Path
@@ -89,39 +96,46 @@ ZABBIX_URL = os.environ.get('NBX_ZABBIX_URL', 'http://10.0.105.144:8080')
 
 
 def _read_token() -> str:
+    """Production token: env only. Lab token is read explicitly in --simulate."""
     env = os.environ.get('NBX_ZABBIX_TOKEN')
     if env:
         return env.strip()
-    for path in ('/tmp/nbxsync_token.txt', '/home/ubuntu/zabbix-docker/lab.json'):
-        p = Path(path)
-        if not p.exists():
-            continue
-        if p.suffix == '.json':
-            return json.loads(p.read_text())['token']
-        return p.read_text().strip()
-    raise SystemExit('Set NBX_ZABBIX_TOKEN or provide /tmp/nbxsync_token.txt')
+    raise SystemExit('Set NBX_ZABBIX_TOKEN (lab: use --simulate, which reads lab.json)')
 
 
 COUNTRY_SLUGS = ['ch', 'hu', 'jp', 'kr', 'nl', 'us', 'cn']
 
-# Zabbix template IDs from Zabbix 7.0.x install (previous script)
-TPL = {
-    'windows_agent': (10081, 'Windows by Zabbix agent'),
-    'linux_agent': (10001, 'Linux by Zabbix agent'),
-    'linux_snmp': (10248, 'Linux by SNMP'),
-    'windows_snmp': (10249, 'Windows by SNMP'),
-    'extreme_exos_snmp': (10224, 'Extreme EXOS by SNMP'),
-    'network_generic_snmp': (10226, 'Network Generic Device by SNMP'),
-    'fortigate_snmp': (10604, 'FortiGate by SNMP'),
-    'vmware_fqdn': (10366, 'VMware FQDN'),
-    'dell_idrac_snmp': (10255, 'Dell iDRAC by SNMP'),
-    'mssql_odbc': (10327, 'MSSQL by ODBC'),
-    'pure_storage_http': (10663, 'Pure Storage FlashArray v1 by HTTP'),
-    'gitlab_http': (10362, 'GitLab by HTTP'),
+# Canonical Zabbix template *names*. IDs are resolved at apply time via the API
+# (see resolve_templates). The optional ints below are documentation only for a
+# typical 7.0 install — never used as the source of truth.
+TPL_NAMES = {
+    'windows_agent': 'Windows by Zabbix agent',
+    'linux_agent': 'Linux by Zabbix agent',
+    'linux_snmp': 'Linux by SNMP',
+    'windows_snmp': 'Windows by SNMP',
+    'extreme_exos_snmp': 'Extreme EXOS by SNMP',
+    'network_generic_snmp': 'Network Generic Device by SNMP',
+    'fortigate_snmp': 'FortiGate by SNMP',
+    'vmware_fqdn': 'VMware FQDN',
+    'dell_idrac_snmp': 'Dell iDRAC by SNMP',
+    'mssql_odbc': 'MSSQL by ODBC',
+    'pure_storage_http': 'Pure Storage FlashArray v1 by HTTP',
+    'gitlab_http': 'GitLab by HTTP',
     # Created in Zabbix: clone of Network Generic without snmptrap.fallback
     # and zabbix[host,snmp,available] to avoid collision with Dell iDRAC
     # on Dell storage/Cohesity devices.
-    'storage_generic_snmp': (11803, 'Storage Generic Device by SNMP'),
+    'storage_generic_snmp': 'Storage Generic Device by SNMP',
+    'icmp_ping': 'ICMP Ping',
+}
+
+# Populated by resolve_templates() / lab ensure_t(): key → (templateid, name)
+TPL: dict[str, tuple[int, str]] = {}
+
+PROXY_NAMES = {
+    'ch': 'ch-proxy-1',
+    'hu': 'hu-proxy-1',
+    'kr': 'kr-proxy-1',
+    'cn': 'cn-proxy-1',
 }
 
 SNMP_ROLES = [
@@ -133,9 +147,18 @@ SNMP_ROLES = [
     'Firewall',
     'Network Device',
     'Virtual Appliance',
-    # Δ vs previous: SNMP-only / HTTP storage must not stay on Agent CG
-    'Pure Storage',
+    # SNMP-only storage (Pure is HTTP — not here)
+    'Storage',
 ]
+
+# Self-referencing host macros that shadow Zabbix globals — prune on every run.
+SHADOW_MACROS = (
+    '{$MSSQL.USER}',
+    '{$MSSQL.PASSWORD}',
+    '{$VMWARE.USER}',
+    '{$VMWARE.PASSWORD}',
+    '{$PURESTORAGE.TOKEN}',
+)
 
 # Previous script listed these under Agent; SiteGroup Agent default covers them now.
 # Server is carved out into Server Agent+OOB instead.
@@ -180,6 +203,10 @@ SIM_SERVER_NAME = 'ZeroTouch Configure Lab'
 RESULTS: list[dict] = []
 
 
+def _ensure_report_dir() -> None:
+    REPORT_JSON.parent.mkdir(parents=True, exist_ok=True)
+
+
 def ct(model):
     return ContentType.objects.get_for_model(model)
 
@@ -196,9 +223,97 @@ def get_sitegroup(slug: str) -> SiteGroup:
 
 
 def get_or_create(model, defaults=None, **kwargs):
-    obj, created = model.objects.get_or_create(defaults=defaults or {}, **kwargs)
-    logger.info('  %s: %s = %s', 'CREATED' if created else 'EXISTS', model.__name__, obj)
-    return obj, created
+    """Deprecated alias — prefer ``ensure`` so re-runs update script-owned fields."""
+    return ensure(model, defaults=defaults, **kwargs)
+
+
+def _values_equal(old, new) -> bool:
+    if isinstance(new, (list, tuple)) and isinstance(old, (list, tuple)):
+        return list(old) == list(new)
+    return old == new
+
+
+def ensure(model, defaults=None, update_fields=None, **lookup):
+    """Create or update a row. Unlike get_or_create, ``defaults`` refresh on EXISTS.
+
+    ``update_fields`` limits which defaults keys are written on update (default: all).
+    """
+    defaults = dict(defaults or {})
+    obj, created = model.objects.get_or_create(defaults=defaults, **lookup)
+    if created:
+        logger.info('  CREATED: %s = %s', model.__name__, obj)
+        return obj, True
+
+    fields = list(update_fields) if update_fields is not None else list(defaults.keys())
+    changed: list[str] = []
+    for field in fields:
+        if field not in defaults:
+            continue
+        new = defaults[field]
+        old = getattr(obj, field)
+        if _values_equal(old, new):
+            continue
+        setattr(obj, field, new)
+        changed.append(field)
+    if changed:
+        obj.save()
+        logger.info('  UPDATED: %s = %s (%s)', model.__name__, obj, ', '.join(changed))
+    else:
+        logger.info('  EXISTS: %s = %s', model.__name__, obj)
+    return obj, False
+
+
+def prune_shadow_macros() -> int:
+    """Delete host macros whose value is a self-reference that shadows Zabbix globals."""
+    deleted, _ = M.ZabbixMacro.objects.filter(macro__in=SHADOW_MACROS).delete()
+    if deleted:
+        logger.info('  PRUNED: %s self-referencing secret macro(s)', deleted)
+    return deleted
+
+
+def resolve_templates(server, *, names: dict[str, str] | None = None, required: bool = True) -> dict[str, tuple[int, str]]:
+    """Resolve template keys to (templateid, name) via Zabbix API name lookup."""
+    names = names or TPL_NAMES
+    resolved: dict[str, tuple[int, str]] = {}
+    missing: list[str] = []
+    with ZabbixConnection(server) as api:
+        for key, name in names.items():
+            found = api.template.get(filter={'name': name}, output=['templateid', 'name']) or []
+            if not found:
+                missing.append(name)
+                continue
+            resolved[key] = (int(found[0]['templateid']), found[0]['name'])
+    if missing and required:
+        raise SystemExit('Zabbix template(s) not found by name (fix names or import templates): ' + ', '.join(missing))
+    if missing:
+        logger.warning('  Optional templates missing: %s', ', '.join(missing))
+    logger.info('  Resolved %s/%s templates by name', len(resolved), len(names))
+    return resolved
+
+
+def resolve_proxies(server, names: dict[str, str] | None = None) -> dict[str, M.ZabbixProxy]:
+    """Ensure NetBox ZabbixProxy rows exist with proxyid taken from Zabbix by name."""
+    names = names or PROXY_NAMES
+    proxies: dict[str, M.ZabbixProxy] = {}
+    with ZabbixConnection(server) as api:
+        for country, name in names.items():
+            found = api.proxy.get(filter={'name': name}, output=['proxyid', 'name']) or []
+            if not found:
+                raise SystemExit(f'Zabbix proxy not found by name: {name!r} (country={country})')
+            proxyid = int(found[0]['proxyid'])
+            proxy, _ = ensure(
+                M.ZabbixProxy,
+                name=name,
+                defaults={
+                    'zabbixserver': server,
+                    'operating_mode': ZabbixProxyTypeChoices.ACTIVE,
+                    'proxyid': proxyid,
+                    'description': f'Proxy for {country.upper()}',
+                },
+                update_fields=['zabbixserver', 'operating_mode', 'proxyid', 'description'],
+            )
+            proxies[country] = proxy
+    return proxies
 
 
 def _snmp_v3_fields() -> dict:
@@ -288,7 +403,7 @@ def step1_zabbix_server(*, url: str | None = None, token: str | None = None, lab
     logger.info('=' * 60)
     url = url or ZABBIX_URL
     token = token or _read_token()
-    server, _ = get_or_create(
+    server, _ = ensure(
         M.ZabbixServer,
         name='Zabbix Production',
         defaults={
@@ -296,61 +411,28 @@ def step1_zabbix_server(*, url: str | None = None, token: str | None = None, lab
             'token': token,
             'validate_certs': not lab_http,
             'sync_enabled': True,
-            'skip_version_check': False,  # Δ vs previous: prod hygiene
+            'skip_version_check': False,
             'description': 'Zabbix (configured by zero-touch script)',
         },
+        update_fields=['url', 'token', 'validate_certs', 'sync_enabled', 'skip_version_check', 'description'],
     )
-    # Refresh token/url if server already existed
-    changed = False
-    if server.url != url:
-        server.url = url
-        changed = True
-    if server.token != token:
-        server.token = token
-        changed = True
-    if server.skip_version_check:
-        server.skip_version_check = False
-        changed = True
-    if changed:
-        server.save()
-        logger.info('  UPDATED: ZabbixServer credentials/flags')
     return server
 
 
 def step2_proxies(server):
     logger.info('=' * 60)
-    logger.info('Step 2: ZabbixProxy + ZabbixProxyGroup')
+    logger.info('Step 2: ZabbixProxy + ZabbixProxyGroup (proxyid from Zabbix by name)')
     logger.info('=' * 60)
-    proxies = {}
-    proxy_map = {
-        'ch-proxy-1': (1, 'ch'),
-        'hu-proxy-1': (1, 'hu'),
-        'kr-proxy-1': (2, 'kr'),
-        'cn-proxy-1': (3, 'cn'),
-    }
-    for name, (proxyid, country_slug) in proxy_map.items():
-        proxy, _ = get_or_create(
-            M.ZabbixProxy,
-            name=name,
-            defaults={
-                'zabbixserver': server,
-                'operating_mode': ZabbixProxyTypeChoices.ACTIVE,
-                'proxyid': proxyid,
-                'description': f'Proxy for {country_slug.upper()}',
-            },
-        )
-        if proxy.zabbixserver_id != server.pk:
-            proxy.zabbixserver = server
-            proxy.save()
-        proxies[country_slug] = proxy
+    proxies = resolve_proxies(server)
 
-    ch_proxy_group, _ = get_or_create(
+    ch_proxy_group, _ = ensure(
         M.ZabbixProxyGroup,
         name='CH Proxy Group',
         defaults={
             'zabbixserver': server,
             'description': 'Proxy group for CH-based monitoring (NL, US route through CH)',
         },
+        update_fields=['zabbixserver', 'description'],
     )
     ch_proxy = proxies['ch']
     if ch_proxy.proxygroup_id != ch_proxy_group.pk or not ch_proxy.local_address:
@@ -442,7 +524,7 @@ def step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_
 
     def ensure_if(**lookup_and_defaults):
         defaults = lookup_and_defaults.pop('defaults')
-        get_or_create(M.ZabbixHostInterface, defaults=defaults, **lookup_and_defaults)
+        ensure(M.ZabbixHostInterface, defaults=defaults, **lookup_and_defaults)
 
     # 5.1 SNMP CG
     ensure_if(
@@ -602,24 +684,48 @@ def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oo
     logger.info('  NOTE: Dell iDRAC remains a Manufacturer TEMPLATE (§7), not a transport CG')
 
 
-def step6_template_rules(server):
+def step6_template_rules(server, country_slugs=None):
     logger.info('=' * 60)
     logger.info('Step 6: ZabbixTemplateRules')
     logger.info('=' * 60)
+    country_slugs = country_slugs or COUNTRY_SLUGS
 
     def hg(name, value):
-        obj, _ = get_or_create(M.ZabbixHostgroup, zabbixserver=server, name=name, defaults={'value': value})
+        obj, _ = ensure(
+            M.ZabbixHostgroup,
+            zabbixserver=server,
+            name=name,
+            defaults={'value': value},
+            update_fields=['value'],
+        )
         return obj
 
-    def ztag(name, value):
-        obj, _ = get_or_create(M.ZabbixTag, name=f'os_family={value}', defaults={'tag': name, 'value': value})
+    def ztag(tag, value):
+        # Prefer name='os_family=Windows' identity; update tag/value on re-run.
+        obj, _ = ensure(
+            M.ZabbixTag,
+            name=f'{tag}={value}',
+            defaults={'tag': tag, 'value': value},
+            update_fields=['tag', 'value'],
+        )
+        # Drop legacy name='os_family' duplicates for the same tag/value.
+        legacy = M.ZabbixTag.objects.filter(tag=tag, value=value).exclude(pk=obj.pk)
+        if legacy.exists():
+            n, _ = legacy.delete()
+            logger.info('  PRUNED: %s legacy ZabbixTag row(s) for %s=%s', n, tag, value)
         return obj
 
     def make_template(zbx_id, zbx_name, req=None):
         defaults = {'templateid': zbx_id, 'zabbixserver': server}
         if req is not None:
             defaults['interface_requirements'] = req
-        obj, _ = get_or_create(M.ZabbixTemplate, name=zbx_name, zabbixserver=server, defaults=defaults)
+        obj, _ = ensure(
+            M.ZabbixTemplate,
+            name=zbx_name,
+            zabbixserver=server,
+            defaults=defaults,
+            update_fields=list(defaults.keys()),
+        )
         return obj
 
     hg_os_windows = hg('OS/Windows', 'OS/Windows')
@@ -638,9 +744,25 @@ def step6_template_rules(server):
     tpl_exos = make_template(*TPL['extreme_exos_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_fortigate = make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    tpl_vmware = make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.AGENT])
+    # HTTP/simple-check templates — ANY, not AGENT (ESXi often has no Zabbix agent)
+    tpl_vmware = make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.ANY])
     tpl_linux_snmp = make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_windows_snmp = make_template(*TPL['windows_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+    if 'icmp_ping' in TPL:
+        tpl_icmp = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
+        for slug in country_slugs or COUNTRY_SLUGS:
+            try:
+                sg = get_sitegroup(slug)
+            except SiteGroup.DoesNotExist:
+                logger.warning('  SiteGroup %s missing — skip ICMP assignment', slug)
+                continue
+            ensure(
+                M.ZabbixTemplateAssignment,
+                zabbixtemplate=tpl_icmp,
+                assigned_object_type=ct(SiteGroup),
+                assigned_object_id=sg.id,
+                defaults={},
+            )
 
     rules = [
         ('Windows Server', r'Windows Server', tpl_windows, hg_os_windows, tag_windows, 50),
@@ -663,26 +785,23 @@ def step6_template_rules(server):
             'zabbixtag': tag,
             'zabbixhostgroup': hostgroup,
         }
-        get_or_create(M.ZabbixTemplateRule, name=name, defaults=defaults)
+        ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
 
     # 6b compound: platform + NetBox tag snmp (previous script)
     for name, pattern, template, hostgroup, tag in [
         ('SNMP Linux (tag)', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux_snmp, hg_os_linux, tag_linux),
         ('SNMP Windows (tag)', r'Windows', tpl_windows_snmp, hg_os_windows, tag_windows),
     ]:
-        get_or_create(
-            M.ZabbixTemplateRule,
-            name=name,
-            defaults={
-                'pattern': pattern,
-                'zabbixtemplate': template,
-                'zabbixhostgroup': hostgroup,
-                'zabbixtag': tag,
-                'require_tags': 'snmp',
-                'enabled': True,
-                'priority': 90,
-            },
-        )
+        defaults = {
+            'pattern': pattern,
+            'zabbixtemplate': template,
+            'zabbixhostgroup': hostgroup,
+            'zabbixtag': tag,
+            'require_tags': 'snmp',
+            'enabled': True,
+            'priority': 90,
+        }
+        ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
 
 
 def step7_template_assignments(server):
@@ -691,20 +810,25 @@ def step7_template_assignments(server):
     logger.info('=' * 60)
 
     def make_template(zbx_id, zbx_name, req=None):
-        defaults = {'templateid': zbx_id}
+        defaults = {'templateid': zbx_id, 'zabbixserver': server}
         if req is not None:
             defaults['interface_requirements'] = req
-        obj, _ = get_or_create(M.ZabbixTemplate, name=zbx_name, zabbixserver=server, defaults=defaults)
+        obj, _ = ensure(
+            M.ZabbixTemplate,
+            name=zbx_name,
+            zabbixserver=server,
+            defaults=defaults,
+            update_fields=list(defaults.keys()),
+        )
         return obj
 
     assignments = [
         (make_template(*TPL['mssql_odbc'], req=[HostInterfaceRequirementChoices.AGENT]), 'MSSQL'),
         (make_template(*TPL['mssql_odbc'], req=[HostInterfaceRequirementChoices.AGENT]), 'MSSQL Query Server'),
-        (make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.AGENT]), 'vCenter'),
+        (make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.ANY]), 'vCenter'),
         (make_template(*TPL['pure_storage_http'], req=[HostInterfaceRequirementChoices.ANY]), 'Pure Storage'),
-        (make_template(*TPL['gitlab_http'], req=[HostInterfaceRequirementChoices.AGENT]), 'GitLab'),
+        (make_template(*TPL['gitlab_http'], req=[HostInterfaceRequirementChoices.ANY]), 'GitLab'),
         (make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Virtual Appliance'),
-        # SNMP catch-all for roles with no platform match (census gap coverage)
         (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Network Device'),
         (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Storage'),
         (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Cohesity'),
@@ -715,7 +839,7 @@ def step7_template_assignments(server):
         except DeviceRole.DoesNotExist:
             logger.warning('  Role not found: %s, skipping', role_name)
             continue
-        get_or_create(
+        ensure(
             M.ZabbixTemplateAssignment,
             zabbixtemplate=template,
             assigned_object_type=ct(DeviceRole),
@@ -723,24 +847,24 @@ def step7_template_assignments(server):
             defaults={},
         )
 
-    try:
-        dell = Manufacturer.objects.get(name='Dell')
+    dell = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug='dell').first()
+    if dell is not None:
         tpl_idrac = make_template(*TPL['dell_idrac_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-        get_or_create(
+        ensure(
             M.ZabbixTemplateAssignment,
             zabbixtemplate=tpl_idrac,
             assigned_object_type=ct(Manufacturer),
             assigned_object_id=dell.id,
             defaults={},
         )
-    except Manufacturer.DoesNotExist:
+    else:
         logger.warning("  Manufacturer 'Dell' not found, skipping iDRAC template assignment")
 
     # §5.5 VM-by-SNMP CG: complete the profile with a template (finding #4)
     try:
         vm_snmp_cg = M.ZabbixConfigurationGroup.objects.get(name='VM by SNMP')
         tpl_vm_snmp = make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-        get_or_create(
+        ensure(
             M.ZabbixTemplateAssignment,
             zabbixtemplate=tpl_vm_snmp,
             assigned_object_type=ct(M.ZabbixConfigurationGroup),
@@ -926,6 +1050,7 @@ def step11_macros():
     logger.info('=' * 60)
     logger.info('Step 11: ZabbixMacros')
     logger.info('=' * 60)
+    prune_shadow_macros()
     macro_specs = [
         ('{$CPU.UTIL.CRIT}', '90', 'MSSQL'),
         ('{$CPU.UTIL.CRIT}', '80', 'Server'),
@@ -933,12 +1058,8 @@ def step11_macros():
         ('{$IF.UTIL.MAX}', '90', 'Switch Dist'),
         ('{$MEM.UTIL.CRIT}', '85', 'VDI'),
         ('{$MSSQL.DSN}', 'nbxsync', 'MSSQL'),
-        ('{$MSSQL.USER}', '{$MSSQL.USER}', 'MSSQL'),
-        ('{$MSSQL.PASSWORD}', '{$MSSQL.PASSWORD}', 'MSSQL'),
-        ('{$VMWARE.URL}', 'https://{{ object.name }}', 'vCenter'),
-        ('{$VMWARE.USER}', '{$VMWARE.USER}', 'vCenter'),
-        ('{$VMWARE.PASSWORD}', '{$VMWARE.PASSWORD}', 'vCenter'),
-        ('{$PURESTORAGE.TOKEN}', '{$PURESTORAGE.TOKEN}', 'Pure Storage'),
+        # Secrets stay as Zabbix *global* macros — do not create self-referencing host macros.
+        ('{$VMWARE.URL}', 'https://{{ object.name }}/sdk', 'vCenter'),
     ]
     for macro_name, macro_value, role_name in macro_specs:
         try:
@@ -946,22 +1067,27 @@ def step11_macros():
         except DeviceRole.DoesNotExist:
             logger.warning('  Role not found: %s, skipping macro %s', role_name, macro_name)
             continue
-        get_or_create(
+        ensure(
             M.ZabbixMacro,
             macro=macro_name,
             assigned_object_type=ct(DeviceRole),
             assigned_object_id=role.id,
-            defaults={'value': macro_value, 'type': ZabbixMacroTypeChoices.TEXT},
+            defaults={'value': macro_value, 'type': ZabbixMacroTypeChoices.TEXT, 'description': f'ztc:{role_name}'},
+            update_fields=['value', 'type', 'description'],
         )
 
 
 def run_production(*, mutate_netbox: bool = False, url: str | None = None, token: str | None = None, lab_http: bool = False):
+    global TPL
     logger.info('=' * 60)
     logger.info('nbxSync Zero-Touch Configuration')
     logger.info('Successor to previous checklist configure_nbxsync.py')
     logger.info('=' * 60)
     step0_cleanup(mutate_netbox=mutate_netbox)
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
+    required_names = {k: v for k, v in TPL_NAMES.items() if k != 'icmp_ping'}
+    TPL = resolve_templates(server, names=required_names, required=True)
+    TPL.update(resolve_templates(server, names={'icmp_ping': TPL_NAMES['icmp_ping']}, required=False))
     proxies, ch_proxy_group = step2_proxies(server)
     step3_server_assignments(server, proxies, ch_proxy_group)
     snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group = step4_configgroups()
@@ -999,6 +1125,50 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     return server
 
 
+AGENT_PLATFORM_HINT = re.compile(r'Windows|Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon', re.I)
+
+
+def run_verify(*, limit: int | None = None) -> int:
+    """Production post-apply / pre-go-live census (design §12). Does not mutate."""
+    logger.info('=' * 60)
+    logger.info('Verify: resolution census (read-only)')
+    logger.info('=' * 60)
+    devices = list(Device.objects.filter(status='active').select_related('role', 'platform', 'site'))
+    vms = list(VirtualMachine.objects.filter(status='active').select_related('role', 'platform', 'site'))
+    objects = devices + vms
+    if limit is not None:
+        objects = objects[:limit]
+
+    unprofiled = 0
+    agent_without_platform_fact = 0
+    active_no_primary = 0
+    agent_cg_name = 'Agent Monitoring'
+
+    for obj in objects:
+        if getattr(obj, 'primary_ip4_id', None) is None and getattr(obj, 'primary_ip6_id', None) is None:
+            active_no_primary += 1
+        assigned = get_assigned_zabbixobjects(obj)
+        cg = assigned.get('configurationgroup')
+        if cg is None:
+            unprofiled += 1
+            continue
+        cg_name = cg.zabbixconfigurationgroup.name
+        if cg_name == agent_cg_name or cg_name.endswith('Agent Monitoring'):
+            plat = getattr(getattr(obj, 'platform', None), 'name', '') or ''
+            if not AGENT_PLATFORM_HINT.search(plat):
+                agent_without_platform_fact += 1
+
+    shadow = M.ZabbixMacro.objects.filter(macro__in=SHADOW_MACROS).count()
+    print(json.dumps({
+        'objects_scanned': len(objects),
+        'unprofiled': unprofiled,
+        'agent_cg_without_agent_platform_fact': agent_without_platform_fact,
+        'active_without_primary_ip': active_no_primary,
+        'shadow_secret_macros_remaining': shadow,
+    }, indent=2))
+    return 0
+
+
 # =============================================================================
 # Lab simulation (proof against local Zabbix — prefixed synthetic estate)
 # =============================================================================
@@ -1014,26 +1184,45 @@ def slugify(name: str) -> str:
 
 
 def cleanup_lab() -> None:
+    """Tear down only the prefixed lab estate. Never touch a non-lab ZabbixServer."""
     Device.objects.filter(name__startswith=PREFIX).delete()
     VirtualMachine.objects.filter(name__startswith=PREFIX).delete()
     M.ZabbixTemplateRule.objects.filter(name__startswith=PREFIX).delete()
+    M.ZabbixTemplateRule.objects.filter(zabbixtemplate__name__startswith=PREFIX).delete()
     M.ZabbixHostgroupAssignment.objects.filter(zabbixhostgroup__name__startswith=PREFIX).delete()
     M.ZabbixConfigurationGroupAssignment.objects.filter(zabbixconfigurationgroup__name__startswith=PREFIX).delete()
     M.ZabbixTemplateAssignment.objects.filter(zabbixtemplate__name__startswith=PREFIX).delete()
     M.ZabbixTagAssignment.objects.filter(zabbixtag__name__startswith=PREFIX).delete()
+    M.ZabbixMacro.objects.filter(description__startswith='ztc:').delete()
     M.ZabbixMacro.objects.filter(description__startswith=PREFIX).delete()
     for sg in SiteGroup.objects.filter(slug__startswith=PREFIX):
         M.ZabbixHostInventory.objects.filter(assigned_object_type=ct(SiteGroup), assigned_object_id=sg.pk).delete()
-    lab_url = json.loads(LAB_JSON.read_text()).get('url') if LAB_JSON.exists() else None
+
     servers = list(M.ZabbixServer.objects.filter(name=SIM_SERVER_NAME))
-    if lab_url:
-        servers = list(M.ZabbixServer.objects.filter(url=lab_url)) or servers
+    if LAB_JSON.exists():
+        lab_url = json.loads(LAB_JSON.read_text()).get('url')
+        if lab_url:
+            foreign = M.ZabbixServer.objects.filter(url=lab_url).exclude(name=SIM_SERVER_NAME)
+            if foreign.exists():
+                names = ', '.join(foreign.values_list('name', flat=True))
+                raise SystemExit(
+                    f'Refusing --simulate cleanup: ZabbixServer(s) {names} share lab URL {lab_url!r} '
+                    f'but are not {SIM_SERVER_NAME!r}. Rename or remove them first.'
+                )
     for server in servers:
-        M.ZabbixServerAssignment.objects.filter(zabbixserver=server).delete()
-        M.ZabbixHostInterface.objects.filter(zabbixserver=server).delete()
-        M.ZabbixHostBinding.objects.filter(zabbixserver=server).delete()
+        # Scope deletes to PREFIX / lab SiteGroups and config groups — never wipe a shared prod server.
+        lab_sg_ids = list(SiteGroup.objects.filter(slug__startswith=PREFIX).values_list('pk', flat=True))
+        lab_cg_ids = list(M.ZabbixConfigurationGroup.objects.filter(name__startswith=PREFIX).values_list('pk', flat=True))
+        M.ZabbixServerAssignment.objects.filter(zabbixserver=server, assigned_object_type=ct(SiteGroup), assigned_object_id__in=lab_sg_ids).delete()
+        M.ZabbixHostInterface.objects.filter(zabbixserver=server, assigned_object_type=ct(M.ZabbixConfigurationGroup), assigned_object_id__in=lab_cg_ids).delete()
+        M.ZabbixHostBinding.objects.filter(zabbixserver=server, hostname__startswith=PREFIX).delete()
         M.ZabbixProxy.objects.filter(zabbixserver=server, name__startswith=PREFIX).delete()
         M.ZabbixProxyGroup.objects.filter(zabbixserver=server, name__startswith=PREFIX).delete()
+        # Rules may reference PREFIX templates with non-prefixed rule names — clear first.
+        M.ZabbixTemplateRule.objects.filter(zabbixtemplate__zabbixserver=server, zabbixtemplate__name__startswith=PREFIX).delete()
+        M.ZabbixTemplateAssignment.objects.filter(zabbixtemplate__zabbixserver=server, zabbixtemplate__name__startswith=PREFIX).delete()
+        M.ZabbixHostgroupAssignment.objects.filter(zabbixhostgroup__zabbixserver=server, zabbixhostgroup__name__startswith=PREFIX).delete()
+        M.ZabbixTemplateRule.objects.filter(zabbixhostgroup__zabbixserver=server, zabbixhostgroup__name__startswith=PREFIX).update(zabbixhostgroup=None)
         M.ZabbixHostgroup.objects.filter(zabbixserver=server, name__startswith=PREFIX).delete()
         M.ZabbixTemplate.objects.filter(zabbixserver=server, name__startswith=PREFIX).delete()
     M.ZabbixConfigurationGroup.objects.filter(name__startswith=PREFIX).delete()
@@ -1051,10 +1240,12 @@ def cleanup_lab() -> None:
 
 def run_simulate() -> int:
     """Build prefixed lab estate, apply zero-touch steps, sync + assert vs live Zabbix."""
-    global COUNTRY_SLUGS, TPL, RESULTS
+    global TPL, RESULTS
     RESULTS = []
     cleanup_lab()
 
+    if not LAB_JSON.exists():
+        raise SystemExit(f'Lab credentials missing: {LAB_JSON}')
     lab = json.loads(LAB_JSON.read_text())
     # Prefixed countries + roles matching checklist names
     for code in ('CH', 'HU', 'JP', 'KR', 'NL', 'US', 'CN'):
@@ -1067,7 +1258,7 @@ def run_simulate() -> int:
         slug=slugify('CH-STA-L44'),
         defaults={'name': f'{PREFIX}CH-STA-L44', 'group': leaf},
     )
-    role_names = sorted(set(SNMP_ROLES + SERVER_BMC_ROLES + AGENT_DEFAULT_ROLES_DOC + ['Messpc', 'Sd Wan Socket', 'Virtual Appliance']))
+    role_names = sorted(set(SNMP_ROLES + SERVER_BMC_ROLES + AGENT_DEFAULT_ROLES_DOC + ['Messpc', 'Sd Wan Socket', 'Virtual Appliance', 'Pure Storage', 'Storage']))
     roles = {}
     for name in role_names:
         roles[name], _ = DeviceRole.objects.get_or_create(
@@ -1102,9 +1293,12 @@ def run_simulate() -> int:
         Tag.objects.get_or_create(slug='production_db', defaults={'name': f'{PREFIX}production_db'})
         Tag.objects.get_or_create(slug='snmp', defaults={'name': f'{PREFIX}snmp'})
 
-        # Create server on lab URL (unique)
-        server = M.ZabbixServer.objects.filter(url=lab['url']).order_by('id').first()
+        # Create / refresh lab server only (never rename a foreign server onto lab URL)
+        server = M.ZabbixServer.objects.filter(name=SIM_SERVER_NAME).first()
         if server is None:
+            conflict = M.ZabbixServer.objects.filter(url=lab['url']).exclude(name=SIM_SERVER_NAME).first()
+            if conflict is not None:
+                raise SystemExit(f'Lab URL {lab["url"]!r} already used by ZabbixServer {conflict.name!r}')
             server = M.ZabbixServer.objects.create(
                 name=SIM_SERVER_NAME,
                 url=lab['url'],
@@ -1114,8 +1308,8 @@ def run_simulate() -> int:
                 skip_version_check=False,
             )
         else:
-            server.name = SIM_SERVER_NAME
             server.token = lab['token']
+            server.url = lab['url']
             server.validate_certs = False
             server.skip_version_check = False
             server.save()
@@ -1175,7 +1369,7 @@ def run_simulate() -> int:
                         return t['templateid']
                 return api.template.create(host=host, name=name, groups=[{'groupid': tgid}])['templateids'][0]
 
-            # Override TPL ids with lab-created templates
+            TPL.clear()
             TPL['linux_agent'] = (int(ensure_t(f'{PREFIX}linux.agent', f'{PREFIX}Linux by Agent')), f'{PREFIX}Linux by Agent')
             TPL['windows_agent'] = (int(ensure_t(f'{PREFIX}windows.agent', f'{PREFIX}Windows by Agent')), f'{PREFIX}Windows by Agent')
             TPL['extreme_exos_snmp'] = (int(ensure_t(f'{PREFIX}exos.snmp', f'{PREFIX}Extreme EXOS by SNMP')), f'{PREFIX}Extreme EXOS by SNMP')
@@ -1188,14 +1382,28 @@ def run_simulate() -> int:
             TPL['gitlab_http'] = (int(ensure_t(f'{PREFIX}gitlab', f'{PREFIX}GitLab by HTTP')), f'{PREFIX}GitLab by HTTP')
             TPL['linux_snmp'] = (int(ensure_t(f'{PREFIX}linux.snmp', f'{PREFIX}Linux by SNMP')), f'{PREFIX}Linux by SNMP')
             TPL['windows_snmp'] = (int(ensure_t(f'{PREFIX}windows.snmp', f'{PREFIX}Windows by SNMP')), f'{PREFIX}Windows by SNMP')
+            TPL['storage_generic_snmp'] = (int(ensure_t(f'{PREFIX}storage.snmp', f'{PREFIX}Storage Generic Device by SNMP')), f'{PREFIX}Storage Generic Device by SNMP')
+            TPL['icmp_ping'] = (int(ensure_t(f'{PREFIX}icmp', f'{PREFIX}ICMP Ping')), f'{PREFIX}ICMP Ping')
 
-        # Prefix template rule names by wrapping step6 — call then rename is messy;
-        # call production steps with lab TPL (names include PREFIX via TPL values).
-        step6_template_rules(server)
-        # Manufacturer Dell for iDRAC
-        dell, _ = Manufacturer.objects.get_or_create(slug=slugify('dell'), defaults={'name': 'Dell'})
+        step6_template_rules(server, country_slugs=country_slugs)
+        # Prefixed Dell — never create a second Manufacturer named 'Dell'
+        dell, _ = Manufacturer.objects.get_or_create(slug=slugify('dell'), defaults={'name': f'{PREFIX}Dell'})
         dtype, _ = DeviceType.objects.get_or_create(slug=slugify('poweredge'), defaults={'manufacturer': dell, 'model': f'{PREFIX}PowerEdge'})
         step7_template_assignments(server)
+
+        # Prove ensure() refreshes interface_requirements on re-run (P0.3)
+        stale = M.ZabbixTemplate.objects.get(name=TPL['vmware_fqdn'][1], zabbixserver=server)
+        stale.interface_requirements = [HostInterfaceRequirementChoices.AGENT]
+        stale.save()
+        step6_template_rules(server, country_slugs=country_slugs)
+        step7_template_assignments(server)
+        refreshed = M.ZabbixTemplate.objects.get(pk=stale.pk)
+        record(
+            'ensure_updates_interface_requirements',
+            list(refreshed.interface_requirements) == [HostInterfaceRequirementChoices.ANY],
+            str(list(refreshed.interface_requirements)),
+            group='idempotent',
+        )
 
         # Hostgroups with PREFIX names to avoid colliding with production HGs on shared server
         # Re-implement minimal HG assignments for lab using prefixed HG names
@@ -1204,20 +1412,26 @@ def run_simulate() -> int:
             name=f'{PREFIX}lab',
             defaults={'value': f'{PREFIX}lab', 'groupid': int(gid)},
         )
-        hg_sites, _ = M.ZabbixHostgroup.objects.get_or_create(
+        hg_sites, _ = ensure(
+            M.ZabbixHostgroup,
             zabbixserver=server,
             name=f'{PREFIX}Sites',
             defaults={'value': 'Sites/{{ object.site.group.name }}/{{ object.site.name }}'},
+            update_fields=['value'],
         )
-        hg_roles, _ = M.ZabbixHostgroup.objects.get_or_create(
+        hg_roles, _ = ensure(
+            M.ZabbixHostgroup,
             zabbixserver=server,
             name=f'{PREFIX}Roles',
             defaults={'value': 'Roles/{{ object.role.name }}'},
+            update_fields=['value'],
         )
-        hg_crit, _ = M.ZabbixHostgroup.objects.get_or_create(
+        hg_crit, _ = ensure(
+            M.ZabbixHostgroup,
             zabbixserver=server,
             name=f'{PREFIX}Priority/Critical',
             defaults={'value': 'Priority/Critical'},
+            update_fields=['value'],
         )
         for slug in country_slugs:
             sg = SiteGroup.objects.get(slug=slug)
@@ -1237,6 +1451,7 @@ def run_simulate() -> int:
         step9_tags(country_slugs=country_slugs)
         step10_host_inventory(country_slugs=country_slugs)
         step11_macros()
+        record('shadow_macros_pruned', M.ZabbixMacro.objects.filter(macro__in=SHADOW_MACROS).count() == 0, str(SHADOW_MACROS), group='idempotent')
 
         plat_linux, _ = Platform.objects.get_or_create(slug=slugify('ubuntu'), defaults={'name': f'{PREFIX}Ubuntu 22.04 LTS'})
         plat_win, _ = Platform.objects.get_or_create(slug=slugify('windows'), defaults={'name': f'{PREFIX}Windows Server 2022'})
@@ -1354,6 +1569,7 @@ def run_simulate() -> int:
 
         passed = sum(1 for r in RESULTS if r['ok'])
         total = len(RESULTS)
+        _ensure_report_dir()
         REPORT_JSON.write_text(json.dumps({'summary': {'passed': passed, 'total': total}, 'results': RESULTS}, indent=2))
         lines = [
             '# Zero-Touch Configure Simulation Report',
@@ -1378,12 +1594,16 @@ def run_simulate() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--simulate', action='store_true', help='Lab: synthetic estate + live Zabbix asserts')
+    parser.add_argument('--verify', action='store_true', help='Read-only census: unprofiled / agent-without-platform / no primary IP')
+    parser.add_argument('--verify-limit', type=int, default=None, help='Optional cap on objects scanned by --verify')
     parser.add_argument('--mutate-netbox', action='store_true', help='Enable previous step0 inventory mutations')
     parser.add_argument('--zabbix-url', default=None, help='Override Zabbix URL')
     parser.add_argument('--lab-http', action='store_true', help='Allow validate_certs=False (HTTP lab)')
     args = parser.parse_args()
     if args.simulate:
         return run_simulate()
+    if args.verify:
+        return run_verify(limit=args.verify_limit)
     run_production(mutate_netbox=args.mutate_netbox, url=args.zabbix_url, lab_http=args.lab_http)
     return 0
 
