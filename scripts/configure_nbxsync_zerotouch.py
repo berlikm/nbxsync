@@ -24,10 +24,20 @@ Deltas vs the old checklist script:
        (OS-correct templates; pairs with VM-by-SNMP CG for transport)
   Δ8   Hostgroups: Sites + Roles Jinja @ SiteGroup + Priority/Critical; drop
        Managed/nbxSync and Teams/* (prefer Roles/* unless Zabbix RBAC needs Teams)
+  Δ7   SNMP role-floor templates: Switch*/AP → Network Generic; Firewall → FortiGate
+       (platform TemplateRules still add specialized templates when platform matches)
   Δ10  Single inventory Jinja payload applied to every country SiteGroup
   Δ0   NetBox inventory mutations OFF by default (--mutate-netbox to restore)
   ΔP0  Templates/proxies by Zabbix name; ensure() updates; prune shadow macros;
        --verify census (unprofiled / no-template / SNMP-role-on-Agent / …)
+  ΔICMP Do NOT assign ICMP Ping at SiteGroup — collides with icmpping* in SNMP templates
+
+Template vs hostgroup visibility (plugin model, not a script bug):
+  * ZabbixTemplateAssignment hangs off NetBox objects (Role / SiteGroup / Device / …)
+    → visible on the Role (or Template) page, NOT on the ZabbixHostgroup page.
+  * ZabbixHostgroupAssignment / TemplateRule.zabbixhostgroup control group membership
+    → Hostgroup page shows assignments + (with PR #25) TemplateRules for OS/*.
+  Roles/* Jinja only names the Zabbix group; it does not carry templates.
 
 Usage::
 
@@ -812,6 +822,14 @@ def step7_template_assignments(server):
         (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Network Device'),
         (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Storage'),
         (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Cohesity'),
+        # SNMP role floors — cover devices with missing/non-matching platform.
+        # Specialized TemplateRules (EXOS, FortiOS, IQ Engine, …) still add when platform matches.
+        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Switch Core'),
+        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Switch Dist'),
+        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Switch Access'),
+        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Switch Mgmt'),
+        (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Access Point'),
+        (make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Firewall'),
     ]
     for template, role_name in assignments:
         try:
@@ -1468,6 +1486,14 @@ def run_simulate() -> int:
         attach_dev(stor, next_ip())
         objects['storage'] = stor
 
+        # No platform — must still get role-floor SNMP templates (the production gap).
+        fw = Device.objects.create(name=f'{PREFIX}fw-zone-01', device_type=dtype, role=roles['Firewall'], site=site, status='active')
+        attach_dev(fw, next_ip())
+        objects['firewall'] = fw
+        ap = Device.objects.create(name=f'{PREFIX}ap-acce-01', device_type=dtype, role=roles['Access Point'], site=site, status='active')
+        attach_dev(ap, next_ip())
+        objects['access_point'] = ap
+
         win = VirtualMachine.objects.create(name=f'{PREFIX}win-vm-p-01', cluster=cluster, role=roles['Server'], site=site, platform=plat_win, status='active')
         attach_vm(win, next_ip())
         objects['win_vm'] = win
@@ -1532,6 +1558,18 @@ def run_simulate() -> int:
             str(tpl_names(objects['win_snmp'])),
             group='resolve',
         )
+        record(
+            'firewall_role_floor_fortigate',
+            any('FortiGate' in n for n in tpl_names(objects['firewall'])),
+            str(tpl_names(objects['firewall'])),
+            group='resolve',
+        )
+        record(
+            'ap_role_floor_netgeneric',
+            any('Network Generic' in n for n in tpl_names(objects['access_point'])),
+            str(tpl_names(objects['access_point'])),
+            group='resolve',
+        )
         agent_role_rows = M.ZabbixConfigurationGroupAssignment.objects.filter(
             zabbixconfigurationgroup=agent_group, assigned_object_type=ct(DeviceRole)
         ).count()
@@ -1540,7 +1578,7 @@ def run_simulate() -> int:
         record('no_manufacturer_transport_cg', mfr_cg == 0, f'count={mfr_cg}', group='resolve')
 
         with ZabbixConnection(server) as api:
-            for key in ('server_oob', 'switch', 'storage', 'win_vm', 'new_role', 'dc', 'vm_snmp', 'win_snmp'):
+            for key in ('server_oob', 'switch', 'storage', 'firewall', 'access_point', 'win_vm', 'new_role', 'dc', 'vm_snmp', 'win_snmp'):
                 try:
                     SyncHostJob(instance=objects[key]).run()
                     record(f'sync_{key}', True, objects[key].name, group='sync')
@@ -1579,6 +1617,12 @@ def run_simulate() -> int:
             w_tpls = [t.get('name') for t in (h_ws.get('parentTemplates', []) if h_ws else [])]
             record('zbx_win_snmp_only', any(t == '2' for t, _ in w_ifs) and not any(t == '1' for t, _ in w_ifs), str(w_ifs), group='zabbix')
             record('zbx_windows_by_snmp', any('Windows by SNMP' in (n or '') for n in w_tpls), str(w_tpls), group='zabbix')
+            h_fw = host(objects['firewall'].name)
+            fw_tpls = [t.get('name') for t in (h_fw.get('parentTemplates', []) if h_fw else [])]
+            record('zbx_firewall_fortigate', any('FortiGate' in (n or '') for n in fw_tpls), str(fw_tpls), group='zabbix')
+            h_ap = host(objects['access_point'].name)
+            ap_tpls = [t.get('name') for t in (h_ap.get('parentTemplates', []) if h_ap else [])]
+            record('zbx_ap_netgeneric', any('Network Generic' in (n or '') for n in ap_tpls), str(ap_tpls), group='zabbix')
 
             # Hostgroup-first hygiene
             record('no_os_family_tags', M.ZabbixTag.objects.filter(tag='os_family').count() == 0, str(M.ZabbixTag.objects.filter(tag='os_family').count()), group='hygiene')
