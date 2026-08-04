@@ -724,7 +724,7 @@ def step6_template_rules(server, country_slugs=None):
             name=name,
             defaults={
                 'value': value,
-                'description': description or 'Attached by TemplateRules when platform matches (no HostgroupAssignment needed)',
+                'description': description,
             },
             update_fields=['value', 'description'],
         )
@@ -743,10 +743,11 @@ def step6_template_rules(server, country_slugs=None):
         )
         return obj
 
-    hg_os_windows = hg('OS/Windows', 'OS/Windows', 'OS class via TemplateRules (Windows platforms)')
-    hg_os_linux = hg('OS/Linux', 'OS/Linux', 'OS class via TemplateRules (Linux platforms)')
-    hg_os_network = hg('OS/Network', 'OS/Network', 'OS class via TemplateRules (network OS platforms)')
-    hg_os_vmware = hg('OS/VMware', 'OS/VMware', 'OS class via TemplateRules (ESXi / vSphere)')
+    # Keep description empty — membership comes from TemplateRules; long essays clutter the GUI.
+    hg_os_windows = hg('OS/Windows', 'OS/Windows')
+    hg_os_linux = hg('OS/Linux', 'OS/Linux')
+    hg_os_network = hg('OS/Network', 'OS/Network')
+    hg_os_vmware = hg('OS/VMware', 'OS/VMware')
 
     tpl_windows = make_template(*TPL['windows_agent'], req=[HostInterfaceRequirementChoices.AGENT])
     tpl_linux = make_template(*TPL['linux_agent'], req=[HostInterfaceRequirementChoices.AGENT])
