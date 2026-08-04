@@ -16,7 +16,7 @@ Monitoring membership and transport should follow **facts already in NetBox** (s
 
 | Fact in NetBox | Encoded as | Effect in Zabbix |
 |---|---|---|
-| Country / site | Hostgroup template on each country Site Group | Nested `Sites/<country>/<site>` |
+| Country / site | Hostgroup template on each country Site Group | Nested full path `Sites/<country>/…/<site>` (Site Group ancestry) |
 | Function (role) | Hostgroup template on each country Site Group | `Roles/<role name>` |
 | Platform / OS | Template Rule (regex on platform name) | OS template + `OS/Linux`, `OS/Windows`, `OS/Network`, or `OS/VMware` |
 | Criticality | NetBox tag `critical` | Hostgroup `Priority/Critical` |
@@ -31,7 +31,7 @@ Monitoring membership and transport should follow **facts already in NetBox** (s
 
 Zabbix hostgroups are the primary axis for dashboards, permissions, and alert routing. Two orthogonal trees cover almost every view:
 
-- **Location** — `Sites/…` (where the host lives)
+- **Location** — `Sites/…` with the full Site Group chain (country → campus → site), e.g. `Sites/CH/CH-STA/CH-STA-L42`
 - **Function** — `Roles/…` (what the host is)
 
 Both templates are assigned on the **country Site Group**, not on every Device Role or every Site:
@@ -419,11 +419,14 @@ Path: **Zabbix → Hostgroups → Add**, then assignments on each hostgroup or f
 |---|---|---|
 | Sites | `Sites/{{ object.site.group.get_ancestors(include_self=True) \| map(attribute="name") \| join("/") }}/{{ object.site.name }}` | Site Groups CH, HU, JP, KR, NL, US, CN |
 
-**Why this template:** `get_ancestors(include_self=True)` walks the Site Group tree from country down to the site’s own group, so a site under campus **CH-STA** (parent **CH**) becomes `Sites/CH/CH-STA/CH-STA-L42`. Parent-first create then materializes `Sites`, `Sites/CH`, and `Sites/CH-STA`. A site hanging directly under **CH** becomes `Sites/CH/<site>` (no empty segment).
+This is the configured Sites value. `get_ancestors(include_self=True)` walks the Site Group tree so the Zabbix path always includes the country:
 
-Hosts stay members of the **leaf** only. Country dashboards and permissions use parent `Sites/CH` (nested children included). A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
+| NetBox layout | Rendered hostgroup | Parents created |
+|---|---|---|
+| Site under campus CH-STA (parent CH) | `Sites/CH/CH-STA/CH-STA-L42` | `Sites`, `Sites/CH`, `Sites/CH-STA` |
+| Site directly under country CH | `Sites/CH/<site>` | `Sites`, `Sites/CH` |
 
-Do not use the short form `Sites/{{ object.site.group.name }}/{{ object.site.name }}` — it omits the country when the site’s group is a campus (e.g. CH-STA).
+Hosts stay members of the **leaf** only. Country dashboards and permissions filter on parent `Sites/CH` (nested children included) — do not also put hosts in a flat `CH` group. A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
 
 ### 8.2 Roles
 
@@ -580,13 +583,13 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 
 | Object | Configuration group | Typical templates | Interfaces | Hostgroups |
 |---|---|---|---|---|
-| Linux server (role Server) | Server Agent+OOB | Linux by agent (+ Dell iDRAC if Dell and oob IP set) | Agent on primary + SNMP on oob IP | Sites/…, Roles/Server, OS/Linux |
-| Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) | Agent on primary | Sites/…, Roles/…, OS/… |
-| VM with tag `snmp` + VM by SNMP | VM by SNMP | Linux or Windows by SNMP | SNMP only | Sites/…, Roles/…, OS/… |
-| Switch / AP / Firewall | SNMP Monitoring | Role baseline + specialized template if platform matches | SNMP on primary | Sites/…, Roles/…, OS/Network |
-| Storage | SNMP Monitoring | Storage Generic by SNMP | SNMP | Sites/…, Roles/Storage |
-| Pure Storage | Agent Monitoring (from Site Group) | Pure Storage by HTTP | Agent | Sites/…, Roles/Pure Storage |
-| Cohesity physical (oob only) | OOB SNMP Only | Storage Generic (+ iDRAC if Dell) | SNMP on oob IP | Sites/…, Roles/Cohesity |
+| Linux server (role Server) | Server Agent+OOB | Linux by agent (+ Dell iDRAC if Dell and oob IP set) | Agent on primary + SNMP on oob IP | Sites/CH/…, Roles/Server, OS/Linux |
+| Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) | Agent on primary | Sites/CH/…, Roles/…, OS/… |
+| VM with tag `snmp` + VM by SNMP | VM by SNMP | Linux or Windows by SNMP | SNMP only | Sites/CH/…, Roles/…, OS/… |
+| Switch / AP / Firewall | SNMP Monitoring | Role baseline + specialized template if platform matches | SNMP on primary | Sites/CH/…, Roles/…, OS/Network |
+| Storage | SNMP Monitoring | Storage Generic by SNMP | SNMP | Sites/CH/…, Roles/Storage |
+| Pure Storage | Agent Monitoring (from Site Group) | Pure Storage by HTTP | Agent | Sites/CH/…, Roles/Pure Storage |
+| Cohesity physical (oob only) | OOB SNMP Only | Storage Generic (+ iDRAC if Dell) | SNMP on oob IP | Sites/CH/…, Roles/Cohesity |
 | Cohesity VM with primary IP | SNMP Monitoring (direct) | Storage Generic | SNMP on primary | … |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
 | Brand-new role tomorrow | Agent Monitoring (from Site Group) unless listed in §5b | OS Template Rule if platform set | Agent | Roles/\<new name\> appears automatically |
@@ -659,9 +662,10 @@ After the initial build, and after major changes, confirm coverage against §13.
 
 | Check | Expect |
 |---|---|
-| Sample Linux server | Server Agent+OOB; agent + oob SNMP; OS/Linux; Roles/Server; Sites/CH/… |
-| Sample switch | SNMP Monitoring; Network Generic and/or EXOS/FortiOS; OS/Network |
-| Sample Windows VM | Agent; Windows by agent; OS/Windows |
+| Sample Linux server | Server Agent+OOB; agent + oob SNMP; OS/Linux; Roles/Server; leaf under `Sites/CH/…` |
+| Sample switch | SNMP Monitoring; Network Generic and/or EXOS/FortiOS; OS/Network; leaf under `Sites/CH/…` |
+| Sample Windows VM | Agent; Windows by agent; OS/Windows; leaf under `Sites/CH/…` |
+| Country dashboard / ACL | Filter on parent `Sites/CH` — nested site/campus groups included; hosts are not direct members of `Sites/CH` |
 | Host with `critical` | Also in Priority/Critical |
 | Role not listed in §5b SNMP/OOB | Still has Agent via Site Group |
 | VM without site | No useful profile until site/scope is set |
