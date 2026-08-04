@@ -49,7 +49,34 @@
                 {% if hostgroupassignment_table %}
                     {% render_table hostgroupassignment_table %}
                 {% else %}
-                    <div class="card-body text-muted">No objects assigned.</div>
+                    <div class="card-body text-muted">
+                        No direct assignments.
+                        {% if templaterule_table %}
+                            This group is attached via <strong>Template rules</strong> below when a host platform matches.
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="card">
+                <h2 class="card-header">
+                    Template rules
+                    {% if perms.nbxsync.add_zabbixtemplaterule %}
+                        <div class="card-actions">
+                            <a href="{% url 'plugins:nbxsync:zabbixtemplaterule_add' %}?zabbixhostgroup={{ object.pk }}&return_url={{ request.path }}"
+                               class="btn btn-ghost-primary btn-sm">
+                                <i class="mdi mdi-plus-thick" aria-hidden="true"></i> Add
+                            </a>
+                        </div>
+                    {% endif %}
+                </h2>
+                {% if templaterule_table %}
+                    <div class="card-body text-muted small pb-0">
+                        When a rule matches (platform pattern / optional NetBox tags),
+                        the host gets the rule's template <em>and</em> this hostgroup — no assignment row required.
+                    </div>
+                    {% render_table templaterule_table %}
+                {% else %}
+                    <div class="card-body text-muted">No template rules reference this hostgroup.</div>
                 {% endif %}
             </div>
             {% plugin_right_page object %}
