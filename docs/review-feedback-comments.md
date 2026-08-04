@@ -44,19 +44,16 @@ Templates should sit at the most specific level that is still generally true—n
 
 Your M5224 example is exactly why OEM/model templates belong on **Device type**, not on Manufacturer. Per-device assignment remains available for true one-offs; it is not the default path, because that recreates hand-maintained membership.
 
-### Dell iDRAC on Manufacturer — and servers where we do *not* want iDRAC
+### Dell iDRAC on Manufacturer
 
-Default: Dell iDRAC by SNMP is assigned on **Manufacturer Dell**, and transport for the BMC plane comes from configuration group **Server Agent+OOB** (SNMP with “use OOB IP”). That covers the normal Dell server fleet without listing every device.
+**Default: we want iDRAC monitored automatically for Dell servers.**  
+Dell iDRAC by SNMP is assigned on **Manufacturer Dell**. Transport for the BMC plane comes from configuration group **Server Agent+OOB** (SNMP with “use OOB IP”). When a new Dell server is introduced in NetBox with an out-of-band IP, iDRAC monitoring comes with it—no per-device template row.
 
-If a specific server must **not** be monitored via iDRAC, use one of these (in order of preference):
+**Other Dell hardware (for example storage)** does not stay on a blind Manufacturer-only story. At **Device type** we assign the correct template for that model (for example Dell M5224 → HP MSA 2060). That is the deliberate overwrite for devices where iDRAC is the wrong template. Inheritance is additive, so OEM/storage templates live on Device type; we do not rely on Manufacturer for those model-specific stacks.
 
-1. **No out-of-band IP in NetBox** — leave `oob_ip` empty on that device. The OOB SNMP interface is then skipped at sync, so there is nothing to poll on the BMC network. Prefer this when the host simply has no management IP we should use.
-2. **Device-type scope instead of Manufacturer** — if only some Dell models should get iDRAC, move the template assignment from Manufacturer Dell to those Device types, and do not assign it on Manufacturer. Servers of other Dell types then never receive the template.
-3. **Device-level exception** — for a small number of outliers that would otherwise inherit iDRAC, remove or override the assignment on that device (or exclude BMC monitoring by local convention). This is intentional exception handling, not the mass pattern.
+**If something misbehaves**, we prefer to keep the automated Manufacturer default and correct the exception at Device type (or, for a rare host, at the device). Only if Manufacturer-level iDRAC proves too noisy in practice would we remove it from Manufacturer and switch to Device-type lists or tag-based assignment instead. Start as automated as possible; narrow or relocate what does not work.
 
-What we will not do is put iDRAC on every device by hand, or keep a Manufacturer assignment and expect operators to maintain a long deny-list without a clear NetBox signal (`oob_ip` or Device type).
-
-iDRAC remains a **template** on Dell (or on selected Device types). It is not a separate “OOB Management” configuration group on the manufacturer—transport stays on the Server Agent+OOB role profile.
+iDRAC stays a **template** assignment (Manufacturer by default). It is not a separate “OOB Management” configuration group on the manufacturer—transport stays on the Server Agent+OOB role profile. Without `oob_ip`, the OOB SNMP interface is skipped, so there is nothing to poll on the BMC network for that host.
 
 ---
 
@@ -135,8 +132,8 @@ Permission design stays in Zabbix: user groups get rights on parent hostgroups s
 | Tenant | Not now — NetBox use unclear; not required for Zabbix yet |
 | Continent Regions | Not now — country Site Groups + nested `Sites/*` are enough |
 | Site Groups | Keep as control plane |
-| Templates | Manufacturer only when vendor-wide; OEM/model on Device type; per-device for exceptions only |
-| iDRAC opt-out | Empty `oob_ip`, or Device-type scope, or rare device-level exception |
+| Templates | Automate at Manufacturer when true for the class; overwrite OEM/model on Device type; per-device only for rare cases |
+| iDRAC | Manufacturer Dell by default for servers; Device type overwrite for storage/OEM; narrow later only if needed |
 | Certs / version check | On / off as recommended for production |
 | Proxies | Keep CH proxy group plan |
 | Template Rules | Keep; multi-group already in place |

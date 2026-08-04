@@ -388,7 +388,7 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 | FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule still adds when platform matches |
 | Dell iDRAC by SNMP | Manufacturer Dell | Complements Server Agent+OOB SNMP on `oob_ip` |
 
-**iDRAC on some Dell servers only:** Manufacturer is the default for the Dell server fleet. To skip BMC monitoring on a specific server, leave **out-of-band IP** empty (the OOB SNMP interface is skipped). If only certain Dell models should get iDRAC, assign the template on those **Device types** instead of on Manufacturer. Use a per-device exception only for rare outliers.
+**Dell iDRAC (default automated):** assign Dell iDRAC by SNMP on **Manufacturer Dell** so new Dell servers pick up BMC monitoring with Server Agent+OOB. For other Dell hardware (e.g. storage), assign the correct model template on **Device type** (e.g. M5224 → HP MSA 2060). Prefer keeping Manufacturer automation and overriding at Device type; only if that is too broad, move iDRAC off Manufacturer onto Device types or tags. Empty `oob_ip` skips the OOB SNMP interface for that host.
 
 ---
 
