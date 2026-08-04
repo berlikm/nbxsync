@@ -519,14 +519,28 @@ def step4_configgroups():
         name='Server Agent+OOB',
         defaults={'description': 'Server profile: Agent @ primary + SNMP @ oob_ip (use_oob_ip)'},
     )
-    vm_snmp_group, _ = ensure(
-        M.ZabbixConfigurationGroup,
-        name='VM by SNMP',
-        defaults={
-            'description': 'Per-VM SNMP transport only — pair with NetBox tag snmp → Linux/Windows by SNMP templates',
-        },
-        update_fields=['description'],
-    )
+    # Prefer renaming legacy "VM by SNMP" → "SNMP by tag" (same CG, Device or VM).
+    legacy = M.ZabbixConfigurationGroup.objects.filter(name='VM by SNMP').first()
+    named = M.ZabbixConfigurationGroup.objects.filter(name='SNMP by tag').first()
+    if legacy is not None and named is None:
+        legacy.name = 'SNMP by tag'
+        legacy.description = 'SNMP transport for Device/VM overrides — pair with NetBox tag snmp → Linux/Windows by SNMP templates'
+        legacy.save(update_fields=['name', 'description'])
+        vm_snmp_group = legacy
+        logger.info('  Renamed configuration group VM by SNMP → SNMP by tag')
+    elif legacy is not None and named is not None and legacy.pk != named.pk:
+        logger.warning('  Both "VM by SNMP" and "SNMP by tag" exist — using SNMP by tag; retire VM by SNMP manually')
+        vm_snmp_group = named
+    else:
+        vm_snmp_group, _ = ensure(
+            M.ZabbixConfigurationGroup,
+            name='SNMP by tag',
+            defaults={
+                'description': 'SNMP transport for Device/VM overrides — pair with NetBox tag snmp → Linux/Windows by SNMP templates',
+            },
+            update_fields=['description'],
+        )
+
     # OOB-only SNMP: for hardware with only oob_ip (no primary_ip4) — e.g. Cohesity Dell nodes
     oob_snmp_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
