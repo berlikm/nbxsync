@@ -26,7 +26,7 @@ This plan is **monitoring capability** (what we monitor, in what order).
 
 ```
 GRAMMAR: CLASS[-SPEED]-ID   (no colon; atomic CLASS)
-CLASSES: UC UD UA UP MON W TMON | XSTK XISC XMLAG XSPN XOOB XINT
+CLASSES: UC UD UA UP MON W TMON | X (X-<note> optional; reason in description)
 NO IDR class — iDRAC = MON
 
 DEFAULTS: UC=UD=UA=10G | UP=1G | MON=1G
@@ -38,12 +38,14 @@ EXAMPLES
   UP-ap3f07               expect 1G
   MON-10G-esx1            ESXi 10G
   MON-idr03               iDRAC (MON, not IDR)
-  XSTK XISC XMLAG         structural exclude (prefer auto-derive)
+  TMON / TMON-guest       metrics only — no alerts; compliance lists
+  X / X-spare             exclude (reason in NetBox description)
 
 ZABBIX: change(ifHighSpeed) safety net + absolute expect when labeled
+  TMON = discover/collect only (no triggers)
 LAG: speed expect on members only — not aggregate sum
-HYBRID SUBSIDIARY (core∩access): default XINT all ports;
-  EXCEPT do not X client access (care) / UP / UC|UD|UA / W / MON
+HYBRID SUBSIDIARY (core∩access): default X all ports;
+  EXCEPT do not X client access (care) / UP / UC|UD|UA / W / MON / TMON
 NETBOX: generate/push label (preferred); description = prose; no tags
 ```
 
@@ -134,16 +136,16 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
 | P0.2 | **Lock port SoT:** Extreme display string only (≤15). Reject NetBox monitor-tags for day-to-day ops |
 | P0.3 | **Grammar + defaults locked:** `UC/UD/UA=10G`, `UP/MON=1G`; hyphen grammar; no `IDR`; LAG + change-detect rules |
-| P0.4 | Role matrix: fabric admin-up−X*; access include-only; **hybrid subsidiary = XINT-default** (§6.1 foundation) |
+| P0.4 | Role matrix: fabric admin-up−`X`; access include-only; **hybrid subsidiary = `X`-default** (§6.1 foundation) |
 | P0.5 | Pilot lists: 1–2 EXOS, 1 VOSS, sample APs |
 | P0.6 | Site class field optional (`production`/`sales`/`normal`) — same metrics for now (alert routing later = Track B) |
 
 **Verify exit**
 
 - [ ] Platform counts known  
-- [ ] Include + exclusion grammar agreed (`UC/UD/UA/UP/MON` vs `X*`; WAN = `W`)  
+- [ ] Include + exclusion grammar agreed (`UC/UD/UA/UP/MON/TMON` vs `X`; WAN = `W`)  
 - [ ] Defaults: UC=UD=UA=10G (symmetric); UP=MON=1G  
-- [ ] Role matrix: fabric / access / **hybrid subsidiary (XINT-default)**  
+- [ ] Role matrix: fabric / access / **hybrid subsidiary (`X`-default)**  
 - [ ] Pilots named  
 - [ ] Owners for VOSS + HiveOS template builds named  
 
@@ -203,7 +205,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 ```
 CLASS | CLASS-ID | CLASS-SPEED-ID
-CLASS = UC|UD|UA|UP|MON|W|TMON|XSTK|XISC|XMLAG|XSPN|XOOB|XINT
+CLASS = UC|UD|UA|UP|MON|W|TMON|X
 SPEED = 100M|1G|2G5|5G|10G|25G|40G|100G|400G
 ```
 
@@ -231,28 +233,30 @@ Legacy 1G access↔dist: `UD-1G-…` **and** `UA-1G-…` (token both ends).
 | `UP-2G5-ap07` | 2.5G |
 | `MON-10G-esx1` | 10G |
 | `MON-idr03` | 1G (iDRAC) |
-| `XSTK` `XISC` `XMLAG` | excluded |
+| `TMON` / `TMON-guest` | — (items only, **no alerts**) |
+| `X` / `X-spare` | excluded (description = why) |
 
 ### Zabbix triggers (Phase 2)
 
 1. Link down / flap / **errors-CRC** (narrow speed-only win is not enough).  
-2. **`change(ifHighSpeed)`** while oper-up for ≥5m — **universal safety net**.  
+2. **`change(ifHighSpeed)`** while oper-up for ≥5m — **universal safety net** (not on `TMON`).  
 3. Absolute `ifHighSpeed ≠ expected` for ≥5m where `UC|UD|UA|UP|MON` labeled.  
-4. **LAG:** absolute speed expect on **members only**; never compare aggregate sum to member expected.
+4. **`TMON`:** LLD items/graphs only — **no triggers / no problems**.  
+5. **LAG:** absolute speed expect on **members only**; never compare aggregate sum to member expected.
 
 ### Structural excludes
 
-Prefer **device-state discovery** (stack / ISC / MLAG / mirror). Labels `XSTK`/`XISC`/`XMLAG`/`XSPN` = override/fallback.
+Prefer **device-state discovery** (stack / ISC / MLAG / mirror). Label **`X` / `X-<note>`** = override/fallback; reason in **description**.
 
 ### Subsidiary hybrid (core∩access)
 
-Same LLD as fabric (`admin-up AND NOT X*`), **labeling inverted**:
+Same LLD as fabric (`admin-up AND NOT X`), **labeling inverted**:
 
-- **Default:** push **`XINT`** on all ports.  
+- **Default:** push **`X`** on all ports.  
 - **Do not X:** client access ports you care about (leave empty or `MON-…`), plus normal `UP` / `UC|UD|UA` / `W` / `MON`.  
-- Spare client ports stay `XINT` (or admin-down).
+- Spare client ports stay `X` (or admin-down).
 
-NetBox role e.g. `Core-Access` selects the XINT-fill generator profile.
+NetBox role e.g. `Core-Access` selects the `X`-fill generator profile.
 
 ### Work packages
 
@@ -267,8 +271,8 @@ NetBox role e.g. `Core-Access` selects the XINT-fill generator profile.
 | P2.7 | `MON` endpoints incl. iDRAC | No IDR class |
 | P2.8 | Compliance = **diff** + **`TMON*` inventory** | Generated vs live ifAlias; audit list of all temp monitors |
 | P2.9 | AP dual view | `UP-…` + HiveOS |
-| P2.10 | Canaries | 10G symmetric, 1G symmetric, MON/iDRAC, LAG members, XSTK |
-| P2.11 | Hybrid subsidiary profile | XINT-default; exceptions for client/UP/uplink/WAN/MON |
+| P2.10 | Canaries | 10G symmetric, 1G symmetric, MON/iDRAC, LAG members, `X` |
+| P2.11 | Hybrid subsidiary profile | `X`-default; exceptions for client/UP/uplink/WAN/MON/TMON |
 | P2.12 | Canary hybrid switch | Client ports alert; spares quiet; uplink/WAN/AP OK |
 
 ### Scoping options (locked)
@@ -292,7 +296,8 @@ NetBox role e.g. `Core-Access` selects the XINT-fill generator profile.
 - [ ] Auto or labeled structural exclude on stack/ISC/MLAG  
 - [ ] Change-detect catches unlabeled degrade  
 - [ ] Generator dry-run + compliance diff on canary  
-- [ ] Hybrid subsidiary: XINT-default; client/uplink/AP/WAN monitored  
+- [ ] Hybrid subsidiary: `X`-default; client/uplink/AP/WAN monitored  
+- [ ] `TMON` collects metrics with **zero** triggers; compliance lists all `TMON*`  
 
 ---
 
@@ -454,7 +459,7 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 
 | Phase | What we scope | Display codes |
 |---|---|---|
-| 2 | Fabric / AP / MON | `UC/UD/UA/UP/MON` + optional SPEED; excludes `XSTK/XISC/XMLAG/…` |
+| 2 | Fabric / AP / MON | `UC/UD/UA/UP/MON/TMON` + optional SPEED; exclude `X` / `X-<note>` |
 | 5 | Internet circuits | `W` (+ Circuit object); no absolute speed trigger |
 
 **Design (Track A):** display-string codes + which template / LLD mode watches them.  
@@ -502,16 +507,17 @@ B) SEPARATE TASK — NetBox integration (populate data, nbxsync,
    display→LLD, compliance, alerts/actions, triggers, zero-touch)
 
 PORT SOT (locked):
-  CLASS[-SPEED]-ID (no colon); no IDR (iDRAC=MON)
+  CLASS[-SPEED]-ID (no colon); no IDR (iDRAC=MON); TMON=metrics no alerts
   Defaults: UC=UD=UA=10G | UP=1G | MON=1G
   Tokens: 100M 1G 2G5 5G 10G 25G 40G 100G 400G
   Zabbix: change(ifHighSpeed) + absolute expect; LAG=members only
+  Compliance lists all TMON* for audit (no dates on switch)
   NetBox generate/push preferred; description=prose; no monitor-tags
 
 TRACK A ORDER:
 0 Foundations (grammar + defaults + LAG + generate path)
 1 Device health (EXOS + BUILD VOSS + BUILD HiveOS AP templates)
-2 Ports — admin-up−X*; access includes; hybrid=XINT-default;
+2 Ports — admin-up−X; access includes; hybrid=X-default;
    speed+errors; MON incl iDRAC; client ports excepted from X
 3 Cato + FortiGate
 4 Services & SLA

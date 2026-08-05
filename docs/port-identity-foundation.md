@@ -20,10 +20,10 @@
 4. **Preferred flow:** NetBox structured data **generates** the display string and pushes it; ops do not hand-type the grammar day-to-day. Hand-edit remains emergency/manual fallback.  
 5. **Zabbix safety net:** universal **`change(ifHighSpeed)`** while oper-up (with settle time) — catches degrades even if label missing/wrong.  
 6. **Absolute expect** (`ifHighSpeed ≠ expected`) where a label exists: `expected = SPEED token OR class default`.  
-7. **Structural excludes:** prefer **derive from device state** (stack/ISC/MLAG/SPAN); display `XSTK` / `XISC` / … is **override/fallback**, not the only control.  
+7. **Excludes:** one class only — **`X` / `X-<note>`**. Reason lives in NetBox **description** (stack, ISC, MLAG, SPAN, spare, …). Prefer also **auto-derive** structural excludes from device state.  
 8. **LAGs:** explicit rule (§7) before rollout.  
 9. **Access = opt-in** (include classes); **fabric/mgmt = admin-up minus excludes**.  
-10. **Subsidiary hybrid (core∩access):** default-label ports **`XINT`** (exclude); **do not X** client access ports you want monitored, nor uplinks/WAN/AP/`MON` (§6.1).  
+10. **Subsidiary hybrid (core∩access):** default-label ports **`X`** (exclude); **do not X** client access ports you want monitored, nor uplinks/WAN/AP/`MON`/`TMON` (§6.1).  
 11. **No NetBox tags** for monitor/speed intent. Description = prose only.  
 12. Track B owns generate/push, compliance diff, LLD publish.
 
@@ -47,10 +47,10 @@ CLASS-SPEED-ID
 **One regex (illustrative):**
 
 ```
-^(?<class>UC|UD|UA|UP|MON|W|TMON|XSTK|XISC|XMLAG|XSPN|XOOB|XINT)(?:-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(?:-(?<id>[A-Z0-9]+))?$
+^(?<class>UC|UD|UA|UP|MON|W|TMON|X)(?:-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(?:-(?<id>[A-Z0-9]+))?$
 ```
 
-Positional, no class-lookup heuristics, no `:` collision with `1:24`.
+**Parse note:** If CLASS is `X`, the optional tail is a **free note** (`X-stk`, `X-spare`) — **not** a SPEED token. Include classes only use SPEED tokens from the table above.
 
 **Source field:** Extreme display string maps to **`IF-MIB::ifAlias`** on EXOS and VOSS. Design depends on that mapping.
 
@@ -72,18 +72,23 @@ Positional, no class-lookup heuristics, no `:` collision with `1:24`.
 
 **`TMON` / `TMON-<id>`** replaces dated `M-YYMMDD`. Do **not** put expiry in the switch label (stale dates on-box never get cleaned). Optional why/until belongs in NetBox **description**; compliance **inventory of all `TMON*`** is the audit lever.
 
-### 3.2 Exclude (override / fallback labels)
+### 3.2 Exclude — single class `X`
 
 | CLASS | Meaning |
 |---|---|
-| `XSTK` | Stack / stacking |
-| `XISC` | ISC / virtual-IST / chassis interconnect |
-| `XMLAG` | MLAG peer-link / keepalive |
-| `XSPN` | SPAN / mirror |
-| `XOOB` | Switch own OOB |
-| `XINT` | Internal / do not monitor |
+| `X` or `X-<note>` | **Do not alert** on this port (exclude from port LLD alerts) |
 
-Prefer **auto-derive** these from device state; set label when override needed or discovery incomplete.
+No separate `XSTK` / `XISC` / `XMLAG` / … vocabulary. Optional short note on-box (`X-stk`, `X-mlag`, `X-spare`) is free-form within ≤15; the real reason goes in NetBox **description**.
+
+| Display | Description (examples) |
+|---|---|
+| `X` | `Stack port` |
+| `X` | `MLAG peer-link` |
+| `X` | `ISC / virtual-IST` |
+| `X-spare` | `Unused client port — excluded` |
+| `X-oob` | `Switch OOB` |
+
+Prefer **auto-derive** stack/ISC/MLAG/SPAN from device state when possible; `X` label is override/fallback/manual.
 
 ### 3.3 `TMON` — temp monitor without alerts
 
@@ -123,7 +128,7 @@ Because `UD`/`UA`/`UC` all default **10G**, a standard 10G access↔dist link ne
 
 ```
 1) Structural auto-exclude (device state)? → skip LLD / no alert
-2) Display matches X*?                 → skip (label override)
+2) Display matches ^X(-\|$) or class X → skip (label exclude)
 3) else include per role rules (fabric admin-up / access include)
 4) Always: change(ifHighSpeed)<>0 while oper-up for ≥5m → WARNING (safety net)
 5) If CLASS in {UC,UD,UA,UP,MON} and label parse OK:
@@ -144,9 +149,9 @@ Because `UD`/`UA`/`UC` all default **10G**, a standard 10G access↔dist link ne
 
 | Device role | LLD |
 |---|---|
-| **Core / Dist / Mgmt** | Admin-up **AND NOT** (auto-structural OR `X*`) **AND NOT** (admin-up empty/unused policy — prefer admin-down unused) |
+| **Core / Dist / Mgmt** | Admin-up **AND NOT** (auto-structural OR display class `X`) **AND NOT** (prefer admin-down unused) |
 | **Access** | Display matches `^(UC\|UD\|UA\|UP\|MON\|W\|TMON)` |
-| **Subsidiary hybrid (core∩access)** | Same LLD as fabric: admin-up **AND NOT** `X*` — but **labeling policy inverted** (§6.1) |
+| **Subsidiary hybrid (core∩access)** | Same LLD as fabric: admin-up **AND NOT** `X` — **labeling policy inverted** (§6.1) |
 | **AP** | Device health template — not switch-port fabric LLD |
 
 Unused enabled ports on fabric: **disable** (hygiene) — do not rely on “monitor everything admin-up” forever.
@@ -158,32 +163,32 @@ At many subsidiaries one switch is **both core and access** (clients hang off th
 **Locked labeling policy for hybrid role:**
 
 ```
-DEFAULT: mark port XINT (exclude from Zabbix port alerts)
+DEFAULT: mark port X (exclude from Zabbix port alerts)
 EXCEPT:  do NOT mark X on ports that should stay monitored:
          • client access ports (edge drops you care about)
          • AP ports → UP-…
          • uplinks / toward other switches → UC|UD|UA-…
          • WAN → W-…
          • servers / ESX / storage / iDRAC → MON-…
-         • structural still XSTK|XISC|XMLAG|XSPN|XOOB when needed
+         • temp watch → TMON-… (metrics, no alerts)
 ```
 
-| Port kind on hybrid switch | Display | Monitored? |
-|---|---|---|
-| Client access (care about) | empty **or** `MON-…` / `TMON-…` | **Yes** (not `X*`); `TMON` = metrics, no alerts |
-| Client access (don’t care / spare) | `XINT` | No |
-| AP | `UP-…` | Yes |
-| Uplink / fabric | `UC`/`UD`/`UA`-… | Yes |
-| WAN | `W-…` | Yes |
-| Server / iDRAC / storage | `MON-…` | Yes |
-| Stack / ISC / MLAG / SPAN / OOB | `XSTK` / … | No |
-| Everything else (default) | **`XINT`** | No |
+| Port kind on hybrid switch | Display | Description | Monitored? |
+|---|---|---|---|
+| Client access (care about) | empty **or** `MON-…` / `TMON-…` | optional | **Yes**; `TMON` = metrics, no alerts |
+| Client access (don’t care / spare) | `X` or `X-spare` | `Unused client port` | No |
+| AP | `UP-…` | AP name | Yes |
+| Uplink / fabric | `UC`/`UD`/`UA`-… | far-end | Yes |
+| WAN | `W-…` | circuit note | Yes |
+| Server / iDRAC / storage | `MON-…` | hostname | Yes |
+| Stack / ISC / MLAG / SPAN / OOB | `X` | e.g. `Stack port` / `MLAG peer` | No |
+| Everything else (default) | **`X`** | short why | No |
 
-**NetBox:** device role e.g. `Core-Access` / `Subsidiary Core` selects this generator profile: **XINT-fill all**, then clear/overwrite from cables + “monitor client port” flag / interface role.
+**NetBox:** device role e.g. `Core-Access` / `Subsidiary Core` selects this generator profile: **`X`-fill all**, then clear/overwrite from cables + “monitor client port” flag / interface role.
 
 **Why not pure access opt-in here:** hybrid boxes often need “monitor these client ports” without inventing an include code for every drop — leaving them **non-X** under fabric LLD is enough; use `MON-` when you need speed expect or identity.
 
-**Hygiene:** spare client ports → `XINT` or admin-down; do not leave the whole switch unlabeled.
+**Hygiene:** spare client ports → `X` or admin-down; do not leave the whole switch unlabeled.
 
 ---
 
@@ -195,7 +200,7 @@ EXCEPT:  do NOT mark X on ports that should stay monitored:
 | **Aggregate ifIndex** | Monitor **bundle up/down / member-count** separately — **do not** compare aggregate `ifHighSpeed` (sum) to a single-member expected |
 | **Expected on member** | Per-member speed (10G default on `UD`/`UA`) |
 | **Expected on aggregate** | **No** `ifHighSpeed ≠ expected` trigger on aggregate |
-| **MLAG peer-link** | `XMLAG` / auto-exclude — not a fabric uplink expect |
+| **MLAG peer-link** | `X` + description / auto-exclude — not a fabric uplink expect |
 
 This avoids permanent false WARN on 2×10G → `ifHighSpeed=20000` aggregates.
 
@@ -212,12 +217,12 @@ NetBox: device role + cable far-end + interface.speed (+ LAG membership)
 
 | Input | Becomes |
 |---|---|
-| Device role = hybrid / subsidiary core-access | **XINT all ports**, then apply exceptions below |
-| Cable to dist / access / core / AP | `UD` / `UA` / `UC` / `UP` + short far-end id (clears XINT) |
-| Client access port flagged monitor | Clear XINT (empty or `MON-…`) |
+| Device role = hybrid / subsidiary core-access | **`X` all ports**, then apply exceptions below |
+| Cable to dist / access / core / AP | `UD` / `UA` / `UC` / `UP` + short far-end id (clears `X`) |
+| Client access port flagged monitor | Clear `X` (empty or `MON-…`) |
 | `interface.speed` ≠ class default | insert SPEED token |
 | Endpoint = server/ESX/storage/iDRAC | `MON` (+ `10G` if needed) |
-| Stack/ISC/MLAG/SPAN known | auto-exclude and/or `XSTK` / … |
+| Stack/ISC/MLAG/SPAN known | auto-exclude and/or push `X` + description |
 | No cable / guest | Manual set allowed; compliance lists orphans |
 
 **Compliance = diff** (generated vs live ifAlias), not a second rule engine.  
@@ -255,10 +260,10 @@ Hand-typed labels are fallback; typos on access includes are softened by **chang
 | Scenario | Display | Monitored? |
 |---|---|---|
 | Client PC drop (care) | *(empty)* or `MON-pc12` | Yes |
-| Spare / unused client port | `XINT` | No |
+| Spare / unused client port | `X` / `X-spare` | No |
 | AP on same switch | `UP-ap01` | Yes |
 | WAN on same switch | `W-SC1` | Yes |
-| Default everything else | `XINT` | No |
+| Default everything else | `X` | No |
 
 ### Length
 
@@ -271,7 +276,7 @@ Hand-typed labels are fallback; typos on access includes are softened by **chang
 | `UP-2G5-ap07` | 11 |
 | `MON-10G-esx1` | 12 |
 | `MON-idr03` | 9 |
-| `XSTK` | 4 |
+| `X` / `X-spare` | 1–7 |
 
 ---
 
@@ -308,7 +313,7 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 - [ ] Auto structural exclude path identified per EXOS/VOSS  
 - [ ] Generate-from-NetBox dry-run on canary  
 - [ ] Change-detect + absolute expect both tested with 5m settle  
-- [ ] Hybrid subsidiary role: XINT-default; client/uplink/AP/WAN/MON not X  
+- [ ] Hybrid subsidiary role: **`X`-default**; client/uplink/AP/WAN/MON/TMON not X  
 - [ ] ifAlias mapping confirmed EXOS + VOSS  
 
 ---
@@ -317,25 +322,26 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 
 ```
 GRAMMAR: CLASS[-SPEED]-ID   (no colon; atomic CLASS)
-CLASSES: UC UD UA UP MON W TMON | XSTK XISC XMLAG XSPN XOOB XINT
+CLASSES: UC UD UA UP MON W TMON | X (X-<note> optional)
 NO IDR — iDRAC uses MON
+NO XSTK/XISC/… — one exclude class; reason in description
 
 DEFAULTS: UC=UD=UA=10G | UP=1G | MON=1G
 TOKENS: 100M 1G 2G5 5G 10G 25G 40G 100G 400G
 
 ZABBIX:
-  auto-X + X* excludes
+  auto-structural + class X excludes
   change(ifHighSpeed) safety net (settled)
   absolute expect where UC|UD|UA|UP|MON labeled
   TMON: items only — no triggers; compliance lists TMON* for audit
   W: no absolute speed; LAG: expect on members only
 
 HYBRID SUBSIDIARY (core∩access)
-  DEFAULT label XINT on all ports
-  EXCEPT do not X: client access (care), UP, UC/UD/UA, W, MON
-  LLD = admin-up AND NOT X*  (same as fabric)
+  DEFAULT label X on all ports
+  EXCEPT do not X: client access (care), UP, UC/UD/UA, W, MON, TMON
+  LLD = admin-up AND NOT X  (same as fabric)
 
 NETBOX → generate/push label (preferred)
-DESCRIPTION = prose; no monitor tags
+DESCRIPTION = prose (incl. why a port is X); no monitor tags
 COMPLIANCE = diff generated vs live
 ```
