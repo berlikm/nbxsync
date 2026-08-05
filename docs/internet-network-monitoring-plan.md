@@ -4,9 +4,9 @@
 **Priority order:** Device health → uplinks/ports → Cato & FortiGate → Services/SLA → ISP circuit monitoring  
 **Stack:** NetBox + nbxsync + Zabbix 7 · Extreme EXOS / VOSS · HiveOS APs (XIQ Pilot) · (later) Cato · FortiGate
 
-**Port identity (locked):** Extreme **display string only** (≤15 codes) — includes + **exclusion `X:…`**.  
-See `/opt/cursor/artifacts/PORT_IDENTITY_FOUNDATION_ANALYSIS.md`.  
-NetBox = inventory + **compliance** (not a second place to edit “monitor this port”).
+**Port identity (locked):** Extreme port label → SNMP **`ifAlias`** (NetBox-generated).  
+EXOS: **64-char** ifAlias budget confirmed (not 15). VOSS: canary open.  
+See `docs/port-identity-foundation.md`.
 
 ---
 
@@ -25,23 +25,21 @@ This plan is **monitoring capability** (what we monitor, in what order).
 **Port identity (locked — Track A design):**
 
 ```
-CANARY FIRST: ifAlias length on EXOS+VOSS (description-string vs display-string)
-  Extended (~64): always SPEED token; longer IDs; X-STK/X-ISC/X-MLAG notes
-  Short fallback: omit default tokens; short IDs
+EXOS CONFIRMED: display-string=20; description-string=255; ifAlias=64 default
+  No vendor ≤15 | colon forbidden → hyphen
+  Canary: which field wins ifAlias when both set
+VOSS: unconfirmed → short profile until canary / CLI ref
 
-GRAMMAR: CLASS[-SPEED]-ID  UPPERCASE  no colon (EXOS-forbidden)
-CLASSES: UC UD UA UP MON W TMON | X (+ controlled X-NOTE)
-NO IDR — iDRAC = MON
+EXTENDED (EXOS primary): always SPEED; real IDs; X-STK/X-ISC/X-MLAG
+SHORT fallback: omit default tokens; short IDs
 
-PARSE: EMPTY | PARSED | UNPARSEABLE (legacy ≠ empty)
-ACCESS opt-in: change-detect does NOT cover missing/typo labels
+GRAMMAR: CLASS[-SPEED]-ID UPPERCASE | UC UD UA UP MON W TMON | X
+PARSE: EMPTY | PARSED | UNPARSEABLE
+ACCESS: no safety net without label
 HYBRID: admin-down spares; X only if up-but-uninteresting; MON-ID not empty
-W NOW: link/flap/errors (absolute speed later Phase 5)
-TMON: items + INFO link-down; compliance list + review cadence
-
-GENERATOR authoritative overwrite | display_protect skip
-CHECK ifAlias ingest loop before push
-LAG: members only | GATE absolute-expect on clean diff
+W: link/flap/errors now | TMON: INFO + audit cadence
+GENERATOR overwrite + display_protect | check ingest loop
+LAG members only | gate absolute-expect on clean diff
 ```
 
 Full detail: `docs/port-identity-foundation.md`.
@@ -197,7 +195,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 **Objective:** Fabric / AP / endpoint ports monitored with universal `CLASS[-SPEED]-ID` grammar; exclude via `X`; LAG rules explicit.
 
-**SoT on box:** display string (≤15) as **derived cache** — preferably **generated from NetBox**. Zabbix reads `ifAlias`.
+**SoT on box:** Extreme field that drives **`ifAlias`** (EXOS: prefer `description-string` after canary) — **generated from NetBox**. Extended EXOS budget **64** chars; short profile for VOSS until proven.
 
 ### Grammar
 
