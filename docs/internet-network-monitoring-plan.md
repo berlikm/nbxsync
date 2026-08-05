@@ -308,12 +308,12 @@ Same LLD as fabric (`admin-up AND NOT N`). Spares admin-down; `N` when up but un
 | ID | Work |
 |---|---|
 | P5.1 | NetBox **Providers + Circuits** + terminations (ISP inventory task) |
-| P5.2 | Set display `W:…` on Extreme (or Forti) WAN ports; link interface to Circuit in NetBox |
-| P5.3 | Thin **ISP/WAN Ports** template (or extend uplink template with circuit macros) — LLD on `W:…` |
+| P5.2 | Set `UW` label on Extreme (or Forti) WAN ports; link interface to Circuit in NetBox |
+| P5.3 | Thin **ISP/WAN Ports** template (or extend uplink template with circuit macros) — LLD on `UW` |
 | P5.4 | Alerts: circuit down / flap; redundancy-loss logic when dual-circuit known |
 | P5.5 | Dashboards: site internet underlay (distinct from uplink-fabric views) |
 | P5.6 | Correlate with Cato (Phase 3) without merging problem classes |
-| P5.7 | Compliance: Circuit termination present but display not `W:…` (or reverse) |
+| P5.7 | Compliance: Circuit termination present but label not `UW` (or reverse) |
 
 ### Not required at start of Phase 5
 
@@ -323,7 +323,7 @@ Same LLD as fabric (`admin-up AND NOT N`). Spares admin-down; `N` when up but un
 
 ### Exit criteria
 
-- [ ] Pilot Prod circuits: port (`W:…`) ↔ ISP ↔ site visible in NetBox and Zabbix  
+- [ ] Pilot Prod circuits: port (`UW`) ↔ ISP ↔ site visible in NetBox and Zabbix  
 - [ ] ISP alerts separate from fabric uplink alerts  
 - [ ] Multi-homing documented as residual risk if not fully modeled  
 
@@ -350,8 +350,8 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 |---|---|
 | Data population | Sites, roles, platforms, cables, Circuits/Providers when Phase 5 needs them |
 | Display / LLD publish | Read Extreme (or push) display codes → Zabbix LLD filters / macros |
-| Compliance | Cable/display diff; **list all `TMON*`** for audit; Circuit without `W` |
-| nbxsync automation | Template Rules; generate/push display; shared LLD parser; speed macros |
+| Compliance | Cable/label diff; Circuit without `UW` |
+| nbxsync automation | Template Rules; shared LLD parser; speed macros |
 | Alerts & actions | Zabbix actions, media, **Zabbix** tags for routing (site class) — not NetBox port monitor-tags |
 | Triggers / templates ops | Import, versioning, promote lab→prod; collision checks |
 | Zero-touch | Checklist + configure script updates when Track A templates are ready |
@@ -365,15 +365,15 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 
 ### Do now (Track A → Phases 0–2)
 
-1. Foundations + **display-string code list** (includes + `X:…` exclusions; `W:` reserved for Phase 5)  
+1. Foundations + **port label code list** (`USW` `US` `MON` `UW` | `N`; `UW` depth in Phase 5)  
 2. **Device health templates:** EXOS verify + **build VOSS** + **build HiveOS AP**  
-3. **Uplinks:** core / dist / access / AP ports scoped and monitored via display codes  
+3. **Ports:** switch / server / MON / WAN scoped and monitored via labels  
 
 ### Do later (Track A → Phases 3–6)
 
 4. Cato + FortiGate  
 5. Services & SLA  
-6. ISP/circuit monitoring (`W:…` + Circuits)  
+6. ISP/circuit monitoring (`UW` + Circuits)  
 7. Profiles / util% / maintenance / ICMP  
 
 ### Separate (Track B — always its own task)
@@ -405,7 +405,7 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 | Fabric / access port scoping via display codes | Phase 2 |
 | Cato / Forti deep work | Phase 3 |
 | Services / SLA | Phase 4 |
-| ISP inventory + `W:…` WAN alerts | Phase 5 |
+| ISP inventory + `UW` WAN alerts | Phase 5 |
 | util% / LTE / maintenance / ICMP severity | Phase 6 |
 
 ---
@@ -417,8 +417,8 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 | 2 | Fabric / AP / endpoints | `USW` `US` `MON` + optional SPEED; `UW`; `N` = note only |
 | 5 | Internet circuits | `UW` (+ Circuit object); no absolute speed trigger |
 
-**Design (Track A):** display-string codes + which template / LLD mode watches them.  
-**Automation (Track B):** NetBox generate/push display; shared parser; compliance **diff**.  
+**Design (Track A):** port label codes + which template / LLD mode watches them.  
+**Automation (Track B):** shared parser; compliance; label tooling separate.  
 **Reject:** NetBox day-to-day monitor-tags; “monitor everything.”
 
 ---
