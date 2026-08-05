@@ -116,7 +116,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
 | P0.2 | **VOSS canary:** `name` → SNMP ifAlias (`…1.1.1.18`) or ifDescr; note per-platform OID if needed |
 | P0.3 | **EXOS canary:** display-string + description-string → ifAlias winner / truncate at 64 |
-| P0.4 | Lock grammar budget **64**; always-emit SPEED; controlled `X-STK`/…; reject ≤15 |
+| P0.4 | Lock grammar budget **64**; always-emit SPEED; `X` notes |
 | P0.5 | Grammar: uppercase; no colon; split X regex |
 | P0.6 | Role matrix + hybrid admin-down spares; access safety-net limit stated |
 | P0.7 | Ingest-loop check (ifAlias ↛ generator inputs) |
@@ -222,7 +222,7 @@ Label **`X` / `X-<note>`**; reason in NetBox **description**.
 
 ### Subsidiary hybrid (core∩access)
 
-Same LLD as fabric (`admin-up AND NOT X`). **Do not X-fill every port.**
+Same LLD as fabric (`admin-up AND NOT X`). Spares admin-down; `X` only when up but uninteresting.
 
 - Spares → **admin-down**.  
 - Up-but-uninteresting → `X` / `X-STK` / …  
