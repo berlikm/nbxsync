@@ -23,9 +23,10 @@
 7. **Excludes:** one class only — **`X` / `X-<note>`**. Why the port is excluded belongs in NetBox **description**.  
 8. **LAGs:** explicit rule (§7) before rollout.  
 9. **Access = opt-in** (include classes); **fabric/mgmt = admin-up minus excludes**.  
-10. **Subsidiary hybrid (core∩access):** default-label ports **`X`** (exclude); **do not X** client access ports you want monitored, nor uplinks/WAN/AP/`MON`/`TMON` (§6.1).  
-11. **No NetBox tags** for monitor/speed intent. Description = prose only.  
-12. Track B owns generate/push, compliance diff, LLD publish.
+10. **Subsidiary hybrid (core∩access):** admin-down unused spares; label **`X` only** on ports that stay admin-up but must not alert; do **not** X-fill every port (§6.1).  
+11. **Generator is authoritative** on managed ports (overwrites on-box display). **Protect** marker in NetBox skips generation for deliberate hand-sets (§8).  
+12. **No NetBox tags** for monitor/speed intent. Description = prose only.  
+13. Track B owns generate/push, compliance diff, LLD publish.
 
 ---
 
@@ -122,16 +123,16 @@ Because `UD`/`UA`/`UC` all default **10G**, a standard 10G access↔dist link ne
 ## 5. Zabbix resolution (robust)
 
 ```
-1) Display class X? → skip LLD / no alert
-2) (removed duplicate — X handled above)
-3) else include per role rules (fabric admin-up / access include)
-4) Always: change(ifHighSpeed)<>0 while oper-up for ≥5m → WARNING (safety net)
-5) If CLASS in {UC,UD,UA,UP,MON} and label parse OK:
+1) Display class X?                         → skip (excluded)
+2) Else include per role rules (fabric admin-up / access include)
+3) Always: change(ifHighSpeed)<>0 while oper-up for ≥5m → WARNING (safety net)
+   (not for TMON)
+4) If CLASS in {UC,UD,UA,UP,MON} and label parse OK:
       expected = SPEED token OR class default
       ifHighSpeed ≠ expected for ≥5m while oper-up → WARNING
-6) CLASS W: no absolute speed expect (Circuit / Phase 5)
-7) CLASS TMON: **discover + collect items only** — **no triggers / no problems**
-   (not even change-detect alerts). Compliance lists every TMON for audit.
+5) CLASS W: no absolute speed expect (Circuit / Phase 5)
+6) CLASS TMON: discover + collect items only — no triggers / no problems
+   Compliance lists every TMON for audit
 ```
 
 **Settle / flap guard:** speed and change triggers use **`min` / “for 5m”** (or equivalent) so negotiation blips do not storm.
@@ -144,7 +145,7 @@ Because `UD`/`UA`/`UC` all default **10G**, a standard 10G access↔dist link ne
 
 | Device role | LLD |
 |---|---|
-| **Core / Dist / Mgmt** | Admin-up **AND NOT** (auto-structural OR display class `X`) **AND NOT** (prefer admin-down unused) |
+| **Core / Dist / Mgmt** | Admin-up **AND NOT** display class `X` (prefer admin-down unused) |
 | **Access** | Display matches `^(UC\|UD\|UA\|UP\|MON\|W\|TMON)` |
 | **Subsidiary hybrid (core∩access)** | Same LLD as fabric: admin-up **AND NOT** `X` — **labeling policy inverted** (§6.1) |
 | **AP** | Device health template — not switch-port fabric LLD |
@@ -153,37 +154,35 @@ Unused enabled ports on fabric: **disable** (hygiene) — do not rely on “moni
 
 ### 6.1 Subsidiary sites — core that also acts as access
 
-At many subsidiaries one switch is **both core and access** (clients hang off the same box). Fabric “monitor all admin-up” would drown in client-edge noise **or** force pure access opt-in and miss unlabeled ports.
+At many subsidiaries one switch is **both core and access** (clients hang off the same box). Fabric “monitor all admin-up” would drown in client-edge noise.
 
-**Locked labeling policy for hybrid role:**
+**Locked policy — do not X-fill every port**
+
+Pushing `X` onto every interface is an interface-level config line per port → config bloat, save/sync churn, and noisy cfgit diffs on every apply. **Rejected as the default.**
+
+**Cheaper equivalent (same LLD outcome):**
 
 ```
-DEFAULT: mark port X (exclude from Zabbix port alerts)
-EXCEPT:  do NOT mark X on ports that should stay monitored:
-         • client access ports (edge drops you care about)
-         • AP ports → UP-…
-         • uplinks / toward other switches → UC|UD|UA-…
-         • WAN → W-…
-         • servers / ESX / storage / iDRAC → MON-…
-         • temp watch → TMON-… (metrics, no alerts)
+1) Unused / spare ports     → admin-down (preferred hygiene; same as fabric §6)
+2) Admin-up but uninteresting → label X / X-<note> + description
+3) Ports to monitor         → leave non-X (empty, MON, TMON, UP, UC|UD|UA, W, …)
 ```
 
-| Port kind on hybrid switch | Display | Description | Monitored? |
+LLD stays: admin-up **AND NOT** class `X`. Admin-down ports never enter LLD. Only the smaller set of up-but-silent ports needs an `X` label.
+
+| Port kind on hybrid switch | Action | Display | Monitored? |
 |---|---|---|---|
-| Client access (care about) | empty **or** `MON-…` / `TMON-…` | optional | **Yes**; `TMON` = metrics, no alerts |
-| Client access (don’t care / spare) | `X` or `X-<note>` | why excluded | No |
-| AP | `UP-…` | AP name | Yes |
-| Uplink / fabric | `UC`/`UD`/`UA`-… | far-end | Yes |
-| WAN | `W-…` | circuit note | Yes |
-| Server / iDRAC / storage | `MON-…` | hostname | Yes |
-| Any other port to silence | `X` or `X-<note>` | why excluded | No |
-| Everything else (default on hybrid) | **`X`** | why excluded | No |
+| Spare / unused | **admin-down** | n/a (or clear) | No |
+| Admin-up, do not alert | keep up | `X` / `X-<note>` | No |
+| Client access (care about) | admin-up | empty or `MON` / `TMON` | Yes (`TMON` = metrics, no alerts) |
+| AP | admin-up | `UP-…` | Yes |
+| Uplink / fabric | admin-up | `UC`/`UD`/`UA`-… | Yes |
+| WAN | admin-up | `W-…` | Yes |
+| Server / iDRAC / storage | admin-up | `MON-…` | Yes |
 
-**NetBox:** device role e.g. `Core-Access` / `Subsidiary Core` selects this generator profile: **`X`-fill all**, then clear/overwrite from cables + “monitor client port” flag / interface role.
+**NetBox:** device role e.g. `Core-Access` / `Subsidiary Core` selects this profile: generate includes + `X` only where admin-up exclude is required; drive admin-down for spares via the same automation where possible.
 
-**Why not pure access opt-in here:** hybrid boxes often need “monitor these client ports” without inventing an include code for every drop — leaving them **non-X** under fabric LLD is enough; use `MON-` when you need speed expect or identity.
-
-**Hygiene:** spare client ports → `X` or admin-down; do not leave the whole switch unlabeled.
+**Why not pure access opt-in alone:** hybrid boxes often need “monitor these client ports” without an include code on every drop — non-X under fabric LLD is enough; use `MON`/`TMON` when you need identity or metrics-only.
 
 ---
 
@@ -201,27 +200,39 @@ This avoids permanent false WARN on 2×10G → `ifHighSpeed=20000` aggregates.
 
 ---
 
-## 8. Generate from NetBox (preferred), not hand-type
+## 8. Generate from NetBox (authoritative)
 
 ```
-NetBox: device role + cable far-end + interface.speed (+ LAG membership)
+NetBox: device role + cable far-end + interface.speed (+ LAG + protect flag)
         → generator (dry-run / apply)
         → Extreme display string (derived cache)
         → Zabbix reads ifAlias at poll time (no NetBox dependency live)
 ```
 
+**Authority:** On **managed** interfaces the generator **is authoritative**. Apply **overwrites** the on-box display string (ifAlias) to match the generated value. Manual CLI edits on managed ports are not preserved — fix the intent in NetBox (or protect the port), then re-apply.
+
+### Protect marker (hand-set ports)
+
+| Mechanism | Behavior |
+|---|---|
+| NetBox interface flag / CF e.g. `display_protect` = true | Generator **skips** that interface (no push, no overwrite) |
+| Compliance | Lists protected ports separately (live vs desired N/A); drift is ops-owned |
+| On-box | No magic display prefix required — protect lives in **NetBox**, not in the 15-char string |
+
+Use protect only for deliberate exceptions (lab, break-glass, pending NetBox model). Default is unmanaged → managed by generator.
+
 | Input | Becomes |
 |---|---|
-| Device role = hybrid / subsidiary core-access | **`X` all ports**, then apply exceptions below |
-| Cable to dist / access / core / AP | `UD` / `UA` / `UC` / `UP` + short far-end id (clears `X`) |
-| Client access port flagged monitor | Clear `X` (empty or `MON-…`) |
+| `display_protect` | **Skip** — leave on-box display untouched |
+| Device role = hybrid / subsidiary | Includes + **`X` only** on admin-up excludes; **admin-down** spares (not X-fill-all) |
+| Cable to dist / access / core / AP | `UD` / `UA` / `UC` / `UP` + short far-end id |
+| Client access port flagged monitor | non-X (empty or `MON` / `TMON`) |
 | `interface.speed` ≠ class default | insert SPEED token |
 | Endpoint = server/ESX/storage/iDRAC | `MON` (+ `10G` if needed) |
-| Port to exclude | push `X` / `X-<note>` + description |
-| No cable / guest | Manual set allowed; compliance lists orphans |
+| Admin-up, must not alert | `X` / `X-<note>` + description |
+| Spare / unused | **admin-down** (preferred) |
 
-**Compliance = diff** (generated vs live ifAlias), not a second rule engine.  
-Hand-typed labels are fallback; typos on access includes are softened by **change-detect safety net** on fabric and by compliance diff.
+**Compliance = diff** (generated vs live ifAlias) on managed ports; protected ports reported as protect-set, not as generator failures.
 
 **ID policy:** controlled short names (NetBox abbrev / asset slug), not full hostnames. Example budget: `MON-10G-` = 8 chars → **7 left** for id.
 
@@ -252,13 +263,12 @@ Hand-typed labels are fallback; typos on access includes are softened by **chang
 
 ### Subsidiary hybrid (core∩access)
 
-| Scenario | Display | Monitored? |
+| Scenario | Action / display | Monitored? |
 |---|---|---|
-| Client PC drop (care) | *(empty)* or `MON-pc12` | Yes |
-| Spare / unused client port | `X` / `X-<note>` | No |
-| AP on same switch | `UP-ap01` | Yes |
-| WAN on same switch | `W-SC1` | Yes |
-| Default everything else | `X` | No |
+| Client PC drop (care) | empty or `MON` / `TMON` | Yes |
+| Spare / unused | **admin-down** | No |
+| Up but uninteresting | `X` / `X-<note>` | No |
+| AP / WAN on same switch | `UP-…` / `W-…` | Yes |
 
 ### Length
 
@@ -290,7 +300,9 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 | Hand-type typos drop access monitoring | Generate from NetBox; compliance diff; change-detect safety net |
 | 15-char hostname overflow | Machine-short IDs only |
 | Aggregate LAG false WARN | Members vs aggregate rule (§7) |
-| New excluded port still alerting | Ensure display is `X` / `X-<note>`; check LLD filter |
+| X-fill every subsidiary port | **Reject** — admin-down spares; `X` only if admin-up but uninteresting |
+| Manual edit lost on apply | Expected on managed ports; set **`display_protect`** to skip |
+| Protected port forgotten | Compliance lists protect-set |
 | `TMON` forever / forgotten | Compliance **list all TMON*** regularly; clear or promote to `MON`/`UP`/… |
 | Negotiation WARN storm | `for 5m` / min settle |
 | Grammar drift across templates | One shared parser module |
@@ -308,7 +320,8 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 - [ ] Exclude class is only `X` / `X-<note>`; reason in description  
 - [ ] Generate-from-NetBox dry-run on canary  
 - [ ] Change-detect + absolute expect both tested with 5m settle  
-- [ ] Hybrid subsidiary role: **`X`-default**; client/uplink/AP/WAN/MON/TMON not X  
+- [ ] Hybrid subsidiary: admin-down spares; `X` only on up-but-uninteresting  
+- [ ] Generator authoritative on managed ports; **`display_protect`** skips hand-sets  
 - [ ] ifAlias mapping confirmed EXOS + VOSS  
 
 ---
@@ -332,11 +345,13 @@ ZABBIX:
   W: no absolute speed; LAG: expect on members only
 
 HYBRID SUBSIDIARY (core∩access)
-  DEFAULT label X on all ports
-  EXCEPT do not X: client access (care), UP, UC/UD/UA, W, MON, TMON
-  LLD = admin-up AND NOT X  (same as fabric)
+  spares → admin-down (not X-fill-all)
+  up-but-uninteresting → X / X-<note>
+  monitor → non-X (empty|MON|TMON|UP|UC|UD|UA|W)
+  LLD = admin-up AND NOT X
 
-NETBOX → generate/push label (preferred)
+GENERATOR = authoritative overwrite on managed ports
+PROTECT = NetBox display_protect → skip interface
 DESCRIPTION = prose (incl. why a port is X); no monitor tags
-COMPLIANCE = diff generated vs live
+COMPLIANCE = diff generated vs live (managed); list protect-set
 ```
