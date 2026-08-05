@@ -11,7 +11,7 @@
 1. **Grammar:** `CLASS[-SPEED]-ID`, hyphen separators, labels stored **UPPERCASE**.  
 2. **Budget:** 64 characters (VOSS port `name` + EXOS `ifAlias` default).  
 3. **Monitored labels include SPEED** where a default applies; ID is the real far-end name.  
-4. **Classes:** `USW` `US` `MON` `UW` | `N` (note only).  
+4. **Classes:** `USW` `US` `MON` `UW` `TMON` | `N` (note only).  
 5. **Defaults:** `USW`/`US` → 10G; `MON` → 1G.  
 6. **Set on box:** EXOS → field that drives `ifAlias`; VOSS → port `name` / `name port <list>`.  
 7. **Zabbix** reads empty vs parsed class. Turn on “speed must equal expected” only after labels are in place.  
@@ -32,7 +32,7 @@ CLASS-SPEED-ID
 
 | Piece | Rules |
 |---|---|
-| **CLASS** | `USW` `US` `MON` `UW` `N` |
+| **CLASS** | `USW` `US` `MON` `UW` `TMON` `N` |
 | **SPEED** | Canonical tokens only (`2G5` not `2.5G`) — not used on `N` |
 | **ID** | Far-end / free text after normalize |
 | **Case** | Store UPPERCASE; match case-insensitive |
@@ -53,8 +53,8 @@ CLASS-SPEED-ID
 # Note only — free text, no Zabbix action
 ^N(-(?<note>[A-Z0-9-]+))?$
 
-# Monitor
-^(?<class>USW|US|MON|UW)(-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(-(?<id>[A-Z0-9-]+))?$
+# Monitor / temp (TMON before MON)
+^(?<class>USW|US|TMON|MON|UW)(-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(-(?<id>[A-Z0-9-]+))?$
 ```
 
 ---
@@ -67,9 +67,11 @@ CLASS-SPEED-ID
 | `US` | Server / storage | 10G | Yes | same |
 | `MON` | Other monitored endpoint (iDRAC, AP, client, …) | 1G | Yes | same |
 | `UW` | Uplink WAN / ISP | — | Later | link / flap / errors |
+| `TMON` | Temp watch | — | No | items; optional link-down **INFO** only |
 | `N` / `N-<text>` | Note only — free description | — | No | **none** |
 
-`N` is not an exclude code with controlled vocabulary — it is a standard prefix for free-form notes. Zabbix takes **no action** on `N*`.
+`N` = free-form note, Zabbix takes **no action**.  
+`TMON` = temporary watch — collect metrics; optional INFO link-down; keep a list of `TMON*` for ops review; reason in NetBox description.
 
 ---
 
@@ -102,6 +104,7 @@ Expected speed = SPEED token if present, else class default (`USW`/`US` → 10G,
       ifHighSpeed ≠ expected ≥5m while oper-up → WARNING
 6) Discovered + {USW,US,MON,UW} → change(ifHighSpeed) vs last stable oper-up ≥5m → WARNING;
       suppress in maintenance windows
+7) TMON → items + optional link-down INFO only (no speed / change WARN)
 ```
 
 Turn on step 5 after labels for that site follow this grammar.
@@ -113,7 +116,7 @@ Turn on step 5 after labels for that site follow this grammar.
 | Device role | LLD |
 |---|---|
 | **Core / Dist / Mgmt** | Admin-up AND NOT class `N` |
-| **Access** | Include classes only (`USW` `US` `MON` `UW`) |
+| **Access** | Include classes only (`USW` `US` `MON` `UW` `TMON`) |
 | **Subsidiary hybrid** | Same as fabric; labeling below |
 | **AP** | Device health — not switch-port LLD |
 
@@ -124,7 +127,7 @@ Unused ports → admin-down.
 ```
 1) Spares / unused            → admin-down
 2) Admin-up but uninteresting → N / N-<text>
-3) Monitor                    → USW / US / MON / UW / …
+3) Monitor / temp               → USW / US / MON / UW / TMON / …
 ```
 
 ---
@@ -158,7 +161,8 @@ Zabbix polls SNMP (`ifAlias` preferred).
 | AP 1G | `MON-1G-AP3F07` | 1G |
 | AP 2.5G | `MON-2G5-AP07` | 2.5G |
 | WAN uplink | `UW-SC1` | link/flap/errors |
-| Note only | `N-STACK` / `N-GUEST-TEMP` | no action |
+| Temp watch | `TMON-GUEST` | items + INFO link-down |
+| Note only | `N-STACK` / `N-SPARE` | no action |
 
 ---
 
