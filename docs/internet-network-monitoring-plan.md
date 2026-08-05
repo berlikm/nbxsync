@@ -5,7 +5,7 @@
 **Stack:** NetBox + nbxsync + Zabbix 7 · Extreme EXOS / VOSS · HiveOS APs (XIQ Pilot) · (later) Cato · FortiGate
 
 **Port identity (locked):** Extreme **display string only** (≤15 codes) — includes + **exclusion `X:…`**.  
-See `/opt/cursor/artifacts/docs/port-identity-foundation.md`.  
+See `/opt/cursor/artifacts/PORT_IDENTITY_FOUNDATION_ANALYSIS.md`.  
 NetBox = inventory + **compliance** (not a second place to edit “monitor this port”).
 
 ---
@@ -131,7 +131,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 |---|---|
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
 | P0.2 | **Lock port SoT:** Extreme display string only (≤15). Reject NetBox monitor-tags for day-to-day ops |
-| P0.3 | **Code list + defaults:** `U:D`=10G, `U:A`=1G, `U:P`=1G; SPEED tokens; `X:STK`/`X:ISC`/`X:MLAG`; `MON`/`IDR` |
+| P0.3 | **Grammar + defaults locked:** `UC/UD/UA=10G`, `UP/MON=1G`; hyphen grammar; no `IDR`; LAG + change-detect rules |
 | P0.4 | Role matrix: core/dist/mgmt = admin-up − `X:…`; access = include codes only |
 | P0.5 | Pilot lists: 1–2 EXOS, 1 VOSS, sample APs |
 | P0.6 | Site class field optional (`production`/`sales`/`normal`) — same metrics for now (alert routing later = Track B) |
@@ -139,8 +139,9 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 **Verify exit**
 
 - [ ] Platform counts known  
-- [ ] Include + **exclusion** display codes agreed (`U:` / `W:` vs `X:`; WAN = `W:` for Phase 5)  
-- [ ] Role matrix locked (fabric vs access)  
+- [ ] Include + exclusion grammar agreed (`UC/UD/UA/UP/MON` vs `X*`; WAN = `W`)  
+- [ ] Defaults: UC=UD=UA=10G (symmetric); UP=MON=1G  
+- [ ] LAG member rule + change-detect safety net agreed  
 - [ ] Pilots named  
 - [ ] Owners for VOSS + HiveOS template builds named  
 
@@ -375,7 +376,7 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 | Data population | Sites, roles, platforms, cables, Circuits/Providers when Phase 5 needs them |
 | Display / LLD publish | Read Extreme (or push) display codes → Zabbix LLD filters / macros |
 | Compliance | “Cable says AP but display missing”; stale `M:`/`MON`; Circuit without `W:…` |
-| nbxsync automation | Template Rules, CG assignments, inheritance; Zabbix speed baseline / LLD macros |
+| nbxsync automation | Template Rules; generate/push display; shared LLD parser; speed macros |
 | Alerts & actions | Zabbix actions, media, **Zabbix** tags for routing (site class) — not NetBox port monitor-tags |
 | Triggers / templates ops | Import, versioning, promote lab→prod; collision checks |
 | Zero-touch | Checklist + configure script updates when Track A templates are ready |
@@ -438,7 +439,7 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 
 | Phase | What we scope | Display codes |
 |---|---|---|
-| 2 | Fabric / AP / MON / IDR | `U:C/D/A/P` + optional `SPEED`; `MON`/`IDR`; excludes `X:STK/ISC/MLAG/…` |
+| 2 | Fabric / AP / MON | `UC/UD/UA/UP/MON` + optional SPEED; excludes `XSTK/XISC/XMLAG/…` |
 | 5 | Internet circuits | `W:…` (+ Circuit object in NetBox) |
 
 **Design (Track A):** display-string codes + which template / LLD mode watches them.  
@@ -486,17 +487,16 @@ B) SEPARATE TASK — NetBox integration (populate data, nbxsync,
    display→LLD, compliance, alerts/actions, triggers, zero-touch)
 
 PORT SOT (locked):
-  CLASS:ID | CLASS:SPEED:ID | X:STK|ISC|MLAG|SPN|OOB|INT
-  Defaults: U:D=10G U:A=1G U:P=1G U:C=10G MON/IDR=1G
-  Tokens: 100M 1G 10G 25G 40G 100G
-  Zabbix expected = token OR class default
-  NetBox description = human prose only — NO monitor-tags
+  CLASS[-SPEED]-ID (no colon); no IDR (iDRAC=MON)
+  Defaults: UC=UD=UA=10G | UP=1G | MON=1G
+  Tokens: 100M 1G 2G5 5G 10G 25G 40G 100G 400G
+  Zabbix: change(ifHighSpeed) + absolute expect; LAG=members only
+  NetBox generate/push preferred; description=prose; no monitor-tags
 
 TRACK A ORDER:
-0 Foundations (grammar + defaults + examples)
+0 Foundations (grammar + defaults + LAG + generate path)
 1 Device health (EXOS + BUILD VOSS + BUILD HiveOS AP templates)
-2 Ports — admin-up−X:; includes on access; speed mismatch triggers
-   (U:D 10G, U:A 1G, U:P 1G, MON/IDR, X:STK/ISC/MLAG)
+2 Ports — admin-up−X*; access includes; speed+errors; MON incl iDRAC
 3 Cato + FortiGate
 4 Services & SLA
 5 ISP circuit monitoring (W:… + Circuits)
