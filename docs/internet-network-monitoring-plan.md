@@ -28,7 +28,9 @@ This plan is **monitoring capability** (what we monitor, in what order).
 OPERATOR SOT = Extreme display string only (≤15)
   Include: U:C: U:D: U:A: U:P: W: M: MON / MON:<id>
   Exclude: X:STK X:SPN X:OOB X:INT X
-  NO speed nibbles — description holds why/what
+  NO class speed assumption — U:/MON: use Zabbix baseline
+  Real exception = X:… (do not monitor)
+  Description = human what/why (not a speed override)
 
 CORE/DIST/MGMT = all admin-up minus X:… (unused admin-up → disable)
 ACCESS         = only include codes; APs hang off access → U:P: (1G)
@@ -125,7 +127,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 |---|---|
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
 | P0.2 | **Lock port SoT:** Extreme display string only (≤15). Reject NetBox monitor-tags for day-to-day ops |
-| P0.3 | **Code list approved:** `U:C/D/A/P`, `W:`, `M:`, `MON`/`MON:<id>`, exclusions `X:…` — **no speed nibbles** |
+| P0.3 | **Code list approved:** `U:C/D/A/P`, `W:`, `M:`, `MON`/`MON:<id>`, exclusions `X:…` (speed = baseline, not codes) |
 | P0.4 | Role matrix: core/dist/mgmt = admin-up − `X:…`; access = include codes only |
 | P0.5 | Pilot lists: 1–2 EXOS, 1 VOSS, sample APs |
 | P0.6 | Site class field optional (`production`/`sales`/`normal`) — same metrics for now (alert routing later = Track B) |
@@ -244,7 +246,7 @@ Unused admin-up on core/dist/mgmt → **disable** (security hygiene), not “mon
 | ID | Work | Detail |
 |---|---|---|
 | P2.1 | Classify ports from cables | Access↔dist, access→AP, etc. |
-| P2.2 | Short display codes ≤15 | `U:D:swa12`, `MON:esx01`, `MON:idr3`, `X:STK` — **no speed nibbles** |
+| P2.2 | Short display codes ≤15 | `U:D:swa12`, `MON:esx01`, `MON:idr3`, `X:STK` |
 | P2.3 | Discovery contract for Track B | Display regex / ifIndexes; LLD modes `admin_up_excl` vs `display_include` |
 | P2.4 | Uplink / fabric port template | State, flap, errors, **speed baseline / degrade** (+ `U:P:` = 1G) |
 | P2.5 | Discovery by role | Fabric: admin-up − `X:…`; access: include codes only |
@@ -261,7 +263,7 @@ Unused admin-up on core/dist/mgmt → **disable** (security hygiene), not “mon
 | Extreme **display string** include / exclude codes | **Operator SoT (locked)** |
 | NetBox interface **monitor tags** for day-to-day | **Reject** (dual-edit) |
 | NetBox cables / Circuits + **compliance** reports | Drift detection only |
-| NetBox interface **description** | Human why/what (intentional 1G/100M; ESX; iDRAC; storage) |
+| NetBox interface **description** | Human what/why (ESX, iDRAC, optional plant note) — not a speed override |
 | Optional Python cable → push display | Scale aid; not a second control plane |
 | Fixed port numbers | Reject |
 | Monitor all interfaces as “uplinks” | Reject |
@@ -488,7 +490,8 @@ PORT SOT (locked):
   Include: U:C: U:D: U:A: U:P: W: M: MON / MON:<id>
   Exclude: X:STK X:SPN X:OOB X:INT X
   NetBox = compliance + description (why/what) — NO monitor-tags
-  NO speed nibbles — baseline for U:/MON:; U:P: expect 1G
+  NO speed-exception codes — baseline for U:/MON:; U:P: expect 1G
+  Real exception = X:… ; description = human notes only
   Focus = Zabbix (not switch-config generation)
 
 TRACK A ORDER:
