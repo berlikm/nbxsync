@@ -56,3 +56,14 @@ Post-import fixes (same day)
 - Removed LLD CPU prototype (collided with scalar slot-1 CPU key on memory.discovery)
 - Low-temperature trigger ignores 0°C readings (VOSS-VM sensors report 0)
 - Temperature item/trigger names use Sensor {#SNMPINDEX} (descr empty on VM)
+
+Must/should extension canary (same lab)
+---------------------------------------
+PASS cpu5m=70, mem5m=69, cpu1m=0
+PASS numSlots=2, numPorts=27, partNumber=DSGDPM624, brand=Extreme Networks.
+PASS base MAC 0C:00:22:33:44:00, totalPower=2200, redundantPower=1100
+PASS V-IST status=down(2), PLSB enable=1
+PASS port flaps/shutdownReason on ifIndex 192 (0 / none)
+PASS PSU detail ids 1,2
+N/A optics, LLDP peers, cards, ISIS/MLT tables, IST scalar (absent on VM)
+Zabbix import of extended template: PASS (42 items, 14 LLD rules)

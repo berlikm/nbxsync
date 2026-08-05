@@ -25,7 +25,7 @@ Requires Zabbix **7.0+** (export version `7.0`).
 
 **Do not use** `rcSysCpuUtil` / `rcSysDram*` — MIB marks them unsupported on VOSS.
 
-See [OID_MAPPING.md](OID_MAPPING.md) and [TEST_CHECKLIST.md](TEST_CHECKLIST.md).
+See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), and [TEST_CHECKLIST.md](TEST_CHECKLIST.md).
 
 ## Macros (VOSS-specific defaults)
 
@@ -40,12 +40,15 @@ See [OID_MAPPING.md](OID_MAPPING.md) and [TEST_CHECKLIST.md](TEST_CHECKLIST.md).
 
 ## Coverage
 
-- ICMP availability
-- SNMPv2 / HOST-RESOURCES / ENTITY (firmware) system items
-- Slot CPU + memory discovery (`rcKhiSlotPerfTable`)
-- Fan / PSU / temperature discovery
-- IF-MIB interface discovery (+ EtherLike duplex)
-- Standard interface traffic / errors / speed / link triggers
+- ICMP availability + targeted SNMP traps (fan/PSU/temp/ISIS/LAG)
+- Inventory: chassis model/serial/rev/PN/brand/base MAC, port/slot counts, `rcSysVersion`
+- CPU/memory: instantaneous + 1m/5m averages (`rcKhiSlot*`)
+- Fan / PSU (+ PSU detail) / temperature discovery
+- Optics/DOM discovery (`rcPlugOptMod*`)
+- LLDP remote neighbor discovery
+- Fabric: V-IST / IST, SPBM enable, ISIS circuit/adjacency, SPBM nickname, MLT/SMLT
+- Card/slot discovery
+- IF-MIB (+ EtherLike duplex) including flap count & shutdown reason
 
 ## Port identity
 

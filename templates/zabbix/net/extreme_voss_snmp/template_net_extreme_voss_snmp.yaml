@@ -12,7 +12,9 @@ zabbix_export:
 
       MIBs used:
 
-      RAPID-CITY (enterprises.2272) — rcKhi, rcChassis, rcVossSystem, rcSystem
+      RAPID-CITY (enterprises.2272) — rcKhi, rcChassis, rcVossSystem, rcSystem,
+      rcPlugOptMod, rcIsis/SPBM, rcVirtualIst, rcMlt, rcCard
+      LLDP-MIB
 
       IF-MIB
 
@@ -476,6 +478,304 @@ zabbix_export:
         tags:
         - tag: scope
           value: availability
+    - uuid: b909f8e8ee8941c98c11173572270452
+      name: 'CPU utilization 1m avg (slot 1)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.85.10.1.1.23.1]
+      key: system.cpu.util.avg1[rcKhiSlotCpu1MinAve.1]
+      value_type: FLOAT
+      units: '%'
+      description: 'MIB: rcKhiSlotCpu1MinAve — 1-minute average CPU util for slot 1.'
+      tags:
+      - tag: component
+        value: cpu
+    - uuid: 96b7a23257dc46b7a0790509f71c20e1
+      name: 'CPU utilization 5m avg (slot 1)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.85.10.1.1.3.1]
+      key: system.cpu.util.avg5[rcKhiSlotCpu5MinAve.1]
+      value_type: FLOAT
+      units: '%'
+      description: 'MIB: rcKhiSlotCpu5MinAve — 5-minute average CPU util for slot 1.'
+      tags:
+      - tag: component
+        value: cpu
+      triggers:
+      - uuid: ece609763cfd408f8c78abb5a0ad3efd
+        expression: min(/Extreme VOSS by SNMP/system.cpu.util.avg5[rcKhiSlotCpu5MinAve.1],5m)>{$CPU.UTIL.CRIT}
+        name: 'Extreme VOSS: High CPU utilization (5m avg)'
+        priority: WARNING
+        description: '5-minute average CPU utilization is too high.'
+        tags:
+        - tag: scope
+          value: performance
+    - uuid: 4baf753d9a3d4c6185b6a9dfc6cbe2b6
+      name: 'Memory utilization 5m avg (slot 1)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.85.10.1.1.9.1]
+      key: vm.memory.util.avg5[rcKhiSlotMem5MinAve.1]
+      value_type: FLOAT
+      units: '%'
+      description: 'MIB: rcKhiSlotMem5MinAve — 5-minute average memory util for slot 1.'
+      tags:
+      - tag: component
+        value: memory
+    - uuid: cce780d5a5bc4172a6724fadfc26e9aa
+      name: 'Chassis number of slots'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.4.4.0]
+      key: system.hw.chassis.slots[rcChasNumSlots.0]
+      delay: 1h
+      description: 'MIB: rcChasNumSlots'
+      tags:
+      - tag: component
+        value: system
+    - uuid: f7087a6e08914c65b5fa4a5fab412781
+      name: 'Chassis number of ports'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.4.5.0]
+      key: system.hw.chassis.ports[rcChasNumPorts.0]
+      delay: 1h
+      description: 'MIB: rcChasNumPorts'
+      tags:
+      - tag: component
+        value: system
+    - uuid: 871b175ce4184149b4df2a1791d25242
+      name: 'Chassis part number'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.4.66.0]
+      key: system.hw.chassis.partnumber[rcChasPartNumber.0]
+      delay: 1h
+      value_type: CHAR
+      trends: '0'
+      description: 'MIB: rcChasPartNumber'
+      tags:
+      - tag: component
+        value: system
+    - uuid: 36e059ac448843e58a6c7cd35cc38672
+      name: 'Chassis brand name'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.4.68.0]
+      key: system.hw.chassis.brand[rcChasBrandName.0]
+      delay: 1h
+      value_type: CHAR
+      trends: '0'
+      description: 'MIB: rcChasBrandName'
+      tags:
+      - tag: component
+        value: system
+    - uuid: 8d49b1ee5f9c4ca9b7b64af382e019d9
+      name: 'Chassis base MAC address'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.100.1.5.0]
+      key: system.hw.chassis.basemac[rc2kChassisBaseMacAddr.0]
+      delay: 1h
+      value_type: CHAR
+      trends: '0'
+      description: 'MIB: rc2kChassisBaseMacAddr'
+      tags:
+      - tag: component
+        value: system
+    - uuid: 06b62a5f15f743e899b7255d8847df97
+      name: 'Total power capacity'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.1.116.0]
+      key: sensor.power.total[rcSysTotalPower.0]
+      delay: 1h
+      value_type: FLOAT
+      units: 'W'
+      description: 'MIB: rcSysTotalPower (watts).'
+      tags:
+      - tag: component
+        value: power
+    - uuid: a0b1cd1738634c28ae48d095aa5a4209
+      name: 'Redundant power capacity'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.1.117.0]
+      key: sensor.power.redundant[rcSysRedundantPower.0]
+      delay: 1h
+      value_type: FLOAT
+      units: 'W'
+      description: 'MIB: rcSysRedundantPower (watts).'
+      tags:
+      - tag: component
+        value: power
+    - uuid: ed3bc904881a4a52bb4b8a8a2625b0e4
+      name: 'V-IST session status'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.211.1.0]
+      key: fabric.vist.status[rcVirtualIstSessionStatus.0]
+      delay: 1m
+      description: 'MIB: rcVirtualIstSessionStatus — up(1) down(2).'
+      valuemap:
+        name: 'RAPID-CITY::rcVirtualIstSessionStatus'
+      tags:
+      - tag: component
+        value: fabric
+      triggers:
+      - uuid: 95190b5f61e144b1bbb854521b10fc00
+        expression: {$VIST.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.vist.status[rcVirtualIstSessionStatus.0])={$VIST.DOWN_STATUS}
+        name: 'Extreme VOSS: V-IST session is down'
+        priority: HIGH
+        description: 'Virtual IST session is down (if V-IST is used).'
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: 86e9c58574264622bbb217fffab95acd
+      name: 'V-IST peer IP'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.211.2.0]
+      key: fabric.vist.peer[rcVirtualIstPeerIp.0]
+      delay: 5m
+      value_type: CHAR
+      trends: '0'
+      description: 'MIB: rcVirtualIstPeerIp'
+      tags:
+      - tag: component
+        value: fabric
+    - uuid: 0cdc34d751f54fb4ae1bc239a4112117
+      name: 'V-IST VLAN ID'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.211.3.0]
+      key: fabric.vist.vlan[rcVirtualIstVlanId.0]
+      delay: 5m
+      description: 'MIB: rcVirtualIstVlanId'
+      tags:
+      - tag: component
+        value: fabric
+    - uuid: 86a9684f23514d7d8723c22deb7d8e3b
+      name: 'IST session status'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.17.4.0]
+      key: fabric.ist.status[rcMltIstSessionStatus.0]
+      delay: 1m
+      description: 'MIB: rcMltIstSessionStatus — up(1) down(2).'
+      valuemap:
+        name: 'RAPID-CITY::rcMltIstSessionStatus'
+      tags:
+      - tag: component
+        value: fabric
+      triggers:
+      - uuid: 4e0b8c5d64234efcb7a27a2deccf05b2
+        expression: {$IST.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.ist.status[rcMltIstSessionStatus.0])={$IST.DOWN_STATUS}
+        name: 'Extreme VOSS: IST session is down'
+        priority: HIGH
+        description: 'MLT IST session is down (if IST is used).'
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: afbdb40ff2f84740a3c5bb5d16dc23d0
+      name: 'IST peer IP'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.17.5.0]
+      key: fabric.ist.peer[rcMltIstPeerIp.0]
+      delay: 5m
+      value_type: CHAR
+      trends: '0'
+      description: 'MIB: rcMltIstPeerIp'
+      tags:
+      - tag: component
+        value: fabric
+    - uuid: 07107f0a7b6f483f8c86284419ed2017
+      name: 'SPBM / PLSB global enable'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2272.1.78.1.2.0]
+      key: fabric.plsb.enable[rcPlsbGlobalEnable.0]
+      delay: 5m
+      description: 'MIB: rcPlsbGlobalEnable — enable(1) disable(2).'
+      valuemap:
+        name: 'RAPID-CITY::EnableValue'
+      tags:
+      - tag: component
+        value: fabric
+    - uuid: 91b4669e3a204c78b5a89fdab60bbac8
+      name: 'SNMP trap: Fan failure'
+      type: SNMP_TRAP
+      key: snmptrap["rcnChasFanFail"]
+      delay: '0'
+      trends: '0'
+      value_type: LOG
+      description: 'Matches VOSS trap rcnChasFanFail.'
+      tags:
+      - tag: component
+        value: fan
+    - uuid: 520ed1372f4b42e7b7263f5aa6c01741
+      name: 'SNMP trap: Fan OK'
+      type: SNMP_TRAP
+      key: snmptrap["rcnChasFanOk"]
+      delay: '0'
+      trends: '0'
+      value_type: LOG
+      description: 'Matches VOSS trap rcnChasFanOk.'
+      tags:
+      - tag: component
+        value: fan
+    - uuid: 295d00cdbe37414b930892ecddbe03c5
+      name: 'SNMP trap: Power supply down'
+      type: SNMP_TRAP
+      key: snmptrap["rcnChasPowerSupplyDown"]
+      delay: '0'
+      trends: '0'
+      value_type: LOG
+      description: 'Matches VOSS trap rcnChasPowerSupplyDown.'
+      tags:
+      - tag: component
+        value: power
+    - uuid: 916c2e8e9ff244ce9df976e9e6bef3e5
+      name: 'SNMP trap: Power supply up'
+      type: SNMP_TRAP
+      key: snmptrap["rcnChasPowerSupplyUp"]
+      delay: '0'
+      trends: '0'
+      value_type: LOG
+      description: 'Matches VOSS trap rcnChasPowerSupplyUp.'
+      tags:
+      - tag: component
+        value: power
+    - uuid: b886f96d9be9443f93e931da8fedf035
+      name: 'SNMP trap: Card overheat'
+      type: SNMP_TRAP
+      key: snmptrap["rcnCardOverheat"]
+      delay: '0'
+      trends: '0'
+      value_type: LOG
+      description: 'Matches VOSS trap rcnCardOverheat.'
+      tags:
+      - tag: component
+        value: temperature
+    - uuid: 38e71a59dfa44da087be0524c3b4de3c
+      name: 'SNMP trap: Card CPU high'
+      type: SNMP_TRAP
+      key: snmptrap["rcnCardCpuUtilizationHigh"]
+      delay: '0'
+      trends: '0'
+      value_type: LOG
+      description: 'Matches VOSS trap rcnCardCpuUtilizationHigh.'
+      tags:
+      - tag: component
+        value: cpu
+    - uuid: 53fb4e1d36944da2a320492e5b5b88e0
+      name: 'SNMP trap: ISIS/PLSB adjacency state'
+      type: SNMP_TRAP
+      key: snmptrap["rcnIsisPlsbAdjStateTrap"]
+      delay: '0'
+      trends: '0'
+      value_type: LOG
+      description: 'Matches VOSS trap rcnIsisPlsbAdjStateTrap.'
+      tags:
+      - tag: component
+        value: fabric
+    - uuid: 4e658da244fb4d92b11f50bf0de958b6
+      name: 'SNMP trap: LAG link state change'
+      type: SNMP_TRAP
+      key: snmptrap["rcnAggLinkStateChange"]
+      delay: '0'
+      trends: '0'
+      value_type: LOG
+      description: 'Matches VOSS trap rcnAggLinkStateChange.'
+      tags:
+      - tag: component
+        value: network
     discovery_rules:
     - uuid: 45c2d7874f464d96a9cc9dfaea618499
       name: FAN Discovery
@@ -589,6 +889,18 @@ zabbix_export:
           - tag: scope
             value: performance
         snmp_oid: get[1.3.6.1.4.1.2272.1.85.10.1.1.8.{#SNMPINDEX}]
+      - uuid: 615337b676354077988df22cf17efa82
+        name: 'Slot {#SNMPINDEX}: Memory utilization 5m avg'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.85.10.1.1.9.{#SNMPINDEX}]
+        key: vm.memory.util.avg5[rcKhiSlotMem5MinAve.{#SNMPINDEX}]
+        delay: 1m
+        value_type: FLOAT
+        units: '%'
+        description: 'MIB: rcKhiSlotMem5MinAve'
+        tags:
+        - tag: component
+          value: memory
       graph_prototypes:
       - uuid: 47e0c8bbd08e42929c073822cf86b16b
         name: 'Slot {#SNMPINDEX}: Memory usage'
@@ -934,6 +1246,36 @@ zabbix_export:
           value: '{#IFALIAS}'
         - tag: interface
           value: '{#IFNAME}'
+      - uuid: 20b5ec2a764d4cbc9291bdd768bdfd0a
+        name: 'Interface {#IFNAME}({#IFALIAS}): State transitions'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.10.1.1.21.{#SNMPINDEX}]
+        key: net.if.flaps[rcPortNumStateTransition.{#SNMPINDEX}]
+        delay: 5m
+        description: 'MIB: rcPortNumStateTransition — link state change count.'
+        tags:
+        - tag: component
+          value: network
+        trigger_prototypes:
+        - uuid: e833cd51334b46fbb4d7e501ff25b0ab
+          expression: change(/Extreme VOSS by SNMP/net.if.flaps[rcPortNumStateTransition.{#SNMPINDEX}])>{$IF.FLAP.WARN:"{#IFNAME}"}
+          name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link flapping'
+          priority: WARNING
+          tags:
+          - tag: scope
+            value: availability
+      - uuid: dac59dd59578499c92014e48d0fc07f3
+        name: 'Interface {#IFNAME}({#IFALIAS}): Shutdown reason'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.10.1.1.114.{#SNMPINDEX}]
+        key: net.if.shutdown.reason[rcPortShutdownReason.{#SNMPINDEX}]
+        delay: 5m
+        description: 'MIB: rcPortShutdownReason.'
+        valuemap:
+          name: 'RAPID-CITY::rcPortShutdownReason'
+        tags:
+        - tag: component
+          value: network
       trigger_prototypes:
       - uuid: 2a8e4279183249c7b6e069b716c79331
         expression: 'change(/Extreme VOSS by SNMP/net.if.speed[ifHighSpeed.{#SNMPINDEX}])<0 and last(/Extreme VOSS by SNMP/net.if.speed[ifHighSpeed.{#SNMPINDEX}])>0
@@ -1266,6 +1608,485 @@ zabbix_export:
         tags:
         - tag: component
           value: temperature
+    - uuid: e443b3c7fb6a4523907e08e8ea6386dd
+      name: Optical transceiver discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.71.1.1.6]
+      key: optic.discovery
+      delay: 1h
+      description: RAPID-CITY rcPlugOptModTable — optics / DOM (empty on VOSS-VM without optics).
+      item_prototypes:
+      - uuid: a1ff1ddf66b545db9430ee8082c099fd
+        name: 'Optic {#SNMPINDEX}: Vendor'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.6.{#SNMPINDEX}]
+        key: sensor.optic.vendor[rcPlugOptModVendorName.{#SNMPINDEX}]
+        delay: 1h
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcPlugOptModVendorName'
+        tags:
+        - tag: component
+          value: optic
+      - uuid: 4442c2301d2d47049f8550534acc8bb8
+        name: 'Optic {#SNMPINDEX}: Part number'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.7.{#SNMPINDEX}]
+        key: sensor.optic.partnumber[rcPlugOptModVendorPartNumber.{#SNMPINDEX}]
+        delay: 1h
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcPlugOptModVendorPartNumber'
+        tags:
+        - tag: component
+          value: optic
+      - uuid: 2a67b81a439e4adaa1fa96fd53b4633c
+        name: 'Optic {#SNMPINDEX}: Serial number'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.9.{#SNMPINDEX}]
+        key: sensor.optic.serialnumber[rcPlugOptModVendorSN.{#SNMPINDEX}]
+        delay: 1h
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcPlugOptModVendorSN'
+        tags:
+        - tag: component
+          value: optic
+      - uuid: b160c03c44a74efbbdfba48062176794
+        name: 'Optic {#SNMPINDEX}: Wavelength'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.16.{#SNMPINDEX}]
+        key: sensor.optic.wavelength[rcPlugOptModWaveLength.{#SNMPINDEX}]
+        delay: 1h
+        description: 'MIB: rcPlugOptModWaveLength'
+        tags:
+        - tag: component
+          value: optic
+      - uuid: 159d87792a5e44319735b3be71171b17
+        name: 'Optic {#SNMPINDEX}: Temperature'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.17.{#SNMPINDEX}]
+        key: sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}]
+        delay: 1m
+        value_type: FLOAT
+        units: '°C'
+        description: 'MIB: rcPlugOptModTemperature (1/256 °C).'
+        preprocessing:
+        - type: MULTIPLIER
+          parameters:
+          - '0.00390625'
+        tags:
+        - tag: component
+          value: optic
+        trigger_prototypes:
+        - uuid: 4c97f7dd65f443aea82d57f52ca90a1e
+          expression: avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)>{$OPTIC.TEMP.CRIT}
+          name: 'Extreme VOSS: Optic {#SNMPINDEX}: Temperature is too high'
+          priority: AVERAGE
+          tags:
+          - tag: scope
+            value: performance
+      - uuid: 28c23f9714ac41baa62d969fbe6d06d5
+        name: 'Optic {#SNMPINDEX}: TX power'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.32.{#SNMPINDEX}]
+        key: sensor.optic.txpower[rcPlugOptModTxPower.{#SNMPINDEX}]
+        delay: 1m
+        value_type: FLOAT
+        units: 'uW'
+        description: 'MIB: rcPlugOptModTxPower (microwatts).'
+        tags:
+        - tag: component
+          value: optic
+      - uuid: 4fad97382b934f75b4afc37e4b3e9bde
+        name: 'Optic {#SNMPINDEX}: RX power'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.37.{#SNMPINDEX}]
+        key: sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}]
+        delay: 1m
+        value_type: FLOAT
+        units: 'uW'
+        description: 'MIB: rcPlugOptModRxPower (microwatts).'
+        tags:
+        - tag: component
+          value: optic
+        trigger_prototypes:
+        - uuid: 2169ced8bc1541dfad27923a30d76908
+          expression: max(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)<{$OPTIC.RX.POWER.MIN} and max(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)>0
+          name: 'Extreme VOSS: Optic {#SNMPINDEX}: RX power is too low'
+          priority: WARNING
+          tags:
+          - tag: scope
+            value: performance
+      - uuid: 440406b065b04e40ad841f1f4e0d9046
+        name: 'Optic {#SNMPINDEX}: Laser bias'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.27.{#SNMPINDEX}]
+        key: sensor.optic.bias[rcPlugOptModBias.{#SNMPINDEX}]
+        delay: 1m
+        value_type: FLOAT
+        units: 'uA'
+        description: 'MIB: rcPlugOptModBias (0.1 µA units).'
+        preprocessing:
+        - type: MULTIPLIER
+          parameters:
+          - '0.1'
+        tags:
+        - tag: component
+          value: optic
+      - uuid: 403d68b2a2944e1896b1c1363282c527
+        name: 'Optic {#SNMPINDEX}: Supports DDM'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.13.{#SNMPINDEX}]
+        key: sensor.optic.ddm[rcPlugOptModSupportsDDM.{#SNMPINDEX}]
+        delay: 1h
+        description: 'MIB: rcPlugOptModSupportsDDM'
+        tags:
+        - tag: component
+          value: optic
+    - uuid: 5d1a1e82e94b47d382c934ecfe245b98
+      name: LLDP remote systems discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.0.8802.1.1.2.1.4.1.1.9]
+      key: lldp.discovery
+      delay: 1h
+      description: LLDP-MIB lldpRemTable — neighbors (needs LLDP peers).
+      item_prototypes:
+      - uuid: 2e354d7e7d744e70b3b72b35a47c9470
+        name: 'LLDP {#SNMPINDEX}: Remote system name'
+        type: SNMP_AGENT
+        snmp_oid: get[1.0.8802.1.1.2.1.4.1.1.9.{#SNMPINDEX}]
+        key: net.lldp.rem.sysname[lldpRemSysName.{#SNMPINDEX}]
+        delay: 5m
+        value_type: CHAR
+        trends: '0'
+        description: 'LLDP-MIB lldpRemSysName'
+        tags:
+        - tag: component
+          value: lldp
+      - uuid: 28ab036250734cb28e26ff25fecd8d9c
+        name: 'LLDP {#SNMPINDEX}: Remote port ID'
+        type: SNMP_AGENT
+        snmp_oid: get[1.0.8802.1.1.2.1.4.1.1.7.{#SNMPINDEX}]
+        key: net.lldp.rem.portid[lldpRemPortId.{#SNMPINDEX}]
+        delay: 5m
+        value_type: CHAR
+        trends: '0'
+        description: 'LLDP-MIB lldpRemPortId'
+        tags:
+        - tag: component
+          value: lldp
+      - uuid: daa87fbbd4f242fc810810a20cc1ada3
+        name: 'LLDP {#SNMPINDEX}: Remote chassis ID'
+        type: SNMP_AGENT
+        snmp_oid: get[1.0.8802.1.1.2.1.4.1.1.5.{#SNMPINDEX}]
+        key: net.lldp.rem.chassisid[lldpRemChassisId.{#SNMPINDEX}]
+        delay: 5m
+        value_type: CHAR
+        trends: '0'
+        description: 'LLDP-MIB lldpRemChassisId'
+        tags:
+        - tag: component
+          value: lldp
+      - uuid: b747caca399e4fb1ab7fd7b6c6aa5638
+        name: 'LLDP {#SNMPINDEX}: Remote system description'
+        type: SNMP_AGENT
+        snmp_oid: get[1.0.8802.1.1.2.1.4.1.1.10.{#SNMPINDEX}]
+        key: net.lldp.rem.sysdesc[lldpRemSysDesc.{#SNMPINDEX}]
+        delay: 1h
+        value_type: CHAR
+        trends: '0'
+        description: 'LLDP-MIB lldpRemSysDesc'
+        tags:
+        - tag: component
+          value: lldp
+    - uuid: 91f93d6b78364b279c2920e78a3d9104
+      name: PSU detail discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.4.8.2.1.1]
+      key: psu.detail.discovery
+      delay: 1h
+      description: RAPID-CITY rcChasPowerSupplyDetailTable.
+      item_prototypes:
+      - uuid: b3175a0aa6034dabb56429bd4c634d87
+        name: 'PSU {#SNMPINDEX}: Detail oper status'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.8.2.1.15.{#SNMPINDEX}]
+        key: sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}]
+        delay: 3m
+        description: 'MIB: rcChasPowerSupplyDetailOperStatus'
+        valuemap:
+          name: 'RAPID-CITY::rcChasPowerSupplyOperStatus'
+        tags:
+        - tag: component
+          value: power
+        trigger_prototypes:
+        - uuid: 03368bc544304d99a5b7acabe442ab60
+          expression: count(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}],#1,"eq","{$PSU_CRIT_STATUS}")=1
+          name: 'Extreme VOSS: PSU {#SNMPINDEX}: Detail status critical'
+          priority: AVERAGE
+          tags:
+          - tag: scope
+            value: availability
+      - uuid: 6866dde91d204cbfb2c0aaf556d9ea58
+        name: 'PSU {#SNMPINDEX}: Serial number'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.8.2.1.3.{#SNMPINDEX}]
+        key: sensor.psu.serial[rcChasPowerSupplyDetailSerialNumber.{#SNMPINDEX}]
+        delay: 1h
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcChasPowerSupplyDetailSerialNumber'
+        tags:
+        - tag: component
+          value: power
+      - uuid: 8a9f1a6396ed4296be756cc8d6ffca2f
+        name: 'PSU {#SNMPINDEX}: Part number'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.8.2.1.5.{#SNMPINDEX}]
+        key: sensor.psu.partnumber[rcChasPowerSupplyDetailPartNumber.{#SNMPINDEX}]
+        delay: 1h
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcChasPowerSupplyDetailPartNumber'
+        tags:
+        - tag: component
+          value: power
+      - uuid: 4e2dc3bab33e49f09fc1a42498810e70
+        name: 'PSU {#SNMPINDEX}: Output watts'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.8.2.1.10.{#SNMPINDEX}]
+        key: sensor.psu.watts[rcChasPowerSupplyDetailOutputWatts.{#SNMPINDEX}]
+        delay: 5m
+        units: 'W'
+        description: 'MIB: rcChasPowerSupplyDetailOutputWatts'
+        tags:
+        - tag: component
+          value: power
+    - uuid: 6e56f6a00f104e7ea46c1b18f9d33781
+      name: Card / slot discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.4.9.1.1.1]
+      key: card.discovery
+      delay: 1h
+      description: RAPID-CITY rcCardTable — may be empty on fixed VOSS-VM.
+      item_prototypes:
+      - uuid: 30fc14675051429586c18e58120e94e8
+        name: 'Card {#SNMPINDEX}: Type'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.9.1.1.2.{#SNMPINDEX}]
+        key: system.hw.card.type[rcCardType.{#SNMPINDEX}]
+        delay: 1h
+        description: 'MIB: rcCardType'
+        tags:
+        - tag: component
+          value: system
+      - uuid: bacb1f2844ad4590baabdbfd86b0046b
+        name: 'Card {#SNMPINDEX}: Serial number'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.9.1.1.3.{#SNMPINDEX}]
+        key: system.hw.card.serial[rcCardSerialNumber.{#SNMPINDEX}]
+        delay: 1h
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcCardSerialNumber'
+        tags:
+        - tag: component
+          value: system
+      - uuid: 710367cbdb464e7999379c22a07a98d9
+        name: 'Card {#SNMPINDEX}: Hardware revision'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.9.1.1.4.{#SNMPINDEX}]
+        key: system.hw.card.version[rcCardHardwareRevision.{#SNMPINDEX}]
+        delay: 1h
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcCardHardwareRevision'
+        tags:
+        - tag: component
+          value: system
+      - uuid: 4d1cbbcf077a40b08c58716a3e010978
+        name: 'Card {#SNMPINDEX}: Part number'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.9.1.1.8.{#SNMPINDEX}]
+        key: system.hw.card.partnumber[rcCardPartNumber.{#SNMPINDEX}]
+        delay: 1h
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcCardPartNumber'
+        tags:
+        - tag: component
+          value: system
+      - uuid: 55976f4812194bdaac58b623639af423
+        name: 'Card {#SNMPINDEX}: Operational status'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.4.9.1.1.6.{#SNMPINDEX}]
+        key: system.hw.card.status[rcCardOperStatus.{#SNMPINDEX}]
+        delay: 3m
+        description: 'MIB: rcCardOperStatus — up(1) down(2) testing(3) unknown(4) dormant(5).'
+        valuemap:
+          name: 'RAPID-CITY::rcCardOperStatus'
+        tags:
+        - tag: component
+          value: system
+        trigger_prototypes:
+        - uuid: 2075fc327371407ca7a3ecad0594a1ac
+          expression: last(/Extreme VOSS by SNMP/system.hw.card.status[rcCardOperStatus.{#SNMPINDEX}])={$CARD.DOWN_STATUS}
+          name: 'Extreme VOSS: Card {#SNMPINDEX}: Card is down'
+          priority: HIGH
+          tags:
+          - tag: scope
+            value: availability
+    - uuid: 2644cc238304409f8c8a4fe73ab7a7d2
+      name: ISIS circuit discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.63.2.1.1]
+      key: isis.circuit.discovery
+      delay: 1h
+      description: RAPID-CITY rcIsisCircuitTable.
+      item_prototypes:
+      - uuid: 0bfd8647226d42ea990410d9a1e51781
+        name: 'ISIS circuit {#SNMPINDEX}: Oper state'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.63.2.1.8.{#SNMPINDEX}]
+        key: fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}]
+        delay: 1m
+        description: 'MIB: rcIsisCircuitOperState — unknown(0) up(1) down(2).'
+        valuemap:
+          name: 'RAPID-CITY::rcIsisCircuitOperState'
+        tags:
+        - tag: component
+          value: fabric
+        trigger_prototypes:
+        - uuid: 58b582cb293b4fc58fbf8cb46548474b
+          expression: last(/Extreme VOSS by SNMP/fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}])={$ISIS.CIRCUIT.DOWN_STATUS}
+          name: 'Extreme VOSS: ISIS circuit {#SNMPINDEX}: Circuit is down'
+          priority: HIGH
+          tags:
+          - tag: scope
+            value: availability
+      - uuid: 31ed5daf0b8e4f449ba38442e43a62fe
+        name: 'ISIS circuit {#SNMPINDEX}: Up adjacencies'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.63.2.1.10.{#SNMPINDEX}]
+        key: fabric.isis.circuit.upadj[rcIsisCircuitNumUpAdj.{#SNMPINDEX}]
+        delay: 1m
+        description: 'MIB: rcIsisCircuitNumUpAdj'
+        tags:
+        - tag: component
+          value: fabric
+    - uuid: 586d14904ee746049acd3893115f4a82
+      name: ISIS adjacency discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.63.10.1.3]
+      key: isis.adj.discovery
+      delay: 1h
+      description: RAPID-CITY rcIsisAdjTable — SPBM/ISIS neighbors.
+      item_prototypes:
+      - uuid: 7f7b7794aecc4df3a87cba62bba6f526
+        name: 'ISIS adjacency {#SNMPINDEX}: Hostname'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.63.10.1.3.{#SNMPINDEX}]
+        key: fabric.isis.adj.hostname[rcIsisAdjHostName.{#SNMPINDEX}]
+        delay: 5m
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcIsisAdjHostName'
+        tags:
+        - tag: component
+          value: fabric
+      - uuid: f3cefedaac4a4ba7bb3364b13b6b80f3
+        name: 'ISIS adjacency {#SNMPINDEX}: IfIndex'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.63.10.1.4.{#SNMPINDEX}]
+        key: fabric.isis.adj.ifindex[rcIsisAdjIfIndex.{#SNMPINDEX}]
+        delay: 5m
+        description: 'MIB: rcIsisAdjIfIndex'
+        tags:
+        - tag: component
+          value: fabric
+    - uuid: 5010c6529a5442968aa8cb60a77b0d06
+      name: SPBM / PLSB node discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.63.4.1.3]
+      key: spbm.node.discovery
+      delay: 1h
+      description: RAPID-CITY rcIsisPlsbTable.
+      item_prototypes:
+      - uuid: b466de718efd44f9b5b5b029e633b36e
+        name: 'SPBM node {#SNMPINDEX}: Nickname'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.63.4.1.3.{#SNMPINDEX}]
+        key: fabric.spbm.nickname[rcIsisPlsbNodeNickName.{#SNMPINDEX}]
+        delay: 5m
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcIsisPlsbNodeNickName'
+        tags:
+        - tag: component
+          value: fabric
+      - uuid: 5d0da3e5c34d4585a5e43b3f3f71c74c
+        name: 'SPBM node {#SNMPINDEX}: PLSB state'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.63.4.1.6.{#SNMPINDEX}]
+        key: fabric.spbm.state[rcIsisPlsbState.{#SNMPINDEX}]
+        delay: 1m
+        description: 'MIB: rcIsisPlsbState — enable(1) disable(2).'
+        valuemap:
+          name: 'RAPID-CITY::EnableValue'
+        tags:
+        - tag: component
+          value: fabric
+    - uuid: 8b74bea410db4ab5a47ec99c2fa8a2d7
+      name: MLT / SMLT discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.17.10.1.2]
+      key: mlt.discovery
+      delay: 1h
+      description: RAPID-CITY rcMltTable — MLT/SMLT aggregates.
+      item_prototypes:
+      - uuid: 25c3d2e0f808476a965945a30cb1a60b
+        name: 'MLT {#SNMPINDEX}: Name'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.17.10.1.2.{#SNMPINDEX}]
+        key: net.mlt.name[rcMltName.{#SNMPINDEX}]
+        delay: 5m
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcMltName'
+        tags:
+        - tag: component
+          value: network
+      - uuid: 6b0416236f8a4fdc8cb0997b2d7c39b6
+        name: 'MLT {#SNMPINDEX}: SMLT ID'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.17.10.1.13.{#SNMPINDEX}]
+        key: net.mlt.smltid[rcMltSmltId.{#SNMPINDEX}]
+        delay: 5m
+        description: 'MIB: rcMltSmltId'
+        tags:
+        - tag: component
+          value: fabric
+      - uuid: c7c180ab1af64d49ba9ec14673e11a04
+        name: 'MLT {#SNMPINDEX}: Aggregation oper state'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.17.10.1.22.{#SNMPINDEX}]
+        key: net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}]
+        delay: 1m
+        description: 'MIB: rcMltAggOperState — enable(1) disable(2).'
+        valuemap:
+          name: 'RAPID-CITY::EnableValue'
+        tags:
+        - tag: component
+          value: network
+        trigger_prototypes:
+        - uuid: 5054efcb8c1c4465a832c2095dde9d26
+          expression: last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.DOWN_STATUS}
+          name: 'Extreme VOSS: MLT {#SNMPINDEX}: Aggregation disabled/down'
+          priority: AVERAGE
+          tags:
+          - tag: scope
+            value: availability
     tags:
     - tag: class
       value: network
@@ -1336,6 +2157,30 @@ zabbix_export:
       description: VOSS rcVossSystemTemperatureStatus highCritial(3)
     - macro: '{$TEMP_WARN}'
       value: '55'
+    - macro: '{$VIST.DOWN_STATUS}'
+      value: '2'
+      description: V-IST session down(2)
+    - macro: '{$IST.DOWN_STATUS}'
+      value: '2'
+      description: IST session down(2)
+    - macro: '{$CARD.DOWN_STATUS}'
+      value: '2'
+      description: rcCardOperStatus down(2)
+    - macro: '{$ISIS.CIRCUIT.DOWN_STATUS}'
+      value: '2'
+      description: rcIsisCircuitOperState down(2)
+    - macro: '{$MLT.AGG.DOWN_STATUS}'
+      value: '2'
+      description: rcMltAggOperState disable(2)
+    - macro: '{$OPTIC.TEMP.CRIT}'
+      value: '70'
+      description: Optic temperature critical °C
+    - macro: '{$OPTIC.RX.POWER.MIN}'
+      value: '1'
+      description: Minimum optic RX power in µW (0 ignored)
+    - macro: '{$IF.FLAP.WARN}'
+      value: '0'
+      description: 'Link-flap warning — fire when rcPortNumStateTransition change exceeds this (context-capable).'
     dashboards:
     - uuid: 6c3fa785af5d4bd38c94805bd0ccbecb
       name: Network interfaces
@@ -1987,6 +2832,62 @@ zabbix_export:
         newvalue: ptm
       - value: '290'
         newvalue: ghn
+    - uuid: b6da70e04cc046b99e2ad364c781d57a
+      name: 'RAPID-CITY::rcVirtualIstSessionStatus'
+      mappings:
+      - value: '1'
+        newvalue: 'up'
+      - value: '2'
+        newvalue: 'down'
+    - uuid: 6a4193a62d41416c96d6c26adbcbdc1c
+      name: 'RAPID-CITY::rcMltIstSessionStatus'
+      mappings:
+      - value: '1'
+        newvalue: 'up'
+      - value: '2'
+        newvalue: 'down'
+    - uuid: 582e2fc3f03a4b0a84f9a288001f641a
+      name: 'RAPID-CITY::rcCardOperStatus'
+      mappings:
+      - value: '1'
+        newvalue: 'up'
+      - value: '2'
+        newvalue: 'down'
+      - value: '3'
+        newvalue: 'testing'
+      - value: '4'
+        newvalue: 'unknown'
+      - value: '5'
+        newvalue: 'dormant'
+    - uuid: 31a244398d144f4188997c4384369b4d
+      name: 'RAPID-CITY::rcIsisCircuitOperState'
+      mappings:
+      - value: '0'
+        newvalue: 'unknown'
+      - value: '1'
+        newvalue: 'up'
+      - value: '2'
+        newvalue: 'down'
+    - uuid: 55f648e072604556bba2f958a51fb1eb
+      name: 'RAPID-CITY::EnableValue'
+      mappings:
+      - value: '1'
+        newvalue: 'enable'
+      - value: '2'
+        newvalue: 'disable'
+    - uuid: 71304845b2d14c148cd0466d965462b9
+      name: 'RAPID-CITY::rcPortShutdownReason'
+      mappings:
+      - value: '1'
+        newvalue: 'none'
+      - value: '2'
+        newvalue: 'cpLimit'
+      - value: '3'
+        newvalue: 'macFlap'
+      - value: '4'
+        newvalue: 'linkFlap'
+      - value: '5'
+        newvalue: 'telnet'
     - uuid: 881a221254bd424ca81ef04406acc5f7
       name: Service state
       mappings:
