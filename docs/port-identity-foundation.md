@@ -8,20 +8,18 @@
 
 ## 1. Locked decisions
 
-1. **Grammar:** `CLASS[-SPEED]-ID` — hyphen only (no `:`).  
-2. **Budget:** **64** characters (VOSS `name` `WORD<0-64>` + EXOS `ifAlias` default). No fictional ≤15. No EXOS `ifalias size extended`.  
-3. **Always emit SPEED** on generated labels; real far-end IDs; controlled `X-STK` / `X-ISC` / `X-MLAG` / `X-SPN` / `X-OOB` / `X-OTH`.  
-4. **Case:** generator pushes **UPPERCASE**; parser case-insensitive.  
-5. **No `IDR` class** — iDRAC = `MON`.  
-6. **Class defaults** (token omitted — hand/legacy only): `UC`/`UD`/`UA` → 10G; `UP`/`MON` → 1G.  
-7. **Push:** EXOS → field that drives `ifAlias` (expect `description-string`); VOSS → `name` / `name port <list>`.  
-8. **Generator authoritative** on managed ports; `display_protect` skips hand-sets.  
-9. **Parse:** `EMPTY` | `PARSED`. Legacy labels overwritten — no quarantine state.  
-10. **Baseline first:** push → clean generated-vs-live diff → then absolute-expect.  
-11. **Access LLD opt-in** — no safety net for missing/typo labels (compliance catches them).  
-12. **Hybrid:** admin-down spares; `X` only if up-but-uninteresting; monitored clients get `MON-<ID>` (not empty). No X-fill-all.  
-13. **LAGs:** speed expect on **members** only.  
-14. **No NetBox tags** for monitor/speed intent.
+1. **Grammar:** `CLASS[-SPEED]-ID`, hyphen separators, uppercase on push.  
+2. **Budget:** 64 characters (VOSS `name` + EXOS `ifAlias` default).  
+3. **Generated labels always include SPEED**; ID is the real far-end name.  
+4. **Classes:** `UC` `UD` `UA` `UP` `MON` `W` `TMON` | `X` (optional note). Endpoints including iDRAC use `MON`.  
+5. **Class speed defaults** when token absent: `UC`/`UD`/`UA` → 10G; `UP`/`MON` → 1G.  
+6. **Push:** EXOS → field that drives `ifAlias`; VOSS → `name` / `name port <list>`.  
+7. **Generator overwrites** managed ports; `display_protect` skips hand-sets.  
+8. **Parse:** `EMPTY` | `PARSED`. Push overwrites legacy labels; enable absolute-expect after clean diff.  
+9. **Access LLD** matches include classes only; missing labels are a compliance problem, not a Zabbix safety net.  
+10. **Hybrid:** admin-down spares; `X` on up-but-uninteresting; monitored clients get `MON-<ID>`.  
+11. **LAG speed expect** on members only.  
+12. **Port intent lives in the label** — not NetBox monitor tags.
 
 ---
 
@@ -38,44 +36,45 @@ CLASS-SPEED-ID
 | **CLASS** | Atomic token from vocabulary |
 | **SPEED** | Canonical tokens only (`2G5` not `2.5G`) |
 | **ID** | `[A-Z0-9-]+` after normalize |
-| **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric (EXOS safe union) |
+| **Case** | Generator UPPERCASE; parser case-insensitive |
+| **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric |
 
-**Length (confirmed):**
+**Platform lengths:**
 
 | Field | Size |
 |---|---|
-| VOSS port `name` | 0–64 (`WORD<0-64>`, CLI) |
+| VOSS port `name` | 0–64 (`WORD<0-64>`) |
 | VOSS MLT `name` | 0–64 |
 | EXOS `display-string` | 20 |
 | EXOS `description-string` | 255 |
-| EXOS SNMP `ifAlias` | 64 default / 255 extended |
+| EXOS SNMP `ifAlias` | 64 default |
 
 **Parser** (after uppercase normalize):
 
 ```
-# Exclude — note is never a speed token
 ^X(-(?<xnote>STK|ISC|MLAG|SPN|OOB|OTH|[A-Z0-9]{1,12}))?$
 
-# Include
 ^(?<class>UC|UD|UA|UP|MON|W|TMON)(-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(-(?<id>[A-Z0-9-]+))?$
 ```
+
+`X` notes when generated: `STK` `ISC` `MLAG` `SPN` `OOB` `OTH`.
 
 ---
 
 ## 3. Classes
 
-| CLASS | Meaning | Default speed | Absolute expect | Phase 2 |
+| CLASS | Meaning | Default speed | Absolute expect | Alerts |
 |---|---|---|---|---|
 | `UC` | Toward core | 10G | Yes | link / flap / errors + speed |
 | `UD` | Toward dist | 10G | Yes | same |
 | `UA` | Toward access | 10G | Yes | same |
 | `UP` | Toward AP | 1G | Yes | same |
 | `MON` | Endpoint (server, ESX, storage, iDRAC, …) | 1G | Yes | same |
-| `W` | WAN / ISP | — | No (bandwidth later) | link / flap / errors |
-| `TMON` | Temp watch | — | No | items; optional link-down **INFO** only |
-| `X` / `X-<NOTE>` | Excluded | — | No | skip port alerts |
+| `W` | WAN / ISP | — | Later | link / flap / errors |
+| `TMON` | Temp watch | — | No | items; optional link-down INFO |
+| `X` / `X-<NOTE>` | Excluded | — | No | none |
 
-**`TMON`:** compliance lists all `TMON*`; review cadence in ops; why/until lives in NetBox description.
+**`TMON`:** compliance lists all `TMON*`; ops review cadence; reason in NetBox description.
 
 ---
 
@@ -93,7 +92,7 @@ CLASS-SPEED-ID
 | `100G` | 100000 |
 | `400G` | 400000 |
 
-Generator always emits SPEED from NetBox `interface.speed` (or class default if unset).
+Generator emits SPEED from NetBox `interface.speed`, else class default.
 
 ---
 
@@ -122,14 +121,14 @@ Generator always emits SPEED from NetBox `interface.speed` (or class default if 
 | **Subsidiary hybrid** | Same as fabric; labeling below |
 | **AP** | Device health — not switch-port LLD |
 
-**Hygiene:** unused ports → admin-down.
+Unused ports → admin-down.
 
-**Hybrid (no X-fill-all):**
+**Hybrid:**
 
 ```
 1) Spares / unused            → admin-down
 2) Admin-up but uninteresting → X / X-<NOTE>
-3) Monitor                    → MON-<ID> (never empty) / UP / W / …
+3) Monitor                    → MON-<ID> / UP / W / …
 ```
 
 ---
@@ -138,8 +137,8 @@ Generator always emits SPEED from NetBox `interface.speed` (or class default if 
 
 | Rule | Decision |
 |---|---|
-| Speed expect | **Members only** |
-| Aggregate ifIndex | Up/down / member-count — no absolute expect on sum |
+| Speed expect | Members only |
+| Aggregate ifIndex | Up/down / member-count |
 | Peer-link | `X-MLAG` / `X` |
 
 ---
@@ -155,15 +154,13 @@ NetBox → generator → Extreme field that drives ifAlias
 |---|---|
 | `display_protect` | Skip |
 | Hybrid spare | admin-down |
-| Hybrid up-but-uninteresting | `X` / `X-STK` / … |
+| Hybrid up-but-uninteresting | `X` / `X-<NOTE>` |
 | Hybrid/client monitor | `MON-<ID>` |
 | Cable + speed | `UD-10G-…` / `UA-1G-…` |
-| iDRAC / ESX / storage | `MON-…` |
+| Endpoint | `MON-…` |
 | WAN | `W-…` |
 
-VOSS: prefer `name port <portlist>` when applying one label to many ports.
-
-**Ingest:** do not let ifAlias collection write into generator-owned NetBox fields (loop hazard).
+VOSS: `name port <portlist>` when one label applies to many ports.
 
 ---
 
@@ -185,9 +182,9 @@ VOSS: prefer `name port <portlist>` when applying one label to many ports.
 
 ## TODO
 
-- [ ] **VOSS SNMP:** does `name` populate `ifAlias` (`1.3.6.1.2.1.31.1.1.1.18`)? If not, check `ifDescr` (`…2.2.1.2`) and use per-platform OID in Zabbix.
-- [ ] **EXOS SNMP:** set both `display-string` and `description-string`; record which wins for `ifAlias` and truncation at 64.
-- [ ] Confirm ingest does not clobber generator inputs.
-- [ ] Implement generator + `display_protect` + compliance diff.
-- [ ] Push labels → clean baseline → enable absolute-expect.
-- [ ] Port template: link/flap/errors, absolute expect, change vs stable-up, maintenance suppress.
+- [ ] VOSS: confirm `name` → `ifAlias` (`…31.1.1.1.18`); else `ifDescr` + per-platform OID
+- [ ] EXOS: which of `display-string` / `description-string` wins for `ifAlias` at 64
+- [ ] Confirm ifAlias ingest does not write into generator-owned NetBox fields
+- [ ] Generator + `display_protect` + compliance diff
+- [ ] Push → clean baseline → enable absolute-expect
+- [ ] Port template: link/flap/errors, absolute expect, change vs stable-up, maintenance suppress
