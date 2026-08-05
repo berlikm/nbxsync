@@ -26,8 +26,9 @@ This plan is **monitoring capability** (what we monitor, in what order).
 
 ```
 OPERATOR SOT = Extreme display string only (≤15)
-  Include: U:C: U:D: U:D1: U:A: U:A1: U:P: W: M: MON
+  Include: U:C: U:D: U:A: U:P: W: M: MON / MON:<id>
   Exclude: X:STK X:SPN X:OOB X:INT X
+  NO speed nibbles — description holds why/what
 
 CORE/DIST/MGMT = all admin-up minus X:… (unused admin-up → disable)
 ACCESS         = only include codes; APs hang off access → U:P: (1G)
@@ -124,7 +125,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 |---|---|
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
 | P0.2 | **Lock port SoT:** Extreme display string only (≤15). Reject NetBox monitor-tags for day-to-day ops |
-| P0.3 | **Code list approved:** includes (`U:…`, `W:…`, `M:…`, `MON`) + **exclusions** (`X:STK`, `X:SPN`, `X:OOB`, `X:INT`, `X`) |
+| P0.3 | **Code list approved:** `U:C/D/A/P`, `W:`, `M:`, `MON`/`MON:<id>`, exclusions `X:…` — **no speed nibbles** |
 | P0.4 | Role matrix: core/dist/mgmt = admin-up − `X:…`; access = include codes only |
 | P0.5 | Pilot lists: 1–2 EXOS, 1 VOSS, sample APs |
 | P0.6 | Site class field optional (`production`/`sales`/`normal`) — same metrics for now (alert routing later = Track B) |
@@ -436,7 +437,7 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 
 | Phase | What we scope | Display codes |
 |---|---|---|
-| 2 | Fabric / AP uplinks | `U:C:`, `U:D:`, `U:D1:`, `U:A:`, `U:A1:`, `U:P:` (+ `M:`/`MON` opt-in); fabric excludes `X:…` |
+| 2 | Fabric / AP / MON endpoints | `U:C:`, `U:D:`, `U:A:`, `U:P:`, `MON`/`MON:<id>` (+ `M:`); fabric excludes `X:…` |
 | 5 | Internet circuits | `W:…` (+ Circuit object in NetBox) |
 
 **Design (Track A):** display-string codes + which template / LLD mode watches them.  
