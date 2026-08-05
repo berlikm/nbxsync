@@ -129,12 +129,13 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | ID | Deliverable |
 |---|---|
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
-| P0.2 | **Canary:** description-string vs display-string → ifAlias on EXOS + VOSS; choose extended vs short profile |
-| P0.3 | **Grammar locked:** uppercase; no colon; split X regex; UNPARSEABLE state; always-emit token if extended |
-| P0.4 | Role matrix: fabric / access / hybrid (admin-down spares); access safety-net limit documented |
-| P0.5 | Pilot lists + legacy ifAlias **UNPARSEABLE inventory** |
-| P0.6 | Confirm no ifAlias ingest loop into generator inputs |
-| P0.7 | Site class field optional (`production`/`sales`/`normal`) |
+| P0.2 | **EXOS canary:** set display-string + description-string → SNMP ifAlias winner/truncation at 64 |
+| P0.3 | **VOSS canary** (or ingest Fabric Engine CLI Commands Reference): port name → ifAlias length |
+| P0.4 | Lock **extended (64)** as EXOS primary; short = fallback; reject fictional ≤15 |
+| P0.5 | Grammar: uppercase; no colon; split X regex; UNPARSEABLE; always-emit token on extended |
+| P0.6 | Role matrix + hybrid admin-down spares; access safety-net limit stated |
+| P0.7 | Legacy ifAlias UNPARSEABLE inventory + ingest-loop check |
+| P0.8 | Pilot lists; site class optional |
 
 **Verify exit**
 
