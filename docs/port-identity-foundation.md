@@ -135,12 +135,14 @@ Unused ports → admin-down.
 
 ## 7. LAG / MLAG / MLT
 
-| Rule | Decision |
+Deferred — focus is **physical ports** first. Revisit later (see TODO).
+
+| Rule (when revisited) | Decision so far |
 |---|---|
-| LAG/LACP members | Speed expect on **members** only |
-| Aggregate ifIndex | Up/down / member-count OK; no absolute expect on sum |
+| LAG/LACP members | Speed expect on members only |
+| Aggregate ifIndex | Up/down / member-count; no absolute expect on sum |
 | Peer-link | `X-MLAG` / `X` |
-| **VOSS MLT** | **Not monitored** for now |
+| VOSS MLT | Not monitored yet |
 
 ---
 
