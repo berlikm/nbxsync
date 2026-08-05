@@ -46,7 +46,7 @@ CLASS-SPEED-ID
 
 ## 2. Classes
 
-### 3.1 Include / monitor
+### 2.1 Include / monitor
 
 | CLASS | Meaning | Default speed | Absolute expect | Alerts |
 |---|---|---|---|---|
@@ -59,7 +59,7 @@ CLASS-SPEED-ID
 
 **`TMON`:** keep a list of `TMON*` for ops review; reason in NetBox description.
 
-### 3.2 Exclude — class `X`
+### 2.2 Exclude — class `X`
 
 | Display | Meaning |
 |---|---|
@@ -73,7 +73,7 @@ CLASS-SPEED-ID
 
 These are **notes on class `X`**, not separate classes. Reason may also live in NetBox description. Zabbix takes **no port alerts** on `X*`.
 
-### 3.3 Note only — class `N`
+### 2.3 Note only — class `N`
 
 | Display | Meaning |
 |---|---|
