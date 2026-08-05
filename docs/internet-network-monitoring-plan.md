@@ -33,7 +33,8 @@ OPEN CANARIES:
   2) EXOS display-string vs description-string → ifAlias precedence
 
 GRAMMAR: CLASS[-SPEED]-ID UPPERCASE | UC UD UA UP MON W TMON | X
-PARSE: EMPTY | PARSED | UNPARSEABLE
+PARSE: EMPTY | PARSED
+MIGRATION: generator overwrite → clean baseline
 ACCESS: no safety net without label
 HYBRID: admin-down spares; X only if up-but-uninteresting; MON-ID not empty
 W: link/flap/errors now | TMON: INFO + audit cadence
@@ -129,16 +130,16 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | P0.2 | **VOSS canary:** `name` → SNMP ifAlias (`…1.1.1.18`) or ifDescr; note per-platform OID if needed |
 | P0.3 | **EXOS canary:** display-string + description-string → ifAlias winner / truncate at 64 |
 | P0.4 | Lock grammar budget **64**; always-emit SPEED; controlled `X-STK`/…; reject ≤15 |
-| P0.5 | Grammar: uppercase; no colon; split X regex; UNPARSEABLE |
+| P0.5 | Grammar: uppercase; no colon; split X regex |
 | P0.6 | Role matrix + hybrid admin-down spares; access safety-net limit stated |
-| P0.7 | Legacy ifAlias UNPARSEABLE inventory + ingest-loop check |
+| P0.7 | Ingest-loop check (ifAlias ↛ generator inputs) |
 | P0.8 | Pilot lists; site class optional |
 
 **Verify exit**
 
 - [ ] ifAlias length canary done (EXOS + VOSS)  
 - [ ] Extended vs short profile chosen  
-- [ ] Include + `X` grammar; UNPARSEABLE inventory started  
+- [ ] Include + `X` grammar locked  
 - [ ] Access: safety net does **not** cover missing labels (stated)  
 - [ ] Hybrid: admin-down spares; generator + `display_protect`  
 - [ ] Ingest loop check  
@@ -206,7 +207,7 @@ X notes (generated): X-STK|X-ISC|X-MLAG|X-SPN|X-OOB|X-OTH
 ```
 
 Extended profile (**64 common**): **always** emit SPEED.  
-Parse states: `EMPTY` | `PARSED` | `UNPARSEABLE` (legacy junk ≠ empty — compliance only; do not invent class).
+Parse states: `EMPTY` | `PARSED`. Legacy labels overwritten by generator — baseline = clean diff, then absolute-expect.
 
 ### Class defaults → Zabbix expected (if token omitted)
 
@@ -245,15 +246,15 @@ Same LLD as fabric (`admin-up AND NOT X`). **Do not X-fill every port.**
 - Overwrites on-box label on **managed** ports.  
 - **`display_protect`** → skip.  
 - Confirm **no ifAlias ingest loop** into generator-owned NetBox fields.  
-- Compliance: diff + `TMON*` list + protect list + **UNPARSEABLE** inventory.
+- Compliance: diff + `TMON*` list + protect list.
 
 ### Work packages
 
 | ID | Work | Detail |
 |---|---|---|
 | P2.0 | SNMP canaries | VOSS name→OID; EXOS field→ifAlias precedence |
-| P2.1 | Shared parser | UPPERCASE; split X; UNPARSEABLE; 64-char validate |
-| P2.2 | Generator + protect | Authoritative push; `display_protect` |
+| P2.1 | Shared parser | UPPERCASE; split X; 64-char validate |
+| P2.2 | Generator + protect | Authoritative overwrite; `display_protect` |
 | P2.3 | Ingest loop check | ifAlias must not clobber generator inputs |
 | P2.4 | Port template | link/flap/errors; speed; change vs stable-up; maint suppress |
 | P2.5 | Access compliance | Explicit: no safety net without label |
@@ -261,9 +262,8 @@ Same LLD as fabric (`admin-up AND NOT X`). **Do not X-fill every port.**
 | P2.7 | `W` Phase 2 | link/flap/errors now |
 | P2.8 | `TMON` | INFO link-down + review cadence |
 | P2.9 | LAG members-only | no aggregate speed expect |
-| P2.10 | Rollout gate | absolute-expect only after clean diff |
-| P2.11 | Migration inventory | legacy ifAlias → UNPARSEABLE/PARSED/EMPTY |
-| P2.12 | Canaries | extended labels, hybrid, access typo detection via compliance |
+| P2.10 | Rollout gate | push → clean baseline diff → then absolute-expect |
+| P2.11 | Canaries | extended labels, hybrid, access typo detection via compliance |
 
 ### Scoping options (locked)
 

@@ -62,12 +62,13 @@ Until (1) is green, do not assume VOSS LLD can read the same OID as EXOS — onl
 5. **Class speed defaults (when token absent — legacy/hand only):** `UC`/`UD`/`UA` → **10G**; `UP`/`MON` → **1G**. Generated labels **always** include SPEED.  
 6. **Push targets:** EXOS → field that canary shows drives ifAlias (expect `description-string`); VOSS → `name` / `name port <list>` (SNMP OID canary open).  
 7. **Generator authoritative** on managed ports. NetBox **`display_protect`** skips hand-sets (§8).  
-8. **Parse states:** `PARSED` | `EMPTY` | **`UNPARSEABLE`**.  
-9. **Access LLD is opt-in** — change-detect does **not** cover unlabeled/typo’d access ports.  
-10. **Hybrid subsidiary:** admin-down spares; `X` only on up-but-uninteresting.  
-11. **LAGs:** speed expect on **members** only.  
-12. **No NetBox tags** for monitor/speed intent.  
-13. Track B: generate/push, compliance, parser, ingest-loop check, **remaining SNMP canaries** (VOSS name→OID, EXOS field precedence).
+8. **Parse states:** `PARSED` | `EMPTY`. Legacy plant labels are **overwritten** by the generator — no quarantine state.  
+9. **Baseline first:** push grammar → clean generated-vs-live diff → then enable absolute-expect.  
+10. **Access LLD is opt-in** — change-detect does **not** cover unlabeled/typo’d access ports.  
+11. **Hybrid subsidiary:** admin-down spares; `X` only on up-but-uninteresting.  
+12. **LAGs:** speed expect on **members** only.  
+13. **No NetBox tags** for monitor/speed intent.  
+14. Track B: generate/push, compliance, parser, ingest-loop check, **remaining SNMP canaries** (VOSS name→OID, EXOS field precedence).
 
 ---
 
@@ -178,27 +179,25 @@ Token omission is hand/legacy only — generator always emits SPEED from NetBox 
 ## 5. Zabbix resolution
 
 ```
-1) Classify label: EMPTY | PARSED | UNPARSEABLE
-2) UNPARSEABLE ≠ EMPTY — exclude from fabric “unlabeled uplink” path;
-                 list in compliance until migrated (do not invent class from junk)
-3) PARSED class X → skip port alerts
-4) Else include per role LLD rules (§6)
-5) If discovered AND class in {UC,UD,UA,UP,MON,W}:
+1) Classify label: EMPTY | PARSED (class + optional SPEED + ID)
+2) PARSED class X → skip port alerts
+3) Else include per role LLD rules (§6)
+4) If discovered AND class in {UC,UD,UA,UP,MON,W}:
       link-down / flap / errors (W included)
-6) If discovered AND class in {UC,UD,UA,UP,MON}:
+5) If discovered AND class in {UC,UD,UA,UP,MON}:
       absolute expect = SPEED token OR class default
       ifHighSpeed ≠ expected for ≥5m while oper-up → WARNING
-7) If discovered AND not TMON:
+6) If discovered AND not TMON:
       change(ifHighSpeed) vs last *stable up* value for ≥5m → WARNING
       suppress in maintenance windows
-8) TMON: items + optional link-down INFO only
+7) TMON: items + optional link-down INFO only
 ```
 
-**Why `UNPARSEABLE` exists (one rule):** live plant labels (`ISC`, `ALTERNATIVE_ISC`, `ESX40_CT1_ETH0`, …) are non-empty but not our grammar. Treating them as `EMPTY` would auto-monitor them as fabric uplinks. Parser reports three buckets for migration inventory; LLD does not invent include/exclude from junk.
+**Migration = overwrite:** generator replaces live plant labels (`ISC`, `ALTERNATIVE_ISC`, …) with grammar. No third parse state — establish a **clean baseline** (generated = live), then turn on absolute-expect.
 
 **Access safety net limit:** change-detect and absolute-expect only run on **discovered** items. Access LLD is opt-in regex — **typo / missing label ⇒ no items ⇒ no safety net**. Mitigation = NetBox compliance diff (+ generator).
 
-**Settle / maintenance:** compare speed change against last **stable oper-up** sample (not a mid-negotiation poll). Maintenance windows suppress change-detect and absolute-expect WARNs. Gate absolute-expect per site until generated-vs-live diff is clean.
+**Settle / maintenance:** compare speed change against last **stable oper-up** sample (not a mid-negotiation poll). Maintenance windows suppress change-detect and absolute-expect WARNs.
 
 ---
 
@@ -206,7 +205,7 @@ Token omission is hand/legacy only — generator always emits SPEED from NetBox 
 
 | Device role | LLD |
 |---|---|
-| **Core / Dist / Mgmt** | Admin-up AND NOT (class `X` OR UNPARSEABLE-as-exclude policy) |
+| **Core / Dist / Mgmt** | Admin-up AND NOT class `X` |
 | **Access** | Display matches include classes only |
 | **Subsidiary hybrid** | Same as fabric LLD; labeling per §6.1 |
 | **AP** | Device health — not switch-port fabric LLD |
@@ -281,9 +280,8 @@ If `nbx-ingestor` / XIQ-SE (or similar) writes **ifAlias → NetBox `interface.d
 | WAN | `W-SC1` | link/flap/errors only |
 | Temp | `TMON-GUEST` | items + INFO link-down |
 | Exclude stack | `X-STK` | excluded |
-| Legacy junk | `ALTERNATIVE_ISC` | **UNPARSEABLE** → migrate |
 
-Short-profile equivalents omit default tokens and shorten IDs (`UD-SWD14`, `X`, …).
+Short-profile equivalents omit default tokens and shorten IDs (`UD-SWD14`, `X`, …). Legacy plant strings are overwritten by the generator — not a steady-state case.
 
 ---
 
@@ -293,7 +291,6 @@ Short-profile equivalents omit default tokens and shorten IDs (`UD-SWD14`, `X`, 
 |---|---|
 | Designing for fake 15-char cap | Canary ifAlias length; extended profile |
 | Access typo = silent | Compliance diff; state safety net does **not** cover access opt-in |
-| Legacy label monitored as uplink | `UNPARSEABLE` ≠ empty |
 | Empty ambiguous by role | Hybrid: never empty for monitored — use `MON-<ID>` |
 | X-fill config bloat | admin-down spares |
 | Manual edit lost | Expected; `display_protect` |
@@ -319,7 +316,7 @@ Short-profile equivalents omit default tokens and shorten IDs (`UD-SWD14`, `X`, 
 - [ ] VOSS: `name` visible in **ifAlias** (or document ifDescr fallback OID)
 
 **Track B / ops:**
-- [ ] `UNPARSEABLE` inventory + migration plan
+- [ ] Generator overwrite → clean baseline diff before absolute-expect
 - [ ] Access: safety net does **not** cover missing labels
 - [ ] Hybrid: admin-down spares; `MON-<ID>` not empty; no X-fill-all
 - [ ] Generator authoritative + `display_protect`
@@ -345,7 +342,8 @@ GRAMMAR: CLASS[-SPEED]-ID  UPPERCASE  no colon
 CLASSES: UC UD UA UP MON W TMON | X (+ controlled X-NOTE)
 NO IDR — use MON
 
-PARSE: EMPTY | PARSED | UNPARSEABLE
+PARSE: EMPTY | PARSED
+MIGRATION: generator overwrite → clean baseline → then absolute-expect
 ACCESS: opt-in — change-detect does NOT cover missing labels
 HYBRID: admin-down spares; X only if up-but-uninteresting; MON-ID not empty
 W NOW: link/flap/errors | TMON: INFO link-down + audit cadence
