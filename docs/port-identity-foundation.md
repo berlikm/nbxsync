@@ -11,12 +11,12 @@
 1. **Grammar:** `CLASS[-SPEED]-ID`, hyphen separators, labels stored **UPPERCASE**.  
 2. **Budget:** 64 characters (VOSS port `name` + EXOS `ifAlias` default).  
 3. **Monitored labels include SPEED** where a default applies; ID is the real far-end name.  
-4. **Classes:** `USW` `US` `MON` `UW` `TMON` | `N` (note only).  
+4. **Classes:** `USW` `US` `MON` `UW` `TMON` | `X` (exclude) | `N` (note only).  
 5. **Defaults:** `USW`/`US` → 10G; `MON` → 1G.  
 6. **Set on box:** EXOS → field that drives `ifAlias`; VOSS → port `name` / `name port <list>`.  
 7. **Zabbix** reads empty vs parsed class. Turn on “speed must equal expected” only after labels are in place.  
 8. **Access LLD** matches include classes only; missing labels are fixed in inventory/ops, not by a Zabbix safety net.  
-9. **Hybrid:** admin-down spares; `N-…` on up-but-uninteresting; monitored clients get `US` / `MON` / ….  
+9. **Hybrid:** admin-down spares; `X` / `N` on up-but-uninteresting; monitored clients get `US` / `MON` / ….  
 10. **Port intent lives in the label** — not NetBox monitor tags.  
 11. **LAG / MLAG / MLT** — revisit later; focus is physical ports.
 
