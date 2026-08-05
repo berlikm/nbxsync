@@ -838,7 +838,12 @@ def step6_template_rules(server, country_slugs=None):
 
     # Dell iDRAC: Manufacturer ∧ Server role (no NetBox tag). Additive merge means
     # Manufacturer-wide assignment is too wide — keep OEM templates on Device type.
-    dell = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug='dell').first()
+    # Lab simulate uses PREFIX+slug (e.g. ztc-dell) so also accept slugify('dell').
+    dell = (
+        Manufacturer.objects.filter(name='Dell').first()
+        or Manufacturer.objects.filter(slug='dell').first()
+        or Manufacturer.objects.filter(slug=slugify('dell')).first()
+    )
     tpl_idrac = make_template(*TPL['dell_idrac_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     if dell is not None:
         defaults = {
@@ -1541,10 +1546,11 @@ def run_simulate() -> int:
             TPL['storage_generic_snmp'] = (int(ensure_t(f'{PREFIX}storage.snmp', f'{PREFIX}Storage Generic Device by SNMP')), f'{PREFIX}Storage Generic Device by SNMP')
             TPL['icmp_ping'] = (int(ensure_t(f'{PREFIX}icmp', f'{PREFIX}ICMP Ping')), f'{PREFIX}ICMP Ping')
 
-        step6_template_rules(server, country_slugs=country_slugs)
-        # Prefixed Dell — never create a second Manufacturer named 'Dell'
+        # Prefixed Dell before step6 so Dell∧Server iDRAC TemplateRule can bind.
+        # Never create a second Manufacturer literally named 'Dell' in the shared lab.
         dell, _ = Manufacturer.objects.get_or_create(slug=slugify('dell'), defaults={'name': f'{PREFIX}Dell'})
         dtype, _ = DeviceType.objects.get_or_create(slug=slugify('poweredge'), defaults={'manufacturer': dell, 'model': f'{PREFIX}PowerEdge'})
+        step6_template_rules(server, country_slugs=country_slugs)
         step7_template_assignments(server)
 
         # Prove ensure() refreshes interface_requirements on re-run (P0.3)
