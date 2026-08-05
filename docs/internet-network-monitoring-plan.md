@@ -23,9 +23,9 @@ This plan is **monitoring capability** (what we monitor, in what order).
 **Port identity (locked — Track A design):** see `docs/port-identity-foundation.md`.
 
 ```
-BUDGET = 64 | Always emit SPEED | CLASS[-SPEED]-ID | X notes
-ACCESS opt-in | HYBRID admin-down spares | LAG members only | MLT skip
-Label push tooling = separate
+BUDGET = 64 | Labels include SPEED | CLASS[-SPEED]-ID | X notes
+ACCESS opt-in | HYBRID admin-down spares
+LAG / MLAG / MLT = later | Label push tooling = separate
 ```
 
 Full detail + TODO: `docs/port-identity-foundation.md`.
@@ -117,16 +117,15 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | P0.3 | **EXOS canary:** display-string + description-string → ifAlias winner / truncate at 64 |
 | P0.4 | Lock grammar budget **64**; always-emit SPEED; `X` notes |
 | P0.5 | Grammar: uppercase; no colon; split X regex |
-| P0.6 | Role matrix + hybrid admin-down spares; access safety-net limit stated; MLT skip |
+| P0.6 | Role matrix + hybrid admin-down spares; access safety-net limit stated |
 | P0.7 | Pilot lists; site class optional |
 
 **Verify exit**
 
 - [ ] ifAlias length canary done (EXOS + VOSS)  
-- [ ] Extended vs short profile chosen  
 - [ ] Include + `X` grammar locked  
 - [ ] Access: safety net does **not** cover missing labels (stated)  
-- [ ] Hybrid: admin-down spares; MLT not monitored  
+- [ ] Hybrid: admin-down spares  
 - [ ] Pilots named; VOSS/HiveOS owners named  
 
 ---
@@ -177,7 +176,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 ## Phase 2 — Uplinks & structural ports
 
-**Objective:** Fabric / AP / endpoint ports monitored with universal `CLASS[-SPEED]-ID` grammar; exclude via `X`; LAG rules explicit.
+**Objective:** Fabric / AP / endpoint **ports** monitored with `CLASS[-SPEED]-ID`; exclude via `X`. LAG / MLAG / MLT later.
 
 **SoT on box:** Extreme label that Zabbix reads via SNMP (**64-char budget**). EXOS: prefer `description-string` after canary. VOSS: `name` / `name port <list>` — confirm OID. Generator always emits SPEED.
 
@@ -191,7 +190,7 @@ X notes: X-STK|X-ISC|X-MLAG|X-SPN|X-OOB|X-OTH
 ```
 
 Budget **64**. Labels include SPEED.  
-Apply labels on box → then enable absolute-expect. Label push tooling is **separate**. VOSS **MLT** not monitored yet.
+Apply labels on box → then enable absolute-expect. Label push tooling is **separate**. LAG / MLAG / MLT → later.
 
 ### Class defaults → Zabbix expected (if token omitted)
 
@@ -210,8 +209,7 @@ Apply labels on box → then enable absolute-expect. Label push tooling is **sep
 3. `change(ifHighSpeed)` vs last **stable up** (≥5m); **maintenance suppress** — only on **discovered** ports.  
 4. **Access:** safety net does **not** apply if label missing/typo (no LLD item) — compliance catches this.  
 5. `TMON`: optional INFO link-down only.  
-6. LAG: expect on **members** only; **MLT** skip.  
-7. **Gate:** enable absolute-expect per site after labels follow the grammar.
+6. **Gate:** enable absolute-expect per site after labels follow the grammar.
 
 ### Excludes
 
@@ -233,29 +231,27 @@ Same LLD as fabric (`admin-up AND NOT X`). Spares admin-down; `X` only when up b
 | P2.1 | Shared parser | UPPERCASE; split X; 64-char validate |
 | P2.2 | Port template | link/flap/errors; speed; change vs stable-up; maint suppress |
 | P2.3 | Access LLD | Include classes only; no safety net without label |
-| P2.4 | Hybrid profile | admin-down spares; MON-ID; MLT skip |
+| P2.4 | Hybrid profile | admin-down spares; MON-ID |
 | P2.5 | `W` Phase 2 | link/flap/errors now |
 | P2.6 | `TMON` | INFO link-down + review cadence |
-| P2.7 | LAG members-only | no aggregate speed expect |
-| P2.8 | Rollout gate | labels in place → then absolute-expect |
-| P2.9 | Pilot canaries | labels, hybrid, access typo via ops check |
+| P2.7 | Rollout gate | labels in place → then absolute-expect |
+| P2.8 | Pilot canaries | labels, hybrid, access typo via ops check |
 
 ### Scoping options (locked)
 
 | Option | Role |
 |---|---|
 | `CLASS[-SPEED]-ID` on ifAlias | What Zabbix reads |
-| Label push tooling | **Separate** (not this baseline) |
+| Label push tooling | Separate |
 | Monitor tags | Not used |
 | Change-detect on discovered ports | Yes |
-| VOSS MLT monitoring | Skip for now |
+| LAG / MLAG / MLT | Later |
 
 ### Exit criteria
 
-- [ ] Symmetric 10G `UD`/`UA` without tokens on both ends  
+- [ ] Symmetric 10G `UD`/`UA` labels both ends  
 - [ ] Symmetric 1G exception tokens both ends  
 - [ ] `MON-…` covers iDRAC  
-- [ ] LAG members clean; aggregate no false speed WARN; MLT not in scope  
 - [ ] `X` / `X-<note>` excludes work  
 - [ ] Hybrid: admin-down spares; `X` only if up-but-uninteresting  
 - [ ] `TMON` items + optional INFO link-down; list of `TMON*` reviewed  
@@ -468,13 +464,13 @@ B) SEPARATE TASK — NetBox integration (populate data, nbxsync,
    display→LLD, compliance, alerts/actions, triggers, zero-touch)
 
 PORT SOT (locked):
-  Budget 64; always-emit SPEED; CLASS[-SPEED]-ID UPPERCASE
-  Access opt-in; Hybrid admin-down spares; LAG members; MLT skip
+  Budget 64; labels include SPEED; CLASS[-SPEED]-ID UPPERCASE
+  Access opt-in; Hybrid admin-down spares
   W: link/flap/errors now; TMON: INFO + review
-  Label push tooling = separate
+  Label push tooling = separate; LAG/MLAG/MLT = later
 
 TRACK A ORDER:
-0 Foundations (grammar + defaults + LAG/MLT scope)
+0 Foundations (port grammar)
 1 Device health (EXOS + BUILD VOSS + BUILD HiveOS AP templates)
 2 Ports — admin-up−X; access includes; hybrid; MON incl iDRAC; TMON
 3 Cato + FortiGate
