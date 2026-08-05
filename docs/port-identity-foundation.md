@@ -179,8 +179,8 @@ Token omission is hand/legacy only — generator always emits SPEED from NetBox 
 
 ```
 1) Classify label: EMPTY | PARSED | UNPARSEABLE
-2) UNPARSEABLE → do not treat as EMPTY; exclude from “customer uplink” assumes;
-                 compliance inventory + migrate (§5.1)
+2) UNPARSEABLE ≠ EMPTY — exclude from fabric “unlabeled uplink” path;
+                 list in compliance until migrated (do not invent class from junk)
 3) PARSED class X → skip port alerts
 4) Else include per role LLD rules (§6)
 5) If discovered AND class in {UC,UD,UA,UP,MON,W}:
@@ -190,31 +190,15 @@ Token omission is hand/legacy only — generator always emits SPEED from NetBox 
       ifHighSpeed ≠ expected for ≥5m while oper-up → WARNING
 7) If discovered AND not TMON:
       change(ifHighSpeed) vs last *stable up* value for ≥5m → WARNING
-      suppress in maintenance windows (§5.2)
+      suppress in maintenance windows
 8) TMON: items + optional link-down INFO only
 ```
 
-**Access safety net limit:** change-detect and absolute-expect only run on **discovered** items. Access LLD is opt-in regex — **typo / missing label ⇒ no items ⇒ no safety net**. Mitigation = NetBox compliance diff (+ generator). Say this plainly: safety net covers **fabric + hybrid discovered ports**, not silent access opt-in failures.
+**Why `UNPARSEABLE` exists (one rule):** live plant labels (`ISC`, `ALTERNATIVE_ISC`, `ESX40_CT1_ETH0`, …) are non-empty but not our grammar. Treating them as `EMPTY` would auto-monitor them as fabric uplinks. Parser reports three buckets for migration inventory; LLD does not invent include/exclude from junk.
 
-### 5.1 `UNPARSEABLE` (legacy plant)
+**Access safety net limit:** change-detect and absolute-expect only run on **discovered** items. Access LLD is opt-in regex — **typo / missing label ⇒ no items ⇒ no safety net**. Mitigation = NetBox compliance diff (+ generator).
 
-Existing labels (`ISC`, `ALTERNATIVE_ISC`, `ESX40_CT1_ETH0`, `GFL-ACPO01`, `MLAG_MGMT01_P51`, …) often **do not parse**.
-
-| State | Fabric / hybrid meaning | Access meaning |
-|---|---|---|
-| `EMPTY` | Monitored (admin-up) | **Not** monitored |
-| `PARSED` include | Per class | Per class |
-| `PARSED` `X` | Excluded | Excluded |
-| **`UNPARSEABLE`** | **Not** “empty” — do **not** auto-monitor as normal uplink; quarantine via compliance until migrated | Same — not an include |
-
-Run a **migration inventory** of live ifAlias values → PARSED / EMPTY / UNPARSEABLE counts before enabling absolute-expect triggers.
-
-### 5.2 Maintenance / settle
-
-- Compare speed change against last **stable oper-up** sample, not a single previous poll during negotiation.  
-- **Maintenance windows** suppress change-detect and absolute-expect WARNs (SFP swap, reload, LAG member work).  
-- Rollout gate: do **not** enable absolute-expect for a site until generated-vs-live diff is clean (first push otherwise = WARN storm).
-
+**Settle / maintenance:** compare speed change against last **stable oper-up** sample (not a mid-negotiation poll). Maintenance windows suppress change-detect and absolute-expect WARNs. Gate absolute-expect per site until generated-vs-live diff is clean.
 ---
 
 ## 6. Role × LLD
@@ -322,17 +306,25 @@ Short-profile equivalents omit default tokens and shorten IDs (`UD-SWD14`, `X`, 
 
 ## 11. Verify checklist
 
-- [ ] EXOS canary: both fields set → ifAlias winner + truncate at 64  
-- [ ] VOSS canary: `name` visible in **ifAlias** (or document ifDescr fallback OID)  
-- [ ] Grammar budget **64** locked; always-emit SPEED; reject fictional ≤15  
-- [ ] Uppercase push; case-insensitive parse; split `X` regex  
-- [ ] `UNPARSEABLE` inventory + migration plan  
-- [ ] Access: safety net does **not** cover missing labels  
-- [ ] Hybrid: admin-down spares; `MON-<ID>` not empty; no X-fill-all  
-- [ ] Generator authoritative + `display_protect`  
-- [ ] Ingest loop check (ifAlias ↛ generator inputs)  
-- [ ] `W` = link/flap/errors; `TMON` review cadence + INFO link-down  
-- [ ] LAG members-only; maintenance suppress; rollout gate on clean diff  
+**Grammar (done):**
+- [x] Grammar budget **64** locked (VOSS CLI `WORD<0-64>` + EXOS ifAlias default)
+- [x] Always-emit SPEED; real far-end IDs; `X-STK`/`X-ISC`/`X-MLAG` restored
+- [x] Reject fictional ≤15; no EXOS `ifalias size extended` required
+- [x] Uppercase push; case-insensitive parse; split `X` regex
+- [x] Hyphen only (colon forbidden)
+
+**SNMP canaries (open — paste results):**
+- [ ] EXOS: both fields set → ifAlias winner + truncate at 64
+- [ ] VOSS: `name` visible in **ifAlias** (or document ifDescr fallback OID)
+
+**Track B / ops:**
+- [ ] `UNPARSEABLE` inventory + migration plan
+- [ ] Access: safety net does **not** cover missing labels
+- [ ] Hybrid: admin-down spares; `MON-<ID>` not empty; no X-fill-all
+- [ ] Generator authoritative + `display_protect`
+- [ ] Ingest loop check (ifAlias ↛ generator inputs)
+- [ ] `W` = link/flap/errors; `TMON` review cadence + INFO link-down
+- [ ] LAG members-only; maintenance suppress; rollout gate on clean diff
 
 ---
 
