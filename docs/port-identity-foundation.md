@@ -1,7 +1,7 @@
 # Port identity — baseline
 
 Shared on-box label grammar for Extreme switch ports (prefer SNMP `ifAlias`): class, optional speed, far-end ID.  
-Zabbix LLD and trigger behavior: `docs/port-identity-zabbix.md`. Label push tooling and LAG/MLAG/MLT are out of scope here.
+Zabbix LLD and trigger behavior: `docs/port-identity-zabbix.md`.
 
 ---
 
@@ -75,18 +75,7 @@ Expected speed = SPEED token if present, else class default (`USW`/`US` → 10G,
 
 ---
 
-## 4. On-box fields
-
-| Platform | Write label to |
-|---|---|
-| EXOS | Field that drives `ifAlias` (see TODO) |
-| VOSS | Port `name` (or `name port <list>` for several ports) |
-
-Zabbix polls SNMP (`ifAlias` preferred).
-
----
-
-## 5. Examples
+## 4. Examples
 
 | Scenario | Display | Expect |
 |---|---|---|
@@ -101,14 +90,3 @@ Zabbix polls SNMP (`ifAlias` preferred).
 | Temp watch | `TMON-GUEST` | items + INFO link-down |
 | Exclude | `X` / `X-STACK` | none |
 | Note only | `N-SPARE` | no action |
-
----
-
-## TODO
-
-- [ ] VOSS: confirm port `name` → `ifAlias` (`…31.1.1.1.18`); else `ifDescr` + per-platform OID
-- [ ] EXOS: which of `display-string` / `description-string` wins for `ifAlias` at 64
-- [ ] Apply labels on pilots → enable absolute-expect
-- [ ] Port template: link/flap/errors, absolute expect, change vs stable-up, maintenance suppress
-- [ ] Later: revisit **LAG / MLAG / MLT** monitoring (focus is physical ports for now)
-- [ ] Hybrid LLD / labeling — TBD (`docs/port-identity-zabbix.md`)
