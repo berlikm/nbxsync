@@ -44,9 +44,10 @@ EXAMPLES
 ZABBIX: change(ifHighSpeed) safety net + absolute expect when labeled
   TMON = discover/collect only (no triggers)
 LAG: speed expect on members only — not aggregate sum
-HYBRID SUBSIDIARY (core∩access): default X all ports;
-  EXCEPT do not X client access (care) / UP / UC|UD|UA / W / MON / TMON
-NETBOX: generate/push label (preferred); description = prose; no tags
+HYBRID SUBSIDIARY (core∩access): admin-down spares; X only if up-but-uninteresting
+GENERATOR: authoritative overwrite on managed ports
+PROTECT: NetBox display_protect → skip hand-set ports
+NETBOX: generate/push; description = prose; no tags
 ```
 
 Full detail: `docs/port-identity-foundation.md`.
@@ -136,7 +137,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
 | P0.2 | **Lock port SoT:** Extreme display string only (≤15). Reject NetBox monitor-tags for day-to-day ops |
 | P0.3 | **Grammar + defaults locked:** `UC/UD/UA=10G`, `UP/MON=1G`; hyphen grammar; no `IDR`; LAG + change-detect rules |
-| P0.4 | Role matrix: fabric admin-up−`X`; access include-only; **hybrid subsidiary = `X`-default** (§6.1 foundation) |
+| P0.4 | Role matrix: fabric admin-up−`X`; access include-only; **hybrid = admin-down spares + X only if up-but-uninteresting** |
 | P0.5 | Pilot lists: 1–2 EXOS, 1 VOSS, sample APs |
 | P0.6 | Site class field optional (`production`/`sales`/`normal`) — same metrics for now (alert routing later = Track B) |
 
@@ -145,7 +146,8 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 - [ ] Platform counts known  
 - [ ] Include + exclusion grammar agreed (`UC/UD/UA/UP/MON/TMON` vs `X`; WAN = `W`)  
 - [ ] Defaults: UC=UD=UA=10G (symmetric); UP=MON=1G  
-- [ ] Role matrix: fabric / access / **hybrid subsidiary (`X`-default)**  
+- [ ] Role matrix: fabric / access / **hybrid (admin-down spares, not X-fill-all)**  
+- [ ] Generator authoritative + **`display_protect`** agreed  
 - [ ] Pilots named  
 - [ ] Owners for VOSS + HiveOS template builds named  
 
@@ -250,30 +252,34 @@ Label **`X` / `X-<note>`**; reason in NetBox **description**.
 
 ### Subsidiary hybrid (core∩access)
 
-Same LLD as fabric (`admin-up AND NOT X`), **labeling inverted**:
+Same LLD as fabric (`admin-up AND NOT X`). **Do not X-fill every port** (config bloat / cfgit churn).
 
-- **Default:** push **`X`** on all ports.  
-- **Do not X:** client access ports you care about (leave empty or `MON-…`), plus normal `UP` / `UC|UD|UA` / `W` / `MON`.  
-- Spare client ports stay `X` (or admin-down).
+- **Spares / unused** → **admin-down** (preferred).  
+- **Admin-up but must not alert** → `X` / `X-<note>` + description.  
+- **Monitor** → non-X (`empty` / `MON` / `TMON` / `UP` / `UC|UD|UA` / `W`).
 
-NetBox role e.g. `Core-Access` selects the `X`-fill generator profile.
+### Generator authority
+
+- Generator **overwrites** on-box display on **managed** interfaces.  
+- NetBox **`display_protect`** → skip that interface (deliberate hand-set).  
+- Compliance diffs managed ports; lists protect-set separately.
 
 ### Work packages
 
 | ID | Work | Detail |
 |---|---|---|
 | P2.1 | Lock grammar + defaults + LAG rule | As above |
-| P2.2 | Generator design (Track B handoff) | NetBox role/cable/speed → display push |
+| P2.2 | Generator design (Track B handoff) | Authoritative push; **`display_protect`** skip; dry-run/apply |
 | P2.3 | LLD contract | One shared parser; ifAlias; macros |
 | P2.4 | Port template | Down/flap/errors + change + absolute expect (settled) |
-| P2.5 | Exclude via `X` | Push/label `X` / `X-<note>` + description |
-| P2.6 | Access include / fabric admin-up | Unused → disable hygiene |
+| P2.5 | Exclude via `X` | Only admin-up uninteresting ports — not every spare |
+| P2.6 | Access include / fabric admin-up | Unused → **admin-down** hygiene |
 | P2.7 | `MON` endpoints incl. iDRAC | No IDR class |
-| P2.8 | Compliance = **diff** + **`TMON*` inventory** | Generated vs live ifAlias; audit list of all temp monitors |
+| P2.8 | Compliance = **diff** + **`TMON*` inventory** + protect list | Managed vs live; list `display_protect` |
 | P2.9 | AP dual view | `UP-…` + HiveOS |
 | P2.10 | Canaries | 10G symmetric, 1G symmetric, MON/iDRAC, LAG members, `X` |
-| P2.11 | Hybrid subsidiary profile | `X`-default; exceptions for client/UP/uplink/WAN/MON/TMON |
-| P2.12 | Canary hybrid switch | Client ports alert; spares quiet; uplink/WAN/AP OK |
+| P2.11 | Hybrid subsidiary profile | admin-down spares; `X` only if up-but-uninteresting |
+| P2.12 | Canary hybrid switch | Client ports alert; spares admin-down; uplink/WAN/AP OK |
 
 ### Scoping options (locked)
 
@@ -296,7 +302,8 @@ NetBox role e.g. `Core-Access` selects the `X`-fill generator profile.
 - [ ] `X` / `X-<note>` excludes work; description holds reason  
 - [ ] Change-detect catches unlabeled degrade  
 - [ ] Generator dry-run + compliance diff on canary  
-- [ ] Hybrid subsidiary: `X`-default; client/uplink/AP/WAN monitored  
+- [ ] Hybrid subsidiary: admin-down spares; `X` only if up-but-uninteresting  
+- [ ] Generator overwrite + `display_protect` skip verified  
 - [ ] `TMON` collects metrics with **zero** triggers; compliance lists all `TMON*`  
 
 ---
@@ -517,8 +524,8 @@ PORT SOT (locked):
 TRACK A ORDER:
 0 Foundations (grammar + defaults + LAG + generate path)
 1 Device health (EXOS + BUILD VOSS + BUILD HiveOS AP templates)
-2 Ports — admin-up−X; access includes; hybrid=X-default;
-   speed+errors; MON incl iDRAC; client ports excepted from X
+2 Ports — admin-up−X; access includes; hybrid=admin-down spares;
+   generator authoritative + display_protect; MON incl iDRAC; TMON no alerts
 3 Cato + FortiGate
 4 Services & SLA
 5 ISP circuit monitoring (W:… + Circuits)
