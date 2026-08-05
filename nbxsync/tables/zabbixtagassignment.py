@@ -1,7 +1,7 @@
-import django_tables2 as tables
 from django.utils.translation import gettext_lazy as _
-from django_tables2.utils import A
 
+import django_tables2 as tables
+from django_tables2.utils import A
 from netbox.tables import NetBoxTable
 
 from nbxsync.models import ZabbixTagAssignment
@@ -20,9 +20,10 @@ class ZabbixTagAssignmentTable(ZabbixInheritedAssignmentTable, NetBoxTable):
 
     rendered_output = tables.TemplateColumn(
         template_code="""
-        {% load zabbix_tags %}
+        {% load zabbix_tags zabbix_preview %}
         {% render_zabbix_tag_assignment record as rendered_output %}
-        {{ rendered_output|escape }}
+        {% zabbix_preview_representative record as preview_source %}
+        {% if preview_source %}<span title="Preview rendered with {{ preview_source|escape }}">{{ rendered_output|escape }}</span>{% else %}{{ rendered_output|escape }}{% endif %}
         """,
         verbose_name='Value',
     )
@@ -50,11 +51,14 @@ class ZabbixTagAssignmentObjectViewTable(ZabbixInheritedAssignmentTable, NetBoxT
     zabbixtag = tables.Column(accessor='zabbixtag.name', verbose_name=_('Zabbix Tag'), linkify={'viewname': 'plugins:nbxsync:zabbixtag', 'args': [A('zabbixtag.pk')]})
     actions = InheritanceAwareActionsColumn()
 
+    # Same representative-device path as hostgroup ObjectViewTable: hierarchy pages
+    # (Site/Role/…) must not render Jinja against the assignment target itself.
     rendered_output = tables.TemplateColumn(
         template_code="""
-        {% load zabbix_tags %}
+        {% load zabbix_tags zabbix_preview %}
         {% render_zabbix_tag_assignment record as rendered_output %}
-        {{ rendered_output|escape }}
+        {% zabbix_preview_representative record as preview_source %}
+        {% if preview_source %}<span title="Preview rendered with {{ preview_source|escape }}">{{ rendered_output|escape }}</span>{% else %}{{ rendered_output|escape }}{% endif %}
         """,
         verbose_name='Value',
     )

@@ -11,7 +11,12 @@ class PluginSettingsModelTestCase(TestCase):
     def test_default_settings_model(self):
         settings = PluginSettingsModel()
         self.assertEqual(settings.sot.proxygroup, SyncSOT.NETBOX)
+        self.assertEqual(settings.sot.proxy, SyncSOT.NETBOX)
         self.assertEqual(settings.sot.hosttemplate, SyncSOT.NETBOX)
+        self.assertTrue(settings.attach_objtag)
+        self.assertFalse(settings.allow_inherited_deletion)
+        self.assertFalse(settings.adopt_existing_hosts)
+        self.assertEqual(settings.exclude_tag, '')
         self.assertIsInstance(settings.statusmapping.device, dict)
         self.assertIsInstance(settings.statusmapping.virtualmachine, dict)
         self.assertIsInstance(settings.snmpconfig, SNMPConfig)
@@ -33,6 +38,10 @@ class PluginSettingsModelTestCase(TestCase):
         settings = PluginSettingsModel()
         self.assertIn(('role',), settings.inheritance_chain)
         self.assertIn(('device_type', 'manufacturer'), settings.inheritance_chain)
+        self.assertIn(('cluster', '_site'), settings.inheritance_chain)
+        self.assertNotIn(('cluster', 'site'), settings.inheritance_chain)
+        # Hierarchy must not precede role/platform (upgrade-safe precedence)
+        self.assertLess(settings.inheritance_chain.index(('role',)), settings.inheritance_chain.index(('site',)))
 
     @patch('nbxsync.settings.apps')
     def test_get_plugin_settings(self, mock_apps):

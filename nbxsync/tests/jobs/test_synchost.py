@@ -4,14 +4,14 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from ipam.models import IPAddress
 
-from dcim.models import Device
+from dcim.models import Device, Site
 from utilities.testing import create_test_device
 
 from nbxsync.choices import ZabbixProxyTypeChoices, ZabbixTLSChoices
 from nbxsync.choices.zabbixstatus import ZabbixHostStatus
 from nbxsync.jobs.synchost import SyncHostJob
 from nbxsync.models import ZabbixHostgroup, ZabbixHostgroupAssignment, ZabbixHostInterface, ZabbixProxy, ZabbixProxyGroup, ZabbixServer, ZabbixServerAssignment
-from nbxsync.utils.sync import HostSync, ProxyGroupSync, HostInterfaceSync
+from nbxsync.utils.sync import ProxyGroupSync
 
 
 class SyncHostJobTestCase(TestCase):
@@ -21,7 +21,12 @@ class SyncHostJobTestCase(TestCase):
 
         self.zabbixserver = ZabbixServer.objects.create(name='Zabbix1', url='http://zabbix.local', token='abc123')
 
-        self.proxygroup = ZabbixProxyGroup.objects.create(name='Test Proxy Group', zabbixserver=self.zabbixserver, proxy_groupid=99)
+        self.proxygroup = ZabbixProxyGroup.objects.create(
+            failover_delay='1m',
+            name='Test Proxy Group123',
+            zabbixserver=self.zabbixserver,
+            proxy_groupid=99,
+        )
         self.proxy = ZabbixProxy.objects.create(
             name='Active Proxy #1',
             zabbixserver=self.zabbixserver,
@@ -90,7 +95,7 @@ class SyncHostJobTestCase(TestCase):
             }
         ]
         mock_api.hostgroup.get.return_value = [{'groupid': '1'}]
-        mock_api.proxygroup.get.return_value = [{'proxy_groupid': 99}]
+        mock_api.proxygroup.get.return_value = [{'proxy_groupid': 99, 'failover_delay': '1m', 'min_online': 1}]
         mock_api.proxygroup.create.return_value = {'proxy_groupids': [99]}
 
         # Assign API to context manager return
@@ -168,6 +173,12 @@ class SyncHostJobTestCase(TestCase):
             mock_gao.return_value = {
                 'hostgroups': [],
                 'hostinterfaces': [self.hostinterface],
+                'server_assignments': [self.zabbixserverassignment],
+                'templates': [],
+                'macros': [],
+                'tags': [],
+                'hostinventory': None,
+                'configurationgroup': None,
             }
 
             job.run()
@@ -208,3 +219,154 @@ class SyncHostJobTestCase(TestCase):
         job.run()
 
         mock_safe_sync.assert_not_called()
+
+    def test_prepare_assignment_returns_original_for_direct(self):
+        job = SyncHostJob(instance=self.device)
+
+        prepared = job._prepare_assignment(self.zabbixserverassignment)
+
+        self.assertEqual(prepared.pk, self.zabbixserverassignment.pk)
+        self.assertFalse(getattr(prepared, '_is_inherited_copy', False))
+
+    def test_prepare_assignment_copies_inherited(self):
+        site = self.device.site
+        site_ct = ContentType.objects.get_for_model(Site)
+
+        site_assignment = ZabbixServerAssignment.objects.create(
+            zabbixserver=self.zabbixserver,
+            assigned_object_type=site_ct,
+            assigned_object_id=site.pk,
+            zabbixproxy=self.proxy,
+        )
+
+        job = SyncHostJob(instance=self.device)
+        prepared = job._prepare_assignment(site_assignment)
+
+        self.assertIsNone(prepared.pk)
+        self.assertTrue(getattr(prepared, '_is_inherited_copy', False))
+        # Original assignment is untouched
+        self.assertIsNotNone(site_assignment.pk)
+
+    @patch('nbxsync.jobs.synchost.safe_sync')
+    @patch.object(SyncHostJob, 'verify_hostinterfaces')
+    @patch.object(SyncHostJob, 'check_default_hostinterface')
+    def test_run_syncs_inherited_assignment_from_site(self, mock_check, mock_verify, mock_safe_sync):
+        site = self.device.site
+        site_ct = ContentType.objects.get_for_model(Site)
+
+        # Remove the direct assignment so only inherited remains
+        self.zabbixserverassignment.delete()
+
+        ZabbixServerAssignment.objects.create(
+            zabbixserver=self.zabbixserver,
+            assigned_object_type=site_ct,
+            assigned_object_id=site.pk,
+            zabbixproxy=self.proxy,
+        )
+
+        job = SyncHostJob(instance=self.device)
+        job.run()
+
+        # safe_sync should have been called (host groups, proxy, host, interfaces)
+        self.assertTrue(mock_safe_sync.called)
+
+    @patch('nbxsync.jobs.synchost.safe_sync')
+    def test_run_continues_when_assignment_sync_disabled(self, mock_safe_sync):
+        # Create two assignments: one disabled (site-level), one enabled (direct)
+        site = self.device.site
+        site_ct = ContentType.objects.get_for_model(Site)
+
+        ZabbixServerAssignment.objects.create(
+            zabbixserver=self.zabbixserver,
+            assigned_object_type=site_ct,
+            assigned_object_id=site.pk,
+            zabbixproxy=self.proxy,
+            sync_enabled=False,
+        )
+
+        job = SyncHostJob(instance=self.device)
+        job.run()
+
+        # Direct assignment is enabled, so safe_sync should still be called
+        self.assertTrue(mock_safe_sync.called)
+
+    @patch('nbxsync.jobs.synchost.safe_sync')
+    @patch.object(SyncHostJob, 'verify_hostinterfaces')
+    def test_interface_sync_typeerror_propagates(self, mock_verify_interfaces, mock_safe_sync):
+        """A TypeError from HostInterfaceSync propagates (programming errors are not swallowed)."""
+        call_log = {'hostiface_calls': 0}
+
+        def side_effect(sync_class, *args, **kwargs):
+            name = getattr(sync_class, '__name__', None)
+            if name == 'HostInterfaceSync':
+                call_log['hostiface_calls'] += 1
+                raise TypeError('bad argument')
+            return None
+
+        mock_safe_sync.side_effect = side_effect
+
+        job = SyncHostJob(instance=self.device)
+
+        with patch('nbxsync.jobs.synchost.get_assigned_zabbixobjects') as mock_gao:
+            mock_gao.return_value = {
+                'hostgroups': [],
+                'hostinterfaces': [self.hostinterface],
+                'server_assignments': [self.zabbixserverassignment],
+                'templates': [],
+                'macros': [],
+                'tags': [],
+                'hostinventory': None,
+                'configurationgroup': None,
+            }
+
+            with self.assertRaises(RuntimeError) as context:
+                job.run()
+
+        self.assertIn('Unexpected error', str(context.exception))
+        self.assertGreater(call_log['hostiface_calls'], 0)
+
+    @patch('nbxsync.jobs.synchost.safe_sync')
+    @patch.object(SyncHostJob, 'verify_hostinterfaces')
+    def test_interface_sync_runtimeerror_continues_then_reports(self, mock_verify_interfaces, mock_safe_sync):
+        """A RuntimeError from HostInterfaceSync does not stop the remaining work, but the job still fails.
+
+        Independent work (other interfaces, the final template linkage, binding
+        retirement) must complete, and the recoverable failure must be reported
+        as an aggregated error so a host with a missing interface cannot be
+        mistaken for a successful reconciliation.
+        """
+        call_log = {'hostiface_calls': 0, 'hostsync_calls': 0}
+
+        def side_effect(sync_class, *args, **kwargs):
+            name = getattr(sync_class, '__name__', None)
+            if name == 'HostInterfaceSync':
+                call_log['hostiface_calls'] += 1
+                raise RuntimeError('Error syncing HostInterfaceSync: SNMP credentials wrong')
+            if name == 'HostSync':
+                call_log['hostsync_calls'] += 1
+            return None
+
+        mock_safe_sync.side_effect = side_effect
+
+        job = SyncHostJob(instance=self.device)
+
+        with patch('nbxsync.jobs.synchost.get_assigned_zabbixobjects') as mock_gao:
+            mock_gao.return_value = {
+                'hostgroups': [],
+                'hostinterfaces': [self.hostinterface],
+                'server_assignments': [self.zabbixserverassignment],
+                'templates': [],
+                'macros': [],
+                'tags': [],
+                'hostinventory': None,
+                'configurationgroup': None,
+            }
+
+            with self.assertRaises(RuntimeError) as context:
+                job.run()
+
+        self.assertIn('Partial sync failure', str(context.exception))
+        self.assertIn('SNMP credentials wrong', str(context.exception))
+        self.assertGreater(call_log['hostiface_calls'], 0)
+        # The final HostSync still ran after the interface failure.
+        self.assertGreaterEqual(call_log['hostsync_calls'], 2)
