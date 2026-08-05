@@ -12,13 +12,13 @@
 
 1. **Display string = only operator control** for port class / monitor / exclude (one edit on the switch).  
 2. **Do not** use NetBox interface tags for day-to-day “monitor this port.”  
-3. **NetBox description** = human-readable **why / what** (speed exceptions, ESX, storage, iDRAC, etc.). Codes stay short and obvious.  
-4. **No cryptic speed nibbles** in the display string (`U:D1:`, `U:A01:`, …). People will not remember them. Speed → Zabbix **baseline**; intentional odd speed → **description**.  
-5. **Core / Dist / Mgmt:** monitor all **admin-up** ports, minus **exclusion** codes. Unused admin-up → disable.  
+3. **NetBox description** = human-readable **what / why** (ESX hostname, iDRAC, intentional plant notes). Not a Zabbix input.  
+4. **Speed is not encoded in the display string** and does **not** need a special “exception” code. For `U:D:` / `U:A:` / `U:C:` / `MON:`, Zabbix **baseline** is the expected speed (see §4).  
+5. **Core / Dist / Mgmt:** monitor all **admin-up** ports, minus **exclusion** codes (`X:…`). Unused admin-up → disable.  
 6. **Access:** monitor only **include** codes (`U:…`, `W:…`, `M:…`, `MON` / `MON:…`).  
 7. **APs** hang off **access** — `U:P:…`, Zabbix expects **1G** (catch 100M fallback).  
 8. **Dist ↔ access** speeds are mixed (**1G / 10G / 100M**). `U:D:` / `U:A:` identify the **role**, not the speed.  
-9. **Servers / ESX / storage / iDRAC** (and similar) on **mgmt or core**: still covered by admin-up LLD; set display **`MON:`** + a clear **description** so ops know what the port is.  
+9. **Servers / ESX / storage / iDRAC** on **mgmt or core**: admin-up LLD covers them; label with **`MON:`** + **description**.  
 10. Manual OK when no cable in NetBox — set display on the switch.  
 11. Track B (nbxsync / LLD / compliance) is a **separate** task.
 
@@ -40,9 +40,7 @@ ASCII, no spaces. Keep codes **obvious**. Put the story in NetBox **description*
 | `M:<yymmdd>` | **Temp** monitor until date | Baseline if needed |
 | `MON` or `MON:<id>` | **Monitor** — non-fabric endpoint (ESX, storage, iDRAC, server NIC, …) | Baseline / degrade |
 
-**Do not encode speed in the code.** No `U:D1:`, no `01` for 100M.
-
-Examples (display only): `U:C:swc01`, `U:D:swa12`, `U:A:swd03`, `U:P:ap3f07`, `W:SC1`, `M:260830`, `MON`, `MON:esx01`, `MON:idr3`.
+Examples: `U:C:swc01`, `U:D:swa12`, `U:A:swd03`, `U:P:ap3f07`, `W:SC1`, `M:260830`, `MON`, `MON:esx01`, `MON:idr3`.
 
 ### Exclusion codes (core / dist / mgmt)
 
@@ -68,37 +66,56 @@ On **mgmt/core**, admin-up already monitors the link. **`MON:` + description** i
 
 ---
 
-## 4. Speed in Zabbix
+## 4. Speed in Zabbix — no speed “exceptions” in the code
 
-| Link | How Zabbix treats speed |
+### Why there is nothing to encode
+
+Older drafts assumed “`U:D:` means expect 10G” and then needed overrides (`U:D1:`, `01`, …) for 1G/100M. **That model is rejected.**
+
+Dist ↔ access (and `MON:`) links are **legitimately mixed**. So Zabbix does **not** assume a class speed. It learns each port’s **baseline** from live `ifHighSpeed`.
+
+| Situation | What you do | What Zabbix does |
+|---|---|---|
+| `U:D:swa12` runs at **10G** | Display `U:D:swa12` | Baseline = 10000; alert if it drops |
+| `U:D:swa08` runs at **1G** | Same code shape `U:D:swa08` — **not** an exception code | Baseline = 1000; alert if it drops |
+| `U:A:ps01` runs at **100M** | Same code shape `U:A:ps01` — **not** an exception code | Baseline = 100; alert if it drops |
+| AP `U:P:ap3f07` | Display `U:P:…` | **Fixed** expect 1G (class is uniform enough) |
+| Must **not** monitor a port | Display `X:STK` / `X:SPN` / … | Excluded from LLD — **this** is the real exception |
+
+So: **1G and 100M are normal baselines for `U:D:` / `U:A:` / `MON:`, not special cases.**  
+There is no speed-exception field to invent in the display string.
+
+### Real exceptions (monitoring include/exclude only)
+
+| Need | Mechanism |
 |---|---|
-| `U:D:` / `U:A:` / `U:C:` / `MON:` | Learn **baseline** from stable `ifHighSpeed`. 10G stays 10G; 1G stays 1G; 100M stays 100M. Alert on **degrade/change**. |
-| `U:P:` | Fixed expect **1G** (AP class). |
-| Forced Extreme admin | Expected = admin speed when auto-neg off. |
+| Do **not** alert on this admin-up port | **`X:…`** exclusion code |
+| Do monitor on access (opt-in) | **`U:` / `W:` / `M:` / `MON:`** include code |
+| Human note (“why is this 1G?”) | NetBox **description** (ops only — Zabbix ignores it for triggers) |
 
-**Intentional 1G or 100M uplink:** keep display as plain `U:D:<id>` / `U:A:<id>`. Write the why in **description**. Baseline learns the real speed — no special code.
+### Speed rules
 
-### 4.1 Description = human meaning (not tags, not cryptic codes)
-
-| Field | Holds |
+| Link | Zabbix |
 |---|---|
-| **Display string** | Short class: `U:D:…`, `MON:…`, `X:STK`, … |
-| **NetBox description** | Full story ops can read |
-| **NetBox tag** | **Do not** use for port monitor/speed intent |
+| `U:D:` / `U:A:` / `U:C:` / `MON:` | Baseline / degrade from stable oper speed |
+| `U:P:` | Fixed expect **1G** |
+| Forced Extreme admin (auto-neg off) | Expected = admin speed |
 
-**Description examples**
+### 4.1 Description = human notes (optional for speed, required clarity for `MON:`)
 
-| Display | Description |
+Description does **not** drive Zabbix speed triggers. It stops humans chasing known plant limits or misreading ESX/iDRAC ports.
+
+| Display | Description (examples) |
 |---|---|
-| `U:D:swa12` | `Uplink to access swa12 — 10G` *(optional; baseline already has 10G)* |
-| `U:D:swa08` | `Uplink to access swa08 — intentional 1G (SFP/plant)` |
-| `U:A:ps01` | `Uplink toward access/PS — intentional 100M legacy; do not chase` |
-| `MON:esx01` | `ESXi esx01 — vmnic / uplink to host` |
-| `MON:netapp` | `NetApp ContA e0a — storage` |
-| `MON:idr3` | `iDRAC dell-r740-03 — server OOB` |
-| `MON:srv12` | `Server srv12 NIC — production` |
+| `U:D:swa12` | `Uplink to swa12` *(speed optional — baseline has it)* |
+| `U:D:swa08` | `Uplink to swa08 — plant is 1G` *(note for humans)* |
+| `U:A:ps01` | `Toward PS — 100M legacy plant` *(note for humans)* |
+| `MON:esx01` | `ESXi esx01 — vmnic` |
+| `MON:netapp` | `NetApp ContA e0a` |
+| `MON:idr3` | `iDRAC dell-r740-03` |
 | `U:P:ap3f07` | `AP ap-3f-07` |
-| `M:260830` | `Temp monitor until 2026-08-30 — guest rack` |
+
+No NetBox tags for speed or monitor intent.
 
 ### 4.2 Servers / ESX / storage / iDRAC on mgmt or core
 
@@ -123,7 +140,7 @@ These are **not** fabric uplinks (`U:…`). Pattern:
 | Mgmt/core port to ESX/storage/iDRAC without `MON:` | Soft report: set `MON:` + description (clarity) |
 | `M:` / `MON` stale / empty description on `MON:` | Stale / incomplete list |
 | Oper speed degraded vs baseline | Fix plant / optic / negotiation |
-| Intentional odd speed | **Description** only — no speed code, no tag |
+| Human note for unusual plant speed | Optional description — Zabbix does not need a speed code |
 | Unused admin-up on core/dist/mgmt | Disable |
 
 ---
@@ -135,7 +152,7 @@ Operator / optional cable script
         → Extreme display string (≤15, obvious codes)
 
 NetBox description
-        → human why/what (1G intentional, ESX, iDRAC, …)
+        → human what/why (ESX, iDRAC, optional plant-speed note)
 
 Zabbix LLD:
   core/dist/mgmt → admin-up AND NOT display~^X:
@@ -168,8 +185,8 @@ Speed macros: `{$IF.SPEED.BASELINE}` (learned); fixed 1000 for `U:P:`.
 
 | Risk | Mitigation |
 |---|---|
-| Cryptic codes nobody understands | Keep `U:` / `MON:` / `X:` only; story in description |
-| Speed false WARN on mixed uplinks | Baseline — never assume one class speed |
+| Cryptic codes nobody understands | Keep `U:` / `MON:` / `X:` only; details in description |
+| Assuming “U:D: = 10G” then needing overrides | Rejected — use baseline; 1G/100M are normal |
 | ESX/iDRAC noise on mgmt | Admin-up is intentional; use `X:` only when must exclude |
 | `MON:` without description | Compliance: require description on `MON:` |
 | 15-char limit | Short ids (`MON:esx01`); full name in description |
@@ -179,12 +196,12 @@ Speed macros: `{$IF.SPEED.BASELINE}` (learned); fixed 1000 for `U:P:`.
 
 ## 9. Verify checklist
 
-- [ ] Codes are only obvious classes (`U:C/D/A/P`, `W:`, `M:`, `MON`, `X:`) — **no speed nibbles**  
-- [ ] Dist↔access: `U:D:`/`U:A:` + baseline; intentional 1G/100M in **description**  
+- [ ] Codes are only obvious classes (`U:C/D/A/P`, `W:`, `M:`, `MON`, `X:`)  
+- [ ] Speed model understood: **baseline** for `U:`/`MON:` — no speed-exception codes  
+- [ ] Real exceptions = **`X:…`** (don’t monitor) or access include codes  
 - [ ] Mgmt/core: ESX / storage / iDRAC use **`MON:` + description**  
 - [ ] Access include-only; AP = `U:P:` expect 1G  
-- [ ] Exclusions `X:…` validated  
-- [ ] Canaries: 10G `U:D:`, 1G `U:D:` + description, 100M + description, `MON:esx…`, `MON:idr…`, `U:P:`, `X:STK`  
+- [ ] Canaries: 10G `U:D:`, 1G `U:D:`, 100M `U:A:`, `MON:esx…`, `MON:idr…`, `U:P:`, `X:STK`  
 
 ---
 

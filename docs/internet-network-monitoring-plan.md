@@ -195,13 +195,13 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | Display code | Meaning | Zabbix speed |
 |---|---|---|
 | `U:C:<id>` | Uplink toward core | Baseline / degrade |
-| `U:D:<id>` | Uplink toward dist | Baseline / degrade — **1G / 10G / 100M** (no speed in code) |
-| `U:A:<id>` | Uplink toward access | Baseline / degrade — **1G / 10G / 100M** |
+| `U:D:<id>` | Uplink toward dist | Baseline — **1G / 10G / 100M all normal** (no override code) |
+| `U:A:<id>` | Uplink toward access | Baseline — **1G / 10G / 100M all normal** |
 | `U:P:<id>` | Access → AP | Expect **1G** |
-| `MON` / `MON:<id>` | Non-fabric endpoint (ESX, storage, iDRAC, server, …) | Baseline / degrade |
+| `MON` / `MON:<id>` | Non-fabric endpoint (ESX, storage, iDRAC, server, …) | Baseline |
 | `M:<yymmdd>` | Temp monitor until date | Baseline if needed |
 
-**Speed / identity live in NetBox description**, not in cryptic display nibbles (`U:D1:`, `01`, …).  
+Display = **role / include class only**. Speed is not in the code.  
 ISP/WAN (`W:…`) → **Phase 5**.
 
 ### Exclusion codes (core / dist / mgmt)
@@ -225,18 +225,17 @@ Unused admin-up on core/dist/mgmt → **disable** (security hygiene), not “mon
 
 ### Speed monitoring (Phase 2 — in scope)
 
-**Fleet fact:** dist ↔ access uplinks are **mixed — 1G / 10G / 100M**. Display `U:D:` / `U:A:` names the **role only**. Zabbix learns **baseline** from operational speed.
+**No speed-exception codes.** We do **not** assume `U:D:` = 10G and then override for 1G/100M. Those speeds are **normal** for that class; Zabbix **baseline** is the expected value per port.
 
 | Link class | Zabbix approach | Alert if |
 |---|---|---|
 | Access → AP (`U:P:`) | Fixed expect **1G** | Oper up but not 1G → WARNING |
 | Dist ↔ access / fabric (`U:D:` / `U:A:` / `U:C:`) | **Baseline / degrade** | Oper drops vs baseline |
-| `MON:` (ESX / storage / iDRAC / server on mgmt/core) | **Baseline / degrade** | Oper drops vs baseline |
+| `MON:` (ESX / storage / iDRAC / server) | **Baseline / degrade** | Oper drops vs baseline |
 | Forced Extreme admin | Expected = admin | Oper ≠ admin |
 
-**Intentional 1G or 100M:** keep plain `U:D:<id>` / `U:A:<id>`; write why in **NetBox description**. No speed nibbles. No tags.
-
-**`MON:` pattern:** on mgmt/core, admin-up already monitors the port; set `MON:` / `MON:<short>` + description so people know it is ESX/storage/iDRAC/etc. On access, `MON:` is required for include.
+**Real exceptions** = monitor include/exclude only: `X:…` to skip; include codes on access to opt in.  
+**Description** = human notes (optional plant-speed note; required clarity for `MON:`) — not a Zabbix speed override.
 
 **Not required in Phase 2:** util% capacity alerts.
 
