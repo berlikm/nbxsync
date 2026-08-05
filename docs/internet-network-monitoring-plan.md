@@ -39,7 +39,7 @@ EXAMPLES
   MON-10G-esx1            ESXi 10G
   MON-idr03               iDRAC (MON, not IDR)
   TMON / TMON-guest       metrics only — no alerts; compliance lists
-  X / X-spare             exclude (reason in NetBox description)
+  X / X-<note>            exclude (reason in NetBox description)
 
 ZABBIX: change(ifHighSpeed) safety net + absolute expect when labeled
   TMON = discover/collect only (no triggers)
@@ -197,7 +197,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 ## Phase 2 — Uplinks & structural ports
 
-**Objective:** Fabric / AP / endpoint ports monitored with universal `CLASS[-SPEED]-ID` grammar; structural stack/ISC/MLAG excluded (auto-derive preferred); LAG rules explicit.
+**Objective:** Fabric / AP / endpoint ports monitored with universal `CLASS[-SPEED]-ID` grammar; exclude via `X`; LAG rules explicit.
 
 **SoT on box:** display string (≤15) as **derived cache** — preferably **generated from NetBox**. Zabbix reads `ifAlias`.
 
@@ -234,7 +234,7 @@ Legacy 1G access↔dist: `UD-1G-…` **and** `UA-1G-…` (token both ends).
 | `MON-10G-esx1` | 10G |
 | `MON-idr03` | 1G (iDRAC) |
 | `TMON` / `TMON-guest` | — (items only, **no alerts**) |
-| `X` / `X-spare` | excluded (description = why) |
+| `X` / `X-<note>` | excluded (description = why) |
 
 ### Zabbix triggers (Phase 2)
 
@@ -244,9 +244,9 @@ Legacy 1G access↔dist: `UD-1G-…` **and** `UA-1G-…` (token both ends).
 4. **`TMON`:** LLD items/graphs only — **no triggers / no problems**.  
 5. **LAG:** absolute speed expect on **members only**; never compare aggregate sum to member expected.
 
-### Structural excludes
+### Excludes
 
-Prefer **device-state discovery** (stack / ISC / MLAG / mirror). Label **`X` / `X-<note>`** = override/fallback; reason in **description**.
+Label **`X` / `X-<note>`**; reason in NetBox **description**.
 
 ### Subsidiary hybrid (core∩access)
 
@@ -266,7 +266,7 @@ NetBox role e.g. `Core-Access` selects the `X`-fill generator profile.
 | P2.2 | Generator design (Track B handoff) | NetBox role/cable/speed → display push |
 | P2.3 | LLD contract | One shared parser; ifAlias; macros |
 | P2.4 | Port template | Down/flap/errors + change + absolute expect (settled) |
-| P2.5 | Auto structural exclude | EXOS + VOSS paths |
+| P2.5 | Exclude via `X` | Push/label `X` / `X-<note>` + description |
 | P2.6 | Access include / fabric admin-up | Unused → disable hygiene |
 | P2.7 | `MON` endpoints incl. iDRAC | No IDR class |
 | P2.8 | Compliance = **diff** + **`TMON*` inventory** | Generated vs live ifAlias; audit list of all temp monitors |
@@ -293,7 +293,7 @@ NetBox role e.g. `Core-Access` selects the `X`-fill generator profile.
 - [ ] Symmetric 1G exception tokens both ends  
 - [ ] `MON-idr…` works (no IDR class)  
 - [ ] LAG members clean; aggregate no false speed WARN  
-- [ ] Auto or labeled structural exclude on stack/ISC/MLAG  
+- [ ] `X` / `X-<note>` excludes work; description holds reason  
 - [ ] Change-detect catches unlabeled degrade  
 - [ ] Generator dry-run + compliance diff on canary  
 - [ ] Hybrid subsidiary: `X`-default; client/uplink/AP/WAN monitored  
@@ -459,11 +459,11 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 
 | Phase | What we scope | Display codes |
 |---|---|---|
-| 2 | Fabric / AP / MON | `UC/UD/UA/UP/MON/TMON` + optional SPEED; exclude `X` / `X-<note>` |
+| 2 | Fabric / AP / MON | `UC/UD/UA/UP/MON/TMON` + optional SPEED; exclude `X` |
 | 5 | Internet circuits | `W` (+ Circuit object); no absolute speed trigger |
 
 **Design (Track A):** display-string codes + which template / LLD mode watches them.  
-**Automation (Track B):** NetBox generate/push display; shared parser; compliance **diff**; auto structural excludes.  
+**Automation (Track B):** NetBox generate/push display; shared parser; compliance **diff**.  
 **Reject:** NetBox day-to-day monitor-tags; “monitor everything.”
 
 ---

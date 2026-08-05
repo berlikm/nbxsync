@@ -20,7 +20,7 @@
 4. **Preferred flow:** NetBox structured data **generates** the display string and pushes it; ops do not hand-type the grammar day-to-day. Hand-edit remains emergency/manual fallback.  
 5. **Zabbix safety net:** universal **`change(ifHighSpeed)`** while oper-up (with settle time) — catches degrades even if label missing/wrong.  
 6. **Absolute expect** (`ifHighSpeed ≠ expected`) where a label exists: `expected = SPEED token OR class default`.  
-7. **Excludes:** one class only — **`X` / `X-<note>`**. Reason lives in NetBox **description** (stack, ISC, MLAG, SPAN, spare, …). Prefer also **auto-derive** structural excludes from device state.  
+7. **Excludes:** one class only — **`X` / `X-<note>`**. Why the port is excluded belongs in NetBox **description**.  
 8. **LAGs:** explicit rule (§7) before rollout.  
 9. **Access = opt-in** (include classes); **fabric/mgmt = admin-up minus excludes**.  
 10. **Subsidiary hybrid (core∩access):** default-label ports **`X`** (exclude); **do not X** client access ports you want monitored, nor uplinks/WAN/AP/`MON`/`TMON` (§6.1).  
@@ -50,7 +50,7 @@ CLASS-SPEED-ID
 ^(?<class>UC|UD|UA|UP|MON|W|TMON|X)(?:-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(?:-(?<id>[A-Z0-9]+))?$
 ```
 
-**Parse note:** If CLASS is `X`, the optional tail is a **free note** (`X-stk`, `X-spare`) — **not** a SPEED token. Include classes only use SPEED tokens from the table above.
+**Parse note:** If CLASS is `X`, the optional tail is a free short note — **not** a SPEED token.  
 
 **Source field:** Extreme display string maps to **`IF-MIB::ifAlias`** on EXOS and VOSS. Design depends on that mapping.
 
@@ -76,19 +76,14 @@ CLASS-SPEED-ID
 
 | CLASS | Meaning |
 |---|---|
-| `X` or `X-<note>` | **Do not alert** on this port (exclude from port LLD alerts) |
+| `X` or `X-<note>` | Port is **excluded** from port monitoring alerts |
 
-No separate `XSTK` / `XISC` / `XMLAG` / … vocabulary. Optional short note on-box (`X-stk`, `X-mlag`, `X-spare`) is free-form within ≤15; the real reason goes in NetBox **description**.
+That is the full exclude vocabulary. Optional `<note>` is free-form within the 15-char limit if useful on-box; the explanation stays in NetBox **description**.
 
-| Display | Description (examples) |
+| Display | Description |
 |---|---|
-| `X` | `Stack port` |
-| `X` | `MLAG peer-link` |
-| `X` | `ISC / virtual-IST` |
-| `X-spare` | `Unused client port — excluded` |
-| `X-oob` | `Switch OOB` |
-
-Prefer **auto-derive** stack/ISC/MLAG/SPAN from device state when possible; `X` label is override/fallback/manual.
+| `X` | *(why this port is excluded)* |
+| `X-<note>` | *(why this port is excluded)* |
 
 ### 3.3 `TMON` — temp monitor without alerts
 
@@ -127,8 +122,8 @@ Because `UD`/`UA`/`UC` all default **10G**, a standard 10G access↔dist link ne
 ## 5. Zabbix resolution (robust)
 
 ```
-1) Structural auto-exclude (device state)? → skip LLD / no alert
-2) Display matches ^X(-\|$) or class X → skip (label exclude)
+1) Display class X? → skip LLD / no alert
+2) (removed duplicate — X handled above)
 3) else include per role rules (fabric admin-up / access include)
 4) Always: change(ifHighSpeed)<>0 while oper-up for ≥5m → WARNING (safety net)
 5) If CLASS in {UC,UD,UA,UP,MON} and label parse OK:
@@ -176,13 +171,13 @@ EXCEPT:  do NOT mark X on ports that should stay monitored:
 | Port kind on hybrid switch | Display | Description | Monitored? |
 |---|---|---|---|
 | Client access (care about) | empty **or** `MON-…` / `TMON-…` | optional | **Yes**; `TMON` = metrics, no alerts |
-| Client access (don’t care / spare) | `X` or `X-spare` | `Unused client port` | No |
+| Client access (don’t care / spare) | `X` or `X-<note>` | why excluded | No |
 | AP | `UP-…` | AP name | Yes |
 | Uplink / fabric | `UC`/`UD`/`UA`-… | far-end | Yes |
 | WAN | `W-…` | circuit note | Yes |
 | Server / iDRAC / storage | `MON-…` | hostname | Yes |
-| Stack / ISC / MLAG / SPAN / OOB | `X` | e.g. `Stack port` / `MLAG peer` | No |
-| Everything else (default) | **`X`** | short why | No |
+| Any other port to silence | `X` or `X-<note>` | why excluded | No |
+| Everything else (default on hybrid) | **`X`** | why excluded | No |
 
 **NetBox:** device role e.g. `Core-Access` / `Subsidiary Core` selects this generator profile: **`X`-fill all**, then clear/overwrite from cables + “monitor client port” flag / interface role.
 
@@ -200,7 +195,7 @@ EXCEPT:  do NOT mark X on ports that should stay monitored:
 | **Aggregate ifIndex** | Monitor **bundle up/down / member-count** separately — **do not** compare aggregate `ifHighSpeed` (sum) to a single-member expected |
 | **Expected on member** | Per-member speed (10G default on `UD`/`UA`) |
 | **Expected on aggregate** | **No** `ifHighSpeed ≠ expected` trigger on aggregate |
-| **MLAG peer-link** | `X` + description / auto-exclude — not a fabric uplink expect |
+| **MLAG / bundle peer links you must not treat as uplinks** | Label `X` (description) and/or follow LAG rules (§7) — not a fabric uplink expect |
 
 This avoids permanent false WARN on 2×10G → `ifHighSpeed=20000` aggregates.
 
@@ -222,7 +217,7 @@ NetBox: device role + cable far-end + interface.speed (+ LAG membership)
 | Client access port flagged monitor | Clear `X` (empty or `MON-…`) |
 | `interface.speed` ≠ class default | insert SPEED token |
 | Endpoint = server/ESX/storage/iDRAC | `MON` (+ `10G` if needed) |
-| Stack/ISC/MLAG/SPAN known | auto-exclude and/or push `X` + description |
+| Port to exclude | push `X` / `X-<note>` + description |
 | No cable / guest | Manual set allowed; compliance lists orphans |
 
 **Compliance = diff** (generated vs live ifAlias), not a second rule engine.  
@@ -260,7 +255,7 @@ Hand-typed labels are fallback; typos on access includes are softened by **chang
 | Scenario | Display | Monitored? |
 |---|---|---|
 | Client PC drop (care) | *(empty)* or `MON-pc12` | Yes |
-| Spare / unused client port | `X` / `X-spare` | No |
+| Spare / unused client port | `X` / `X-<note>` | No |
 | AP on same switch | `UP-ap01` | Yes |
 | WAN on same switch | `W-SC1` | Yes |
 | Default everything else | `X` | No |
@@ -276,7 +271,7 @@ Hand-typed labels are fallback; typos on access includes are softened by **chang
 | `UP-2G5-ap07` | 11 |
 | `MON-10G-esx1` | 12 |
 | `MON-idr03` | 9 |
-| `X` / `X-spare` | 1–7 |
+| `X` / `X-<note>` | ≤15 |
 
 ---
 
@@ -295,7 +290,7 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 | Hand-type typos drop access monitoring | Generate from NetBox; compliance diff; change-detect safety net |
 | 15-char hostname overflow | Machine-short IDs only |
 | Aggregate LAG false WARN | Members vs aggregate rule (§7) |
-| New stack member alerts as uplink | Auto structural exclude |
+| New excluded port still alerting | Ensure display is `X` / `X-<note>`; check LLD filter |
 | `TMON` forever / forgotten | Compliance **list all TMON*** regularly; clear or promote to `MON`/`UP`/… |
 | Negotiation WARN storm | `for 5m` / min settle |
 | Grammar drift across templates | One shared parser module |
@@ -310,7 +305,7 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 - [ ] `W` = no absolute speed trigger; **`TMON` = monitor only, no alerts**; compliance lists `TMON*`  
 - [ ] Tokens include `2G5` / `5G` / `400G`  
 - [ ] LAG member vs aggregate rule agreed  
-- [ ] Auto structural exclude path identified per EXOS/VOSS  
+- [ ] Exclude class is only `X` / `X-<note>`; reason in description  
 - [ ] Generate-from-NetBox dry-run on canary  
 - [ ] Change-detect + absolute expect both tested with 5m settle  
 - [ ] Hybrid subsidiary role: **`X`-default**; client/uplink/AP/WAN/MON/TMON not X  
@@ -322,15 +317,15 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 
 ```
 GRAMMAR: CLASS[-SPEED]-ID   (no colon; atomic CLASS)
-CLASSES: UC UD UA UP MON W TMON | X (X-<note> optional)
+CLASSES: UC UD UA UP MON W TMON | X (optional X-<note>)
 NO IDR — iDRAC uses MON
-NO XSTK/XISC/… — one exclude class; reason in description
+EXCLUDE: X only — reason in description
 
 DEFAULTS: UC=UD=UA=10G | UP=1G | MON=1G
 TOKENS: 100M 1G 2G5 5G 10G 25G 40G 100G 400G
 
 ZABBIX:
-  auto-structural + class X excludes
+  class X excludes
   change(ifHighSpeed) safety net (settled)
   absolute expect where UC|UD|UA|UP|MON labeled
   TMON: items only — no triggers; compliance lists TMON* for audit
