@@ -75,7 +75,7 @@ zabbix_export:
         value: network
       triggers:
       - uuid: b521f1e72b984d35ab89e169bc86df9b
-        expression: min(/Extreme VOSS by SNMP/icmppingloss,5m)>{$ICMP_LOSS_WARN} and min(/Extreme VOSS by SNMP/icmppingloss,5m)<100
+        expression: 'min(/Extreme VOSS by SNMP/icmppingloss,5m)>{$ICMP_LOSS_WARN} and min(/Extreme VOSS by SNMP/icmppingloss,5m)<100'
         name: 'Extreme VOSS: High ICMP ping loss'
         opdata: 'Loss: {ITEM.LASTVALUE1}'
         priority: WARNING
@@ -102,14 +102,14 @@ zabbix_export:
         value: network
       triggers:
       - uuid: a5bbb869aedb4bd8b543c7fdbb42f0e4
-        expression: avg(/Extreme VOSS by SNMP/icmppingsec,5m)>{$ICMP_RESPONSE_TIME_WARN}
+        expression: 'avg(/Extreme VOSS by SNMP/icmppingsec,5m)>{$ICMP_RESPONSE_TIME_WARN}'
         name: 'Extreme VOSS: High ICMP ping response time'
         opdata: 'Value: {ITEM.LASTVALUE1}'
         priority: WARNING
         description: Average ICMP response time is too high.
         dependencies:
         - name: 'Extreme VOSS: High ICMP ping loss'
-          expression: min(/Extreme VOSS by SNMP/icmppingloss,5m)>{$ICMP_LOSS_WARN} and min(/Extreme VOSS by SNMP/icmppingloss,5m)<100
+          expression: 'min(/Extreme VOSS by SNMP/icmppingloss,5m)>{$ICMP_LOSS_WARN} and min(/Extreme VOSS by SNMP/icmppingloss,5m)<100'
         - name: 'Extreme VOSS: Unavailable by ICMP ping'
           expression: max(/Extreme VOSS by SNMP/icmpping,#3)=0
         tags:
@@ -165,7 +165,7 @@ zabbix_export:
         value: cpu
       triggers:
       - uuid: 629f1df200f74d008e06ad1a49299b66
-        expression: min(/Extreme VOSS by SNMP/system.cpu.util[rcKhiSlotCpuCurrentUtil.1],5m)>{$CPU.UTIL.CRIT}
+        expression: 'min(/Extreme VOSS by SNMP/system.cpu.util[rcKhiSlotCpuCurrentUtil.1],5m)>{$CPU.UTIL.CRIT}'
         name: 'Extreme VOSS: High CPU utilization'
         event_name: 'Extreme VOSS: High CPU utilization (over {$CPU.UTIL.CRIT}% for 5m)'
         opdata: 'Current utilization: {ITEM.LASTVALUE1}'
@@ -467,7 +467,7 @@ zabbix_export:
         value: network
       triggers:
       - uuid: a529239ff54c46c0a4bfcde7891fb826
-        expression: max(/Extreme VOSS by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+        expression: 'max(/Extreme VOSS by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
         name: 'Extreme VOSS: No SNMP data collection'
         opdata: 'Current state: {ITEM.LASTVALUE1}'
         priority: WARNING
@@ -502,7 +502,7 @@ zabbix_export:
         value: cpu
       triggers:
       - uuid: ece609763cfd408f8c78abb5a0ad3efd
-        expression: min(/Extreme VOSS by SNMP/system.cpu.util.avg5[rcKhiSlotCpu5MinAve.1],5m)>{$CPU.UTIL.CRIT}
+        expression: 'min(/Extreme VOSS by SNMP/system.cpu.util.avg5[rcKhiSlotCpu5MinAve.1],5m)>{$CPU.UTIL.CRIT}'
         name: 'Extreme VOSS: High CPU utilization (5m avg)'
         priority: WARNING
         description: '5-minute average CPU utilization is too high.'
@@ -614,7 +614,7 @@ zabbix_export:
         value: fabric
       triggers:
       - uuid: 95190b5f61e144b1bbb854521b10fc00
-        expression: {$VIST.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.vist.status[rcVirtualIstSessionStatus.0])={$VIST.DOWN_STATUS}
+        expression: '{$VIST.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.vist.status[rcVirtualIstSessionStatus.0])={$VIST.DOWN_STATUS}'
         name: 'Extreme VOSS: V-IST session is down'
         priority: HIGH
         description: 'Virtual IST session is down (if V-IST is used).'
@@ -657,7 +657,7 @@ zabbix_export:
         value: fabric
       triggers:
       - uuid: 4e0b8c5d64234efcb7a27a2deccf05b2
-        expression: {$IST.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.ist.status[rcMltIstSessionStatus.0])={$IST.DOWN_STATUS}
+        expression: '{$IST.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.ist.status[rcMltIstSessionStatus.0])={$IST.DOWN_STATUS}'
         name: 'Extreme VOSS: IST session is down'
         priority: HIGH
         description: 'MLT IST session is down (if IST is used).'
@@ -814,7 +814,7 @@ zabbix_export:
           value: fan
         trigger_prototypes:
         - uuid: efd3e1471ae34377b36acd6795801974
-          expression: count(/Extreme VOSS by SNMP/sensor.fan.status[rcChasFanOperStatus.{#SNMPINDEX}],#1,"eq","{$FAN_CRIT_STATUS}")=1
+          expression: 'count(/Extreme VOSS by SNMP/sensor.fan.status[rcChasFanOperStatus.{#SNMPINDEX}],#1,"eq","{$FAN_CRIT_STATUS}")=1'
           name: 'Extreme VOSS: Fan {#SNMPVALUE}: Fan is in critical state'
           opdata: 'Current state: {ITEM.LASTVALUE1}'
           priority: AVERAGE
@@ -878,7 +878,7 @@ zabbix_export:
           value: memory
         trigger_prototypes:
         - uuid: db5abe04de1741c08a507119f25b108b
-          expression: min(/Extreme VOSS by SNMP/vm.memory.util[rcKhiSlotMemUtil.{#SNMPINDEX}],5m)>{$MEMORY.UTIL.MAX}
+          expression: 'min(/Extreme VOSS by SNMP/vm.memory.util[rcKhiSlotMemUtil.{#SNMPINDEX}],5m)>{$MEMORY.UTIL.MAX}'
           name: 'Extreme VOSS: Slot {#SNMPINDEX}: High memory utilization'
           event_name: 'Extreme VOSS: Slot {#SNMPINDEX}: High memory utilization (>{$MEMORY.UTIL.MAX}% for 5m)'
           priority: AVERAGE
@@ -1258,7 +1258,7 @@ zabbix_export:
           value: network
         trigger_prototypes:
         - uuid: e833cd51334b46fbb4d7e501ff25b0ab
-          expression: change(/Extreme VOSS by SNMP/net.if.flaps[rcPortNumStateTransition.{#SNMPINDEX}])>{$IF.FLAP.WARN:"{#IFNAME}"}
+          expression: 'change(/Extreme VOSS by SNMP/net.if.flaps[rcPortNumStateTransition.{#SNMPINDEX}])>{$IF.FLAP.WARN:"{#IFNAME}"}'
           name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link flapping'
           priority: WARNING
           tags:
@@ -1501,7 +1501,7 @@ zabbix_export:
           value: '{#IFNAME}'
         trigger_prototypes:
         - uuid: 9177681a288544f1a0acdea4fda3b9eb
-          expression: last(/Extreme VOSS by SNMP/net.if.duplex[dot3StatsDuplexStatus.{#SNMPINDEX}])=2
+          expression: 'last(/Extreme VOSS by SNMP/net.if.duplex[dot3StatsDuplexStatus.{#SNMPINDEX}])=2'
           name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): In half-duplex mode'
           priority: WARNING
           description: Please check autonegotiation settings and cabling.
@@ -1541,7 +1541,7 @@ zabbix_export:
           value: power
         trigger_prototypes:
         - uuid: ee629d82d4124f8d8f71ead32fede0eb
-          expression: count(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}],#1,"eq","{$PSU_CRIT_STATUS}")=1
+          expression: 'count(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}],#1,"eq","{$PSU_CRIT_STATUS}")=1'
           name: 'Extreme VOSS: PSU {#SNMPVALUE}: Power supply is in critical state'
           opdata: 'Current state: {ITEM.LASTVALUE1}'
           priority: AVERAGE
@@ -1575,22 +1575,22 @@ zabbix_export:
           value: temperature
         trigger_prototypes:
         - uuid: 823085316f0e4db09e4d16669cc4e1c3
-          expression: avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>{$TEMP_WARN}
+          expression: 'avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>{$TEMP_WARN}'
           name: 'Extreme VOSS: Sensor {#SNMPINDEX}: Temperature is above warning threshold'
           priority: WARNING
           description: Temperature sensor above {$TEMP_WARN}.
           dependencies:
           - name: 'Extreme VOSS: Sensor {#SNMPINDEX}: Temperature is above critical threshold'
-            expression: avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>{$TEMP_CRIT}
+            expression: 'avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>{$TEMP_CRIT}'
               or last(/Extreme VOSS by SNMP/sensor.temp.status[rcVossSystemTemperatureStatus.{#SNMPINDEX}])={$TEMP_CRIT_STATUS}
         - uuid: 668b89c674594f55bba55a9b3bc6cba1
-          expression: avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>{$TEMP_CRIT}
+          expression: 'avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>{$TEMP_CRIT}'
             or last(/Extreme VOSS by SNMP/sensor.temp.status[rcVossSystemTemperatureStatus.{#SNMPINDEX}])={$TEMP_CRIT_STATUS}
           name: 'Extreme VOSS: Sensor {#SNMPINDEX}: Temperature is above critical threshold'
           priority: HIGH
           description: Temperature sensor above {$TEMP_CRIT} or status critical.
         - uuid: b6db438dc96c42798558df104931b803
-          expression: avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>0
+          expression: 'avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>0'
             and avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)<{$TEMP_CRIT_LOW}
           name: 'Extreme VOSS: Sensor {#SNMPINDEX}: Temperature is too low'
           priority: AVERAGE
@@ -1680,7 +1680,7 @@ zabbix_export:
           value: optic
         trigger_prototypes:
         - uuid: 4c97f7dd65f443aea82d57f52ca90a1e
-          expression: avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)>{$OPTIC.TEMP.CRIT}
+          expression: 'avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)>{$OPTIC.TEMP.CRIT}'
           name: 'Extreme VOSS: Optic {#SNMPINDEX}: Temperature is too high'
           priority: AVERAGE
           tags:
@@ -1712,7 +1712,7 @@ zabbix_export:
           value: optic
         trigger_prototypes:
         - uuid: 2169ced8bc1541dfad27923a30d76908
-          expression: max(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)<{$OPTIC.RX.POWER.MIN} and max(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)>0
+          expression: 'max(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)<{$OPTIC.RX.POWER.MIN} and max(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)>0'
           name: 'Extreme VOSS: Optic {#SNMPINDEX}: RX power is too low'
           priority: WARNING
           tags:
@@ -1822,7 +1822,7 @@ zabbix_export:
           value: power
         trigger_prototypes:
         - uuid: 03368bc544304d99a5b7acabe442ab60
-          expression: count(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}],#1,"eq","{$PSU_CRIT_STATUS}")=1
+          expression: 'count(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}],#1,"eq","{$PSU_CRIT_STATUS}")=1'
           name: 'Extreme VOSS: PSU {#SNMPINDEX}: Detail status critical'
           priority: AVERAGE
           tags:
@@ -1931,7 +1931,7 @@ zabbix_export:
           value: system
         trigger_prototypes:
         - uuid: 2075fc327371407ca7a3ecad0594a1ac
-          expression: last(/Extreme VOSS by SNMP/system.hw.card.status[rcCardOperStatus.{#SNMPINDEX}])={$CARD.DOWN_STATUS}
+          expression: 'last(/Extreme VOSS by SNMP/system.hw.card.status[rcCardOperStatus.{#SNMPINDEX}])={$CARD.DOWN_STATUS}'
           name: 'Extreme VOSS: Card {#SNMPINDEX}: Card is down'
           priority: HIGH
           tags:
@@ -1959,7 +1959,7 @@ zabbix_export:
           value: fabric
         trigger_prototypes:
         - uuid: 58b582cb293b4fc58fbf8cb46548474b
-          expression: last(/Extreme VOSS by SNMP/fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}])={$ISIS.CIRCUIT.DOWN_STATUS}
+          expression: 'last(/Extreme VOSS by SNMP/fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}])={$ISIS.CIRCUIT.DOWN_STATUS}'
           name: 'Extreme VOSS: ISIS circuit {#SNMPINDEX}: Circuit is down'
           priority: HIGH
           tags:
@@ -2081,7 +2081,7 @@ zabbix_export:
           value: network
         trigger_prototypes:
         - uuid: 5054efcb8c1c4465a832c2095dde9d26
-          expression: last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.DOWN_STATUS}
+          expression: 'last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.DOWN_STATUS}'
           name: 'Extreme VOSS: MLT {#SNMPINDEX}: Aggregation disabled/down'
           priority: AVERAGE
           tags:
@@ -2915,7 +2915,7 @@ zabbix_export:
     manual_close: 'YES'
     dependencies:
     - name: 'Extreme VOSS: No SNMP data collection'
-      expression: max(/Extreme VOSS by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+      expression: 'max(/Extreme VOSS by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
     tags:
     - tag: scope
       value: notice
