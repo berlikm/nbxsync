@@ -32,8 +32,8 @@ CLASS-SPEED-ID
 
 | Piece | Rules |
 |---|---|
-| **CLASS** | `USW` `US` `MON` `UW` `TMON` `N` |
-| **SPEED** | Canonical tokens only (`2G5` not `2.5G`) — not used on `N` |
+| **CLASS** | `USW` `US` `MON` `UW` `TMON` `X` `N` |
+| **SPEED** | Canonical tokens only (`2G5` not `2.5G`) — not used on `X` / `N` |
 | **ID** | Far-end / free text after normalize |
 | **Case** | Store UPPERCASE; match case-insensitive |
 | **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric |
@@ -53,6 +53,9 @@ CLASS-SPEED-ID
 # Note only — free text, no Zabbix action
 ^N(-(?<note>[A-Z0-9-]+))?$
 
+# Exclude
+^X(-(?<xnote>[A-Z0-9-]+))?$
+
 # Monitor / temp (TMON before MON)
 ^(?<class>USW|US|TMON|MON|UW)(-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(-(?<id>[A-Z0-9-]+))?$
 ```
@@ -68,8 +71,10 @@ CLASS-SPEED-ID
 | `MON` | Other monitored endpoint (iDRAC, AP, client, …) | 1G | Yes | same |
 | `UW` | Uplink WAN / ISP | — | Later | link / flap / errors |
 | `TMON` | Temp watch | — | No | items; optional link-down **INFO** only |
+| `X` / `X-<text>` | Excluded | — | No | **none** |
 | `N` / `N-<text>` | Note only — free description | — | No | **none** |
 
+`X` = deliberately excluded from port monitoring.  
 `N` = free-form note, Zabbix takes **no action**.  
 `TMON` = temporary watch — collect metrics; optional INFO link-down; keep a list of `TMON*` for ops review; reason in NetBox description.
 
@@ -97,7 +102,7 @@ Expected speed = SPEED token if present, else class default (`USW`/`US` → 10G,
 
 ```
 1) Label empty → EMPTY; else parse class
-2) Class N → no action
+2) Class X or N → no port alerts
 3) Else include per role LLD (§6)
 4) Discovered + {USW,US,MON,UW} → link-down / flap / errors
 5) Discovered + {USW,US,MON} → expected speed = token or class default;
@@ -115,7 +120,7 @@ Turn on step 5 after labels for that site follow this grammar.
 
 | Device role | LLD |
 |---|---|
-| **Core / Dist / Mgmt** | Admin-up AND NOT class `N` |
+| **Core / Dist / Mgmt** | Admin-up AND NOT class `X` AND NOT class `N` |
 | **Access** | Include classes only (`USW` `US` `MON` `UW` `TMON`) |
 | **Subsidiary hybrid** | Same as fabric; labeling below |
 | **AP** | Device health — not switch-port LLD |
@@ -126,8 +131,8 @@ Unused ports → admin-down.
 
 ```
 1) Spares / unused            → admin-down
-2) Admin-up but uninteresting → N / N-<text>
-3) Monitor / temp               → USW / US / MON / UW / TMON / …
+2) Admin-up but uninteresting → X / X-<text> or N / N-<text>
+3) Monitor / temp             → USW / US / MON / UW / TMON / …
 ```
 
 ---
@@ -162,6 +167,7 @@ Zabbix polls SNMP (`ifAlias` preferred).
 | AP 2.5G | `MON-2G5-AP07` | 2.5G |
 | WAN uplink | `UW-SC1` | link/flap/errors |
 | Temp watch | `TMON-GUEST` | items + INFO link-down |
+| Exclude | `X` / `X-STK` | none |
 | Note only | `N-STACK` / `N-SPARE` | no action |
 
 ---
