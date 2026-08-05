@@ -1,7 +1,6 @@
 # Port identity — baseline
 
-Shared on-box label grammar for Extreme switch ports (prefer SNMP `ifAlias`): class, optional speed, far-end ID.  
-Zabbix LLD and trigger behavior: `docs/port-identity-zabbix.md`.
+Shared on-box label grammar for Extreme switch ports (prefer SNMP `ifAlias`): class, optional speed, far-end ID.
 
 ---
 
