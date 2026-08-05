@@ -1,0 +1,54 @@
+# Extreme VOSS by SNMP
+
+Zabbix **7.0** template for Extreme VOSS / Fabric Engine devices, modeled on the official
+[Extreme EXOS by SNMP](https://git.zabbix.com/projects/ZBX/repos/zabbix/browse/templates/net/extreme_snmp)
+template with OIDs remapped to RAPID-CITY (`enterprises.2272`).
+
+## Import
+
+1. Zabbix → Data collection → Templates → Import
+2. Select `template_net_extreme_voss_snmp.yaml`
+3. Link to a host with SNMPv2c/v3 credentials
+
+Requires Zabbix **7.0+** (export version `7.0`).
+
+## What differs from Extreme EXOS
+
+| Area | EXOS | VOSS |
+|---|---|---|
+| CPU / memory | `extremeCpuMonitor*` / `extremeMemoryMonitor*` | `rcKhiSlot*` LLD (per slot); scalar CPU for slot 1 |
+| Temperature | Scalar `extremeCurrentTemperature` | `rcVossSystemTemperature*` LLD |
+| Fan | Status + RPM | Status + ambient °C (no RPM OID) |
+| PSU / fan crit values | EXOS enums | `{$FAN_CRIT_STATUS}=3`, `{$PSU_CRIT_STATUS}=4` |
+| Chassis identity | ENTITY-MIB index 1 | `rcChasSerialNumber` / `rcChasModelName` / `rcChasHardwareRevision` |
+| Software rev | Extreme software MIB | `rcSysVersion` |
+
+**Do not use** `rcSysCpuUtil` / `rcSysDram*` — MIB marks them unsupported on VOSS.
+
+See [OID_MAPPING.md](OID_MAPPING.md) and [TEST_CHECKLIST.md](TEST_CHECKLIST.md).
+
+## Macros (VOSS-specific defaults)
+
+| Macro | Default | Meaning |
+|---|---|---|
+| `{$FAN_CRIT_STATUS}` | `3` | `rcChasFanOperStatus` down |
+| `{$PSU_CRIT_STATUS}` | `4` | `rcChasPowerSupplyOperStatus` down |
+| `{$TEMP_CRIT_STATUS}` | `3` | `rcVossSystemTemperatureStatus` highCritial |
+| `{$CPU.UTIL.CRIT}` | (from EXOS base) | Slot CPU util % |
+| `{$MEMORY.UTIL.MAX}` | (from EXOS base) | Slot memory util % |
+| `{$TEMP_CRIT}` / `{$TEMP_WARN}` | 70 / 55 | °C thresholds |
+
+## Coverage
+
+- ICMP availability
+- SNMPv2 / HOST-RESOURCES / ENTITY (firmware) system items
+- Slot CPU + memory discovery (`rcKhiSlotPerfTable`)
+- Fan / PSU / temperature discovery
+- IF-MIB interface discovery (+ EtherLike duplex)
+- Standard interface traffic / errors / speed / link triggers
+
+## Port identity
+
+Prefer port `name` / `ifAlias` for the shared `CLASS[-SPEED]-ID` grammar.
+Leave description fields empty so they cannot override `ifAlias`.
+VOSS `rcPortName` (SIZE 0..42) is an alternate; verify with a live canary before relying on it.
