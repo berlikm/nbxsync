@@ -89,3 +89,9 @@ Expected speed = SPEED token if present, else class default (`USW`/`US` → 10G,
 | Temp watch | `TMON-GUEST` | items + INFO link-down |
 | Exclude | `X` / `X-STACK` | none |
 | Note only | `N-SPARE` | no action |
+
+---
+
+## 5. LAG / MLAG / MLT
+
+**Naming TBD** — confirm later how bundle / peer-link / MLT labels fit this grammar (member ports vs aggregate, MLAG peer-link, VOSS MLT).
