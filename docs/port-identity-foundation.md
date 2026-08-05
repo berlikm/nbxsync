@@ -177,3 +177,4 @@ Zabbix polls SNMP (`ifAlias` preferred).
 - [ ] EXOS: which of `display-string` / `description-string` wins for `ifAlias` at 64
 - [ ] Apply labels on pilots → enable absolute-expect
 - [ ] Port template: link/flap/errors, absolute expect, change vs stable-up, maintenance suppress
+- [ ] Later: revisit **LAG / MLAG / MLT** monitoring (focus is physical ports for now)
