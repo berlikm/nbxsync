@@ -52,3 +52,7 @@ See [OID_MAPPING.md](OID_MAPPING.md) and [TEST_CHECKLIST.md](TEST_CHECKLIST.md).
 Prefer port `name` / `ifAlias` for the shared `CLASS[-SPEED]-ID` grammar.
 Leave description fields empty so they cannot override `ifAlias`.
 VOSS `rcPortName` (SIZE 0..42) is an alternate; verify with a live canary before relying on it.
+
+## Compatibility notes (Zabbix 7.0)
+
+Export is Zabbix **7.0** (tested import on 7.0.29). Relative to the EXOS 8.0 source template, this file omits `vendor`, macro `config` UI metadata, and discovery-rule `tags` so it imports cleanly on 7.0.
