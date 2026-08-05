@@ -1,6 +1,6 @@
 # Extreme switching — Zabbix monitoring
 
-Status: building    Owner:    Depends on: port-identity.md
+Status: building    Owner:    Depends on: [port-identity.md](port-identity.md)
 
 ---
 
@@ -125,7 +125,7 @@ How §2 maps to data. Everything here except the last two rows comes from the st
 | 10 | dirty link? | in/out errors, discards | IF-MIB |
 | 11 | **CRC specifically?** | `dot3StatsFCSErrors` | EtherLike-MIB — **not in stock template, see §9** |
 | 12 | half duplex? | `dot3StatsDuplexStatus` | EtherLike-MIB |
-| 13 | uplink sustainably full? | `ifHCInOctets` / `ifHCOutOctets` vs `ifHighSpeed` | IF-MIB, 1h average |
+| 13 | uplink sustainably full? | `ifHCInOctets` / `ifHCOutOctets` vs **intended** `{#IF.SPEED.EXPECTED}` | IF-MIB, 1h average — §6.4 |
 | 14 | dropping traffic? | `ifOutDiscards` | IF-MIB |
 | 15 | which ports do we care about? | ifAlias | IF-MIB `.1.3.6.1.2.1.31.1.1.1.18` |
 
@@ -477,7 +477,7 @@ Silencing by macro rather than disabling triggers keeps the template untouched a
 ## 9. Open questions
 
 - [x] ~~EXOS: does `display-string` or `description-string` win for `ifAlias`?~~ **Answered** — canary on EXOS-VM 32.7.2.19: `description-string` wins when both are set; either alone is used. Decision: grammar in `display-string`, `description-string` left empty. Write-up: `/opt/cursor/artifacts/EXOS_IFALIAS_CANARY.txt`
-- [x] ~~`display-string` max length~~ **Answered — 20 characters, silently truncated.** Confirmed on CH-NKN-G08-L02-CORE01. Fleet label budget is **20, not 64**. port-identity.md needs updating; generator must enforce ≤20 rather than let the switch truncate
+- [x] ~~`display-string` max length~~ **Answered — 20 characters, silently truncated.** Confirmed on CH-NKN-G08-L02-CORE01. Fleet label budget is **20, not 64**. Documented in [port-identity.md](port-identity.md); generator must enforce ≤20 rather than let the switch truncate
 - [ ] Confirm `:` is rejected by `display-string` on our EXOS versions; also test `,` and `;`
 - [ ] Compliance check: any port where `description-string` is non-empty (it would hijack `ifAlias`)
 - [ ] **Do CRC errors actually show up?** `ifInErrors` is an aggregate and may not move for FCS errors. The proper counter is `dot3StatsFCSErrors`, which the stock EtherLike LLD does **not** poll. Test with a known-bad patch lead before assuming §2 "dirty link" is covered

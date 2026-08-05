@@ -3,7 +3,7 @@
 Working notes and per-domain specs for the network monitoring build.
 
 **Rule:** one doc = one data path. Different credential or protocol → different doc.
-**Rule:** max one page per doc. If a section grows past ~10 lines it becomes its own doc.
+**Rule:** prefer one page per doc. `01` is the load-bearing exception until §B/§C split; new domains start from `_template.md`.
 
 ## Doc set
 
@@ -43,6 +43,21 @@ Pulled from `berlikm/nbxsync` branch `cursor/extreme-voss-snmp-template-e7f8` (P
 ## Reference
 
 `reference/` holds the design docs **as they exist on the PR branch**. They are older than the docs above — kept only for diffing. The docs in this folder are authoritative.
+
+## Scripts
+
+| Script | Purpose |
+|---|---|
+| [`../scripts/run_network_zabbix_sim.py`](../scripts/run_network_zabbix_sim.py) | Zabbix-only: import Extreme templates, apply global + role macros, pilot VOSS host, verify cutover plan |
+| [`../scripts/configure_nbxsync_network.py`](../scripts/configure_nbxsync_network.py) | NetBox/nbxsync network wiring (platforms, roles, macros, template assignments). `--zabbix-only` when NetBox is unavailable |
+
+```bash
+# Prove the VOSS cutover plan is configurable in Zabbix 7
+python3 scripts/run_network_zabbix_sim.py
+
+# Apply the same macros/templates as nbxsync would (no Django)
+python3 scripts/configure_nbxsync_network.py --zabbix-only --simulate
+```
 
 ## Track split
 
