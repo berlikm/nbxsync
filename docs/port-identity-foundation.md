@@ -2,7 +2,7 @@
 
 **Status:** Locked design direction  
 **Operator SoT:** Extreme **display string only** (≤15 characters)  
-**NetBox role:** Inventory, cables, circuits, **compliance** — not a second place to edit monitoring intent  
+**NetBox role:** Inventory, cables, circuits, **compliance**, and **`Interface.speed` for Jinja config** — not monitoring expected speed / not a second place to edit monitor intent  
 **Related plan:** `docs/internet-network-monitoring-plan.md` (Track A)
 
 ---
