@@ -2,6 +2,8 @@
 
 Shared on-box label grammar for Extreme switch ports (prefer SNMP `ifAlias`): class, optional speed, far-end ID.
 
+Monitoring design that consumes this grammar: `docs/extreme-switching-zabbix.md`.
+
 ---
 
 ## 1. Grammar
@@ -16,12 +18,14 @@ CLASS-SPEED-ID
 |---|---|
 | **CLASS** | `USW` `US` `UP` `MON` `UW` `TMON` `X` `N` |
 | **SPEED** | Only when **not** the class default (`2G5` not `2.5G`) — not used on `X` / `N` |
-| **ID** | Far-end / free text after normalize |
+| **ID** | Far-end / free text after normalize — **machine-short abbreviation**, not a hostname |
 | **Case** | Store UPPERCASE; match case-insensitive |
-| **Length** | Max **64** characters |
+| **Length** | Max **20** characters (EXOS `display-string` hard limit; VOSS allows 64 — use LCD **20**) |
 | **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric |
 
 One fact, one encoding: if the port runs at the class default, **omit SPEED**.
+
+**Generator rule:** refuse labels longer than 20. Do not let EXOS truncate — a truncated label produces a permanent generated-vs-live compliance diff.
 
 ---
 
@@ -37,7 +41,7 @@ Classes are chosen by **expected default speed** (and role), not by inventing de
 | `US` | Endpoint expect **10G** (hypervisor, storage, 10G server NIC, …) | 10G | Yes | same |
 | `UP` | Toward AP — expect 1G | 1G | Yes | same |
 | `MON` | Endpoint expect **1G** (BMC/iDRAC, client, 1G server NIC, …) | 1G | Yes | same |
-| `UW` | Uplink WAN / ISP | — | Later | link / flap / errors |
+| `UW` | Uplink WAN / ISP | — | Later (circuit bandwidth) | link / flap / errors |
 | `TMON` | Temp watch | — | No | items; optional link-down **INFO** only |
 
 **`US` vs `MON`:** ask “what speed should this be?” — 10G → `US`, 1G → `MON`. A 1G server NIC is `MON-SRV12`, not `US-1G-SRV12`.
@@ -52,13 +56,22 @@ Classes are chosen by **expected default speed** (and role), not by inventing de
 
 Zabbix takes **no port alerts** on `X*`. Reason may also live in NetBox description.
 
-### 2.3 Note only — class `N`
+Only **`X`** removes a port from monitoring. Structural ports that must never alert (stack, ISC, MLAG peer-link, SPAN) need an explicit **`X`**, not a note.
+
+### 2.3 Note — class `N` (monitoring-neutral)
 
 | Display | Meaning |
 |---|---|
-| `N` / `N-<text>` | Free-form note — no Zabbix action |
+| `N` / `N-<text>` | Free-form note on the box |
 
-`N` is for freedom in on-box descriptions that are not excludes and not monitored classes.
+**`N` does not exclude.** It behaves like an unlabelled port plus human text:
+
+| Role | `N` / unlabelled / unparseable legacy |
+|---|---|
+| Core / Dist / Mgmt | **monitored** (link-down, errors, …) |
+| Access | not monitored (opt-in classes only) |
+
+To silence a port: use **`X`** or **admin-down**. Unused ports should be admin-down as hygiene; reserve `X` for ports that stay up but must not alert.
 
 ---
 
@@ -85,18 +98,18 @@ Emit a token **only** for non-default speeds.
 
 **Normal (default speed — no token):**
 
-| Scenario | Display | Expect |
-|---|---|---|
-| Switch ↔ switch | `USW-SWD14` | 10G |
-| Hypervisor / 10G NIC | `US-ESX01` | 10G |
-| Storage 10G | `US-SAN01` | 10G |
-| AP | `UP-AP3F07` | 1G |
-| iDRAC / BMC | `MON-IDR03` | 1G |
-| 1G server NIC | `MON-SRV12` | 1G |
-| WAN uplink | `UW-SC1` | link/flap/errors |
-| Temp watch | `TMON-GUEST` | items + INFO link-down |
-| Exclude | `X` / `X-STACK` | none |
-| Note only | `N-SPARE` | no action |
+| Scenario | Display | Len | Expect |
+|---|---|---|---|
+| Switch ↔ switch | `USW-SWD14` | 9 | 10G |
+| Hypervisor / 10G NIC | `US-ESX01` | 8 | 10G |
+| Storage 10G | `US-SAN01` | 8 | 10G |
+| AP | `UP-AP3F07` | 9 | 1G |
+| iDRAC / BMC | `MON-IDR03` | 9 | 1G |
+| 1G server NIC | `MON-SRV12` | 9 | 1G |
+| WAN uplink | `UW-SC1` | 6 | link/flap/errors |
+| Temp watch | `TMON-GUEST` | 10 | items + INFO link-down |
+| Exclude | `X` / `X-STACK` | | none |
+| Note (neutral) | `N-SPARE` | 7 | same as unlabelled |
 
 **Exceptions (token required — not the class default):**
 
@@ -106,9 +119,13 @@ Emit a token **only** for non-default speeds.
 | AP at 2.5G | `UP-2G5-AP07` | 2.5G |
 | 10G port that would otherwise be `MON` | `MON-10G-…` | 10G |
 
+**Does not fit (25 > 20):** `USW-10G-CH-ZRH-ZH4-DIST01` — shorten the ID; full name stays in NetBox.
+
 ---
 
-## 5. On-box field → SNMP `ifAlias` (EXOS)
+## 5. On-box field → SNMP `ifAlias`
+
+### EXOS
 
 **Prefer `display-string`** for the grammar label (what ops see in CLI port summaries).
 
@@ -120,13 +137,23 @@ Lab canary on **EXOS-VM 32.7.2.19** (IF-MIB):
 | `description-string` only | description-string |
 | both | **description-string** (wins regardless of order) |
 
-**Rule for EXOS:** put `CLASS[-SPEED]-ID` in **`display-string`**. Leave **`description-string` empty** on labeled ports (or never set it) so it cannot override `ifAlias`. Zabbix reads `ifAlias`.  
-Port `ifName` is `1:N`; data ports use ifIndex `1000+N` (e.g. port 1 → `1001`). Budget remains **64**.
+**Rule:** put `CLASS[-SPEED]-ID` in **`display-string`**. Leave **`description-string` empty**. Max **20** characters — EXOS truncates silently past that.
 
-VOSS `name` → `ifAlias` / `rcPortName` canary still open.
+Port `ifName` is `1:N`; data ports use ifIndex `1000+N` (e.g. port 1 → `1001`).
+
+### VOSS
+
+Lab canary on **Virtual Fabric Engine 9.3.1.0**:
+
+| CLI | SNMP |
+|---|---|
+| `interface gigabitEthernet 1/1` → `name USW-ID01` | **`ifAlias.192 = USW-ID01`** |
+| | `rcPortName.192` empty — do not rely on it |
+
+`name` allows 0–64 characters; fleet grammar still uses **20**. Prefer `ifAlias` for the shared grammar.
 
 ---
 
 ## 6. LAG / MLAG / MLT
 
-**Naming TBD** — confirm later how bundle / peer-link / MLT labels fit this grammar (member ports vs aggregate, MLAG peer-link, VOSS MLT).
+**Naming TBD** — confirm later how bundle / peer-link / MLT labels fit this grammar (member ports vs aggregate, MLAG peer-link, VOSS MLT). Until then, structural links that must not alert use **`X`**.

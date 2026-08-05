@@ -1,0 +1,260 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: 36bff6c29af64692839d077febfc7079
+    name: Templates/Network devices
+  templates:
+  - uuid: 7fd9a543c3494c759b160c29ed1242b2
+    template: Extreme Routing by SNMP
+    name: Extreme Routing by SNMP
+    description: 'OSPF-MIB adjacency health for Extreme EXOS and VOSS.
+
+
+      Scalar full-neighbour count alerts; per-neighbour LLD is diagnosis only.
+
+
+      See docs/extreme-switching-zabbix.md §C.
+
+      '
+    groups:
+    - name: Templates/Network devices
+    items:
+    - uuid: 29a04cd970ce4b98b4161bba354c6bc6
+      name: 'OSPF: Admin status'
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.2.1.14.1.2.0
+      key: ospf.admin.stat
+      delay: 1m
+      history: 7d
+      trends: '0'
+      description: 'ospfAdminStat — 1 enabled, 2 disabled.
+
+        '
+      valuemap:
+        name: OSPF-MIB::Status
+      tags:
+      - tag: component
+        value: routing
+      triggers:
+      - uuid: 984f55efa8d645b3a52e7d7a8d647d95
+        expression: 'min(/Extreme Routing by SNMP/ospf.admin.stat,5m)<>{$OSPF.ENABLED}'
+        name: 'Extreme Routing: OSPF disabled globally'
+        priority: HIGH
+        description: ospfAdminStat not enabled for 5m.
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: 0374cb13142f4398990c6be94b0ab3a7
+      name: 'OSPF: Neighbour table walk'
+      type: SNMP_AGENT
+      snmp_oid: walk[1.3.6.1.2.1.14.10.1.6,1.3.6.1.2.1.14.10.1.1,1.3.6.1.2.1.14.10.1.3]
+      key: ospf.nbr.walk
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      description: 'Master walk — ospfNbrState, ospfNbrIpAddr, ospfNbrRtrId.
+
+        '
+      tags:
+      - tag: component
+        value: routing
+    - uuid: a27eb5efb3f14b26bcfe04f0802c01b5
+      name: 'OSPF: Full adjacency count'
+      type: DEPENDENT
+      key: ospf.nbr.full.count
+      delay: '0'
+      history: 7d
+      trends: 30d
+      description: 'Count of ospfNbrState = full(8). This is the alert signal.
+
+        '
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          // walk[] text: OID lines or JSON depending on Zabbix version — handle both
+          var text = value;
+          var count = 0;
+          // JSON array form from snmp walk preprocessing
+          try {
+            var j = JSON.parse(text);
+            if (Array.isArray(j)) {
+              for (var i = 0; i < j.length; i++) {
+                var v = j[i].value !== undefined ? j[i].value : j[i]['{#SNMPVALUE}'];
+                if (String(v) === '8') count++;
+              }
+              return count;
+            }
+            if (j && typeof j === 'object') {
+              for (var k in j) {
+                if (!Object.prototype.hasOwnProperty.call(j, k)) continue;
+                if (k.indexOf('1.3.6.1.2.1.14.10.1.6') === 0 || k.indexOf('.14.10.1.6.') !== -1) {
+                  if (String(j[k]) === '8') count++;
+                }
+              }
+              if (count > 0) return count;
+            }
+          } catch (e) {}
+          // Plain walk text: lines "OID = INTEGER: N" or "OID = N"
+          var lines = String(text).split(/\r?\n/);
+          for (var li = 0; li < lines.length; li++) {
+            var line = lines[li];
+            if (line.indexOf('14.10.1.6') === -1 && line.indexOf('ospfNbrState') === -1) continue;
+            var m = line.match(/=\s*(?:INTEGER:\s*)?(\d+)\s*$/);
+            if (m && m[1] === '8') count++;
+          }
+          return count;
+      master_item:
+        key: ospf.nbr.walk
+      tags:
+      - tag: component
+        value: routing
+      triggers:
+      - uuid: 13e904b9ecb24b31b68ca42773c76215
+        expression: 'min(/Extreme Routing by SNMP/ospf.nbr.full.count,5m)=0'
+        name: 'Extreme Routing: No OSPF full adjacencies'
+        priority: HIGH
+        description: 'L3 isolated — no full OSPF neighbour for 5m. Path to firewalls/DC
+          at risk.
+
+          '
+        tags:
+        - tag: scope
+          value: availability
+      - uuid: ae5afc044bf8418bb3dae4b030421119
+        expression: 'min(/Extreme Routing by SNMP/ospf.nbr.full.count,5m)<{$OSPF.NBR.MIN}
+          and min(/Extreme Routing by SNMP/ospf.nbr.full.count,5m)>0'
+        name: 'Extreme Routing: OSPF full adjacencies below minimum'
+        event_name: 'Extreme Routing: OSPF full adjacencies {ITEM.LASTVALUE1} < {$OSPF.NBR.MIN}'
+        priority: WARNING
+        description: 'Redundancy lost — still routing. Set {$OSPF.NBR.MIN} per device
+          from topology.
+
+          '
+        tags:
+        - tag: scope
+          value: availability
+        dependencies:
+        - name: 'Extreme Routing: No OSPF full adjacencies'
+          expression: 'min(/Extreme Routing by SNMP/ospf.nbr.full.count,5m)=0'
+    discovery_rules:
+    - uuid: 48276fcf8ffd4cbdac7c9e68c78389ce
+      name: OSPF neighbour discovery
+      type: DEPENDENT
+      key: ospf.nbr.discovery
+      delay: '0'
+      lifetime: '0'
+      enabled_lifetime: '0'
+      description: 'Diagnosis only — no triggers on prototypes. Missing neighbour
+        is detected by ospf.nbr.full.count, not by this LLD.
+
+        '
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var text = value;
+          var rows = [];
+          try {
+            var j = JSON.parse(text);
+            if (j && typeof j === 'object' && !Array.isArray(j)) {
+              var states = {};
+              var ips = {};
+              var rtrs = {};
+              for (var k in j) {
+                if (!Object.prototype.hasOwnProperty.call(j, k)) continue;
+                var idx;
+                if ((idx = k.match(/14\.10\.1\.6\.(.+)$/))) states[idx[1]] = j[k];
+                else if ((idx = k.match(/14\.10\.1\.1\.(.+)$/))) ips[idx[1]] = j[k];
+                else if ((idx = k.match(/14\.10\.1\.3\.(.+)$/))) rtrs[idx[1]] = j[k];
+              }
+              for (var id in states) {
+                if (!Object.prototype.hasOwnProperty.call(states, id)) continue;
+                rows.push({
+                  '{#SNMPINDEX}': id,
+                  '{#OSPF.NBR.STATE}': String(states[id]),
+                  '{#OSPF.NBR.IP}': String(ips[id] !== undefined ? ips[id] : ''),
+                  '{#OSPF.NBR.RTRID}': String(rtrs[id] !== undefined ? rtrs[id] : '')
+                });
+              }
+              return JSON.stringify(rows);
+            }
+          } catch (e) {}
+          // Fallback: empty discovery if parse fails — scalar count still alerts
+          return '[]';
+      master_item:
+        key: ospf.nbr.walk
+      item_prototypes:
+      - uuid: 1f145ab4617747a09fd09ea5cb75f1ca
+        name: 'OSPF neighbour {#OSPF.NBR.IP} (rtr {#OSPF.NBR.RTRID}): State'
+        type: DEPENDENT
+        key: 'ospf.nbr.state[{#SNMPINDEX}]'
+        delay: '0'
+        history: 7d
+        trends: '0'
+        description: Diagnosis only — no trigger.
+        valuemap:
+          name: OSPF-MIB::ospfNbrState
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var idx = '{#SNMPINDEX}';
+            try {
+              var j = JSON.parse(value);
+              if (j && typeof j === 'object') {
+                for (var k in j) {
+                  if (k.indexOf('14.10.1.6.' + idx) !== -1 || k.endsWith('14.10.1.6.' + idx))
+                    return j[k];
+                }
+              }
+            } catch (e) {}
+            var lines = String(value).split(/\r?\n/);
+            for (var i = 0; i < lines.length; i++) {
+              if (lines[i].indexOf('14.10.1.6.' + idx) === -1) continue;
+              var m = lines[i].match(/=\s*(?:INTEGER:\s*)?(\d+)\s*$/);
+              if (m) return m[1];
+            }
+            return 0;
+        master_item:
+          key: ospf.nbr.walk
+        tags:
+        - tag: component
+          value: routing
+        - tag: ospf_nbr
+          value: '{#OSPF.NBR.IP}'
+    macros:
+    - macro: '{$OSPF.ENABLED}'
+      value: '1'
+      description: Expected ospfAdminStat (1 = enabled).
+    - macro: '{$OSPF.NBR.MIN}'
+      value: '1'
+      description: Minimum full OSPF adjacencies — set per device from topology.
+    valuemaps:
+    - uuid: 348687b82f8b4b869893f1f010282e2c
+      name: OSPF-MIB::Status
+      mappings:
+      - value: '1'
+        newvalue: enabled
+      - value: '2'
+        newvalue: disabled
+    - uuid: 63f3a2087d844ba6843f8717d6ade989
+      name: OSPF-MIB::ospfNbrState
+      mappings:
+      - value: '1'
+        newvalue: down
+      - value: '2'
+        newvalue: attempt
+      - value: '3'
+        newvalue: init
+      - value: '4'
+        newvalue: twoWay
+      - value: '5'
+        newvalue: exchangeStart
+      - value: '6'
+        newvalue: exchange
+      - value: '7'
+        newvalue: loading
+      - value: '8'
+        newvalue: full

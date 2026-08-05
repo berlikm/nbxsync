@@ -4,7 +4,7 @@
 **Priority order:** Device health → uplinks/ports → Cato & FortiGate → Services/SLA → ISP circuit monitoring  
 **Stack:** NetBox + nbxsync + Zabbix 7 · Extreme EXOS / VOSS · HiveOS APs (XIQ Pilot) · (later) Cato · FortiGate
 
-**Port identity:** label grammar in `docs/port-identity-foundation.md`; Zabbix LLD/triggers in `docs/port-identity-zabbix.md`.
+**Port identity:** label grammar in `docs/port-identity-foundation.md`; Zabbix LLD/triggers in `docs/port-identity-zabbix.md`; full Extreme switching design in `docs/extreme-switching-zabbix.md`.
 
 ---
 
@@ -60,7 +60,7 @@ Phase 5 ISP circuits    ←──  may consume: Circuits, UW display codes, sync
 | Platform / class | Today | Status |
 |---|---|---|
 | Extreme **EXOS** | Template Rule → Extreme EXOS by SNMP | **Done** (device health baseline) |
-| Extreme **VOSS** | Falls back to Network Generic | **Gap — build VOSS template** |
+| Extreme **VOSS** | `Extreme VOSS by SNMP` (repo) | **Built** — pilot/wiring remain |
 | **HiveOS** APs (XIQ Pilot) | No dedicated AP template | **Gap — build HiveOS/AP template** |
 | Scoped **uplinks** (core / dist / access / AP) | Not systematically scoped | **Phase 2** (display codes) |
 | **ISP / WAN** circuit ports | Not implemented | **Phase 5** (`UW` + Circuits) |
@@ -112,17 +112,18 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | ID | Deliverable |
 |---|---|
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
-| P0.2 | **VOSS canary:** `name` → SNMP ifAlias (`…1.1.1.18`) or ifDescr; note per-platform OID if needed |
+| P0.2 | **VOSS canary:** `name` → SNMP ifAlias — **DONE** (VOSS 9.3.1.0: `ifAlias` = name; `rcPortName` empty) |
 | P0.3 | **EXOS canary:** display-string + description-string → ifAlias — **DONE** (32.7.2.19: either alone → ifAlias; both → description wins). **Prefer display-string; keep description empty** |
-| P0.4 | Lock grammar budget **64**; always-emit SPEED; `X` notes |
+| P0.4 | Lock grammar budget **20** (EXOS silent truncate); generator refuses >20; `X` excludes, `N` neutral |
 | P0.5 | Grammar: uppercase; no colon; split X regex |
 | P0.6 | Role matrix + hybrid admin-down spares; access safety-net limit stated |
 | P0.7 | Pilot lists; site class optional |
 
 **Verify exit**
 
-- [x] EXOS ifAlias field canary done (description wins; VOSS still open)  
-- [ ] Include + `X` grammar locked  
+- [x] EXOS ifAlias field canary done (description wins)  
+- [x] VOSS `name` → ifAlias canary done  
+- [x] Include + `X` grammar locked (budget 20; `N` monitoring-neutral)  
 - [ ] Access: safety net does **not** cover missing labels (stated)  
 - [ ] Hybrid: admin-down spares  
 - [ ] Pilots named; VOSS/HiveOS owners named  
@@ -177,7 +178,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 **Objective:** Fabric / AP / endpoint **ports** monitored with `USW`/`US`/`UP`/`MON`/`UW`/`TMON`; `X` = exclude; `N` = note only. LAG / MLAG / MLT later.
 
-**SoT on box:** Extreme label that Zabbix reads via SNMP (**64-char budget**). EXOS: put grammar in **`display-string`**; leave **`description-string` empty** so it cannot override `ifAlias` (lab-proven on 32.7.2.19). VOSS: `name` / `name port <list>` — confirm OID.
+**SoT on box:** Extreme label that Zabbix reads via SNMP (**20-char budget** — EXOS truncates). EXOS: grammar in **`display-string`**; leave **`description-string` empty**. VOSS: interface **`name`** → **`ifAlias`** (lab-proven). Full design: `docs/extreme-switching-zabbix.md`.
 
 ### Grammar
 
@@ -186,7 +187,7 @@ CLASS | CLASS-ID | CLASS-SPEED-ID     (UPPERCASE; no colon)
 CLASS = USW|US|UP|MON|UW|TMON|X|N
 SPEED = 100M|1G|2G5|5G|10G|25G|40G|100G|400G
 X = exclude (optional free-form note)
-N = note only (free text, no Zabbix action)
+N = note (monitoring-neutral — same as unlabelled; only X excludes)
 TMON = temp watch (items + optional INFO link-down)
 ```
 

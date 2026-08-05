@@ -36,7 +36,12 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 | `{$TEMP_CRIT_STATUS}` | `3` | `rcVossSystemTemperatureStatus` highCritial |
 | `{$CPU.UTIL.CRIT}` | (from EXOS base) | Slot CPU util % |
 | `{$MEMORY.UTIL.MAX}` | (from EXOS base) | Slot memory util % |
-| `{$TEMP_CRIT}` / `{$TEMP_WARN}` | 70 / 55 | °C thresholds |
+| `{$TEMP_CRIT}` / `{$TEMP_WARN}` | 65 / **999** | Critical kept; warning tier silenced (design §A.8) |
+| `{$TEMP_CRIT_LOW}` | **-273** | Silence stack/VM 0°C false positive |
+| `{$IF.UTIL.MAX}` | **101** | Stock bandwidth trigger off; capacity → Port Speed Expect |
+| `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Physical + LAG only |
+
+Role IFALIAS macros (`.*` + `^X(-|$)` for core, opt-in for access) are assigned via **nbxsync**, not baked into this template. Interface LLD defaults to **15m** / keep-lost **0** during rollout.
 
 ## Coverage
 
@@ -52,9 +57,9 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 
 ## Port identity
 
-Prefer port `name` / `ifAlias` for the shared `CLASS[-SPEED]-ID` grammar.
-Leave description fields empty so they cannot override `ifAlias`.
-VOSS `rcPortName` (SIZE 0..42) is an alternate; verify with a live canary before relying on it.
+CLI `name` populates SNMP **`ifAlias`** (lab canary PASS on VOSS 9.3.1.0). Prefer `ifAlias` for the shared `CLASS[-SPEED]-ID` grammar (fleet budget **20** chars). Do not rely on `rcPortName` (empty in canary).
+
+See `docs/port-identity-foundation.md` and `docs/extreme-switching-zabbix.md` §B.
 
 ## Compatibility notes (Zabbix 7.0)
 
