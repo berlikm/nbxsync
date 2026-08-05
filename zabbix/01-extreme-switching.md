@@ -572,7 +572,7 @@ Same set, severities and dependency chain as §A.6, with two platform deltas:
 
 Name:   `Extreme VOSS by SNMP` — **built**, see [templates/extreme_voss_snmp/](templates/extreme_voss_snmp/)
 Status: imported on Zabbix 7.0.29, lab host linked, 42 items / 14 LLD rules
-Note:   today VOSS falls back to Network Generic — remove that once this lands, watch for icmpping collision
+Note:   TemplateRule **Extreme VOSS → Extreme VOSS by SNMP** (not Network Generic). Checklist §6.1 / `configure_nbxsync_zerotouch.py` + network script.
 
 **Post-import fix worth remembering:** an LLD CPU prototype collided with the scalar slot-1 CPU key on `memory.discovery`. That is the same class of key-collision problem called out in §A.5 — it is real, and it bites within one import.
 

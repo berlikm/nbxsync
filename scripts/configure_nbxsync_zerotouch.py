@@ -1006,7 +1006,14 @@ def step7_template_assignments(server):
 
     # Prune legacy Switch*/AP → Network Generic floors (icmpping collision with EXOS/etc.).
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    for role_name in ('Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Access Point'):
+    for role_name in (
+        'Switch Core',
+        'Switch Dist',
+        'Switch Access',
+        'Switch Mgmt',
+        'Switch Hybrid',
+        'Access Point',
+    ):
         try:
             role = get_role(role_name)
         except DeviceRole.DoesNotExist:
@@ -1868,7 +1875,14 @@ def run_simulate() -> int:
         netgeneric_tpl = M.ZabbixTemplate.objects.filter(zabbixserver=server, name__icontains='Network Generic Device by SNMP').first()
         switch_floor_left = 0
         if netgeneric_tpl is not None:
-            for role_name in ('Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Access Point'):
+            for role_name in (
+        'Switch Core',
+        'Switch Dist',
+        'Switch Access',
+        'Switch Mgmt',
+        'Switch Hybrid',
+        'Access Point',
+    ):
                 try:
                     role = get_role(role_name)
                 except DeviceRole.DoesNotExist:

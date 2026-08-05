@@ -77,10 +77,11 @@ The Zabbix tab appears on: Site Group, Site, Region, Cluster, Cluster Type, Manu
 **NetBox data you need before starting** (created in NetBox itself, not in the Zabbix menu):
 
 - Country Site Groups with slugs: `ch`, `hu`, `jp`, `kr`, `nl`, `us`, `cn`
-- Device Roles named exactly as listed in this checklist
-- Platforms whose names match the Template Rule patterns
+- Device Roles named exactly as listed in this checklist (include **Switch Hybrid** for core∩access Extreme boxes)
+- Platforms whose names match the Template Rule patterns (Extreme platforms must contain `EXOS` or `VOSS`)
 - For BMC monitoring: each server’s **out-of-band IP** (`oob_ip`) filled in; without it the OOB SNMP interface is skipped
 - Required Zabbix templates already present in Zabbix (import any that are missing before assigning them here)
+- **Extreme VOSS by SNMP** YAML imported from `zabbix/templates/extreme_voss_snmp/` **before** enabling the Extreme VOSS Template Rule (§6.1) — stock Zabbix has EXOS, not VOSS
 
 ---
 
@@ -355,9 +356,10 @@ Leave “require tags”, “role pattern”, and “manufacturer” empty unles
 
 **Extreme EXOS / VOSS (orthogonal to role):**
 
-- Platform picks the **platform template** (`Extreme EXOS by SNMP` or `Extreme VOSS by SNMP`). Role picks **port-scoping macros** (§11.1) and, later, capability templates (Routing on Core/Dist).
+- Platform picks the **platform template** (`Extreme EXOS by SNMP` or `Extreme VOSS by SNMP`). Role picks **port-scoping macros** (§11.1) and, later, capability templates (Speed Expect / Routing — §7.1).
 - A VOSS core and an EXOS core share the same Core IFALIAS macros — never build a Core-EXOS / Core-VOSS matrix.
-- **VOSS must not use Network Generic** — both define `icmpping` and Zabbix rejects the link. Import the custom VOSS YAML before enabling the rule.
+- **VOSS must not use Network Generic** — both define `icmpping` and Zabbix rejects the link. Import the custom VOSS YAML before enabling the rule (zerotouch / network helper will import + retarget a leftover Network Generic VOSS rule).
+- **Switch Hybrid** starts Access-like (opt-in labels); flip to Core macros at stage 5 (§11.1 / §15.1c).
 - On-box labels: EXOS → `display-string` (max **20** chars; leave `description-string` empty). VOSS → port `name` → `ifAlias`. Grammar: `zabbix/port-identity.md`.
 
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
@@ -552,7 +554,7 @@ Path: **Zabbix → Macros → Add** (definition on Zabbix Server, then Macro Ass
 
 ### 11.1 Extreme switch port-scoping (required for EXOS/VOSS)
 
-Stock Extreme LLD evaluates **both** IFALIAS macros — set both on every Switch* role. `{$NET.IF.IFTYPE.MATCHES}` excludes EXOS VLAN pseudo-interfaces. Design detail: `zabbix/01-extreme-switching.md` §A.5.
+Stock Extreme LLD evaluates **both** IFALIAS macros — set both on every Switch* role. `{$NET.IF.IFTYPE.MATCHES}` excludes EXOS VLAN pseudo-interfaces. Design detail: `zabbix/01-extreme-switching.md` §A.5 / §A.8.
 
 | Device Role | `{$NET.IF.IFALIAS.MATCHES}` | `{$NET.IF.IFALIAS.NOT_MATCHES}` | `{$NET.IF.IFTYPE.MATCHES}` | Meaning |
 |---|---|---|---|---|
@@ -560,9 +562,11 @@ Stock Extreme LLD evaluates **both** IFALIAS macros — set both on every Switch
 | Switch Dist | `.*` | `^X(-\|$)` | `^(6\|161)$` | Same as Core |
 | Switch Mgmt | `.*` | `^X(-\|$)` | `^(6\|161)$` | Same as Core |
 | Switch Access | `^(USW\|US\|UP\|MON\|UW\|TMON)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` | Opt-in labelled ports only |
-| Switch Hybrid | `^(USW\|US\|UP\|MON\|UW\|TMON)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` | Same opt-in as Access |
+| Switch Hybrid | `^(USW\|US\|UP\|MON\|UW\|TMON)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` | **Start** Access-like (stage 0–4); flip to Core values at stage 5 |
 
-`X` = monitoring exclude (port-identity grammar). `N` = monitoring-neutral (discovered under Core `.*` but no speed-expect). Unlabelled access ports stay undiscovered until labelled.
+**Label semantics (ops):** `X` / `X-<note>` = exclude from monitoring. `N` / `N-<text>` = note only — **not** an exclude (still monitored on Core). Unlabelled admin-up ports: monitored on Core/Dist/Mgmt; not discovered on Access/Hybrid until labelled. Prefer **admin-down** for unused ports; reserve `X` for up links that must stay quiet (stack/ISC/MLAG/SPAN).
+
+**Hybrid stage 5:** after that site’s `X`-fill and admin-down hygiene are clean, copy Core IFALIAS values onto Switch Hybrid (same three macros). Do not invent a Hybrid-EXOS / Hybrid-VOSS matrix — platform still picks the template.
 
 ### 11.2 Extreme / fleet globals (Zabbix Server or global macros)
 
@@ -660,7 +664,26 @@ Initial build is §§1–14. After that, operators mostly do the following.
 
 1. Does it need a **transport exception**? If it is agent-class → nothing (Site Group Agent default). If network SNMP → **SNMP Monitoring**. If SPACE → **Agent Monitoring (SPACE)**. If dual-plane BMC server → **Server Agent+OOB**. If OOB-only → **OOB SNMP Only**. If Linux SNMP opt-in → tag `snmp` (no new role CG).
 2. Does it need an **application template**? Add a Template assignment on the role (§7).
-3. Hostgroup `Roles/<name>` appears automatically from the Sites/Roles Jinja — do not create a per-role hostgroup assignment.
+3. New **Switch*** role? Copy IFALIAS / IFTYPE macros from the closest peer in §11.1 (Core-like vs Access-like). Platform Template Rules already cover EXOS/VOSS.
+4. Hostgroup `Roles/<name>` appears automatically from the Sites/Roles Jinja — do not create a per-role hostgroup assignment.
+
+### 15.1b New Extreme switch (day-2)
+
+1. NetBox: correct **role** (Core/Dist/Access/Mgmt/Hybrid), **platform** containing `EXOS` or `VOSS`, primary IP, site under a country Site Group.
+2. On-box: port labels per `zabbix/port-identity.md` — EXOS grammar in `display-string` (max **20**; leave `description-string` empty — it wins `ifAlias` if set). VOSS grammar in port `name`.
+3. Sync: expect SNMP Monitoring + Extreme EXOS/VOSS template + role IFALIAS macros from §11.1 — **not** Network Generic; exactly one `icmpping`; hostgroup `OS/Network`.
+4. If VOSS and the host still gets Network Generic: the Template Rule is wrong or the YAML was never imported — fix §6.1 before re-syncing.
+
+### 15.1c Extreme staged enablement (ops reminder)
+
+Full stage gates live in `zabbix/01-extreme-switching.md` §A.7. Checklist hooks:
+
+| Stage | Checklist action |
+|---|---|
+| 0–3 | Templates + §11.1 macros only; keep fleet util/temp silence (§11.2) |
+| 4 | Assign **Extreme Port Speed Expect** on Switch* roles (§7.1); confirm `{$PORTID.LLD.*}` globals |
+| 5 | Flip **Switch Hybrid** macros from Access-like → Core values (§11.1), per site |
+| Post-cutover | Assign **Extreme Routing** on Core/Dist after OSPF canary (§7.1); restore util/temp thresholds |
 
 ### 15.2 New Platform appeared
 
@@ -692,6 +715,8 @@ Work top-down:
 | Task | When |
 |---|---|
 | Cohesity VMs with primary IP → SNMP Monitoring (§5b) | When such VMs are created or found |
+| Spot-check Extreme port labels (EXOS `display-string` ≤20; no `description-string`; VOSS `name`) | After label campaigns / before stage 4–5 |
+| Flip Hybrid macros site-by-site (§15.1c stage 5) | When that site’s `X`-fill / admin-down hygiene is clean |
 | Spot-check `environment=Unknown` | After naming-convention drift |
 | Update “Last verified” stamp at top of this doc | After a production re-validation |
 
@@ -707,7 +732,8 @@ After the initial build, and after major changes, confirm coverage against §13.
 |---|---|
 | Sample Linux server | Server Agent+OOB; agent + oob SNMP; OS/Linux; Roles/Server; leaf under `Sites/CH/…` |
 | Sample EXOS switch | SNMP Monitoring; **Extreme EXOS by SNMP**; role IFALIAS macros from §11.1; no Network Generic; single `icmpping`; OS/Network |
-| Sample VOSS switch | SNMP Monitoring; **Extreme VOSS by SNMP** (imported YAML); same role IFALIAS as EXOS peer role; no Network Generic |
+| Sample VOSS switch | SNMP Monitoring; **Extreme VOSS by SNMP** (imported YAML); same role IFALIAS as EXOS peer role; no Network Generic; single `icmpping` |
+| Sample Switch Hybrid (pre–stage 5) | Same platform template as peer EXOS/VOSS; IFALIAS macros still Access-like (`USW\|…` opt-in), not Core `.*` |
 | Sample Windows VM | Agent; Windows by agent; OS/Windows; leaf under `Sites/CH/…` |
 | Country dashboard / ACL | Filter on parent `Sites/CH` for location views; hosts are leaf members only. Org access is global — no regional permission split |
 | Host with `critical` | Also in Priority/Critical |
