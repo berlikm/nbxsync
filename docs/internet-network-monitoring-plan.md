@@ -23,7 +23,7 @@ This plan is **monitoring capability** (what we monitor, in what order).
 **Port identity (locked — Track A design):** see `docs/port-identity-foundation.md`.
 
 ```
-BUDGET = 64 | CLASS[-SPEED]-ID | USW US UP MON UW TMON | X notes | N = note
+BUDGET = 64 | CLASS[-SPEED]-ID | USW US UP MON UW TMON | X | N
 ACCESS opt-in | HYBRID admin-down spares
 LAG / MLAG / MLT = later | Label push tooling = separate
 ```
@@ -186,7 +186,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 CLASS | CLASS-ID | CLASS-SPEED-ID     (UPPERCASE; no colon)
 CLASS = USW|US|UP|MON|UW|TMON|X|N
 SPEED = 100M|1G|2G5|5G|10G|25G|40G|100G|400G
-X notes: X-STK|X-ISC|X-MLAG|X-SPN|X-OOB|X-OTH
+X = exclude (optional free-form note)
 N = note only (free text, no Zabbix action)
 TMON = temp watch (items + optional INFO link-down)
 ```
@@ -219,7 +219,7 @@ Apply labels on box → then enable absolute-expect. Label push tooling is **sep
 
 ### Excludes / notes
 
-- **`X` / `X-<NOTE>`** — excluded. Controlled notes: `STK` `ISC` `MLAG` `SPN` `OOB` `OTH`.  
+- **`X` / `X-<note>`** — excluded (free-form note).  
 - **`N` / `N-<text>`** — free description; Zabbix does nothing.
 
 ### Subsidiary hybrid (core∩access)
@@ -227,7 +227,7 @@ Apply labels on box → then enable absolute-expect. Label push tooling is **sep
 Same LLD as fabric (`admin-up AND NOT X AND NOT N`). Spares admin-down; `X` or `N` when up but uninteresting.
 
 - Spares → **admin-down**.  
-- Up-but-uninteresting → `X` / `X-<NOTE>` or `N` / `N-<text>`  
+- Up-but-uninteresting → `X` / `X-<note>` or `N` / `N-<text>`  
 - Monitor → **`USW` / `US` / `UP` / `MON` / `UW` / `TMON`**
 
 ### Work packages
@@ -259,7 +259,7 @@ Same LLD as fabric (`admin-up AND NOT X AND NOT N`). Spares admin-down; `X` or `
 - [ ] Switch↔switch `USW` labels both ends  
 - [ ] Server/storage `US` + AP `UP` + iDRAC `MON`  
 - [ ] `UW` link/flap/errors  
-- [ ] `X` / `X-STK`/… excludes  
+- [ ] `X` / `X-<note>` excludes  
 - [ ] `N` / `N-<text>` → no Zabbix action  
 - [ ] `TMON` items + optional INFO; list reviewed  
 - [ ] Hybrid: admin-down spares; `X`/`N` if up-but-uninteresting  
@@ -375,7 +375,7 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 
 ### Do now (Track A → Phases 0–2)
 
-1. Foundations + **port label code list** (`USW` `US` `UP` `MON` `UW` `TMON` | `X` notes | `N`; `UW` depth in Phase 5)  
+1. Foundations + **port label code list** (`USW` `US` `UP` `MON` `UW` `TMON` | `X` | `N`; `UW` depth in Phase 5)  
 2. **Device health templates:** EXOS verify + **build VOSS** + **build HiveOS AP**  
 3. **Ports:** switch / server / MON / WAN scoped and monitored via labels  
 
@@ -424,7 +424,7 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 
 | Phase | What we scope | Display codes |
 |---|---|---|
-| 2 | Fabric / AP / endpoints | `USW` `US` `UP` `MON` `TMON` + optional SPEED; `UW`; `X` notes; `N` |
+| 2 | Fabric / AP / endpoints | `USW` `US` `UP` `MON` `TMON` + optional SPEED; `UW`; `X`; `N` |
 | 5 | Internet circuits | `UW` (+ Circuit object); no absolute speed trigger |
 
 **Design (Track A):** port label codes + which template / LLD mode watches them.  
@@ -472,9 +472,9 @@ B) SEPARATE TASK — NetBox integration (populate data, nbxsync,
    display→LLD, compliance, alerts/actions, triggers, zero-touch)
 
 PORT SOT (locked):
-  Budget 64; CLASS[-SPEED]-ID; USW(10G) US(10G) UP(1G) MON(1G) UW TMON | X notes | N
+  Budget 64; CLASS[-SPEED]-ID; USW(10G) US(10G) UP(1G) MON(1G) UW TMON | X | N
   Access opt-in; Hybrid admin-down spares
-  UW: link/flap/errors now; TMON: INFO + review; X exclude notes; N note
+  UW: link/flap/errors now; TMON: INFO + review; X exclude; N note
   Label push tooling = separate; LAG/MLAG/MLT = later
 
 TRACK A ORDER:

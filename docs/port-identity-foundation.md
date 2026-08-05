@@ -42,15 +42,9 @@ CLASS-SPEED-ID
 
 | Display | Meaning |
 |---|---|
-| `X` | Excluded |
-| `X-STK` | Stack / stacking |
-| `X-ISC` | Inter-switch / ISC |
-| `X-MLAG` | MLAG peer-link |
-| `X-SPN` | SPAN / mirror |
-| `X-OOB` | Out-of-band |
-| `X-OTH` | Other exclude |
+| `X` / `X-<note>` | Excluded — optional free-form note |
 
-These are **notes on class `X`**, not separate classes. Reason may also live in NetBox description. Zabbix takes **no port alerts** on `X*`.
+Zabbix takes **no port alerts** on `X*`. Reason may also live in NetBox description.
 
 ### 2.3 Note only — class `N`
 
@@ -113,7 +107,7 @@ Unused ports → admin-down.
 
 ```
 1) Spares / unused            → admin-down
-2) Admin-up but uninteresting → X / X-<NOTE> or N / N-<text>
+2) Admin-up but uninteresting → X / X-<note> or N / N-<text>
 3) Monitor / temp             → USW / US / UP / MON / UW / TMON / …
 ```
 
@@ -149,8 +143,7 @@ Zabbix polls SNMP (`ifAlias` preferred).
 | iDRAC | `MON-1G-IDR03` | 1G |
 | WAN uplink | `UW-SC1` | link/flap/errors |
 | Temp watch | `TMON-GUEST` | items + INFO link-down |
-| Exclude stack | `X-STK` | none |
-| Exclude MLAG | `X-MLAG` | none |
+| Exclude | `X` / `X-STACK` | none |
 | Note only | `N-SPARE` | no action |
 
 ---
