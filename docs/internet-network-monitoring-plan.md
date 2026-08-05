@@ -498,12 +498,11 @@ B) SEPARATE TASK — NetBox integration (populate data, nbxsync,
    display→LLD, compliance, alerts/actions, triggers, zero-touch)
 
 PORT SOT (locked):
-  Canary ifAlias length → extended (always token) or short fallback
-  CLASS[-SPEED]-ID UPPERCASE; no colon; UNPARSEABLE ≠ empty
+  Budget 64; always-emit SPEED; CLASS[-SPEED]-ID UPPERCASE; no colon
+  Migration: generator overwrite → clean baseline → absolute-expect
   Access: no safety net without label; Hybrid: admin-down spares
   W: link/flap/errors now; TMON: INFO + audit cadence
   Generator overwrite + display_protect; check ingest loop
-  Gate absolute-expect on clean diff
 
 TRACK A ORDER:
 0 Foundations (grammar + defaults + LAG + generate path)
