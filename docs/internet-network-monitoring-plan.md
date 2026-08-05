@@ -23,10 +23,9 @@ This plan is **monitoring capability** (what we monitor, in what order).
 **Port identity (locked — Track A design):** see `docs/port-identity-foundation.md`.
 
 ```
-BUDGET = 64 | Always emit SPEED | CLASS[-SPEED]-ID | X-STK/X-ISC/X-MLAG
-PARSE: EMPTY | PARSED | overwrite legacy → clean baseline → absolute-expect
-ACCESS opt-in | HYBRID admin-down spares | LAG members only
-GENERATOR + display_protect
+BUDGET = 64 | Always emit SPEED | CLASS[-SPEED]-ID | X notes
+ACCESS opt-in | HYBRID admin-down spares | LAG members only | MLT skip
+Label push tooling = separate
 ```
 
 Full detail + TODO: `docs/port-identity-foundation.md`.
@@ -118,9 +117,8 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | P0.3 | **EXOS canary:** display-string + description-string → ifAlias winner / truncate at 64 |
 | P0.4 | Lock grammar budget **64**; always-emit SPEED; `X` notes |
 | P0.5 | Grammar: uppercase; no colon; split X regex |
-| P0.6 | Role matrix + hybrid admin-down spares; access safety-net limit stated |
-| P0.7 | Ingest-loop check (ifAlias ↛ generator inputs) |
-| P0.8 | Pilot lists; site class optional |
+| P0.6 | Role matrix + hybrid admin-down spares; access safety-net limit stated; MLT skip |
+| P0.7 | Pilot lists; site class optional |
 
 **Verify exit**
 
@@ -128,8 +126,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 - [ ] Extended vs short profile chosen  
 - [ ] Include + `X` grammar locked  
 - [ ] Access: safety net does **not** cover missing labels (stated)  
-- [ ] Hybrid: admin-down spares; generator + `display_protect`  
-- [ ] Ingest loop check  
+- [ ] Hybrid: admin-down spares; MLT not monitored  
 - [ ] Pilots named; VOSS/HiveOS owners named  
 
 ---
@@ -190,11 +187,11 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 CLASS | CLASS-ID | CLASS-SPEED-ID     (UPPERCASE; no colon)
 CLASS = UC|UD|UA|UP|MON|W|TMON|X
 SPEED = 100M|1G|2G5|5G|10G|25G|40G|100G|400G
-X notes (generated): X-STK|X-ISC|X-MLAG|X-SPN|X-OOB|X-OTH
+X notes: X-STK|X-ISC|X-MLAG|X-SPN|X-OOB|X-OTH
 ```
 
-Extended profile (**64 common**): **always** emit SPEED.  
-Parse states: `EMPTY` | `PARSED`. Legacy labels overwritten by generator — baseline = clean diff, then absolute-expect.
+Budget **64**. Labels include SPEED.  
+Apply labels on box → then enable absolute-expect. Label push tooling is **separate**. VOSS **MLT** not monitored yet.
 
 ### Class defaults → Zabbix expected (if token omitted)
 
@@ -213,8 +210,8 @@ Parse states: `EMPTY` | `PARSED`. Legacy labels overwritten by generator — bas
 3. `change(ifHighSpeed)` vs last **stable up** (≥5m); **maintenance suppress** — only on **discovered** ports.  
 4. **Access:** safety net does **not** apply if label missing/typo (no LLD item) — compliance catches this.  
 5. `TMON`: optional INFO link-down only.  
-6. LAG: expect on **members** only.  
-7. **Gate:** enable absolute-expect per site only after generated-vs-live diff is clean.
+6. LAG: expect on **members** only; **MLT** skip.  
+7. **Gate:** enable absolute-expect per site after labels follow the grammar.
 
 ### Excludes
 
@@ -226,14 +223,7 @@ Same LLD as fabric (`admin-up AND NOT X`). Spares admin-down; `X` only when up b
 
 - Spares → **admin-down**.  
 - Up-but-uninteresting → `X` / `X-STK` / …  
-- Monitor → **`MON-<ID>`** (not empty) / `UP` / `W` / …
-
-### Generator authority
-
-- Overwrites on-box label on **managed** ports.  
-- **`display_protect`** → skip.  
-- Confirm **no ifAlias ingest loop** into generator-owned NetBox fields.  
-- Compliance: diff + `TMON*` list + protect list.
+- Monitor → **`MON-<ID>`** / `UP` / `W` / …
 
 ### Work packages
 
@@ -241,41 +231,34 @@ Same LLD as fabric (`admin-up AND NOT X`). Spares admin-down; `X` only when up b
 |---|---|---|
 | P2.0 | SNMP canaries | VOSS name→OID; EXOS field→ifAlias precedence |
 | P2.1 | Shared parser | UPPERCASE; split X; 64-char validate |
-| P2.2 | Generator + protect | Authoritative overwrite; `display_protect` |
-| P2.3 | Ingest loop check | ifAlias must not clobber generator inputs |
-| P2.4 | Port template | link/flap/errors; speed; change vs stable-up; maint suppress |
-| P2.5 | Access compliance | Explicit: no safety net without label |
-| P2.6 | Hybrid profile | admin-down spares; MON-ID not empty |
-| P2.7 | `W` Phase 2 | link/flap/errors now |
-| P2.8 | `TMON` | INFO link-down + review cadence |
-| P2.9 | LAG members-only | no aggregate speed expect |
-| P2.10 | Rollout gate | push → clean baseline diff → then absolute-expect |
-| P2.11 | Canaries | extended labels, hybrid, access typo detection via compliance |
+| P2.2 | Port template | link/flap/errors; speed; change vs stable-up; maint suppress |
+| P2.3 | Access LLD | Include classes only; no safety net without label |
+| P2.4 | Hybrid profile | admin-down spares; MON-ID; MLT skip |
+| P2.5 | `W` Phase 2 | link/flap/errors now |
+| P2.6 | `TMON` | INFO link-down + review cadence |
+| P2.7 | LAG members-only | no aggregate speed expect |
+| P2.8 | Rollout gate | labels in place → then absolute-expect |
+| P2.9 | Pilot canaries | labels, hybrid, access typo via ops check |
 
 ### Scoping options (locked)
 
 | Option | Role |
 |---|---|
-| `CLASS[-SPEED]-ID` on ifAlias | On-box cache for Zabbix |
-| NetBox generate/push | **Preferred SoT path** |
-| Hand-type grammar day-to-day | Emergency only |
-| Monitor tags | **Reject** |
-| Learn-baseline as primary absolute expect | **Reject** |
-| Change-detect safety net | **Required** |
-| Colon grammar / `IDR` class | **Reject** |
+| `CLASS[-SPEED]-ID` on ifAlias | What Zabbix reads |
+| Label push tooling | **Separate** (not this baseline) |
+| Monitor tags | Not used |
+| Change-detect on discovered ports | Yes |
+| VOSS MLT monitoring | Skip for now |
 
 ### Exit criteria
 
 - [ ] Symmetric 10G `UD`/`UA` without tokens on both ends  
 - [ ] Symmetric 1G exception tokens both ends  
-- [ ] `MON-idr…` works (no IDR class)  
-- [ ] LAG members clean; aggregate no false speed WARN  
-- [ ] `X` / `X-<note>` excludes work; description holds reason  
-- [ ] Change-detect catches unlabeled degrade  
-- [ ] Generator dry-run + compliance diff on canary  
-- [ ] Hybrid subsidiary: admin-down spares; `X` only if up-but-uninteresting  
-- [ ] Generator overwrite + `display_protect` skip verified  
-- [ ] `TMON` collects metrics with **zero** triggers; compliance lists all `TMON*`  
+- [ ] `MON-…` covers iDRAC  
+- [ ] LAG members clean; aggregate no false speed WARN; MLT not in scope  
+- [ ] `X` / `X-<note>` excludes work  
+- [ ] Hybrid: admin-down spares; `X` only if up-but-uninteresting  
+- [ ] `TMON` items + optional INFO link-down; list of `TMON*` reviewed  
 
 ---
 
@@ -485,17 +468,15 @@ B) SEPARATE TASK — NetBox integration (populate data, nbxsync,
    display→LLD, compliance, alerts/actions, triggers, zero-touch)
 
 PORT SOT (locked):
-  Budget 64; always-emit SPEED; CLASS[-SPEED]-ID UPPERCASE; no colon
-  Migration: generator overwrite → clean baseline → absolute-expect
-  Access: no safety net without label; Hybrid: admin-down spares
-  W: link/flap/errors now; TMON: INFO + audit cadence
-  Generator overwrite + display_protect; check ingest loop
+  Budget 64; always-emit SPEED; CLASS[-SPEED]-ID UPPERCASE
+  Access opt-in; Hybrid admin-down spares; LAG members; MLT skip
+  W: link/flap/errors now; TMON: INFO + review
+  Label push tooling = separate
 
 TRACK A ORDER:
-0 Foundations (grammar + defaults + LAG + generate path)
+0 Foundations (grammar + defaults + LAG/MLT scope)
 1 Device health (EXOS + BUILD VOSS + BUILD HiveOS AP templates)
-2 Ports — admin-up−X; access includes; hybrid=admin-down spares;
-   generator authoritative + display_protect; MON incl iDRAC; TMON no alerts
+2 Ports — admin-up−X; access includes; hybrid; MON incl iDRAC; TMON
 3 Cato + FortiGate
 4 Services & SLA
 5 ISP circuit monitoring (W:… + Circuits)
