@@ -1,273 +1,279 @@
 # Port identity foundation (Zabbix focus)
 
-**Status:** Locked design direction  
-**Operator SoT:** Extreme **display string only** (≤15 characters)  
-**Scope:** Zabbix port discovery + speed expectations — robust, universal coding  
-**NetBox (here):** cables / circuits / **compliance** / **description** (human prose only)  
+**Status:** Locked design direction (revised after architecture review)  
+**Operator-visible SoT on box:** Extreme **display string** (≤15) — **derived cache**, preferably **generated from NetBox**  
+**Scope:** Zabbix port LLD + speed expectation + structural excludes  
+**NetBox:** inventory SoT (cables, roles, `interface.speed`) → generate/push label; **description** = human prose  
 **Related plan:** `docs/internet-network-monitoring-plan.md` (Track A)
 
 ---
 
 ## 1. Locked decisions
 
-1. **Display string = operator SoT** for class, monitor/exclude, and **speed expectation**.  
-2. **Class defaults for speed are real** (see §3) — not “learn anything.”  
-3. When speed ≠ class default, put an **explicit speed token** in the display string (`1G`, `10G`, `100M`, …).  
-4. **NetBox description** = human identity/prose (hostname, “why”) — **not** the Zabbix speed input.  
-5. **No NetBox tags** for day-to-day monitor/speed intent.  
-6. **Core / Dist / Mgmt:** LLD = admin-up minus `X:…`.  
-7. **Access:** LLD = include codes only (`U:…`, `W:…`, `M:…`, `MON…`, `IDR…`).  
-8. Structural ports (**stack / ISC / MLAG / SPAN / …**) use **`X:…`** — same coding family, excluded from uplink alerts.  
-9. **iDRAC / ESX / storage / servers** use **`IDR:`** / **`MON:`** (+ speed token when ≠ default).  
-10. Track B (nbxsync / LLD publish) is separate.
+1. **Grammar:** `CLASS[-SPEED]-ID` — single-token classes, **hyphen** separator (no `:` — avoids EXOS `slot:port` collision and context-sensitive parsing).  
+2. **No special `IDR` class** — iDRAC / BMC is **`MON`** (same as server/storage endpoints).  
+3. **Speed defaults are a property of the link class family, not asymmetric per direction:**  
+   - `UC` / `UD` / `UA` → **10G**  
+   - `UP` → **1G**  
+   - `MON` → **1G**  
+   Legacy 1G access↔dist carries `1G` on **both** ends.  
+4. **Preferred flow:** NetBox structured data **generates** the display string and pushes it; ops do not hand-type the grammar day-to-day. Hand-edit remains emergency/manual fallback.  
+5. **Zabbix safety net:** universal **`change(ifHighSpeed)`** while oper-up (with settle time) — catches degrades even if label missing/wrong.  
+6. **Absolute expect** (`ifHighSpeed ≠ expected`) where a label exists: `expected = SPEED token OR class default`.  
+7. **Structural excludes:** prefer **derive from device state** (stack/ISC/MLAG/SPAN); display `XSTK` / `XISC` / … is **override/fallback**, not the only control.  
+8. **LAGs:** explicit rule (§7) before rollout.  
+9. **Access = opt-in** (include classes); **fabric/mgmt = admin-up minus excludes**.  
+10. **No NetBox tags** for monitor/speed intent. Description = prose only.  
+11. Track B owns generate/push, compliance diff, LLD publish.
 
 ---
 
-## 2. Universal display grammar (≤15)
+## 2. Universal grammar (≤15)
 
 ```
-<CLASS>:<ID>
-<CLASS>:<SPEED>:<ID>
-<XCLASS>                  (exclude — no id required)
-<XCLASS>:<ID>             (exclude — optional id)
+CLASS
+CLASS-ID
+CLASS-SPEED-ID
 ```
 
 | Piece | Rules |
 |---|---|
-| **CLASS** | Fixed vocabulary below (obvious to ops) |
-| **SPEED** | Optional. Only when ≠ class default. Canonical: `100M` \| `1G` \| `10G` \| `25G` \| `40G` \| `100G` |
-| **ID** | Short far-end / local label (truncate; full name in NetBox description) |
-| **ASCII** | No spaces. Script/compliance enforces ≤15 and valid tokens. |
+| **CLASS** | One atomic token from vocabulary below |
+| **SPEED** | Optional. Only when ≠ class default. Canonical tokens only |
+| **ID** | Machine-short (≤ ~6–8 chars after prefix). Full name in NetBox description / device name — **not** free-typed FQDN in the label |
+| **Charset** | `[A-Z0-9-]` uppercased; **no colon**, no dots in tokens |
 
-**Zabbix resolution (single algorithm for every port):**
+**One regex (illustrative):**
 
 ```
-if display matches X:…           → do not monitor (exclude)
-else if SPEED token present      → expected_mbps = token
-else                             → expected_mbps = CLASS_DEFAULT[class]
-alert if oper-up AND ifHighSpeed ≠ expected_mbps
+^(?<class>UC|UD|UA|UP|MON|W|M|XSTK|XISC|XMLAG|XSPN|XOOB|XINT)(?:-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(?:-(?<id>[A-Z0-9]+))?$
 ```
 
-One parser. Same rules for uplinks, AP, iDRAC, ESX, storage.
+Positional, no class-lookup heuristics, no `:` collision with `1:24`.
+
+**Source field:** Extreme display string maps to **`IF-MIB::ifAlias`** on EXOS and VOSS. Design depends on that mapping.
 
 ---
 
-## 3. Class vocabulary + default speeds
+## 3. Class vocabulary
 
-### 3.1 Include / monitor classes
+### 3.1 Include / monitor
 
-| CLASS | Meaning | **Default expected speed** | Typical use |
+| CLASS | Meaning | **Default expected** | Speed trigger? |
 |---|---|---|---|
-| `U:C` | Uplink toward **core** | **10G** | Dist/access → core |
-| `U:D` | Uplink toward **dist** | **10G** | Access → dist |
-| `U:A` | Uplink toward **access** | **1G** | Dist/core → access switch |
-| `U:P` | Access → **AP** | **1G** | AP edge |
-| `MON` | Generic monitored endpoint | **1G** | Server NIC, storage, misc |
-| `IDR` | **iDRAC** / server OOB BMC | **1G** | iDRAC on mgmt/core |
-| `W` | WAN / ISP | *(Phase 5 — Circuit / token)* | Internet handoff |
-| `M` | Temp monitor (`M:<yymmdd>`) | **baseline learn*** | Short-lived opt-in |
+| `UC` | Uplink toward **core** | **10G** | Yes |
+| `UD` | Uplink toward **dist** | **10G** | Yes |
+| `UA` | Uplink toward **access** | **10G** | Yes |
+| `UP` | Access → **AP** | **1G** | Yes |
+| `MON` | Monitored endpoint (server, ESX, storage, **iDRAC**, misc) | **1G** | Yes |
+| `W` | WAN / ISP | — | **No** absolute speed trigger (Phase 5 / Circuit bandwidth) |
+| `M` | Temp opt-in (`M-YYMMDD` or `M-YYMMDD-ID`) | — | Change-detect only; compliance ages out |
 
-\*Temp `M:` may learn baseline (no stable class). Prefer a real CLASS when possible.
+### 3.2 Exclude (override / fallback labels)
 
-### 3.2 Exclude classes (same family — robust coverage)
+| CLASS | Meaning |
+|---|---|
+| `XSTK` | Stack / stacking |
+| `XISC` | ISC / virtual-IST / chassis interconnect |
+| `XMLAG` | MLAG peer-link / keepalive |
+| `XSPN` | SPAN / mirror |
+| `XOOB` | Switch own OOB |
+| `XINT` | Internal / do not monitor |
 
-| CLASS | Meaning | Speed? |
-|---|---|---|
-| `X:STK` | Stack / stacking link | N/A — not monitored |
-| `X:ISC` | ISC / inter-switch chassis link | N/A |
-| `X:MLAG` | MLAG / peer-link / keepalive | N/A |
-| `X:SPN` | SPAN / mirror | N/A |
-| `X:OOB` | Switch own OOB/mgmt port | N/A |
-| `X:INT` | Internal / do not monitor | N/A |
-| `X` | Generic exclude | N/A |
-
-Stack / ISC / MLAG are **first-class codes**, not afterthoughts. Ops set them so fabric LLD (admin-up) does not treat them as customer/uplink faults.
+Prefer **auto-derive** these from device state; set label when override needed or discovery incomplete.
 
 ---
 
-## 4. When to add a SPEED token
+## 4. Speed tokens (universal)
 
-Add `<SPEED>:` **only if** live design ≠ class default.
+| Token | Mbps |
+|---|---|
+| `100M` | 100 |
+| `1G` | 1000 |
+| `2G5` | 2500 (NBASE-T / Wi-Fi AP edge — no dot in token) |
+| `5G` | 5000 |
+| `10G` | 10000 |
+| `25G` | 25000 |
+| `40G` | 40000 |
+| `100G` | 100000 |
+| `400G` | 400000 |
 
-| Class default | Port actually is | Display shape |
-|---|---|---|
-| `U:D` → 10G | 10G | `U:D:<id>` |
-| `U:D` → 10G | **1G** | `U:D:1G:<id>` |
-| `U:D` → 10G | **100M** | `U:D:100M:<id>` |
-| `U:A` → 1G | 1G | `U:A:<id>` |
-| `U:A` → 1G | **10G** | `U:A:10G:<id>` |
-| `U:A` → 1G | **100M** | `U:A:100M:<id>` |
-| `U:P` → 1G | 1G | `U:P:<id>` |
-| `U:P` → 1G | **100M** (bad/legacy) | `U:P:100M:<id>` only if **accepted**; else fix plant |
-| `MON` → 1G | **10G** ESX/storage | `MON:10G:<id>` |
-| `IDR` → 1G | 1G | `IDR:<id>` |
-| `IDR` → 1G | **100M** | `IDR:100M:<id>` |
-
-**Do not** invent opaque nibbles (`D1`, `01`). Speed tokens are the universal words: `1G`, `10G`, `100M`.
+**When to add SPEED:** only if ≠ class default.  
+Because `UD`/`UA`/`UC` all default **10G**, a standard 10G access↔dist link needs **no token on either end**. A legacy **1G** link gets `1G` on **both** ends → symmetric compliance.
 
 ---
 
-## 5. Worked examples (copy/paste set)
+## 5. Zabbix resolution (robust)
 
-### Fabric uplinks
+```
+1) Structural auto-exclude (device state)? → skip LLD / no alert
+2) Display matches X*?                 → skip (label override)
+3) else include per role rules (fabric admin-up / access include)
+4) Always: change(ifHighSpeed)<>0 while oper-up for ≥5m → WARNING (safety net)
+5) If CLASS in {UC,UD,UA,UP,MON} and label parse OK:
+      expected = SPEED token OR class default
+      ifHighSpeed ≠ expected for ≥5m while oper-up → WARNING
+6) CLASS W: no absolute speed expect (Circuit / Phase 5)
+7) CLASS M: change-detect only; no absolute expect
+```
 
-| Scenario | Display (≤15) | Zabbix expected | Description (NetBox) |
+**Settle / flap guard:** speed and change triggers use **`min` / “for 5m”** (or equivalent) so negotiation blips do not storm.
+
+**Parser location:** one version-controlled preprocess function (Track B) — not copy-pasted JS across prototypes. Optional grammar version prefix later (`V1-UD-…`) if schema evolves; v1 ships without prefix.
+
+---
+
+## 6. Role × LLD
+
+| Device role | LLD |
+|---|---|
+| **Core / Dist / Mgmt** | Admin-up **AND NOT** (auto-structural OR `X*`) **AND NOT** (admin-up empty/unused policy — prefer admin-down unused) |
+| **Access** | Display matches `^(UC\|UD\|UA\|UP\|MON\|W\|M)` |
+| **AP** | Device health template — not switch-port fabric LLD |
+
+Unused enabled ports on fabric: **disable** (hygiene) — do not rely on “monitor everything admin-up” forever.
+
+---
+
+## 7. LAG / LACP / MLAG bundles (mandatory before rollout)
+
+| Rule | Decision |
+|---|---|
+| **What we label** | Prefer **member** ports for speed expect (each member = class default or token, usually 10G) |
+| **Aggregate ifIndex** | Monitor **bundle up/down / member-count** separately — **do not** compare aggregate `ifHighSpeed` (sum) to a single-member expected |
+| **Expected on member** | Per-member speed (10G default on `UD`/`UA`) |
+| **Expected on aggregate** | **No** `ifHighSpeed ≠ expected` trigger on aggregate |
+| **MLAG peer-link** | `XMLAG` / auto-exclude — not a fabric uplink expect |
+
+This avoids permanent false WARN on 2×10G → `ifHighSpeed=20000` aggregates.
+
+---
+
+## 8. Generate from NetBox (preferred), not hand-type
+
+```
+NetBox: device role + cable far-end + interface.speed (+ LAG membership)
+        → generator (dry-run / apply)
+        → Extreme display string (derived cache)
+        → Zabbix reads ifAlias at poll time (no NetBox dependency live)
+```
+
+| Input | Becomes |
+|---|---|
+| Cable to dist / access / core / AP | `UD` / `UA` / `UC` / `UP` + short far-end id |
+| `interface.speed` ≠ class default | insert SPEED token |
+| Endpoint = server/ESX/storage/iDRAC | `MON` (+ `10G` if needed) |
+| Stack/ISC/MLAG/SPAN known | prefer auto-exclude; else push `XSTK` / … |
+| No cable / guest | Manual set allowed; compliance lists orphans |
+
+**Compliance = diff** (generated vs live ifAlias), not a second rule engine.  
+Hand-typed labels are fallback; typos on access includes are softened by **change-detect safety net** on fabric and by compliance diff.
+
+**ID policy:** controlled short names (NetBox abbrev / asset slug), not full hostnames. Example budget: `MON-10G-` = 8 chars → **7 left** for id.
+
+---
+
+## 9. Worked examples
+
+### Fabric (symmetric defaults)
+
+| Scenario | Access side | Dist/core side | Expect |
 |---|---|---|---|
-| Access → dist **10G** (default) | `U:D:swd14` | 10000 | `Uplink to dist swd14` |
-| Access → dist **1G** (exception) | `U:D:1G:swd2` | 1000 | `Uplink to swd2 — 1G plant` |
-| Dist → access **1G** (default) | `U:A:swa08` | 1000 | `Downlink to access swa08` |
-| Dist → access **10G** (exception) | `U:A:10G:swa1` | 10000 | `Downlink to swa1 — 10G` |
-| Dist → access **100M** (rare) | `U:A:100M:ps` | 100 | `Legacy 100M to PS closet` |
-| Toward core **10G** | `U:C:swc01` | 10000 | `Uplink to core swc01` |
-| Toward core **40G** | `U:C:40G:c01` | 40000 | `Uplink to core — 40G` |
-| Access → AP **1G** | `U:P:ap3f07` | 1000 | `AP ap-3f-07` |
+| Standard **10G** access↔dist | `UD-swd14` | `UA-swa08` | 10G both |
+| Legacy **1G** access↔dist | `UD-1G-swd2` | `UA-1G-swa2` | 1G both |
+| Toward core **10G** | `UC-swc01` | (peer as designed) | 10G |
+| Toward core **40G** | `UC-40G-c01` | … | 40G |
+| Access → AP **1G** | `UP-ap3f07` | — | 1G |
+| AP **2.5G** | `UP-2G5-ap07` | — | 2500 |
 
-### Mgmt / core endpoints
+### Endpoints (no IDR class)
 
-| Scenario | Display | Zabbix expected | Description |
-|---|---|---|---|
-| ESXi **10G** | `MON:10G:esx1` | 10000 | `ESXi esx01 vmnic0` |
-| ESXi **1G** | `MON:esx01` | 1000 | `ESXi esx01 — 1G NIC` |
-| Storage **10G** | `MON:10G:nta` | 10000 | `NetApp ContA e0a` |
-| Server NIC **1G** | `MON:srv12` | 1000 | `Server srv12 eth0` |
-| iDRAC **1G** (default) | `IDR:r74003` | 1000 | `iDRAC dell-r740-03` |
-| iDRAC **100M** | `IDR:100M:r03` | 100 | `iDRAC — 100M BMC` |
-
-### Structural / do-not-monitor (universal excludes)
-
-| Scenario | Display | Zabbix |
+| Scenario | Display | Expect |
 |---|---|---|
-| Stack port | `X:STK` or `X:STK:1` | Excluded |
-| ISC | `X:ISC` or `X:ISC:a` | Excluded |
-| MLAG peer-link | `X:MLAG` or `X:MLAG:pk` | Excluded |
-| SPAN/mirror | `X:SPN` | Excluded |
-| Switch OOB | `X:OOB` | Excluded |
-| Internal | `X:INT` | Excluded |
+| ESXi 10G | `MON-10G-esx1` | 10G |
+| Server 1G | `MON-srv12` | 1G |
+| **iDRAC 1G** | `MON-idr03` | 1G |
+| iDRAC 100M | `MON-100M-idr3` | 100M |
+| Storage 10G | `MON-10G-nta` | 10G |
 
-### Length check (must fit ≤15)
+### Structural
+
+| Scenario | Label (fallback) | Preferred control |
+|---|---|---|
+| Stack | `XSTK` | Auto from stack state |
+| ISC | `XISC` | Auto from ISC/MLT/virtual-IST |
+| MLAG peer | `XMLAG` | Auto from MLAG config |
+| SPAN | `XSPN` | Auto from mirror config |
+
+### Length
 
 | Display | Len |
 |---|---|
-| `U:D:swd14` | 9 |
-| `U:D:1G:swd2` | 11 |
-| `U:A:10G:swa1` | 12 |
-| `U:A:100M:ps` | 11 |
-| `U:P:ap3f07` | 10 |
-| `MON:10G:esx1` | 12 |
-| `IDR:r74003` | 10 |
-| `IDR:100M:r03` | 12 |
-| `X:MLAG` | 6 |
-
-If id does not fit → shorten id; full name in **description**.
+| `UD-swd14` | 8 |
+| `UD-1G-swd2` | 10 |
+| `UA-1G-swa2` | 10 |
+| `UP-ap3f07` | 9 |
+| `UP-2G5-ap07` | 11 |
+| `MON-10G-esx1` | 12 |
+| `MON-idr03` | 9 |
+| `XSTK` | 4 |
 
 ---
 
-## 6. Role × LLD matrix
+## 10. Errors / duplex (scope note)
 
-| Device role | LLD rule | How codes are used |
-|---|---|---|
-| **Core / Dist / Mgmt** | Admin-up **AND NOT** `^X:` | Label uplinks `U:…`; endpoints `MON:`/`IDR:`; structural `X:STK`/`X:ISC`/`X:MLAG`/… |
-| **Access** | Display matches `^(U:|W:|M:|MON|IDR)` | Quiet by default; set include + speed token if needed |
-| **AP (HiveOS)** | Device health template | Not switch-port LLD |
+Speed mismatch is **necessary but narrow**. Phase 2 templates still include **errors / CRC / discards** (and flap). “Up at 10G with CRCs” remains an errors trigger — not solved by speed alone.
 
 ---
 
-## 7. Zabbix implementation intent
-
-### Discovery
-
-- Fabric template: filter admin-up, drop `X:*`.  
-- Access template: include regex on CLASS.  
-- LLD macros from display parse:
-  - `{#IF.CLASS}` = `U:D` / `MON` / `IDR` / `X:STK` / …  
-  - `{#IF.SPEED.TOKEN}` = `10G` / empty  
-  - `{#IF.SPEED.EXPECTED}` = Mbps number (token or class default)  
-  - `{#IF.ID}` = trailing id  
-
-### Triggers
-
-- Link down / flap / errors (existing).  
-- **Speed mismatch:** `ifHighSpeed <> {#IF.SPEED.EXPECTED}` while oper-up → WARNING.  
-- Same trigger prototype for `U:D`, `U:A`, `U:P`, `MON`, `IDR` — only the expected value changes.
-
-### Why not “learn baseline” as primary
-
-Class defaults are known engineering standards here (`U:D`=10G, `U:A`=1G, `U:P`=1G). Learning would accept a silent 10G→1G degrade on `U:D` as “new normal.” **Token + default** catches that. Learning remains optional only for `M:` temp ports.
-
----
-
-## 8. NetBox role (narrow)
-
-| NetBox field | Role |
-|---|---|
-| Cable / Circuit | Inventory + compliance (“should have `U:P:` / `U:D:`”) |
-| Interface **description** | Human prose — hostname, plant note |
-| Tags | **Not** for monitor/speed |
-| Interface.speed | **Out of scope here** (config tooling — not Zabbix) |
-
-Compliance examples: cable Access↔Dist but display missing/`U:A` on wrong side; `MON:`/`IDR:` without description; admin-up without `X:` on known stack port.
-
----
-
-## 9. Risks
+## 11. Risks → mitigations
 
 | Risk | Mitigation |
 |---|---|
-| 15-char overflow | Short ids; enforce in script; description holds long names |
-| Typo `1G` vs `1g` | Canonical uppercase tokens only |
-| Forgot speed token on exception | Compliance + false WARN on mismatch → ops add token |
-| Stack/MLAG alerting as uplinks | Mandatory `X:STK` / `X:ISC` / `X:MLAG` |
-| iDRAC mixed with server NIC | Prefer `IDR:` vs `MON:` |
-| Assuming learn-baseline for `U:D` | Rejected — use defaults + tokens |
+| `UD`/`UA` asymmetric tokens | Fixed — both default 10G |
+| Colon / slot:port collision | Hyphen grammar, atomic CLASS |
+| Hand-type typos drop access monitoring | Generate from NetBox; compliance diff; change-detect safety net |
+| 15-char hostname overflow | Machine-short IDs only |
+| Aggregate LAG false WARN | Members vs aggregate rule (§7) |
+| New stack member alerts as uplink | Auto structural exclude |
+| `M-` forever | Compliance: `M-` older than N days = finding |
+| Negotiation WARN storm | `for 5m` / min settle |
+| Grammar drift across templates | One shared parser module |
 
 ---
 
-## 10. Verify checklist
+## 12. Verify checklist
 
-- [ ] Grammar: `CLASS:ID` / `CLASS:SPEED:ID` / `X:…` approved  
-- [ ] Defaults locked: **`U:D`=10G**, **`U:A`=1G**, **`U:P`=1G**, **`U:C`=10G**, **`MON`/`IDR`=1G**  
-- [ ] Speed tokens: `100M|1G|10G|25G|40G|100G` only  
-- [ ] Excludes: `X:STK` `X:ISC` `X:MLAG` `X:SPN` `X:OOB` `X:INT`  
-- [ ] Examples validated ≤15 on EXOS + VOSS  
-- [ ] Zabbix parse → `{#IF.SPEED.EXPECTED}` works for uplink + IDR + MON  
-- [ ] Canaries: default `U:D`, exception `U:D:1G:…`, default `U:A`, exception `U:A:10G:…`, `U:P`, `MON:10G:…`, `IDR:…`, `X:STK`, `X:MLAG`  
+- [ ] Grammar `CLASS[-SPEED]-ID` + charset locked  
+- [ ] Defaults: **UC=UD=UA=10G**, **UP=1G**, **MON=1G**; no `IDR` class  
+- [ ] Symmetric 1G exception examples both ends  
+- [ ] `W` = no absolute speed trigger; `M-` = aged compliance  
+- [ ] Tokens include `2G5` / `5G` / `400G`  
+- [ ] LAG member vs aggregate rule agreed  
+- [ ] Auto structural exclude path identified per EXOS/VOSS  
+- [ ] Generate-from-NetBox dry-run on canary  
+- [ ] Change-detect + absolute expect both tested with 5m settle  
+- [ ] ifAlias mapping confirmed EXOS + VOSS  
 
 ---
 
-## 11. Summary (cross-check)
+## 13. Summary
 
 ```
-UNIVERSAL DISPLAY (≤15)
-  CLASS:ID
-  CLASS:SPEED:ID          ← only when ≠ class default
-  X:STK | X:ISC | X:MLAG | X:SPN | X:OOB | X:INT
+GRAMMAR: CLASS[-SPEED]-ID   (no colon; atomic CLASS)
+CLASSES: UC UD UA UP MON W M | XSTK XISC XMLAG XSPN XOOB XINT
+NO IDR — iDRAC uses MON
 
-CLASS DEFAULTS (Zabbix expected)
-  U:C  → 10G
-  U:D  → 10G      (access → dist)
-  U:A  → 1G       (toward access switch)
-  U:P  → 1G       (toward AP)
-  MON  → 1G       (override e.g. MON:10G:esx1)
-  IDR  → 1G       (override e.g. IDR:100M:r03)
+DEFAULTS: UC=UD=UA=10G | UP=1G | MON=1G
+TOKENS: 100M 1G 2G5 5G 10G 25G 40G 100G 400G
 
-SPEED TOKENS (universal words)
-  100M | 1G | 10G | 25G | 40G | 100G
+ZABBIX:
+  auto-X + X* excludes
+  change(ifHighSpeed) safety net (settled)
+  absolute expect where UC|UD|UA|UP|MON labeled
+  W: no absolute speed; LAG: expect on members only
 
-ZABBIX
-  expected = SPEED token OR class default
-  alert if oper ifHighSpeed ≠ expected
-  X:* → exclude from LLD
-
-NETBOX DESCRIPTION = human prose only (not speed SoT)
-NO MONITOR TAGS
-
-EXAMPLES
-  U:D:swd14        expect 10G
-  U:D:1G:swd2      expect 1G
-  U:A:swa08        expect 1G
-  U:A:10G:swa1     expect 10G
-  U:P:ap3f07       expect 1G
-  MON:10G:esx1     expect 10G
-  IDR:r74003       expect 1G
-  X:STK / X:ISC / X:MLAG
+NETBOX → generate/push label (preferred)
+DESCRIPTION = prose; no monitor tags
+COMPLIANCE = diff generated vs live
 ```

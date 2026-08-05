@@ -25,20 +25,24 @@ This plan is **monitoring capability** (what we monitor, in what order).
 **Port identity (locked — Track A design):**
 
 ```
-OPERATOR SOT = Extreme display string only (≤15)
-  Include: U:C: U:D: U:A: U:P: W: M: MON / MON:<id>
-  Exclude: X:STK X:SPN X:OOB X:INT X
-  NO class speed assumption — U:/MON: use Zabbix baseline
-  Real exception = X:… (do not monitor)
-  Description = human what/why (not a speed override)
+GRAMMAR: CLASS[-SPEED]-ID   (no colon; atomic CLASS)
+CLASSES: UC UD UA UP MON W M | XSTK XISC XMLAG XSPN XOOB XINT
+NO IDR class — iDRAC = MON
 
-CORE/DIST/MGMT = all admin-up minus X:… (unused admin-up → disable)
-ACCESS         = only include codes; APs hang off access → U:P: (1G)
-                 MON: = ESX/storage/iDRAC/server (+ description)
-NETBOX         = cables/circuits + compliance + description (why/what)
-                 (NO day-to-day NetBox “monitor” interface tags)
-                 Dist↔access: U:D:/U:A: + Zabbix baseline (1G/10G/100M)
+DEFAULTS: UC=UD=UA=10G | UP=1G | MON=1G
+TOKENS: 100M 1G 2G5 5G 10G 25G 40G 100G 400G
 
+EXAMPLES
+  UD-swd14 / UA-swa08     expect 10G both (standard access↔dist)
+  UD-1G-swd2 / UA-1G-swa2 expect 1G both (legacy, symmetric)
+  UP-ap3f07               expect 1G
+  MON-10G-esx1            ESXi 10G
+  MON-idr03               iDRAC (MON, not IDR)
+  XSTK XISC XMLAG         structural exclude (prefer auto-derive)
+
+ZABBIX: change(ifHighSpeed) safety net + absolute expect when labeled
+LAG: speed expect on members only — not aggregate sum
+NETBOX: generate/push label (preferred); description = prose; no tags
 ```
 
 Full detail: `docs/port-identity-foundation.md`.
@@ -60,7 +64,7 @@ Phase 5 ISP circuits    ←──  may consume: Circuits, W:… display codes, s
 1. **Health before circuits** — stable device and uplink monitoring before ISP-specific and SLA layers.  
 2. NetBox is SoT for **inventory** (devices, cables, circuits) — **integration mechanics live in Track B**, not as sub-steps of every phase here.  
 3. Do **not** monitor every interface the same way; scope by **device role + display string** (include / exclude codes).  
-4. **One operator edit** for port intent: Extreme display string. No dual-edit with NetBox monitor tags.  
+4. **One operator path for port labels:** prefer NetBox **generate/push** display string; no dual-edit with monitor tags.  
 5. Underlay (Extreme/Forti) and overlay (Cato) stay separate problem classes.  
 6. Same metric baseline across site classes initially; tune later.  
 7. No stacking full Network Generic + specialized templates (icmpping collisions).  
@@ -127,7 +131,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 |---|---|
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
 | P0.2 | **Lock port SoT:** Extreme display string only (≤15). Reject NetBox monitor-tags for day-to-day ops |
-| P0.3 | **Code list approved:** `U:C/D/A/P`, `W:`, `M:`, `MON`/`MON:<id>`, exclusions `X:…` (speed = baseline, not codes) |
+| P0.3 | **Code list + defaults:** `U:D`=10G, `U:A`=1G, `U:P`=1G; SPEED tokens; `X:STK`/`X:ISC`/`X:MLAG`; `MON`/`IDR` |
 | P0.4 | Role matrix: core/dist/mgmt = admin-up − `X:…`; access = include codes only |
 | P0.5 | Pilot lists: 1–2 EXOS, 1 VOSS, sample APs |
 | P0.6 | Site class field optional (`production`/`sales`/`normal`) — same metrics for now (alert routing later = Track B) |
@@ -188,95 +192,91 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 ## Phase 2 — Uplinks & structural ports
 
-**Objective:** Monitor **important ports** — core / distribution / access uplinks and **uplinks to access points** — not every access edge port, not ISP circuits yet.
+**Objective:** Fabric / AP / endpoint ports monitored with universal `CLASS[-SPEED]-ID` grammar; structural stack/ISC/MLAG excluded (auto-derive preferred); LAG rules explicit.
 
-**SoT:** Extreme **display string** codes (see foundation doc). One edit on the switch.
+**SoT on box:** display string (≤15) as **derived cache** — preferably **generated from NetBox**. Zabbix reads `ifAlias`.
 
-### Port classes (Phase 2) — display codes
+### Grammar
 
-| Display code | Meaning | Zabbix speed |
+```
+CLASS | CLASS-ID | CLASS-SPEED-ID
+CLASS = UC|UD|UA|UP|MON|W|M|XSTK|XISC|XMLAG|XSPN|XOOB|XINT
+SPEED = 100M|1G|2G5|5G|10G|25G|40G|100G|400G
+```
+
+No colon. No separate `IDR` class — **iDRAC = `MON`**.
+
+### Class defaults → Zabbix expected
+
+| CLASS | Default | Notes |
 |---|---|---|
-| `U:C:<id>` | Uplink toward core | Baseline / degrade |
-| `U:D:<id>` | Uplink toward dist | Baseline — **1G / 10G / 100M all normal** (no override code) |
-| `U:A:<id>` | Uplink toward access | Baseline — **1G / 10G / 100M all normal** |
-| `U:P:<id>` | Access → AP | Expect **1G** |
-| `MON` / `MON:<id>` | Non-fabric endpoint (ESX, storage, iDRAC, server, …) | Baseline |
-| `M:<yymmdd>` | Temp monitor until date | Baseline if needed |
+| `UC` `UD` `UA` | **10G** | Same family — access↔dist **symmetric** (no token on standard 10G) |
+| `UP` | **1G** | AP; use `2G5`/`5G` token when needed |
+| `MON` | **1G** | Server / ESX / storage / **iDRAC**; `MON-10G-…` when 10G |
+| `W` | — | **No** absolute speed trigger |
+| `M` | — | Temp; change-detect only; compliance ages out |
 
-Display = **role / include class only**. Speed is not in the code.  
-ISP/WAN (`W:…`) → **Phase 5**.
+Legacy 1G access↔dist: `UD-1G-…` **and** `UA-1G-…` (token both ends).
 
-### Exclusion codes (core / dist / mgmt)
+### Examples
 
-On fabric roles, LLD = **all admin-up** except display matching:
-
-| Code | Meaning |
+| Display | Expect |
 |---|---|
-| `X:STK` | Stack / ISC / MLAG member |
-| `X:SPN` | SPAN / mirror |
-| `X:OOB` | Out-of-band / mgmt port |
-| `X:INT` | Internal / do not monitor |
-| `X` | Generic exclude |
+| `UD-swd14` / `UA-swa08` | 10G / 10G |
+| `UD-1G-swd2` / `UA-1G-swa2` | 1G / 1G |
+| `UP-ap3f07` | 1G |
+| `UP-2G5-ap07` | 2.5G |
+| `MON-10G-esx1` | 10G |
+| `MON-idr03` | 1G (iDRAC) |
+| `XSTK` `XISC` `XMLAG` | excluded |
 
-Unused admin-up on core/dist/mgmt → **disable** (security hygiene), not “monitor everything forever.”
+### Zabbix triggers (Phase 2)
 
-**AP topology (locked):** Access points connect to **access switches**, not core/dist. Monitor:
+1. Link down / flap / **errors-CRC** (narrow speed-only win is not enough).  
+2. **`change(ifHighSpeed)`** while oper-up for ≥5m — **universal safety net**.  
+3. Absolute `ifHighSpeed ≠ expected` for ≥5m where `UC|UD|UA|UP|MON` labeled.  
+4. **LAG:** absolute speed expect on **members only**; never compare aggregate sum to member expected.
 
-1. **Switch side** — display `U:P:…` — link state + **speed** (expect 1G).  
-2. **AP side** — Phase 1 HiveOS device health (separate from switch port speed).
+### Structural excludes
 
-### Speed monitoring (Phase 2 — in scope)
-
-**No speed-exception codes.** We do **not** assume `U:D:` = 10G and then override for 1G/100M. Those speeds are **normal** for that class; Zabbix **baseline** is the expected value per port.
-
-| Link class | Zabbix approach | Alert if |
-|---|---|---|
-| Access → AP (`U:P:`) | Fixed expect **1G** | Oper up but not 1G → WARNING |
-| Dist ↔ access / fabric (`U:D:` / `U:A:` / `U:C:`) | **Baseline / degrade** | Oper drops vs baseline |
-| `MON:` (ESX / storage / iDRAC / server) | **Baseline / degrade** | Oper drops vs baseline |
-| Forced Extreme admin | Expected = admin | Oper ≠ admin |
-
-**Real exceptions** = monitor include/exclude only: `X:…` to skip; include codes on access to opt in.  
-**Description** = human notes (optional plant-speed note; required clarity for `MON:`) — not a Zabbix speed override.
-
-**Not required in Phase 2:** util% capacity alerts.
+Prefer **device-state discovery** (stack / ISC / MLAG / mirror). Labels `XSTK`/`XISC`/`XMLAG`/`XSPN` = override/fallback.
 
 ### Work packages
 
 | ID | Work | Detail |
 |---|---|---|
-| P2.1 | Classify ports from cables | Access↔dist, access→AP, etc. |
-| P2.2 | Short display codes ≤15 | `U:D:swa12`, `MON:esx01`, `MON:idr3`, `X:STK` |
-| P2.3 | Discovery contract for Track B | Display regex / ifIndexes; LLD modes `admin_up_excl` vs `display_include` |
-| P2.4 | Uplink / fabric port template | State, flap, errors, **speed baseline / degrade** (+ `U:P:` = 1G) |
-| P2.5 | Discovery by role | Fabric: admin-up − `X:…`; access: include codes only |
-| P2.6 | Manual no-cable path | Set ≤15 display on switch; done |
-| P2.7 | NetBox **compliance** reports | Cable implies code missing; `MON:` without description; stale `M:` |
-| P2.8 | AP dual view | Switch `U:P:` (expect 1G) + HiveOS health |
-| P2.9 | `MON:` for ESX / storage / iDRAC / servers | On mgmt/core + description; baseline speed |
-| P2.10 | Runbook | Display = class; description = why/what |
+| P2.1 | Lock grammar + defaults + LAG rule | As above |
+| P2.2 | Generator design (Track B handoff) | NetBox role/cable/speed → display push |
+| P2.3 | LLD contract | One shared parser; ifAlias; macros |
+| P2.4 | Port template | Down/flap/errors + change + absolute expect (settled) |
+| P2.5 | Auto structural exclude | EXOS + VOSS paths |
+| P2.6 | Access include / fabric admin-up | Unused → disable hygiene |
+| P2.7 | `MON` endpoints incl. iDRAC | No IDR class |
+| P2.8 | Compliance = **diff** | Generated vs live ifAlias; aged `M-` |
+| P2.9 | AP dual view | `UP-…` + HiveOS |
+| P2.10 | Canaries | 10G symmetric, 1G symmetric, MON/iDRAC, LAG members, XSTK |
 
 ### Scoping options (locked)
 
 | Option | Role |
 |---|---|
-| Extreme **display string** include / exclude codes | **Operator SoT (locked)** |
-| NetBox interface **monitor tags** for day-to-day | **Reject** (dual-edit) |
-| NetBox cables / Circuits + **compliance** reports | Drift detection only |
-| NetBox interface **description** | Human what/why (ESX, iDRAC, optional plant note) — not a speed override |
-| Optional Python cable → push display | Scale aid; not a second control plane |
-| Fixed port numbers | Reject |
-| Monitor all interfaces as “uplinks” | Reject |
+| `CLASS[-SPEED]-ID` on ifAlias | On-box cache for Zabbix |
+| NetBox generate/push | **Preferred SoT path** |
+| Hand-type grammar day-to-day | Emergency only |
+| Monitor tags | **Reject** |
+| Learn-baseline as primary absolute expect | **Reject** |
+| Change-detect safety net | **Required** |
+| Colon grammar / `IDR` class | **Reject** |
 
 ### Exit criteria
 
-- [ ] Core/dist: admin-up − `X:…` alerts on down/flap on pilots  
-- [ ] Access: only include-coded ports in alert stream (edge quiet by default)  
-- [ ] VOSS + EXOS both work with same **display-string** pattern  
-- [ ] AP wired path visible (AP health + switch `U:P:`)  
-- [ ] Exclusion codes validated (e.g. stack port does not alert)  
-- [ ] Speed canaries: 10G `U:D:`, 1G `U:D:` + description, 100M + description  
-- [ ] `MON:` canaries: ESX, storage, iDRAC on mgmt/core (+ description)  
+- [ ] Symmetric 10G `UD`/`UA` without tokens on both ends  
+- [ ] Symmetric 1G exception tokens both ends  
+- [ ] `MON-idr…` works (no IDR class)  
+- [ ] LAG members clean; aggregate no false speed WARN  
+- [ ] Auto or labeled structural exclude on stack/ISC/MLAG  
+- [ ] Change-detect catches unlabeled degrade  
+- [ ] Generator dry-run + compliance diff on canary  
 
 ---
 
@@ -438,7 +438,7 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 
 | Phase | What we scope | Display codes |
 |---|---|---|
-| 2 | Fabric / AP / MON endpoints | `U:C:`, `U:D:`, `U:A:`, `U:P:`, `MON`/`MON:<id>` (+ `M:`); fabric excludes `X:…` |
+| 2 | Fabric / AP / MON / IDR | `U:C/D/A/P` + optional `SPEED`; `MON`/`IDR`; excludes `X:STK/ISC/MLAG/…` |
 | 5 | Internet circuits | `W:…` (+ Circuit object in NetBox) |
 
 **Design (Track A):** display-string codes + which template / LLD mode watches them.  
@@ -486,19 +486,17 @@ B) SEPARATE TASK — NetBox integration (populate data, nbxsync,
    display→LLD, compliance, alerts/actions, triggers, zero-touch)
 
 PORT SOT (locked):
-  Extreme display string ≤15 only
-  Include: U:C: U:D: U:A: U:P: W: M: MON / MON:<id>
-  Exclude: X:STK X:SPN X:OOB X:INT X
-  NetBox = compliance + description (why/what) — NO monitor-tags
-  NO speed-exception codes — baseline for U:/MON:; U:P: expect 1G
-  Real exception = X:… ; description = human notes only
-  Focus = Zabbix (not switch-config generation)
+  CLASS:ID | CLASS:SPEED:ID | X:STK|ISC|MLAG|SPN|OOB|INT
+  Defaults: U:D=10G U:A=1G U:P=1G U:C=10G MON/IDR=1G
+  Tokens: 100M 1G 10G 25G 40G 100G
+  Zabbix expected = token OR class default
+  NetBox description = human prose only — NO monitor-tags
 
 TRACK A ORDER:
-0 Foundations (code list + role matrix)
+0 Foundations (grammar + defaults + examples)
 1 Device health (EXOS + BUILD VOSS + BUILD HiveOS AP templates)
-2 Ports — core/dist/mgmt admin-up−X: (+ MON: labels for ESX/storage/iDRAC);
-   access includes; U:P: (1G); U:D:/U:A: baseline 1G|10G|100M
+2 Ports — admin-up−X:; includes on access; speed mismatch triggers
+   (U:D 10G, U:A 1G, U:P 1G, MON/IDR, X:STK/ISC/MLAG)
 3 Cato + FortiGate
 4 Services & SLA
 5 ISP circuit monitoring (W:… + Circuits)
