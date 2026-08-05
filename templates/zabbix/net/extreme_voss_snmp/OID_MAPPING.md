@@ -32,3 +32,23 @@ VOSS MIBs: RapidCity `enterprises.2272` (`docs/VOSS-5520.9.3.1.0_mib.txt`).
 ## Test matrix
 
 Every SNMP OID in the template must pass `snmpget`/`snmpwalk` against a live VOSS agent before the item is considered verified. See `TEST_CHECKLIST.md`.
+
+
+## Live lab (VOSS-VM 9.3.1.0)
+
+Verified 2026-08-05 against Virtual Fabric Engine (`FEGNS3.9.3.1.0`) under QEMU TCG (`-cpu Haswell`).
+
+| Check | Result |
+|---|---|
+| `rcKhiSlotCpuCurrentUtil.1` | PASS (values ~40–80%) |
+| `rcKhiSlotMemUsed/Free/Util.1` | PASS (KB; util %) |
+| `rcSysCpuUtil` / `rcSysDram*` | **absent** (`No Such Object`) |
+| `rcChasPowerSupplyOperStatus` | PASS (PS1/PS2 = up(3)) |
+| `rcChasFan*` | **absent on VOSS-VM** (keep LLD for hardware) |
+| `rcVossSystemTemperature*` | PASS LLD; values `0` °C on VM; status `normal(1)` |
+| `hrSystemUptime` | **absent**; use `sysUpTime` fallback |
+| `ifAlias` after CLI `name USW-ID01` | PASS (`ifAlias.192=USW-ID01`) |
+| `rcPortName` same port | empty — prefer **ifAlias** |
+| Port ifIndex | `1/1` → `192`, `1/2` → `193`, … |
+
+See `LAB_RESULTS.md` and `/opt/cursor/artifacts/VOSS_OID_VERIFY.txt`.

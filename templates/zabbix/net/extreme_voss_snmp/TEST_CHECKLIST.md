@@ -112,3 +112,18 @@ Walk description + value + status under `rcVossSystemTemperatureTable`
 | Zabbix version | |
 | Date | |
 | Verified by | |
+
+
+## Lab sign-off (2026-08-05)
+
+| Field | Value |
+|---|---|
+| VOSS version | 9.3.1.0 (FEGNS3.9.3.1.0) |
+| Platform / image | Virtual 5520-24T-FabricEngine |
+| Zabbix version | 7.0.29 |
+| Template import | PASS |
+| SNMP scalar core | PASS (except hrSystemUptime / fans on VM) |
+| LLD memory/PSU/temp/IF | PASS |
+| LLD fan | N/A on VOSS-VM (OID tree absent) |
+| Port ifAlias canary | PASS (`name` → ifAlias) |
+| Notes | QEMU needs `-cpu Haswell` (or richer) for FIPS; `qemu64` crashes |

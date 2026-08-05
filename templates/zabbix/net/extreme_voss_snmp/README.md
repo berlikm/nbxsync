@@ -56,3 +56,9 @@ VOSS `rcPortName` (SIZE 0..42) is an alternate; verify with a live canary before
 ## Compatibility notes (Zabbix 7.0)
 
 Export is Zabbix **7.0** (tested import on 7.0.29). Relative to the EXOS 8.0 source template, this file omits `vendor`, macro `config` UI metadata, and discovery-rule `tags` so it imports cleanly on 7.0.
+
+## Live verification
+
+Lab results against Virtual VOSS 9.3.1.0: see [LAB_RESULTS.md](LAB_RESULTS.md).
+
+Notable VM gaps (template still correct for hardware): fan table absent; temperature values stay `0`; `hrSystemUptime` unsupported. Port identity: CLI `name` populates **ifAlias** (prefer over `rcPortName`).

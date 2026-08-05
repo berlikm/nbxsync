@@ -278,8 +278,8 @@ zabbix_export:
       units: uptime
       description: 'MIB: HOST-RESOURCES-MIB
 
-        The amount of time since this host was last initialized. Note that this is different from sysUpTime in the SNMPv2-MIB
-        [RFC1907] because sysUpTime is the uptime of the network management portion of the system.
+        HOST-RESOURCES hrSystemUptime — often unsupported on VOSS/Fabric Engine (No Such Object).
+        Preprocessing maps not-supported to 0; restart trigger falls back to sysUpTime.
 
         '
       preprocessing:
@@ -589,26 +589,6 @@ zabbix_export:
           - tag: scope
             value: performance
         snmp_oid: get[1.3.6.1.4.1.2272.1.85.10.1.1.8.{#SNMPINDEX}]
-      - uuid: 143053b3599a45fabba947c9af22bfcd
-        name: 'Slot {#SNMPINDEX}: CPU utilization'
-        type: SNMP_AGENT
-        snmp_oid: get[1.3.6.1.4.1.2272.1.85.10.1.1.2.{#SNMPINDEX}]
-        key: system.cpu.util[rcKhiSlotCpuCurrentUtil.{#SNMPINDEX}]
-        delay: 1m
-        value_type: FLOAT
-        units: '%'
-        description: 'MIB: RAPID-CITY rcKhiSlotCpuCurrentUtil
-
-          Per-slot CPU utilization %.'
-        tags:
-        - tag: component
-          value: cpu
-        trigger_prototypes:
-        - uuid: a6acec71216e489db0bc2d9cd02d4fe5
-          expression: min(/Extreme VOSS by SNMP/system.cpu.util[rcKhiSlotCpuCurrentUtil.{#SNMPINDEX}],5m)>{$CPU.UTIL.CRIT}
-          name: 'Extreme VOSS: Slot {#SNMPINDEX}: High CPU utilization'
-          priority: WARNING
-          description: The CPU utilization is too high on this slot.
       graph_prototypes:
       - uuid: 47e0c8bbd08e42929c073822cf86b16b
         name: 'Slot {#SNMPINDEX}: Memory usage'
@@ -635,7 +615,7 @@ zabbix_export:
           item:
             host: Extreme VOSS by SNMP
             key: vm.memory.util[rcKhiSlotMemUtil.{#SNMPINDEX}]
-      description: RAPID-CITY rcKhiSlotPerfTable — one entry per slot.
+      description: RAPID-CITY rcKhiSlotPerfTable — memory per slot. CPU uses scalar item for slot 1 (rcKhiSlotCpuCurrentUtil.1).
     - uuid: c0e08139247945038307dfe2a3a5a579
       name: Network interfaces discovery
       type: SNMP_AGENT
@@ -1238,7 +1218,7 @@ zabbix_export:
       description: RAPID-CITY rcVossSystemTemperatureTable — per-sensor temperature.
       item_prototypes:
       - uuid: a26ae4767ee44c66917b6e5066bd3b63
-        name: 'Temperature: {#SENSOR_DESCR}'
+        name: 'Temperature sensor {#SNMPINDEX}'
         type: SNMP_AGENT
         snmp_oid: get[1.3.6.1.4.1.2272.1.101.1.1.2.1.3.{#SNMPINDEX}]
         key: sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}]
@@ -1254,25 +1234,26 @@ zabbix_export:
         trigger_prototypes:
         - uuid: 823085316f0e4db09e4d16669cc4e1c3
           expression: avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>{$TEMP_WARN}
-          name: 'Extreme VOSS: {#SENSOR_DESCR}: Temperature is above warning threshold'
+          name: 'Extreme VOSS: Sensor {#SNMPINDEX}: Temperature is above warning threshold'
           priority: WARNING
           description: Temperature sensor above {$TEMP_WARN}.
           dependencies:
-          - name: 'Extreme VOSS: {#SENSOR_DESCR}: Temperature is above critical threshold'
+          - name: 'Extreme VOSS: Sensor {#SNMPINDEX}: Temperature is above critical threshold'
             expression: avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>{$TEMP_CRIT}
               or last(/Extreme VOSS by SNMP/sensor.temp.status[rcVossSystemTemperatureStatus.{#SNMPINDEX}])={$TEMP_CRIT_STATUS}
         - uuid: 668b89c674594f55bba55a9b3bc6cba1
           expression: avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>{$TEMP_CRIT}
             or last(/Extreme VOSS by SNMP/sensor.temp.status[rcVossSystemTemperatureStatus.{#SNMPINDEX}])={$TEMP_CRIT_STATUS}
-          name: 'Extreme VOSS: {#SENSOR_DESCR}: Temperature is above critical threshold'
+          name: 'Extreme VOSS: Sensor {#SNMPINDEX}: Temperature is above critical threshold'
           priority: HIGH
           description: Temperature sensor above {$TEMP_CRIT} or status critical.
         - uuid: b6db438dc96c42798558df104931b803
-          expression: avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)<{$TEMP_CRIT_LOW}
-          name: 'Extreme VOSS: {#SENSOR_DESCR}: Temperature is too low'
+          expression: avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)>0
+            and avg(/Extreme VOSS by SNMP/sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}],5m)<{$TEMP_CRIT_LOW}
+          name: 'Extreme VOSS: Sensor {#SNMPINDEX}: Temperature is too low'
           priority: AVERAGE
       - uuid: c9670a0452e349e3b6849a1008296b94
-        name: 'Temperature status: {#SENSOR_DESCR}'
+        name: 'Temperature status sensor {#SNMPINDEX}'
         type: SNMP_AGENT
         snmp_oid: get[1.3.6.1.4.1.2272.1.101.1.1.2.1.6.{#SNMPINDEX}]
         key: sensor.temp.status[rcVossSystemTemperatureStatus.{#SNMPINDEX}]
