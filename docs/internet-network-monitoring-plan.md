@@ -26,7 +26,7 @@ This plan is **monitoring capability** (what we monitor, in what order).
 
 ```
 GRAMMAR: CLASS[-SPEED]-ID   (no colon; atomic CLASS)
-CLASSES: UC UD UA UP MON W M | XSTK XISC XMLAG XSPN XOOB XINT
+CLASSES: UC UD UA UP MON W TMON | XSTK XISC XMLAG XSPN XOOB XINT
 NO IDR class — iDRAC = MON
 
 DEFAULTS: UC=UD=UA=10G | UP=1G | MON=1G
@@ -203,7 +203,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 ```
 CLASS | CLASS-ID | CLASS-SPEED-ID
-CLASS = UC|UD|UA|UP|MON|W|M|XSTK|XISC|XMLAG|XSPN|XOOB|XINT
+CLASS = UC|UD|UA|UP|MON|W|TMON|XSTK|XISC|XMLAG|XSPN|XOOB|XINT
 SPEED = 100M|1G|2G5|5G|10G|25G|40G|100G|400G
 ```
 
@@ -217,7 +217,7 @@ No colon. No separate `IDR` class — **iDRAC = `MON`**.
 | `UP` | **1G** | AP; use `2G5`/`5G` token when needed |
 | `MON` | **1G** | Server / ESX / storage / **iDRAC**; `MON-10G-…` when 10G |
 | `W` | — | **No** absolute speed trigger |
-| `M` | — | Temp; change-detect only; compliance ages out |
+| `TMON` | — | **Temp monitor:** items/graphs only — **no triggers**; compliance lists `TMON*` for audit |
 
 Legacy 1G access↔dist: `UD-1G-…` **and** `UA-1G-…` (token both ends).
 
@@ -244,6 +244,16 @@ Legacy 1G access↔dist: `UD-1G-…` **and** `UA-1G-…` (token both ends).
 
 Prefer **device-state discovery** (stack / ISC / MLAG / mirror). Labels `XSTK`/`XISC`/`XMLAG`/`XSPN` = override/fallback.
 
+### Subsidiary hybrid (core∩access)
+
+Same LLD as fabric (`admin-up AND NOT X*`), **labeling inverted**:
+
+- **Default:** push **`XINT`** on all ports.  
+- **Do not X:** client access ports you care about (leave empty or `MON-…`), plus normal `UP` / `UC|UD|UA` / `W` / `MON`.  
+- Spare client ports stay `XINT` (or admin-down).
+
+NetBox role e.g. `Core-Access` selects the XINT-fill generator profile.
+
 ### Work packages
 
 | ID | Work | Detail |
@@ -255,9 +265,11 @@ Prefer **device-state discovery** (stack / ISC / MLAG / mirror). Labels `XSTK`/`
 | P2.5 | Auto structural exclude | EXOS + VOSS paths |
 | P2.6 | Access include / fabric admin-up | Unused → disable hygiene |
 | P2.7 | `MON` endpoints incl. iDRAC | No IDR class |
-| P2.8 | Compliance = **diff** | Generated vs live ifAlias; aged `M-` |
+| P2.8 | Compliance = **diff** + **`TMON*` inventory** | Generated vs live ifAlias; audit list of all temp monitors |
 | P2.9 | AP dual view | `UP-…` + HiveOS |
 | P2.10 | Canaries | 10G symmetric, 1G symmetric, MON/iDRAC, LAG members, XSTK |
+| P2.11 | Hybrid subsidiary profile | XINT-default; exceptions for client/UP/uplink/WAN/MON |
+| P2.12 | Canary hybrid switch | Client ports alert; spares quiet; uplink/WAN/AP OK |
 
 ### Scoping options (locked)
 
@@ -280,6 +292,7 @@ Prefer **device-state discovery** (stack / ISC / MLAG / mirror). Labels `XSTK`/`
 - [ ] Auto or labeled structural exclude on stack/ISC/MLAG  
 - [ ] Change-detect catches unlabeled degrade  
 - [ ] Generator dry-run + compliance diff on canary  
+- [ ] Hybrid subsidiary: XINT-default; client/uplink/AP/WAN monitored  
 
 ---
 
@@ -377,7 +390,7 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 |---|---|
 | Data population | Sites, roles, platforms, cables, Circuits/Providers when Phase 5 needs them |
 | Display / LLD publish | Read Extreme (or push) display codes → Zabbix LLD filters / macros |
-| Compliance | “Cable says AP but display missing”; stale `M:`/`MON`; Circuit without `W:…` |
+| Compliance | Cable/display diff; **list all `TMON*`** for audit; Circuit without `W` |
 | nbxsync automation | Template Rules; generate/push display; shared LLD parser; speed macros |
 | Alerts & actions | Zabbix actions, media, **Zabbix** tags for routing (site class) — not NetBox port monitor-tags |
 | Triggers / templates ops | Import, versioning, promote lab→prod; collision checks |
@@ -498,7 +511,8 @@ PORT SOT (locked):
 TRACK A ORDER:
 0 Foundations (grammar + defaults + LAG + generate path)
 1 Device health (EXOS + BUILD VOSS + BUILD HiveOS AP templates)
-2 Ports — admin-up−X*; access includes; speed+errors; MON incl iDRAC
+2 Ports — admin-up−X*; access includes; hybrid=XINT-default;
+   speed+errors; MON incl iDRAC; client ports excepted from X
 3 Cato + FortiGate
 4 Services & SLA
 5 ISP circuit monitoring (W:… + Circuits)

@@ -47,7 +47,7 @@ CLASS-SPEED-ID
 **One regex (illustrative):**
 
 ```
-^(?<class>UC|UD|UA|UP|MON|W|M|XSTK|XISC|XMLAG|XSPN|XOOB|XINT)(?:-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(?:-(?<id>[A-Z0-9]+))?$
+^(?<class>UC|UD|UA|UP|MON|W|TMON|XSTK|XISC|XMLAG|XSPN|XOOB|XINT)(?:-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(?:-(?<id>[A-Z0-9]+))?$
 ```
 
 Positional, no class-lookup heuristics, no `:` collision with `1:24`.
@@ -68,7 +68,9 @@ Positional, no class-lookup heuristics, no `:` collision with `1:24`.
 | `UP` | Access → **AP** | **1G** | Yes |
 | `MON` | Monitored endpoint (server, ESX, storage, **iDRAC**, misc) | **1G** | Yes |
 | `W` | WAN / ISP | — | **No** absolute speed trigger (Phase 5 / Circuit bandwidth) |
-| `M` | Temp opt-in (`M-YYMMDD` or `M-YYMMDD-ID`) | — | Change-detect only; compliance ages out |
+| `TMON` | **Temp monitor** — metrics only, **no alerts** | — | Items yes / **triggers no**; compliance lists for audit |
+
+**`TMON` / `TMON-<id>`** replaces dated `M-YYMMDD`. Do **not** put expiry in the switch label (stale dates on-box never get cleaned). Optional why/until belongs in NetBox **description**; compliance **inventory of all `TMON*`** is the audit lever.
 
 ### 3.2 Exclude (override / fallback labels)
 
@@ -82,6 +84,19 @@ Positional, no class-lookup heuristics, no `:` collision with `1:24`.
 | `XINT` | Internal / do not monitor |
 
 Prefer **auto-derive** these from device state; set label when override needed or discovery incomplete.
+
+### 3.3 `TMON` — temp monitor without alerts
+
+| | |
+|---|---|
+| **Display** | `TMON` or `TMON-<id>` (e.g. `TMON-guest`, `TMON-rack3`) |
+| **Zabbix** | LLD **includes** the port → items/graphs/history **yes** |
+| **Triggers** | **None** — no link-down problem, no speed WARN, no change-detect alert |
+| **Audit** | Compliance report: **every interface with `TMON*`** (site, device, ifName, description, last seen) |
+| **Cleanup** | Human reviews the list → remove label, or promote to `MON`/`UP`/… if permanent |
+| **Description** | Optional why/until in **NetBox** — not encoded in the 15-char string |
+
+Do **not** use dated `M-YYMMDD` on the switch. Dates rot in place; an auditable `TMON` inventory does not.
 
 ---
 
@@ -115,7 +130,8 @@ Because `UD`/`UA`/`UC` all default **10G**, a standard 10G access↔dist link ne
       expected = SPEED token OR class default
       ifHighSpeed ≠ expected for ≥5m while oper-up → WARNING
 6) CLASS W: no absolute speed expect (Circuit / Phase 5)
-7) CLASS M: change-detect only; no absolute expect
+7) CLASS TMON: **discover + collect items only** — **no triggers / no problems**
+   (not even change-detect alerts). Compliance lists every TMON for audit.
 ```
 
 **Settle / flap guard:** speed and change triggers use **`min` / “for 5m”** (or equivalent) so negotiation blips do not storm.
@@ -129,7 +145,7 @@ Because `UD`/`UA`/`UC` all default **10G**, a standard 10G access↔dist link ne
 | Device role | LLD |
 |---|---|
 | **Core / Dist / Mgmt** | Admin-up **AND NOT** (auto-structural OR `X*`) **AND NOT** (admin-up empty/unused policy — prefer admin-down unused) |
-| **Access** | Display matches `^(UC\|UD\|UA\|UP\|MON\|W\|M)` |
+| **Access** | Display matches `^(UC\|UD\|UA\|UP\|MON\|W\|TMON)` |
 | **Subsidiary hybrid (core∩access)** | Same LLD as fabric: admin-up **AND NOT** `X*` — but **labeling policy inverted** (§6.1) |
 | **AP** | Device health template — not switch-port fabric LLD |
 
@@ -154,7 +170,7 @@ EXCEPT:  do NOT mark X on ports that should stay monitored:
 
 | Port kind on hybrid switch | Display | Monitored? |
 |---|---|---|
-| Client access (care about) | empty **or** `MON-…` / `M-…` | **Yes** (not `X*`) |
+| Client access (care about) | empty **or** `MON-…` / `TMON-…` | **Yes** (not `X*`); `TMON` = metrics, no alerts |
 | Client access (don’t care / spare) | `XINT` | No |
 | AP | `UP-…` | Yes |
 | Uplink / fabric | `UC`/`UD`/`UA`-… | Yes |
@@ -275,7 +291,7 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 | 15-char hostname overflow | Machine-short IDs only |
 | Aggregate LAG false WARN | Members vs aggregate rule (§7) |
 | New stack member alerts as uplink | Auto structural exclude |
-| `M-` forever | Compliance: `M-` older than N days = finding |
+| `TMON` forever / forgotten | Compliance **list all TMON*** regularly; clear or promote to `MON`/`UP`/… |
 | Negotiation WARN storm | `for 5m` / min settle |
 | Grammar drift across templates | One shared parser module |
 
@@ -286,7 +302,7 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 - [ ] Grammar `CLASS[-SPEED]-ID` + charset locked  
 - [ ] Defaults: **UC=UD=UA=10G**, **UP=1G**, **MON=1G**; no `IDR` class  
 - [ ] Symmetric 1G exception examples both ends  
-- [ ] `W` = no absolute speed trigger; `M-` = aged compliance  
+- [ ] `W` = no absolute speed trigger; **`TMON` = monitor only, no alerts**; compliance lists `TMON*`  
 - [ ] Tokens include `2G5` / `5G` / `400G`  
 - [ ] LAG member vs aggregate rule agreed  
 - [ ] Auto structural exclude path identified per EXOS/VOSS  
@@ -301,7 +317,7 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 
 ```
 GRAMMAR: CLASS[-SPEED]-ID   (no colon; atomic CLASS)
-CLASSES: UC UD UA UP MON W M | XSTK XISC XMLAG XSPN XOOB XINT
+CLASSES: UC UD UA UP MON W TMON | XSTK XISC XMLAG XSPN XOOB XINT
 NO IDR — iDRAC uses MON
 
 DEFAULTS: UC=UD=UA=10G | UP=1G | MON=1G
@@ -311,6 +327,7 @@ ZABBIX:
   auto-X + X* excludes
   change(ifHighSpeed) safety net (settled)
   absolute expect where UC|UD|UA|UP|MON labeled
+  TMON: items only — no triggers; compliance lists TMON* for audit
   W: no absolute speed; LAG: expect on members only
 
 HYBRID SUBSIDIARY (core∩access)
