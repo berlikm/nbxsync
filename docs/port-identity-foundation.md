@@ -110,6 +110,8 @@ Emit a token **only** for non-default speeds.
 
 ## 5. On-box field → SNMP `ifAlias` (EXOS)
 
+**Prefer `display-string`** for the grammar label (what ops see in CLI port summaries).
+
 Lab canary on **EXOS-VM 32.7.2.19** (IF-MIB):
 
 | On-box fields set | `ifAlias` value |
@@ -118,7 +120,7 @@ Lab canary on **EXOS-VM 32.7.2.19** (IF-MIB):
 | `description-string` only | description-string |
 | both | **description-string** (wins regardless of order) |
 
-**Rule for EXOS:** put the grammar label in **`description-string`** (Zabbix reads `ifAlias`). Keep `display-string` for human/CLI convenience if useful, but do not rely on it when both are set.  
+**Rule for EXOS:** put `CLASS[-SPEED]-ID` in **`display-string`**. Leave **`description-string` empty** on labeled ports (or never set it) so it cannot override `ifAlias`. Zabbix reads `ifAlias`.  
 Port `ifName` is `1:N`; data ports use ifIndex `1000+N` (e.g. port 1 → `1001`). Budget remains **64**.
 
 VOSS `name` → `ifAlias` / `rcPortName` canary still open.

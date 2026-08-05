@@ -113,7 +113,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 |---|---|
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
 | P0.2 | **VOSS canary:** `name` → SNMP ifAlias (`…1.1.1.18`) or ifDescr; note per-platform OID if needed |
-| P0.3 | **EXOS canary:** display-string + description-string → ifAlias winner / truncate at 64 — **DONE** (32.7.2.19: description wins when both set; either alone maps to ifAlias) |
+| P0.3 | **EXOS canary:** display-string + description-string → ifAlias — **DONE** (32.7.2.19: either alone → ifAlias; both → description wins). **Prefer display-string; keep description empty** |
 | P0.4 | Lock grammar budget **64**; always-emit SPEED; `X` notes |
 | P0.5 | Grammar: uppercase; no colon; split X regex |
 | P0.6 | Role matrix + hybrid admin-down spares; access safety-net limit stated |
@@ -177,7 +177,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 **Objective:** Fabric / AP / endpoint **ports** monitored with `USW`/`US`/`UP`/`MON`/`UW`/`TMON`; `X` = exclude; `N` = note only. LAG / MLAG / MLT later.
 
-**SoT on box:** Extreme label that Zabbix reads via SNMP (**64-char budget**). EXOS: put grammar in **`description-string`** (`ifAlias` winner when both fields set; lab-proven on 32.7.2.19). VOSS: `name` / `name port <list>` — confirm OID.
+**SoT on box:** Extreme label that Zabbix reads via SNMP (**64-char budget**). EXOS: put grammar in **`display-string`**; leave **`description-string` empty** so it cannot override `ifAlias` (lab-proven on 32.7.2.19). VOSS: `name` / `name port <list>` — confirm OID.
 
 ### Grammar
 
