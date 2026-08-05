@@ -31,7 +31,8 @@ OPERATOR SOT = Extreme display string only (≤15)
 
 CORE/DIST/MGMT = all admin-up minus X:… (unused admin-up → disable)
 ACCESS         = only include codes; APs hang off access → U:P: (1G)
-NETBOX         = cables/circuits + compliance + rare expected_speed CF
+NETBOX         = cables/circuits + compliance
+                 Interface.speed = static config for Jinja (NOT Zabbix expected)
                  (NO day-to-day NetBox “monitor” interface tags)
 ```
 
@@ -188,15 +189,15 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 ### Port classes (Phase 2) — display codes
 
-| Display code | Meaning | Typical speed baseline |
+| Display code | Meaning | Speed monitoring |
 |---|---|---|
-| `U:C:<id>` | Uplink toward core | 10G (tune) |
-| `U:D:<id>` | Uplink toward dist | **10G** |
-| `U:D1:<id>` | Dist uplink, **1G exception** | **1G** |
-| `U:A:<id>` | Uplink toward access | **10G** |
-| `U:A1:<id>` | Access uplink, **1G exception** | **1G** |
-| `U:P:<id>` | **Access switch → AP** | **1G** almost always |
-| `M:<yymmdd>` / `MON` | Temp / standing opt-in (access edge) | — |
+| `U:C:<id>` | Uplink toward core | Baseline / degrade (mixed) |
+| `U:D:<id>` | Uplink toward dist | Baseline / degrade (mixed) |
+| `U:D1:<id>` | Dist uplink, intentional 1G hint | Optional; baseline covers most |
+| `U:A:<id>` | Uplink toward access | Baseline / degrade (mixed) |
+| `U:A1:<id>` | Access uplink, intentional 1G hint | Optional; baseline covers most |
+| `U:P:<id>` | **Access switch → AP** | Fixed expect **1G** |
+| `M:<yymmdd>` / `MON` | Temp / standing opt-in (access edge) | Baseline if needed |
 
 ISP/WAN (`W:…`) → **Phase 5**.
 
@@ -221,20 +222,23 @@ Unused admin-up on core/dist/mgmt → **disable** (security hygiene), not “mon
 
 ### Speed monitoring (Phase 2 — in scope)
 
-| Link class | Intended speed (today) | Alert if |
+**Important:** NetBox `Interface.speed` is the **static configured speed used by Jinja** to generate switch config. It is **not** “monitoring intended speed.” Do not overload it as Zabbix `{$IF.SPEED.EXPECTED}`.
+
+| Link class | Monitoring approach | Alert if |
 |---|---|---|
-| Access ↔ Dist (and access uplink) | **10G** typical; **1G** allowed exceptions | Oper up but speed ≠ expected (unless exception flagged) |
-| Access → AP | **1G** almost always | Oper up but not 1G (e.g. 100M fallback) → WARNING |
-| Core / Dist peer | Per design / class default | Same pattern when baseline set |
+| Access → AP (`U:P:`) | Fixed expect **1G** | Oper up but not 1G (e.g. 100M) → WARNING |
+| Access ↔ Dist / fabric uplinks | **Baseline / degrade** (speeds are mixed; no fleet 10G assumption) | Oper speed drops vs learned baseline |
+| Port with **forced** Extreme admin speed | Expected = Extreme admin | Oper ≠ admin |
+| Display nibble `U:D1:` / `U:A1:` | Optional ops-visible intentional 1G | Optional; baseline covers most cases |
 
-**How to store expected speed**
+**How expected speed is derived (monitoring only)**
 
-- Default by **display prefix / class** (`U:P:` → 1G, `U:A:`/`U:D:` → 10G).  
-- **Rare exceptions:** display nibble (`U:D1:`) or NetBox interface CF `expected_speed` when the object exists.  
-- **Not** a NetBox speed tag for day-to-day ops.  
-- Zabbix: item `ifHighSpeed` / Ethspeed; trigger compares to macro `{$IF.SPEED.EXPECTED}` from class default or CF (Track B).
+1. `U:P:` → 1000 Mb/s.  
+2. Else if Extreme auto-neg off → `extremePortAdminSpeed`.  
+3. Else → learn baseline from stable `ifHighSpeed`; alert on degrade/change.  
+4. NetBox `Interface.speed` stays on the **config/Jinja** path (optional compliance: NetBox vs live admin).
 
-**Not required in Phase 2:** util% capacity alerts (optional graphs only).
+**Not required in Phase 2:** util% capacity alerts (optional graphs only; util% later needs Circuit/commit bandwidth).
 
 ### Work packages
 
@@ -243,12 +247,12 @@ Unused admin-up on core/dist/mgmt → **disable** (security hygiene), not “mon
 | P2.1 | Classify ports from cables | Access↔dist, access→AP, etc. |
 | P2.2 | Short display codes ≤15 | e.g. `U:P:ap3f07`, `U:D:swd14`, `X:STK` |
 | P2.3 | Discovery contract for Track B | Display regex / ifIndexes; LLD modes `admin_up_excl` vs `display_include` |
-| P2.4 | Uplink / fabric port template | State, flap, errors, **speed vs class default** |
+| P2.4 | Uplink / fabric port template | State, flap, errors, **speed baseline / degrade** (+ `U:P:` = 1G) |
 | P2.5 | Discovery by role | Fabric: admin-up − `X:…`; access: include codes only |
 | P2.6 | Manual no-cable path | Set ≤15 display on switch; done |
 | P2.7 | NetBox **compliance** reports | Cable implies code missing/wrong; stale `M:`/`MON`; unused admin-up |
 | P2.8 | AP dual view | Switch `U:P:` (expect 1G) + HiveOS health |
-| P2.9 | Speed exceptions | Rare `U:D1:` / `expected_speed` CF only |
+| P2.9 | Speed model | Baseline/degrade; forced Extreme admin; **not** NetBox `Interface.speed` |
 | P2.10 | Runbook | One edit: display string (optional script: cable → push code) |
 
 ### Scoping options (locked)
@@ -258,7 +262,7 @@ Unused admin-up on core/dist/mgmt → **disable** (security hygiene), not “mon
 | Extreme **display string** include / exclude codes | **Operator SoT (locked)** |
 | NetBox interface **monitor tags** for day-to-day | **Reject** (dual-edit) |
 | NetBox cables / Circuits + **compliance** reports | Drift detection only |
-| NetBox `expected_speed` CF | Rare speed exception |
+| NetBox `Interface.speed` | **Jinja config** static speed — not Zabbix expected |
 | Optional Python cable → push display | Scale aid; not a second control plane |
 | Fixed port numbers | Reject |
 | Monitor all interfaces as “uplinks” | Reject |
@@ -368,7 +372,7 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 | Data population | Sites, roles, platforms, cables, Circuits/Providers when Phase 5 needs them |
 | Display / LLD publish | Read Extreme (or push) display codes → Zabbix LLD filters / macros |
 | Compliance | “Cable says AP but display missing”; stale `M:`/`MON`; Circuit without `W:…` |
-| nbxsync automation | Template Rules, CG assignments, inheritance, speed macros from CF |
+| nbxsync automation | Template Rules, CG assignments, inheritance; speed baseline macros (not NetBox Jinja speed) |
 | Alerts & actions | Zabbix actions, media, **Zabbix** tags for routing (site class) — not NetBox port monitor-tags |
 | Triggers / templates ops | Import, versioning, promote lab→prod; collision checks |
 | Zero-touch | Checklist + configure script updates when Track A templates are ready |
@@ -482,13 +486,14 @@ PORT SOT (locked):
   Extreme display string ≤15 only
   Include: U:C: U:D: U:D1: U:A: U:A1: U:P: W: M: MON
   Exclude: X:STK X:SPN X:OOB X:INT X
-  NetBox = compliance + rare expected_speed — NO monitor-tags for ops
+  NetBox = compliance + Interface.speed for Jinja config
+           (NOT Zabbix expected) — NO monitor-tags for ops
 
 TRACK A ORDER:
 0 Foundations (code list + role matrix)
 1 Device health (EXOS + BUILD VOSS + BUILD HiveOS AP templates)
 2 Ports — core/dist/mgmt admin-up−X:; access includes; U:P: (1G);
-   access↔dist 10G typ / U:D1: exceptions; speed mismatch alerts
+   fabric/access uplinks = speed baseline/degrade (mixed speeds)
 3 Cato + FortiGate
 4 Services & SLA
 5 ISP circuit monitoring (W:… + Circuits)
