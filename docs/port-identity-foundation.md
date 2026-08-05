@@ -2,7 +2,7 @@
 
 **On box:** Extreme port label → SNMP (prefer `ifAlias`)  
 **Scope:** Zabbix port LLD, speed expectation, excludes  
-**Out of scope:** label push tooling (separate); VOSS **MLT** monitoring (skip for now)
+**Out of scope for now:** label push tooling (separate); LAG / MLAG / MLT monitoring (revisit later)
 
 ---
 
@@ -17,8 +17,8 @@
 7. **Zabbix** reads empty vs parsed class. Turn on “speed must equal expected” only after labels are in place.  
 8. **Access LLD** matches include classes only; missing labels are fixed in inventory/ops, not by a Zabbix safety net.  
 9. **Hybrid:** admin-down spares; `X` on up-but-uninteresting; monitored clients get `MON-<ID>`.  
-10. **LAG:** speed expect on **members** only. MLT not monitored yet.  
-11. **Port intent lives in the label** — not NetBox monitor tags.
+10. **Port intent lives in the label** — not NetBox monitor tags.  
+11. **LAG / MLAG / MLT** — revisit later; focus is physical ports.
 
 ---
 
