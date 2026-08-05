@@ -4,7 +4,7 @@
 **Priority order:** Device health → uplinks/ports → Cato & FortiGate → Services/SLA → ISP circuit monitoring  
 **Stack:** NetBox + nbxsync + Zabbix 7 · Extreme EXOS / VOSS · HiveOS APs (XIQ Pilot) · (later) Cato · FortiGate
 
-**Port identity:** locked baseline in `docs/port-identity-foundation.md` (64-char grammar, always-emit SPEED). Open items live in that doc’s **TODO**.
+**Port identity:** label grammar in `docs/port-identity-foundation.md`; Zabbix LLD/triggers in `docs/port-identity-zabbix.md`.
 
 ---
 
@@ -20,12 +20,11 @@ This plan is **monitoring capability** (what we monitor, in what order).
 
 **Relationship:** Track A defines *what* each phase needs. Track B delivers *how* it is automated from NetBox. Do not mix “build HiveOS template items” and “publish display-string LLD filters to Zabbix” into one phase checkbox unless deliberately scheduled as a dependency handoff.
 
-**Port identity (locked — Track A design):** see `docs/port-identity-foundation.md`.
+**Port identity (Track A):** see `docs/port-identity-foundation.md` (grammar) and `docs/port-identity-zabbix.md` (LLD / triggers; hybrid TBD).
 
 ```
 BUDGET = 64 | CLASS[-SPEED]-ID | USW US UP MON UW TMON | X | N
-ACCESS opt-in | HYBRID admin-down spares
-LAG / MLAG / MLT = later | Label push tooling = separate
+Label push tooling = separate | LAG / MLAG / MLT = later | Hybrid = TBD
 ```
 
 Full detail + TODO: `docs/port-identity-foundation.md`.

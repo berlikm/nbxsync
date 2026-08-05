@@ -1,6 +1,7 @@
 # Port identity — baseline
 
-What Zabbix uses to scope Extreme switch ports: an on-box label (prefer SNMP `ifAlias`) with a shared grammar for class, optional speed, and far-end ID. Covers LLD include/exclude, speed expectation, and notes. Label push tooling and LAG/MLAG/MLT are out of scope here.
+Shared on-box label grammar for Extreme switch ports (prefer SNMP `ifAlias`): class, optional speed, far-end ID.  
+Zabbix LLD and trigger behavior: `docs/port-identity-zabbix.md`. Label push tooling and LAG/MLAG/MLT are out of scope here.
 
 ---
 
@@ -74,52 +75,7 @@ Expected speed = SPEED token if present, else class default (`USW`/`US` → 10G,
 
 ---
 
-## 4. Zabbix resolution
-
-```
-1) Label empty → EMPTY; else parse class
-2) Class X or N → no port alerts
-3) Else include per role LLD (§5)
-4) Discovered + {USW,US,UP,MON,UW} → link-down / flap / errors
-5) Discovered + {USW,US,UP,MON} → expected speed = token or class default;
-      ifHighSpeed ≠ expected ≥5m while oper-up → WARNING
-6) Discovered + {USW,US,UP,MON,UW} → change(ifHighSpeed) vs last stable oper-up ≥5m → WARNING;
-      suppress in maintenance windows
-7) TMON → items + optional link-down INFO only (no speed / change WARN)
-```
-
-Turn on step 5 after labels for that site follow this grammar.
-
----
-
-## 5. Role × LLD
-
-| Device role | LLD |
-|---|---|
-| **Core / Dist / Mgmt** | Admin-up AND NOT class `X` AND NOT class `N` |
-| **Access** | Include classes only (`USW` `US` `UP` `MON` `UW` `TMON`) |
-| **Subsidiary hybrid** | Same as fabric; labeling below |
-| **AP** | Device health — not switch-port LLD |
-
-Unused ports → admin-down.
-
-**Hybrid:**
-
-```
-1) Spares / unused            → admin-down
-2) Admin-up but uninteresting → X / X-<note> or N / N-<text>
-3) Monitor / temp             → USW / US / UP / MON / UW / TMON / …
-```
-
----
-
-## 6. LAG / MLAG / MLT
-
-Deferred — physical ports first. Notes for later are in the TODO.
-
----
-
-## 7. On-box fields
+## 4. On-box fields
 
 | Platform | Write label to |
 |---|---|
@@ -130,7 +86,7 @@ Zabbix polls SNMP (`ifAlias` preferred).
 
 ---
 
-## 8. Examples
+## 5. Examples
 
 | Scenario | Display | Expect |
 |---|---|---|
@@ -155,3 +111,4 @@ Zabbix polls SNMP (`ifAlias` preferred).
 - [ ] Apply labels on pilots → enable absolute-expect
 - [ ] Port template: link/flap/errors, absolute expect, change vs stable-up, maintenance suppress
 - [ ] Later: revisit **LAG / MLAG / MLT** monitoring (focus is physical ports for now)
+- [ ] Hybrid LLD / labeling — TBD (`docs/port-identity-zabbix.md`)
