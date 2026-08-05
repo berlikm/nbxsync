@@ -1,13 +1,17 @@
 # Lab / configure scripts
 
-Aligned with the zero-touch model on `cursor/zerotouch-configure-script-e7f8`.
+This branch carries the full zero-touch stack from
+`cursor/zerotouch-configure-script-e7f8` plus the Extreme network half.
 
 | Script | Purpose |
 |---|---|
 | `configure_nbxsync_zerotouch.py` | General zero-touch: SiteGroup Agent, SNMP roles, TemplateRules, hostgroups, SyncHostJob lab |
 | `configure_nbxsync_network.py` | **Network half** — Extreme VOSS/EXOS templates, Switch* IFALIAS macros, VOSS≠Network Generic |
+| `create_dashboards.py` | Zabbix country/role/OS dashboards from nested hostgroup parents |
 | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox graph) |
 | `zabbix_api.py` | Shared JSON-RPC helper for the Zabbix-only smoke |
+
+Operator checklist: `docs/nbxsync-configuration-checklist-zerotouch.md`
 
 ## Network simulate (NetBox + Zabbix)
 
@@ -32,3 +36,10 @@ PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
 ```
 
 Network script assumes SNMP CG on Switch* (zerotouch step 5b) and only layers Extreme-specific templates + macros.
+
+## Dashboards
+
+```bash
+PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
+  /workspace/.deps/venv/bin/python scripts/create_dashboards.py
+```
