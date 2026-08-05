@@ -199,6 +199,7 @@ Token omission is hand/legacy only — generator always emits SPEED from NetBox 
 **Access safety net limit:** change-detect and absolute-expect only run on **discovered** items. Access LLD is opt-in regex — **typo / missing label ⇒ no items ⇒ no safety net**. Mitigation = NetBox compliance diff (+ generator).
 
 **Settle / maintenance:** compare speed change against last **stable oper-up** sample (not a mid-negotiation poll). Maintenance windows suppress change-detect and absolute-expect WARNs. Gate absolute-expect per site until generated-vs-live diff is clean.
+
 ---
 
 ## 6. Role × LLD

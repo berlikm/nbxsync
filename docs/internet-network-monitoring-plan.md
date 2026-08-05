@@ -206,7 +206,7 @@ X notes (generated): X-STK|X-ISC|X-MLAG|X-SPN|X-OOB|X-OTH
 ```
 
 Extended profile (**64 common**): **always** emit SPEED.  
-Parse states: `EMPTY` | `PARSED` | **`UNPARSEABLE`** (legacy ≠ empty).
+Parse states: `EMPTY` | `PARSED` | `UNPARSEABLE` (legacy junk ≠ empty — compliance only; do not invent class).
 
 ### Class defaults → Zabbix expected (if token omitted)
 
