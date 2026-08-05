@@ -5,7 +5,7 @@
 **Stack:** NetBox + nbxsync + Zabbix 7 · Extreme EXOS / VOSS · HiveOS APs (XIQ Pilot) · (later) Cato · FortiGate
 
 **Port identity (locked):** Extreme **display string only** (≤15 codes) — includes + **exclusion `X:…`**.  
-See `docs/port-identity-foundation.md`.  
+See `/opt/cursor/artifacts/docs/port-identity-foundation.md`.  
 NetBox = inventory + **compliance** (not a second place to edit “monitor this port”).
 
 ---

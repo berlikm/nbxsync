@@ -44,6 +44,18 @@ ASCII, no spaces. Script enforces length.
 
 Examples: `U:C:swc01`, `U:P:ap3f07`, `U:D1:swd2`, `W:SC1`, `M:260830`, `MON`.
 
+### Optional speed nibbles (rare — only when ops want it on-box)
+
+Baseline covers mixed speeds without nibbles. Use a nibble only when the intentional speed must be visible on the switch in ≤15 chars:
+
+| Code | Meaning |
+|---|---|
+| `U:D1:<id>` | Intentional **1G** toward dist |
+| `U:A1:<id>` | Intentional **1G** toward access |
+| `U:D01:<id>` / `U:A01:<id>` | Intentional **100M** (very rare; id must stay short) |
+
+Prefer **NetBox description** for the human story (see §4.1). Do **not** invent NetBox tags for these edge cases.
+
 ### Exclusion codes (do **not** monitor — especially on core/dist/mgmt)
 
 On fabric roles, LLD = admin-up **except** display matching exclude prefixes (plus hard platform excludes if needed).
@@ -101,6 +113,36 @@ optional: U:D1: / U:A1: → ops-visible “intentional 1G” hint (not required 
 Alert: oper-up and (below baseline / ≠ forced admin / ≠ 1G on `U:P:`) → WARNING.  
 Util% (later) needs Circuit/commit bandwidth — not “whatever ifHighSpeed is today” alone.
 
+### 4.1 Known intentional odd speeds (e.g. 100M uplink) — description, not a tag
+
+**Edge case:** a monitored uplink that is **supposed** to run at 100M (legacy far-end, PS/print/special device, copper plant limit, etc.). Rare, but real.
+
+| Where | What to put | Why |
+|---|---|---|
+| **NetBox interface description** | Human reason, e.g. `Intentional 100M uplink to PS closet (legacy NIC); do not “fix” to 1G` | Readable, searchable, no 15-char limit — **preferred for the story** |
+| **NetBox `Interface.speed`** | `100` (Mb/s as your model stores it) **only if** Jinja should render/force that config | Config path — not a comment field |
+| **Extreme display string** | Normal include code, e.g. `U:A:ps01` — optional nibble `U:A01:ps` if you want 100M visible on-box | Monitor class / LLD; keep short |
+| **NetBox tag** (e.g. `speed:100m`) | **Do not** | Dual taxonomy, easy to forget, fights “no monitor-tags” rule |
+
+**Monitoring behavior for intentional 100M:**
+
+1. First stable oper speed becomes baseline → **100M is OK**, no false WARN.  
+2. Alert if it later drops further (e.g. 10M) or flaps oddly — same degrade model.  
+3. If someone “fixes” cable and it jumps to 1G, that is a **baseline change** (re-learn / ack), not necessarily an outage.  
+4. Description tells the next engineer *why* 100M is correct so they do not chase a false problem.
+
+**Worked examples**
+
+| Scenario | Display (≤15) | NetBox description | `Interface.speed` (Jinja) | Zabbix |
+|---|---|---|---|---|
+| Normal access↔dist 10G | `U:D:swd14` | *(optional)* `Uplink to swd14` | `10000` if templates force/document it | Baseline learns 10000 |
+| Intentional 1G uplink | `U:D:swd2` or `U:D1:swd2` | `Intentional 1G to swd2 (SFP limit)` | `1000` if Jinja forces 1G | Baseline 1000; nibble optional |
+| **Intentional 100M** (PS / legacy) | `U:A:ps01` or `U:A01:ps` | `Intentional 100M uplink to PS; legacy endpoint` | `100` if Jinja must configure 100M | Baseline 100; **no tag** |
+| AP port | `U:P:ap3f07` | `AP ap-3f-07` | `1000` typical for Jinja | Expect **1G** (catch 100M *fallback*) |
+| Temp monitor edge port | `M:260830` | `Temp monitor until 2026-08-30 — guest rack` | as needed | Include via `M:` |
+
+**Rule of thumb:** description = **why**; display = **what class to monitor**; `Interface.speed` = **what config to render**; tags = **not for this**.
+
 ---
 
 ## 5. NetBox = compliance + config SoT, not dual monitor SoT
@@ -113,6 +155,7 @@ Util% (later) needs Circuit/commit bandwidth — not “whatever ifHighSpeed is 
 | `M:` / `MON` older than policy | Stale temp list |
 | NetBox `Interface.speed` vs Extreme admin (forced ports) | Config drift for Jinja path |
 | Oper speed degraded vs Zabbix baseline | Fix cable/optic/negotiation |
+| Intentional odd speed (100M, etc.) | Document in **description**; do not use a speed tag |
 | Admin-up unused on core/dist/mgmt | Disable port |
 
 Operators fix **monitor intent on the switch** (display string).  
@@ -197,6 +240,7 @@ SPEED MONITORING:
   U:A/D/C: → baseline/degrade (mixed uplink speeds)
   Forced:  → Extreme admin speed
   Do not use NetBox Interface.speed as Zabbix expected
+  Intentional odd speed (e.g. 100M) → NetBox DESCRIPTION (why), not a tag
 
 CORE/DIST/MGMT = all admin-up minus X: codes; unused → disable
 ACCESS = only include codes; AP ports U:P:; manual string OK if no cable
