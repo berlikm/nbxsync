@@ -79,6 +79,7 @@ Expected speed = SPEED token if present, else class default (`USW`/`US` → 10G,
 | Scenario | Display | Expect |
 |---|---|---|
 | Switch ↔ switch 10G | `USW-10G-SWD14` | 10G |
+| Switch ↔ switch (default 10G) | `USW-SWD14` | 10G |
 | Switch ↔ switch 1G | `USW-1G-SWA08` | 1G |
 | Server / ESXi 10G | `US-10G-ESX01` | 10G |
 | Storage 10G | `US-10G-SAN01` | 10G |
