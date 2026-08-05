@@ -1,28 +1,10 @@
 # Port identity — baseline
 
-**On box:** Extreme port label → SNMP (prefer `ifAlias`)  
-**Scope:** Zabbix port LLD, speed expectation, excludes / notes  
-**Out of scope for now:** label push tooling (separate); LAG / MLAG / MLT monitoring (revisit later)
+What Zabbix uses to scope Extreme switch ports: an on-box label (prefer SNMP `ifAlias`) with a shared grammar for class, optional speed, and far-end ID. Covers LLD include/exclude, speed expectation, and notes. Label push tooling and LAG/MLAG/MLT are out of scope here.
 
 ---
 
-## 1. Locked decisions
-
-1. **Grammar:** `CLASS[-SPEED]-ID`, hyphen separators, labels stored **UPPERCASE**.  
-2. **Budget:** 64 characters (VOSS port `name` + EXOS `ifAlias` default).  
-3. **Monitored labels include SPEED** where a default applies; ID is the real far-end name.  
-4. **Classes:** `USW` `US` `UP` `MON` `UW` `TMON` | `X` (exclude) | `N` (note only).  
-5. **Defaults:** `USW`/`US` → 10G; `UP`/`MON` → 1G.  
-6. **Set on box:** EXOS → field that drives `ifAlias`; VOSS → port `name` / `name port <list>`.  
-7. **Zabbix** reads empty vs parsed class. Turn on “speed must equal expected” only after labels are in place.  
-8. **Access LLD** matches include classes only; missing labels are fixed in inventory/ops, not by a Zabbix safety net.  
-9. **Hybrid:** admin-down spares; `X` / `N` on up-but-uninteresting; monitored clients get `US` / `UP` / `MON` / ….  
-10. **Port intent lives in the label** — not NetBox monitor tags.  
-11. **LAG / MLAG / MLT** — revisit later; focus is physical ports.
-
----
-
-## 2. Grammar
+## 1. Grammar
 
 ```
 CLASS
@@ -53,7 +35,7 @@ CLASS-SPEED-ID
 # Note only — free text, no Zabbix action
 ^N(-(?<note>[A-Z0-9-]+))?$
 
-# Exclude — controlled notes (§3.2)
+# Exclude — controlled notes (§2.2)
 ^X(-(?<xnote>STK|ISC|MLAG|SPN|OOB|OTH|[A-Z0-9]{1,12}))?$
 
 # Monitor / temp (TMON before MON)
@@ -62,7 +44,7 @@ CLASS-SPEED-ID
 
 ---
 
-## 3. Classes
+## 2. Classes
 
 ### 3.1 Include / monitor
 
@@ -101,7 +83,7 @@ These are **notes on class `X`**, not separate classes. Reason may also live in 
 
 ---
 
-## 4. Speed tokens
+## 3. Speed tokens
 
 | Token | Mbps |
 |---|---|
@@ -119,12 +101,12 @@ Expected speed = SPEED token if present, else class default (`USW`/`US` → 10G,
 
 ---
 
-## 5. Zabbix resolution
+## 4. Zabbix resolution
 
 ```
 1) Label empty → EMPTY; else parse class
 2) Class X or N → no port alerts
-3) Else include per role LLD (§6)
+3) Else include per role LLD (§5)
 4) Discovered + {USW,US,UP,MON,UW} → link-down / flap / errors
 5) Discovered + {USW,US,UP,MON} → expected speed = token or class default;
       ifHighSpeed ≠ expected ≥5m while oper-up → WARNING
@@ -137,7 +119,7 @@ Turn on step 5 after labels for that site follow this grammar.
 
 ---
 
-## 6. Role × LLD
+## 5. Role × LLD
 
 | Device role | LLD |
 |---|---|
@@ -158,13 +140,13 @@ Unused ports → admin-down.
 
 ---
 
-## 7. LAG / MLAG / MLT
+## 6. LAG / MLAG / MLT
 
 Deferred — physical ports first. Notes for later are in the TODO.
 
 ---
 
-## 8. On-box fields
+## 7. On-box fields
 
 | Platform | Write label to |
 |---|---|
@@ -175,7 +157,7 @@ Zabbix polls SNMP (`ifAlias` preferred).
 
 ---
 
-## 9. Examples
+## 8. Examples
 
 | Scenario | Display | Expect |
 |---|---|---|
