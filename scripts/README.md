@@ -1,15 +1,34 @@
 # Lab / configure scripts
 
+Aligned with the zero-touch model on `cursor/zerotouch-configure-script-e7f8`.
+
 | Script | Purpose |
 |---|---|
-| `run_network_zabbix_sim.py` | Import Extreme templates into Zabbix 7, apply design macros, create Core/Access VOSS pilots, verify cutover checklist |
-| `configure_nbxsync_network.py` | Declarative network half of zero-touch (platforms, roles, macros). `--simulate` / `--zabbix-only` now; `--apply` when NetBox Django works |
-| `zabbix_api.py` | Shared JSON-RPC helper (`/home/ubuntu/zabbix-docker/lab.json`) |
+| `configure_nbxsync_zerotouch.py` | General zero-touch: SiteGroup Agent, SNMP roles, TemplateRules, hostgroups, SyncHostJob lab |
+| `configure_nbxsync_network.py` | **Network half** — Extreme VOSS/EXOS templates, Switch* IFALIAS macros, VOSS≠Network Generic |
+| `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox graph) |
+| `zabbix_api.py` | Shared JSON-RPC helper for the Zabbix-only smoke |
 
-General (server/VM) zero-touch lives in artifacts / a separate `configure_nbxsync_zerotouch.py` — these scripts own **Extreme switching only**.
+## Network simulate (NetBox + Zabbix)
 
 ```bash
-python3 scripts/run_network_zabbix_sim.py --with-speed-expect
-python3 scripts/configure_nbxsync_network.py --simulate
-python3 scripts/configure_nbxsync_network.py --plan-only   # JSON only
+PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
+  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate
+
+# Stage 4: also assign Port Speed Expect on Switch roles
+PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
+  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate --link-speed-expect
 ```
+
+Uses the same patterns as zerotouch: `ensure()`, prefixed lab estate (`nwn-`), `ZabbixTemplateRule`, `ZabbixMacroAssignment`, `SyncHostJob`, live asserts.
+
+Reports: `/opt/cursor/artifacts/NETWORK_NBXSYNC_SIM_REPORT.md`
+
+## Zero-touch (servers / VMs / OOB)
+
+```bash
+PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
+  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_zerotouch.py --simulate
+```
+
+Network script assumes SNMP CG on Switch* (zerotouch step 5b) and only layers Extreme-specific templates + macros.

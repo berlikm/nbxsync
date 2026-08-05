@@ -46,17 +46,16 @@ Pulled from `berlikm/nbxsync` branch `cursor/extreme-voss-snmp-template-e7f8` (P
 
 ## Scripts
 
+Sibling of `configure_nbxsync_zerotouch.py` (same `ensure` / TemplateRule / SyncHostJob model).
+
 | Script | Purpose |
 |---|---|
-| [`../scripts/run_network_zabbix_sim.py`](../scripts/run_network_zabbix_sim.py) | Zabbix-only: import Extreme templates, apply global + role macros, pilot VOSS host, verify cutover plan |
-| [`../scripts/configure_nbxsync_network.py`](../scripts/configure_nbxsync_network.py) | NetBox/nbxsync network wiring (platforms, roles, macros, template assignments). `--zabbix-only` when NetBox is unavailable |
+| [`../scripts/configure_nbxsync_network.py`](../scripts/configure_nbxsync_network.py) | NetBox + Zabbix: Extreme VOSS/EXOS rules, Switch* IFALIAS macros, `--simulate` lab |
+| [`../scripts/run_network_zabbix_sim.py`](../scripts/run_network_zabbix_sim.py) | Zabbix-API-only smoke (no NetBox) |
 
 ```bash
-# Prove the VOSS cutover plan is configurable in Zabbix 7
-python3 scripts/run_network_zabbix_sim.py
-
-# Apply the same macros/templates as nbxsync would (no Django)
-python3 scripts/configure_nbxsync_network.py --zabbix-only --simulate
+PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
+  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate
 ```
 
 ## Track split

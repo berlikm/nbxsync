@@ -87,16 +87,18 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 5. Prefer macro overrides over cloning stock templates — keeps the upgrade path.
 6. Signals with no trigger and no dashboard get deleted.
 
-## Lab proof (Track A configurability)
+## Lab proof (Track A + Track B wiring)
 
 ```bash
+# Full NetBox → nbxsync → Zabbix (aligned with configure_nbxsync_zerotouch.py)
+PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
+  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate
+
+# Zabbix-only smoke
 python3 scripts/run_network_zabbix_sim.py --with-speed-expect
-python3 scripts/configure_nbxsync_network.py --simulate
 ```
 
-Reports land under `/opt/cursor/artifacts/NETWORK_*.md`. Proves VOSS template import, global silencing macros, Core vs Access role macros, and cutover-minimum item/LLD coverage — without NetBox.
-
-NetBox/nbxsync object creation (`--apply`) waits on a working Django env; until then `--zabbix-only` is the operational path for the network half.
+Reports: `/opt/cursor/artifacts/NETWORK_NBXSYNC_SIM_REPORT.md` (26/26: VOSS≠Network Generic, Core `^X(-|$)` exclude, Access opt-in, SyncHostJob, single icmpping).
 
 ## Out of scope until listed
 
