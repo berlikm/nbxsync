@@ -14,12 +14,13 @@
 4. **Classes:** `UC` `UD` `UA` `UP` `MON` `W` `TMON` | `X` (optional note). Endpoints including iDRAC use `MON`.  
 5. **Class speed defaults** when token absent: `UC`/`UD`/`UA` → 10G; `UP`/`MON` → 1G.  
 6. **Push:** EXOS → field that drives `ifAlias`; VOSS → `name` / `name port <list>`.  
-7. **Generator overwrites** managed ports; `display_protect` skips hand-sets.  
-8. **Parse:** `EMPTY` | `PARSED`. Push overwrites legacy labels; enable absolute-expect after clean diff.  
-9. **Access LLD** matches include classes only; missing labels are a compliance problem, not a Zabbix safety net.  
-10. **Hybrid:** admin-down spares; `X` on up-but-uninteresting; monitored clients get `MON-<ID>`.  
-11. **LAG speed expect** on members only.  
-12. **Port intent lives in the label** — not NetBox monitor tags.
+7. **Generator overwrites** the on-box label on managed ports.  
+8. **`display_protect`:** NetBox flag on an interface — generator leaves that port alone (manual label kept).  
+9. **Zabbix reads the label** as empty or as a parsed class. Roll out: push labels → live matches generated → then turn on “speed must equal expected” triggers.  
+10. **Access LLD** matches include classes only; missing labels are a compliance problem, not a Zabbix safety net.  
+11. **Hybrid:** admin-down spares; `X` on up-but-uninteresting; monitored clients get `MON-<ID>`.  
+12. **LAG speed expect** on members only.  
+13. **Port intent lives in the label** — not NetBox monitor tags.
 
 ---
 
@@ -99,17 +100,18 @@ Generator emits SPEED from NetBox `interface.speed`, else class default.
 ## 5. Zabbix resolution
 
 ```
-1) Classify: EMPTY | PARSED
+1) Label empty → treat as EMPTY; else parse class (and optional SPEED / ID)
 2) Class X → skip port alerts
 3) Else include per role LLD (§6)
 4) Discovered + {UC,UD,UA,UP,MON,W} → link-down / flap / errors
-5) Discovered + {UC,UD,UA,UP,MON} → absolute expect (token or class default);
+5) Discovered + {UC,UD,UA,UP,MON} → expected speed = token or class default;
       ifHighSpeed ≠ expected ≥5m while oper-up → WARNING
 6) Discovered + not TMON → change(ifHighSpeed) vs last stable oper-up ≥5m → WARNING;
       suppress in maintenance windows
 7) TMON → items + optional link-down INFO
 ```
 
+Turn on step 5 only after a site’s live labels match what the generator would write.
 ---
 
 ## 6. Role × LLD
@@ -152,13 +154,15 @@ NetBox → generator → Extreme field that drives ifAlias
 
 | Input | Output |
 |---|---|
-| `display_protect` | Skip |
+| `display_protect` set | Leave on-box label unchanged |
 | Hybrid spare | admin-down |
 | Hybrid up-but-uninteresting | `X` / `X-<NOTE>` |
 | Hybrid/client monitor | `MON-<ID>` |
 | Cable + speed | `UD-10G-…` / `UA-1G-…` |
 | Endpoint | `MON-…` |
 | WAN | `W-…` |
+
+Default: generator **writes** the label from NetBox. Set `display_protect` only when someone must keep a manual exception.
 
 VOSS: `name port <portlist>` when one label applies to many ports.
 
