@@ -1,7 +1,7 @@
 # Port identity — baseline
 
 **On box:** Extreme port label → SNMP (prefer `ifAlias`)  
-**Scope:** Zabbix port LLD, speed expectation, excludes  
+**Scope:** Zabbix port LLD, speed expectation, notes  
 **Out of scope for now:** label push tooling (separate); LAG / MLAG / MLT monitoring (revisit later)
 
 ---
@@ -10,13 +10,13 @@
 
 1. **Grammar:** `CLASS[-SPEED]-ID`, hyphen separators, labels stored **UPPERCASE**.  
 2. **Budget:** 64 characters (VOSS port `name` + EXOS `ifAlias` default).  
-3. **Labels include SPEED**; ID is the real far-end name.  
-4. **Classes:** `UC` `UD` `UA` `UP` `MON` `W` `TMON` | `X` (optional note). Endpoints including iDRAC use `MON`.  
-5. **Class speed defaults** when token absent: `UC`/`UD`/`UA` → 10G; `UP`/`MON` → 1G.  
+3. **Monitored labels include SPEED** where a default applies; ID is the real far-end name.  
+4. **Classes:** `USW` `US` `MON` `UW` | `N` (note only).  
+5. **Defaults:** `USW`/`US` → 10G; `MON` → 1G.  
 6. **Set on box:** EXOS → field that drives `ifAlias`; VOSS → port `name` / `name port <list>`.  
 7. **Zabbix** reads empty vs parsed class. Turn on “speed must equal expected” only after labels are in place.  
 8. **Access LLD** matches include classes only; missing labels are fixed in inventory/ops, not by a Zabbix safety net.  
-9. **Hybrid:** admin-down spares; `X` on up-but-uninteresting; monitored clients get `MON-<ID>`.  
+9. **Hybrid:** admin-down spares; `N-…` on up-but-uninteresting; monitored clients get `US` / `MON` / ….  
 10. **Port intent lives in the label** — not NetBox monitor tags.  
 11. **LAG / MLAG / MLT** — revisit later; focus is physical ports.
 
@@ -32,9 +32,9 @@ CLASS-SPEED-ID
 
 | Piece | Rules |
 |---|---|
-| **CLASS** | Atomic token from vocabulary |
-| **SPEED** | Canonical tokens only (`2G5` not `2.5G`) |
-| **ID** | `[A-Z0-9-]+` after normalize |
+| **CLASS** | `USW` `US` `MON` `UW` `N` |
+| **SPEED** | Canonical tokens only (`2G5` not `2.5G`) — not used on `N` |
+| **ID** | Far-end / free text after normalize |
 | **Case** | Store UPPERCASE; match case-insensitive |
 | **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric |
 
@@ -50,12 +50,12 @@ CLASS-SPEED-ID
 **Parser** (after uppercase normalize):
 
 ```
-^X(-(?<xnote>STK|ISC|MLAG|SPN|OOB|OTH|[A-Z0-9]{1,12}))?$
+# Note only — free text, no Zabbix action
+^N(-(?<note>[A-Z0-9-]+))?$
 
-^(?<class>UC|UD|UA|UP|MON|W|TMON)(-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(-(?<id>[A-Z0-9-]+))?$
+# Monitor
+^(?<class>USW|US|MON|UW)(-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(-(?<id>[A-Z0-9-]+))?$
 ```
-
-`X` notes: `STK` `ISC` `MLAG` `SPN` `OOB` `OTH`.
 
 ---
 
@@ -63,16 +63,13 @@ CLASS-SPEED-ID
 
 | CLASS | Meaning | Default speed | Absolute expect | Alerts |
 |---|---|---|---|---|
-| `UC` | Toward core | 10G | Yes | link / flap / errors + speed |
-| `UD` | Toward dist | 10G | Yes | same |
-| `UA` | Toward access | 10G | Yes | same |
-| `UP` | Toward AP | 1G | Yes | same |
-| `MON` | Endpoint (server, ESX, storage, iDRAC, …) | 1G | Yes | same |
-| `W` | WAN / ISP | — | Later | link / flap / errors |
-| `TMON` | Temp watch | — | No | items; optional link-down INFO |
-| `X` / `X-<NOTE>` | Excluded | — | No | none |
+| `USW` | Switch ↔ switch | 10G | Yes | link / flap / errors + speed |
+| `US` | Server / storage | 10G | Yes | same |
+| `MON` | Other monitored endpoint (iDRAC, AP, client, …) | 1G | Yes | same |
+| `UW` | Uplink WAN / ISP | — | Later | link / flap / errors |
+| `N` / `N-<text>` | Note only — free description | — | No | **none** |
 
-**`TMON`:** keep a list of `TMON*` ports; ops review cadence; reason in NetBox description.
+`N` is not an exclude code with controlled vocabulary — it is a standard prefix for free-form notes. Zabbix takes **no action** on `N*`.
 
 ---
 
@@ -90,22 +87,21 @@ CLASS-SPEED-ID
 | `100G` | 100000 |
 | `400G` | 400000 |
 
-Expected speed = SPEED token if present, else class default.
+Expected speed = SPEED token if present, else class default (`USW`/`US` → 10G, `MON` → 1G).
 
 ---
 
 ## 5. Zabbix resolution
 
 ```
-1) Label empty → EMPTY; else parse class (and optional SPEED / ID)
-2) Class X → skip port alerts
+1) Label empty → EMPTY; else parse class
+2) Class N → no action
 3) Else include per role LLD (§6)
-4) Discovered + {UC,UD,UA,UP,MON,W} → link-down / flap / errors
-5) Discovered + {UC,UD,UA,UP,MON} → expected speed = token or class default;
+4) Discovered + {USW,US,MON,UW} → link-down / flap / errors
+5) Discovered + {USW,US,MON} → expected speed = token or class default;
       ifHighSpeed ≠ expected ≥5m while oper-up → WARNING
-6) Discovered + not TMON → change(ifHighSpeed) vs last stable oper-up ≥5m → WARNING;
+6) Discovered + {USW,US,MON,UW} → change(ifHighSpeed) vs last stable oper-up ≥5m → WARNING;
       suppress in maintenance windows
-7) TMON → items + optional link-down INFO
 ```
 
 Turn on step 5 after labels for that site follow this grammar.
@@ -116,8 +112,8 @@ Turn on step 5 after labels for that site follow this grammar.
 
 | Device role | LLD |
 |---|---|
-| **Core / Dist / Mgmt** | Admin-up AND NOT class `X` |
-| **Access** | Include classes only |
+| **Core / Dist / Mgmt** | Admin-up AND NOT class `N` |
+| **Access** | Include classes only (`USW` `US` `MON` `UW`) |
 | **Subsidiary hybrid** | Same as fabric; labeling below |
 | **AP** | Device health — not switch-port LLD |
 
@@ -127,8 +123,8 @@ Unused ports → admin-down.
 
 ```
 1) Spares / unused            → admin-down
-2) Admin-up but uninteresting → X / X-<NOTE>
-3) Monitor                    → MON-<ID> / UP / W / …
+2) Admin-up but uninteresting → N / N-<text>
+3) Monitor                    → USW / US / MON / UW / …
 ```
 
 ---
@@ -154,15 +150,15 @@ Zabbix polls SNMP (`ifAlias` preferred).
 
 | Scenario | Display | Expect |
 |---|---|---|
-| Access↔dist 10G | `UD-10G-SWD14` / `UA-10G-SWA08` | 10G |
-| Access↔dist 1G | `UD-1G-SWD2` / `UA-1G-SWA2` | 1G |
-| AP 1G | `UP-1G-AP3F07` | 1G |
-| AP 2.5G | `UP-2G5-AP07` | 2.5G |
-| ESXi 10G | `MON-10G-ESX01` | 10G |
+| Switch ↔ switch 10G | `USW-10G-SWD14` | 10G |
+| Switch ↔ switch 1G | `USW-1G-SWA08` | 1G |
+| Server / ESXi 10G | `US-10G-ESX01` | 10G |
+| Storage 10G | `US-10G-SAN01` | 10G |
 | iDRAC | `MON-1G-IDR03` | 1G |
-| WAN | `W-SC1` | link/flap/errors |
-| Temp | `TMON-GUEST` | items + INFO link-down |
-| Exclude stack | `X-STK` | excluded |
+| AP 1G | `MON-1G-AP3F07` | 1G |
+| AP 2.5G | `MON-2G5-AP07` | 2.5G |
+| WAN uplink | `UW-SC1` | link/flap/errors |
+| Note only | `N-STACK` / `N-GUEST-TEMP` | no action |
 
 ---
 

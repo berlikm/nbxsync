@@ -23,7 +23,7 @@ This plan is **monitoring capability** (what we monitor, in what order).
 **Port identity (locked — Track A design):** see `docs/port-identity-foundation.md`.
 
 ```
-BUDGET = 64 | Labels include SPEED | CLASS[-SPEED]-ID | X notes
+BUDGET = 64 | CLASS[-SPEED]-ID | USW US MON UW | N = note only
 ACCESS opt-in | HYBRID admin-down spares
 LAG / MLAG / MLT = later | Label push tooling = separate
 ```
@@ -37,7 +37,7 @@ Phase 1 Device health   ←──  may consume: Template Rules, sync
 Phase 2 Uplinks         ←──  may consume: display→LLD publish, macros, compliance
 Phase 3 Cato / Forti    ←──  may consume: site fields, assignments
 Phase 4 Services/SLA    ←──  may consume: hostgroups, Zabbix action tags
-Phase 5 ISP circuits    ←──  may consume: Circuits, W:… display codes, sync
+Phase 5 ISP circuits    ←──  may consume: Circuits, UW display codes, sync
 ```
 
 ---
@@ -46,8 +46,8 @@ Phase 5 ISP circuits    ←──  may consume: Circuits, W:… display codes, s
 
 1. **Health before circuits** — stable device and uplink monitoring before ISP-specific and SLA layers.  
 2. NetBox is SoT for **inventory** (devices, cables, circuits) — **integration mechanics live in Track B**, not as sub-steps of every phase here.  
-3. Do **not** monitor every interface the same way; scope by **device role + display string** (include / exclude codes).  
-4. **One operator path for port labels:** prefer NetBox **generate/push** display string; no dual-edit with monitor tags.  
+3. Do **not** monitor every interface the same way; scope by **device role + port label**.  
+4. Port labels follow the baseline grammar; label push tooling is **separate**.  
 5. Underlay (Extreme/Forti) and overlay (Cato) stay separate problem classes.  
 6. Same metric baseline across site classes initially; tune later.  
 7. No stacking full Network Generic + specialized templates (icmpping collisions).  
@@ -64,7 +64,7 @@ Phase 5 ISP circuits    ←──  may consume: Circuits, W:… display codes, s
 | Extreme **VOSS** | Falls back to Network Generic | **Gap — build VOSS template** |
 | **HiveOS** APs (XIQ Pilot) | No dedicated AP template | **Gap — build HiveOS/AP template** |
 | Scoped **uplinks** (core / dist / access / AP) | Not systematically scoped | **Phase 2** (display codes) |
-| **ISP / WAN** circuit ports | Not implemented | **Phase 5** (`W:…` + Circuits) |
+| **ISP / WAN** circuit ports | Not implemented | **Phase 5** (`UW` + Circuits) |
 | **Cato** / **FortiGate** depth | Partial / role floors only | **Phase 3** |
 | **Services / SLA** | Not the focus yet | **Phase 4** |
 
@@ -79,7 +79,7 @@ Phase 5 ISP circuits    ←──  may consume: Circuits, W:… display codes, s
 | **2** | **Uplinks & structural ports** | Core / dist / access uplinks + uplinks to APs monitored via display codes |
 | **3** | **Cato & FortiGate** | Overlay + Forti path/underlay integrations |
 | **4** | **Services & SLA** | Site/service views, availability reporting |
-| **5** | **ISP circuit monitoring** | Documented ISP/WAN ports (`W:…`), providers/circuits, underlay circuit alerts |
+| **5** | **ISP circuit monitoring** | Documented ISP/WAN ports (`UW`), providers/circuits, underlay circuit alerts |
 | **6** | Profiles & tuning (optional) | LTE/backup, maintenance suppress, class thresholds, util% |
 
 ```
@@ -98,7 +98,7 @@ Phase 3  Cato + FortiGate
 Phase 4  Services & SLA
     │
     ▼
-Phase 5  ISP / circuit monitoring (W:… + NetBox Circuits)
+Phase 5  ISP / circuit monitoring (UW + NetBox Circuits)
     │
     ▼
 Phase 6  Profiles / util% / maintenance (optional maturity)
@@ -176,66 +176,65 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 ## Phase 2 — Uplinks & structural ports
 
-**Objective:** Fabric / AP / endpoint **ports** monitored with `CLASS[-SPEED]-ID`; exclude via `X`. LAG / MLAG / MLT later.
+**Objective:** Fabric / AP / endpoint **ports** monitored with `USW`/`US`/`MON`/`UW`; `N` = note only (no action). LAG / MLAG / MLT later.
 
-**SoT on box:** Extreme label that Zabbix reads via SNMP (**64-char budget**). EXOS: prefer `description-string` after canary. VOSS: `name` / `name port <list>` — confirm OID. Generator always emits SPEED.
+**SoT on box:** Extreme label that Zabbix reads via SNMP (**64-char budget**). EXOS: prefer `description-string` after canary. VOSS: `name` / `name port <list>` — confirm OID.
 
 ### Grammar
 
 ```
 CLASS | CLASS-ID | CLASS-SPEED-ID     (UPPERCASE; no colon)
-CLASS = UC|UD|UA|UP|MON|W|TMON|X
+CLASS = USW|US|MON|UW|N
 SPEED = 100M|1G|2G5|5G|10G|25G|40G|100G|400G
-X notes: X-STK|X-ISC|X-MLAG|X-SPN|X-OOB|X-OTH
+N = note only (free text, no Zabbix action)
 ```
 
-Budget **64**. Labels include SPEED.  
+Budget **64**. Monitored labels include SPEED.  
 Apply labels on box → then enable absolute-expect. Label push tooling is **separate**. LAG / MLAG / MLT → later.
 
 ### Class defaults → Zabbix expected (if token omitted)
 
 | CLASS | Default | Phase 2 monitoring |
 |---|---|---|
-| `UC` `UD` `UA` | **10G** | link / flap / errors + speed |
-| `UP` `MON` | **1G** | same |
-| `W` | — | **link / flap / errors now**; absolute speed Phase 5 |
-| `TMON` | — | items; link-down **INFO**; compliance list + review cadence |
-| `X` / `X-*` | — | excluded |
+| `USW` | **10G** | switch↔switch — link / flap / errors + speed |
+| `US` | **10G** | server / storage — same |
+| `MON` | **1G** | other endpoint (iDRAC, AP, …) — same |
+| `UW` | — | WAN uplink — **link / flap / errors now**; absolute speed Phase 5 |
+| `N` / `N-*` | — | note only — **no action** |
 
 ### Zabbix triggers (Phase 2)
 
-1. Link down / flap / errors-CRC (including **`W`**).  
-2. Absolute expect where `UC|UD|UA|UP|MON` (settled ≥5m).  
+1. Link down / flap / errors-CRC (including **`UW`**).  
+2. Absolute expect where `USW|US|MON` (settled ≥5m).  
 3. `change(ifHighSpeed)` vs last **stable up** (≥5m); **maintenance suppress** — only on **discovered** ports.  
-4. **Access:** safety net does **not** apply if label missing/typo (no LLD item) — compliance catches this.  
-5. `TMON`: optional INFO link-down only.  
+4. **Access:** safety net does **not** apply if label missing/typo (no LLD item) — ops/inventory catches this.  
+5. `N`: no action.  
 6. **Gate:** enable absolute-expect per site after labels follow the grammar.
 
-### Excludes
+### Notes (`N`)
 
-Label **`X` / `X-<note>`**; reason in NetBox **description**.
+Label **`N` / `N-<text>`** — free description; Zabbix does nothing.
 
 ### Subsidiary hybrid (core∩access)
 
-Same LLD as fabric (`admin-up AND NOT X`). Spares admin-down; `X` only when up but uninteresting.
+Same LLD as fabric (`admin-up AND NOT N`). Spares admin-down; `N` when up but uninteresting.
 
 - Spares → **admin-down**.  
-- Up-but-uninteresting → `X` / `X-STK` / …  
-- Monitor → **`MON-<ID>`** / `UP` / `W` / …
+- Up-but-uninteresting → `N` / `N-<text>`  
+- Monitor → **`USW` / `US` / `MON` / `UW`**
 
 ### Work packages
 
 | ID | Work | Detail |
 |---|---|---|
 | P2.0 | SNMP canaries | VOSS name→OID; EXOS field→ifAlias precedence |
-| P2.1 | Shared parser | UPPERCASE; split X; 64-char validate |
+| P2.1 | Shared parser | UPPERCASE; USW/US/MON/UW/N; 64-char validate |
 | P2.2 | Port template | link/flap/errors; speed; change vs stable-up; maint suppress |
 | P2.3 | Access LLD | Include classes only; no safety net without label |
-| P2.4 | Hybrid profile | admin-down spares; MON-ID |
-| P2.5 | `W` Phase 2 | link/flap/errors now |
-| P2.6 | `TMON` | INFO link-down + review cadence |
-| P2.7 | Rollout gate | labels in place → then absolute-expect |
-| P2.8 | Pilot canaries | labels, hybrid, access typo via ops check |
+| P2.4 | Hybrid profile | admin-down spares; N for uninteresting |
+| P2.5 | `UW` Phase 2 | link/flap/errors now |
+| P2.6 | Rollout gate | labels in place → then absolute-expect |
+| P2.7 | Pilot canaries | labels, hybrid, access typo via ops check |
 
 ### Scoping options (locked)
 
@@ -249,12 +248,11 @@ Same LLD as fabric (`admin-up AND NOT X`). Spares admin-down; `X` only when up b
 
 ### Exit criteria
 
-- [ ] Symmetric 10G `UD`/`UA` labels both ends  
-- [ ] Symmetric 1G exception tokens both ends  
-- [ ] `MON-…` covers iDRAC  
-- [ ] `X` / `X-<note>` excludes work  
-- [ ] Hybrid: admin-down spares; `X` only if up-but-uninteresting  
-- [ ] `TMON` items + optional INFO link-down; list of `TMON*` reviewed  
+- [ ] Switch↔switch `USW` labels both ends  
+- [ ] Server/storage `US` + iDRAC/AP `MON`  
+- [ ] `UW` link/flap/errors  
+- [ ] `N` / `N-<text>` → no Zabbix action  
+- [ ] Hybrid: admin-down spares; `N` if up-but-uninteresting  
 
 ---
 
@@ -416,8 +414,8 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 
 | Phase | What we scope | Display codes |
 |---|---|---|
-| 2 | Fabric / AP / MON | `UC/UD/UA/UP/MON/TMON` + optional SPEED; exclude `X` |
-| 5 | Internet circuits | `W` (+ Circuit object); no absolute speed trigger |
+| 2 | Fabric / AP / endpoints | `USW` `US` `MON` + optional SPEED; `UW`; `N` = note only |
+| 5 | Internet circuits | `UW` (+ Circuit object); no absolute speed trigger |
 
 **Design (Track A):** display-string codes + which template / LLD mode watches them.  
 **Automation (Track B):** NetBox generate/push display; shared parser; compliance **diff**.  
@@ -464,18 +462,18 @@ B) SEPARATE TASK — NetBox integration (populate data, nbxsync,
    display→LLD, compliance, alerts/actions, triggers, zero-touch)
 
 PORT SOT (locked):
-  Budget 64; labels include SPEED; CLASS[-SPEED]-ID UPPERCASE
+  Budget 64; CLASS[-SPEED]-ID; USW(10G) US(10G) MON(1G) UW | N=note
   Access opt-in; Hybrid admin-down spares
-  W: link/flap/errors now; TMON: INFO + review
+  UW: link/flap/errors now; N: no action
   Label push tooling = separate; LAG/MLAG/MLT = later
 
 TRACK A ORDER:
 0 Foundations (port grammar)
 1 Device health (EXOS + BUILD VOSS + BUILD HiveOS AP templates)
-2 Ports — admin-up−X; access includes; hybrid; MON incl iDRAC; TMON
+2 Ports — admin-up−N; access includes; hybrid; USW/US/MON/UW
 3 Cato + FortiGate
 4 Services & SLA
-5 ISP circuit monitoring (W:… + Circuits)
+5 ISP circuit monitoring (UW + Circuits)
 6 Optional profiles / util% / maintenance
 
 NOW (A) = 0, 1, 2
