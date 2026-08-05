@@ -4,9 +4,8 @@
 **Priority order:** Device health → uplinks/ports → Cato & FortiGate → Services/SLA → ISP circuit monitoring  
 **Stack:** NetBox + nbxsync + Zabbix 7 · Extreme EXOS / VOSS · HiveOS APs (XIQ Pilot) · (later) Cato · FortiGate
 
-**Port identity (locked):** Extreme port label → SNMP (prefer **`ifAlias`**).  
-**Grammar budget = 64** (VOSS `name` + EXOS ifAlias default). Always-emit SPEED.  
-See `docs/port-identity-foundation.md`.
+**Port identity:** Grammar **locked** at 64 (VOSS CLI `WORD<0-64>` + EXOS ifAlias default). Always-emit SPEED; `X-STK`/`X-ISC`/`X-MLAG` restored.  
+**Open:** SNMP canaries only (VOSS `name`→OID; EXOS field→ifAlias). See `docs/port-identity-foundation.md`.
 
 ---
 

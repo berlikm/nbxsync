@@ -1,7 +1,8 @@
 # Port identity foundation (Zabbix focus)
 
-**Status:** Locked design direction (revised — **64-char common budget**; SNMP canaries open)  
-**Operator-visible SoT on box:** Extreme port label → SNMP **`ifAlias`** (derived cache from NetBox)  
+**Status:** Grammar **locked** at 64 · always-emit SPEED · `X-STK`/`X-ISC`/`X-MLAG` restored.  
+**Remaining blockers:** two SNMP canaries (OID source + EXOS field precedence) — not grammar.  
+**Operator-visible SoT on box:** Extreme port label → SNMP (prefer **`ifAlias`**; VOSS OID canary open)  
 **Scope:** Zabbix port LLD + speed expectation + excludes  
 **NetBox:** inventory SoT (cables, roles, `interface.speed`) → **authoritative generator**; description = human prose  
 **Related plan:** `docs/internet-network-monitoring-plan.md` (Track A)
@@ -14,21 +15,23 @@
 
 | Field | Size | Confirmed by |
 |---|---|---|
-| VOSS / Fabric Engine port `name` | **0–64** (`WORD<0-64>`) | ✅ plant CLI |
+| VOSS / Fabric Engine port `name` | **0–64** (`WORD<0-64>`) | ✅ **CLI help** (authoritative) |
 | VOSS MLT `name` | 0–64 | ✅ docs |
 | EXOS `display-string` | **20** | ✅ EXOS 32.7 guide |
 | EXOS `description-string` | **255** | ✅ EXOS 32.7 guide |
 | EXOS SNMP `ifAlias` | **64** default; `extended` → 255 | ✅ EXOS 32.7 guide |
 
-**Common denominator = 64** (not 15). Cap the grammar at **64** so EXOS needs no `config snmp ifmib ifalias size extended` and VOSS stays within CLI `name`. Plant strings of exactly 15 were legacy hand-fitting, not a vendor cap.
+**Common denominator = 64** (not 15). Cap the grammar at **64** → no `configure snmp ifmib ifalias size extended` needed. Plant strings of exactly 15 were legacy hand-fitting, not a vendor cap.
 
 **Hyphen, not colon:** EXOS `description-string` forbids `:` (safe union also bans space `"` `<>` `&` `?`; first char alphanumeric). Colon grammar is **CLI-invalid**.
 
-**VOSS generator tip:** CLI also exposes `name port <portlist>` for multi-port set from one context.
+**VOSS generator tip:** CLI also exposes `name port <portlist>` for multi-port set from one context — prefer this when applying the same label to several ports.
 
 **Realistic label examples at 64:** `UD-10G-CH-ZRH-ZH4-DIST01` (24) fits easily → **always-emit SPEED**, real far-end names, controlled `X-STK` / `X-ISC` / `X-MLAG`.
 
-### Still open (canaries)
+### Still open (SNMP canaries — do not block grammar)
+
+Grammar revision is **already landed** (this doc). Paste canary results below when available; they only update **push field / Zabbix source OID**.
 
 **1. Does VOSS `name` populate SNMP `ifAlias`?**  
 Set a unique name, then:
@@ -39,10 +42,10 @@ name A123456789B123456789C123456789D123456789E123456789F123456789G123
 ```
 
 ```bash
-snmpwalk -v2c -c <ro> <host> 1.3.6.1.2.1.31.1.1.1.18 | grep A123
+snmpwalk -v2c -c <ro> CH-STA-L50-L01-CORE01 1.3.6.1.2.1.31.1.1.1.18 | grep A123
 ```
 
-If empty, check `ifDescr` (`1.3.6.1.2.1.2.2.1.2`). If VOSS puts `name` in **ifDescr** instead of **ifAlias**, Zabbix needs a **per-platform source OID** (real design change).
+If empty, check `ifDescr` (`1.3.6.1.2.1.2.2.1.2`). If VOSS puts `name` in **ifDescr** instead of **ifAlias**, Zabbix needs a **per-platform source OID** (real template design change — not a grammar change).
 
 **2. EXOS precedence:** docs contradict whether `description-string` is separate or an enhanced field. Set **both** `display-string` and `description-string` on a test port; SNMP-get `ifAlias`; record winner + truncation at 64.
 
