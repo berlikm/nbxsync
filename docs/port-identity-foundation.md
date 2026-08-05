@@ -11,125 +11,106 @@
 ## 1. Locked decisions
 
 1. **Display string = only operator control** for port class / monitor / exclude (one edit on the switch).  
-2. **Do not** use NetBox interface tags for day-to-day “monitor this port” (dual-edit overhead rejected).  
-3. **NetBox compliance** reports drift (“cable says AP port but display missing/wrong”).  
-4. **Core / Dist / Mgmt:** monitor all **admin-up** ports, minus **exclusion display codes** (and platform excludes). Unused admin-up → disable (security housekeeping).  
-5. **Access:** monitor only ports with **include** display codes (`U:…`, `W:…`, `M:…`, `MON`).  
-6. **APs** attach to **access switches** — code `U:P:…`, expect **1G** in Zabbix (catch 100M fallback).  
-7. **Dist ↔ access uplinks are mixed:** commonly **1G**, also **10G**, and in edge cases **100M**. Do **not** assume one fleet-wide expected speed in Zabbix.  
-8. **Manual OK** when far-end device / cable missing in NetBox — set display string on the switch.  
-9. Optional Python: cable → push display code (helps at scale); never requires a parallel tag.  
-10. Track B (nbxsync / Zabbix LLD / compliance jobs) is a **separate** task.
+2. **Do not** use NetBox interface tags for day-to-day “monitor this port.”  
+3. **NetBox description** = human-readable **why / what** (speed exceptions, ESX, storage, iDRAC, etc.). Codes stay short and obvious.  
+4. **No cryptic speed nibbles** in the display string (`U:D1:`, `U:A01:`, …). People will not remember them. Speed → Zabbix **baseline**; intentional odd speed → **description**.  
+5. **Core / Dist / Mgmt:** monitor all **admin-up** ports, minus **exclusion** codes. Unused admin-up → disable.  
+6. **Access:** monitor only **include** codes (`U:…`, `W:…`, `M:…`, `MON` / `MON:…`).  
+7. **APs** hang off **access** — `U:P:…`, Zabbix expects **1G** (catch 100M fallback).  
+8. **Dist ↔ access** speeds are mixed (**1G / 10G / 100M**). `U:D:` / `U:A:` identify the **role**, not the speed.  
+9. **Servers / ESX / storage / iDRAC** (and similar) on **mgmt or core**: still covered by admin-up LLD; set display **`MON:`** + a clear **description** so ops know what the port is.  
+10. Manual OK when no cable in NetBox — set display on the switch.  
+11. Track B (nbxsync / LLD / compliance) is a **separate** task.
 
 ---
 
 ## 2. Display string codes (≤15)
 
-ASCII, no spaces. Script enforces length.
+ASCII, no spaces. Keep codes **obvious**. Put the story in NetBox **description**.
 
-### Include / classify (monitor these on access; label on any role)
+### Include / classify
 
-| Code | Meaning | Zabbix speed note |
+| Code | Meaning (obvious) | Zabbix speed |
 |---|---|---|
-| `U:C:<id>` | Uplink toward core | Mixed — baseline / degrade |
-| `U:D:<id>` | Uplink toward dist | Mixed **1G / 10G / 100M** — baseline / degrade |
-| `U:D1:<id>` | Dist uplink, intentional **1G** (ops-visible) | Optional nibble; baseline still fine |
-| `U:D01:<id>` | Dist uplink, intentional **100M** (ops-visible) | Rare; id must stay short |
-| `U:A:<id>` | Uplink toward access | Mixed **1G / 10G / 100M** — baseline / degrade |
-| `U:A1:<id>` | Access uplink, intentional **1G** (ops-visible) | Optional nibble |
-| `U:A01:<id>` | Access uplink, intentional **100M** (ops-visible) | Rare |
-| `U:P:<id>` | Access switch → **AP** | Expect **1G** (almost always) |
-| `W:<isp><n>` | WAN / ISP | Phase 5 / Circuit |
-| `M:<yymmdd>` | Temp monitor until date | — |
-| `MON` | Standing opt-in (edge) | — |
+| `U:C:<id>` | Uplink toward **core** | Baseline / degrade |
+| `U:D:<id>` | Uplink toward **dist** | Baseline / degrade (1G / 10G / 100M) |
+| `U:A:<id>` | Uplink toward **access** | Baseline / degrade (1G / 10G / 100M) |
+| `U:P:<id>` | Access → **AP** | Expect **1G** |
+| `W:<isp><n>` | **WAN / ISP** | Phase 5 |
+| `M:<yymmdd>` | **Temp** monitor until date | Baseline if needed |
+| `MON` or `MON:<id>` | **Monitor** — non-fabric endpoint (ESX, storage, iDRAC, server NIC, …) | Baseline / degrade |
 
-Examples: `U:C:swc01`, `U:D:swa12`, `U:P:ap3f07`, `U:A01:ps`, `W:SC1`, `M:260830`, `MON`.
+**Do not encode speed in the code.** No `U:D1:`, no `01` for 100M.
 
-Speed nibbles are optional. Prefer **NetBox description** for the human “why” (see §4.1). Do **not** use NetBox tags for speed edge cases.
+Examples (display only): `U:C:swc01`, `U:D:swa12`, `U:A:swd03`, `U:P:ap3f07`, `W:SC1`, `M:260830`, `MON`, `MON:esx01`, `MON:idr3`.
 
-### Exclusion codes (do **not** monitor — especially on core/dist/mgmt)
-
-On fabric roles, LLD = admin-up **except** display matching exclude prefixes (plus hard platform excludes if needed).
+### Exclusion codes (core / dist / mgmt)
 
 | Code | Meaning |
 |---|---|
 | `X:STK` | Stack / ISC / MLAG member |
 | `X:SPN` | SPAN / mirror |
-| `X:OOB` | Out-of-band / mgmt port |
+| `X:OOB` | Out-of-band / mgmt port (switch’s own OOB) |
 | `X:INT` | Internal / do not monitor |
-| `X` | Generic exclude (minimal) |
-
-Ops set `X:…` on the switch when a port must stay admin-up but must not alert (same single SoT as includes).
+| `X` | Generic exclude |
 
 ---
 
 ## 3. Role matrix
 
-| Device role | Port LLD rule |
-|---|---|
-| **Core / Dist / Mgmt** | All **admin-up**, minus `X:…` display codes (and optional ifName/type excludes) |
-| **Access** | Only display matching `^(U:|W:|M:|MON)` |
-| **AP (HiveOS)** | Device health template (Phase 1) — not fabric port LLD |
+| Device role | Port LLD rule | Display use |
+|---|---|---|
+| **Core / Dist / Mgmt** | All **admin-up**, minus `X:…` | `U:…` / `W:…` label uplinks; **`MON:`** label servers/ESX/storage/iDRAC; `X:…` to skip |
+| **Access** | Only `^(U:|W:|M:|MON)` | Must set include code or port stays quiet |
+| **AP (HiveOS)** | Device health (Phase 1) | Not fabric port LLD |
+
+On **mgmt/core**, admin-up already monitors the link. **`MON:` + description** is how humans (and reports) know *what* it is — not a second SoT.
 
 ---
 
 ## 4. Speed in Zabbix
 
-Dist ↔ access (and similar fabric uplinks) run at **1G, 10G, or occasionally 100M**. Zabbix must not hardcode “expect 10G” or “expect 1G” for those classes.
-
-| Signal | Source | Use in Zabbix |
-|---|---|---|
-| **Operational speed** | SNMP `ifHighSpeed` / `ifSpeed` | What the link negotiated **now** |
-| **Baseline / expected** | Learned from first stable oper speed (or Extreme admin if forced) | What to **alert** on (degrade / mismatch) |
-| **Human “why”** | NetBox interface **description** | Explains intentional odd speeds — not an alert input |
-
-### Monitoring model
-
-```
-if display is U:P:     → expect ~1000 Mb/s (AP class is stable enough)
-elif Extreme forced     → expected = extremePortAdminSpeed (auto-neg off)
-else                    → learn baseline from first stable ifHighSpeed
-                          alert if oper speed drops / changes (degrade)
-```
-
-| Class | Zabbix approach |
+| Link | How Zabbix treats speed |
 |---|---|
-| `U:P:` | Fixed **1G** — alert on 100M fallback |
-| `U:A:` / `U:D:` / `U:C:` | **Baseline / degrade** — 1G, 10G, and 100M all valid |
-| Forced Extreme admin | Compare oper ↔ admin |
-| Optional `U:A1:` / `U:D1:` / `U:A01:` / `U:D01:` | Ops-visible hint on box only — not required if baseline exists |
+| `U:D:` / `U:A:` / `U:C:` / `MON:` | Learn **baseline** from stable `ifHighSpeed`. 10G stays 10G; 1G stays 1G; 100M stays 100M. Alert on **degrade/change**. |
+| `U:P:` | Fixed expect **1G** (AP class). |
+| Forced Extreme admin | Expected = admin speed when auto-neg off. |
 
-Alert: oper-up and (below baseline / ≠ forced admin / ≠ 1G on `U:P:`) → WARNING.  
-Util% (later, Phase 6) is separate from speed-mismatch alerts.
+**Intentional 1G or 100M uplink:** keep display as plain `U:D:<id>` / `U:A:<id>`. Write the why in **description**. Baseline learns the real speed — no special code.
 
-### 4.1 Known intentional odd speeds (e.g. 100M) — description, not a tag
+### 4.1 Description = human meaning (not tags, not cryptic codes)
 
-**Edge case:** uplink that is **supposed** to run at 100M (legacy far-end, PS/special device, plant limit). Rare, but real. Same pattern for intentional 1G when peers are often 10G.
+| Field | Holds |
+|---|---|
+| **Display string** | Short class: `U:D:…`, `MON:…`, `X:STK`, … |
+| **NetBox description** | Full story ops can read |
+| **NetBox tag** | **Do not** use for port monitor/speed intent |
 
-| Where | What to put | Why |
-|---|---|---|
-| **NetBox interface description** | e.g. `Intentional 100M uplink to PS; legacy endpoint — do not chase as fault` | Readable, searchable — **preferred for the story** |
-| **Extreme display string** | e.g. `U:A:ps01` or `U:A01:ps` | Monitor class / LLD; ≤15 |
-| **NetBox tag** (e.g. `speed:100m`) | **Do not** | Dual taxonomy; rejected for port intent |
+**Description examples**
 
-**Zabbix behavior:**
+| Display | Description |
+|---|---|
+| `U:D:swa12` | `Uplink to access swa12 — 10G` *(optional; baseline already has 10G)* |
+| `U:D:swa08` | `Uplink to access swa08 — intentional 1G (SFP/plant)` |
+| `U:A:ps01` | `Uplink toward access/PS — intentional 100M legacy; do not chase` |
+| `MON:esx01` | `ESXi esx01 — vmnic / uplink to host` |
+| `MON:netapp` | `NetApp ContA e0a — storage` |
+| `MON:idr3` | `iDRAC dell-r740-03 — server OOB` |
+| `MON:srv12` | `Server srv12 NIC — production` |
+| `U:P:ap3f07` | `AP ap-3f-07` |
+| `M:260830` | `Temp monitor until 2026-08-30 — guest rack` |
 
-1. Baseline learns **100M** → no false WARN.  
-2. Alert if speed drops further (e.g. 10M) or flaps.  
-3. Jump to 1G/10G after a plant change → baseline re-learn / ack, not necessarily outage.  
-4. Description tells the next engineer *why* 100M is correct.
+### 4.2 Servers / ESX / storage / iDRAC on mgmt or core
 
-**Worked examples (Zabbix view)**
+These are **not** fabric uplinks (`U:…`). Pattern:
 
-| Scenario | Display (≤15) | NetBox description | Zabbix |
-|---|---|---|---|
-| Dist↔access **10G** | `U:D:swa12` | *(optional)* `Uplink to swa12` | Baseline **10000** |
-| Dist↔access **1G** (common) | `U:D:swa08` or `U:D1:swa08` | `1G uplink to swa08` | Baseline **1000** |
-| Dist↔access **100M** (edge) | `U:A:ps01` or `U:A01:ps` | `Intentional 100M uplink to PS; legacy` | Baseline **100**; **no tag** |
-| Access → AP | `U:P:ap3f07` | `AP ap-3f-07` | Expect **1G** (WARN on 100M fallback) |
-| Temp edge monitor | `M:260830` | `Temp monitor until 2026-08-30` | Include via `M:` |
+1. Port is **admin-up** on mgmt/core → Zabbix already includes it (minus `X:`).  
+2. Set display **`MON:`** or **`MON:<short>`** (≤15 total) so the class is obvious on the switch and in LLD labels.  
+3. Put identity in **description** (hostname, role, NIC).  
+4. Speed = **baseline** (often 1G or 10G to ESX/storage; iDRAC often 1G/100M).  
+5. If a port must stay up but must **not** alert → `X:…`, not `MON:`.
 
-**Rule of thumb:** description = **why**; display = **what to monitor**; Zabbix baseline = **speed alerts**; tags = **not for this**.
+**Access switch** edge to a server (rare vs mgmt): same `MON:` / `MON:<id>` — required for LLD include.
 
 ---
 
@@ -137,35 +118,35 @@ Util% (later, Phase 6) is separate from speed-mismatch alerts.
 
 | Check | Action |
 |---|---|
-| Cable Access↔AP, display not `U:P:…` | Report: set/fix display on switch |
-| Cable Access↔Dist, display not `U:A:`/`U:D:`… | Same |
-| Display `U:P:` but no cable | OK manual; or document later |
-| `M:` / `MON` older than policy | Stale temp list |
-| Oper speed degraded vs Zabbix baseline | Fix cable/optic/negotiation |
-| Intentional odd speed (100M, etc.) | Document in **description**; do not use a speed tag |
-| Admin-up unused on core/dist/mgmt | Disable port |
-
-Operators fix **monitor intent on the switch** (display string). No monitor-tags.
+| Cable Access↔AP, display not `U:P:…` | Report: set/fix display |
+| Cable Access↔Dist, display not `U:A:`/`U:D:…` | Same |
+| Mgmt/core port to ESX/storage/iDRAC without `MON:` | Soft report: set `MON:` + description (clarity) |
+| `M:` / `MON` stale / empty description on `MON:` | Stale / incomplete list |
+| Oper speed degraded vs baseline | Fix plant / optic / negotiation |
+| Intentional odd speed | **Description** only — no speed code, no tag |
+| Unused admin-up on core/dist/mgmt | Disable |
 
 ---
 
 ## 6. Architecture
 
 ```
-[Optional] NetBox cable/circuit
-        → Python (dry-run/apply)
-        → Extreme display string (≤15 code)
+Operator / optional cable script
+        → Extreme display string (≤15, obvious codes)
 
-Operator manual (no cable / guest device)
-        → Extreme display string only
+NetBox description
+        → human why/what (1G intentional, ESX, iDRAC, …)
 
-Zabbix:
+Zabbix LLD:
   core/dist/mgmt → admin-up AND NOT display~^X:
   access         → display~^(U:|W:|M:|MON)
-  speed          → U:P: expect 1G; else baseline/degrade
-                   (dist↔access: 1G / 10G / 100M all valid)
 
-NetBox compliance job → reports only (+ description for odd speeds)
+Zabbix speed:
+  U:P:  → expect 1G
+  else  → baseline/degrade
+           (U:D:/U:A: = 1G|10G|100M all valid)
+
+Compliance → missing/wrong display; MON without description
 ```
 
 ---
@@ -179,8 +160,7 @@ NetBox compliance job → reports only (+ description for odd speeds)
 | Ports access | Access | Include codes only |
 | WAN (Phase 5) | As needed | `W:…` |
 
-Macros by role: `{$IF.LLD.MODE}=admin_up_excl` | `display_include`.  
-Speed: `{$IF.SPEED.BASELINE}` (learned) or fixed 1000 for `U:P:`.
+Speed macros: `{$IF.SPEED.BASELINE}` (learned); fixed 1000 for `U:P:`.
 
 ---
 
@@ -188,52 +168,46 @@ Speed: `{$IF.SPEED.BASELINE}` (learned) or fixed 1000 for `U:P:`.
 
 | Risk | Mitigation |
 |---|---|
-| Unused admin-up noise | Treat as hygiene → disable |
-| Mis-roled “mgmt” access closet | Strict device roles |
-| Code typos | Canonical list; compliance |
-| Stale `MON`/`M:` | Compliance age report |
-| Script overwrite of codes | Only managed prefixes; dry-run |
-| 15-char truncation | Enforce in script; short_name CF |
-| Speed false WARN on mixed uplinks | Baseline / degrade — never assume one class speed |
-| Intentional 100M chased as fault | NetBox **description**; baseline accepts 100M |
+| Cryptic codes nobody understands | Keep `U:` / `MON:` / `X:` only; story in description |
+| Speed false WARN on mixed uplinks | Baseline — never assume one class speed |
+| ESX/iDRAC noise on mgmt | Admin-up is intentional; use `X:` only when must exclude |
+| `MON:` without description | Compliance: require description on `MON:` |
+| 15-char limit | Short ids (`MON:esx01`); full name in description |
+| Unused admin-up | Disable as hygiene |
 
 ---
 
 ## 9. Verify checklist
 
-- [ ] Display ≤15 confirmed on EXOS + VOSS  
-- [ ] Include codes + **exclusion `X:…`** approved  
-- [ ] Core/dist/mgmt = admin-up − `X:`  
-- [ ] Access = display include only (no NetBox monitor tags)  
-- [ ] AP on access = `U:P:` expect 1G  
-- [ ] Dist↔access = **1G / 10G / 100M** via baseline/degrade (no single expected)  
-- [ ] Intentional odd speed → **description**, not tag  
-- [ ] Compliance reports listed (display drift)  
-- [ ] Canary: 10G uplink, 1G uplink, 100M intentional, AP port, excluded stack port  
+- [ ] Codes are only obvious classes (`U:C/D/A/P`, `W:`, `M:`, `MON`, `X:`) — **no speed nibbles**  
+- [ ] Dist↔access: `U:D:`/`U:A:` + baseline; intentional 1G/100M in **description**  
+- [ ] Mgmt/core: ESX / storage / iDRAC use **`MON:` + description**  
+- [ ] Access include-only; AP = `U:P:` expect 1G  
+- [ ] Exclusions `X:…` validated  
+- [ ] Canaries: 10G `U:D:`, 1G `U:D:` + description, 100M + description, `MON:esx…`, `MON:idr…`, `U:P:`, `X:STK`  
 
 ---
 
 ## 10. Summary (cross-check)
 
 ```
-OPERATOR SOT = Extreme display string only (≤15)
-  Include: U:C: U:D: U:D1: U:D01: U:A: U:A1: U:A01: U:P: W: M: MON
-  Exclude: X:STK X:SPN X:OOB X:INT X
-  ONE edit on switch — NO monitor tags in NetBox for ops
+DISPLAY = short obvious class only (≤15)
+  U:C: U:D: U:A: U:P: W: M: MON / MON:<id>
+  X:STK X:SPN X:OOB X:INT X
+  NO speed nibbles (no D1 / A01)
 
-NETBOX (this doc) = cables/circuits + compliance + description (why)
-  Focus = Zabbix monitoring — not switch-config generation
+DESCRIPTION = human why/what
+  intentional 1G or 100M uplink
+  ESXi / storage / iDRAC / server identity
+  NO NetBox tags for this
 
-SPEED (Zabbix):
-  Dist↔access = mixed 1G / 10G / 100M → baseline/degrade
+ZABBIX SPEED
+  U:D: / U:A: / U:C: / MON: → baseline (1G|10G|100M OK)
   U:P: → expect 1G
-  Forced Extreme admin → compare oper ↔ admin
-  Intentional odd speed → DESCRIPTION, not a tag
 
-CORE/DIST/MGMT = all admin-up minus X: codes; unused → disable
-ACCESS = only include codes; AP ports U:P:; manual string OK if no cable
+MGMT/CORE = admin-up − X: ; label endpoints MON:+description
+ACCESS    = include codes only
+AP        = U:P: on access switch
 
-ZABBIX = LLD from display (+ admin-up on fabric) + speed baseline
-SCRIPT = optional cable→display push
-TRACK B = automation/compliance jobs (separate task)
+TRACK B = LLD/compliance automation (separate)
 ```
