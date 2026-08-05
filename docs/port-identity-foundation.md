@@ -1,6 +1,6 @@
 # Port identity foundation (Zabbix focus)
 
-**Status:** Locked design direction (revised — EXOS ifAlias=64 confirmed; VOSS open)  
+**Status:** Locked design direction (revised — **64-char common budget**; SNMP canaries open)  
 **Operator-visible SoT on box:** Extreme port label → SNMP **`ifAlias`** (derived cache from NetBox)  
 **Scope:** Zabbix port LLD + speed expectation + excludes  
 **NetBox:** inventory SoT (cables, roles, `interface.speed`) → **authoritative generator**; description = human prose  
@@ -8,38 +8,45 @@
 
 ---
 
-## 0. Label length & ifAlias (EXOS confirmed; VOSS open)
+## 0. Label length & ifAlias (EXOS + VOSS → **64 common**)
 
-### EXOS 32.7.x — vendor-documented (confirmed)
+### Confirmed sizes
 
-| Field | Documented size | Notes |
+| Field | Size | Confirmed by |
 |---|---|---|
-| `display-string` | **20** | Older field (“previously limited to 20 characters”) |
-| `description-string` | **255** | Extended port description CLI |
-| SNMP `ifAlias` | **64** default; `config snmp ifmib ifalias size extended` → **255** | What Zabbix reads (`IF-MIB`) |
+| VOSS / Fabric Engine port `name` | **0–64** (`WORD<0-64>`) | ✅ plant CLI |
+| VOSS MLT `name` | 0–64 | ✅ docs |
+| EXOS `display-string` | **20** | ✅ EXOS 32.7 guide |
+| EXOS `description-string` | **255** | ✅ EXOS 32.7 guide |
+| EXOS SNMP `ifAlias` | **64** default; `extended` → 255 | ✅ EXOS 32.7 guide |
 
-**There is no vendor “15-character” limit.** Plant strings of exactly 15 (`MLAG_MGMT01_p51`, `Alternative_ISC`) are legacy hand-fitting, not a platform cap.
+**Common denominator = 64** (not 15). Cap the grammar at **64** so EXOS needs no `config snmp ifmib ifalias size extended` and VOSS stays within CLI `name`. Plant strings of exactly 15 were legacy hand-fitting, not a vendor cap.
 
-**Hyphen, not colon:** `description-string` forbids `:` (also `"` `<` `>` `&` space; first char alphanumeric — take the **union** of guide sections that also list `?`). Colon grammar is **CLI-invalid**, not merely awkward.
+**Hyphen, not colon:** EXOS `description-string` forbids `:` (safe union also bans space `"` `<>` `&` `?`; first char alphanumeric). Colon grammar is **CLI-invalid**.
 
-**Realistic EXOS budget for Zabbix:** **64 characters** via `description-string` → ifAlias at default SNMP size — no `extended` required for labels like `UD-10G-CH-ZRH-ZH4-DIST01` (24).
+**VOSS generator tip:** CLI also exposes `name port <portlist>` for multi-port set from one context.
 
-**Still must canary (docs contradict themselves):** one section calls `description-string` a **new separate** field; another says an **existing** field was enhanced to 255. **Precedence when both `display-string` and `description-string` are set is undocumented** — set both on a test port, SNMP-get `ifAlias`, record which wins and any truncation.
+**Realistic label examples at 64:** `UD-10G-CH-ZRH-ZH4-DIST01` (24) fits easily → **always-emit SPEED**, real far-end names, controlled `X-STK` / `X-ISC` / `X-MLAG`.
 
-### VOSS / Fabric Engine — not confirmed in available docs
+### Still open (canaries)
 
-Port `name` / ifAlias length is **not** settled from the Fabric Engine user guide corpus (no ifAlias / port-name length found there; CLI Commands Reference not ingested).
+**1. Does VOSS `name` populate SNMP `ifAlias`?**  
+Set a unique name, then:
 
-**Close with:** ingest Fabric Engine CLI Commands Reference **and/or** SNMP-walk `ifAlias` on a VSP canary after setting port name. Until then VOSS stays on the **short/conservative profile** unless canary proves ≥64.
+```text
+interface gigabitEthernet 1/20
+name A123456789B123456789C123456789D123456789E123456789F123456789G123
+```
 
-### Design consequence
+```bash
+snmpwalk -v2c -c <ro> <host> 1.3.6.1.2.1.31.1.1.1.18 | grep A123
+```
 
-| Profile | When | Practice |
-|---|---|---|
-| **Extended (EXOS primary)** | ifAlias usable **≥64** (expected after canary) | Always emit SPEED; real far-end IDs; controlled `X-STK` / `X-ISC` / `X-MLAG` / … |
-| **Short (fallback)** | VOSS unknown / old / truncated ifAlias | Omit default SPEED; short IDs; bare `X` or short note |
+If empty, check `ifDescr` (`1.3.6.1.2.1.2.2.1.2`). If VOSS puts `name` in **ifDescr** instead of **ifAlias**, Zabbix needs a **per-platform source OID** (real design change).
 
-Do **not** design the fleet scheme around a fictional 15-char cap.
+**2. EXOS precedence:** docs contradict whether `description-string` is separate or an enhanced field. Set **both** `display-string` and `description-string` on a test port; SNMP-get `ifAlias`; record winner + truncation at 64.
+
+Until (1) is green, do not assume VOSS LLD can read the same OID as EXOS — only that the **CLI budget is 64**.
 
 ---
 
@@ -47,18 +54,17 @@ Do **not** design the fleet scheme around a fictional 15-char cap.
 
 1. **Grammar:** `CLASS[-SPEED]-ID` — atomic CLASS, **hyphen** only.  
 2. **No `:` in labels** — EXOS forbids `:` in `description-string` (safe union also bans space `"` `<>` `&` `?`; first char alphanumeric). Colon grammar is **CLI-invalid**.  
-3. **EXOS primary budget = 64-char ifAlias** (not 15). Prefer push via field that canary shows drives ifAlias (docs: `description-string`). Short profile = fallback (esp. VOSS until proven).  
+3. **Grammar budget = 64 characters** (VOSS `name` + EXOS ifAlias default). Always-emit SPEED; real far-end IDs; controlled `X-STK`/`X-ISC`/`X-MLAG`. No fictional ≤15. No EXOS `ifalias size extended` required.  
 4. **No special `IDR` class** — iDRAC = **`MON`**.  
-5. **Class speed defaults (when token absent):** `UC`/`UD`/`UA` → **10G**; `UP`/`MON` → **1G**.  
-6. **Extended profile (EXOS primary):** **always emit SPEED token**; longer far-end IDs; controlled `X-<NOTE>`.  
-7. **Short profile (fallback):** token only when ≠ default; short IDs.  
-8. **Generator authoritative** on managed ports. NetBox **`display_protect`** skips hand-sets (§8).  
-9. **Parse states:** `PARSED` | `EMPTY` | **`UNPARSEABLE`**.  
-10. **Access LLD is opt-in** — change-detect does **not** cover unlabeled/typo’d access ports.  
-11. **Hybrid subsidiary:** admin-down spares; `X` only on up-but-uninteresting.  
-12. **LAGs:** speed expect on **members** only.  
-13. **No NetBox tags** for monitor/speed intent.  
-14. Track B: generate/push, compliance, parser, ingest-loop check, **EXOS precedence + VOSS ifAlias canaries**.
+5. **Class speed defaults (when token absent — legacy/hand only):** `UC`/`UD`/`UA` → **10G**; `UP`/`MON` → **1G**. Generated labels **always** include SPEED.  
+6. **Push targets:** EXOS → field that canary shows drives ifAlias (expect `description-string`); VOSS → `name` / `name port <list>` (SNMP OID canary open).  
+7. **Generator authoritative** on managed ports. NetBox **`display_protect`** skips hand-sets (§8).  
+8. **Parse states:** `PARSED` | `EMPTY` | **`UNPARSEABLE`**.  
+9. **Access LLD is opt-in** — change-detect does **not** cover unlabeled/typo’d access ports.  
+10. **Hybrid subsidiary:** admin-down spares; `X` only on up-but-uninteresting.  
+11. **LAGs:** speed expect on **members** only.  
+12. **No NetBox tags** for monitor/speed intent.  
+13. Track B: generate/push, compliance, parser, ingest-loop check, **remaining SNMP canaries** (VOSS name→OID, EXOS field precedence).
 
 ---
 
@@ -78,14 +84,18 @@ CLASS-SPEED-ID
 | **Case** | Generator pushes **UPPERCASE**. Parser is **case-insensitive**. Compliance compares uppercase(normalized live) vs generated |
 | **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric (EXOS safe union) |
 
-### 2.1 Length profiles
+### 2.1 Length profile — **64 common** (locked)
 
-| Profile | When | SPEED | ID | `X` notes |
-|---|---|---|---|---|
-| **Extended (EXOS primary)** | ifAlias **≥64** (vendor default; expected) | **Always emit** | Real far-end names OK (`UD-10G-CH-ZRH-ZH4-DIST01`) | `X-STK`, `X-ISC`, `X-MLAG`, `X-SPN`, `X-OOB`, `X-OTH` |
-| **Short (fallback)** | VOSS unproven / truncated ifAlias | Emit only if ≠ default | Machine-short | `X` or short note |
+| | |
+|---|---|
+| **Budget** | **64 characters** end-to-end |
+| **SPEED** | **Always emit** on generated labels |
+| **ID** | Real far-end names OK within remaining budget |
+| **`X` notes** | Controlled: `X-STK`, `X-ISC`, `X-MLAG`, `X-SPN`, `X-OOB`, `X-OTH` |
 
-**Open canaries:** (1) EXOS field precedence → ifAlias; (2) VOSS port-name → ifAlias length.
+Short “omit default token / tiny ID” profile is **legacy/emergency only**, not the fleet design.
+
+**Open:** VOSS SNMP source OID for the name; EXOS display vs description → ifAlias precedence.
 
 ### 2.2 Parser (two branches — no speed on `X`)
 
@@ -101,7 +111,9 @@ CLASS-SPEED-ID
 
 **`X` notes:** controlled vocabulary when **generated**. Diff rule: generated `X` / `X-STK` / … must match exactly; do not treat arbitrary hand `X-spare` as equal to generated `X` unless protect-set. Prefer generator-owned notes only.
 
-**Source field:** Zabbix reads **`IF-MIB::ifAlias`**. On EXOS, push the field the canary shows populates ifAlias (documented path: **`description-string`**). Do not assume `display-string` (20) is the Zabbix-facing field.
+**Source field:** Zabbix reads port identity from SNMP — **prefer `ifAlias`** (`IF-MIB::ifAlias`).  
+- **EXOS:** push `description-string` (or whichever canary shows wins) so ifAlias carries the label.  
+- **VOSS:** push `name` / `name port <list>`; **confirm** OID (`ifAlias` vs `ifDescr`) before templating.
 
 ---
 
@@ -155,10 +167,8 @@ These are **notes on class `X`**, not separate classes. NetBox description may s
 | `100G` | 100000 |
 | `400G` | 400000 |
 
-**Extended profile:** always `CLASS-SPEED-ID` (e.g. `UD-10G-SWD14`, `UA-1G-SWA08`).  
-**Short profile:** omit SPEED when it matches class default.
-
-`UA=10G` / `UD=10G` symmetry stands; if plant majority is still 1G access uplinks, always-emit from `interface.speed` carries the truth — count NetBox speeds before stressing about hand-typed defaults.
+**Extended profile:** always `CLASS-SPEED-ID` (e.g. `UD-10G-CH-ZRH-ZH4-DIST01`, `UA-1G-SWA08`).  
+Token omission is hand/legacy only — generator always emits SPEED from NetBox `interface.speed` (or class default if speed unset).
 
 ---
 
@@ -309,9 +319,9 @@ Short-profile equivalents omit default tokens and shorten IDs (`UD-SWD14`, `X`, 
 
 ## 11. Verify checklist
 
-- [ ] EXOS canary: both fields set → ifAlias winner + truncation at 64  
-- [ ] VOSS canary: port name → ifAlias length (or ingest CLI Commands Reference)  
-- [ ] Treat **64** as EXOS design budget; **reject fictional ≤15**  
+- [ ] EXOS canary: both fields set → ifAlias winner + truncate at 64  
+- [ ] VOSS canary: `name` visible in **ifAlias** (or document ifDescr fallback OID)  
+- [ ] Grammar budget **64** locked; always-emit SPEED; reject fictional ≤15  
 - [ ] Uppercase push; case-insensitive parse; split `X` regex  
 - [ ] `UNPARSEABLE` inventory + migration plan  
 - [ ] Access: safety net does **not** cover missing labels  
@@ -326,16 +336,14 @@ Short-profile equivalents omit default tokens and shorten IDs (`UD-SWD14`, `X`, 
 ## 12. Summary
 
 ```
-EXOS CONFIRMED: display-string=20; description-string=255; ifAlias default=64
-  No vendor 15-char limit (plant hand-fit only)
-  Colon forbidden in description-string → hyphen grammar
-  Canary still needed: which field wins ifAlias when both set
+BUDGET = 64 (VOSS name WORD<0-64> + EXOS ifAlias default)
+  Always emit SPEED | real far-end IDs | X-STK/X-ISC/X-MLAG
+  No vendor 15-char limit | colon forbidden → hyphen
+  No EXOS ifalias size extended required
 
-VOSS: unconfirmed — canary or ingest CLI Commands Reference
-  Until then short/conservative profile
-
-EXTENDED (EXOS primary, 64): always SPEED; real IDs; X-STK/X-ISC/X-MLAG
-SHORT fallback: omit default tokens; short IDs
+OPEN CANARIES:
+  1) VOSS name → ifAlias or ifDescr? (per-platform OID if ifDescr)
+  2) EXOS display-string vs description-string → ifAlias precedence
 
 GRAMMAR: CLASS[-SPEED]-ID  UPPERCASE  no colon
 CLASSES: UC UD UA UP MON W TMON | X (+ controlled X-NOTE)
