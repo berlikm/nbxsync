@@ -4,7 +4,7 @@ Step-by-step configuration in NetBox. Execute in order for the initial build. Da
 
 This checklist is for **GUI operators**. Fill in production URLs, tokens, and secrets when you apply it in the target environment.
 
-**Last verified:** 2026-08-04 against NetBox 4.x / Zabbix 7.0.x (lab). Update this stamp when you re-validate against production.
+**Last verified:** 2026-08-05 against NetBox 4.x / Zabbix 7.0.x (lab) — multi-credential SNMPv3 profiles. Update this stamp when you re-validate against production.
 
 **Canonical copy:** keep one authoritative home (this repo file or Confluence). If both exist, the other must be a pointer only — do not maintain two full copies by hand.
 
@@ -20,11 +20,14 @@ Monitoring membership and transport should follow **facts already in NetBox** (s
 | Function (role) | Hostgroup template on each country Site Group | `Roles/<role name>` |
 | Platform / OS | Template Rule (regex on platform name) | OS template + `OS/Linux`, `OS/Windows`, `OS/Network`, or `OS/VMware` |
 | Criticality | NetBox tag `critical` | Hostgroup `Priority/Critical` |
-| Default transport | Configuration group **Agent Monitoring** on each country Site Group | Zabbix agent on the primary IP |
-| Network / SNMP-only storage | Configuration group **SNMP Monitoring** on those roles | SNMP on the primary IP |
-| Server with BMC | Configuration group **Server Agent+OOB** on role Server | Agent on primary IP **and** SNMP on the out-of-band IP |
-| Cohesity physical (OOB only) | Configuration group **OOB SNMP Only** on role Cohesity | SNMP on the out-of-band IP only |
-| VM or server monitored by SNMP (override) | Configuration group **SNMP by tag** on that object + NetBox tag `snmp` | SNMP interface + Linux/Windows by SNMP templates |
+| Default transport | Configuration group **Agent Monitoring** on each country Site Group | Zabbix agent :10050 on the primary IP |
+| Network SNMP | **SNMP Monitoring** on Switch*/AP/Firewall/Network Device/Virtual Appliance | SNMPv3 `MONITORING` MD5/DES |
+| Linux SNMP opt-in | NetBox tag `snmp` → CG **SNMP Monitoring (Linux)** + Template Rules | SNMPv3 `MONITORING-LINUX` SHA/AES + Linux/Windows by SNMP |
+| SAP SNMP opt-in | NetBox tag `snmp-sap` → CG **SNMP Monitoring (SAP)** | SNMPv3 `SAPUSER` (confirm auth/priv with Robert) |
+| Server with Dell BMC | **Server Agent+OOB** on role Server | Agent :10050 + SNMPv3 `MONITORING-DELL` SHA/AES on `oob_ip` |
+| Cohesity physical | **OOB SNMP Only** on role Cohesity | SNMPv3 `MONITORING` MD5/DES on `oob_ip` only |
+| Space Server | **Agent Monitoring (SPACE)** on role Space Server | Agent **:10060** (camLine uses 10050) |
+| Pure / Dell storage HTTP | Role template (HTTP), SiteGroup Agent transport | No SNMP CG |
 | Application / OEM extras | Template assignment on Role or Manufacturer | Extra templates merged with the OS template |
 
 ### Why hostgroups hang on Site Groups (including Roles)
@@ -42,11 +45,15 @@ Both templates are assigned on the **country Site Group**, not on every Device R
 
 `OS/…` is a third tree for OS-centric views. It is attached by **Template Rules** (platform match), because OS is a property of the platform, not of the country.
 
-### Why transport uses configuration groups (not tags)
+### Why transport uses configuration groups
 
-Exactly **one** configuration group decides how the host is reached (agent vs SNMP vs OOB). Hostgroups and templates can stack freely; transport cannot. Tags are for overlays only (`critical`, `snmp` OS flavor, `do_not_monitor`). Putting transport on a tag would silently override role and site defaults.
+Exactly **one** configuration group decides how the host is reached (agent vs SNMP vs OOB). Hostgroups and templates can stack freely; transport cannot.
 
-Role-level SNMP / Server Agent+OOB **overrides** the country Site Group’s Agent default. Assign Agent Monitoring on **country** Site Groups only — not on campus mid-levels (those would win over the country default).
+**SNMPv3 credentials are part of the interface shape** — different LogicMonitor accounts (`MONITORING`, `MONITORING-LINUX`, `MONITORING-DELL`, `SAPUSER`) need **different CGs**. Do not share one SNMP CG across network and Linux/SAP/iDRAC.
+
+**Tag `snmp` / `snmp-sap` are intentional transport selectors.** Inheritance resolves tag-targeted CG assignments *before* role/site, so tagging a host is zero-touch opt-in to Linux or SAP SNMP (and beats the SiteGroup Agent default). Other tags (`critical`, `do_not_monitor`) stay overlays only — never put a Host Interface directly on a tag.
+
+Role-level network SNMP / Server Agent+OOB / SPACE **override** the country Site Group’s Agent default. Assign Agent Monitoring on **country** Site Groups only — not on campus mid-levels.
 
 ### Where to look in the GUI
 
@@ -137,15 +144,17 @@ Create one assignment per country Site Group. Set a **proxy or a proxy group** �
 
 Path: **Zabbix → Configuration groups → Add**
 
-**Why five groups:** each is one transport profile. Keeping Agent default, SNMP exception, dual-plane server BMC, per-VM SNMP, and OOB-only hardware as separate named profiles makes the effective profile obvious on the object and avoids mixing unrelated interface sets.
+Each group is one **transport + credential** profile. SNMPv3 user/auth/priv differ by LogicMonitor account — keep them on separate groups.
 
-| Name | Description |
-|---|---|
-| SNMP Monitoring | SNMP v3 for network devices and SNMP-only storage |
-| Agent Monitoring | Default agent transport (assigned on country Site Groups) |
-| Server Agent+OOB | Server profile: agent on primary IP + SNMP on out-of-band IP |
-| SNMP by tag | SNMP transport for selected Devices/VMs (pair with NetBox tag `snmp` for OS templates) |
-| OOB SNMP Only | SNMP on out-of-band IP only — hardware without a primary IP (e.g. Cohesity nodes) |
+| Name | Credential / port | Purpose |
+|---|---|---|
+| SNMP Monitoring | `MONITORING` MD5/DES | Extreme / Forti / AP / network roles |
+| SNMP Monitoring (Linux) | `MONITORING-LINUX` SHA/AES | Opt-in Linux/Windows SNMP (tag `snmp`) |
+| SNMP Monitoring (SAP) | `SAPUSER` (confirm auth/priv) | Opt-in SAP SNMP (tag `snmp-sap`) |
+| Agent Monitoring | Agent :10050 | Default transport on country Site Groups |
+| Agent Monitoring (SPACE) | Agent :10060 | Space Server role (camLine occupies 10050) |
+| Server Agent+OOB | Agent :10050 + `MONITORING-DELL` SHA/AES @ oob | Dell iDRAC dual-plane servers |
+| OOB SNMP Only | `MONITORING` MD5/DES @ oob | Cohesity physical (no primary IP) |
 
 ---
 
@@ -157,153 +166,127 @@ Path: **Zabbix → Configuration groups → [group] → Host Interfaces → Add*
 
 **Type** selects Agent or SNMP. **Interface type** = Default for the primary interface of that kind.
 
-### Shared SNMPv3 settings
+### SNMPv3 profiles (do not mix)
 
-Use these on every SNMP interface in this checklist:
+Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeholders). **SNMP push community = True** so sync writes secret host macros and points the Zabbix interface at them.
 
-| Field | Value |
-|---|---|
-| SNMP version | 3 |
-| SNMP bulk | True |
-| SNMP max repetitions | 10 |
-| SNMPv3 security name | MONITORING |
-| SNMPv3 security level | authPriv |
-| SNMPv3 auth protocol | MD5 |
-| SNMPv3 auth passphrase | actual secret (from env `NBX_SNMP_AUTHPASS` when using the configure script) |
-| SNMPv3 priv protocol | DES |
-| SNMPv3 priv passphrase | actual secret (from env `NBX_SNMP_PRIVPASS` when using the configure script) |
-| SNMP push community | True |
+| Profile | CG | Security name | Auth | Priv | Script env (auth / priv) |
+|---|---|---|---|---|---|
+| Network | SNMP Monitoring, OOB SNMP Only | MONITORING | MD5 | DES | `NBX_SNMP_AUTHPASS_MON` / `NBX_SNMP_PRIVPASS_MON` (aliases: `NBX_SNMP_AUTHPASS` / `NBX_SNMP_PRIVPASS`) |
+| Linux | SNMP Monitoring (Linux) | MONITORING-LINUX | SHA1* | AES128 | `NBX_SNMP_AUTHPASS_LINUX` / `NBX_SNMP_PRIVPASS_LINUX` |
+| Dell iDRAC | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1* | AES128 | `NBX_SNMP_AUTHPASS_DELL` / `NBX_SNMP_PRIVPASS_DELL` |
+| SAP | SNMP Monitoring (SAP) | SAPUSER | *(confirm)* | *(confirm)* | `NBX_SNMP_AUTHPASS_SAP` / `NBX_SNMP_PRIVPASS_SAP` |
 
-Store the real passphrases on the **Zabbix Host Interface** (not as macro-name placeholders). With **SNMP push community = True**, sync writes secret host macros `{$SNMP_AUTHPASS}` / `{$SNMP_PRIVPASS}` from those values and points the Zabbix interface details at the macros. Matches the EXOS `MONITORING` user (`authentication md5`, privacy DES).
+\*LM export says “SHA”; Zabbix offers SHA1 and SHA256 — default in the configure script is **SHA1** until confirmed.
 
-### 5.1 SNMP Monitoring
+Common SNMP fields for all SNMP profiles: version **3**, bulk **True**, max repetitions **10**, security level **authPriv**, push community **True**, port **161**.
+
+### 5.1 SNMP Monitoring (network)
 
 | Field | Value |
 |---|---|
 | Type | SNMP |
-| Interface type | Default |
-| Port | 161 |
-| Use IP | Yes |
 | Use OOB IP | No |
-| + SNMPv3 settings above | |
+| + Network SNMPv3 profile | |
 
 ### 5.2 Agent Monitoring
 
 | Field | Value |
 |---|---|
 | Type | Agent |
-| Interface type | Default |
 | Port | 10050 |
-| Use IP | Yes |
 | TLS connect | No encryption |
 
-### 5.3 Server Agent+OOB (two interfaces on the same group)
+### 5.3 Server Agent+OOB (two interfaces)
 
-**Why both on one group:** a server is one monitoring profile with two planes (OS on the production network, BMC on the management network). One configuration group keeps that pairing atomic — you cannot inherit agent from one place and OOB SNMP from another and lose one side.
+**Why both on one group:** OS + BMC is one atomic server profile.
 
-**Agent interface** (primary IP):
+| Interface | Type | Port / OOB | Credential |
+|---|---|---|---|
+| Primary | Agent | 10050, Use OOB = No | — |
+| BMC | SNMP | 161, Use OOB = **Yes** | Dell profile (`MONITORING-DELL`) |
+
+If `oob_ip` is empty, the SNMP interface is skipped; the agent still syncs.
+
+> Non-Dell BMC (iLO/XCC) is not covered by `MONITORING-DELL`. Add a separate CG later if needed.
+
+### 5.4 SNMP Monitoring (Linux)
+
+Same shape as §5.1 with the **Linux** SNMPv3 profile. Transport-only — no templates on the CG. OS templates come from Template Rules (§6.2) when the host has tag `snmp`.
+
+### 5.5 OOB SNMP Only
+
+Network SNMPv3 profile, Use OOB IP = **Yes**. Cohesity physical nodes.
+
+### 5.6 SNMP Monitoring (SAP)
+
+SAP SNMPv3 profile. Transport-only until Robert confirms auth/priv and whether SAP hosts use SNMP at all (many are agent + DNUS scripts only).
+
+### 5.7 Agent Monitoring (SPACE)
 
 | Field | Value |
 |---|---|
 | Type | Agent |
-| Interface type | Default |
-| Port | 10050 |
-| Use IP | Yes |
-| Use OOB IP | No |
+| Port | **10060** |
 | TLS connect | No encryption |
 
-**SNMP interface** (out-of-band IP):
+### One-off overrides
 
-| Field | Value |
+| Case | How |
 |---|---|
-| Type | SNMP |
-| Interface type | Default |
-| Port | 161 |
-| Use IP | Yes |
-| Use OOB IP | **Yes** |
-| + SNMPv3 settings above | |
-
-If a device has no out-of-band IP, the SNMP interface is skipped; the agent interface still syncs.
-
-### 5.4 SNMP by tag
-
-Same as §5.1 (SNMP, port 161, Use OOB IP = No). Do not attach templates to this configuration group — OS templates come from Template Rules in §6 when the object has NetBox tag `snmp`.
-
-**Why split transport and template:** the same SNMP interface serves Linux and Windows (and both Devices and VMs); the correct OS SNMP template is chosen by platform + tag, not by a single generic template on the group. Use this whenever a host must be SNMP-monitored instead of agent — not only for VMs.
-
-### 5.5 OOB SNMP Only
-
-Same SNMPv3 as the Server Agent+OOB SNMP side (Use OOB IP = Yes). For hardware that only has an out-of-band IP (no primary IP to run an agent against).
+| `hu-deb-san01` (`LogicMonitor` SHA/AES) | Per-device `ZabbixHostInterface` on that Device (do not change fleet CGs) |
 
 ---
 
 ## 5b. Configuration group assignments
 
 Path: **Zabbix → Configuration groups → [group] → Assignments → Add**  
-(or Site Group / Device Role → Zabbix tab)
+(or Site Group / Device Role / Tag → Zabbix tab)
 
 Without these assignments, the group’s interfaces are not applied during sync.
 
 ### Agent Monitoring → each country Site Group
 
-**Why on the Site Group:** almost every server-class and application role speaks the Zabbix agent. Putting the default on the country once means unknown or brand-new roles are still monitored. Roles that must use SNMP (or dual-plane BMC) override this at the Device Role level below.
+| Configuration group | Assigned to |
+|---|---|
+| Agent Monitoring | Site Group CH / HU / JP / KR / NL / US / CN |
+
+**Pure Storage** and generic **Storage** stay on this Agent default (HTTP templates in §7 — not network SNMP).
+
+### SNMP Monitoring → network Device Roles
 
 | Configuration group | Assigned to |
 |---|---|
-| Agent Monitoring | Site Group CH |
-| Agent Monitoring | Site Group HU |
-| Agent Monitoring | Site Group JP |
-| Agent Monitoring | Site Group KR |
-| Agent Monitoring | Site Group NL |
-| Agent Monitoring | Site Group US |
-| Agent Monitoring | Site Group CN |
-
-**Pure Storage** stays on this Agent default (plus its HTTP template in §7). It is polled over HTTP/agent paths, not as SNMP-only storage.
-
-### SNMP Monitoring → Device Roles
-
-**Why role exceptions:** switches, APs, firewalls, and SNMP-only storage have no useful agent. Assigning SNMP on the role overrides the country Agent default for those classes only.
-
-| Configuration group | Device Role |
-|---|---|
-| SNMP Monitoring | Switch Core |
-| SNMP Monitoring | Switch Dist |
-| SNMP Monitoring | Switch Access |
-| SNMP Monitoring | Switch Mgmt |
+| SNMP Monitoring | Switch Core / Dist / Access / Mgmt |
 | SNMP Monitoring | Access Point |
 | SNMP Monitoring | Firewall |
 | SNMP Monitoring | Network Device |
 | SNMP Monitoring | Virtual Appliance |
-| SNMP Monitoring | Storage |
 
-### Server Agent+OOB → Server
+**Do not** assign Storage here.
 
-| Configuration group | Device Role |
+### Server / Cohesity / SPACE roles
+
+| Configuration group | Assigned to |
 |---|---|
 | Server Agent+OOB | Server |
-
-### OOB SNMP Only → Cohesity (physical)
-
-| Configuration group | Device Role |
-|---|---|
 | OOB SNMP Only | Cohesity |
+| Agent Monitoring (SPACE) | Space Server |
 
-### Cohesity virtual machines with a primary IP
+### Zero-touch tag opt-ins
 
-Active Cohesity VMs that have a primary IPv4 address need a **direct** assignment to **SNMP Monitoring** (they have no out-of-band IP, so OOB SNMP Only would not work). Assign each such VM individually.
+| Configuration group | Assigned to | Operator action |
+|---|---|---|
+| SNMP Monitoring (Linux) | NetBox tag **`snmp`** | Tag the Device/VM — no per-host CG row |
+| SNMP Monitoring (SAP) | NetBox tag **`snmp-sap`** | Tag SAP hosts that need SNMP (after Robert confirms) |
 
-This is a standing manual task until a cleaner NetBox signal exists (for example a dedicated role or tag that selects SNMP Monitoring). When you invent Cohesity VMs, check this list; put it on the recurring ops checklist in §15.
+### Cohesity VMs with a primary IP
 
-### SNMP by tag (per Device or VM)
-
-For each host that must use SNMP instead of agent (including physical Linux/Windows servers):
-
-1. Assign configuration group **SNMP by tag** to that Device or VM.
-2. Add NetBox tag **`snmp`** (so §6 attaches Linux/Windows by SNMP).
+Active Cohesity VMs with `primary_ip4` need a **direct** assignment to **SNMP Monitoring** (network profile) — they have no `oob_ip`. Track in §15 until a cleaner signal exists.
 
 ### Manufacturer
 
-Do **not** assign Dell iDRAC on Manufacturer Dell. Use Template Rule §6.3 (Dell ∧ Server). Transport for Dell servers already comes from Server Agent+OOB on the Server role.
+Do **not** assign Dell iDRAC on Manufacturer Dell. Use Template Rule §6.3 (Dell ∧ Server). OOB SNMP credentials come from **Server Agent+OOB** (`MONITORING-DELL`).
 
 ---
 
@@ -335,8 +318,9 @@ Ensure these Zabbix templates exist (create the nbxsync Template objects pointin
 | VMware FQDN |
 | Storage Generic Device by SNMP |
 | Dell iDRAC by SNMP |
-| MSSQL by ODBC |
+| MSSQL by Zabbix agent 2 (or MSSQL by ODBC) |
 | Pure Storage FlashArray v1 by HTTP |
+| Dell Storage by HTTP (optional) |
 | GitLab by HTTP |
 
 **Storage Generic Device by SNMP:** clone from Network Generic Device by SNMP **without** items that collide with Dell iDRAC (`snmptrap.fallback` and `zabbix[host,snmp,available]`). Preferred method in the Zabbix UI: **Export** the Network Generic template as YAML → delete those two items (and keep discovery rules, prototypes, triggers, value maps) → **Import** under the new name `Storage Generic Device by SNMP`. Do not recreate the template by copying items one-by-one in the UI — that drops LLD and related objects. Import Dell iDRAC from the Zabbix template library if it is not already installed.
@@ -365,7 +349,7 @@ Leave “require tags”, “role pattern”, and “manufacturer” empty unles
 
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
 
-Use together with configuration group **SNMP by tag** for the interface.
+Use together with configuration group **SNMP Monitoring (Linux)** (assigned on NetBox tag `snmp`) for the interface.
 
 **Why a tag gate:** only selected hosts should switch from agent OS templates to SNMP OS templates. The tag is an explicit operator choice; the configuration group supplies the SNMP interface (Device or VM).
 
@@ -389,21 +373,21 @@ Use together with configuration group **SNMP by tag** for the interface.
 Path: **Zabbix → Templates → [template] → Assigned objects → Add**  
 (or Device Role / Manufacturer → Zabbix tab)
 
-**Why here:** application and OEM templates are business knowledge (“MSSQL role gets MSSQL by ODBC”). They **merge** with OS / platform templates from §6 — different template IDs all accumulate; nothing is subtracted. Do **not** put Network Generic on Switch*/AP roles: those roles already get Extreme EXOS / VOSS / IQ Engine / FortiOS (etc.) from §6, and Network Generic + EXOS both define `icmpping` so Zabbix rejects the link. Use **Network Device** only as the no-platform fallback. Firewall keeps FortiGate on the role (same template the FortiOS rule would add). Storage Generic stays on Storage/Cohesity.
+**Why here:** application and OEM templates are business knowledge (“MSSQL role gets MSSQL by Agent 2”). They **merge** with OS / platform templates from §6 — different template IDs all accumulate; nothing is subtracted. Do **not** put Network Generic on Switch*/AP roles: those roles already get Extreme EXOS / VOSS / IQ Engine / FortiOS (etc.) from §6, and Network Generic + EXOS both define `icmpping` so Zabbix rejects the link. Use **Network Device** only as the no-platform fallback. Firewall keeps FortiGate on the role. Storage Generic stays on **Cohesity only** — generic Storage uses HTTP (Dell) when available, not network SNMP.
 
 **Interface requirements (silent drop):** each nbxsync Template can declare required interface types (Agent, SNMP, ANY, …). At sync, a template is **linked only if the host already has those interface types**. If the requirement is not met, the template is skipped with no dramatic error — it simply does not appear on the Zabbix host. That makes broad Role assignment safer across transport classes. It does **not** prevent two SNMP templates from both linking and colliding on item keys — avoid overlapping assignments (Switch+Network Generic vs EXOS; Storage Generic vs iDRAC).
 
 | Template | Assigned to | Notes |
 |---|---|---|
-| MSSQL by ODBC | Device Role MSSQL | |
-| MSSQL by ODBC | Device Role MSSQL Query Server | |
-| VMware FQDN | Device Role vCenter | Used when a dedicated vCenter HTTP template is not available |
-| Pure Storage FlashArray v1 by HTTP | Device Role Pure Storage | Pure stays on Agent transport |
+| MSSQL by Zabbix agent 2 | Device Role MSSQL | Prefer Agent 2 + MSSQL plugin; fallback name `MSSQL by ODBC` |
+| MSSQL by Zabbix agent 2 | Device Role MSSQL Query Server | |
+| VMware FQDN | Device Role vCenter | Per-vCenter `{$VMWARE.USER}` / `{$VMWARE.PASSWORD}` as needed |
+| Pure Storage FlashArray v1 by HTTP | Device Role Pure Storage | Pure stays on Agent transport; per-array token macros |
+| Dell Storage by HTTP | Device Role Storage | When template imported; replaces Storage Generic on Storage |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if platform does not match a rule |
 | Network Generic Device by SNMP | Device Role Network Device | Fallback when platform does not match a §6 rule |
-| Storage Generic Device by SNMP | Device Role Storage | Avoids item collision with iDRAC |
-| Storage Generic Device by SNMP | Device Role Cohesity | |
+| Storage Generic Device by SNMP | Device Role Cohesity | Keep until a Cohesity-specific template exists |
 | FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule adds the same template when platform matches |
 
 Do **not** assign Network Generic to Switch Core / Dist / Access / Mgmt or Access Point. Dell iDRAC is **not** in this table — use §6.3.
@@ -465,7 +449,8 @@ To mark a device: add NetBox tag `critical`. To unmark: remove the tag.
 |---|---|
 | `do_not_monitor` | Exclude from monitoring (see §9.3 and plugin settings) |
 | `critical` | Membership in hostgroup Priority/Critical |
-| `snmp` | Selects Linux/Windows by SNMP Template Rules; does not change transport by itself — pair with configuration group **SNMP by tag** |
+| `snmp` | Zero-touch Linux SNMP: selects **SNMP Monitoring (Linux)** CG + Linux/Windows by SNMP Template Rules |
+| `snmp-sap` | Zero-touch SAP SNMP: selects **SNMP Monitoring (SAP)** CG (after Robert confirms) |
 
 ### 9.1 Environment (Jinja on Site Groups)
 
@@ -587,14 +572,15 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 
 | Object | Configuration group | Typical templates | Interfaces | Hostgroups |
 |---|---|---|---|---|
-| Linux server (role Server) | Server Agent+OOB | Linux by agent (+ Dell iDRAC if Dell and oob IP set) | Agent on primary + SNMP on oob IP | Sites/CH/…, Roles/Server, OS/Linux |
-| Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) | Agent on primary | Sites/CH/…, Roles/…, OS/… |
-| VM or Device with tag `snmp` + SNMP by tag | SNMP by tag | Linux or Windows by SNMP | SNMP only | Sites/CH/…, Roles/…, OS/… |
-| Switch / AP / Firewall | SNMP Monitoring | Role baseline + specialized template if platform matches | SNMP on primary | Sites/CH/…, Roles/…, OS/Network |
-| Storage | SNMP Monitoring | Storage Generic by SNMP | SNMP | Sites/CH/…, Roles/Storage |
-| Pure Storage | Agent Monitoring (from Site Group) | Pure Storage by HTTP | Agent | Sites/CH/…, Roles/Pure Storage |
-| Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP on oob IP | Sites/CH/…, Roles/Cohesity |
-| Cohesity VM with primary IP | SNMP Monitoring (direct) | Storage Generic | SNMP on primary | … |
+| Linux server (role Server) | Server Agent+OOB | Linux by agent (+ Dell iDRAC if Dell and oob IP set) | Agent :10050 + SNMP `MONITORING-DELL` on oob | Sites/CH/…, Roles/Server, OS/Linux |
+| Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) | Agent :10050 | Sites/CH/…, Roles/…, OS/… |
+| Host with tag `snmp` only | SNMP Monitoring (Linux) via tag | Linux or Windows by SNMP | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
+| Switch / AP / Firewall | SNMP Monitoring | Role baseline + platform template | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/…, OS/Network |
+| Space Server | Agent Monitoring (SPACE) | OS by agent | Agent **:10060** | Sites/CH/…, Roles/Space Server, OS/… |
+| Storage (Dell) | Agent Monitoring | Dell Storage by HTTP (when imported) | Agent / HTTP | Sites/CH/…, Roles/Storage |
+| Pure Storage | Agent Monitoring | Pure Storage by HTTP | Agent / HTTP | Sites/CH/…, Roles/Pure Storage |
+| Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP `MONITORING` on oob | Sites/CH/…, Roles/Cohesity |
+| Cohesity VM with primary IP | SNMP Monitoring (direct) | Storage Generic | SNMP `MONITORING` on primary | … |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
 | Brand-new role tomorrow | Agent Monitoring (from Site Group) unless listed in §5b | OS Template Rule if platform set | Agent | Roles/\<new name\> appears automatically |
 | VM on a cluster with no site | none | — | — | Not profiled until the VM or cluster has a site |
@@ -619,7 +605,7 @@ Initial build is §§1–14. After that, operators mostly do the following.
 
 ### 15.1 New Device Role appeared
 
-1. Does it need a **transport exception**? If it is agent-class → nothing (Site Group Agent default). If SNMP-only network/storage → assign **SNMP Monitoring** (§5b). If dual-plane BMC server → **Server Agent+OOB**. If OOB-only → **OOB SNMP Only**.
+1. Does it need a **transport exception**? If it is agent-class → nothing (Site Group Agent default). If network SNMP → **SNMP Monitoring**. If SPACE → **Agent Monitoring (SPACE)**. If dual-plane BMC server → **Server Agent+OOB**. If OOB-only → **OOB SNMP Only**. If Linux SNMP opt-in → tag `snmp` (no new role CG).
 2. Does it need an **application template**? Add a Template assignment on the role (§7).
 3. Hostgroup `Roles/<name>` appears automatically from the Sites/Roles Jinja — do not create a per-role hostgroup assignment.
 
