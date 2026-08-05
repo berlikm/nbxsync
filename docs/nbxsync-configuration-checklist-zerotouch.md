@@ -168,13 +168,13 @@ Use these on every SNMP interface in this checklist:
 | SNMP max repetitions | 10 |
 | SNMPv3 security name | MONITORING |
 | SNMPv3 security level | authPriv |
-| SNMPv3 auth protocol | SHA256 |
-| SNMPv3 auth passphrase | `{$SNMP_AUTHPASS}` |
-| SNMPv3 priv protocol | AES128 |
-| SNMPv3 priv passphrase | `{$SNMP_PRIVPASS}` |
-| SNMP push community | False |
+| SNMPv3 auth protocol | MD5 |
+| SNMPv3 auth passphrase | actual secret (from env `NBX_SNMP_AUTHPASS` when using the configure script) |
+| SNMPv3 priv protocol | DES |
+| SNMPv3 priv passphrase | actual secret (from env `NBX_SNMP_PRIVPASS` when using the configure script) |
+| SNMP push community | True |
 
-Define the real passphrase values as global macros in Zabbix (Administration → General → Macros).
+Store the real passphrases on the **Zabbix Host Interface** (not as macro-name placeholders). With **SNMP push community = True**, sync writes secret host macros `{$SNMP_AUTHPASS}` / `{$SNMP_PRIVPASS}` from those values and points the Zabbix interface details at the macros. Matches the EXOS `MONITORING` user (`authentication md5`, privacy DES).
 
 ### 5.1 SNMP Monitoring
 
@@ -329,6 +329,7 @@ Ensure these Zabbix templates exist (create the nbxsync Template objects pointin
 | Linux by SNMP |
 | Windows by SNMP |
 | Extreme EXOS by SNMP |
+| Extreme VOSS by SNMP |
 | Network Generic Device by SNMP |
 | FortiGate by SNMP |
 | VMware FQDN |
@@ -355,7 +356,7 @@ Leave “require tags”, “role pattern”, and “manufacturer” empty unles
 | Windows catch-all | `Windows` | Windows by Zabbix agent | OS/Windows | — | 200 | Yes |
 | Linux | `Ubuntu\|Debian\|Linux\|Red Hat\|CentOS\|Alma\|SUSE\|Arch\|Photon\|Other.*Linux` | Linux by Zabbix agent | OS/Linux | — | 100 | Yes |
 | Extreme EXOS | `EXOS` | Extreme EXOS by SNMP | OS/Network | — | 100 | Yes |
-| Extreme VOSS | `VOSS` | Network Generic Device by SNMP | OS/Network | — | 100 | Yes |
+| Extreme VOSS | `VOSS` | Extreme VOSS by SNMP | OS/Network | — | 100 | Yes |
 | Extreme IQ Engine | `IQ ENGINE` | Network Generic Device by SNMP | OS/Network | — | 100 | Yes |
 | FortiOS | `FORTIOS\|FortiOS` | FortiGate by SNMP | OS/Network | — | 100 | Yes |
 | FortiAnalyzer/Manager | `FortiAnalyzer\|FortiManager` | Network Generic Device by SNMP | OS/Network | — | 50 | Yes |
@@ -552,12 +553,13 @@ A macro is both definition and assignment (choose Device Role on the form).
 | `{$MSSQL.DSN}` | nbxsync | MSSQL |
 | `{$VMWARE.URL}` | `https://{{ object.name }}/sdk` | vCenter |
 
-Define secrets once as **global** macros in Zabbix:
+Define application secrets once as **global** macros in Zabbix:
 
 - `{$MSSQL.USER}`, `{$MSSQL.PASSWORD}`
 - `{$VMWARE.USER}`, `{$VMWARE.PASSWORD}`
 - `{$PURESTORAGE.TOKEN}`
-- `{$SNMP_AUTHPASS}`, `{$SNMP_PRIVPASS}`
+
+SNMPv3 auth/priv passphrases are **not** global macros: they live on the SNMP Host Interface (§5) and are pushed as secret **host** macros when SNMP push community is True.
 
 ---
 

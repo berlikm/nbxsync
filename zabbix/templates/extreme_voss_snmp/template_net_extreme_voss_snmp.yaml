@@ -2911,7 +2911,7 @@ zabbix_export:
       - value: '2'
         newvalue: unknown
   triggers:
-  - uuid: bb967f81aaad4a00ae7916ea80574ae0
+  - uuid: db7291ebfca7432b967585b4853fc1ad
     expression: (last(/Extreme VOSS by SNMP/system.hw.uptime[hrSystemUptime.0])>0 and last(/Extreme VOSS by SNMP/system.hw.uptime[hrSystemUptime.0])<10m)
       or (last(/Extreme VOSS by SNMP/system.hw.uptime[hrSystemUptime.0])=0 and last(/Extreme VOSS by SNMP/system.net.uptime[sysUpTime.0])<10m)
     name: 'Extreme VOSS: Host has been restarted'
@@ -2926,7 +2926,7 @@ zabbix_export:
     - tag: scope
       value: notice
   graphs:
-  - uuid: 9dc8bc10d4044889bd53c56f1da45c60
+  - uuid: f9a85b23be724b29a9016c7f39ec6481
     name: 'Extreme VOSS: CPU utilization'
     ymin_type_1: FIXED
     ymax_type_1: FIXED

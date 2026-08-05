@@ -129,6 +129,7 @@ TPL_NAMES = {
     'linux_snmp': 'Linux by SNMP',
     'windows_snmp': 'Windows by SNMP',
     'extreme_exos_snmp': 'Extreme EXOS by SNMP',
+    'extreme_voss_snmp': 'Extreme VOSS by SNMP',
     'network_generic_snmp': 'Network Generic Device by SNMP',
     'fortigate_snmp': 'FortiGate by SNMP',
     'vmware_fqdn': 'VMware FQDN',
@@ -332,18 +333,31 @@ def resolve_proxies(server, names: dict[str, str] | None = None) -> dict[str, M.
 
 
 def _snmp_v3_fields() -> dict:
+    """SNMPv3 fields for config-group host interfaces (matches EXOS MONITORING user).
+
+    Passphrases are the real secrets on the interface; with snmp_pushcommunity=True,
+    hostsync writes them as secret host macros ({$SNMP_AUTHPASS}/{$SNMP_PRIVPASS})
+    and hostinterfacesync points the Zabbix interface at those macros.
+    """
+    authpass = os.environ.get('NBX_SNMP_AUTHPASS', '')
+    privpass = os.environ.get('NBX_SNMP_PRIVPASS', '')
+    if not authpass or not privpass:
+        logger.warning(
+            'NBX_SNMP_AUTHPASS / NBX_SNMP_PRIVPASS unset or empty — SNMPv3 authPriv '
+            'will fail until both are set in the environment'
+        )
     return {
         'snmp_version': ZabbixHostInterfaceSNMPVersionChoices.SNMPV3,
         'snmp_usebulk': True,
         'snmp_max_repetitions': 10,
         'snmp_community': '',
-        'snmp_pushcommunity': False,
+        'snmp_pushcommunity': True,
         'snmpv3_security_name': 'MONITORING',
         'snmpv3_security_level': ZabbixInterfaceSNMPV3SecurityLevelChoices.AUTHPRIV,
-        'snmpv3_authentication_passphrase': '{$SNMP_AUTHPASS}',
-        'snmpv3_authentication_protocol': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA256,
-        'snmpv3_privacy_passphrase': '{$SNMP_PRIVPASS}',
-        'snmpv3_privacy_protocol': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
+        'snmpv3_authentication_passphrase': authpass,
+        'snmpv3_authentication_protocol': ZabbixInterfaceSNMPV3AuthProtoChoices.MD5,
+        'snmpv3_privacy_passphrase': privpass,
+        'snmpv3_privacy_protocol': ZabbixInterfaceSNMPV3PrivProtoChoices.DES,
     }
 
 
@@ -769,6 +783,7 @@ def step6_template_rules(server, country_slugs=None):
     tpl_linux_snmp = make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_windows_snmp = make_template(*TPL['windows_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_exos = make_template(*TPL['extreme_exos_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+    tpl_voss = make_template(*TPL['extreme_voss_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_fortigate = make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     # HTTP/simple-check templates — ANY, not AGENT (ESXi often has no Zabbix agent)
@@ -780,7 +795,7 @@ def step6_template_rules(server, country_slugs=None):
         ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 200),
         ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100),
         ('Extreme EXOS', r'EXOS', tpl_exos, hg_os_network, 100),
-        ('Extreme VOSS', r'VOSS', tpl_netgeneric, hg_os_network, 100),
+        ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100),
         ('Extreme IQ Engine', r'IQ ENGINE', tpl_netgeneric, hg_os_network, 100),
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100),
         ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50),
@@ -1159,6 +1174,38 @@ def ensure_storage_generic_template(server) -> None:
         logger.info('  CREATED: %r in Zabbix (%d items, id=%s)', name, copied, tpl_id)
 
 
+def ensure_extreme_voss_template(server) -> None:
+    """Import Extreme VOSS by SNMP from repo YAML if missing (not a stock template)."""
+    name = TPL_NAMES['extreme_voss_snmp']
+    path = Path(__file__).resolve().parents[1] / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml'
+    with ZabbixConnection(server) as api:
+        found = api.template.get(filter={'name': name}, output=['templateid']) or []
+        if found:
+            logger.info('  EXISTS: Zabbix template %r (id=%s)', name, found[0]['templateid'])
+            return
+        if not path.exists():
+            raise SystemExit(f'Missing VOSS template YAML for import: {path}')
+        api.configuration.import_(
+            format='yaml',
+            rules={
+                'templates': {'createMissing': True, 'updateExisting': True},
+                'template_groups': {'createMissing': True, 'updateExisting': True},
+                'valueMaps': {'createMissing': True, 'updateExisting': True},
+                'items': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+                'discoveryRules': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+                'triggers': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+                'graphs': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+                'httptests': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+                'templateDashboards': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+            },
+            source=path.read_text(),
+        )
+        found = api.template.get(filter={'name': name}, output=['templateid']) or []
+        if not found:
+            raise SystemExit(f'VOSS template missing after import: {name}')
+        logger.info('  IMPORTED: Zabbix template %r (id=%s)', name, found[0]['templateid'])
+
+
 def run_production(*, mutate_netbox: bool = False, url: str | None = None, token: str | None = None, lab_http: bool = False):
     global TPL
     logger.info('=' * 60)
@@ -1168,6 +1215,7 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     step0_cleanup(mutate_netbox=mutate_netbox)
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
     ensure_storage_generic_template(server)
+    ensure_extreme_voss_template(server)
     required_names = {k: v for k, v in TPL_NAMES.items() if k != 'icmp_ping'}
     TPL = resolve_templates(server, names=required_names, required=True)
     TPL.update(resolve_templates(server, names={'icmp_ping': TPL_NAMES['icmp_ping']}, required=False))
@@ -1480,6 +1528,7 @@ def run_simulate() -> int:
             TPL['linux_agent'] = (int(ensure_t(f'{PREFIX}linux.agent', f'{PREFIX}Linux by Agent')), f'{PREFIX}Linux by Agent')
             TPL['windows_agent'] = (int(ensure_t(f'{PREFIX}windows.agent', f'{PREFIX}Windows by Agent')), f'{PREFIX}Windows by Agent')
             TPL['extreme_exos_snmp'] = (int(ensure_t(f'{PREFIX}exos.snmp', f'{PREFIX}Extreme EXOS by SNMP')), f'{PREFIX}Extreme EXOS by SNMP')
+            TPL['extreme_voss_snmp'] = (int(ensure_t(f'{PREFIX}voss.snmp', f'{PREFIX}Extreme VOSS by SNMP')), f'{PREFIX}Extreme VOSS by SNMP')
             TPL['network_generic_snmp'] = (int(ensure_t(f'{PREFIX}net.snmp', f'{PREFIX}Network Generic Device by SNMP')), f'{PREFIX}Network Generic Device by SNMP')
             TPL['fortigate_snmp'] = (int(ensure_t(f'{PREFIX}forti.snmp', f'{PREFIX}FortiGate by SNMP')), f'{PREFIX}FortiGate by SNMP')
             TPL['vmware_fqdn'] = (int(ensure_t(f'{PREFIX}vmware', f'{PREFIX}VMware FQDN')), f'{PREFIX}VMware FQDN')
@@ -1777,6 +1826,41 @@ def run_simulate() -> int:
                 'dell_idrac_server_rule',
                 bool(idrac_rule and idrac_rule.manufacturer_id and idrac_rule.role_pattern == '^Server$'),
                 str(idrac_rule and (idrac_rule.manufacturer, idrac_rule.role_pattern, idrac_rule.pattern)),
+                group='hygiene',
+            )
+            voss_rule = M.ZabbixTemplateRule.objects.filter(name='Extreme VOSS', enabled=True).select_related('zabbixtemplate').first()
+            voss_tpl_name = (voss_rule.zabbixtemplate.name if voss_rule and voss_rule.zabbixtemplate_id else None) or ''
+            record(
+                'voss_rule_extreme_voss',
+                bool(voss_rule and 'Extreme VOSS' in voss_tpl_name and 'Network Generic' not in voss_tpl_name),
+                str(voss_tpl_name or None),
+                group='hygiene',
+            )
+            snmp_if = M.ZabbixHostInterface.objects.filter(
+                assigned_object_type=ct(M.ZabbixConfigurationGroup),
+                assigned_object_id=snmp_group.id,
+                type=ZabbixHostInterfaceTypeChoices.SNMP,
+            ).first()
+            record(
+                'snmp_v3_md5_des_push',
+                bool(
+                    snmp_if
+                    and snmp_if.snmp_pushcommunity
+                    and snmp_if.snmpv3_authentication_protocol == ZabbixInterfaceSNMPV3AuthProtoChoices.MD5
+                    and snmp_if.snmpv3_privacy_protocol == ZabbixInterfaceSNMPV3PrivProtoChoices.DES
+                    and snmp_if.snmpv3_authentication_passphrase != '{$SNMP_AUTHPASS}'
+                    and snmp_if.snmpv3_privacy_passphrase != '{$SNMP_PRIVPASS}'
+                ),
+                str(
+                    None
+                    if snmp_if is None
+                    else (
+                        snmp_if.snmp_pushcommunity,
+                        snmp_if.snmpv3_authentication_protocol,
+                        snmp_if.snmpv3_privacy_protocol,
+                        snmp_if.snmpv3_authentication_passphrase[:3] + '…' if snmp_if.snmpv3_authentication_passphrase else '',
+                    )
+                ),
                 group='hygiene',
             )
             record('vm_snmp_cg_transport_only', M.ZabbixTemplateAssignment.objects.filter(assigned_object_type=ct(M.ZabbixConfigurationGroup), assigned_object_id=vm_snmp_group.id).count() == 0, 'ok', group='hygiene')

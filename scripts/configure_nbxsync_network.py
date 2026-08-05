@@ -327,7 +327,7 @@ def step_role_macros() -> None:
 
 
 def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
-    """Align with zerotouch step6, but VOSS → Extreme VOSS (not Network Generic)."""
+    """Ensure Extreme platform TemplateRules (VOSS → Extreme VOSS; same as zerotouch)."""
     logger.info('=' * 60)
     logger.info('Network: Extreme platform TemplateRules')
     logger.info('=' * 60)
