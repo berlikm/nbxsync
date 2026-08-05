@@ -1,5 +1,34 @@
 # Changelog
 
+## [Unreleased]
+
+### New features
+
+- Added `exclude_tag` configuration setting to exclude hosts from Zabbix sync entirely via a ZabbixTag assigned to any object in the inheritance chain (`ZabbixTag.tag` name match)
+- Added `ZabbixTemplateRule` model for regex-based template, hostgroup, and tag assignment by platform name (`re.search`, case-insensitive; nested-quantifier patterns rejected at save; 64-char platform-name cap); optional conjunctive criteria `role_pattern` (role regex) and `require_tags` (NetBox tag slugs, all required; all criteria ANDed)
+- Added Site/SiteGroup/Region inheritance paths (appended after role/platform so upgrades do not change Role/Platform precedence); cluster site uses `cluster._site` (NetBox ≥4.2)
+- Added `ZabbixHostBinding`: a durable record of the Zabbix host owned by each NetBox object, so a host can still be retired after its (inherited) assignment disappears
+- Added a background sync job that enumerates Devices/VMs inheriting a Zabbix server assignment, providing zero-touch provisioning for newly created inventory
+- Added `allow_inherited_deletion` (default `False`) so inheritance-driven host deletions are reported with their impact before any Zabbix history is discarded
+- Added `use_oob_ip` on Zabbix Host Interfaces to resolve the interface IP from a device's out-of-band IP, usable on Configuration Groups for fleet-wide out-of-band monitoring
+- Added `adopt_existing_hosts` (default `False`) so binding to a pre-existing Zabbix host is an explicit decision instead of a silent takeover
+
+### Improvements
+
+- Configuration Group interfaces are deduplicated by interface identity, so a second interface of the same Zabbix type is no longer dropped
+- A failing host interface no longer hides the failure: per-interface and template-linkage failures are recorded on the assignment and reported as an aggregated job error
+- Background host reconciliation collects host primary keys with queryset iterators instead of materialising full Device/VM lists
+- Minimum documented NetBox version is 4.2.6 (matches `PluginConfig.min_version` and cluster `_site` scope)
+- Hierarchy and Configuration Group host interfaces are detached as per-device copies at resolve time; ConfigGroup templates expand without waiting on the RQ propagate job
+- Plugin defaults align with docs: `attach_objtag=True`, `sot.proxy=netbox`, and explicit `allow_inherited_deletion` / `adopt_existing_hosts` off
+
+### Bug fixes
+
+- `hostinterface.get` now requests `output='extend'` so transient interfaces keep type/main/port and are not deleted on the next verify
+- Retained OOB interfaces still count toward template interface requirements, so SNMP templates are not cleared while the remote IF is kept
+- Automatic maintenance windows resolve hosts from `ZabbixHostBinding` after identity migrates off `ZabbixServerAssignment.hostid`
+- `check_default_hostinterface` no longer fails when NetBox has no default for a type that still exists remotely; main flags are re-reconciled after interface sync
+
 ## [1.0.0] - Initial Release
 
 - Loads of features, :)
@@ -84,6 +113,40 @@ None
 
 None
 
+## [1.0.4] - Minor update
+
+- Updated the documentation
+
+### New features
+
+- Updated the Zabbix Template Assignment and Zabbix Tag Assignment forms so no duplicate templates/tags can't be assigned ([#78])
+- Zabbix Macro's now support Jinja2 templated values ([#83])
+
+### Bug fixes
+
+- Fixed issue with internationalization of field set names on forms ([#39])
+- Fixed typo in last_sync_message ([#77])
+- Fixed issue with API Schema not being able to generated ([#79])
+- Manual device sync fails for templated Zabbix hostgroups when the rendered local hostgroup does not already exist ([#81])
+- Ensure that the worker doesn't crash on certain race conditions with regards to the hostinterfacesync job ([#86])
+- Fix issue with DeleteHost so it now actually removed the device/object from Zabbix when its deleted from NetBox ([#88])
+
+## [1.0.5] - Minor update
+
+### New features
+
+-
+
+### Bug fixes
+
+- Fixed issue where syncing to multiple Zabbix Servers failed ([#90])
+- Fixed issue where local_address was cleared, even when the proxy is part of a ProxyGroup ([#91])
+- Removed duplicate line in ProxySync ([#91])
+- Fixed typo (`acept` vs `accept`) in ProxySync ([#91])
+
+### Breaking changes
+
+- Dropped support for NetBox < 4.2.6 in order to support NetBox 4.6.X ([#98])
 
 [#5]: https://github.com/OpensourceICTSolutions/nbxsync/issues/5
 [#20]: https://github.com/OpensourceICTSolutions/nbxsync/issues/20
@@ -106,3 +169,12 @@ None
 [#68]: https://github.com/OpensourceICTSolutions/nbxsync/issues/68
 [#71]: https://github.com/OpensourceICTSolutions/nbxsync/issues/71
 [#74]: https://github.com/OpensourceICTSolutions/nbxsync/issues/74
+[#77]: https://github.com/OpensourceICTSolutions/nbxsync/issues/77
+[#78]: https://github.com/OpensourceICTSolutions/nbxsync/issues/78
+[#79]: https://github.com/OpensourceICTSolutions/nbxsync/issues/79
+[#81]: https://github.com/OpensourceICTSolutions/nbxsync/issues/81
+[#86]: https://github.com/OpensourceICTSolutions/nbxsync/issues/86
+[#88]: https://github.com/OpensourceICTSolutions/nbxsync/issues/88
+[#90]: https://github.com/OpensourceICTSolutions/nbxsync/issues/90
+[#91]: https://github.com/OpensourceICTSolutions/nbxsync/issues/91
+[#98]: https://github.com/OpensourceICTSolutions/nbxsync/issues/98

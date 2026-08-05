@@ -79,14 +79,23 @@ Describes how NetBox IP/DNS maps to Zabbix interfaces.
 
 Includes rich SNMP and TLS configuration fields.
 
-| Field            | Description                                |
-|------------------|--------------------------------------------|
-| `ip` / `dns`     | IP or DNS to use                           |
-| `type`           | Zabbix type (agent, SNMP, IPMI...)         |
-| `port`           | Connection port                            |
-| `tls_*`          | TLS credentials if applicable              |
-| `snmp_*`         | SNMPv3 credentials                         |
-| `assigned_object`| Mapped to NetBox interface or device       |
+| Field            | Description                                                          |
+|------------------|----------------------------------------------------------------------|
+| `ip` / `dns`     | IP or DNS to use                                                     |
+| `type`           | Zabbix type (agent, SNMP, IPMI...)                                   |
+| `port`           | Connection port                                                      |
+| `use_oob_ip`     | Resolve the IP from the device's `oob_ip` instead of a static IP      |
+| `tls_*`          | TLS credentials if applicable                                        |
+| `snmp_*`         | SNMPv3 credentials                                                   |
+| `assigned_object`| Mapped to NetBox interface or device                                  |
+
+#### Out-of-band interfaces
+
+`use_oob_ip` makes an interface follow the device's out-of-band IP instead of a static `ip` or the primary IP, which is how switches, PDUs and servers with a dedicated management port are usually monitored. It is vendor-agnostic: any device with an `oob_ip` works, and setting it on a Configuration Group applies it to every device in that group.
+
+Only Devices have an out-of-band IP, so the field is rejected on Virtual Machines and Virtual Device Contexts.
+
+When a device has no `oob_ip`, the interface is skipped for that device: it is not created, and templates that require it are not linked, so the rest of the host still syncs. An interface that already exists in Zabbix is retained and the skip is logged; it is deleted only when `allow_inherited_deletion` is enabled. This keeps a Configuration Group with an OOB interface usable across a mixed fleet where only part of it is cabled for out-of-band access.
 
 ## Sync & Assignment Models
 
@@ -97,10 +106,21 @@ Links a NetBox object to a Zabbix server/host/proxy.
 | Field            | Description                                                       |
 |------------------|-------------------------------------------------------------------|
 | `zabbixserver`   | Destination server                                                |
-| `hostid`         | Zabbix host ID                                                    |
+| `hostid`         | Zabbix host ID (legacy; prefer `ZabbixHostBinding`)               |
 | `zabbixproxy`    | (Optional) specific proxy                                         |
 | `assigned_object`| Device, VM, etc.                                                  |
 | `sync_enabled`   | Determines if automatic synchronisation from/to Zabbix is enabled |
+
+### `ZabbixHostBinding`
+
+Internal sync identity for the Zabbix host owned by a NetBox Device/VM. There is no UI or public API for bindings by design — operators manage hosts via assignments and sync jobs. Bindings let reconciliation retire a host after an inherited assignment disappears, and they are the durable source for maintenance-window host lists.
+
+| Field             | Description                                      |
+|-------------------|--------------------------------------------------|
+| `zabbixserver`    | Destination server                               |
+| `assigned_object` | Device or VM                                     |
+| `hostid`          | Zabbix host ID                                   |
+| `hostname`        | Last synced host name                            |
 
 ---
 
@@ -110,6 +130,16 @@ Defines host groups and their mapping.
 
 - `ZabbixHostgroup`: static groups defined in Zabbix
 - `ZabbixHostgroupAssignment`: assign them to NetBox objects
+
+#### Nested host groups
+
+Zabbix nesting is a naming convention: `Network/Region/Site` denotes a subgroup, but Zabbix stores no relation between groups. Three consequences:
+
+- Creating `A/B/C` never creates `A` or `A/B`, and Zabbix inherits user-group permissions into a subgroup only if the parent already exists. nbxsync therefore materializes missing path segments parent-first on both creation paths (assignment sync and on-demand creation during host sync).
+- Renaming a group never cascades to subgroups. To rename, edit the `ZabbixHostgroup` `value` (the Zabbix-facing name; `name` is only the NetBox label): the stored `groupid` lets sync rename the group in place, keeping hosts and permissions. Changing a Jinja template, by contrast, produces a new path; hosts migrate on the next sync and the old path remains as an empty group.
+- Path segments must be non-empty (no leading/trailing/double slashes, no slash escaping); Zabbix rejects such names at the API.
+
+Because nbxsync follows the additive model and never deletes groups, empty groups left behind by template changes are housekeeping handled outside the plugin's sync core.
 
 ---
 

@@ -9,7 +9,7 @@ Also, replace `netbox_secrets` with `nbxsync` obviously.
 ## Normal install
 ### Prerequisites
 
-- NetBox >= 4.x
+- NetBox >= 4.2.6
 - Python >= 3.8
 - Zabbix server >= 7.0
 
@@ -33,7 +33,7 @@ If you want to change the default configuration, can add the following configura
 ```python title="netbox/configuration.py"
 PLUGINS = ['nbxsync']
 PLUGINS_CONFIG = {
-    "nbxsync": {
+    'nbxsync': {
         'sot': {
             'proxygroup': 'netbox',
             'proxy': 'netbox',
@@ -85,23 +85,28 @@ PLUGINS_CONFIG = {
             ['cluster'],
             ['cluster', 'type'],
             ['type'],
+            ['device', 'site'],
+            ['site'],
+            ['site', 'group'],
+            ['site', 'region'],
+            ['cluster', '_site'],
         ],
         'backgroundsync': {
             'objects': {
                 'enabled': True,
-                'interval': 60, # 1 hour
+                'interval': 60,  # 1 hour
             },
             'templates': {
                 'enabled': True,
-                'interval': 1440, # 24 hours
+                'interval': 1440,  # 24 hours
             },
             'proxies': {
                 'enabled': True,
-                'interval': 1440, # 24 hours
+                'interval': 1440,  # 24 hours
             },
             'maintenance': {
                 'enabled': True,
-                'interval': 15, # 15 minutes
+                'interval': 15,  # 15 minutes
             },
         },
         'no_alerting_tag': 'NO_ALERTING',
@@ -110,9 +115,21 @@ PLUGINS_CONFIG = {
         'attach_objtag': True,
         'objtag_type': 'nb_type',
         'objtag_id': 'nb_id',
+        # Zero-touch safety gates (safe defaults — leave off until reviewed)
+        'exclude_tag': '',
+        'allow_inherited_deletion': False,
+        'adopt_existing_hosts': False,
+        'custom_field_hostname': '',
+        'custom_field_display_name': '',
     }
 }
 ```
+
+!!! note "Large fleets"
+    With zero-touch enabled, `backgroundsync.objects.interval` of `60` (minutes)
+    can enqueue a full-fleet reconciliation every hour. For large inventories,
+    raise the interval (for example `360`) before turning on
+    `allow_inherited_deletion`.
 
 #### Run migrations
 

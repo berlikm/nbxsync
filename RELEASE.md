@@ -1,6 +1,6 @@
 # Release flow
 
-Releases are created from **`main`** after merging the **release PR** from `develop`.
+Releases are created from **`main`** after merging the **release PR** from `development`.
 The release workflow is triggered by a successful run of the **CI** workflow (`workflow_run`) for a **tag**. CI also runs on every commit and on tags.
 
 > The release will only proceed if:
@@ -12,11 +12,11 @@ The release workflow is triggered by a successful run of the **CI** workflow (`w
 
 ## 1) Create the release PR
 
-1. Open a PR from **`develop` → `main`**.
+1. Open a PR from **`development` → `main`**.
 2. Ensure CI passes.
 3. Merge the PR into `main`.
 
-> This guarantees the release contains exactly what was reviewed and tested on `develop`.
+> This guarantees the release contains exactly what was reviewed and tested on `development`.
 
 ---
 
@@ -75,7 +75,7 @@ Poetry version is set by the pipeline; you don’t change pyproject.toml manuall
 2) Merge after CI passes.
 3) Tag a new patch version (e.g., 1.4.1) on main and push.
 4) Release runs automatically as above.
-5) Back-merge/cherry-pick into develop.
+5) Back-merge/cherry-pick into `development`.
 
 ## 6) When a release is skipped
 
