@@ -4,8 +4,7 @@
 **Priority order:** Device health → uplinks/ports → Cato & FortiGate → Services/SLA → ISP circuit monitoring  
 **Stack:** NetBox + nbxsync + Zabbix 7 · Extreme EXOS / VOSS · HiveOS APs (XIQ Pilot) · (later) Cato · FortiGate
 
-**Port identity:** Grammar **locked** at 64 (VOSS CLI `WORD<0-64>` + EXOS ifAlias default). Always-emit SPEED; `X-STK`/`X-ISC`/`X-MLAG` restored.  
-**Open:** SNMP canaries only (VOSS `name`→OID; EXOS field→ifAlias). See `docs/port-identity-foundation.md`.
+**Port identity:** locked baseline in `docs/port-identity-foundation.md` (64-char grammar, always-emit SPEED). Open items live in that doc’s **TODO**.
 
 ---
 
@@ -21,28 +20,16 @@ This plan is **monitoring capability** (what we monitor, in what order).
 
 **Relationship:** Track A defines *what* each phase needs. Track B delivers *how* it is automated from NetBox. Do not mix “build HiveOS template items” and “publish display-string LLD filters to Zabbix” into one phase checkbox unless deliberately scheduled as a dependency handoff.
 
-**Port identity (locked — Track A design):**
+**Port identity (locked — Track A design):** see `docs/port-identity-foundation.md`.
 
 ```
-BUDGET = 64 (VOSS name WORD<0-64> + EXOS ifAlias default)
-  Always emit SPEED | real far-end IDs | X-STK/X-ISC/X-MLAG
-  No ≤15 fiction | colon forbidden → hyphen
-
-OPEN CANARIES:
-  1) VOSS name → ifAlias or ifDescr? (per-platform OID if needed)
-  2) EXOS display-string vs description-string → ifAlias precedence
-
-GRAMMAR: CLASS[-SPEED]-ID UPPERCASE | UC UD UA UP MON W TMON | X
-PARSE: EMPTY | PARSED
-MIGRATION: generator overwrite → clean baseline
-ACCESS: no safety net without label
-HYBRID: admin-down spares; X only if up-but-uninteresting; MON-ID not empty
-W: link/flap/errors now | TMON: INFO + audit cadence
-GENERATOR overwrite + display_protect | check ingest loop
-LAG members only | gate absolute-expect on clean diff
+BUDGET = 64 | Always emit SPEED | CLASS[-SPEED]-ID | X-STK/X-ISC/X-MLAG
+PARSE: EMPTY | PARSED | overwrite legacy → clean baseline → absolute-expect
+ACCESS opt-in | HYBRID admin-down spares | LAG members only
+GENERATOR + display_protect
 ```
 
-Full detail: `docs/port-identity-foundation.md`.
+Full detail + TODO: `docs/port-identity-foundation.md`.
 
 ```
 Track A (this plan)          Track B (separate task)
