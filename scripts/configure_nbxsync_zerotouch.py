@@ -170,6 +170,7 @@ SNMP_ROLES = [
     'Switch Dist',
     'Switch Access',
     'Switch Mgmt',
+    'Switch Hybrid',
     'Access Point',
     'Firewall',
     'Network Device',
