@@ -1,0 +1,305 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: 36bff6c29af64692839d077febfc7079
+    name: Templates/Network devices
+  templates:
+  - uuid: 570621b1d90a494997f022ba1e6da2c4
+    template: Extreme Port Speed Expect by SNMP
+    name: Extreme Port Speed Expect by SNMP
+    description: 'Thin template: absolute ifHighSpeed expectation from ifAlias grammar,
+      sustained util vs intended speed, outbound discards.
+
+
+      Own LLD macros ({$PORTID.LLD.*}) ΓÇö do not reuse {$NET.IF.IFALIAS.*}.
+
+
+      See docs/extreme-switching-zabbix.md ┬ºA.5 / ┬ºA.6.4.
+
+      '
+    groups:
+    - name: Templates/Network devices
+    discovery_rules:
+    - uuid: b9419935f0b34cad9eb466befd390292
+      name: Port speed-expect discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#IFALIAS},1.3.6.1.2.1.31.1.1.1.18,{#IFNAME},1.3.6.1.2.1.31.1.1.1.1,{#IFTYPE},1.3.6.1.2.1.2.2.1.3,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8]
+      key: net.if.speedexpect.discovery
+      delay: 15m
+      lifetime: '0'
+      enabled_lifetime: '0'
+      description: 'Physical ports with monitored class labels. Parses CLASS[-SPEED]-ID
+        into {#IF.CLASS}, {#IF.SPEED.EXPECTED} (Mbps), {#IF.UTIL.MULT}.
+
+        '
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#IFADMINSTATUS}'
+          value: '^1$'
+        - macro: '{#IFALIAS}'
+          value: '{$PORTID.LLD.IFALIAS.MATCHES}'
+        - macro: '{#IFTYPE}'
+          value: '{$PORTID.LLD.IFTYPE.MATCHES}'
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var data = JSON.parse(value);
+          var speedMap = {
+            '100M': 100, '1G': 1000, '2G5': 2500, '5G': 5000,
+            '10G': 10000, '25G': 25000, '40G': 40000, '100G': 100000, '400G': 400000
+          };
+          var classDefault = { 'USW': 10000, 'US': 10000, 'UP': 1000, 'MON': 1000 };
+          var out = [];
+          for (var i = 0; i < data.length; i++) {
+            var row = data[i];
+            var alias = String(row['{#IFALIAS}'] || '').toUpperCase();
+            var m = alias.match(/^(USW|US|UP|MON)(?:-(100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(?:-.*)?$/);
+            if (!m) {
+              continue;
+            }
+            var cls = m[1];
+            var expected = m[2] ? speedMap[m[2]] : classDefault[cls];
+            var bps = expected * 1000000;
+            row['{#IF.CLASS}'] = cls;
+            row['{#IF.SPEED.EXPECTED}'] = String(expected);
+            row['{#IF.UTIL.MULT}'] = String(100 / bps);
+            out.push(row);
+          }
+          return JSON.stringify(out);
+      item_prototypes:
+      - uuid: bca40326778c4369b148920d117851ac
+        name: 'Interface {#IFNAME}({#IFALIAS}): Speed (speed-expect)'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.2.1.31.1.1.1.15.{#SNMPINDEX}'
+        key: 'net.if.speedexpect.speed[{#SNMPINDEX}]'
+        delay: 1m
+        history: 7d
+        trends: 30d
+        units: Mbps
+        description: 'Live ifHighSpeed. Compared to {#IF.SPEED.EXPECTED} from label.
+          Unique key ΓÇö does not collide with stock net.if.speed[].
+
+          '
+        tags:
+        - tag: component
+          value: network
+        - tag: class
+          value: '{#IF.CLASS}'
+        preprocessing:
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 1h
+        trigger_prototypes:
+        - uuid: a13e2aaf633f4b39aeecee9bf6f3271c
+          expression: 'last(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.speed[{#SNMPINDEX}])<>{#IF.SPEED.EXPECTED}
+            and min(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],5m)=1'
+          name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Speed not equal to expected {#IF.SPEED.EXPECTED} Mbps'
+          event_name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Speed {ITEM.LASTVALUE1} Γëá expected {#IF.SPEED.EXPECTED} Mbps (class {#IF.CLASS})'
+          priority: WARNING
+          description: 'Absolute speed expectation from ifAlias. Settle on oper-status
+            (dense), not on speed (discard-unchanged heartbeat).
+
+            '
+          tags:
+          - tag: scope
+            value: performance
+          dependencies:
+          - name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Link down (speed-expect)'
+            expression: 'max(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#1)=2
+              and last(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#1)<>last(/Extreme
+              Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#2)'
+      - uuid: 56b5213b2973441fb5559b0eaf9614c8
+        name: 'Interface {#IFNAME}({#IFALIAS}): Operational status (speed-expect)'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.2.1.2.2.1.8.{#SNMPINDEX}'
+        key: 'net.if.speedexpect.status[{#SNMPINDEX}]'
+        delay: 1m
+        history: 7d
+        trends: '0'
+        description: Oper status for speed-expect settle and link-down dependency.
+        valuemap:
+          name: IF-MIB::ifOperStatus
+        tags:
+        - tag: component
+          value: network
+        trigger_prototypes:
+        - uuid: 9eb4833a60784929899e0a4b49e9d9f3
+          expression: 'max(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#1)=2
+            and last(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#1)<>last(/Extreme
+            Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#2)'
+          name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Link down (speed-expect)'
+          priority: WARNING
+          description: 'Dependency anchor for speed-expect / util. Prefer platform
+            template link-down for ops; this exists so thin-template triggers can
+            depend without cross-LLD references.
+
+            '
+          manual_close: 'YES'
+          tags:
+          - tag: scope
+            value: availability
+      - uuid: c58d08365103455a8acdd8346621aad0
+        name: 'Interface {#IFNAME}({#IFALIAS}): Bits received (speed-expect)'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.2.1.31.1.1.1.6.{#SNMPINDEX}'
+        key: 'net.if.speedexpect.in[{#SNMPINDEX}]'
+        delay: 1m
+        history: 7d
+        trends: 30d
+        value_type: FLOAT
+        units: bps
+        tags:
+        - tag: component
+          value: network
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+          parameters:
+          - ''
+        - type: MULTIPLIER
+          parameters:
+          - '8'
+      - uuid: 6391f2f561154d9cb4bac8d65f120ca1
+        name: 'Interface {#IFNAME}({#IFALIAS}): Bits sent (speed-expect)'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.2.1.31.1.1.1.10.{#SNMPINDEX}'
+        key: 'net.if.speedexpect.out[{#SNMPINDEX}]'
+        delay: 1m
+        history: 7d
+        trends: 30d
+        value_type: FLOAT
+        units: bps
+        tags:
+        - tag: component
+          value: network
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+          parameters:
+          - ''
+        - type: MULTIPLIER
+          parameters:
+          - '8'
+        trigger_prototypes:
+        - uuid: c963fae0bfed4374b5aec1a5b53c7ca1
+          expression: 'avg(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.in[{#SNMPINDEX}],1h)>({$IF.UTIL.MAX:"{#IF.CLASS}"}/100)*{#IF.SPEED.EXPECTED}*1000000
+            or avg(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.out[{#SNMPINDEX}],1h)>({$IF.UTIL.MAX:"{#IF.CLASS}"}/100)*{#IF.SPEED.EXPECTED}*1000000'
+          name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Sustained high utilisation'
+          event_name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Sustained util >{$IF.UTIL.MAX:"{#IF.CLASS}"}% of intended {#IF.SPEED.EXPECTED} Mbps (1h)'
+          priority: WARNING
+          description: 'Capacity ΓÇö 1h average vs intended speed from label. Global
+            {$IF.UTIL.MAX}=101 keeps this off until stage 6; set {$IF.UTIL.MAX:"USW"}=80
+            to opt in.
+
+            '
+          tags:
+          - tag: scope
+            value: capacity
+          dependencies:
+          - name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Speed not equal to expected {#IF.SPEED.EXPECTED} Mbps'
+            expression: 'last(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.speed[{#SNMPINDEX}])<>{#IF.SPEED.EXPECTED}
+              and min(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],5m)=1'
+      - uuid: 029f661e11d643df958a392341b4cd57
+        name: 'Interface {#IFNAME}({#IFALIAS}): Outbound discards (speed-expect)'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.2.1.2.2.1.19.{#SNMPINDEX}'
+        key: 'net.if.speedexpect.outdiscards[{#SNMPINDEX}]'
+        delay: 1m
+        history: 7d
+        trends: 30d
+        value_type: FLOAT
+        units: pps
+        tags:
+        - tag: component
+          value: network
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+          parameters:
+          - ''
+        trigger_prototypes:
+        - uuid: d5e125b0d7aa4994a0b11d820bdcdcd5
+          expression: 'min(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.outdiscards[{#SNMPINDEX}],15m)>{$IF.DISCARDS.WARN}'
+          name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Outbound discards'
+          event_name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Outbound discards >{$IF.DISCARDS.WARN} pps (15m)'
+          priority: WARNING
+          description: Traffic actually dropped ΓÇö user impact. Enable stage 6.
+          tags:
+          - tag: scope
+            value: capacity
+          dependencies:
+          - name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Link down (speed-expect)'
+            expression: 'max(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#1)=2
+              and last(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#1)<>last(/Extreme
+              Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#2)'
+      - uuid: 23658f77276a4cce8ff33d2c4b0bc1b5
+        name: 'Interface {#IFNAME}({#IFALIAS}): Inbound util % of intended'
+        type: DEPENDENT
+        key: 'net.if.speedexpect.util.in[{#SNMPINDEX}]'
+        delay: '0'
+        history: 7d
+        trends: 30d
+        value_type: FLOAT
+        units: '%'
+        description: 'Dashboard helper ΓÇö custom multiplier {#IF.UTIL.MULT} on bps.
+          '
+        preprocessing:
+        - type: MULTIPLIER
+          parameters:
+          - '{#IF.UTIL.MULT}'
+        master_item:
+          key: 'net.if.speedexpect.in[{#SNMPINDEX}]'
+        tags:
+        - tag: component
+          value: network
+      - uuid: 5b9a6cf7320d4bd69fd41ccbf2c95969
+        name: 'Interface {#IFNAME}({#IFALIAS}): Outbound util % of intended'
+        type: DEPENDENT
+        key: 'net.if.speedexpect.util.out[{#SNMPINDEX}]'
+        delay: '0'
+        history: 7d
+        trends: 30d
+        value_type: FLOAT
+        units: '%'
+        preprocessing:
+        - type: MULTIPLIER
+          parameters:
+          - '{#IF.UTIL.MULT}'
+        master_item:
+          key: 'net.if.speedexpect.out[{#SNMPINDEX}]'
+        tags:
+        - tag: component
+          value: network
+    macros:
+    - macro: '{$IF.DISCARDS.WARN}'
+      value: '1'
+      description: Outbound discard rate (pps) warning ΓÇö tune from baseline (stage 6).
+    - macro: '{$IF.UTIL.MAX}'
+      value: '101'
+      description: Global util threshold; 101 = off. Class context macros opt in.
+    - macro: '{$IF.UTIL.MAX:"USW"}'
+      value: '80'
+      description: SwitchΓåöswitch sustained util % of intended speed (stage 6).
+    - macro: '{$PORTID.LLD.IFALIAS.MATCHES}'
+      value: '^(USW|US|UP|MON)(-|$)'
+      description: Speed-expect / capacity LLD ΓÇö monitored classes only.
+    - macro: '{$PORTID.LLD.IFTYPE.MATCHES}'
+      value: '^6$'
+      description: Physical ethernet only (exclude LAG aggregates).
+    valuemaps:
+    - uuid: 3aaf390dc3ec4cf4b52189b2f9a93311
+      name: IF-MIB::ifOperStatus
+      mappings:
+      - value: '1'
+        newvalue: up
+      - value: '2'
+        newvalue: down
+      - value: '3'
+        newvalue: testing
+      - value: '4'
+        newvalue: unknown
+      - value: '5'
+        newvalue: dormant
+      - value: '6'
+        newvalue: notPresent
+      - value: '7'
+        newvalue: lowerLayerDown
