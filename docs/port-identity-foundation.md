@@ -23,8 +23,9 @@
 7. **Structural excludes:** prefer **derive from device state** (stack/ISC/MLAG/SPAN); display `XSTK` / `XISC` / … is **override/fallback**, not the only control.  
 8. **LAGs:** explicit rule (§7) before rollout.  
 9. **Access = opt-in** (include classes); **fabric/mgmt = admin-up minus excludes**.  
-10. **No NetBox tags** for monitor/speed intent. Description = prose only.  
-11. Track B owns generate/push, compliance diff, LLD publish.
+10. **Subsidiary hybrid (core∩access):** default-label ports **`XINT`** (exclude); **do not X** client access ports you want monitored, nor uplinks/WAN/AP/`MON` (§6.1).  
+11. **No NetBox tags** for monitor/speed intent. Description = prose only.  
+12. Track B owns generate/push, compliance diff, LLD publish.
 
 ---
 
@@ -129,9 +130,44 @@ Because `UD`/`UA`/`UC` all default **10G**, a standard 10G access↔dist link ne
 |---|---|
 | **Core / Dist / Mgmt** | Admin-up **AND NOT** (auto-structural OR `X*`) **AND NOT** (admin-up empty/unused policy — prefer admin-down unused) |
 | **Access** | Display matches `^(UC\|UD\|UA\|UP\|MON\|W\|M)` |
+| **Subsidiary hybrid (core∩access)** | Same LLD as fabric: admin-up **AND NOT** `X*` — but **labeling policy inverted** (§6.1) |
 | **AP** | Device health template — not switch-port fabric LLD |
 
 Unused enabled ports on fabric: **disable** (hygiene) — do not rely on “monitor everything admin-up” forever.
+
+### 6.1 Subsidiary sites — core that also acts as access
+
+At many subsidiaries one switch is **both core and access** (clients hang off the same box). Fabric “monitor all admin-up” would drown in client-edge noise **or** force pure access opt-in and miss unlabeled ports.
+
+**Locked labeling policy for hybrid role:**
+
+```
+DEFAULT: mark port XINT (exclude from Zabbix port alerts)
+EXCEPT:  do NOT mark X on ports that should stay monitored:
+         • client access ports (edge drops you care about)
+         • AP ports → UP-…
+         • uplinks / toward other switches → UC|UD|UA-…
+         • WAN → W-…
+         • servers / ESX / storage / iDRAC → MON-…
+         • structural still XSTK|XISC|XMLAG|XSPN|XOOB when needed
+```
+
+| Port kind on hybrid switch | Display | Monitored? |
+|---|---|---|
+| Client access (care about) | empty **or** `MON-…` / `M-…` | **Yes** (not `X*`) |
+| Client access (don’t care / spare) | `XINT` | No |
+| AP | `UP-…` | Yes |
+| Uplink / fabric | `UC`/`UD`/`UA`-… | Yes |
+| WAN | `W-…` | Yes |
+| Server / iDRAC / storage | `MON-…` | Yes |
+| Stack / ISC / MLAG / SPAN / OOB | `XSTK` / … | No |
+| Everything else (default) | **`XINT`** | No |
+
+**NetBox:** device role e.g. `Core-Access` / `Subsidiary Core` selects this generator profile: **XINT-fill all**, then clear/overwrite from cables + “monitor client port” flag / interface role.
+
+**Why not pure access opt-in here:** hybrid boxes often need “monitor these client ports” without inventing an include code for every drop — leaving them **non-X** under fabric LLD is enough; use `MON-` when you need speed expect or identity.
+
+**Hygiene:** spare client ports → `XINT` or admin-down; do not leave the whole switch unlabeled.
 
 ---
 
@@ -160,10 +196,12 @@ NetBox: device role + cable far-end + interface.speed (+ LAG membership)
 
 | Input | Becomes |
 |---|---|
-| Cable to dist / access / core / AP | `UD` / `UA` / `UC` / `UP` + short far-end id |
+| Device role = hybrid / subsidiary core-access | **XINT all ports**, then apply exceptions below |
+| Cable to dist / access / core / AP | `UD` / `UA` / `UC` / `UP` + short far-end id (clears XINT) |
+| Client access port flagged monitor | Clear XINT (empty or `MON-…`) |
 | `interface.speed` ≠ class default | insert SPEED token |
 | Endpoint = server/ESX/storage/iDRAC | `MON` (+ `10G` if needed) |
-| Stack/ISC/MLAG/SPAN known | prefer auto-exclude; else push `XSTK` / … |
+| Stack/ISC/MLAG/SPAN known | auto-exclude and/or `XSTK` / … |
 | No cable / guest | Manual set allowed; compliance lists orphans |
 
 **Compliance = diff** (generated vs live ifAlias), not a second rule engine.  
@@ -196,14 +234,15 @@ Hand-typed labels are fallback; typos on access includes are softened by **chang
 | iDRAC 100M | `MON-100M-idr3` | 100M |
 | Storage 10G | `MON-10G-nta` | 10G |
 
-### Structural
+### Subsidiary hybrid (core∩access)
 
-| Scenario | Label (fallback) | Preferred control |
+| Scenario | Display | Monitored? |
 |---|---|---|
-| Stack | `XSTK` | Auto from stack state |
-| ISC | `XISC` | Auto from ISC/MLT/virtual-IST |
-| MLAG peer | `XMLAG` | Auto from MLAG config |
-| SPAN | `XSPN` | Auto from mirror config |
+| Client PC drop (care) | *(empty)* or `MON-pc12` | Yes |
+| Spare / unused client port | `XINT` | No |
+| AP on same switch | `UP-ap01` | Yes |
+| WAN on same switch | `W-SC1` | Yes |
+| Default everything else | `XINT` | No |
 
 ### Length
 
@@ -253,6 +292,7 @@ Speed mismatch is **necessary but narrow**. Phase 2 templates still include **er
 - [ ] Auto structural exclude path identified per EXOS/VOSS  
 - [ ] Generate-from-NetBox dry-run on canary  
 - [ ] Change-detect + absolute expect both tested with 5m settle  
+- [ ] Hybrid subsidiary role: XINT-default; client/uplink/AP/WAN/MON not X  
 - [ ] ifAlias mapping confirmed EXOS + VOSS  
 
 ---
@@ -272,6 +312,11 @@ ZABBIX:
   change(ifHighSpeed) safety net (settled)
   absolute expect where UC|UD|UA|UP|MON labeled
   W: no absolute speed; LAG: expect on members only
+
+HYBRID SUBSIDIARY (core∩access)
+  DEFAULT label XINT on all ports
+  EXCEPT do not X: client access (care), UP, UC/UD/UA, W, MON
+  LLD = admin-up AND NOT X*  (same as fabric)
 
 NETBOX → generate/push label (preferred)
 DESCRIPTION = prose; no monitor tags

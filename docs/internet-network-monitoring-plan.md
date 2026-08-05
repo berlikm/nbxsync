@@ -42,6 +42,8 @@ EXAMPLES
 
 ZABBIX: change(ifHighSpeed) safety net + absolute expect when labeled
 LAG: speed expect on members only — not aggregate sum
+HYBRID SUBSIDIARY (core∩access): default XINT all ports;
+  EXCEPT do not X client access (care) / UP / UC|UD|UA / W / MON
 NETBOX: generate/push label (preferred); description = prose; no tags
 ```
 
@@ -132,7 +134,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
 | P0.2 | **Lock port SoT:** Extreme display string only (≤15). Reject NetBox monitor-tags for day-to-day ops |
 | P0.3 | **Grammar + defaults locked:** `UC/UD/UA=10G`, `UP/MON=1G`; hyphen grammar; no `IDR`; LAG + change-detect rules |
-| P0.4 | Role matrix: core/dist/mgmt = admin-up − `X:…`; access = include codes only |
+| P0.4 | Role matrix: fabric admin-up−X*; access include-only; **hybrid subsidiary = XINT-default** (§6.1 foundation) |
 | P0.5 | Pilot lists: 1–2 EXOS, 1 VOSS, sample APs |
 | P0.6 | Site class field optional (`production`/`sales`/`normal`) — same metrics for now (alert routing later = Track B) |
 
@@ -141,7 +143,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 - [ ] Platform counts known  
 - [ ] Include + exclusion grammar agreed (`UC/UD/UA/UP/MON` vs `X*`; WAN = `W`)  
 - [ ] Defaults: UC=UD=UA=10G (symmetric); UP=MON=1G  
-- [ ] LAG member rule + change-detect safety net agreed  
+- [ ] Role matrix: fabric / access / **hybrid subsidiary (XINT-default)**  
 - [ ] Pilots named  
 - [ ] Owners for VOSS + HiveOS template builds named  
 
@@ -440,10 +442,10 @@ Track as its **own backlog item / project**, linked to but not inside Phases 1�
 | Phase | What we scope | Display codes |
 |---|---|---|
 | 2 | Fabric / AP / MON | `UC/UD/UA/UP/MON` + optional SPEED; excludes `XSTK/XISC/XMLAG/…` |
-| 5 | Internet circuits | `W:…` (+ Circuit object in NetBox) |
+| 5 | Internet circuits | `W` (+ Circuit object); no absolute speed trigger |
 
 **Design (Track A):** display-string codes + which template / LLD mode watches them.  
-**Automation (Track B):** publish LLD from display; compliance reports; optional cable→display script.  
+**Automation (Track B):** NetBox generate/push display; shared parser; compliance **diff**; auto structural excludes.  
 **Reject:** NetBox day-to-day monitor-tags; “monitor everything.”
 
 ---
