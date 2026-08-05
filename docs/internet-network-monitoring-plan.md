@@ -4,8 +4,8 @@
 **Priority order:** Device health → uplinks/ports → Cato & FortiGate → Services/SLA → ISP circuit monitoring  
 **Stack:** NetBox + nbxsync + Zabbix 7 · Extreme EXOS / VOSS · HiveOS APs (XIQ Pilot) · (later) Cato · FortiGate
 
-**Port identity (locked):** Extreme port label → SNMP **`ifAlias`** (NetBox-generated).  
-EXOS: **64-char** ifAlias budget confirmed (not 15). VOSS: canary open.  
+**Port identity (locked):** Extreme port label → SNMP (prefer **`ifAlias`**).  
+**Grammar budget = 64** (VOSS `name` + EXOS ifAlias default). Always-emit SPEED.  
 See `docs/port-identity-foundation.md`.
 
 ---
@@ -25,13 +25,13 @@ This plan is **monitoring capability** (what we monitor, in what order).
 **Port identity (locked — Track A design):**
 
 ```
-EXOS CONFIRMED: display-string=20; description-string=255; ifAlias=64 default
-  No vendor ≤15 | colon forbidden → hyphen
-  Canary: which field wins ifAlias when both set
-VOSS: unconfirmed → short profile until canary / CLI ref
+BUDGET = 64 (VOSS name WORD<0-64> + EXOS ifAlias default)
+  Always emit SPEED | real far-end IDs | X-STK/X-ISC/X-MLAG
+  No ≤15 fiction | colon forbidden → hyphen
 
-EXTENDED (EXOS primary): always SPEED; real IDs; X-STK/X-ISC/X-MLAG
-SHORT fallback: omit default tokens; short IDs
+OPEN CANARIES:
+  1) VOSS name → ifAlias or ifDescr? (per-platform OID if needed)
+  2) EXOS display-string vs description-string → ifAlias precedence
 
 GRAMMAR: CLASS[-SPEED]-ID UPPERCASE | UC UD UA UP MON W TMON | X
 PARSE: EMPTY | PARSED | UNPARSEABLE
@@ -127,10 +127,10 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 | ID | Deliverable |
 |---|---|
 | P0.1 | Inventory: EXOS vs VOSS switches; HiveOS/XIQ APs; Forti; Cato sites |
-| P0.2 | **EXOS canary:** set display-string + description-string → SNMP ifAlias winner/truncation at 64 |
-| P0.3 | **VOSS canary** (or ingest Fabric Engine CLI Commands Reference): port name → ifAlias length |
-| P0.4 | Lock **extended (64)** as EXOS primary; short = fallback; reject fictional ≤15 |
-| P0.5 | Grammar: uppercase; no colon; split X regex; UNPARSEABLE; always-emit token on extended |
+| P0.2 | **VOSS canary:** `name` → SNMP ifAlias (`…1.1.1.18`) or ifDescr; note per-platform OID if needed |
+| P0.3 | **EXOS canary:** display-string + description-string → ifAlias winner / truncate at 64 |
+| P0.4 | Lock grammar budget **64**; always-emit SPEED; controlled `X-STK`/…; reject ≤15 |
+| P0.5 | Grammar: uppercase; no colon; split X regex; UNPARSEABLE |
 | P0.6 | Role matrix + hybrid admin-down spares; access safety-net limit stated |
 | P0.7 | Legacy ifAlias UNPARSEABLE inventory + ingest-loop check |
 | P0.8 | Pilot lists; site class optional |
@@ -195,7 +195,7 @@ Phase 6  Profiles / util% / maintenance (optional maturity)
 
 **Objective:** Fabric / AP / endpoint ports monitored with universal `CLASS[-SPEED]-ID` grammar; exclude via `X`; LAG rules explicit.
 
-**SoT on box:** Extreme field that drives **`ifAlias`** (EXOS: prefer `description-string` after canary) — **generated from NetBox**. Extended EXOS budget **64** chars; short profile for VOSS until proven.
+**SoT on box:** Extreme label that Zabbix reads via SNMP (**64-char budget**). EXOS: prefer `description-string` after canary. VOSS: `name` / `name port <list>` — confirm OID. Generator always emits SPEED.
 
 ### Grammar
 
@@ -206,7 +206,7 @@ SPEED = 100M|1G|2G5|5G|10G|25G|40G|100G|400G
 X notes (generated): X-STK|X-ISC|X-MLAG|X-SPN|X-OOB|X-OTH
 ```
 
-Extended profile: **always** emit SPEED. Short fallback: omit when = class default.  
+Extended profile (**64 common**): **always** emit SPEED.  
 Parse states: `EMPTY` | `PARSED` | **`UNPARSEABLE`** (legacy ≠ empty).
 
 ### Class defaults → Zabbix expected (if token omitted)
@@ -252,8 +252,8 @@ Same LLD as fabric (`admin-up AND NOT X`). **Do not X-fill every port.**
 
 | ID | Work | Detail |
 |---|---|---|
-| P2.0 | ifAlias canary + profile choice | EXOS+VOSS; extended vs short |
-| P2.1 | Shared parser | UPPERCASE; split X; UNPARSEABLE |
+| P2.0 | SNMP canaries | VOSS name→OID; EXOS field→ifAlias precedence |
+| P2.1 | Shared parser | UPPERCASE; split X; UNPARSEABLE; 64-char validate |
 | P2.2 | Generator + protect | Authoritative push; `display_protect` |
 | P2.3 | Ingest loop check | ifAlias must not clobber generator inputs |
 | P2.4 | Port template | link/flap/errors; speed; change vs stable-up; maint suppress |
