@@ -15,11 +15,13 @@ CLASS-SPEED-ID
 | Piece | Rules |
 |---|---|
 | **CLASS** | `USW` `US` `UP` `MON` `UW` `TMON` `X` `N` |
-| **SPEED** | Canonical tokens only (`2G5` not `2.5G`) — not used on `X` / `N` |
+| **SPEED** | Only when **not** the class default (`2G5` not `2.5G`) — not used on `X` / `N` |
 | **ID** | Far-end / free text after normalize |
 | **Case** | Store UPPERCASE; match case-insensitive |
 | **Length** | Max **64** characters |
 | **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric |
+
+One fact, one encoding: if the port runs at the class default, **omit SPEED**.
 
 ---
 
@@ -27,14 +29,18 @@ CLASS-SPEED-ID
 
 ### 2.1 Include / monitor
 
-| CLASS | Meaning | Default speed | Absolute expect | Alerts |
+Classes are chosen by **expected default speed** (and role), not by inventing device-type subclasses.
+
+| CLASS | Rule | Default speed | Absolute expect | Alerts |
 |---|---|---|---|---|
-| `USW` | Switch ↔ switch | 10G | Yes | link / flap / errors + speed |
-| `US` | Server / storage | 10G | Yes | same |
-| `UP` | Toward AP | 1G | Yes | same |
-| `MON` | Other endpoint (iDRAC, client, …) | 1G | Yes | same |
+| `USW` | Switch ↔ switch — expect 10G | 10G | Yes | link / flap / errors + speed |
+| `US` | Endpoint expect **10G** (hypervisor, storage, 10G server NIC, …) | 10G | Yes | same |
+| `UP` | Toward AP — expect 1G | 1G | Yes | same |
+| `MON` | Endpoint expect **1G** (BMC/iDRAC, client, 1G server NIC, …) | 1G | Yes | same |
 | `UW` | Uplink WAN / ISP | — | Later | link / flap / errors |
 | `TMON` | Temp watch | — | No | items; optional link-down **INFO** only |
+
+**`US` vs `MON`:** ask “what speed should this be?” — 10G → `US`, 1G → `MON`. A 1G server NIC is `MON-SRV12`, not `US-1G-SRV12`.
 
 **`TMON`:** keep a list of `TMON*` for ops review; reason in NetBox description.
 
@@ -70,26 +76,35 @@ Zabbix takes **no port alerts** on `X*`. Reason may also live in NetBox descript
 | `100G` | 100000 |
 | `400G` | 400000 |
 
-Expected speed = SPEED token if present, else class default (`USW`/`US` → 10G, `UP`/`MON` → 1G).
+Expected speed = SPEED token if present, else class default (`USW`/`US` → 10G, `UP`/`MON` → 1G).  
+Emit a token **only** for non-default speeds.
 
 ---
 
 ## 4. Examples
 
+**Normal (default speed — no token):**
+
 | Scenario | Display | Expect |
 |---|---|---|
-| Switch ↔ switch 10G | `USW-10G-SWD14` | 10G |
-| Switch ↔ switch (default 10G) | `USW-SWD14` | 10G |
-| Switch ↔ switch 1G | `USW-1G-SWA08` | 1G |
-| Server / ESXi 10G | `US-10G-ESX01` | 10G |
-| Storage 10G | `US-10G-SAN01` | 10G |
-| AP 1G | `UP-1G-AP3F07` | 1G |
-| AP 2.5G | `UP-2G5-AP07` | 2.5G |
-| iDRAC | `MON-1G-IDR03` | 1G |
+| Switch ↔ switch | `USW-SWD14` | 10G |
+| Hypervisor / 10G NIC | `US-ESX01` | 10G |
+| Storage 10G | `US-SAN01` | 10G |
+| AP | `UP-AP3F07` | 1G |
+| iDRAC / BMC | `MON-IDR03` | 1G |
+| 1G server NIC | `MON-SRV12` | 1G |
 | WAN uplink | `UW-SC1` | link/flap/errors |
 | Temp watch | `TMON-GUEST` | items + INFO link-down |
 | Exclude | `X` / `X-STACK` | none |
 | Note only | `N-SPARE` | no action |
+
+**Exceptions (token required — not the class default):**
+
+| Scenario | Display | Expect |
+|---|---|---|
+| Switch ↔ switch at 1G | `USW-1G-SWA08` | 1G |
+| AP at 2.5G | `UP-2G5-AP07` | 2.5G |
+| 10G port that would otherwise be `MON` | `MON-10G-…` | 10G |
 
 ---
 

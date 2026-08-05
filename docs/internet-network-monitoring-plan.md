@@ -197,10 +197,10 @@ Apply labels on box → then enable absolute-expect. Label push tooling is **sep
 
 | CLASS | Default | Phase 2 monitoring |
 |---|---|---|
-| `USW` | **10G** | switch↔switch — link / flap / errors + speed |
-| `US` | **10G** | server / storage — same |
-| `UP` | **1G** | toward AP — same |
-| `MON` | **1G** | other endpoint (iDRAC, …) — same |
+| `USW` | **10G** | switch↔switch — omit token at default |
+| `US` | **10G** | endpoint expect 10G — omit token at default |
+| `UP` | **1G** | toward AP — omit token at default |
+| `MON` | **1G** | endpoint expect 1G — omit token at default |
 | `UW` | — | WAN uplink — **link / flap / errors now**; absolute speed Phase 5 |
 | `TMON` | — | temp watch — items; link-down **INFO**; list + review cadence |
 | `X` / `X-*` | — | excluded — **no alerts** |
@@ -255,8 +255,9 @@ Same LLD as fabric (`admin-up AND NOT X AND NOT N`). Spares admin-down; `X` or `
 
 ### Exit criteria
 
-- [ ] Switch↔switch `USW` labels both ends  
-- [ ] Server/storage `US` + AP `UP` + iDRAC `MON`  
+- [ ] Switch↔switch `USW-…` (tokenless = 10G)  
+- [ ] `US-…` / `UP-…` / `MON-…` tokenless at class default  
+- [ ] Exception tokens only (`USW-1G-…`, `UP-2G5-…`, …)  
 - [ ] `UW` link/flap/errors  
 - [ ] `X` / `X-<note>` excludes  
 - [ ] `N` / `N-<text>` → no Zabbix action  
