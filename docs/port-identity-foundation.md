@@ -18,29 +18,8 @@ CLASS-SPEED-ID
 | **SPEED** | Canonical tokens only (`2G5` not `2.5G`) — not used on `X` / `N` |
 | **ID** | Far-end / free text after normalize |
 | **Case** | Store UPPERCASE; match case-insensitive |
+| **Length** | Max **64** characters |
 | **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric |
-
-**Platform lengths (ports only):**
-
-| Field | Size |
-|---|---|
-| VOSS port `name` | 0–64 (`WORD<0-64>`) |
-| EXOS `display-string` | 20 |
-| EXOS `description-string` | 255 |
-| EXOS SNMP `ifAlias` | 64 default |
-
-**Parser** (after uppercase normalize):
-
-```
-# Note only — free text, no Zabbix action
-^N(-(?<note>[A-Z0-9-]+))?$
-
-# Exclude — controlled notes (§2.2)
-^X(-(?<xnote>STK|ISC|MLAG|SPN|OOB|OTH|[A-Z0-9]{1,12}))?$
-
-# Monitor / temp (TMON before MON)
-^(?<class>USW|US|UP|TMON|MON|UW)(-(?<speed>100M|1G|2G5|5G|10G|25G|40G|100G|400G))?(-(?<id>[A-Z0-9-]+))?$
-```
 
 ---
 
