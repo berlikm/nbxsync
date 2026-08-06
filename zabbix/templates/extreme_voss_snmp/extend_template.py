@@ -471,9 +471,13 @@ def build_discovery_rules() -> str:
                 tags=[("component", "optic")],
                 trigger_prototypes=[
                     {
-                        "expression": "avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)>{$OPTIC.TEMP.CRIT}",
+                        "expression": (
+                            "avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)>{$OPTIC.TEMP.CRIT} "
+                            "and avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)<{$OPTIC.TEMP.MAX}"
+                        ),
                         "name": "Extreme VOSS: Optic {#SNMPINDEX}: Temperature is too high",
                         "priority": "AVERAGE",
+                        "description": "DOM temp °C (MIB 1/256). Upper clamp {$OPTIC.TEMP.MAX} drops garbage/unavailable readings.",
                         "scope": "performance",
                     }
                 ],
@@ -858,9 +862,17 @@ def build_discovery_rules() -> str:
                 tags=[("component", "network")],
                 trigger_prototypes=[
                     {
-                        "expression": 'last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.DOWN_STATUS}',
+                        "expression": (
+                            '{$MLT.CONTROL}=1 and '
+                            'last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.DOWN_STATUS} '
+                            'and diff(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])=1'
+                        ),
                         "name": "Extreme VOSS: MLT {#SNMPINDEX}: Aggregation disabled/down",
                         "priority": "AVERAGE",
+                        "description": (
+                            "Fires only when aggregation transitions to disabled "
+                            "(not for MLTs that stay unused/disabled). Gate with {$MLT.CONTROL}."
+                        ),
                     }
                 ],
             ),
@@ -885,8 +897,10 @@ def build_macros() -> str:
         ("{$IST.DOWN_STATUS}", "2", "IST session down(2)"),
         ("{$CARD.DOWN_STATUS}", "2", "rcCardOperStatus down(2)"),
         ("{$ISIS.CIRCUIT.DOWN_STATUS}", "2", "rcIsisCircuitOperState down(2)"),
+        ("{$MLT.CONTROL}", "0", "0=silence MLT agg-down (cutover default); 1=enable after unused MLTs reviewed"),
         ("{$MLT.AGG.DOWN_STATUS}", "2", "rcMltAggOperState disable(2)"),
-        ("{$OPTIC.TEMP.CRIT}", "70", "Optic temperature critical ┬░C"),
+        ("{$OPTIC.TEMP.CRIT}", "999", "Optic °C critical — 999 silences during cutover; restore ~70 after DOM canary"),
+        ("{$OPTIC.TEMP.MAX}", "150", "Ignore DOM garbage above this (°C)"),
         ("{$OPTIC.RX.POWER.MIN}", "1", "Minimum optic RX power in ┬╡W (0 ignored)"),
     ]
     out = []

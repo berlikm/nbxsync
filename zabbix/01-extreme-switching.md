@@ -423,8 +423,12 @@ One template set for every role — never a per-role copy of the template. Two c
 
 ```
 {$IF.UTIL.MAX}                = 101          # silence stock bandwidth alerts
-{$TEMP_WARN}                  = 999          # silence warning tier, keep critical
+{$TEMP_WARN}                  = 999          # silence warning tier
+{$TEMP_CRIT}                  = 999          # stage 0–1: closets trip stock 65; restore ~65 at stage 2
 {$TEMP_CRIT_LOW}              = -273         # silence stack-returns-0 false positive
+{$OPTIC.TEMP.CRIT}            = 999          # VOSS DOM — silence until physical canary; restore ~70
+{$OPTIC.TEMP.MAX}             = 150          # drop garbage DOM readings
+{$MLT.CONTROL}                = 0            # VOSS MLT agg-down off; set 1 after unused MLTs reviewed
 {$SNMP.TIMEOUT}               = 5m
 {$PORTID.LLD.IFALIAS.MATCHES} = ^(USW|US|UP|MON)(-|$)
 {$PORTID.LLD.IFTYPE.MATCHES}  = ^6$

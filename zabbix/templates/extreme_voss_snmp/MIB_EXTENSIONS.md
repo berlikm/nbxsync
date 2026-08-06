@@ -37,8 +37,10 @@ OID base: `1.3.6.1.4.1.2272.1` unless noted.
 |---|---|---|
 | `{$VIST.CONTROL}` | `0` | Set `1` to alert on V-IST down |
 | `{$IST.CONTROL}` | `0` | Set `1` to alert on IST down |
-| `{$OPTIC.TEMP.CRIT}` | `70` | Optic ┬░C critical |
-| `{$OPTIC.RX.POWER.MIN}` | `1` | Min RX ┬╡W (0 ignored) |
+| `{$OPTIC.TEMP.CRIT}` | `999` (cutover) / `70` | Optic °C critical — 999 until DOM canary |
+| `{$OPTIC.TEMP.MAX}` | `150` | Ignore garbage DOM above this |
+| `{$MLT.CONTROL}` | `0` (cutover) / `1` | Gate MLT agg-down; trigger also requires `.diff()` |
+| `{$OPTIC.RX.POWER.MIN}` | `1` | Min RX µW (0 ignored) |
 | `{$IF.FLAP.WARN}` | `0` | Flap change threshold (context) |
 
 ## Still nice-to-have (not in template)

@@ -1683,7 +1683,9 @@ zabbix_export:
         trigger_prototypes:
         - uuid: 4c97f7dd65f443aea82d57f52ca90a1e
           expression: avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)>{$OPTIC.TEMP.CRIT}
+            and avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)<{$OPTIC.TEMP.MAX}
           name: 'Extreme VOSS: Optic {#SNMPINDEX}: Temperature is too high'
+          description: 'DOM temp °C (MIB 1/256). Upper clamp {$OPTIC.TEMP.MAX} drops garbage/unavailable readings.'
           priority: AVERAGE
           tags:
           - tag: scope
@@ -2083,8 +2085,10 @@ zabbix_export:
           value: network
         trigger_prototypes:
         - uuid: 5054efcb8c1c4465a832c2095dde9d26
-          expression: last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.DOWN_STATUS}
+          expression: '{$MLT.CONTROL}=1 and last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.DOWN_STATUS}
+            and diff(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])=1'
           name: 'Extreme VOSS: MLT {#SNMPINDEX}: Aggregation disabled/down'
+          description: 'Fires only when aggregation *transitions* to disabled (not for MLTs that stay unused/disabled). Gate with {$MLT.CONTROL}.'
           priority: AVERAGE
           tags:
           - tag: scope
@@ -2175,12 +2179,18 @@ zabbix_export:
     - macro: '{$ISIS.CIRCUIT.DOWN_STATUS}'
       value: '2'
       description: rcIsisCircuitOperState down(2)
+    - macro: '{$MLT.CONTROL}'
+      value: '0'
+      description: '0=silence MLT agg-down (cutover default); 1=enable after unused MLTs reviewed'
     - macro: '{$MLT.AGG.DOWN_STATUS}'
       value: '2'
       description: rcMltAggOperState disable(2)
     - macro: '{$OPTIC.TEMP.CRIT}'
-      value: '70'
-      description: Optic temperature critical ┬░C
+      value: '999'
+      description: 'Optic °C critical — 999 silences during cutover; restore ~70 after DOM canary'
+    - macro: '{$OPTIC.TEMP.MAX}'
+      value: '150'
+      description: Ignore DOM garbage above this (°C)
     - macro: '{$OPTIC.RX.POWER.MIN}'
       value: '1'
       description: Minimum optic RX power in ┬╡W (0 ignored)

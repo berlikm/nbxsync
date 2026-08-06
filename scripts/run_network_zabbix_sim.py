@@ -36,7 +36,11 @@ TEMPLATES = {
 GLOBAL_MACROS = {
     '{$IF.UTIL.MAX}': '101',
     '{$TEMP_WARN}': '999',
+    '{$TEMP_CRIT}': '999',
     '{$TEMP_CRIT_LOW}': '-273',
+    '{$OPTIC.TEMP.CRIT}': '999',
+    '{$OPTIC.TEMP.MAX}': '150',
+    '{$MLT.CONTROL}': '0',
     '{$SNMP.TIMEOUT}': '5m',
     '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|US|UP|MON)(-|$)',
     '{$PORTID.LLD.IFTYPE.MATCHES}': '^6$',

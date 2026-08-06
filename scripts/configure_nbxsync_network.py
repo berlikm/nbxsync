@@ -134,7 +134,11 @@ ROLE_MACROS = {
 GLOBAL_MACROS = {
     '{$IF.UTIL.MAX}': '101',
     '{$TEMP_WARN}': '999',
+    '{$TEMP_CRIT}': '999',  # EXOS/VOSS closets trip stock 65 during stage 0
     '{$TEMP_CRIT_LOW}': '-273',
+    '{$OPTIC.TEMP.CRIT}': '999',  # VOSS DOM — silence until physical canary
+    '{$OPTIC.TEMP.MAX}': '150',
+    '{$MLT.CONTROL}': '0',  # VOSS MLT agg-down off until unused MLTs reviewed
     '{$SNMP.TIMEOUT}': '5m',
     '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|US|UP|MON)(-|$)',
     '{$PORTID.LLD.IFTYPE.MATCHES}': '^6$',

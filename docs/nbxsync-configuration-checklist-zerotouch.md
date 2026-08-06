@@ -502,7 +502,7 @@ Path: **Zabbix → Tags → Add**, then assign to each country Site Group.
 
 Renders against the device or VM at sync. Preview on a Site Group may show an error — cosmetic.
 
-**Failure mode:** names that do not match the `-p-` / `-d-` / … conventions resolve to **`Unknown` with no alert**. That is silent. If environment tagging matters for routing, spot-check hosts that look odd in naming, or tighten the convention.
+**Failure mode:** names that do not match the `-p-` / `-d-` / … conventions resolve to **`Unknown` with no alert**. That is silent. **Extreme switches** (`CH-STA-…-CORE01`, `…-MGMT01`, `…-ACCE01`, …) normally have no `-p-` token — `environment=Unknown` on them is expected, not a sync bug. If alert routing needs a value later, extend the Jinja (e.g. treat `Switch*` roles as Production) rather than renaming the fleet.
 
 ### 9.2 Cluster
 
@@ -570,18 +570,22 @@ Stock Extreme LLD evaluates **both** IFALIAS macros — set both on every Switch
 
 ### 11.2 Extreme / fleet globals (Zabbix Server or global macros)
 
-Cutover-safe silencing and Speed Expect filter namespace (own macros — do **not** reuse `{$NET.IF.*}`):
+Cutover-safe silencing and Speed Expect filter namespace (own macros — do **not** reuse `{$NET.IF.*}`). Set these as **global** (or host) macros so they override template defaults during stage 0–1:
 
-| Macro | Value | Notes |
-|---|---|---|
-| `{$IF.UTIL.MAX}` | `101` | Disables util% alerts fleet-wide until baselines exist |
-| `{$TEMP_WARN}` | `999` | Silence temp warn during cutover |
-| `{$TEMP_CRIT_LOW}` | `-273` | Silence bogus low-temp |
-| `{$SNMP.TIMEOUT}` | `5m` | |
-| `{$PORTID.LLD.IFALIAS.MATCHES}` | `^(USW\|US\|UP\|MON)(-\|$)` | Speed Expect thin template only |
-| `{$PORTID.LLD.IFTYPE.MATCHES}` | `^6$` | Speed Expect thin template only |
+| Macro | Cutover value | Restore later | Notes |
+|---|---|---|---|
+| `{$IF.UTIL.MAX}` | `101` | role/class baselines | Disables util% alerts |
+| `{$TEMP_WARN}` | `999` | ~55 | EXOS/VOSS warning tier |
+| `{$TEMP_CRIT}` | `999` | ~65 | **Needed** — closets trip stock/EXOS critical at 65 |
+| `{$TEMP_CRIT_LOW}` | `-273` | keep | Silence 0 °C stack/VM false positive |
+| `{$OPTIC.TEMP.CRIT}` | `999` | ~70 | VOSS DOM — mass false positives until canary |
+| `{$OPTIC.TEMP.MAX}` | `150` | keep | Drops garbage DOM readings |
+| `{$MLT.CONTROL}` | `0` | `1` | VOSS MLT agg-down off until unused MLTs reviewed |
+| `{$SNMP.TIMEOUT}` | `5m` | | |
+| `{$PORTID.LLD.IFALIAS.MATCHES}` | `^(USW\|US\|UP\|MON)(-\|$)` | | Speed Expect thin template only |
+| `{$PORTID.LLD.IFTYPE.MATCHES}` | `^6$` | | Speed Expect thin template only |
 
-After cutover, restore util/temp thresholds per role as needed (legacy values below are starting points for that later pass).
+After cutover, restore util/temp/optic thresholds and set `{$MLT.CONTROL}=1` (MLT trigger also requires a *transition* to disabled — unused MLTs that stay down do not alert).
 
 ### 11.3 Application / threshold macros (role)
 
