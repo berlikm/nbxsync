@@ -893,15 +893,17 @@ def build_discovery_rules() -> str:
 
 def build_macros() -> str:
     macros = [
+        ("{$VIST.CONTROL}", "0", "0=off (default). Set host macro 1 on VOSS fabric pairs that run V-IST."),
         ("{$VIST.DOWN_STATUS}", "2", "V-IST session down(2)"),
+        ("{$IST.CONTROL}", "0", "Classic IST unused on Fabric Engine — keep 0. Use V-IST for HA."),
         ("{$IST.DOWN_STATUS}", "2", "IST session down(2)"),
         ("{$CARD.DOWN_STATUS}", "2", "rcCardOperStatus down(2)"),
         ("{$ISIS.CIRCUIT.DOWN_STATUS}", "2", "rcIsisCircuitOperState down(2)"),
-        ("{$MLT.CONTROL}", "0", "0=silence MLT agg-down (cutover default); 1=enable after unused MLTs reviewed"),
+        ("{$MLT.CONTROL}", "1", "1=destination (agg-down on transition via .diff()). 0=temporary cutover silence."),
         ("{$MLT.AGG.DOWN_STATUS}", "2", "rcMltAggOperState disable(2)"),
-        ("{$OPTIC.TEMP.CRIT}", "999", "Optic °C critical (value) — 999 cutover; restore ~70 after canary"),
+        ("{$OPTIC.TEMP.CRIT}", "70", "Optic °C critical (value trigger). Prefer DOM *Status alarms."),
         ("{$OPTIC.TEMP.MAX}", "150", "Ignore DOM garbage above this (°C)"),
-        ("{$OPTIC.RX.DBM.MIN}", "-100", "Secondary RX dBm floor (cutover -100). Prefer DOM status."),
+        ("{$OPTIC.RX.DBM.MIN}", "-25", "Secondary RX dBm floor (destination). Prefer DOM status."),
         ("{$OPTIC.RX.DBM.FLOOR}", "-39", "Ignore synthetic -40 (zero reading) in RX dBm value trigger"),
         ("{$OPTIC.DOM.ALARM_HIGH}", "3", "rcPlugOptMod*Status highAlarm(3)"),
         ("{$OPTIC.DOM.ALARM_LOW}", "5", "rcPlugOptMod*Status lowAlarm(5)"),

@@ -419,24 +419,26 @@ One template set for every role — never a per-role copy of the template. Two c
 | Build | **Core / Dist roles** | `Extreme Routing by SNMP` — OSPF, platform-neutral, see §C |
 | Maybe build | Both platforms | CRC error items if `dot3StatsFCSErrors` turns out to be needed (§9) |
 
-### Macro assignments
+### Macro assignments — destination standard
 
-**Global** (or on the Zabbix server object) — fleet-wide silencing and the thin template's own filters:
+**Global** (or on the Zabbix server object) — production end-state. Applied by `configure_nbxsync_network.py` by default. Temporary LM silence is `--cutover-silence` only (see checklist §11.2).
 
 ```
-{$IF.UTIL.MAX}                = 101          # silence stock bandwidth alerts
-{$TEMP_WARN}                  = 999          # silence warning tier (cutover)
-{$TEMP_CRIT}                  = 999          # silence value-crit (cutover)
-# Post-cutover EXOS (G2 / Switch Engine): stock 55/65 is WRONG.
+{$IF.UTIL.MAX}                = 101          # stock util% off until stage 6 context macros
+{$TEMP_WARN}                  = 90           # EXOS G2+ / VOSS — NOT stock 55
+{$TEMP_CRIT}                  = 100          # NOT stock 65 (GTAC 000088439: Normal often to 100)
 # extremeCurrentTemperature is an *internal* sensor, not ambient.
-# Extreme GTAC 000088439: 5720 at ~85°C still Status=Normal (Normal 10–100, Max 110).
-# Restore: {$TEMP_WARN}=90  {$TEMP_CRIT}=100  — and keep overTemp *status* as the hard alarm.
+# Prefer vendor overTemp *status* as the hard alarm.
 {$TEMP_CRIT_LOW}              = -273         # silence stack-returns-0 false positive
-{$OPTIC.TEMP.CRIT}            = 999          # optic °C value trigger; restore ~70 after canary
+{$OPTIC.TEMP.CRIT}            = 70           # optic °C value trigger; prefer DOM *Status
 {$OPTIC.TEMP.MAX}             = 150          # drop garbage DOM readings
-{$OPTIC.RX.DBM.MIN}           = -100         # secondary RX dBm floor; prefer DOM *Status alarms
+{$OPTIC.RX.DBM.MIN}           = -25          # secondary RX dBm floor
 {$OPTIC.RX.DBM.FLOOR}         = -39          # ignore synthetic -40 (zero reading)
-{$MLT.CONTROL}                = 0            # VOSS MLT agg-down off; set 1 after unused MLTs reviewed
+{$OPTIC.DOM.ALARM_HIGH}       = 3            # primary optic alerts
+{$OPTIC.DOM.ALARM_LOW}        = 5
+{$MLT.CONTROL}                = 1            # .diff() keeps unused/disabled MLTs quiet
+{$VIST.CONTROL}               = 0            # host =1 on VOSS fabric pairs
+{$IST.CONTROL}                = 0            # classic IST unused on FE
 {$SNMP.TIMEOUT}               = 5m
 {$PORTID.LLD.IFALIAS.MATCHES} = ^(USW|US|UP|MON)(-|$)
 {$PORTID.LLD.IFTYPE.MATCHES}  = ^6$

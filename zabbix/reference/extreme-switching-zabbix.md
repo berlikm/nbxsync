@@ -433,14 +433,20 @@ One template set for every role — never a per-role copy of the template. Two c
 | Build | **Core / Dist roles** | `Extreme Routing by SNMP` — OSPF, platform-neutral |
 | Maybe build | Both platforms | CRC error items if `dot3StatsFCSErrors` turns out to be needed (§9) |
 
-### Macro assignments
+### Macro assignments — destination standard
 
-**Global** (or on the Zabbix server object) — fleet-wide silencing and the thin template's own filters:
+**Global** (or on the Zabbix server object) — production end-state (see canonical `zabbix/01-extreme-switching.md` §8 / checklist §11.2):
 
 ```
-{$IF.UTIL.MAX}                = 101          # silence stock bandwidth alerts
-{$TEMP_WARN}                  = 999          # silence warning tier, keep critical
+{$IF.UTIL.MAX}                = 101          # stock util% off until stage 6
+{$TEMP_WARN}                  = 90           # NOT stock 55
+{$TEMP_CRIT}                  = 100          # NOT stock 65
 {$TEMP_CRIT_LOW}              = -273         # silence stack-returns-0 false positive
+{$OPTIC.TEMP.CRIT}            = 70
+{$OPTIC.RX.DBM.MIN}           = -25          # prefer DOM status
+{$MLT.CONTROL}                = 1
+{$VIST.CONTROL}               = 0            # host=1 on fabric pairs
+{$IST.CONTROL}                = 0
 {$SNMP.TIMEOUT}               = 5m
 {$PORTID.LLD.IFALIAS.MATCHES} = ^(USW|US|UP|MON)(-|$)
 {$PORTID.LLD.IFTYPE.MATCHES}  = ^6$
@@ -570,7 +576,7 @@ Same set, severities and dependency chain as §A.6 once the template exists.
 | Base | lift interface/LLD half from `Extreme EXOS by SNMP`, add VOSS device-health OIDs |
 | Note | today VOSS may still fall back to Network Generic in production — remove that once this lands; watch for icmpping collision |
 
-Template defaults aligned with §A.8 silencing: `{$IF.UTIL.MAX}=101`, `{$TEMP_WARN}=999`, `{$TEMP_CRIT_LOW}=-273`, `{$NET.IF.IFTYPE.MATCHES}=^(6|161)$`, interface LLD 15m / keep-lost 0. Role IFALIAS macros still come from nbxsync.
+Template defaults aligned with §A.8 **destination**: `{$IF.UTIL.MAX}=101`, `{$TEMP_WARN}=90`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, `{$MLT.CONTROL}=1`, `{$NET.IF.IFTYPE.MATCHES}=^(6|161)$`, interface LLD 15m / keep-lost 0. Role IFALIAS macros still come from nbxsync.
 
 ## 7. Open questions
 

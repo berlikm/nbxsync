@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Simulate Extreme/VOSS cutover plan against a live Zabbix 7 lab.
+"""Simulate Extreme/VOSS destination plan against a live Zabbix 7 lab.
 
 Imports templates from zabbix/templates/, applies global + host (role) macros from
-01-extreme-switching.md, creates a pilot VOSS host, and verifies the cutover
-minimum from 00-monitoring-plan.md.
+01-extreme-switching.md (destination end-state), creates a pilot VOSS host, and
+verifies the monitoring minimum from 00-monitoring-plan.md.
 
 Does not require NetBox/Django — pure Zabbix API.
 """
@@ -32,19 +32,21 @@ TEMPLATES = {
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
 }
 
-# Design §A.8 — global silencing + speed-expect LLD filters
+# Design §A.8 — destination globals + speed-expect LLD filters
 GLOBAL_MACROS = {
     '{$IF.UTIL.MAX}': '101',
-    '{$TEMP_WARN}': '999',
-    '{$TEMP_CRIT}': '999',
+    '{$TEMP_WARN}': '90',
+    '{$TEMP_CRIT}': '100',
     '{$TEMP_CRIT_LOW}': '-273',
-    '{$OPTIC.TEMP.CRIT}': '999',
+    '{$OPTIC.TEMP.CRIT}': '70',
     '{$OPTIC.TEMP.MAX}': '150',
-    '{$OPTIC.RX.DBM.MIN}': '-100',
+    '{$OPTIC.RX.DBM.MIN}': '-25',
     '{$OPTIC.RX.DBM.FLOOR}': '-39',
     '{$OPTIC.DOM.ALARM_HIGH}': '3',
     '{$OPTIC.DOM.ALARM_LOW}': '5',
-    '{$MLT.CONTROL}': '0',
+    '{$MLT.CONTROL}': '1',
+    '{$VIST.CONTROL}': '0',
+    '{$IST.CONTROL}': '0',
     '{$SNMP.TIMEOUT}': '5m',
     '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|US|UP|MON)(-|$)',
     '{$PORTID.LLD.IFTYPE.MATCHES}': '^6$',
@@ -216,8 +218,14 @@ def verify_template_macros(api: ZabbixAPI, templateid: str) -> None:
     macros = {m['macro']: m['value'] for m in api.call('usermacro.get', {'hostids': templateid, 'output': 'extend'})}
     checks = {
         '{$IF.UTIL.MAX}': '101',
-        '{$TEMP_WARN}': '999',
+        '{$TEMP_WARN}': '90',
+        '{$TEMP_CRIT}': '100',
         '{$TEMP_CRIT_LOW}': '-273',
+        '{$OPTIC.TEMP.CRIT}': '70',
+        '{$OPTIC.RX.DBM.MIN}': '-25',
+        '{$MLT.CONTROL}': '1',
+        '{$VIST.CONTROL}': '0',
+        '{$IST.CONTROL}': '0',
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
     }
     for macro, expected in checks.items():

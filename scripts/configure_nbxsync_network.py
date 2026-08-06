@@ -15,8 +15,9 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
   * Platform TemplateRules: EXOS → Extreme EXOS, VOSS → Extreme VOSS (not Network Generic)
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
-  * Global silencing macros on the Zabbix server object
-  * Optional Speed Expect template link (stage 4); Routing stays unlinked (post-cutover)
+  * Global **destination** macros on the Zabbix server object (production end-state)
+  * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
+  * Optional Speed Expect template link (stage 4); Routing stays unlinked until OSPF canary
 
 Does **not** re-implement SiteGroup Agent / hostgroup-first / Server OOB — call
 ``configure_nbxsync_zerotouch.py`` for that. This script assumes SNMP CG on Switch*
@@ -24,13 +25,16 @@ roles (zerotouch step 5b) and only layers Extreme-specific templates + macros.
 
 Usage::
 
-  # Lab proof (NetBox + live Zabbix)
+  # Lab proof (NetBox + live Zabbix) — destination macros
   PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \\
     /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate
 
-  # Apply network deltas on an existing zero-touch estate (production token)
+  # Apply destination network deltas (production token)
   export NBX_ZABBIX_TOKEN=...
-  python scripts/configure_nbxsync_network.py
+  python scripts/configure_nbxsync_network.py --apply
+
+  # Temporary LM cutover silence only (not the long-term target)
+  python scripts/configure_nbxsync_network.py --apply --cutover-silence
 
   # Zabbix API only (no NetBox) — thin smoke, not the real path
   python scripts/configure_nbxsync_network.py --zabbix-only
@@ -132,24 +136,50 @@ ROLE_MACROS = {
     },
 }
 
-GLOBAL_MACROS = {
-    '{$IF.UTIL.MAX}': '101',
-    '{$TEMP_WARN}': '999',
-    # Cutover silence. Post-cutover EXOS G2+: restore WARN=90 CRIT=100 (NOT stock 55/65).
-    # extremeCurrentTemperature is internal; Extreme Normal range is often 10–100 (GTAC 000088439).
-    '{$TEMP_CRIT}': '999',
+# Production end-state (default). Stock EXOS 55/65 is wrong for G2+ internal sensors
+# (GTAC 000088439: Normal often 10–100, Max 110). Prefer vendor overTemp *status*
+# as the hard alarm; value macros warn 90 / crit 100.
+DESTINATION_GLOBAL_MACROS = {
+    '{$IF.UTIL.MAX}': '101',  # stock util% off until stage-6 context macros
+    '{$TEMP_WARN}': '90',
+    '{$TEMP_CRIT}': '100',
     '{$TEMP_CRIT_LOW}': '-273',
-    '{$OPTIC.TEMP.CRIT}': '999',  # value trigger silence until canary
+    '{$OPTIC.TEMP.CRIT}': '70',
     '{$OPTIC.TEMP.MAX}': '150',
-    '{$OPTIC.RX.DBM.MIN}': '-100',  # secondary dBm floor silenced; prefer DOM status
+    '{$OPTIC.RX.DBM.MIN}': '-25',  # secondary; prefer DOM *Status alarms
     '{$OPTIC.RX.DBM.FLOOR}': '-39',
     '{$OPTIC.DOM.ALARM_HIGH}': '3',
     '{$OPTIC.DOM.ALARM_LOW}': '5',
-    '{$MLT.CONTROL}': '0',  # VOSS MLT agg-down off until unused MLTs reviewed
+    '{$MLT.CONTROL}': '1',  # .diff() keeps unused/disabled MLTs quiet
+    '{$VIST.CONTROL}': '0',  # set host macro =1 on VOSS fabric pairs
+    '{$IST.CONTROL}': '0',  # classic IST unused on FE fabric
     '{$SNMP.TIMEOUT}': '5m',
     '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|US|UP|MON)(-|$)',
     '{$PORTID.LLD.IFTYPE.MATCHES}': '^6$',
 }
+
+# Temporary LM-migration overlay only — never the long-term target.
+CUTOVER_SILENCE_OVERLAY = {
+    '{$TEMP_WARN}': '999',
+    '{$TEMP_CRIT}': '999',
+    '{$OPTIC.TEMP.CRIT}': '999',
+    '{$OPTIC.RX.DBM.MIN}': '-100',
+    '{$MLT.CONTROL}': '0',
+}
+
+GLOBAL_MACROS = dict(DESTINATION_GLOBAL_MACROS)
+
+
+def apply_macro_mode(*, cutover_silence: bool = False) -> None:
+    """Set module GLOBAL_MACROS to destination, optionally overlay cutover silence."""
+    GLOBAL_MACROS.clear()
+    GLOBAL_MACROS.update(DESTINATION_GLOBAL_MACROS)
+    if cutover_silence:
+        GLOBAL_MACROS.update(CUTOVER_SILENCE_OVERLAY)
+        logger.info('Macro mode: DESTINATION + cutover-silence overlay')
+    else:
+        logger.info('Macro mode: DESTINATION (production end-state)')
+
 
 SWITCH_SNMP_ROLES = list(ROLE_MACROS.keys())
 
@@ -568,7 +598,8 @@ def cleanup_lab() -> None:
     Tag.objects.filter(slug__startswith=PREFIX).delete()
 
 
-def run_simulate(*, link_speed_expect: bool = False) -> int:
+def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = False) -> int:
+    apply_macro_mode(cutover_silence=cutover_silence)
     global RESULTS
     RESULTS = []
     cleanup_lab()
@@ -850,8 +881,17 @@ def run_simulate(*, link_speed_expect: bool = False) -> int:
                 record('zbx_exos_template', any('EXOS' in (n or '') for n in tpls), str(tpls), group='zabbix')
 
             gmacros = {m['macro']: m.get('value', '') for m in (api.usermacro.get(globalmacro=True, output='extend') or []) if isinstance(m, dict) and 'macro' in m}
+            expect_temp = GLOBAL_MACROS['{$TEMP_WARN}']
+            expect_mlt = GLOBAL_MACROS['{$MLT.CONTROL}']
             record('zbx_global_util_off', gmacros.get('{$IF.UTIL.MAX}') == '101', gmacros.get('{$IF.UTIL.MAX}'), group='zabbix')
-            record('zbx_global_temp_warn', gmacros.get('{$TEMP_WARN}') == '999', gmacros.get('{$TEMP_WARN}'), group='zabbix')
+            record('zbx_global_temp_warn', gmacros.get('{$TEMP_WARN}') == expect_temp, gmacros.get('{$TEMP_WARN}'), group='zabbix')
+            record('zbx_global_mlt_control', gmacros.get('{$MLT.CONTROL}') == expect_mlt, gmacros.get('{$MLT.CONTROL}'), group='zabbix')
+            record(
+                'zbx_global_destination_temp_crit',
+                gmacros.get('{$TEMP_CRIT}') == GLOBAL_MACROS['{$TEMP_CRIT}'],
+                gmacros.get('{$TEMP_CRIT}'),
+                group='zabbix',
+            )
 
         passed = sum(1 for r in RESULTS if r['ok'])
         total = len(RESULTS)
@@ -876,8 +916,9 @@ def run_simulate(*, link_speed_expect: bool = False) -> int:
         globals()['get_role'] = orig_get_role
 
 
-def run_apply(*, link_speed_expect: bool = False) -> int:
+def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False) -> int:
     """Apply network deltas on the production / shared ZabbixServer row."""
+    apply_macro_mode(cutover_silence=cutover_silence)
     token = os.environ.get('NBX_ZABBIX_TOKEN')
     if not token:
         raise SystemExit('Set NBX_ZABBIX_TOKEN (or use --simulate)')
@@ -900,7 +941,7 @@ def run_apply(*, link_speed_expect: bool = False) -> int:
     step_role_macros()
     step_template_rules(server, tpl_models)
     step_speed_expect_assignment(server, tpl_models, link=link_speed_expect)
-    logger.info('Network configuration applied')
+    logger.info('Network configuration applied (macros=%s)', 'cutover-silence' if cutover_silence else 'destination')
     return 0
 
 
@@ -919,12 +960,17 @@ def main() -> int:
     mode.add_argument('--zabbix-only', action='store_true', help='Zabbix API smoke only (no NetBox graph)')
     mode.add_argument('--apply', action='store_true', help='Apply network deltas (needs NBX_ZABBIX_TOKEN)')
     parser.add_argument('--link-speed-expect', action='store_true', help='Stage 4: assign Port Speed Expect on Switch roles')
+    parser.add_argument(
+        '--cutover-silence',
+        action='store_true',
+        help='Temporary LM-migration overlay (TEMP/OPTIC=999, MLT=0). Default is destination end-state.',
+    )
     args = parser.parse_args()
     if args.simulate:
-        return run_simulate(link_speed_expect=args.link_speed_expect)
+        return run_simulate(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
     if args.zabbix_only:
         return run_zabbix_only()
-    return run_apply(link_speed_expect=args.link_speed_expect)
+    return run_apply(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
 
 
 if __name__ == '__main__':

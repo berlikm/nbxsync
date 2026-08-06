@@ -31,19 +31,22 @@ OID base: `1.3.6.1.4.1.2272.1` unless noted.
 | Port flap / shutdown | IF LLD prototypes | `4.10.1.1.{21,114}` | PASS on ifIndex 192 |
 | SNMP traps | fan/PSU/overheat/CPU/ISIS adj/LAG | `snmptrap["rcnΓÇª"]` | needs trap config |
 
-## Control macros (HA)
+## Control macros (destination)
 
 | Macro | Default | Meaning |
 |---|---|---|
-| `{$VIST.CONTROL}` | `0` | Set `1` to alert on V-IST down |
-| `{$IST.CONTROL}` | `0` | Set `1` to alert on IST down |
-| `{$OPTIC.TEMP.CRIT}` | `999` (cutover) / `70` | Optic °C **value** trigger |
+| `{$VIST.CONTROL}` | `0` | Set host `1` on VOSS fabric pairs (V-IST HA) |
+| `{$IST.CONTROL}` | `0` | Classic IST unused on FE — keep off |
+| `{$OPTIC.TEMP.CRIT}` | `70` | Optic °C **value** trigger (prefer DOM status) |
 | `{$OPTIC.TEMP.MAX}` | `150` | Ignore garbage DOM above this |
-| `{$OPTIC.RX.DBM.MIN}` | `-100` (cutover) / `~-25` | Secondary RX dBm floor; prefer DOM status |
+| `{$OPTIC.RX.DBM.MIN}` | `-25` | Secondary RX dBm floor; prefer DOM status |
 | `{$OPTIC.RX.DBM.FLOOR}` | `-39` | Ignore synthetic −40 (zero reading) |
 | `{$OPTIC.DOM.ALARM_HIGH}` / `LOW` | `3` / `5` | Vendor DOM highAlarm / lowAlarm |
-| `{$MLT.CONTROL}` | `0` (cutover) / `1` | Gate MLT agg-down; trigger also requires `.diff()` |
+| `{$MLT.CONTROL}` | `1` | Gate MLT agg-down; trigger also requires `.diff()` |
+| `{$TEMP_WARN}` / `{$TEMP_CRIT}` | `90` / `100` | Chassis °C destination |
 | `{$IF.FLAP.WARN}` | `0` | Flap change threshold (context) |
+
+Temporary LM silence (`TEMP`/`OPTIC` = 999, `MLT.CONTROL` = 0) is an optional script overlay (`--cutover-silence`), not the template default.
 
 ### Optic power units (verified)
 

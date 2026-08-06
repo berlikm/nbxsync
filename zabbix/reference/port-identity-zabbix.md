@@ -74,15 +74,16 @@ Start in **access / opt-in** mode so unlabelled desk ports do not alert. After `
 
 ---
 
-## 3. Global silencing macros
+## 3. Global destination macros (thresholds)
 
 ```
-{$IF.UTIL.MAX}     = 101     # silence stock bandwidth trigger
-{$TEMP_WARN}       = 999     # silence warning tier; keep critical
+{$IF.UTIL.MAX}     = 101     # stock util% off until stage 6
+{$TEMP_WARN}       = 90      # destination (NOT stock 55)
+{$TEMP_CRIT}       = 100     # destination (NOT stock 65)
 {$TEMP_CRIT_LOW}   = -273    # silence stack / VM 0°C false positive
 ```
 
-Do **not** use `{$IFCONTROL:"{#IFNAME}"}` — `X` is the single mute source of truth.
+Temporary LM silence (`TEMP_*=999`) is optional `--cutover-silence` only — not the target. Do **not** use `{$IFCONTROL:"{#IFNAME}"}` — `X` is the single mute source of truth.
 
 ---
 

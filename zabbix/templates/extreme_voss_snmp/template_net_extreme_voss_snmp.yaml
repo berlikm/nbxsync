@@ -1779,7 +1779,7 @@ zabbix_export:
           expression: avg(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)<{$OPTIC.RX.DBM.MIN}
             and avg(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)>{$OPTIC.RX.DBM.FLOOR}
           name: 'Extreme VOSS: Optic {#SNMPINDEX}: RX power is too low'
-          description: 'Secondary dBm floor. Prefer DOM status trigger. Cutover: set OPTIC.RX.DBM.MIN=-100.'
+          description: 'Secondary dBm floor. Prefer DOM status trigger. Temporary silence: OPTIC.RX.DBM.MIN=-100.'
           priority: WARNING
           tags:
           - tag: scope
@@ -2240,19 +2240,26 @@ zabbix_export:
       value: 5m
       description: Time interval for the SNMP availability trigger.
     - macro: '{$TEMP_CRIT}'
-      value: '65'
+      value: '100'
+      description: 'Chassis °C critical (destination). EXOS G2+/VOSS internal sensors — not stock 65.'
     - macro: '{$TEMP_CRIT_LOW}'
       value: '-273'
-      description: Silence too-low false positives (stack/VM report 0┬░C). Keep critical high.
+      description: Silence too-low false positives (stack/VM report 0°C). Keep critical high.
     - macro: '{$TEMP_CRIT_STATUS}'
       value: '3'
       description: VOSS rcVossSystemTemperatureStatus highCritial(3)
     - macro: '{$TEMP_WARN}'
-      value: '999'
-      description: Silence warning tier (closets without cooling); keep TEMP_CRIT + vendor status.
+      value: '90'
+      description: 'Chassis °C warning (destination). Prefer vendor status for hard alarm.'
+    - macro: '{$VIST.CONTROL}'
+      value: '0'
+      description: '0=off (default). Set host macro 1 on VOSS fabric pairs that run V-IST.'
     - macro: '{$VIST.DOWN_STATUS}'
       value: '2'
       description: V-IST session down(2)
+    - macro: '{$IST.CONTROL}'
+      value: '0'
+      description: 'Classic IST unused on Fabric Engine — keep 0. Use V-IST for HA.'
     - macro: '{$IST.DOWN_STATUS}'
       value: '2'
       description: IST session down(2)
@@ -2263,20 +2270,20 @@ zabbix_export:
       value: '2'
       description: rcIsisCircuitOperState down(2)
     - macro: '{$MLT.CONTROL}'
-      value: '0'
-      description: '0=silence MLT agg-down (cutover default); 1=enable after unused MLTs reviewed'
+      value: '1'
+      description: '1=destination (agg-down on transition via .diff()). 0=temporary cutover silence.'
     - macro: '{$MLT.AGG.DOWN_STATUS}'
       value: '2'
       description: rcMltAggOperState disable(2)
     - macro: '{$OPTIC.TEMP.CRIT}'
-      value: '999'
-      description: 'Optic °C critical (value trigger) — 999 silences cutover; restore ~70 after canary'
+      value: '70'
+      description: 'Optic °C critical (value trigger). Prefer DOM *Status alarms.'
     - macro: '{$OPTIC.TEMP.MAX}'
       value: '150'
       description: Ignore DOM garbage above this (°C)
     - macro: '{$OPTIC.RX.DBM.MIN}'
-      value: '-100'
-      description: 'Secondary RX dBm floor (cutover -100). Restore ~-25 after canary. Prefer DOM status.'
+      value: '-25'
+      description: 'Secondary RX dBm floor (destination). Prefer DOM status highAlarm/lowAlarm.'
     - macro: '{$OPTIC.RX.DBM.FLOOR}'
       value: '-39'
       description: 'Ignore synthetic -40 (zero reading) in RX dBm value trigger'

@@ -4,7 +4,7 @@ Step-by-step configuration in NetBox. Execute in order for the initial build. Da
 
 This checklist is for **GUI operators**. Fill in production URLs, tokens, and secrets when you apply it in the target environment.
 
-**Last verified:** 2026-08-05 against NetBox 4.x / Zabbix 7.0.x (lab) — multi-credential SNMPv3 + Extreme EXOS/VOSS. Update this stamp when you re-validate against production.
+**Last verified:** 2026-08-06 against NetBox 4.x / Zabbix 7.0.x (lab) — multi-credential SNMPv3 + Extreme EXOS/VOSS; §11.2 destination macros are the default. Update this stamp when you re-validate against production.
 
 **Canonical copy:** keep one authoritative home (this repo file or Confluence). If both exist, the other must be a pointer only — do not maintain two full copies by hand.
 
@@ -26,6 +26,7 @@ Monitoring membership and transport should follow **facts already in NetBox** (s
 | Network SNMP | **SNMP Monitoring** on Switch*/AP/Firewall/Network Device/Virtual Appliance | SNMPv3 `MONITORING` MD5/DES |
 | Extreme platform | Template Rule: `EXOS` → Extreme EXOS, `VOSS` → Extreme VOSS | Platform template + `OS/Network` (never Network Generic on Switch*) |
 | Extreme port scope | Role macros `{$NET.IF.IFALIAS.*}` / `{$NET.IF.IFTYPE.MATCHES}` on Switch* | Core/Dist/Mgmt = all ports except `X`; Access/Hybrid = labelled opt-in |
+| Extreme thresholds | Global macros §11.2 (**destination** defaults) | Temp 90/100, optic DOM+value, MLT on; util% off until stage 6 |
 | Linux SNMP opt-in | NetBox tag `snmp` → CG **SNMP Monitoring (Linux)** + Template Rules | SNMPv3 `MONITORING-LINUX` SHA/AES + Linux/Windows by SNMP |
 | SAP SNMP opt-in | NetBox tag `snmp-sap` → CG **SNMP Monitoring (SAP)** | SNMPv3 `SAPUSER` (confirm auth/priv with Robert) |
 | Server with Dell BMC | **Server Agent+OOB** on role Server | Agent :10050 + SNMPv3 `MONITORING-DELL` SHA/AES on `oob_ip` |
@@ -569,29 +570,56 @@ Stock Extreme LLD evaluates **both** IFALIAS macros — set both on every Switch
 
 **Hybrid stage 5:** after that site’s `X`-fill and admin-down hygiene are clean, copy Core IFALIAS values onto Switch Hybrid (same three macros). Do not invent a Hybrid-EXOS / Hybrid-VOSS matrix — platform still picks the template.
 
-### 11.2 Extreme / fleet globals (Zabbix Server or global macros)
+### 11.2 Extreme / fleet globals — destination standard
 
-Cutover-safe silencing and Speed Expect filter namespace (own macros — do **not** reuse `{$NET.IF.*}`). Set these as **global** (or host) macros so they override template defaults during stage 0–1:
+These are the **production end-state** values. `configure_nbxsync_network.py` applies them by default (`--apply` / `--simulate`). Do **not** leave the estate on temporary silence macros.
 
-| Macro | Cutover value | Restore later | Notes |
-|---|---|---|---|
-| `{$IF.UTIL.MAX}` | `101` | role/class baselines | Disables util% alerts |
-| `{$TEMP_WARN}` | `999` | **90** (EXOS G2+) | Stock 55 is wrong — see note below |
-| `{$TEMP_CRIT}` | `999` | **100** (EXOS G2+) | Stock 65 fires while Extreme still says Normal |
-| `{$TEMP_CRIT_LOW}` | `-273` | keep | Silence 0 °C stack/VM false positive |
-| `{$OPTIC.TEMP.CRIT}` | `999` | ~70 | Optic °C value trigger (status alarms stay active) |
-| `{$OPTIC.TEMP.MAX}` | `150` | keep | Drops garbage DOM readings |
-| `{$OPTIC.RX.DBM.MIN}` | `-100` | ~`-25` | Secondary RX dBm floor; prefer DOM status triggers |
-| `{$OPTIC.RX.DBM.FLOOR}` | `-39` | keep | Ignores synthetic −40 (zero/no-light reading) |
-| `{$OPTIC.DOM.ALARM_HIGH}` / `LOW` | `3` / `5` | keep | Vendor DOM highAlarm / lowAlarm |
-| `{$MLT.CONTROL}` | `0` | `1` | VOSS MLT agg-down off until unused MLTs reviewed |
-| `{$SNMP.TIMEOUT}` | `5m` | | |
-| `{$PORTID.LLD.IFALIAS.MATCHES}` | `^(USW\|US\|UP\|MON)(-\|$)` | | Speed Expect thin template only |
-| `{$PORTID.LLD.IFTYPE.MATCHES}` | `^6$` | | Speed Expect thin template only |
+Speed Expect uses its own filter namespace (`{$PORTID.LLD.*}`) — do **not** reuse `{$NET.IF.*}`.
 
-After cutover, restore util/temp/optic thresholds and set `{$MLT.CONTROL}=1` (MLT trigger also requires a *transition* to disabled — unused MLTs that stay down do not alert).
+| Macro | Destination | Notes |
+|---|---|---|
+| `{$IF.UTIL.MAX}` | `101` | Stock util% off until stage 6; then raise via **context** macros (e.g. `{$IF.UTIL.MAX:"USW"}`) |
+| `{$TEMP_WARN}` | **90** | EXOS G2+ / VOSS chassis — **not** stock 55 |
+| `{$TEMP_CRIT}` | **100** | **Not** stock 65 (fires while Extreme still says Normal) |
+| `{$TEMP_CRIT_LOW}` | `-273` | Silence 0 °C stack/VM false positive |
+| `{$OPTIC.TEMP.CRIT}` | **70** | Optic °C value trigger; prefer DOM status |
+| `{$OPTIC.TEMP.MAX}` | `150` | Drops garbage DOM readings |
+| `{$OPTIC.RX.DBM.MIN}` | **-25** | Secondary RX dBm floor |
+| `{$OPTIC.RX.DBM.FLOOR}` | `-39` | Ignores synthetic −40 (zero/no-light) |
+| `{$OPTIC.DOM.ALARM_HIGH}` / `LOW` | `3` / `5` | Vendor DOM highAlarm / lowAlarm — primary optic alerts |
+| `{$MLT.CONTROL}` | **1** | Agg-down on *transition* (`.diff()`); unused MLTs that stay down stay quiet |
+| `{$VIST.CONTROL}` | `0` global | Set **host** macro `1` on VOSS fabric pairs that run V-IST |
+| `{$IST.CONTROL}` | `0` | Classic IST unused on Fabric Engine |
+| `{$SNMP.TIMEOUT}` | `5m` | |
+| `{$PORTID.LLD.IFALIAS.MATCHES}` | `^(USW\|US\|UP\|MON)(-\|$)` | Speed Expect thin template only |
+| `{$PORTID.LLD.IFTYPE.MATCHES}` | `^6$` | Speed Expect thin template only |
 
-**EXOS temperature (stock 55/65 is wrong on modern platforms):** `extremeCurrentTemperature` is an **internal** sensor, not closet ambient. Extreme GTAC [000088439](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000088439): Switch Engine / Summit G2 / Universal (e.g. 5720) report **~70–85 °C as Status=Normal** with Normal range typically **10–100** and Max **110**. Stock Zabbix `{$TEMP_CRIT}=65` therefore pages healthy NKN access/dist switches. Prefer vendor `extremeOverTemperatureAlarm` for hard critical; set value macros to **warn 90 / crit 100** after cutover (confirm with `show temperature` on a pilot). Ambient rack rating (~0–50 °C) is a different number — do not use it for this OID.
+**Also destination (not only macros):**
+
+| Area | End-state |
+|---|---|
+| Platform template | EXOS → Extreme EXOS; VOSS → Extreme VOSS — **never** Network Generic on Switch* |
+| Port scope | §11.1 role macros; EtherLike duplex LLD uses same IFALIAS filters as traffic LLD |
+| Hybrid | Access-like until stage 5, then Core IFALIAS values per site |
+| Speed Expect | Stage 4 role link |
+| Routing / OSPF | Post-canary on Core/Dist |
+| SNMP credentials | `MONITORING` MD5/DES on network CG (zerotouch) |
+| Optic power | Template JS → dBm; LLD `SupportsDDM=true`; prefer DOM status |
+
+**EXOS temperature:** `extremeCurrentTemperature` is an **internal** sensor, not closet ambient. Extreme GTAC [000088439](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000088439): Switch Engine / Summit G2 / Universal (e.g. 5720) report **~70–85 °C as Status=Normal** (Normal often **10–100**, Max **110**). Prefer vendor `extremeOverTemperatureAlarm` for hard critical. Ambient rack rating (~0–50 °C) is a different number — do not use it for this OID.
+
+#### Temporary cutover silence (optional overlay only)
+
+During LogicMonitor migration noise, operators may pass `--cutover-silence` to the network script. That overlays **only**:
+
+| Macro | Silence value |
+|---|---|
+| `{$TEMP_WARN}` / `{$TEMP_CRIT}` | `999` |
+| `{$OPTIC.TEMP.CRIT}` | `999` |
+| `{$OPTIC.RX.DBM.MIN}` | `-100` |
+| `{$MLT.CONTROL}` | `0` |
+
+Remove the overlay and re-apply **destination** as soon as first-light noise is understood — silence is not the target architecture.
 
 ### 11.3 Application / threshold macros (role)
 
@@ -690,10 +718,11 @@ Full stage gates live in `zabbix/01-extreme-switching.md` §A.7. Checklist hooks
 
 | Stage | Checklist action |
 |---|---|
-| 0–3 | Templates + §11.1 macros only; keep fleet util/temp silence (§11.2) |
+| 0–3 | Templates + §11.1 + §11.2 **destination** macros (optional `--cutover-silence` only during LM migration) |
 | 4 | Assign **Extreme Port Speed Expect** on Switch* roles (§7.1); confirm `{$PORTID.LLD.*}` globals |
 | 5 | Flip **Switch Hybrid** macros from Access-like → Core values (§11.1), per site |
-| Post-cutover | Assign **Extreme Routing** on Core/Dist after OSPF canary (§7.1); restore util/temp thresholds |
+| Post-canary | Assign **Extreme Routing** on Core/Dist after OSPF canary (§7.1); set `{$VIST.CONTROL}=1` on VOSS fabric pairs |
+| 6 | Capacity: context `{$IF.UTIL.MAX:"…"}` — global stays `101` until then |
 
 ### 15.2 New Platform appeared
 
