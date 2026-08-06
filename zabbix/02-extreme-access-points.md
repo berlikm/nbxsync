@@ -194,8 +194,8 @@ Prefer Zabbix trigger dependency: AP unavailable **depends on** matching switch 
 - [ ] Confirm SNMP Get works on a pilot AP with production `MONITORING` after XIQ “manage SNMP”
 - [ ] `ahUpTime` string format — parse or ignore in favour of standard uptime
 - [ ] `ahEnvirmentTemp` / fan populated on AP305C / AP4000 / AP5010-class hardware?
-- [ ] Noise-floor offset (`value - 256`) verified live
-- [ ] Radio ifIndex naming (`wifi0` / `wifi1` / …) for LLD filters
+- [ ] Noise-floor −256 verified as dBm on live AP305C (MIB + FLOAT parse in template)
+- [x] Radio LLD: `ahIfType=0` primary; AP305C physical `wifi0`/`wifi1` (ifIndex 12/13) vs VAP ifIndexes without attributes
 - [ ] Trigger dependency wiring to switch `UP-` (NetBox cable / LLDP)
 - [ ] SNMPv3 auth/priv on IQ Engine vs MD5/DES used for switches — same profile?
 
