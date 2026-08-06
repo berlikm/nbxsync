@@ -1,2 +1,4 @@
 __pycache__/
 *.pyc
+# Local lab secrets / paths for setup_zabbix.sh
+setup_zabbix.env
