@@ -19,7 +19,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Load input file (optional) ───────────────────────────
-# Already-exported env vars are not overwritten (set -a + : "${VAR:=default}" below).
+# setup_zabbix.env overrides script defaults below. Prefer putting lab secrets
+# and paths in that file (see setup_zabbix.env.example).
 _ENV_FILE="${SETUP_ZABBIX_ENV:-$SCRIPT_DIR/setup_zabbix.env}"
 if [[ -f "$_ENV_FILE" ]]; then
     echo "Loading lab inputs from $_ENV_FILE"
