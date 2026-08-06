@@ -469,14 +469,14 @@ def build_discovery_rules() -> str:
                 value_type="FLOAT",
                 units="°C",
                 delay="1m",
-                description="See YAML: JS /256 or /65536 (FE 9.3 canary). Prefer DOM status.",
+                description="See YAML: JS raw/10000 °C (FE 9.3 CLI canary). Prefer DOM status.",
                 preprocessing=[
                     {
                         "type": "JAVASCRIPT",
                         "parameters": [
                             "var v=Number(value); if (isNaN(v)) throw 'optic temp: '+value; "
-                            "var c=v/256; if (c>125||c<-40) c=v/65536; "
-                            "if (c>125||c<-40) throw 'optic temp out of range: '+v; return c;"
+                            "v=Math.trunc(v); var c=v/10000; "
+                            "if (c>125||c<-40) throw 'optic temp out of range: raw='+v+' c='+c; return c;"
                         ],
                     }
                 ],
