@@ -1,0 +1,589 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: af1d40e8c4494869898322f779d5e249
+    name: Templates/Network devices
+  templates:
+  - uuid: 888831f3ac784b549e93e23db20b68b3
+    template: Extreme IQ Engine by SNMP
+    name: Extreme IQ Engine by SNMP
+    description: |
+      Extreme / Aerohive HiveOS (IQ Engine) access points via SNMP.
+      MIBs: AH-SYSTEM-MIB + AH-INTERFACE-MIB (enterprises.26928).
+      Official pack: XIQ Auxiliary Files. Spec: zabbix/02-extreme-access-points.md.
+      Do not also link Network Generic (icmpping collision).
+    groups:
+    - name: Templates/Network devices
+    items:
+    - uuid: 505fb971e14744e8a08ec17474a10639
+      name: ICMP ping
+      type: SIMPLE
+      key: icmpping
+      description: Host accessibility by ICMP ping.
+      valuemap:
+        name: Service state
+      tags:
+      - tag: component
+        value: health
+      triggers:
+      - uuid: 418c9538734940f9a331cd98d8d49d23
+        expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+        priority: HIGH
+        description: Last three ICMP attempts failed. Check PoE and switch UP- port before paging twice.
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: fe78e02f779e4beba2d0e838dac05ccc
+      name: ICMP loss
+      type: SIMPLE
+      key: icmppingloss
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: health
+      triggers:
+      - uuid: b5b87dd98d284b6abf11136bbf77cd99
+        expression: min(/Extreme IQ Engine by SNMP/icmppingloss,5m)>{$ICMP_LOSS_WARN} and min(/Extreme IQ Engine by SNMP/icmppingloss,5m)<100
+        name: 'Extreme IQ Engine: High ICMP ping loss'
+        priority: WARNING
+        dependencies:
+        - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+          expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: 7066712e91894bed9874d94a90a95caf
+      name: ICMP response time
+      type: SIMPLE
+      key: icmppingsec
+      value_type: FLOAT
+      units: s
+      tags:
+      - tag: component
+        value: health
+      triggers:
+      - uuid: bb24a2de88a3487596c55f052bb1ca84
+        expression: avg(/Extreme IQ Engine by SNMP/icmppingsec,5m)>{$ICMP_RESPONSE_TIME_WARN}
+        name: 'Extreme IQ Engine: High ICMP ping response time'
+        priority: WARNING
+        dependencies:
+        - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+          expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        tags:
+        - tag: scope
+          value: performance
+    - uuid: ee6a5266e93f4620ab3738c9083ee515
+      name: SNMP agent availability
+      type: INTERNAL
+      key: zabbix[host,snmp,available]
+      description: |
+        0 not available, 1 available, 2 unknown. Requires XIQ manage SNMP on AP eth.
+      valuemap:
+        name: zabbix.host.available
+      tags:
+      - tag: component
+        value: health
+      triggers:
+      - uuid: bd852a25cab44dcea3efc09624d5c284
+        expression: max(/Extreme IQ Engine by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+        name: 'Extreme IQ Engine: No SNMP data collection'
+        priority: WARNING
+        description: Check XIQ manage-SNMP on eth0/eth1 and MONITORING SNMPv3 credentials.
+        dependencies:
+        - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+          expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: 5d01caae9d6643edae92ea3240bedbee
+      name: System name
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.1.0
+      key: ah.system.name
+      value_type: CHAR
+      trends: '0'
+      delay: 1m
+      history: 7d
+      tags:
+      - tag: component
+        value: system
+    - uuid: 9b0718a131f54458bf8f239855b73433
+      name: System description
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.2.0
+      key: ah.system.description
+      value_type: CHAR
+      trends: '0'
+      delay: 1m
+      history: 7d
+      tags:
+      - tag: component
+        value: system
+    - uuid: 10451341b2d84e6694ea65d3095418ff
+      name: CPU utilization
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.3.0
+      key: ah.system.cpu.util
+      value_type: FLOAT
+      trends: 365d
+      delay: 1m
+      history: 7d
+      units: '%'
+      tags:
+      - tag: component
+        value: system
+      triggers:
+      - uuid: cf350a92d0e44c56b37e9a020cd6b99c
+        expression: min(/Extreme IQ Engine by SNMP/ah.system.cpu.util,5m)>{$CPU.UTIL.WARN}
+        name: 'Extreme IQ Engine: High CPU utilization'
+        priority: WARNING
+        tags:
+        - tag: scope
+          value: performance
+      - uuid: 5b1001e3e18f49f9b5341a9166dadf6e
+        expression: min(/Extreme IQ Engine by SNMP/ah.system.cpu.util,5m)>{$CPU.UTIL.CRIT}
+        name: 'Extreme IQ Engine: Critical CPU utilization'
+        priority: AVERAGE
+        dependencies:
+        - name: 'Extreme IQ Engine: High CPU utilization'
+          expression: min(/Extreme IQ Engine by SNMP/ah.system.cpu.util,5m)>{$CPU.UTIL.WARN}
+        tags:
+        - tag: scope
+          value: performance
+    - uuid: 94dc95cde3474e49baf8ae807498631a
+      name: Memory utilization
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.4.0
+      key: ah.system.memory.util
+      value_type: FLOAT
+      trends: 365d
+      delay: 1m
+      history: 7d
+      units: '%'
+      tags:
+      - tag: component
+        value: system
+      triggers:
+      - uuid: d4c10604ecaf4f1eb85b84858bc7636b
+        expression: min(/Extreme IQ Engine by SNMP/ah.system.memory.util,5m)>{$MEMORY.UTIL.MAX}
+        name: 'Extreme IQ Engine: High memory utilization'
+        priority: AVERAGE
+        tags:
+        - tag: scope
+          value: performance
+    - uuid: 0976c3d6e9624f96a5ac49f6ec5c99af
+      name: Serial number
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.5.0
+      key: ah.system.serial
+      value_type: CHAR
+      trends: '0'
+      delay: 1m
+      history: 7d
+      tags:
+      - tag: component
+        value: system
+    - uuid: 456482f5b69247f78afb3699f21d86e8
+      name: Device mode
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.6.0
+      key: ah.system.device.mode
+      value_type: CHAR
+      trends: '0'
+      delay: 1m
+      history: 7d
+      tags:
+      - tag: component
+        value: system
+    - uuid: 95ee7d66fefc49cf92ac6975a7f1a900
+      name: Uptime (HiveOS string)
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.7.0
+      key: ah.system.uptime
+      value_type: CHAR
+      trends: '0'
+      delay: 1m
+      history: 7d
+      tags:
+      - tag: component
+        value: system
+    - uuid: 40b79f002331484183086c5b4e911752
+      name: Hardware version
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.8.0
+      key: ah.system.hw.version
+      value_type: CHAR
+      trends: '0'
+      delay: 1m
+      history: 7d
+      tags:
+      - tag: component
+        value: system
+    - uuid: 788c4ac8cbfe42df8884d0adb83ccecf
+      name: Client count
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.9.0
+      key: ah.system.client.count
+      value_type: FLOAT
+      trends: 365d
+      delay: 1m
+      history: 7d
+      tags:
+      - tag: component
+        value: system
+      triggers:
+      - uuid: 8d552547c91b467b8dd41adee4a4978b
+        expression: min(/Extreme IQ Engine by SNMP/ah.system.client.count,15m)>={$AP.CLIENT.WARN}
+        name: 'Extreme IQ Engine: High client count'
+        priority: WARNING
+        description: Soft capacity; default {$AP.CLIENT.WARN}=10000 disables.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 31142363fd86427f8129fd8cc6082027
+      name: Environment temperature
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.10.0
+      key: ah.system.temp
+      value_type: FLOAT
+      trends: 365d
+      delay: 1m
+      history: 7d
+      units: °C
+      tags:
+      - tag: component
+        value: system
+      triggers:
+      - uuid: 0fb10a8612de4709b4afc8bf662c83fe
+        expression: avg(/Extreme IQ Engine by SNMP/ah.system.temp,5m)>{$TEMP_WARN} and avg(/Extreme IQ Engine by SNMP/ah.system.temp,5m)<{$TEMP_CRIT}
+        name: 'Extreme IQ Engine: High temperature'
+        priority: WARNING
+        description: ahEnvirmentTemp — canary on modern APs; raise TEMP_WARN if unsupported.
+        tags:
+        - tag: scope
+          value: capacity
+      - uuid: 6f34d6a931cb4fcab4de914e06cc86f0
+        expression: avg(/Extreme IQ Engine by SNMP/ah.system.temp,5m)>={$TEMP_CRIT}
+        name: 'Extreme IQ Engine: Critical temperature'
+        priority: HIGH
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 5f60b74507e44f768dc7e0fc44ef6f0b
+      name: Environment fan speed
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.11.0
+      key: ah.system.fan.rpm
+      value_type: FLOAT
+      trends: 365d
+      delay: 1m
+      history: 7d
+      units: rpm
+      tags:
+      - tag: component
+        value: system
+    - uuid: 1538bddd67124dfbb3178de15d7c38b8
+      name: Firmware version
+      type: SNMP_AGENT
+      snmp_oid: 1.3.6.1.4.1.26928.1.2.12.0
+      key: ah.system.firmware
+      value_type: CHAR
+      trends: '0'
+      delay: 1m
+      history: 7d
+      tags:
+      - tag: component
+        value: system
+    discovery_rules:
+    - uuid: 881a95faae504752a880dcf5e1c11427
+      name: Radio interface discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#AHIFNAME},1.3.6.1.4.1.26928.1.1.1.2.1.1.1.1]
+      key: ah.radio.discovery
+      delay: 1h
+      lifetime: '0'
+      description: AH-INTERFACE-MIB ahIfName filtered to wifi/radio via {$AP.RADIO.IFNAME.MATCHES}.
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#AHIFNAME}'
+          value: '{$AP.RADIO.IFNAME.MATCHES}'
+          formulaid: A
+      item_prototypes:
+      - uuid: 3134f1127dd64ca9aaa84a328ec22b16
+        name: 'Radio {#AHIFNAME}: Channel'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.4.1.26928.1.1.1.2.1.5.1.1.{#SNMPINDEX}'
+        key: 'ah.radio.channel[{#SNMPINDEX}]'
+        delay: 5m
+        history: 7d
+        trends: 365d
+        description: ahRadioChannel
+        tags:
+        - tag: component
+          value: radio
+        - tag: radio
+          value: '{#AHIFNAME}'
+        preprocessing:
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 6h
+      - uuid: cb796ddfae964888b26036d4e2d864de
+        name: 'Radio {#AHIFNAME}: Tx power'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.4.1.26928.1.1.1.2.1.5.1.2.{#SNMPINDEX}'
+        key: 'ah.radio.txpower[{#SNMPINDEX}]'
+        delay: 5m
+        history: 7d
+        trends: 365d
+        units: dBm
+        description: ahRadioTxPower
+        tags:
+        - tag: component
+          value: radio
+        - tag: radio
+          value: '{#AHIFNAME}'
+        preprocessing:
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 6h
+      - uuid: 8f378d916ef94e5aab19e60fcdebffdf
+        name: 'Radio {#AHIFNAME}: Noise floor'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.4.1.26928.1.1.1.2.1.5.1.3.{#SNMPINDEX}'
+        key: 'ah.radio.noise[{#SNMPINDEX}]'
+        delay: 5m
+        history: 7d
+        trends: 365d
+        units: dBm
+        description: ahRadioNoiseFloor (value-256)
+        tags:
+        - tag: component
+          value: radio
+        - tag: radio
+          value: '{#AHIFNAME}'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            return Number(value) - 256;
+      - uuid: 073af3018e42448f93e2c3862a1d044a
+        name: 'Radio {#AHIFNAME}: TX total retries'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.4.1.26928.1.1.1.2.1.3.1.7.{#SNMPINDEX}'
+        key: 'ah.radio.tx.retries[{#SNMPINDEX}]'
+        delay: 5m
+        history: 7d
+        trends: 365d
+        description: ahRadioTxTotalRetries
+        tags:
+        - tag: component
+          value: radio
+        - tag: radio
+          value: '{#AHIFNAME}'
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+      - uuid: 52c19cb23d574648a4b3616a2559ca35
+        name: 'Radio {#AHIFNAME}: TX frames dropped'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.4.1.26928.1.1.1.2.1.3.1.8.{#SNMPINDEX}'
+        key: 'ah.radio.tx.drops[{#SNMPINDEX}]'
+        delay: 5m
+        history: 7d
+        trends: 365d
+        description: ahRadioTxTotalFramesDropped
+        tags:
+        - tag: component
+          value: radio
+        - tag: radio
+          value: '{#AHIFNAME}'
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+      - uuid: 9db4a950f4d7458daaf7abc7f34763aa
+        name: 'Radio {#AHIFNAME}: RX data frames'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.4.1.26928.1.1.1.2.1.3.1.11.{#SNMPINDEX}'
+        key: 'ah.radio.rx.dataframes[{#SNMPINDEX}]'
+        delay: 5m
+        history: 7d
+        trends: 365d
+        description: ahRadioRxTotalDataFrames
+        tags:
+        - tag: component
+          value: radio
+        - tag: radio
+          value: '{#AHIFNAME}'
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+    - uuid: 4dc5adee333a48aeab6fb0a5a523c77b
+      name: Network interface discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#IFNAME},1.3.6.1.2.1.31.1.1.1.1,{#IFTYPE},1.3.6.1.2.1.2.2.1.3,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8,{#IFALIAS},1.3.6.1.2.1.31.1.1.1.18]
+      key: net.if.discovery
+      delay: 1h
+      lifetime: '0'
+      description: Physical ethernet toward the switch. Wifi uses radio discovery.
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#IFNAME}'
+          value: '{$NET.IF.IFNAME.MATCHES}'
+          formulaid: A
+        - macro: '{#IFTYPE}'
+          value: '{$NET.IF.IFTYPE.MATCHES}'
+          formulaid: B
+        - macro: '{#IFADMINSTATUS}'
+          value: '{$NET.IF.IFADMINSTATUS.MATCHES}'
+          formulaid: C
+      item_prototypes:
+      - uuid: 304ba847c23e466692bca015ce444597
+        name: 'Interface {#IFNAME}: Operational status'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.2.1.2.2.1.8.{#SNMPINDEX}'
+        key: 'net.if.status[ifOperStatus.{#SNMPINDEX}]'
+        delay: 1m
+        history: 7d
+        trends: '0'
+        valuemap:
+          name: IF-MIB::ifStatus
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+        trigger_prototypes:
+        - uuid: c42facaf18a24ad58717f579a10601b5
+          expression: '{$IFCONTROL}=1 and last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2 and last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2)'
+          name: 'Extreme IQ Engine: Interface {#IFNAME}: Link down'
+          priority: AVERAGE
+          description: Ethernet oper down transition. Prefer switch UP- for cable/PoE cuts when mapped.
+          tags:
+          - tag: scope
+            value: availability
+      - uuid: f3e27ae49b614fd892a23983f704a885
+        name: 'Interface {#IFNAME}: Bits received'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.2.1.31.1.1.1.6.{#SNMPINDEX}'
+        key: 'net.if.in[ifHCInOctets.{#SNMPINDEX}]'
+        delay: 1m
+        history: 7d
+        trends: 365d
+        units: bps
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+        - type: MULTIPLIER
+          parameters:
+          - '8'
+      - uuid: 4e598c7ddbed41d39412f5eddd53edb8
+        name: 'Interface {#IFNAME}: Bits sent'
+        type: SNMP_AGENT
+        snmp_oid: '1.3.6.1.2.1.31.1.1.1.10.{#SNMPINDEX}'
+        key: 'net.if.out[ifHCOutOctets.{#SNMPINDEX}]'
+        delay: 1m
+        history: 7d
+        trends: 365d
+        units: bps
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+        - type: MULTIPLIER
+          parameters:
+          - '8'
+    tags:
+    - tag: class
+      value: network
+    - tag: target
+      value: iq-engine
+    - tag: target
+      value: extreme
+    macros:
+    - macro: '{$ICMP_LOSS_WARN}'
+      value: '20'
+      description: Warning threshold of ICMP packet loss in %.
+    - macro: '{$ICMP_RESPONSE_TIME_WARN}'
+      value: '0.15'
+      description: Warning threshold of average ICMP response time in seconds.
+    - macro: '{$SNMP.TIMEOUT}'
+      value: '5m'
+      description: Time interval for the SNMP availability trigger.
+    - macro: '{$CPU.UTIL.CRIT}'
+      value: '90'
+      description: AP CPU critical %
+    - macro: '{$CPU.UTIL.WARN}'
+      value: '80'
+      description: AP CPU warning %
+    - macro: '{$MEMORY.UTIL.MAX}'
+      value: '90'
+      description: AP memory critical %
+    - macro: '{$TEMP_WARN}'
+      value: '70'
+      description: AP environment temp warning °C
+    - macro: '{$TEMP_CRIT}'
+      value: '85'
+      description: AP environment temp critical °C
+    - macro: '{$TEMP_CRIT_LOW}'
+      value: '-273'
+      description: Silence zero/unsupported temp
+    - macro: '{$AP.CLIENT.WARN}'
+      value: '10000'
+      description: Soft client-count warn; 10000 disables
+    - macro: '{$AP.RADIO.IFNAME.MATCHES}'
+      value: '^(wifi|Wifi|WIFI|radio|Radio)'
+      description: Radio LLD ifName filter
+    - macro: '{$NET.IF.IFNAME.MATCHES}'
+      value: '^(eth|Eth|ETH|mgt|MGT)'
+      description: Ethernet LLD ifName filter
+    - macro: '{$NET.IF.IFTYPE.MATCHES}'
+      value: '^6$'
+      description: Ethernet ifType only
+    - macro: '{$NET.IF.IFADMINSTATUS.MATCHES}'
+      value: '^1$'
+      description: Admin-up only
+    - macro: '{$IFCONTROL}'
+      value: '1'
+      description: 1=alert eth link-down
+    valuemaps:
+    - uuid: 0578598545f34ad59851927e5d2c419d
+      name: Service state
+      mappings:
+      - value: '0'
+        newvalue: Down
+      - value: '1'
+        newvalue: Up
+    - uuid: b9c39ba3e7604487a4b3152374480ee9
+      name: zabbix.host.available
+      mappings:
+      - value: '0'
+        newvalue: not available
+      - value: '1'
+        newvalue: available
+      - value: '2'
+        newvalue: unknown
+    - uuid: 7451aeb513f346bf87d5fa23f88bd415
+      name: IF-MIB::ifStatus
+      mappings:
+      - value: '1'
+        newvalue: up
+      - value: '2'
+        newvalue: down
+      - value: '3'
+        newvalue: testing
+      - value: '4'
+        newvalue: unknown
+      - value: '5'
+        newvalue: dormant
+      - value: '6'
+        newvalue: notPresent
+      - value: '7'
+        newvalue: lowerLayerDown

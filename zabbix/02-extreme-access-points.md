@@ -1,6 +1,6 @@
 # Extreme access points — Zabbix monitoring
 
-Status: analysis    Owner:    Depends on: 01-extreme-switching.md (switch `UP-…` port only)
+Status: template v1 + wiring    Owner:    Depends on: 01-extreme-switching.md (switch `UP-…` port only)
 
 ## 1. Scope
 
@@ -163,10 +163,11 @@ Prefer Zabbix trigger dependency: AP unavailable **depends on** matching switch 
 | | |
 |---|---|
 | Name | **`Extreme IQ Engine by SNMP`** |
-| Path | `zabbix/templates/extreme_iq_engine_snmp/` |
-| Base | Custom Zabbix **7.0** YAML (not stock; not Network Generic) |
+| Path | `zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml` |
+| Base | Custom Zabbix **7.0** YAML (v1 built) |
 | Reference | bgp4plus XML (OID shortlist only); official MIBs in `zabbix/reference/aerohive-mibs/` |
 | NetBox | TemplateRule `Extreme IQ Engine` / regex `IQ ENGINE` → this template + `OS/Network` |
+| Import | `ensure_extreme_iq_engine_template` (zerotouch) + network `--apply` |
 | Role floor | **None** on Access Point (already pruned) |
 | CG | SNMP Monitoring (`MONITORING` MD5/DES) |
 
@@ -184,6 +185,7 @@ Prefer Zabbix trigger dependency: AP unavailable **depends on** matching switch 
 
 ## 10. Open questions
 
+- [x] Data path: SNMP direct (TemplateRule + YAML wired)
 - [ ] Confirm SNMP Get works on a pilot AP with production `MONITORING` after XIQ “manage SNMP”
 - [ ] `ahUpTime` string format — parse or ignore in favour of standard uptime
 - [ ] `ahEnvirmentTemp` / fan populated on AP305C / AP4000 / AP5010-class hardware?
@@ -194,10 +196,10 @@ Prefer Zabbix trigger dependency: AP unavailable **depends on** matching switch 
 
 ## 11. Done when
 
+- [x] Template YAML v1 + TemplateRule wired (not Network Generic)
 - [ ] Pilot AP: system scalars + radio LLD + eth IF-MIB green
-- [ ] TemplateRule points at Extreme IQ Engine by SNMP (Network Generic removed for IQ Engine)
 - [ ] AP-down alerts once for cable cuts (switch `UP-`), once for AP OS/SNMP failure
-- [ ] Destination macros documented; no permanent 999 silence
+- [ ] Destination macros confirmed on live hardware (temp/noise)
 
 ---
 

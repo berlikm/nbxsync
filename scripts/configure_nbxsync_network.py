@@ -13,7 +13,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 
   * Import Extreme VOSS / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
-  * Platform TemplateRules: EXOS → Extreme EXOS, VOSS → Extreme VOSS (not Network Generic)
+  * Platform TemplateRules: EXOS / VOSS / IQ Engine → Extreme * by SNMP (not Network Generic)
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
   * Global **destination** macros on the Zabbix server object (production end-state)
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -105,6 +105,8 @@ TEMPLATE_FILES = {
     'Extreme Port Speed Expect by SNMP': ROOT
     / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
+    'Extreme IQ Engine by SNMP': ROOT
+    / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
 }
 
 # Role → port-scoping macros (01 §A.5 / §A.8). Hybrid starts access/opt-in.
@@ -464,7 +466,7 @@ def step_role_macros() -> None:
 
 
 def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
-    """Ensure Extreme platform TemplateRules (VOSS → Extreme VOSS; same as zerotouch)."""
+    """Ensure Extreme platform TemplateRules (EXOS/VOSS/IQ Engine; same as zerotouch)."""
     logger.info('=' * 60)
     logger.info('Network: Extreme platform TemplateRules')
     logger.info('=' * 60)
@@ -476,13 +478,20 @@ def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
         update_fields=['value'],
     )
 
-    if 'Extreme EXOS by SNMP' in tpl:
+    rule_specs = (
+        ('Extreme EXOS', 'EXOS', 'Extreme EXOS by SNMP'),
+        ('Extreme VOSS', 'VOSS', 'Extreme VOSS by SNMP'),
+        ('Extreme IQ Engine', 'IQ ENGINE', 'Extreme IQ Engine by SNMP'),
+    )
+    for rule_name, pattern, tpl_name in rule_specs:
+        if tpl_name not in tpl:
+            continue
         ensure(
             M.ZabbixTemplateRule,
-            name='Extreme EXOS',
+            name=rule_name,
             defaults={
-                'pattern': 'EXOS',
-                'zabbixtemplate': tpl['Extreme EXOS by SNMP'],
+                'pattern': pattern,
+                'zabbixtemplate': tpl[tpl_name],
                 'enabled': True,
                 'priority': 100,
                 'zabbixtag': None,
@@ -491,36 +500,27 @@ def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
                 'role_pattern': '',
                 'manufacturer': None,
             },
-            update_fields=['pattern', 'zabbixtemplate', 'enabled', 'priority', 'zabbixhostgroup', 'require_tags', 'role_pattern', 'manufacturer'],
+            update_fields=[
+                'pattern',
+                'zabbixtemplate',
+                'enabled',
+                'priority',
+                'zabbixhostgroup',
+                'require_tags',
+                'role_pattern',
+                'manufacturer',
+            ],
         )
-        logger.info('  Rule Extreme EXOS → %s', tpl['Extreme EXOS by SNMP'].name)
+        logger.info('  Rule %s → %s', rule_name, tpl[tpl_name].name)
 
-    if 'Extreme VOSS by SNMP' in tpl:
-        ensure(
-            M.ZabbixTemplateRule,
-            name='Extreme VOSS',
-            defaults={
-                'pattern': 'VOSS',
-                'zabbixtemplate': tpl['Extreme VOSS by SNMP'],
-                'enabled': True,
-                'priority': 100,
-                'zabbixtag': None,
-                'zabbixhostgroup': hg_os_network,
-                'require_tags': '',
-                'role_pattern': '',
-                'manufacturer': None,
-            },
-            update_fields=['pattern', 'zabbixtemplate', 'enabled', 'priority', 'zabbixhostgroup', 'require_tags', 'role_pattern', 'manufacturer'],
-        )
-        logger.info('  Rule Extreme VOSS → %s (replaces Network Generic fallback)', tpl['Extreme VOSS by SNMP'].name)
-
-    # Prune VOSS → Network Generic if a leftover rule points there
-    for rule in M.ZabbixTemplateRule.objects.filter(name='Extreme VOSS', pattern__icontains='VOSS'):
-        if rule.zabbixtemplate_id and 'Network Generic' in (rule.zabbixtemplate.name or ''):
-            if 'Extreme VOSS by SNMP' in tpl:
-                rule.zabbixtemplate = tpl['Extreme VOSS by SNMP']
+    for rule_name, _pattern, tpl_name in rule_specs:
+        if tpl_name not in tpl:
+            continue
+        for rule in M.ZabbixTemplateRule.objects.filter(name=rule_name):
+            if rule.zabbixtemplate_id and 'Network Generic' in (rule.zabbixtemplate.name or ''):
+                rule.zabbixtemplate = tpl[tpl_name]
                 rule.save(update_fields=['zabbixtemplate'])
-                logger.info('  PRUNED: Extreme VOSS rule was Network Generic → retargeted')
+                logger.info('  PRUNED: %s rule was Network Generic → retargeted', rule_name)
 
 
 def step_speed_expect_assignment(server, tpl: dict[str, M.ZabbixTemplate], *, link: bool) -> None:
@@ -566,7 +566,7 @@ def step_snmp_cg_on_switch_roles(snmp_group) -> None:
 
 def cleanup_lab() -> None:
     Device.objects.filter(name__startswith=PREFIX).delete()
-    M.ZabbixTemplateRule.objects.filter(name__in=['Extreme EXOS', 'Extreme VOSS']).delete()
+    M.ZabbixTemplateRule.objects.filter(name__in=['Extreme EXOS', 'Extreme VOSS', 'Extreme IQ Engine']).delete()
     M.ZabbixTemplateRule.objects.filter(zabbixtemplate__name__startswith=PREFIX).delete()
     M.ZabbixMacroAssignment.objects.filter(zabbixmacro__description__startswith='nwn:').delete()
     M.ZabbixMacro.objects.filter(description__startswith='nwn:').delete()
@@ -822,6 +822,12 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             'voss_rule_not_netgeneric',
             M.ZabbixTemplateRule.objects.filter(name='Extreme VOSS').exclude(zabbixtemplate__name__icontains='Network Generic').exists(),
             str(list(M.ZabbixTemplateRule.objects.filter(name='Extreme VOSS').values_list('zabbixtemplate__name', flat=True))),
+            group='resolve',
+        )
+        record(
+            'iq_rule_not_netgeneric',
+            M.ZabbixTemplateRule.objects.filter(name='Extreme IQ Engine').exclude(zabbixtemplate__name__icontains='Network Generic').exists(),
+            str(list(M.ZabbixTemplateRule.objects.filter(name='Extreme IQ Engine').values_list('zabbixtemplate__name', flat=True))),
             group='resolve',
         )
 

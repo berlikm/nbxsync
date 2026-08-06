@@ -12,7 +12,7 @@ Working notes and per-domain specs for the network monitoring build.
 | — | [port-identity.md](port-identity.md) | label grammar | — | foundation |
 | 00 | [00-monitoring-plan.md](00-monitoring-plan.md) | index, order | — | active |
 | 01 | [01-extreme-switching.md](01-extreme-switching.md) | EXOS, VOSS | port-identity | **now** |
-| 02 | [02-extreme-access-points.md](02-extreme-access-points.md) | HiveOS / IQ Engine | 01 | analysis (SNMP path + OIDs) |
+| 02 | [02-extreme-access-points.md](02-extreme-access-points.md) | HiveOS / IQ Engine | 01 | template v1 + wiring |
 | 03 | [03-fortinet.md](03-fortinet.md) | FortiGate, FortiManager, FortiAnalyzer | — | later |
 | 04 | [04-cato.md](04-cato.md) | overlay | — | later |
 | 05 | [05-internet-circuits.md](05-internet-circuits.md) | ISP / WAN | 01, 03, 04 | later |
@@ -37,13 +37,16 @@ Pulled from `berlikm/nbxsync` branch `cursor/extreme-voss-snmp-template-e7f8` (P
 | `templates/extreme_voss_snmp/` | Extreme VOSS by SNMP | imported on Zabbix 7.0.29, lab-verified on **virtual** Fabric Engine 9.3.1.0 |
 | `templates/extreme_port_speed_expect_snmp/` | Extreme Port Speed Expect by SNMP | imported, not piloted |
 | `templates/extreme_routing_snmp/` | Extreme Routing by SNMP (OSPF) | imported, not piloted |
-| `templates/extreme_iq_engine_snmp/` | Extreme IQ Engine by SNMP | **OID analysis** — YAML not built; MIBs in `reference/aerohive-mibs/` |
+| `templates/extreme_iq_engine_snmp/` | Extreme IQ Engine by SNMP | **v1 YAML** — TemplateRule wired; pilot snmpwalk pending |
 
 `mibs/` holds the EXOS 32.7.3.15 and VOSS 5520 9.3.1.0 MIB dumps used to source OIDs.
 
 ## Reference
 
-`reference/` holds the design docs **as they exist on the PR branch**. They are older than the docs above — kept only for diffing. The docs in this folder are authoritative.
+| Path | Contents |
+|---|---|
+| `reference/aerohive-mibs/` | Official XIQ Auxiliary `AH-*` MIB texts (AP template source) |
+| `reference/*-zabbix.md` | Older design snapshots — prefer numbered docs above when they disagree |
 
 ## Scripts
 

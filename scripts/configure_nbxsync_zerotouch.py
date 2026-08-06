@@ -138,6 +138,7 @@ TPL_NAMES = {
     'windows_snmp': 'Windows by SNMP',
     'extreme_exos_snmp': 'Extreme EXOS by SNMP',
     'extreme_voss_snmp': 'Extreme VOSS by SNMP',
+    'extreme_iq_engine_snmp': 'Extreme IQ Engine by SNMP',
     'network_generic_snmp': 'Network Generic Device by SNMP',
     'fortigate_snmp': 'FortiGate by SNMP',
     'vmware_fqdn': 'VMware FQDN',
@@ -857,6 +858,7 @@ def step6_template_rules(server, country_slugs=None):
     tpl_windows_snmp = make_template(*TPL['windows_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_exos = make_template(*TPL['extreme_exos_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_voss = make_template(*TPL['extreme_voss_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+    tpl_iq = make_template(*TPL['extreme_iq_engine_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_fortigate = make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     # HTTP/simple-check templates — ANY, not AGENT (ESXi often has no Zabbix agent)
@@ -869,7 +871,7 @@ def step6_template_rules(server, country_slugs=None):
         ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100),
         ('Extreme EXOS', r'EXOS', tpl_exos, hg_os_network, 100),
         ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100),
-        ('Extreme IQ Engine', r'IQ ENGINE', tpl_netgeneric, hg_os_network, 100),
+        ('Extreme IQ Engine', r'IQ ENGINE', tpl_iq, hg_os_network, 100),
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100),
         ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50),
         ('VMware ESXi', r'ESXi|VMware ESX|vSphere', tpl_vmware, hg_os_vmware, 100),
@@ -1278,36 +1280,55 @@ def ensure_storage_generic_template(server) -> None:
         logger.info('  CREATED: %r in Zabbix (%d items, id=%s)', name, copied, tpl_id)
 
 
-def ensure_extreme_voss_template(server) -> None:
-    """Import Extreme VOSS by SNMP from repo YAML if missing (not a stock template)."""
-    name = TPL_NAMES['extreme_voss_snmp']
-    path = Path(__file__).resolve().parents[1] / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml'
+_IMPORT_RULES = {
+    'templates': {'createMissing': True, 'updateExisting': True},
+    'template_groups': {'createMissing': True, 'updateExisting': True},
+    'valueMaps': {'createMissing': True, 'updateExisting': True},
+    'items': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+    'discoveryRules': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+    'triggers': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+    'graphs': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+    'httptests': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+    'templateDashboards': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
+}
+
+
+def _ensure_yaml_template(server, *, tpl_key: str, relpath: str, label: str) -> None:
+    """Import a repo YAML template into Zabbix if missing."""
+    name = TPL_NAMES[tpl_key]
+    path = Path(__file__).resolve().parents[1] / relpath
     with ZabbixConnection(server) as api:
         found = api.template.get(filter={'name': name}, output=['templateid']) or []
         if found:
             logger.info('  EXISTS: Zabbix template %r (id=%s)', name, found[0]['templateid'])
             return
         if not path.exists():
-            raise SystemExit(f'Missing VOSS template YAML for import: {path}')
-        api.configuration.import_(
-            format='yaml',
-            rules={
-                'templates': {'createMissing': True, 'updateExisting': True},
-                'template_groups': {'createMissing': True, 'updateExisting': True},
-                'valueMaps': {'createMissing': True, 'updateExisting': True},
-                'items': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-                'discoveryRules': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-                'triggers': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-                'graphs': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-                'httptests': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-                'templateDashboards': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-            },
-            source=path.read_text(),
-        )
+            raise SystemExit(f'Missing {label} template YAML for import: {path}')
+        api.configuration.import_(format='yaml', rules=_IMPORT_RULES, source=path.read_text())
         found = api.template.get(filter={'name': name}, output=['templateid']) or []
         if not found:
-            raise SystemExit(f'VOSS template missing after import: {name}')
+            raise SystemExit(f'{label} template missing after import: {name}')
         logger.info('  IMPORTED: Zabbix template %r (id=%s)', name, found[0]['templateid'])
+
+
+def ensure_extreme_voss_template(server) -> None:
+    """Import Extreme VOSS by SNMP from repo YAML if missing (not a stock template)."""
+    _ensure_yaml_template(
+        server,
+        tpl_key='extreme_voss_snmp',
+        relpath='zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
+        label='VOSS',
+    )
+
+
+def ensure_extreme_iq_engine_template(server) -> None:
+    """Import Extreme IQ Engine by SNMP from repo YAML if missing (HiveOS APs)."""
+    _ensure_yaml_template(
+        server,
+        tpl_key='extreme_iq_engine_snmp',
+        relpath='zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
+        label='IQ Engine',
+    )
 
 
 def run_production(*, mutate_netbox: bool = False, url: str | None = None, token: str | None = None, lab_http: bool = False):
@@ -1320,6 +1341,7 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
     ensure_storage_generic_template(server)
     ensure_extreme_voss_template(server)
+    ensure_extreme_iq_engine_template(server)
     optional_tpl = {'icmp_ping', 'dell_storage_http', 'mssql_odbc'}
     required_names = {k: v for k, v in TPL_NAMES.items() if k not in optional_tpl}
     TPL = resolve_templates(server, names=required_names, required=True)
@@ -1667,6 +1689,10 @@ def run_simulate() -> int:
             TPL['windows_agent'] = (int(ensure_t(f'{PREFIX}windows.agent', f'{PREFIX}Windows by Agent')), f'{PREFIX}Windows by Agent')
             TPL['extreme_exos_snmp'] = (int(ensure_t(f'{PREFIX}exos.snmp', f'{PREFIX}Extreme EXOS by SNMP')), f'{PREFIX}Extreme EXOS by SNMP')
             TPL['extreme_voss_snmp'] = (int(ensure_t(f'{PREFIX}voss.snmp', f'{PREFIX}Extreme VOSS by SNMP')), f'{PREFIX}Extreme VOSS by SNMP')
+            TPL['extreme_iq_engine_snmp'] = (
+                int(ensure_t(f'{PREFIX}iq.snmp', f'{PREFIX}Extreme IQ Engine by SNMP')),
+                f'{PREFIX}Extreme IQ Engine by SNMP',
+            )
             TPL['network_generic_snmp'] = (int(ensure_t(f'{PREFIX}net.snmp', f'{PREFIX}Network Generic Device by SNMP')), f'{PREFIX}Network Generic Device by SNMP')
             TPL['fortigate_snmp'] = (int(ensure_t(f'{PREFIX}forti.snmp', f'{PREFIX}FortiGate by SNMP')), f'{PREFIX}FortiGate by SNMP')
             TPL['vmware_fqdn'] = (int(ensure_t(f'{PREFIX}vmware', f'{PREFIX}VMware FQDN')), f'{PREFIX}VMware FQDN')
@@ -1756,6 +1782,7 @@ def run_simulate() -> int:
         plat_linux, _ = Platform.objects.get_or_create(slug=slugify('ubuntu'), defaults={'name': f'{PREFIX}Ubuntu 22.04 LTS'})
         plat_win, _ = Platform.objects.get_or_create(slug=slugify('windows'), defaults={'name': f'{PREFIX}Windows Server 2022'})
         plat_exos, _ = Platform.objects.get_or_create(slug=slugify('exos'), defaults={'name': f'{PREFIX}Extreme EXOS 32.1'})
+        plat_iq, _ = Platform.objects.get_or_create(slug=slugify('iq-engine'), defaults={'name': f'{PREFIX}Extreme IQ Engine'})
         ctype, _ = ClusterType.objects.get_or_create(slug=slugify('vmware'), defaults={'name': f'{PREFIX}VMware'})
         cluster, _ = Cluster.objects.get_or_create(name=f'{PREFIX}cluster-ch', defaults={'type': ctype, 'scope': site})
 
@@ -1795,11 +1822,18 @@ def run_simulate() -> int:
         objects['storage'] = stor
 
         # No platform — Firewall keeps FortiGate role floor (same template as FortiOS rule).
-        # Access Point has no Network Generic role floor (platform rules only; see step 7).
+        # Access Point: platform IQ Engine → Extreme IQ Engine by SNMP (no Network Generic floor).
         fw = Device.objects.create(name=f'{PREFIX}fw-zone-01', device_type=dtype, role=roles['Firewall'], site=site, status='active')
         attach_dev(fw, next_ip())
         objects['firewall'] = fw
-        ap = Device.objects.create(name=f'{PREFIX}ap-acce-01', device_type=dtype, role=roles['Access Point'], site=site, status='active')
+        ap = Device.objects.create(
+            name=f'{PREFIX}ap-acce-01',
+            device_type=dtype,
+            role=roles['Access Point'],
+            site=site,
+            platform=plat_iq,
+            status='active',
+        )
         attach_dev(ap, next_ip())
         objects['access_point'] = ap
 
@@ -1865,6 +1899,14 @@ def run_simulate() -> int:
             str(tpl_names(objects['firewall'])),
             group='resolve',
         )
+        ap_tpls = tpl_names(objects['access_point'])
+        record(
+            'ap_iq_engine_no_netgeneric',
+            any('IQ Engine' in n for n in ap_tpls) and not any('Network Generic' in n for n in ap_tpls),
+            str(ap_tpls),
+            group='resolve',
+        )
+        record('ap_cg_snmp', cg_name(objects['access_point']) == snmp_group.name, cg_name(objects['access_point']), group='resolve')
         switch_tpls = tpl_names(objects['switch'])
         record(
             'switch_exos_no_netgeneric',
@@ -1972,6 +2014,14 @@ def run_simulate() -> int:
                 'voss_rule_extreme_voss',
                 bool(voss_rule and 'Extreme VOSS' in voss_tpl_name and 'Network Generic' not in voss_tpl_name),
                 str(voss_tpl_name or None),
+                group='hygiene',
+            )
+            iq_rule = M.ZabbixTemplateRule.objects.filter(name='Extreme IQ Engine', enabled=True).select_related('zabbixtemplate').first()
+            iq_tpl_name = (iq_rule.zabbixtemplate.name if iq_rule and iq_rule.zabbixtemplate_id else None) or ''
+            record(
+                'iq_rule_extreme_iq_engine',
+                bool(iq_rule and 'IQ Engine' in iq_tpl_name and 'Network Generic' not in iq_tpl_name),
+                str(iq_tpl_name or None),
                 group='hygiene',
             )
             def _snmp_if(group):

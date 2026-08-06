@@ -1,26 +1,44 @@
 # Extreme IQ Engine by SNMP
 
-Zabbix **7.0** template for Extreme / Aerohive **HiveOS / IQ Engine** access points (ExtremeCloud IQ).
+Zabbix **7.0** template for Extreme / Aerohive **HiveOS / IQ Engine** access points.
 
-**Status:** design + OID analysis — YAML not built yet. Spec: `zabbix/02-extreme-access-points.md`.
+**Status:** v1 YAML built — import via zerotouch / network configure. Pilot snmpwalk still required before enabling temp/radio alerts in production.
+
+## Import
+
+1. Automatic: `configure_nbxsync_zerotouch.py` (`ensure_extreme_iq_engine_template`) and `configure_nbxsync_network.py --apply`
+2. Manual: Zabbix → Templates → Import → `template_net_extreme_iq_engine_snmp.yaml`
+
+Requires Zabbix **7.0+**.
+
+## Wiring (Track B)
+
+| NetBox fact | Effect |
+|---|---|
+| Role **Access Point** | CG **SNMP Monitoring** (`MONITORING` MD5/DES) |
+| Platform matches `IQ ENGINE` | TemplateRule → **Extreme IQ Engine by SNMP** + `OS/Network` |
+| Role template floor | **None** (Network Generic pruned) |
+
+## Coverage (v1)
+
+- ICMP + SNMP availability
+- AH-SYSTEM-MIB scalars (CPU/mem/temp/clients/serial/FW/…)
+- Radio LLD: channel, Tx power, noise floor (−256), retries/drops/RX frames
+- Eth IF-MIB LLD (eth/mgt only): oper status + bits in/out
 
 ## Sources
 
 | Source | Role |
 |---|---|
-| [XIQ Auxiliary Files](https://documentation.extremenetworks.com/XIQ/Auxiliary_Files/Auxiliary%20Files.html) | Official `AH-*` MIBs → `zabbix/reference/aerohive-mibs/` |
-| [bgp4plus/Zabbix-Template](https://github.com/bgp4plus/Zabbix-Template) `Aerohive_AP.xml` | Community shortlist (Zabbix 5.0) — reference only |
-| Track B zerotouch | Role Access Point → SNMP CG; TemplateRule `IQ ENGINE` (today Network Generic → retarget here) |
+| [XIQ Auxiliary Files](https://documentation.extremenetworks.com/XIQ/Auxiliary_Files/Auxiliary%20Files.html) | Official MIBs → `zabbix/reference/aerohive-mibs/` |
+| [bgp4plus Aerohive AP](https://github.com/bgp4plus/Zabbix-Template) | OID shortlist only (`reference_bgp4plus_Aerohive_AP.xml`) |
+| Spec | `zabbix/02-extreme-access-points.md` |
+
+## Ops prerequisite
+
+XIQ must enable SNMP Get on AP eth (`manage SNMP` + Delta update). Without that, SNMP availability stays down while the switch `UP-` port is green.
 
 ## Do not
 
-- Import `reference_bgp4plus_Aerohive_AP.xml` into production Zabbix 7.
-- Link **Network Generic** on Access Point / IQ Engine (icmpping policy).
-- Page both switch `UP-…` link-down and AP host-down for the same cable cut without a dependency plan.
-
-## Next build steps
-
-1. Pilot `snmpwalk` against a production-like AP (OIDs in `OID_MAPPING.md`).
-2. Author `template_net_extreme_iq_engine_snmp.yaml` (Zabbix 7.0 export).
-3. Point TemplateRule **Extreme IQ Engine** at this template.
-4. Staged triggers per `02` §9.
+- Also link **Network Generic** (icmpping collision).
+- Page both switch `UP-…` and AP ICMP-down for the same cable cut without a dependency plan.
