@@ -13,6 +13,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 
   * Import Extreme VOSS / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
+  * Patch stock EXOS ``net.if.discovery`` rollout settings (15m / lifetime 0) — stock is 1h / long keep-lost
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Platform TemplateRules: EXOS / VOSS / IQ Engine → Extreme * by SNMP (not Network Generic)
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
@@ -376,6 +377,84 @@ def assert_etherlike_ifalias_filters(api, template_name: str) -> tuple[bool, str
         return True, 'no duplex LLD — n/a'
     ok = _etherlike_has_ifalias_filters((rules[0].get('filter') or {}).get('conditions') or [])
     return ok, str((rules[0].get('filter') or {}).get('conditions'))
+
+
+_IF_DISCOVERY_KEY = 'net.if.discovery'
+_IF_LLD_ROLLOUT_DELAY = '15m'
+_IF_LLD_ROLLOUT_LIFETIME = '0'
+
+
+def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by SNMP') -> str:
+    """Align stock EXOS net.if.discovery with VOSS rollout settings (15m, keep-lost 0).
+
+    Stock Extreme EXOS ships delay=1h and a long lost-resources period — hosts can sit
+    with 0 interface items for an hour after link, and ``X`` relabels linger. Idempotent
+    API patch; does not fork the stock YAML.
+    """
+    logger.info('Network: EXOS net.if.discovery rollout (delay/lifetime)')
+    tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
+    if not tpls:
+        logger.warning('  %s: template not found — skip IF LLD rollout patch', template_name)
+        return 'missing'
+    tid = tpls[0]['templateid']
+    rules = api.discoveryrule.get(
+        hostids=tid,
+        filter={'key_': _IF_DISCOVERY_KEY},
+        output=['itemid', 'key_', 'delay', 'lifetime', 'enabled_lifetime'],
+    )
+    if not rules:
+        logger.warning('  %s: no %s — skip', template_name, _IF_DISCOVERY_KEY)
+        return 'no-if-lld'
+    rule = rules[0]
+    delay = str(rule.get('delay') or '')
+    lifetime = str(rule.get('lifetime') or '')
+    enabled = str(rule.get('enabled_lifetime') or '')
+    if (
+        delay == _IF_LLD_ROLLOUT_DELAY
+        and lifetime in (_IF_LLD_ROLLOUT_LIFETIME, '0s', '0d')
+        and enabled in (_IF_LLD_ROLLOUT_LIFETIME, '0s', '0d', '')
+    ):
+        logger.info('  %s: IF LLD rollout already set (delay=%s lifetime=%s)', template_name, delay, lifetime)
+        return 'ok'
+    update = {
+        'itemid': rule['itemid'],
+        'delay': _IF_LLD_ROLLOUT_DELAY,
+        'lifetime': _IF_LLD_ROLLOUT_LIFETIME,
+    }
+    # Zabbix 6.4+/7: drop immediately when filtered out
+    if 'enabled_lifetime' in rule or True:
+        update['enabled_lifetime'] = _IF_LLD_ROLLOUT_LIFETIME
+    api.discoveryrule.update(**update)
+    logger.info(
+        '  %s: patched IF LLD delay=%s lifetime=%s (was delay=%s lifetime=%s)',
+        template_name,
+        _IF_LLD_ROLLOUT_DELAY,
+        _IF_LLD_ROLLOUT_LIFETIME,
+        delay,
+        lifetime,
+    )
+    return 'patched'
+
+
+def assert_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by SNMP') -> tuple[bool, str]:
+    tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
+    if not tpls:
+        return True, 'template absent — n/a'
+    rules = api.discoveryrule.get(
+        hostids=tpls[0]['templateid'],
+        filter={'key_': _IF_DISCOVERY_KEY},
+        output=['delay', 'lifetime', 'enabled_lifetime'],
+    )
+    if not rules:
+        return True, 'no IF LLD — n/a'
+    r = rules[0]
+    detail = f"delay={r.get('delay')} lifetime={r.get('lifetime')} enabled_lifetime={r.get('enabled_lifetime')}"
+    ok = str(r.get('delay')) == _IF_LLD_ROLLOUT_DELAY and str(r.get('lifetime')) in (
+        _IF_LLD_ROLLOUT_LIFETIME,
+        '0s',
+        '0d',
+    )
+    return ok, detail
 
 
 # Stock Extreme EXOS ships {$TEMP_WARN}=55 / {$TEMP_CRIT}=65. Template macros beat globals,
@@ -833,6 +912,17 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 ok, detail = assert_etherlike_ifalias_filters(api, tname)
                 record(f'etherlike_ifalias_assert_{tname}', ok, detail, group='import')
 
+            if_lld_status = patch_exos_interface_lld_rollout(api)
+            record(
+                'exos_if_lld_rollout',
+                if_lld_status in ('ok', 'patched', 'missing', 'no-if-lld'),
+                if_lld_status,
+                group='import',
+            )
+            ok, detail = assert_exos_interface_lld_rollout(api)
+            # Lab stub EXOS has no real IF LLD — treat missing/n/a as pass
+            record('exos_if_lld_rollout_assert', ok or 'n/a' in detail, detail, group='import')
+
             temp_statuses = patch_extreme_template_temp_macros(api)
             for tname, status in temp_statuses.items():
                 record(
@@ -1087,6 +1177,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         imported = import_extreme_templates(api)
         step_global_macros_zabbix(api)
         patch_etherlike_ifalias_filters(api)
+        patch_exos_interface_lld_rollout(api)
         patch_extreme_template_temp_macros(api)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
     step_server_macros(server)
