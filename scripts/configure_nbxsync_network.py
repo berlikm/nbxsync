@@ -111,6 +111,7 @@ TEMPLATE_FILES = {
 }
 
 # Role → port-scoping macros (01 §A.5 / §A.8). Hybrid starts access/opt-in.
+# Core / Dist / Mgmt = all ethernet/LAG except X*. Access / Hybrid = labelled opt-in.
 ROLE_MACROS = {
     'Switch Core': {
         '{$NET.IF.IFALIAS.MATCHES}': '.*',
@@ -137,6 +138,17 @@ ROLE_MACROS = {
         '{$NET.IF.IFALIAS.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
     },
+}
+
+# NetBox role name variants → ROLE_MACROS key (Dist must get Core-like all-ports scope).
+ROLE_NAME_ALIASES = {
+    'Switch Dist': (
+        'Switch Dist',
+        'Switch Distribution',
+        'Distribution',
+        'Dist',
+        'Switch DIST',
+    ),
 }
 
 # Production end-state (default). Stock EXOS 55/65 is wrong for G2+ internal sensors
@@ -499,6 +511,32 @@ def step_server_macros(server) -> None:
         )
 
 
+def resolve_role_for_macros(canonical_name: str) -> DeviceRole | None:
+    """Resolve NetBox DeviceRole for a ROLE_MACROS key, including Dist aliases."""
+    candidates = list(ROLE_NAME_ALIASES.get(canonical_name, (canonical_name,)))
+    if canonical_name not in candidates:
+        candidates.insert(0, canonical_name)
+    for name in candidates:
+        try:
+            return get_role(name)
+        except DeviceRole.DoesNotExist:
+            pass
+        role = (
+            DeviceRole.objects.filter(name=name).first()
+            or DeviceRole.objects.filter(name__iexact=name).first()
+            or DeviceRole.objects.filter(slug=slugify(name)).first()
+        )
+        if role is not None:
+            return role
+    # Last resort: name contains Dist/Distribution for the Dist key only
+    if canonical_name == 'Switch Dist':
+        return (
+            DeviceRole.objects.filter(name__icontains='Dist').exclude(name__icontains='Access').first()
+            or DeviceRole.objects.filter(name__icontains='Distribution').first()
+        )
+    return DeviceRole.objects.filter(name__iendswith=canonical_name.replace('Switch ', '')).first()
+
+
 def step_role_macros() -> None:
     """ZabbixMacroAssignment on Switch* roles — what inheritance actually syncs."""
     logger.info('=' * 60)
@@ -510,14 +548,12 @@ def step_role_macros() -> None:
         raise SystemExit('No ZabbixServer — run with --simulate or create a server first')
 
     for role_name, macros in ROLE_MACROS.items():
-        try:
-            role = get_role(role_name)
-        except DeviceRole.DoesNotExist:
-            # Production may use unprefixed names
-            role = DeviceRole.objects.filter(name=role_name).first() or DeviceRole.objects.filter(name__iendswith=role_name).first()
-            if role is None:
-                logger.warning('  Role not found: %s — skipping', role_name)
-                continue
+        role = resolve_role_for_macros(role_name)
+        if role is None:
+            logger.warning('  Role not found: %s — skipping', role_name)
+            continue
+        if role.name != role_name:
+            logger.info('  Resolved %s → NetBox role %r', role_name, role.name)
         for macro_name, value in macros.items():
             zmacro, _ = ensure(
                 M.ZabbixMacro,
@@ -867,6 +903,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
         objects = {}
         for key, role_name, platform in [
             ('voss_core', 'Switch Core', plat_voss),
+            ('voss_dist', 'Switch Dist', plat_voss),
             ('voss_access', 'Switch Access', plat_voss),
             ('exos_core', 'Switch Core', plat_exos),
             ('voss_hybrid', 'Switch Hybrid', plat_voss),
@@ -916,6 +953,13 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
         m_core = macro_map(objects['voss_core'])
         record('core_ifalias_matches', m_core.get('{$NET.IF.IFALIAS.MATCHES}') == '.*', str(m_core), group='resolve')
         record('core_ifalias_not_matches_x_only', m_core.get('{$NET.IF.IFALIAS.NOT_MATCHES}') == '^X(-|$)', str(m_core), group='resolve')
+        m_dist = macro_map(objects['voss_dist'])
+        record(
+            'dist_ifalias_like_core_all_ports',
+            m_dist.get('{$NET.IF.IFALIAS.MATCHES}') == '.*' and m_dist.get('{$NET.IF.IFALIAS.NOT_MATCHES}') == '^X(-|$)',
+            str(m_dist),
+            group='resolve',
+        )
         m_acc = macro_map(objects['voss_access'])
         record('access_ifalias_opt_in', 'USW' in (m_acc.get('{$NET.IF.IFALIAS.MATCHES}') or ''), str(m_acc), group='resolve')
         record('hybrid_opt_in_like_access', 'USW' in (macro_map(objects['voss_hybrid']).get('{$NET.IF.IFALIAS.MATCHES}') or ''), str(macro_map(objects['voss_hybrid'])), group='resolve')

@@ -18,7 +18,7 @@ Community shortlist reference: `reference_bgp4plus_Aerohive_AP.xml` ([bgp4plus](
 | Hardware | `ahHwVersion` | `26928.1.2.8.0` | |
 | Client count | `ahClientCount` | `26928.1.2.9.0` | 0..10000 |
 | Temperature | `ahEnvirmentTemp` | `26928.1.2.10.0` | MIB spelling |
-| Fan RPM | `ahEnvirmentFan` | `26928.1.2.11.0` | Often N/A on wall APs |
+| Fan RPM | `ahEnvirmentFan` | `26928.1.2.11.0` | AP305C fanless → `0`; template marks ≤0 unsupported |
 | Firmware | `ahFirmwareVersion` | `26928.1.2.12.0` | Missing from bgp4plus template |
 
 ## Radio / interface (`AH-INTERFACE-MIB` → `ahAPInterface.1` = `26928.1.1.1.2.1`)

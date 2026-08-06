@@ -562,7 +562,7 @@ Stock Extreme LLD evaluates **both** IFALIAS macros — set both on every Switch
 | Device Role | `{$NET.IF.IFALIAS.MATCHES}` | `{$NET.IF.IFALIAS.NOT_MATCHES}` | `{$NET.IF.IFTYPE.MATCHES}` | Meaning |
 |---|---|---|---|---|
 | Switch Core | `.*` | `^X(-\|$)` | `^(6\|161)$` | All ethernet/LAG ports except `X` exclude |
-| Switch Dist | `.*` | `^X(-\|$)` | `^(6\|161)$` | Same as Core |
+| Switch Dist | `.*` | `^X(-\|$)` | `^(6\|161)$` | **Same as Core — all ethernet/LAG except `X`** (not Access opt-in). Role aliases: Distribution / Dist |
 | Switch Mgmt | `.*` | `^X(-\|$)` | `^(6\|161)$` | Same as Core |
 | Switch Access | `^(USW\|US\|UP\|MON\|UW\|TMON)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` | Opt-in labelled ports only |
 | Switch Hybrid | `^(USW\|US\|UP\|MON\|UW\|TMON)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` | **Start** Access-like (stage 0–4); flip to Core values at stage 5 |

@@ -68,7 +68,7 @@ Scalar system objects are under **`ahProduct.2`**, not under `ahAPCommon`. Numer
 | `ahHwVersion` | `.1.3.6.1.4.1.26928.1.2.8.0` | DisplayString | Inventory |
 | `ahClientCount` | `.1.3.6.1.4.1.26928.1.2.9.0` | 0..10000 | Graph; soft warn later |
 | `ahEnvirmentTemp` | `.1.3.6.1.4.1.26928.1.2.10.0` | 0..100 | Alert (MIB spelling) |
-| `ahEnvirmentFan` | `.1.3.6.1.4.1.26928.1.2.11.0` | RPM | Graph; many wall APs = 0 / unsupported |
+| `ahEnvirmentFan` | `.1.3.6.1.4.1.26928.1.2.11.0` | RPM | AP305C fanless returns 0 — template treats ≤0 as unsupported |
 | `ahFirmwareVersion` | `.1.3.6.1.4.1.26928.1.2.12.0` | DisplayString | Inventory (**missing from community template**) |
 
 ### Interface / radio (`AH-INTERFACE-MIB` under `.1.3.6.1.4.1.26928.1.1.1.2.1`)
