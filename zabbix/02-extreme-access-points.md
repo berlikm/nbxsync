@@ -22,7 +22,7 @@ Status: template v1 + wiring    Owner:    Depends on: 01-extreme-switching.md (s
 | ExtremeCloud IQ | REST (Pilot) | TBD | Optional later for cloud-only signals |
 | Switch `UP-…` | already in 01 | — | Link toward AP; do not double-page AP-down |
 
-**Decision: SNMP direct.** Track B already assigns CG **SNMP Monitoring** on role Access Point. Platform TemplateRule `IQ ENGINE` today points at Network Generic — replace with **`Extreme IQ Engine by SNMP`** (same pattern as VOSS).
+**Decision: SNMP direct.** Track B assigns CG **SNMP Monitoring** on role Access Point. Platform TemplateRule `IQ ENGINE` → **`Extreme IQ Engine by SNMP`** (Network Generic removed).
 
 ### Ops prerequisite (XIQ)
 
