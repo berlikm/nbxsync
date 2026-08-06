@@ -70,7 +70,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 01b | VOSS | **built** — `templates/extreme_voss_snmp/` | yes | lab only (virtual) | no |
 | 01–ports | Port Speed Expect | **built** — `templates/extreme_port_speed_expect_snmp/` | yes | no | no |
 | 01c | OSPF routing (core/dist, both platforms) | **built** — `templates/extreme_routing_snmp/` | yes | no | no |
-| 02 | HiveOS AP | **none — build** | scaffold | no | no |
+| 02 | HiveOS / IQ Engine AP | **none — build** (OID analysis done) | analysis (`02` + `templates/extreme_iq_engine_snmp/`) | no | no |
 | 03 | FortiGate | ? | scaffold | no | no |
 | 03 | FortiManager | ? | scaffold | no | no |
 | 03 | FortiAnalyzer | ? | scaffold | no | no |
