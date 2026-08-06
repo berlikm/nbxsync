@@ -425,8 +425,12 @@ One template set for every role — never a per-role copy of the template. Two c
 
 ```
 {$IF.UTIL.MAX}                = 101          # silence stock bandwidth alerts
-{$TEMP_WARN}                  = 999          # silence warning tier
-{$TEMP_CRIT}                  = 999          # stage 0–1: closets trip stock 65; restore ~65 at stage 2
+{$TEMP_WARN}                  = 999          # silence warning tier (cutover)
+{$TEMP_CRIT}                  = 999          # silence value-crit (cutover)
+# Post-cutover EXOS (G2 / Switch Engine): stock 55/65 is WRONG.
+# extremeCurrentTemperature is an *internal* sensor, not ambient.
+# Extreme GTAC 000088439: 5720 at ~85°C still Status=Normal (Normal 10–100, Max 110).
+# Restore: {$TEMP_WARN}=90  {$TEMP_CRIT}=100  — and keep overTemp *status* as the hard alarm.
 {$TEMP_CRIT_LOW}              = -273         # silence stack-returns-0 false positive
 {$OPTIC.TEMP.CRIT}            = 999          # optic °C value trigger; restore ~70 after canary
 {$OPTIC.TEMP.MAX}             = 150          # drop garbage DOM readings
