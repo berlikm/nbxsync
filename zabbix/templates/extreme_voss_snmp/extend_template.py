@@ -459,15 +459,27 @@ def build_discovery_rules() -> str:
                 description="MIB: rcPlugOptModWaveLength",
                 tags=[("component", "optic")],
             ),
+            # NOTE: optic DOM JS (temp scale, power→dBm, DDM LLD filter) is maintained in
+            # template_net_extreme_voss_snmp.yaml + OPTIC_POWER_CANARY.md — do not regenerate
+            # this block over a hand-tuned YAML without porting those scripts.
             proto(
                 "Optic {#SNMPINDEX}: Temperature",
                 "sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}]",
                 f"{OID['optTemp']}.{{#SNMPINDEX}}",
                 value_type="FLOAT",
-                units="┬░C",
+                units="°C",
                 delay="1m",
-                description="MIB: rcPlugOptModTemperature (1/256 ┬░C).",
-                preprocessing=[{"type": "MULTIPLIER", "parameters": ["0.00390625"]}],
+                description="See YAML: JS /256 or /65536 (FE 9.3 canary). Prefer DOM status.",
+                preprocessing=[
+                    {
+                        "type": "JAVASCRIPT",
+                        "parameters": [
+                            "var v=Number(value); if (isNaN(v)) throw 'optic temp: '+value; "
+                            "var c=v/256; if (c>125||c<-40) c=v/65536; "
+                            "if (c>125||c<-40) throw 'optic temp out of range: '+v; return c;"
+                        ],
+                    }
+                ],
                 tags=[("component", "optic")],
                 trigger_prototypes=[
                     {
@@ -477,7 +489,7 @@ def build_discovery_rules() -> str:
                         ),
                         "name": "Extreme VOSS: Optic {#SNMPINDEX}: Temperature is too high",
                         "priority": "AVERAGE",
-                        "description": "DOM temp °C (MIB 1/256). Upper clamp {$OPTIC.TEMP.MAX} drops garbage/unavailable readings.",
+                        "description": "DOM temp °C. Prefer DOM status alerts.",
                         "scope": "performance",
                     }
                 ],
@@ -487,9 +499,19 @@ def build_discovery_rules() -> str:
                 "sensor.optic.txpower[rcPlugOptModTxPower.{#SNMPINDEX}]",
                 f"{OID['optTx']}.{{#SNMPINDEX}}",
                 value_type="FLOAT",
-                units="uW",
+                units="dBm",
                 delay="1m",
-                description="MIB: rcPlugOptModTxPower (microwatts).",
+                description="See YAML: JS millidBm/µW → dBm; 0 → -40.",
+                preprocessing=[
+                    {
+                        "type": "JAVASCRIPT",
+                        "parameters": [
+                            "var v=Number(value); if (isNaN(v)) throw 'optic power: '+value; "
+                            "if (v<0) return v/1000; if (v==0) return -40; "
+                            "return 10*Math.log(v/1000)/Math.LN10;"
+                        ],
+                    }
+                ],
                 tags=[("component", "optic")],
             ),
             proto(
@@ -497,13 +519,26 @@ def build_discovery_rules() -> str:
                 "sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}]",
                 f"{OID['optRx']}.{{#SNMPINDEX}}",
                 value_type="FLOAT",
-                units="uW",
+                units="dBm",
                 delay="1m",
-                description="MIB: rcPlugOptModRxPower (microwatts).",
+                description="See YAML: JS millidBm/µW → dBm; 0 → -40.",
+                preprocessing=[
+                    {
+                        "type": "JAVASCRIPT",
+                        "parameters": [
+                            "var v=Number(value); if (isNaN(v)) throw 'optic power: '+value; "
+                            "if (v<0) return v/1000; if (v==0) return -40; "
+                            "return 10*Math.log(v/1000)/Math.LN10;"
+                        ],
+                    }
+                ],
                 tags=[("component", "optic")],
                 trigger_prototypes=[
                     {
-                        "expression": "max(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)<{$OPTIC.RX.POWER.MIN} and max(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)>0",
+                        "expression": (
+                            "avg(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)<{$OPTIC.RX.DBM.MIN} "
+                            "and avg(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)>{$OPTIC.RX.DBM.FLOOR}"
+                        ),
                         "name": "Extreme VOSS: Optic {#SNMPINDEX}: RX power is too low",
                         "priority": "WARNING",
                         "scope": "performance",
@@ -535,9 +570,9 @@ def build_discovery_rules() -> str:
         discovery_rule(
             "Optical transceiver discovery",
             "optic.discovery",
-            f"discovery[{{#SNMPVALUE}},{OID['optVendor']}]",
+            f"discovery[{{#SNMPVALUE}},{OID['optVendor']},{{#DDM}},{OID['optSupports']}]",
             opt_items,
-            "RAPID-CITY rcPlugOptModTable ΓÇö optics / DOM (empty on VOSS-VM without optics).",
+            "RAPID-CITY rcPlugOptModTable — DDM-capable optics only. See YAML for LLD filter lifetime 0.",
         )
     )
 

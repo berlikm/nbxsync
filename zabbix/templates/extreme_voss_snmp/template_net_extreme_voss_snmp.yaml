@@ -1621,11 +1621,15 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.71.1.1.6,{#DDM},1.3.6.1.4.1.2272.1.71.1.1.13]
       key: optic.discovery
       delay: 1h
+      lifetime: '0'
+      enabled_lifetime: '0'
       filter:
         evaltype: AND
         conditions:
         - macro: '{#DDM}'
-          value: '1'
+          value: '^1$'
+          operator: MATCHES_REGEX
+          formulaid: A
       description: 'RAPID-CITY rcPlugOptModTable — DDM-capable optics only (SupportsDDM=true). DAC/copper without DDM excluded.'
       item_prototypes:
       - uuid: a1ff1ddf66b545db9430ee8082c099fd
@@ -1681,12 +1685,33 @@ zabbix_export:
         key: sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}]
         delay: 1m
         value_type: FLOAT
-        units: '┬░C'
-        description: 'MIB: rcPlugOptModTemperature (1/256 ┬░C).'
+        units: °C
+        description: |
+          rcPlugOptModTemperature → °C (RC-POM-MIB / RAPID-CITY, not EXTREME-BASE-MIB).
+          MIB: SFF fixed-point 1/256 °C (MSB signed integer, LSB fraction).
+          FE 9.3 canary: plain /256 on some INTEGER widths ≈ 1300 °C; fall back /65536.
+          Prefer DOM TemperatureStatus for alerts. Confirm °C vs CLI show pluggable-optical-modules.
         preprocessing:
-        - type: MULTIPLIER
+        - type: JAVASCRIPT
           parameters:
-          - '0.00390625'
+          - |
+            var v = Number(value);
+            if (isNaN(v)) { throw 'optic temp: not a number: ' + value; }
+            v = Math.trunc(v);
+            var c;
+            if (Math.abs(v) <= 0xFFFF) {
+              // RC-POM-MIB / SFF-8472: 16-bit fixed point, 1/256 °C
+              var lo = v & 0xFFFF;
+              if (lo >= 0x8000) { lo -= 0x10000; }
+              c = lo / 256;
+            } else {
+              // FE 9.3 canary: wide INTEGER; /256 ≈ 1300 °C bogus, /65536 ≈ real °C
+              c = v / 65536;
+            }
+            if (c > 125 || c < -40) {
+              throw 'optic temp out of range: raw=' + v + ' c=' + c;
+            }
+            return c;
         tags:
         - tag: component
           value: optic
@@ -1695,7 +1720,7 @@ zabbix_export:
           expression: avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)>{$OPTIC.TEMP.CRIT}
             and avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)<{$OPTIC.TEMP.MAX}
           name: 'Extreme VOSS: Optic {#SNMPINDEX}: Temperature is too high'
-          description: 'DOM temp °C (MIB 1/256 °C). Upper clamp {$OPTIC.TEMP.MAX} drops garbage.'
+          description: 'DOM temp °C after scale fix. Upper clamp {$OPTIC.TEMP.MAX} drops garbage. Prefer DOM status.'
           priority: AVERAGE
           tags:
           - tag: scope
@@ -1729,11 +1754,20 @@ zabbix_export:
         delay: 1m
         value_type: FLOAT
         units: dBm
-        description: 'rcPlugOptModTxPower normalized to dBm. MIB documents µW; FE 9.3 returns millidBm when negative — JS handles both.'
+        description: |
+          rcPlugOptModTxPower → dBm. MIB: µW. FE 9.3: negative = millidBm; 0 = no light (−40 dBm).
         preprocessing:
         - type: JAVASCRIPT
           parameters:
-          - "var v = Number(value);\nif (isNaN(v)) { throw 'optic power: not a number: ' + value; }\n// MIB claims positive µW. Physical FE 9.3 (CH-STA CORE01 canary): negative = millidBm (v/1000 = dBm).\nif (v < 0) { return (v / 1000); }\nif (v === 0) { return -40; }\n// positive: microwatts → dBm\nreturn (10 * Math.log(v / 1000) / Math.LN10);"
+          - |
+            var v = Number(value);
+            if (isNaN(v)) { throw 'optic power: not a number: ' + value; }
+            // FE 9.3 RC-POM: negative INTEGER = millidBm (not MIB µW)
+            if (v < 0) { return v / 1000; }
+            // zero → synthetic floor (no optical power / DAC)
+            if (v == 0) { return -40; }
+            // positive: microwatts → dBm (MIB)
+            return 10 * Math.log(v / 1000) / Math.LN10;
         tags:
         - tag: component
           value: optic
@@ -1766,11 +1800,17 @@ zabbix_export:
         delay: 1m
         value_type: FLOAT
         units: dBm
-        description: 'rcPlugOptModRxPower normalized to dBm. MIB documents µW; FE 9.3 returns millidBm when negative — JS handles both.'
+        description: |
+          rcPlugOptModRxPower → dBm. MIB: µW. FE 9.3: negative = millidBm; 0 = no light (−40 dBm).
         preprocessing:
         - type: JAVASCRIPT
           parameters:
-          - "var v = Number(value);\nif (isNaN(v)) { throw 'optic power: not a number: ' + value; }\n// MIB claims positive µW. Physical FE 9.3 (CH-STA CORE01 canary): negative = millidBm (v/1000 = dBm).\nif (v < 0) { return (v / 1000); }\nif (v === 0) { return -40; }\n// positive: microwatts → dBm\nreturn (10 * Math.log(v / 1000) / Math.LN10);"
+          - |
+            var v = Number(value);
+            if (isNaN(v)) { throw 'optic power: not a number: ' + value; }
+            if (v < 0) { return v / 1000; }
+            if (v == 0) { return -40; }
+            return 10 * Math.log(v / 1000) / Math.LN10;
         tags:
         - tag: component
           value: optic
@@ -2169,7 +2209,7 @@ zabbix_export:
         trigger_prototypes:
         - uuid: 5054efcb8c1c4465a832c2095dde9d26
           expression: '{$MLT.CONTROL}=1 and last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.DOWN_STATUS}
-            and diff(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])=1'
+            and (last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}],#2))'
           name: 'Extreme VOSS: MLT {#SNMPINDEX}: Aggregation disabled/down'
           description: 'Fires only when aggregation *transitions* to disabled (not for MLTs that stay unused/disabled). Gate with {$MLT.CONTROL}.'
           priority: AVERAGE
@@ -2993,6 +3033,8 @@ zabbix_export:
     - uuid: 449d30f4df8147038f2a40e32479c3c7
       name: 'RAPID-CITY::rcPlugOptModDomStatus'
       mappings:
+      - value: '0'
+        newvalue: unavailable
       - value: '1'
         newvalue: normal
       - value: '2'
