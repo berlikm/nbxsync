@@ -585,8 +585,8 @@ Speed Expect uses its own filter namespace (`{$PORTID.LLD.*}`) — do **not** re
 | `{$TEMP_CRIT_LOW}` | `-273` | Silence 0 °C stack/VM false positive |
 | `{$OPTIC.TEMP.CRIT}` | **70** | Optic °C value trigger; prefer DOM status |
 | `{$OPTIC.TEMP.MAX}` | `150` | Drops garbage DOM readings |
-| `{$OPTIC.RX.DBM.MIN}` | **-25** | Secondary RX dBm floor |
-| `{$OPTIC.RX.DBM.FLOOR}` | `-39` | Ignores synthetic −40 (zero/no-light) |
+| `{$OPTIC.RX.DBM.MIN}` | `-100` | RX dBm value trigger **removed** (flooded on dark/unused DDM); DOM status only |
+| `{$OPTIC.RX.DBM.FLOOR}` | `-39` | Legacy; unused for alerts |
 | `{$OPTIC.DOM.ALARM_HIGH}` / `LOW` | `3` / `5` | Vendor DOM highAlarm / lowAlarm — primary optic alerts |
 | `{$MLT.CONTROL}` | **1** | Agg-down on *transition* (`.diff()`); unused MLTs that stay down stay quiet |
 | `{$VIST.CONTROL}` | `0` global | Set **host** macro `1` on VOSS fabric pairs that run V-IST |

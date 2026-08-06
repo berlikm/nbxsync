@@ -432,8 +432,8 @@ One template set for every role — never a per-role copy of the template. Two c
 {$TEMP_CRIT_LOW}              = -273         # silence stack-returns-0 false positive
 {$OPTIC.TEMP.CRIT}            = 70           # optic °C value trigger; prefer DOM *Status
 {$OPTIC.TEMP.MAX}             = 150          # drop garbage DOM readings
-{$OPTIC.RX.DBM.MIN}           = -25          # secondary RX dBm floor
-{$OPTIC.RX.DBM.FLOOR}         = -39          # ignore synthetic -40 (zero reading)
+{$OPTIC.RX.DBM.MIN}           = -100         # RX dBm value trigger removed; DOM status only
+{$OPTIC.RX.DBM.FLOOR}         = -39          # legacy (synthetic -40); unused for alerts
 {$OPTIC.DOM.ALARM_HIGH}       = 3            # primary optic alerts
 {$OPTIC.DOM.ALARM_LOW}        = 5
 {$MLT.CONTROL}                = 1            # .diff() keeps unused/disabled MLTs quiet

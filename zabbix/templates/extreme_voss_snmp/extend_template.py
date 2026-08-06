@@ -533,17 +533,7 @@ def build_discovery_rules() -> str:
                     }
                 ],
                 tags=[("component", "optic")],
-                trigger_prototypes=[
-                    {
-                        "expression": (
-                            "avg(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)<{$OPTIC.RX.DBM.MIN} "
-                            "and avg(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)>{$OPTIC.RX.DBM.FLOOR}"
-                        ),
-                        "name": "Extreme VOSS: Optic {#SNMPINDEX}: RX power is too low",
-                        "priority": "WARNING",
-                        "scope": "performance",
-                    }
-                ],
+                # RX dBm value trigger removed — see YAML (DOM status only).
             ),
             proto(
                 "Optic {#SNMPINDEX}: Laser bias",
@@ -938,8 +928,8 @@ def build_macros() -> str:
         ("{$MLT.AGG.DOWN_STATUS}", "2", "rcMltAggOperState disable(2)"),
         ("{$OPTIC.TEMP.CRIT}", "70", "Optic °C critical (value trigger). Prefer DOM *Status alarms."),
         ("{$OPTIC.TEMP.MAX}", "150", "Ignore DOM garbage above this (°C)"),
-        ("{$OPTIC.RX.DBM.MIN}", "-25", "Secondary RX dBm floor (destination). Prefer DOM status."),
-        ("{$OPTIC.RX.DBM.FLOOR}", "-39", "Ignore synthetic -40 (zero reading) in RX dBm value trigger"),
+        ("{$OPTIC.RX.DBM.MIN}", "-100", "Legacy; RX dBm value trigger removed — DOM status only."),
+        ("{$OPTIC.RX.DBM.FLOOR}", "-39", "Legacy; unused after RX dBm value trigger removal."),
         ("{$OPTIC.DOM.ALARM_HIGH}", "3", "rcPlugOptMod*Status highAlarm(3)"),
         ("{$OPTIC.DOM.ALARM_LOW}", "5", "rcPlugOptMod*Status lowAlarm(5)"),
     ]

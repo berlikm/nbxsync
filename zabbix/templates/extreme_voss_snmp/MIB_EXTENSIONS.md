@@ -39,8 +39,8 @@ OID base: `1.3.6.1.4.1.2272.1` unless noted.
 | `{$IST.CONTROL}` | `0` | Classic IST unused on FE — keep off |
 | `{$OPTIC.TEMP.CRIT}` | `70` | Optic °C **value** trigger (prefer DOM status) |
 | `{$OPTIC.TEMP.MAX}` | `150` | Ignore garbage DOM above this |
-| `{$OPTIC.RX.DBM.MIN}` | `-25` | Secondary RX dBm floor; prefer DOM status |
-| `{$OPTIC.RX.DBM.FLOOR}` | `-39` | Ignore synthetic −40 (zero reading) |
+| `{$OPTIC.RX.DBM.MIN}` | `-100` | RX dBm value trigger removed; DOM status only |
+| `{$OPTIC.RX.DBM.FLOOR}` | `-39` | Legacy |
 | `{$OPTIC.DOM.ALARM_HIGH}` / `LOW` | `3` / `5` | Vendor DOM highAlarm / lowAlarm |
 | `{$MLT.CONTROL}` | `1` | Gate MLT agg-down; trigger also requires `.diff()` |
 | `{$TEMP_WARN}` / `{$TEMP_CRIT}` | `90` / `100` | Chassis °C destination |

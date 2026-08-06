@@ -149,7 +149,7 @@ DESTINATION_GLOBAL_MACROS = {
     '{$TEMP_CRIT_LOW}': '-273',
     '{$OPTIC.TEMP.CRIT}': '70',
     '{$OPTIC.TEMP.MAX}': '150',
-    '{$OPTIC.RX.DBM.MIN}': '-25',  # secondary; prefer DOM *Status alarms
+    '{$OPTIC.RX.DBM.MIN}': '-100',  # RX dBm value trigger removed; -100 quiets leftovers
     '{$OPTIC.RX.DBM.FLOOR}': '-39',
     '{$OPTIC.DOM.ALARM_HIGH}': '3',
     '{$OPTIC.DOM.ALARM_LOW}': '5',

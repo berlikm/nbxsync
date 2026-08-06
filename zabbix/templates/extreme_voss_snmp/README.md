@@ -39,7 +39,7 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 | `{$TEMP_WARN}` / `{$TEMP_CRIT}` | **90** / **100** | Chassis °C destination (not stock 55/65) |
 | `{$TEMP_CRIT_LOW}` | **-273** | Silence stack/VM 0 °C false positive |
 | `{$OPTIC.TEMP.CRIT}` / `{$OPTIC.TEMP.MAX}` | **70** / 150 | °C value trigger; clamp garbage |
-| `{$OPTIC.RX.DBM.MIN}` / `FLOOR` | **−25** / −39 | Secondary dBm floor; prefer DOM status |
+| `{$OPTIC.RX.DBM.MIN}` / `FLOOR` | −100 / −39 | Legacy; RX alerts are DOM status only |
 | `{$OPTIC.DOM.ALARM_*}` | 3 / 5 | Vendor DOM highAlarm / lowAlarm (primary) |
 | `{$MLT.CONTROL}` | **1** | Agg-down on transition (`.diff()`); temporary silence = 0 |
 | `{$VIST.CONTROL}` / `{$IST.CONTROL}` | **0** / **0** | Host `VIST=1` on fabric pairs; classic IST unused |

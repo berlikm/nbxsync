@@ -30,7 +30,8 @@ Positive INTEGER in **microwatts**, 0 … 65535 µW (−40 … +18.16 dBm).
 
 ### Template JS
 
-`v<0 → v/1000`, `v==0 → -40`, `v>0 → 10*log10(v/1000)`. Prefer DOM `*Status` alerts.  
+`v<0 → v/1000`, `v==0 → -40`, `v>0 → 10*log10(v/1000)`.  
+**No RX dBm value trigger** — dark/unused DDM ports sit in (−39,−25) and flood; alert via `RxPowerStatus` only.  
 LLD: `SupportsDDM` `^1$`, `lifetime: 0`.
 
 ## Temperature — `rcPlugOptModTemperature`
