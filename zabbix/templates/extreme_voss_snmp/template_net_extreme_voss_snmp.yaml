@@ -1436,7 +1436,12 @@ zabbix_export:
           value: '1'
         - macro: '{#SNMPVALUE}'
           value: (2|3)
-      description: Discovering interfaces from IF-MIB and EtherLike-MIB. Interfaces with up(1) Operational Status are discovered.
+        - macro: '{#IFALIAS}'
+          value: '{$NET.IF.IFALIAS.MATCHES}'
+        - macro: '{#IFALIAS}'
+          value: '{$NET.IF.IFALIAS.NOT_MATCHES}'
+          operator: NOT_MATCHES_REGEX
+      description: 'EtherLike duplex LLD — must use the same IFALIAS macros as net.if.discovery (stock only filtered oper-up, which bypassed Access opt-in).'
       item_prototypes:
       - uuid: 9c3ff137f7564cf48365a9d2abec2fd9
         name: 'Interface {#IFNAME}({#IFALIAS}): Duplex status'

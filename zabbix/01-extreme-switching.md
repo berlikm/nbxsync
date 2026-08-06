@@ -182,6 +182,8 @@ This is why the core regex is `^X(-|$)` and not `^(X|N)(-|$)`. It also defines t
 
 The ifType filter matters: **EXOS presents VLAN interfaces in IF-MIB**. They have no `ifAlias`, so under the core rule they would otherwise be discovered and alert on "link down" for something that isn't a port.
 
+**EtherLike duplex is a second LLD.** Stock EXOS `net.if.duplex.discovery` historically filters only oper-up (+ duplex enum) — **not** `{$NET.IF.IFALIAS.*}`. So Access can look “correct” on traffic items and still show duplex on every up port. Add the same IFALIAS MATCHES / NOT_MATCHES conditions to that discovery rule (VOSS template ships with them).
+
 ### What happens to an unlabelled admin-up port on a core switch
 
 This is the deliberate safety net for a forgotten label. Same applies to `N` and to unparseable legacy labels — all three are monitoring-neutral.

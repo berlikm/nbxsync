@@ -361,6 +361,7 @@ Leave “require tags”, “role pattern”, and “manufacturer” empty unles
 - **VOSS must not use Network Generic** — both define `icmpping` and Zabbix rejects the link. Import the custom VOSS YAML before enabling the rule (zerotouch / network helper will import + retarget a leftover Network Generic VOSS rule).
 - **Switch Hybrid** starts Access-like (opt-in labels); flip to Core macros at stage 5 (§11.1 / §15.1c).
 - On-box labels: EXOS → `display-string` (max **20** chars; leave `description-string` empty). VOSS → port `name` → `ifAlias`. Grammar: `zabbix/port-identity.md`.
+- **Stock EXOS gap — EtherLike duplex LLD:** `net.if.discovery` honours `{$NET.IF.IFALIAS.*}`, but stock **EtherLike-MIB Discovery** only keeps oper-up ports — so Access still gets duplex items on unlabelled / legacy ports. In Zabbix, edit that discovery rule’s filters and add `{#IFALIAS}` MATCHES / NOT_MATCHES using the same two macros (VOSS YAML in-repo already includes this). Then execute the rule (or wait for its interval) so lost resources drop (`lifetime` / keep-lost should be 0 during rollout).
 
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
 
