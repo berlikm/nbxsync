@@ -12,6 +12,7 @@ Sibling of ``configure_nbxsync_zerotouch.py``. Same runtime shape:
 Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md``):
 
   * Import Extreme VOSS / Port Speed Expect / Routing templates into Zabbix
+  * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
   * Platform TemplateRules: EXOS → Extreme EXOS, VOSS → Extreme VOSS (not Network Generic)
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
   * Global silencing macros on the Zabbix server object
@@ -228,6 +229,102 @@ def import_extreme_templates(api) -> dict[str, tuple[int, str]]:
     if exos:
         out['Extreme EXOS by SNMP'] = (int(exos[0]['templateid']), 'Extreme EXOS by SNMP')
     return out
+
+
+# Zabbix LLD filter operators (API)
+_LLD_MATCHES_REGEX = 8
+_LLD_NOT_MATCHES_REGEX = 9
+_LLD_EVAL_AND = 1
+_IFALIAS_MATCHES = '{$NET.IF.IFALIAS.MATCHES}'
+_IFALIAS_NOT_MATCHES = '{$NET.IF.IFALIAS.NOT_MATCHES}'
+_ETHERLIKE_KEY = 'net.if.duplex.discovery'
+
+
+def _etherlike_has_ifalias_filters(conditions: list) -> bool:
+    has_m = has_n = False
+    for c in conditions or []:
+        if c.get('macro') != '{#IFALIAS}':
+            continue
+        op = int(c.get('operator', _LLD_MATCHES_REGEX))
+        val = c.get('value', '')
+        if op == _LLD_MATCHES_REGEX and val == _IFALIAS_MATCHES:
+            has_m = True
+        if op == _LLD_NOT_MATCHES_REGEX and val == _IFALIAS_NOT_MATCHES:
+            has_n = True
+    return has_m and has_n
+
+
+def patch_etherlike_ifalias_filters(api, template_names: tuple[str, ...] | None = None) -> dict[str, str]:
+    """Ensure EtherLike duplex LLD uses the same IFALIAS macros as net.if.discovery.
+
+    Stock Extreme EXOS only keeps oper-up ports on duplex discovery, so Access
+    still monitors unlabelled ports for half-duplex. Idempotent via Zabbix API —
+    production ``--apply`` covers EXOS without forking the stock template YAML.
+    """
+    logger.info('Network: EtherLike duplex IFALIAS filters')
+    names = template_names or ('Extreme EXOS by SNMP', 'Extreme VOSS by SNMP')
+    results: dict[str, str] = {}
+    for name in names:
+        tpls = api.template.get(filter={'name': [name]}, output=['templateid', 'name'])
+        if not tpls:
+            results[name] = 'missing'
+            logger.warning('  %s: template not found — skip EtherLike patch', name)
+            continue
+        tid = tpls[0]['templateid']
+        rules = api.discoveryrule.get(
+            hostids=tid,
+            filter={'key_': _ETHERLIKE_KEY},
+            output=['itemid', 'name', 'key_'],
+            selectFilter='extend',
+        )
+        if not rules:
+            results[name] = 'no-duplex-lld'
+            logger.info('  %s: no %s — skip', name, _ETHERLIKE_KEY)
+            continue
+        rule = rules[0]
+        filt = rule.get('filter') or {}
+        conditions = list(filt.get('conditions') or [])
+        if _etherlike_has_ifalias_filters(conditions):
+            results[name] = 'ok'
+            logger.info('  %s: EtherLike IFALIAS filters already present', name)
+            continue
+        kept = []
+        for c in conditions:
+            if c.get('macro') == '{#IFALIAS}':
+                continue  # replace any prior IFALIAS conditions
+            kept.append(
+                {
+                    'macro': c['macro'],
+                    'value': c.get('value', ''),
+                    'operator': int(c.get('operator', _LLD_MATCHES_REGEX)),
+                }
+            )
+        kept.append({'macro': '{#IFALIAS}', 'value': _IFALIAS_MATCHES, 'operator': _LLD_MATCHES_REGEX})
+        kept.append({'macro': '{#IFALIAS}', 'value': _IFALIAS_NOT_MATCHES, 'operator': _LLD_NOT_MATCHES_REGEX})
+        api.discoveryrule.update(
+            itemid=rule['itemid'],
+            filter={'evaltype': _LLD_EVAL_AND, 'conditions': kept},
+        )
+        results[name] = 'patched'
+        logger.info('  %s: patched EtherLike IFALIAS filters (itemid=%s)', name, rule['itemid'])
+    return results
+
+
+def assert_etherlike_ifalias_filters(api, template_name: str) -> tuple[bool, str]:
+    """Return (ok, detail) for simulate asserts."""
+    tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
+    if not tpls:
+        return True, 'template absent — n/a'
+    rules = api.discoveryrule.get(
+        hostids=tpls[0]['templateid'],
+        filter={'key_': _ETHERLIKE_KEY},
+        output=['itemid'],
+        selectFilter='extend',
+    )
+    if not rules:
+        return True, 'no duplex LLD — n/a'
+    ok = _etherlike_has_ifalias_filters((rules[0].get('filter') or {}).get('conditions') or [])
+    return ok, str((rules[0].get('filter') or {}).get('conditions'))
 
 
 def ensure_nbx_template(server, templateid: int, name: str) -> M.ZabbixTemplate:
@@ -561,6 +658,18 @@ def run_simulate(*, link_speed_expect: bool = False) -> int:
                 # Avoid icmpping collision later — add a dummy item-less template is fine for resolve tests
                 imported['Extreme EXOS by SNMP'] = (int(tid), 'Extreme EXOS by SNMP')
                 record('lab_stub_exos', True, 'stock EXOS absent — stub template created', group='import')
+            patch_statuses = patch_etherlike_ifalias_filters(api)
+            for tname, status in patch_statuses.items():
+                # missing/no-duplex-lld OK for lab stub EXOS; fail only on unexpected API outcomes
+                record(
+                    f'etherlike_ifalias_{tname}',
+                    status in ('ok', 'patched', 'no-duplex-lld', 'missing'),
+                    status,
+                    group='import',
+                )
+            for tname in ('Extreme EXOS by SNMP', 'Extreme VOSS by SNMP'):
+                ok, detail = assert_etherlike_ifalias_filters(api, tname)
+                record(f'etherlike_ifalias_assert_{tname}', ok, detail, group='import')
 
         tpl_models: dict[str, M.ZabbixTemplate] = {}
         for name, (tid, _) in imported.items():
@@ -779,6 +888,7 @@ def run_apply(*, link_speed_expect: bool = False) -> int:
     with ZabbixConnection(server) as api:
         imported = import_extreme_templates(api)
         step_global_macros_zabbix(api)
+        patch_etherlike_ifalias_filters(api)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
     step_server_macros(server)
     step_role_macros()
