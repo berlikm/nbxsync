@@ -13,7 +13,7 @@ Verdict: keep almost everything. Cut two triggers, silence one, re-filter one LL
 | SNMP agent availability, No SNMP data collection | |
 | CPU utilization + High CPU trigger | `{$CPU.UTIL.CRIT}`=90 |
 | Memory Discovery + High memory utilization | `{$MEMORY.UTIL.MAX}`=90 |
-| Temperature value + status, 3 triggers | warn 55 / crit 65 / low 5 |
+| Temperature value + status, 3 triggers | stock warn 55 / crit 65 — **override**: G2+ internal sensor Normal to ~100 °C (GTAC 000088439); use warn 90 / crit 100 + overTemp status |
 | PSU Discovery + critical trigger | |
 | FAN Discovery + status/speed + critical trigger | |
 | Hardware model / serial / firmware / HW version / OS | free inventory |

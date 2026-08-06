@@ -135,7 +135,9 @@ ROLE_MACROS = {
 GLOBAL_MACROS = {
     '{$IF.UTIL.MAX}': '101',
     '{$TEMP_WARN}': '999',
-    '{$TEMP_CRIT}': '999',  # EXOS/VOSS closets trip stock 65 during stage 0
+    # Cutover silence. Post-cutover EXOS G2+: restore WARN=90 CRIT=100 (NOT stock 55/65).
+    # extremeCurrentTemperature is internal; Extreme Normal range is often 10–100 (GTAC 000088439).
+    '{$TEMP_CRIT}': '999',
     '{$TEMP_CRIT_LOW}': '-273',
     '{$OPTIC.TEMP.CRIT}': '999',  # value trigger silence until canary
     '{$OPTIC.TEMP.MAX}': '150',

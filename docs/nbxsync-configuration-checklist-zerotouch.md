@@ -576,8 +576,8 @@ Cutover-safe silencing and Speed Expect filter namespace (own macros — do **no
 | Macro | Cutover value | Restore later | Notes |
 |---|---|---|---|
 | `{$IF.UTIL.MAX}` | `101` | role/class baselines | Disables util% alerts |
-| `{$TEMP_WARN}` | `999` | ~55 | EXOS/VOSS warning tier |
-| `{$TEMP_CRIT}` | `999` | ~65 | **Needed** — closets trip stock/EXOS critical at 65 |
+| `{$TEMP_WARN}` | `999` | **90** (EXOS G2+) | Stock 55 is wrong — see note below |
+| `{$TEMP_CRIT}` | `999` | **100** (EXOS G2+) | Stock 65 fires while Extreme still says Normal |
 | `{$TEMP_CRIT_LOW}` | `-273` | keep | Silence 0 °C stack/VM false positive |
 | `{$OPTIC.TEMP.CRIT}` | `999` | ~70 | Optic °C value trigger (status alarms stay active) |
 | `{$OPTIC.TEMP.MAX}` | `150` | keep | Drops garbage DOM readings |
@@ -590,6 +590,8 @@ Cutover-safe silencing and Speed Expect filter namespace (own macros — do **no
 | `{$PORTID.LLD.IFTYPE.MATCHES}` | `^6$` | | Speed Expect thin template only |
 
 After cutover, restore util/temp/optic thresholds and set `{$MLT.CONTROL}=1` (MLT trigger also requires a *transition* to disabled — unused MLTs that stay down do not alert).
+
+**EXOS temperature (stock 55/65 is wrong on modern platforms):** `extremeCurrentTemperature` is an **internal** sensor, not closet ambient. Extreme GTAC [000088439](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000088439): Switch Engine / Summit G2 / Universal (e.g. 5720) report **~70–85 °C as Status=Normal** with Normal range typically **10–100** and Max **110**. Stock Zabbix `{$TEMP_CRIT}=65` therefore pages healthy NKN access/dist switches. Prefer vendor `extremeOverTemperatureAlarm` for hard critical; set value macros to **warn 90 / crit 100** after cutover (confirm with `show temperature` on a pilot). Ambient rack rating (~0–50 °C) is a different number — do not use it for this OID.
 
 ### 11.3 Application / threshold macros (role)
 
