@@ -444,6 +444,8 @@ One template set for every role — never a per-role copy of the template. Two c
 {$PORTID.LLD.IFTYPE.MATCHES}  = ^6$
 ```
 
+Stock **Extreme EXOS by SNMP** also defines template-level `{$TEMP_WARN}=55` / `{$TEMP_CRIT}=65`, which **override** globals. `configure_nbxsync_network.py` patches those (and VOSS) to the destination values above — globals alone are not enough.
+
 **Device role** — port scoping. Set **both** IFALIAS macros on every role:
 
 ```
