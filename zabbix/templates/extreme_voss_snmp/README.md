@@ -36,9 +36,11 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 | `{$TEMP_CRIT_STATUS}` | `3` | `rcVossSystemTemperatureStatus` highCritial |
 | `{$CPU.UTIL.CRIT}` | (from EXOS base) | Slot CPU util % |
 | `{$MEMORY.UTIL.MAX}` | (from EXOS base) | Slot memory util % |
-| `{$TEMP_CRIT}` / `{$TEMP_WARN}` | 65 / **999** | Critical kept; warning tier silenced (design ┬ºA.8) |
-| `{$TEMP_CRIT_LOW}` | **-273** | Silence stack/VM 0┬░C false positive |
-| `{$IF.UTIL.MAX}` | **101** | Stock bandwidth trigger off; capacity ΓåÆ Port Speed Expect |
+| `{$TEMP_CRIT}` / `{$TEMP_WARN}` | **999** / **999** (cutover) | Restore ~65 / ~55 at stage 2; closets trip 65 at first light |
+| `{$TEMP_CRIT_LOW}` | **-273** | Silence stack/VM 0 °C false positive |
+| `{$OPTIC.TEMP.CRIT}` / `{$OPTIC.TEMP.MAX}` | **999** / 150 | DOM silence until canary; clamp garbage |
+| `{$MLT.CONTROL}` | **0** | Set 1 after unused MLTs reviewed (trigger needs `.diff()`) |
+| `{$IF.UTIL.MAX}` | **101** | Stock bandwidth trigger off; capacity → Port Speed Expect |
 | `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Physical + LAG only |
 
 Role IFALIAS macros (`.*` + `^X(-|$)` for core, opt-in for access) are assigned via **nbxsync**, not baked into this template. Interface LLD defaults to **15m** / keep-lost **0** during rollout.
