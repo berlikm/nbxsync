@@ -416,15 +416,12 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
     ):
         logger.info('  %s: IF LLD rollout already set (delay=%s lifetime=%s)', template_name, delay, lifetime)
         return 'ok'
-    update = {
-        'itemid': rule['itemid'],
-        'delay': _IF_LLD_ROLLOUT_DELAY,
-        'lifetime': _IF_LLD_ROLLOUT_LIFETIME,
-    }
-    # Zabbix 6.4+/7: drop immediately when filtered out
-    if 'enabled_lifetime' in rule or True:
-        update['enabled_lifetime'] = _IF_LLD_ROLLOUT_LIFETIME
-    api.discoveryrule.update(**update)
+    api.discoveryrule.update(
+        itemid=rule['itemid'],
+        delay=_IF_LLD_ROLLOUT_DELAY,
+        lifetime=_IF_LLD_ROLLOUT_LIFETIME,
+        enabled_lifetime=_IF_LLD_ROLLOUT_LIFETIME,
+    )
     logger.info(
         '  %s: patched IF LLD delay=%s lifetime=%s (was delay=%s lifetime=%s)',
         template_name,

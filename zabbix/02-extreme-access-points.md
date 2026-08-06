@@ -113,7 +113,7 @@ Local copy: `zabbix/templates/extreme_iq_engine_snmp/reference_bgp4plus_Aerohive
 | # | Signal | Source | v1 | Alert / graph |
 |---|---|---|---|---|
 | 1 | Host ICMP / SNMP availability | ICMP + `zabbix[host,snmp,available]` | yes | Alert |
-| 2 | CPU % | `ahCpuUtilization` | yes | Alert (macro) |
+| 2 | CPU % | `ahCpuUtilization` | yes | Host graph; alert (ops macros) |
 | 3 | Memory % | `ahMemUtilization` | yes | Alert (macro) |
 | 4 | Temperature °C | `ahEnvirmentTemp` | yes | Alert (macro; canary first — many APs may stub) |
 | 5 | Client count | `ahClientCount` | yes | Host graph; soft warn optional |
