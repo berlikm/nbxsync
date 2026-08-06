@@ -130,7 +130,7 @@ Local copy: `zabbix/templates/extreme_iq_engine_snmp/reference_bgp4plus_Aerohive
 
 | Rule | Walk | Filter | Prototypes |
 |---|---|---|---|
-| `radio.discovery` | `ahIfName` (`.…2.1.1.1.1`) | physical radio ifaces (`ahIfType=0` / name `wifi*`) — confirm on pilot | channel, txPower, noiseFloor, key radio stats |
+| `radio.discovery` | `ahIfName` + `ahIfType` | `ahIfType=0` **and** `{$AP.RADIO.IFNAME.MATCHES}=^(wifi\|…)[0-9]+$` (no VAP `wifi0.1`) | channel, txPower, noiseFloor, key radio stats |
 | `net.if.discovery` | IF-MIB | eth only (`ifType` ethernet); exclude wifi/SSID virt | oper status, traffic, errors |
 | `client.discovery` | association table | v2 | RSSI, SSID, rates |
 
@@ -140,7 +140,8 @@ Local copy: `zabbix/templates/extreme_iq_engine_snmp/reference_bgp4plus_Aerohive
 |---|---|---|---|
 | High | ICMP unavailable × N | remote sites `#5` | Same estate policy as switches |
 | High | SNMP unavailable | `{$SNMP.TIMEOUT}` | |
-| Average | CPU ≥ warn for settle | `{$CPU.UTIL.WARN}` / `CRIT` | Start ~85/95; baseline |
+| Average | CPU ≥ warn for settle | `{$CPU.UTIL.WARN}` / `CRIT` | **90 / 95** (GTAC 000099170: 30–60% normal) |
+| Warning | ICMP loss | `{$ICMP_LOSS_WARN}=10` | Wired mgmt — not stock 20 |
 | Average | Mem ≥ warn | `{$MEMORY.UTIL.MAX}` | |
 | Average | Temp ≥ warn | `{$TEMP_WARN}` / `{$TEMP_CRIT}` | Canary — may need silence if OID stub |
 | Warning | Eth oper down (phys) | IFCONTROL-style / ifOper | Coordinate with switch `UP-` (see §8) |

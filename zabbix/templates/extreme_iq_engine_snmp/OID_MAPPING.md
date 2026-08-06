@@ -31,7 +31,9 @@ Community shortlist reference: `reference_bgp4plus_Aerohive_AP.xml` ([bgp4plus](
 | `ahAssociationTable` | `…2.1.2` | ifIndex + MAC | v2 — RSSI, SSID, rates |
 | `ahVIfStatsTable` | `…2.1.4` | ifIndex | v2 — per-SSID counters |
 
-Noise floor: MIB documents *value = actual_dBm + 256*. Verify before alerting.
+Noise floor: MIB documents *value = actual_dBm + 256*. Template: FLOAT + JS parse (some builds return OCTET STRING) then −256.
+
+Radio LLD: discover `ahIfName` + `ahIfType`; keep `ahPHYSICAL(0)` and names matching `^(wifi|…)[0-9]+$` — VAP/SSID (`wifi0.1`) have no `ahRadioAttribute*` rows.
 
 ## Standard MIBs
 

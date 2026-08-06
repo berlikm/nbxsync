@@ -23,7 +23,8 @@ Requires Zabbix **7.0+**.
 
 - ICMP + SNMP availability
 - AH-SYSTEM-MIB scalars (CPU/mem/temp/clients/serial/FW/…)
-- Radio LLD: channel, Tx power, noise floor (−256), retries/drops/RX frames
+- Radio LLD (physical only: `ahIfType=0` + `wifiN`/`radioN`): channel, Tx power, noise floor (parse−256), retries/drops/RX frames
+- Macros: CPU warn/crit **90/95**, ICMP loss warn **10**
 - Eth IF-MIB LLD (eth/mgt only): oper status + bits in/out
 
 ## Sources
