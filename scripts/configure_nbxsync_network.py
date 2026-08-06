@@ -137,8 +137,12 @@ GLOBAL_MACROS = {
     '{$TEMP_WARN}': '999',
     '{$TEMP_CRIT}': '999',  # EXOS/VOSS closets trip stock 65 during stage 0
     '{$TEMP_CRIT_LOW}': '-273',
-    '{$OPTIC.TEMP.CRIT}': '999',  # VOSS DOM — silence until physical canary
+    '{$OPTIC.TEMP.CRIT}': '999',  # value trigger silence until canary
     '{$OPTIC.TEMP.MAX}': '150',
+    '{$OPTIC.RX.DBM.MIN}': '-100',  # secondary dBm floor silenced; prefer DOM status
+    '{$OPTIC.RX.DBM.FLOOR}': '-39',
+    '{$OPTIC.DOM.ALARM_HIGH}': '3',
+    '{$OPTIC.DOM.ALARM_LOW}': '5',
     '{$MLT.CONTROL}': '0',  # VOSS MLT agg-down off until unused MLTs reviewed
     '{$SNMP.TIMEOUT}': '5m',
     '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|US|UP|MON)(-|$)',

@@ -10,7 +10,7 @@ OID base: `1.3.6.1.4.1.2272.1` unless noted.
 | Feature | Keys / LLD | OID hint | Lab VOSS-VM |
 |---|---|---|---|
 | CPU/mem averages | `system.cpu.util.avg1/avg5`, `vm.memory.util.avg5` (+ LLD mem 5m) | `85.10.1.1.{23,3,9}` | PASS (5m CPU=70, mem=69; 1m CPU=0) |
-| Optics / DOM LLD | `optic.discovery` ΓÇö vendor/PN/SN/╬╗/temp/TX/RX/bias/DDM | `71.1.1.*` | empty (no optics) |
+| Optics / DOM LLD | `optic.discovery` — DDM-only; temp/TX/RX (dBm)+status/bias | `71.1.1.*` | empty on VM; **physical canary** see `OPTIC_POWER_CANARY.md` |
 | LLDP neighbors | `lldp.discovery` ΓÇö sysname/port/chassis/desc | `1.0.8802.1.1.2.1.4.1.1.*` | needs peers |
 | PSU detail | `psu.detail.discovery` ΓÇö status/SN/PN/watts | `4.8.2.1.*` | PASS (ids 1ΓÇô2) |
 | Chassis extras | slots/ports/PN/brand/base MAC | `4.{4,5,66,68}`, `100.1.5` | PASS (27 ports, PN DSGDPM624, brand Extreme Networks.) |
@@ -37,11 +37,17 @@ OID base: `1.3.6.1.4.1.2272.1` unless noted.
 |---|---|---|
 | `{$VIST.CONTROL}` | `0` | Set `1` to alert on V-IST down |
 | `{$IST.CONTROL}` | `0` | Set `1` to alert on IST down |
-| `{$OPTIC.TEMP.CRIT}` | `999` (cutover) / `70` | Optic °C critical — 999 until DOM canary |
+| `{$OPTIC.TEMP.CRIT}` | `999` (cutover) / `70` | Optic °C **value** trigger |
 | `{$OPTIC.TEMP.MAX}` | `150` | Ignore garbage DOM above this |
+| `{$OPTIC.RX.DBM.MIN}` | `-100` (cutover) / `~-25` | Secondary RX dBm floor; prefer DOM status |
+| `{$OPTIC.RX.DBM.FLOOR}` | `-39` | Ignore synthetic −40 (zero reading) |
+| `{$OPTIC.DOM.ALARM_HIGH}` / `LOW` | `3` / `5` | Vendor DOM highAlarm / lowAlarm |
 | `{$MLT.CONTROL}` | `0` (cutover) / `1` | Gate MLT agg-down; trigger also requires `.diff()` |
-| `{$OPTIC.RX.POWER.MIN}` | `1` | Min RX µW (0 ignored) |
 | `{$IF.FLAP.WARN}` | `0` | Flap change threshold (context) |
+
+### Optic power units (verified)
+
+MIB documents µW. Physical FE 9.3 returns **negative millidBm**. Template JS normalizes to **dBm**; alerts prefer `rcPlugOptMod*Status`. Details: `OPTIC_POWER_CANARY.md`.
 
 ## Still nice-to-have (not in template)
 

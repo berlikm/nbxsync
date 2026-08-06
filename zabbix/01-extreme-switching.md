@@ -428,8 +428,10 @@ One template set for every role — never a per-role copy of the template. Two c
 {$TEMP_WARN}                  = 999          # silence warning tier
 {$TEMP_CRIT}                  = 999          # stage 0–1: closets trip stock 65; restore ~65 at stage 2
 {$TEMP_CRIT_LOW}              = -273         # silence stack-returns-0 false positive
-{$OPTIC.TEMP.CRIT}            = 999          # VOSS DOM — silence until physical canary; restore ~70
+{$OPTIC.TEMP.CRIT}            = 999          # optic °C value trigger; restore ~70 after canary
 {$OPTIC.TEMP.MAX}             = 150          # drop garbage DOM readings
+{$OPTIC.RX.DBM.MIN}           = -100         # secondary RX dBm floor; prefer DOM *Status alarms
+{$OPTIC.RX.DBM.FLOOR}         = -39          # ignore synthetic -40 (zero reading)
 {$MLT.CONTROL}                = 0            # VOSS MLT agg-down off; set 1 after unused MLTs reviewed
 {$SNMP.TIMEOUT}               = 5m
 {$PORTID.LLD.IFALIAS.MATCHES} = ^(USW|US|UP|MON)(-|$)

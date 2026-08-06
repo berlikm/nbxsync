@@ -38,7 +38,9 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 | `{$MEMORY.UTIL.MAX}` | (from EXOS base) | Slot memory util % |
 | `{$TEMP_CRIT}` / `{$TEMP_WARN}` | **999** / **999** (cutover) | Restore ~65 / ~55 at stage 2; closets trip 65 at first light |
 | `{$TEMP_CRIT_LOW}` | **-273** | Silence stack/VM 0 °C false positive |
-| `{$OPTIC.TEMP.CRIT}` / `{$OPTIC.TEMP.MAX}` | **999** / 150 | DOM silence until canary; clamp garbage |
+| `{$OPTIC.TEMP.CRIT}` / `{$OPTIC.TEMP.MAX}` | **999** / 150 | °C value trigger silence; clamp garbage |
+| `{$OPTIC.RX.DBM.MIN}` / `FLOOR` | **−100** / −39 | Secondary dBm floor; prefer DOM status |
+| `{$OPTIC.DOM.ALARM_*}` | 3 / 5 | Vendor DOM highAlarm / lowAlarm |
 | `{$MLT.CONTROL}` | **0** | Set 1 after unused MLTs reviewed (trigger needs `.diff()`) |
 | `{$IF.UTIL.MAX}` | **101** | Stock bandwidth trigger off; capacity → Port Speed Expect |
 | `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Physical + LAG only |

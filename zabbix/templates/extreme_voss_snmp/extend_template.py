@@ -899,9 +899,12 @@ def build_macros() -> str:
         ("{$ISIS.CIRCUIT.DOWN_STATUS}", "2", "rcIsisCircuitOperState down(2)"),
         ("{$MLT.CONTROL}", "0", "0=silence MLT agg-down (cutover default); 1=enable after unused MLTs reviewed"),
         ("{$MLT.AGG.DOWN_STATUS}", "2", "rcMltAggOperState disable(2)"),
-        ("{$OPTIC.TEMP.CRIT}", "999", "Optic °C critical — 999 silences during cutover; restore ~70 after DOM canary"),
+        ("{$OPTIC.TEMP.CRIT}", "999", "Optic °C critical (value) — 999 cutover; restore ~70 after canary"),
         ("{$OPTIC.TEMP.MAX}", "150", "Ignore DOM garbage above this (°C)"),
-        ("{$OPTIC.RX.POWER.MIN}", "1", "Minimum optic RX power in ┬╡W (0 ignored)"),
+        ("{$OPTIC.RX.DBM.MIN}", "-100", "Secondary RX dBm floor (cutover -100). Prefer DOM status."),
+        ("{$OPTIC.RX.DBM.FLOOR}", "-39", "Ignore synthetic -40 (zero reading) in RX dBm value trigger"),
+        ("{$OPTIC.DOM.ALARM_HIGH}", "3", "rcPlugOptMod*Status highAlarm(3)"),
+        ("{$OPTIC.DOM.ALARM_LOW}", "5", "rcPlugOptMod*Status lowAlarm(5)"),
     ]
     out = []
     for macro, value, desc in macros:

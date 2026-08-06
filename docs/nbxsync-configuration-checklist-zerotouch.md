@@ -579,8 +579,11 @@ Cutover-safe silencing and Speed Expect filter namespace (own macros — do **no
 | `{$TEMP_WARN}` | `999` | ~55 | EXOS/VOSS warning tier |
 | `{$TEMP_CRIT}` | `999` | ~65 | **Needed** — closets trip stock/EXOS critical at 65 |
 | `{$TEMP_CRIT_LOW}` | `-273` | keep | Silence 0 °C stack/VM false positive |
-| `{$OPTIC.TEMP.CRIT}` | `999` | ~70 | VOSS DOM — mass false positives until canary |
+| `{$OPTIC.TEMP.CRIT}` | `999` | ~70 | Optic °C value trigger (status alarms stay active) |
 | `{$OPTIC.TEMP.MAX}` | `150` | keep | Drops garbage DOM readings |
+| `{$OPTIC.RX.DBM.MIN}` | `-100` | ~`-25` | Secondary RX dBm floor; prefer DOM status triggers |
+| `{$OPTIC.RX.DBM.FLOOR}` | `-39` | keep | Ignores synthetic −40 (zero/no-light reading) |
+| `{$OPTIC.DOM.ALARM_HIGH}` / `LOW` | `3` / `5` | keep | Vendor DOM highAlarm / lowAlarm |
 | `{$MLT.CONTROL}` | `0` | `1` | VOSS MLT agg-down off until unused MLTs reviewed |
 | `{$SNMP.TIMEOUT}` | `5m` | | |
 | `{$PORTID.LLD.IFALIAS.MATCHES}` | `^(USW\|US\|UP\|MON)(-\|$)` | | Speed Expect thin template only |

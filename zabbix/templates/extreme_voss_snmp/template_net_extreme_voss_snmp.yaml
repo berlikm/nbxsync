@@ -1618,10 +1618,15 @@ zabbix_export:
     - uuid: e443b3c7fb6a4523907e08e8ea6386dd
       name: Optical transceiver discovery
       type: SNMP_AGENT
-      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.71.1.1.6]
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.71.1.1.6,{#DDM},1.3.6.1.4.1.2272.1.71.1.1.13]
       key: optic.discovery
       delay: 1h
-      description: RAPID-CITY rcPlugOptModTable ΓÇö optics / DOM (empty on VOSS-VM without optics).
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#DDM}'
+          value: '1'
+      description: 'RAPID-CITY rcPlugOptModTable — DDM-capable optics only (SupportsDDM=true). DAC/copper without DDM excluded.'
       item_prototypes:
       - uuid: a1ff1ddf66b545db9430ee8082c099fd
         name: 'Optic {#SNMPINDEX}: Vendor'
@@ -1690,7 +1695,28 @@ zabbix_export:
           expression: avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)>{$OPTIC.TEMP.CRIT}
             and avg(/Extreme VOSS by SNMP/sensor.optic.temp[rcPlugOptModTemperature.{#SNMPINDEX}],5m)<{$OPTIC.TEMP.MAX}
           name: 'Extreme VOSS: Optic {#SNMPINDEX}: Temperature is too high'
-          description: 'DOM temp °C (MIB 1/256). Upper clamp {$OPTIC.TEMP.MAX} drops garbage/unavailable readings.'
+          description: 'DOM temp °C (MIB 1/256 °C). Upper clamp {$OPTIC.TEMP.MAX} drops garbage.'
+          priority: AVERAGE
+          tags:
+          - tag: scope
+            value: performance
+      - uuid: 78689c3577af42678ed0d8d84a5f2f3c
+        name: 'Optic {#SNMPINDEX}: Temperature status'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.52.{#SNMPINDEX}]
+        key: sensor.optic.temp.status[rcPlugOptModTemperatureStatus.{#SNMPINDEX}]
+        delay: 1m
+        description: 'MIB: rcPlugOptModTemperatureStatus — vendor DOM threshold state (preferred alert).'
+        valuemap:
+          name: 'RAPID-CITY::rcPlugOptModDomStatus'
+        tags:
+        - tag: component
+          value: optic
+        trigger_prototypes:
+        - uuid: 2f959ba7dc154f1daffc59a708398ea5
+          expression: last(/Extreme VOSS by SNMP/sensor.optic.temp.status[rcPlugOptModTemperatureStatus.{#SNMPINDEX}])={$OPTIC.DOM.ALARM_HIGH}
+            or last(/Extreme VOSS by SNMP/sensor.optic.temp.status[rcPlugOptModTemperatureStatus.{#SNMPINDEX}])={$OPTIC.DOM.ALARM_LOW}
+          name: 'Extreme VOSS: Optic {#SNMPINDEX}: Temperature alarm (DOM status)'
           priority: AVERAGE
           tags:
           - tag: scope
@@ -1702,11 +1728,36 @@ zabbix_export:
         key: sensor.optic.txpower[rcPlugOptModTxPower.{#SNMPINDEX}]
         delay: 1m
         value_type: FLOAT
-        units: 'uW'
-        description: 'MIB: rcPlugOptModTxPower (microwatts).'
+        units: dBm
+        description: 'rcPlugOptModTxPower normalized to dBm. MIB documents µW; FE 9.3 returns millidBm when negative — JS handles both.'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - "var v = Number(value);\nif (isNaN(v)) { throw 'optic power: not a number: ' + value; }\n// MIB claims positive µW. Physical FE 9.3 (CH-STA CORE01 canary): negative = millidBm (v/1000 = dBm).\nif (v < 0) { return (v / 1000); }\nif (v === 0) { return -40; }\n// positive: microwatts → dBm\nreturn (10 * Math.log(v / 1000) / Math.LN10);"
         tags:
         - tag: component
           value: optic
+      - uuid: 6bb948351f8644bcb00485f1d415c903
+        name: 'Optic {#SNMPINDEX}: TX power status'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.55.{#SNMPINDEX}]
+        key: sensor.optic.txpower.status[rcPlugOptModTxPowerStatus.{#SNMPINDEX}]
+        delay: 1m
+        description: 'MIB: rcPlugOptModTxPowerStatus — vendor DOM threshold state (preferred alert).'
+        valuemap:
+          name: 'RAPID-CITY::rcPlugOptModDomStatus'
+        tags:
+        - tag: component
+          value: optic
+        trigger_prototypes:
+        - uuid: 69b3b986209f43c8b3824590d0f80420
+          expression: last(/Extreme VOSS by SNMP/sensor.optic.txpower.status[rcPlugOptModTxPowerStatus.{#SNMPINDEX}])={$OPTIC.DOM.ALARM_HIGH}
+            or last(/Extreme VOSS by SNMP/sensor.optic.txpower.status[rcPlugOptModTxPowerStatus.{#SNMPINDEX}])={$OPTIC.DOM.ALARM_LOW}
+          name: 'Extreme VOSS: Optic {#SNMPINDEX}: TX power alarm (DOM status)'
+          priority: AVERAGE
+          tags:
+          - tag: scope
+            value: performance
       - uuid: 4fad97382b934f75b4afc37e4b3e9bde
         name: 'Optic {#SNMPINDEX}: RX power'
         type: SNMP_AGENT
@@ -1714,16 +1765,43 @@ zabbix_export:
         key: sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}]
         delay: 1m
         value_type: FLOAT
-        units: 'uW'
-        description: 'MIB: rcPlugOptModRxPower (microwatts).'
+        units: dBm
+        description: 'rcPlugOptModRxPower normalized to dBm. MIB documents µW; FE 9.3 returns millidBm when negative — JS handles both.'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - "var v = Number(value);\nif (isNaN(v)) { throw 'optic power: not a number: ' + value; }\n// MIB claims positive µW. Physical FE 9.3 (CH-STA CORE01 canary): negative = millidBm (v/1000 = dBm).\nif (v < 0) { return (v / 1000); }\nif (v === 0) { return -40; }\n// positive: microwatts → dBm\nreturn (10 * Math.log(v / 1000) / Math.LN10);"
         tags:
         - tag: component
           value: optic
         trigger_prototypes:
         - uuid: 2169ced8bc1541dfad27923a30d76908
-          expression: max(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)<{$OPTIC.RX.POWER.MIN} and max(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)>0
+          expression: avg(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)<{$OPTIC.RX.DBM.MIN}
+            and avg(/Extreme VOSS by SNMP/sensor.optic.rxpower[rcPlugOptModRxPower.{#SNMPINDEX}],5m)>{$OPTIC.RX.DBM.FLOOR}
           name: 'Extreme VOSS: Optic {#SNMPINDEX}: RX power is too low'
+          description: 'Secondary dBm floor. Prefer DOM status trigger. Cutover: set OPTIC.RX.DBM.MIN=-100.'
           priority: WARNING
+          tags:
+          - tag: scope
+            value: performance
+      - uuid: 7a095d212b2741e2af0b533fd9955087
+        name: 'Optic {#SNMPINDEX}: RX power status'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.71.1.1.56.{#SNMPINDEX}]
+        key: sensor.optic.rxpower.status[rcPlugOptModRxPowerStatus.{#SNMPINDEX}]
+        delay: 1m
+        description: 'MIB: rcPlugOptModRxPowerStatus — vendor DOM threshold state (preferred alert).'
+        valuemap:
+          name: 'RAPID-CITY::rcPlugOptModDomStatus'
+        tags:
+        - tag: component
+          value: optic
+        trigger_prototypes:
+        - uuid: 57fef10095bd4a2ea3fe369d6e161c07
+          expression: last(/Extreme VOSS by SNMP/sensor.optic.rxpower.status[rcPlugOptModRxPowerStatus.{#SNMPINDEX}])={$OPTIC.DOM.ALARM_HIGH}
+            or last(/Extreme VOSS by SNMP/sensor.optic.rxpower.status[rcPlugOptModRxPowerStatus.{#SNMPINDEX}])={$OPTIC.DOM.ALARM_LOW}
+          name: 'Extreme VOSS: Optic {#SNMPINDEX}: RX power alarm (DOM status)'
+          priority: AVERAGE
           tags:
           - tag: scope
             value: performance
@@ -2192,13 +2270,22 @@ zabbix_export:
       description: rcMltAggOperState disable(2)
     - macro: '{$OPTIC.TEMP.CRIT}'
       value: '999'
-      description: 'Optic °C critical — 999 silences during cutover; restore ~70 after DOM canary'
+      description: 'Optic °C critical (value trigger) — 999 silences cutover; restore ~70 after canary'
     - macro: '{$OPTIC.TEMP.MAX}'
       value: '150'
       description: Ignore DOM garbage above this (°C)
-    - macro: '{$OPTIC.RX.POWER.MIN}'
-      value: '1'
-      description: Minimum optic RX power in ┬╡W (0 ignored)
+    - macro: '{$OPTIC.RX.DBM.MIN}'
+      value: '-100'
+      description: 'Secondary RX dBm floor (cutover -100). Restore ~-25 after canary. Prefer DOM status.'
+    - macro: '{$OPTIC.RX.DBM.FLOOR}'
+      value: '-39'
+      description: 'Ignore synthetic -40 (zero reading) in RX dBm value trigger'
+    - macro: '{$OPTIC.DOM.ALARM_HIGH}'
+      value: '3'
+      description: rcPlugOptMod*Status highAlarm(3)
+    - macro: '{$OPTIC.DOM.ALARM_LOW}'
+      value: '5'
+      description: rcPlugOptMod*Status lowAlarm(5)
     - macro: '{$IF.FLAP.WARN}'
       value: '0'
       description: 'Link-flap warning ΓÇö fire when rcPortNumStateTransition change exceeds this (context-capable).'
@@ -2896,6 +2983,19 @@ zabbix_export:
         newvalue: 'enable'
       - value: '2'
         newvalue: 'disable'
+    - uuid: 449d30f4df8147038f2a40e32479c3c7
+      name: 'RAPID-CITY::rcPlugOptModDomStatus'
+      mappings:
+      - value: '1'
+        newvalue: normal
+      - value: '2'
+        newvalue: highWarning
+      - value: '3'
+        newvalue: highAlarm
+      - value: '4'
+        newvalue: lowWarning
+      - value: '5'
+        newvalue: lowAlarm
     - uuid: 71304845b2d14c148cd0466d965462b9
       name: 'RAPID-CITY::rcPortShutdownReason'
       mappings:
