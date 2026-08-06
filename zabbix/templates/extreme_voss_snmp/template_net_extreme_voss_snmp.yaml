@@ -1687,10 +1687,10 @@ zabbix_export:
         value_type: FLOAT
         units: °C
         description: |
-          rcPlugOptModTemperature → °C (RC-POM-MIB / RAPID-CITY, not EXTREME-BASE-MIB).
-          MIB: SFF fixed-point 1/256 °C (MSB signed integer, LSB fraction).
-          FE 9.3 canary: plain /256 on some INTEGER widths ≈ 1300 °C; fall back /65536.
-          Prefer DOM TemperatureStatus for alerts. Confirm °C vs CLI show pluggable-optical-modules.
+          rcPlugOptModTemperature → °C (RC-POM-MIB / RAPID-CITY).
+          MIB text claims SFF 1/256 °C; FE 9.3 returns °C × 10000 (0.0001 °C),
+          confirmed vs CLI show pluggable-optical-modules detail (e.g. 296757 → 29.6757 °C).
+          Prefer DOM TemperatureStatus for alerts.
         preprocessing:
         - type: JAVASCRIPT
           parameters:
@@ -1698,16 +1698,9 @@ zabbix_export:
             var v = Number(value);
             if (isNaN(v)) { throw 'optic temp: not a number: ' + value; }
             v = Math.trunc(v);
-            var c;
-            if (Math.abs(v) <= 0xFFFF) {
-              // RC-POM-MIB / SFF-8472: 16-bit fixed point, 1/256 °C
-              var lo = v & 0xFFFF;
-              if (lo >= 0x8000) { lo -= 0x10000; }
-              c = lo / 256;
-            } else {
-              // FE 9.3 canary: wide INTEGER; /256 ≈ 1300 °C bogus, /65536 ≈ real °C
-              c = v / 65536;
-            }
+            // FE 9.3: INTEGER is °C × 10000 (MIB "0.0001 accuracy"), not SFF /256.
+            // /256 on these values ≈ 1160 °C; /65536 ≈ 4.5 °C — both wrong vs CLI.
+            var c = v / 10000;
             if (c > 125 || c < -40) {
               throw 'optic temp out of range: raw=' + v + ' c=' + c;
             }
