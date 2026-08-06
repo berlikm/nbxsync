@@ -130,22 +130,26 @@ Local copy: `zabbix/templates/extreme_iq_engine_snmp/reference_bgp4plus_Aerohive
 
 | Rule | Walk | Filter | Prototypes |
 |---|---|---|---|
-| `radio.discovery` | `ahIfName` + `ahIfType` | `ahIfType=0` **and** `{$AP.RADIO.IFNAME.MATCHES}=^(wifi\|…)[0-9]+$` (no VAP `wifi0.1`) | channel, txPower, noiseFloor, key radio stats |
+| `radio.discovery` | `ahIfName` + `ahIfType` | **Primary:** `ahIfType=ahPHYSICAL(0)` (MIB). **Secondary (AP305C):** name `^(wifi\|…)[0-9]+$` (drops VAP `wifi0.1`) | channel, txPower, noiseFloor, key radio stats |
 | `net.if.discovery` | IF-MIB | eth only (`ifType` ethernet); exclude wifi/SSID virt | oper status, traffic, errors |
 | `client.discovery` | association table | v2 | RSSI, SSID, rates |
 
 ## 7. Triggers (destination macros)
 
-| Sev | Condition | Macros | Notes |
+Extreme publishes **MIBs / enable-SNMP procedure**, not Zabbix alert points ([GTAC 000104240](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000104240)). Thresholds below are **estate ops defaults** unless marked MIB.
+
+| Sev | Condition | Macros | Basis |
 |---|---|---|---|
-| High | ICMP unavailable × N | remote sites `#5` | Same estate policy as switches |
-| High | SNMP unavailable | `{$SNMP.TIMEOUT}` | |
-| Average | CPU ≥ warn for settle | `{$CPU.UTIL.WARN}` / `CRIT` | **90 / 95** (GTAC 000099170: 30–60% normal) |
-| Warning | ICMP loss | `{$ICMP_LOSS_WARN}=10` | Wired mgmt — not stock 20 |
-| Average | Mem ≥ warn | `{$MEMORY.UTIL.MAX}` | |
-| Average | Temp ≥ warn | `{$TEMP_WARN}` / `{$TEMP_CRIT}` | Canary — may need silence if OID stub |
+| High | ICMP unavailable × N | remote sites `#5` | Estate policy (same as switches) |
+| High | SNMP unavailable | `{$SNMP.TIMEOUT}` | Estate / XIQ manage-SNMP prerequisite |
+| Average | CPU ≥ warn for settle | `{$CPU.UTIL.WARN}`/`CRIT` = **90/95** | **Ops default.** GTAC [000056717](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000056717): high CPU alone ≠ fault; [000099170](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000099170): 30–60% can occur under load — not alert points |
+| Warning | ICMP loss | `{$ICMP_LOSS_WARN}=10` | **Ops default** (wired mgmt). Not Extreme-published; stock Zabbix often 20 |
+| Average | Mem ≥ warn | `{$MEMORY.UTIL.MAX}` | Ops default |
+| Average | Temp ≥ warn | `{$TEMP_WARN}` / `{$TEMP_CRIT}` | Ops; canary — may silence if OID stub |
 | Warning | Eth oper down (phys) | IFCONTROL-style / ifOper | Coordinate with switch `UP-` (see §8) |
 | Info/off | Client count ≥ N | `{$AP.CLIENT.WARN}` | Optional; default high |
+
+**MIB-aligned (not thresholds):** radio LLD uses `ahIfType=0`; noise = SNMP − 256 per `ahRadioNoiseFloor` description.
 
 Cutover silence overlay is **not** the default (same rule as Extreme switching).
 

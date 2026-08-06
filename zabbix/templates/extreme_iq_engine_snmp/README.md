@@ -23,8 +23,9 @@ Requires Zabbix **7.0+**.
 
 - ICMP + SNMP availability
 - AH-SYSTEM-MIB scalars (CPU/mem/temp/clients/serial/FW/…)
-- Radio LLD (physical only: `ahIfType=0` + `wifiN`/`radioN`): channel, Tx power, noise floor (parse−256), retries/drops/RX frames
-- Macros: CPU warn/crit **90/95**, ICMP loss warn **10**
+- Radio LLD: **primary** `ahIfType=ahPHYSICAL(0)` (MIB); secondary name `wifiN`/`radioN` (AP305C VAPs)
+- Noise floor: MIB −256; FLOAT + parse for OCTET STRING agents
+- Threshold macros are **ops defaults** (CPU 90/95, ICMP loss 10) — Extreme does not publish AP SNMP alert points
 - Eth IF-MIB LLD (eth/mgt only): oper status + bits in/out
 
 ## Sources

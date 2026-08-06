@@ -31,9 +31,14 @@ Community shortlist reference: `reference_bgp4plus_Aerohive_AP.xml` ([bgp4plus](
 | `ahAssociationTable` | `…2.1.2` | ifIndex + MAC | v2 — RSSI, SSID, rates |
 | `ahVIfStatsTable` | `…2.1.4` | ifIndex | v2 — per-SSID counters |
 
-Noise floor: MIB documents *value = actual_dBm + 256*. Template: FLOAT + JS parse (some builds return OCTET STRING) then −256.
+Noise floor: MIB *value = actual_dBm + 256*. Template: FLOAT + JS parse (some agents return OCTET STRING) then −256.
 
-Radio LLD: discover `ahIfName` + `ahIfType`; keep `ahPHYSICAL(0)` and names matching `^(wifi|…)[0-9]+$` — VAP/SSID (`wifi0.1`) have no `ahRadioAttribute*` rows.
+Radio LLD:
+- **Primary (MIB):** `ahIfType=ahPHYSICAL(0)` vs `ahVIRTURAL(1)` — AH-SMI-MIB
+- **Secondary (AP305C observed):** name `^(wifi|…)[0-9]+$` — drops VAP `wifi0.1` that still appear as physical in some walks
+- `ahRadioAttributeTable` is per radio; VAP ifIndexes have no channel/Tx/noise rows
+
+Thresholds (CPU/ICMP/etc.): **ops defaults** in template macros — not Extreme-published alert points (GTAC 000104240 = MIB pack only).
 
 ## Standard MIBs
 

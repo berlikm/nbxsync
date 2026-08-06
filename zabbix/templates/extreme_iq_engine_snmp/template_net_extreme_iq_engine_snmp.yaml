@@ -139,6 +139,7 @@ zabbix_export:
         expression: min(/Extreme IQ Engine by SNMP/ah.system.cpu.util,5m)>{$CPU.UTIL.WARN}
         name: 'Extreme IQ Engine: High CPU utilization'
         priority: WARNING
+        description: 'Ops threshold {$CPU.UTIL.WARN}. Extreme: high CPU alone is not necessarily a fault (GTAC 000056717).'
         tags:
         - tag: scope
           value: performance
@@ -146,6 +147,7 @@ zabbix_export:
         expression: min(/Extreme IQ Engine by SNMP/ah.system.cpu.util,5m)>{$CPU.UTIL.CRIT}
         name: 'Extreme IQ Engine: Critical CPU utilization'
         priority: AVERAGE
+        description: 'Ops threshold {$CPU.UTIL.CRIT}. Correlate with client/RF symptoms before paging.'
         dependencies:
         - name: 'Extreme IQ Engine: High CPU utilization'
           expression: min(/Extreme IQ Engine by SNMP/ah.system.cpu.util,5m)>{$CPU.UTIL.WARN}
@@ -306,8 +308,9 @@ zabbix_export:
       lifetime: '0'
       enabled_lifetime: '0'
       description: |
-        AH-INTERFACE-MIB physical radios only (ahIfType=ahPHYSICAL(0)).
-        Name filter {$AP.RADIO.IFNAME.MATCHES} excludes VAP/SSID (wifi0.1 …).
+        Primary filter: ahIfType=ahPHYSICAL(0) (AH-SMI-MIB) — vendor physical vs virtual.
+        Secondary: {$AP.RADIO.IFNAME.MATCHES} drops VAP names (wifi0.1) seen on AP305C.
+        ahRadioAttributeTable is per radio; virtual ifIndexes have no channel/Tx/noise rows.
       filter:
         evaltype: AND
         conditions:
@@ -368,8 +371,8 @@ zabbix_export:
         value_type: FLOAT
         units: dBm
         description: |
-          ahRadioNoiseFloor — MIB Integer32 (actual_dBm + 256); some IQ Engine builds
-          return OCTET STRING. Parse then subtract 256. Result is negative dBm.
+          ahRadioNoiseFloor — MIB: actual_dBm + 256 (Integer32). Some IQ Engine agents
+          return OCTET STRING; JS parses then −256. FLOAT because result is negative dBm.
         tags:
         - tag: component
           value: radio
@@ -525,7 +528,7 @@ zabbix_export:
     macros:
     - macro: '{$ICMP_LOSS_WARN}'
       value: '10'
-      description: Warning threshold of ICMP packet loss in % (wired mgmt — 20 was too loose).
+      description: 'Ops default (wired mgmt). Not an Extreme-published AP threshold; stock Zabbix often uses 20.'
     - macro: '{$ICMP_RESPONSE_TIME_WARN}'
       value: '0.15'
       description: Warning threshold of average ICMP response time in seconds.
@@ -534,10 +537,13 @@ zabbix_export:
       description: Time interval for the SNMP availability trigger.
     - macro: '{$CPU.UTIL.CRIT}'
       value: '95'
-      description: AP CPU critical % (GTAC 000099170 — 30–60% normal under load)
+      description: |
+        Ops default — Extreme does not publish ahCpuUtilization alert points.
+        GTAC 000056717: high CPU alone ≠ fault; 000099170: 30–60% can occur under load.
     - macro: '{$CPU.UTIL.WARN}'
       value: '90'
-      description: AP CPU warning % (GTAC 000099170 — stock 80 pages on normal APs)
+      description: |
+        Ops default (raised from 80 to cut false pages). Baseline on live AP305C before tightening.
     - macro: '{$MEMORY.UTIL.MAX}'
       value: '90'
       description: AP memory critical %
@@ -555,7 +561,7 @@ zabbix_export:
       description: Soft client-count warn; 10000 disables
     - macro: '{$AP.RADIO.IFNAME.MATCHES}'
       value: '^(wifi|Wifi|WIFI|radio|Radio)[0-9]+$'
-      description: Physical radio ifName only (wifi0/wifi1). Excludes VAP wifi0.1 etc.
+      description: 'Secondary LLD guard (AP305C wifi0/wifi1). Primary discriminator is ahIfType=0.'
     - macro: '{$NET.IF.IFNAME.MATCHES}'
       value: '^(eth|Eth|ETH|mgt|MGT)'
       description: Ethernet LLD ifName filter
