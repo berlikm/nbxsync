@@ -13,6 +13,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 
   * Import Extreme VOSS / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
+  * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Platform TemplateRules: EXOS / VOSS / IQ Engine → Extreme * by SNMP (not Network Generic)
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
   * Global **destination** macros on the Zabbix server object (production end-state)
@@ -365,6 +366,94 @@ def assert_etherlike_ifalias_filters(api, template_name: str) -> tuple[bool, str
     return ok, str((rules[0].get('filter') or {}).get('conditions'))
 
 
+# Stock Extreme EXOS ships {$TEMP_WARN}=55 / {$TEMP_CRIT}=65. Template macros beat globals,
+# so setting globals alone never stops the G2+ "Normal @ 70°C" false critical.
+_TEMP_TEMPLATE_MACRO_KEYS = ('{$TEMP_WARN}', '{$TEMP_CRIT}', '{$TEMP_CRIT_LOW}')
+_TEMP_TEMPLATE_NAMES = ('Extreme EXOS by SNMP', 'Extreme VOSS by SNMP')
+
+
+def _template_macro_map(macros: list) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for m in macros or []:
+        if isinstance(m, dict) and m.get('macro'):
+            out[m['macro']] = m.get('value', '')
+    return out
+
+
+def _wanted_temp_template_macros() -> dict[str, str]:
+    """TEMP_* values from GLOBAL_MACROS (destination or cutover-silence overlay)."""
+    return {k: GLOBAL_MACROS[k] for k in _TEMP_TEMPLATE_MACRO_KEYS if k in GLOBAL_MACROS}
+
+
+def patch_extreme_template_temp_macros(api, template_names: tuple[str, ...] | None = None) -> dict[str, str]:
+    """Align chassis TEMP_* macros on Extreme switch templates with GLOBAL_MACROS.
+
+    Idempotent. ``template.update`` macros **replace** the full set — fetch, merge
+    TEMP_*, rewrite all macros so other stock macros are preserved.
+    Does not touch IQ Engine (AP-specific 70/85 thresholds).
+    """
+    logger.info('Network: Extreme template TEMP_* macros')
+    names = template_names or _TEMP_TEMPLATE_NAMES
+    wanted = _wanted_temp_template_macros()
+    if not wanted:
+        return {n: 'no-wanted' for n in names}
+    results: dict[str, str] = {}
+    for name in names:
+        tpls = api.template.get(
+            filter={'name': [name]},
+            output=['templateid', 'name'],
+            selectMacros='extend',
+        )
+        if not tpls:
+            results[name] = 'missing'
+            logger.warning('  %s: template not found — skip TEMP_* patch', name)
+            continue
+        tid = tpls[0]['templateid']
+        existing = list(tpls[0].get('macros') or [])
+        by_name = {m['macro']: dict(m) for m in existing if isinstance(m, dict) and m.get('macro')}
+        current = {k: by_name[k].get('value', '') for k in wanted if k in by_name}
+        if all(current.get(k) == v for k, v in wanted.items()) and len(current) == len(wanted):
+            results[name] = 'ok'
+            logger.info('  %s: TEMP_* already aligned (%s)', name, wanted)
+            continue
+        for macro, value in wanted.items():
+            if macro in by_name:
+                by_name[macro]['value'] = value
+            else:
+                by_name[macro] = {'macro': macro, 'value': value}
+        # Preserve hostmacroid / description when present; strip empty optional fields.
+        payload = []
+        for m in by_name.values():
+            entry = {'macro': m['macro'], 'value': m.get('value', '')}
+            if m.get('hostmacroid'):
+                entry['hostmacroid'] = m['hostmacroid']
+            if m.get('description') is not None:
+                entry['description'] = m.get('description', '')
+            if m.get('type') is not None:
+                entry['type'] = m['type']
+            payload.append(entry)
+        api.template.update(templateid=tid, macros=payload)
+        results[name] = 'patched'
+        logger.info('  %s: patched TEMP_* → %s', name, wanted)
+    return results
+
+
+def assert_extreme_template_temp_macros(api, template_name: str) -> tuple[bool, str]:
+    """Return (ok, detail) — template TEMP_* match GLOBAL_MACROS (or template absent)."""
+    wanted = _wanted_temp_template_macros()
+    tpls = api.template.get(
+        filter={'name': [template_name]},
+        output=['templateid'],
+        selectMacros='extend',
+    )
+    if not tpls:
+        return True, 'template absent — n/a'
+    have = _template_macro_map(tpls[0].get('macros') or [])
+    detail = {k: have.get(k) for k in wanted}
+    ok = all(have.get(k) == v for k, v in wanted.items())
+    return ok, str(detail)
+
+
 def ensure_nbx_template(server, templateid: int, name: str) -> M.ZabbixTemplate:
     obj, _ = ensure(
         M.ZabbixTemplate,
@@ -708,6 +797,18 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 ok, detail = assert_etherlike_ifalias_filters(api, tname)
                 record(f'etherlike_ifalias_assert_{tname}', ok, detail, group='import')
 
+            temp_statuses = patch_extreme_template_temp_macros(api)
+            for tname, status in temp_statuses.items():
+                record(
+                    f'template_temp_{tname}',
+                    status in ('ok', 'patched', 'missing'),
+                    status,
+                    group='import',
+                )
+            for tname in _TEMP_TEMPLATE_NAMES:
+                ok, detail = assert_extreme_template_temp_macros(api, tname)
+                record(f'template_temp_assert_{tname}', ok, detail, group='import')
+
         tpl_models: dict[str, M.ZabbixTemplate] = {}
         for name, (tid, _) in imported.items():
             tpl_models[name] = ensure_nbx_template(server, tid, name)
@@ -942,6 +1043,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         imported = import_extreme_templates(api)
         step_global_macros_zabbix(api)
         patch_etherlike_ifalias_filters(api)
+        patch_extreme_template_temp_macros(api)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
     step_server_macros(server)
     step_role_macros()

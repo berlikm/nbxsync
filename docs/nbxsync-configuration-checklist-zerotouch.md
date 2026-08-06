@@ -363,6 +363,7 @@ Leave “require tags”, “role pattern”, and “manufacturer” empty unles
 - **Switch Hybrid** starts Access-like (opt-in labels); flip to Core macros at stage 5 (§11.1 / §15.1c).
 - On-box labels: EXOS → `display-string` (max **20** chars; leave `description-string` empty). VOSS → port `name` → `ifAlias`. Grammar: `zabbix/port-identity.md`.
 - **Stock EXOS — EtherLike duplex LLD:** stock only keeps oper-up ports (bypasses Access IFALIAS). `configure_nbxsync_network.py` (`--apply` / `--simulate`) patches `net.if.duplex.discovery` on **Extreme EXOS by SNMP** (and verifies VOSS) to add the same `{#IFALIAS}` MATCHES / NOT_MATCHES macros as `net.if.discovery`. After apply, execute duplex discovery (or wait) so lost resources drop (`lifetime` / keep-lost 0 during rollout).
+- **Stock EXOS — chassis TEMP_* macros:** stock template macros `{$TEMP_WARN}=55` / `{$TEMP_CRIT}=65` **override** globals. `configure_nbxsync_network.py` merges destination values (`90` / `100` / `-273`, or cutover-silence `999`) onto **Extreme EXOS by SNMP** and **Extreme VOSS by SNMP** via `template.update` (full macro merge — never send only TEMP_*). IQ Engine keeps AP-specific 70/85.
 
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
 
@@ -608,6 +609,8 @@ Speed Expect uses its own filter namespace (`{$PORTID.LLD.*}`) — do **not** re
 
 **EXOS temperature:** `extremeCurrentTemperature` is an **internal** sensor, not closet ambient. Extreme GTAC [000088439](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000088439): Switch Engine / Summit G2 / Universal (e.g. 5720) report **~70–85 °C as Status=Normal** (Normal often **10–100**, Max **110**). Prefer vendor `extremeOverTemperatureAlarm` for hard critical. Ambient rack rating (~0–50 °C) is a different number — do not use it for this OID.
 
+**Macro precedence:** stock EXOS template macros (`55`/`65`) beat globals. Globals alone are not enough — `configure_nbxsync_network.py` must also patch template `{$TEMP_WARN}`/`{$TEMP_CRIT}`/`{$TEMP_CRIT_LOW}` (see EtherLike / TEMP_* bullets above).
+
 #### Temporary cutover silence (optional overlay only)
 
 During LogicMonitor migration noise, operators may pass `--cutover-silence` to the network script. That overlays **only**:
@@ -790,4 +793,4 @@ After the initial build, and after major changes, confirm coverage against §13.
 
 **Country Site Group decides default transport and proxy; role decides transport exceptions and Extreme port macros; platform decides Extreme EXOS vs VOSS (and other OS templates); tags opt into Linux/SAP SNMP or overlays (`critical`, `do_not_monitor`).**
 
-**Helper scripts:** `scripts/configure_nbxsync_zerotouch.py` (fleet) then `scripts/configure_nbxsync_network.py` (Extreme templates + §11.1 macros + stock EXOS EtherLike IFALIAS patch).
+**Helper scripts:** `scripts/configure_nbxsync_zerotouch.py` (fleet) then `scripts/configure_nbxsync_network.py` (Extreme templates + §11.1 macros + stock EXOS EtherLike IFALIAS + TEMP_* template macro patches).
