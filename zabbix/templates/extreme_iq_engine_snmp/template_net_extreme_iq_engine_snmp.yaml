@@ -665,23 +665,23 @@ zabbix_export:
         newvalue: notPresent
       - value: '7'
         newvalue: lowerLayerDown
-    graphs:
-    - uuid: fe0308ad467e49c18b1f1ec965060d88
-      name: 'Extreme IQ Engine: CPU utilization'
-      ymin_type_1: FIXED
-      ymax_type_1: FIXED
-      graph_items:
-      - drawtype: GRADIENT_LINE
-        color: 199C0D
-        item:
-          host: Extreme IQ Engine by SNMP
-          key: ah.system.cpu.util
-    - uuid: 77db2b0a005e4fe98a81bfc2e006ddde
-      name: 'Extreme IQ Engine: Clients'
-      ymin_type_1: FIXED
-      graph_items:
-      - drawtype: GRADIENT_LINE
-        color: 2774A4
-        item:
-          host: Extreme IQ Engine by SNMP
-          key: ah.system.client.count
+  graphs:
+  - uuid: fe0308ad467e49c18b1f1ec965060d88
+    name: 'Extreme IQ Engine: CPU utilization'
+    ymin_type_1: FIXED
+    ymax_type_1: FIXED
+    graph_items:
+    - drawtype: GRADIENT_LINE
+      color: 199C0D
+      item:
+        host: Extreme IQ Engine by SNMP
+        key: ah.system.cpu.util
+  - uuid: 77db2b0a005e4fe98a81bfc2e006ddde
+    name: 'Extreme IQ Engine: Clients'
+    ymin_type_1: FIXED
+    graph_items:
+    - drawtype: GRADIENT_LINE
+      color: 2774A4
+      item:
+        host: Extreme IQ Engine by SNMP
+        key: ah.system.client.count
