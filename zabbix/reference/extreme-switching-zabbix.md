@@ -443,7 +443,7 @@ One template set for every role — never a per-role copy of the template. Two c
 {$TEMP_CRIT}                  = 100          # NOT stock 65
 {$TEMP_CRIT_LOW}              = -273         # silence stack-returns-0 false positive
 {$OPTIC.TEMP.CRIT}            = 70
-{$OPTIC.RX.DBM.MIN}           = -25          # prefer DOM status
+{$OPTIC.RX.DBM.MIN}           = -100         # RX dBm value trigger removed; DOM status only
 {$MLT.CONTROL}                = 1
 {$VIST.CONTROL}               = 0            # host=1 on fabric pairs
 {$IST.CONTROL}                = 0
