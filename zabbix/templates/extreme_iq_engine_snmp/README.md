@@ -26,6 +26,7 @@ Requires Zabbix **7.0+**.
 - Radio LLD: **primary** `ahIfType=ahPHYSICAL(0)` (MIB); secondary name `wifiN`/`radioN` (AP305C VAPs)
 - Noise floor: MIB −256; FLOAT + parse for OCTET STRING agents
 - Threshold macros are **ops defaults** (CPU 90/95, ICMP loss 10) — Extreme does not publish AP SNMP alert points
+- Graphs: host CPU + clients; radio RF (noise/Tx) + retries/drops; eth traffic prototypes
 - Eth IF-MIB LLD (eth/mgt only): oper status + bits in/out
 
 ## Sources

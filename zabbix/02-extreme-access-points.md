@@ -116,11 +116,11 @@ Local copy: `zabbix/templates/extreme_iq_engine_snmp/reference_bgp4plus_Aerohive
 | 2 | CPU % | `ahCpuUtilization` | yes | Alert (macro) |
 | 3 | Memory % | `ahMemUtilization` | yes | Alert (macro) |
 | 4 | Temperature °C | `ahEnvirmentTemp` | yes | Alert (macro; canary first — many APs may stub) |
-| 5 | Client count | `ahClientCount` | yes | Graph; soft warn optional |
+| 5 | Client count | `ahClientCount` | yes | Host graph; soft warn optional |
 | 6 | Serial / model / FW / HW | system scalars | yes | Inventory |
-| 7 | Eth link / traffic | IF-MIB (filter phys eth) | yes | Link-down alert; util graph |
-| 8 | Radio channel / Tx power / noise | `ahRadioAttributeTable` LLD | yes | Graph; channel change = info later |
-| 9 | Radio retries / drops / airtime | `ahRadioStatsTable` LLD | yes | Graph; alert only after baseline |
+| 7 | Eth link / traffic | IF-MIB (filter phys eth) | yes | Link-down alert; **traffic graph prototype** |
+| 8 | Radio channel / Tx power / noise | `ahRadioAttributeTable` LLD | yes | **RF graph** (noise+Tx); channel = item / INFO later |
+| 9 | Radio retries / drops / airtime | `ahRadioStatsTable` LLD | yes | **Retries/drops graph**; alert only after baseline |
 | 10 | Per-client association | `ahAssociationTable` | **v2** | Graph / inventory |
 | 11 | VIF/SSID stats | `ahVIfStatsTable` | **v2** | Graph |
 | 12 | HiveOS traps | trap MIB | later | Event |

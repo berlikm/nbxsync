@@ -447,6 +447,36 @@ zabbix_export:
           value: '{#AHIFNAME}'
         preprocessing:
         - type: CHANGE_PER_SECOND
+      graph_prototypes:
+      - uuid: bcb12e711ae5407fbc88dd5c8feb5a1b
+        name: 'Radio {#AHIFNAME}: RF (noise / Tx power)'
+        graph_items:
+        - drawtype: BOLD_LINE
+          color: 1A7C11
+          item:
+            host: Extreme IQ Engine by SNMP
+            key: 'ah.radio.noise[{#SNMPINDEX}]'
+        - sortorder: '1'
+          drawtype: BOLD_LINE
+          color: F63100
+          yaxisside: RIGHT
+          item:
+            host: Extreme IQ Engine by SNMP
+            key: 'ah.radio.txpower[{#SNMPINDEX}]'
+      - uuid: c5e0dd1bdc5d4c5cb11ef097f14e8372
+        name: 'Radio {#AHIFNAME}: Retries / drops'
+        graph_items:
+        - drawtype: GRADIENT_LINE
+          color: F7941D
+          item:
+            host: Extreme IQ Engine by SNMP
+            key: 'ah.radio.tx.retries[{#SNMPINDEX}]'
+        - sortorder: '1'
+          drawtype: BOLD_LINE
+          color: F63100
+          item:
+            host: Extreme IQ Engine by SNMP
+            key: 'ah.radio.tx.drops[{#SNMPINDEX}]'
     - uuid: 4dc5adee333a48aeab6fb0a5a523c77b
       name: Network interface discovery
       type: SNMP_AGENT
@@ -530,6 +560,21 @@ zabbix_export:
         - type: MULTIPLIER
           parameters:
           - '8'
+      graph_prototypes:
+      - uuid: d9c502fa955542efafeaa3cea7639db2
+        name: 'Interface {#IFNAME}: Network traffic'
+        graph_items:
+        - drawtype: GRADIENT_LINE
+          color: 199C0D
+          item:
+            host: Extreme IQ Engine by SNMP
+            key: 'net.if.in[ifHCInOctets.{#SNMPINDEX}]'
+        - sortorder: '1'
+          drawtype: BOLD_LINE
+          color: F63100
+          item:
+            host: Extreme IQ Engine by SNMP
+            key: 'net.if.out[ifHCOutOctets.{#SNMPINDEX}]'
     tags:
     - tag: class
       value: network
@@ -620,3 +665,23 @@ zabbix_export:
         newvalue: notPresent
       - value: '7'
         newvalue: lowerLayerDown
+    graphs:
+    - uuid: fe0308ad467e49c18b1f1ec965060d88
+      name: 'Extreme IQ Engine: CPU utilization'
+      ymin_type_1: FIXED
+      ymax_type_1: FIXED
+      graph_items:
+      - drawtype: GRADIENT_LINE
+        color: 199C0D
+        item:
+          host: Extreme IQ Engine by SNMP
+          key: ah.system.cpu.util
+    - uuid: 77db2b0a005e4fe98a81bfc2e006ddde
+      name: 'Extreme IQ Engine: Clients'
+      ymin_type_1: FIXED
+      graph_items:
+      - drawtype: GRADIENT_LINE
+        color: 2774A4
+        item:
+          host: Extreme IQ Engine by SNMP
+          key: ah.system.client.count
