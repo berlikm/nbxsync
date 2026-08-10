@@ -31,7 +31,7 @@ Encode policy once from facts already in NetBox. New inventory inherits it.
 Country Site Group          →  proxy + default Agent :10050 + Sites/… + Roles/… hostgroups
 Device Role                 →  transport exceptions (SNMP / OOB / SPACE) + app templates + Extreme port macros
 Platform name (Template Rule) → OS / Extreme / Forti template + OS/… hostgroup
-NetBox tags                 →  overlays (critical, do_not_monitor) or SNMP opt-in (snmp, snmp-sap)
+NetBox tags                 →  overlays (critical, do_not_monitor) or SNMP opt-in (snmp) or SAP role
 ```
 
 | NetBox fact | Where you configure it | Result in Zabbix |
@@ -42,7 +42,7 @@ NetBox tags                 →  overlays (critical, do_not_monitor) or SNMP opt
 | Default reachability | CG **Agent Monitoring** on country Site Group | Agent :10050 |
 | Network gear | CG **SNMP Monitoring** on Switch*/AP/Firewall/… | SNMPv3 `MONITORING` MD5/DES |
 | Linux/Windows SNMP opt-in | Tag `snmp` → CG **SNMP Monitoring (Linux)** | SNMPv3 `MONITORING-LINUX` SHA/AES |
-| SAP SNMP opt-in | Tag `snmp-sap` → CG **SNMP Monitoring (SAP)** | SNMPv3 `SAPUSER` (confirm with Robert) |
+| SAP SNMP | Role **SAP HANA** + **SAP ME** → CG **SNMP Monitoring (SAP)** | SNMPv3 `SAPUSER` (confirm with Robert) |
 | Dell server BMC | CG **Server Agent+OOB** on role Server | Agent :10050 + `MONITORING-DELL` on `oob_ip` |
 | Cohesity physical | CG **OOB SNMP Only** on role Cohesity | `MONITORING` on `oob_ip` only |
 | Space Server | CG **Agent Monitoring (SPACE)** on role | Agent **:10060** |
@@ -52,7 +52,7 @@ NetBox tags                 →  overlays (critical, do_not_monitor) or SNMP opt
 
 1. **One configuration group decides transport** (how we reach the host). Hostgroups and templates can stack; transport cannot.
 2. **Different SNMPv3 users need different CGs** — never reuse the network CG for Linux, SAP, or iDRAC.
-3. **Tags may select a CG** (`snmp`, `snmp-sap`). Do **not** put a Host Interface directly on a tag — put the interface on the CG, assign the CG to the tag.
+3. **Tags may select a CG** (`snmp`, ``). Do **not** put a Host Interface directly on a tag — put the interface on the CG, assign the CG to the tag.
 4. **Country Site Group is the control plane** for proxy, default Agent, Sites/Roles hostgroups, environment tag, and inventory. Assign Agent Monitoring only on **country** Site Groups, not campus mid-levels.
 5. **Hierarchy paths stay after Role/Platform** in plugin inheritance so upgrades do not change who already wins.
 
@@ -158,7 +158,7 @@ Each group is one **transport + credential** profile. SNMPv3 user/auth/priv diff
 |---|---|---|
 | SNMP Monitoring | `MONITORING` MD5/DES | Extreme / Forti / AP / network roles |
 | SNMP Monitoring (Linux) | `MONITORING-LINUX` SHA/AES | Opt-in Linux/Windows SNMP (tag `snmp`) |
-| SNMP Monitoring (SAP) | `SAPUSER` (confirm auth/priv) | Opt-in SAP SNMP (tag `snmp-sap`) |
+| SNMP Monitoring (SAP) | `SAPUSER` (confirm auth/priv) | SAP HANA and SAP ME roles |
 | Agent Monitoring | Agent :10050 | Default transport on country Site Groups |
 | Agent Monitoring (SPACE) | Agent :10060 | Space Server role (camLine occupies 10050) |
 | Server Agent+OOB | Agent :10050 + `MONITORING-DELL` SHA/AES @ oob | Dell iDRAC dual-plane servers |
@@ -286,7 +286,7 @@ Without these assignments, the group’s interfaces are not applied during sync.
 | Configuration group | Assigned to | Operator action |
 |---|---|---|
 | SNMP Monitoring (Linux) | NetBox tag **`snmp`** | Tag the Device/VM — no per-host CG row |
-| SNMP Monitoring (SAP) | NetBox tag **`snmp-sap`** | Tag SAP hosts that need SNMP (after Robert confirms) |
+| SNMP Monitoring (SAP) | NetBox tag **``** | Tag SAP hosts that need SNMP (after Robert confirms) |
 
 ### Cohesity VMs with a primary IP
 
@@ -407,7 +407,7 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 | FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule adds the same template when platform matches |
 | **Tableau Bridge by Zabbix agent** | Device Role Tableau | Placeholder — LM parity, items built post-cutover |
 | **CellMap by Zabbix agent** | Device Role CellMap | Placeholder — LM parity (WinProcessStats_cellmap) |
-| **SAP by Zabbix agent** | Device Role SAP ME | Placeholder — DNUS scripts integrated by Robert post-cutover |
+| **SAP by Zabbix agent** | Device Role SAP ME and SAP HANA | Placeholder — DNUS scripts integrated by Robert post-cutover |
 | **Acronis by Zabbix agent** | Device Role Acronis Management | Placeholder — LM parity |
 | **SCCM by Zabbix agent** | Device Role SCCM | Placeholder — LM parity |
 | **Print Spool by Zabbix agent** | Device Role Print Server | Placeholder — LM parity (print spool monitoring for ME) |
@@ -486,7 +486,7 @@ To mark a device: add NetBox tag `critical`. To unmark: remove the tag.
 | `do_not_monitor` | Exclude from monitoring (see §9.3 and plugin settings) |
 | `critical` | Membership in hostgroup Priority/Critical |
 | `snmp` | Zero-touch Linux SNMP: selects **SNMP Monitoring (Linux)** CG + Linux/Windows by SNMP Template Rules |
-| `snmp-sap` | Zero-touch SAP SNMP: selects **SNMP Monitoring (SAP)** CG (after Robert confirms) |
+| `` | Zero-touch SAP SNMP: selects **SNMP Monitoring (SAP)** CG (after Robert confirms) |
 | `oracle` | Zero-touch Oracle: links **Oracle by Zabbix agent 2** template via tag-gated Template Rule |
 
 ### 9.0a Tagging guide — which devices to tag (from LogicMonitor export)
@@ -496,7 +496,7 @@ Tags are the zero-touch opt-in mechanism. Apply them in NetBox → Device/VM →
 | Tag | LM signal | Known hosts | NetBox tag to add |
 |---|---|---|---|
 | `snmp` | LM group "Devices by Type/Linux Servers" used `MONITORING-LINUX` SHA/AES; resource-level overrides on `ch-sta-p-disc04`, `ch-sta-p-lega01`, `ch-sta-p-dell04`, `CH-STA-P-ESD01`, `ch-sta-p-vmli01/02/03/09/13`, `hu-deb-p-dock01`, `nl-ens-d-serv01`, `CH-STA-P-M300` | Any Linux/Windows host that should be SNMP-monitored instead of agent | `snmp` |
-| `snmp-sap` | LM group "Devices by Type/SAP Systems" used `SAPUSER` | `ch-sta-d-sh01`, `ch-sta-p-sh01`, `ch-sta-q-sh01`, `ch-sta-p-me05/06/07/08` | `snmp-sap` (confirm auth/priv with Robert first) |
+| *(role, not tag)* | LM group "Devices by Type/SAP Systems" used `SAPUSER` | `ch-sta-d-sh01`, `ch-sta-p-sh01`, `ch-sta-q-sh01`, `ch-sta-p-me05/06/07/08` | **No tag needed** — netbox-sync maps `-SH\d+` (d/p/q/s/x, not `-v-` jumphost) to `SAP HANA` role; `SAP ME` role for `-ME\d+` |
 | `oracle` | LM JDBC account `C##logicmonitor`; resource override `logicmonitor` on `ch-sta-p-disc04` | `ch-sta-p-disc04` (confirmed); other Oracle hosts unknown — check with DB team | `oracle` |
 | `critical` | LM alert routing / 24×7 escalation list | Set per operational priority — no 1:1 LM mapping | `critical` |
 | `do_not_monitor` | LM hosts with monitoring disabled; roles excluded by policy | VDI (22 VMs, all), Messpc (1421), Sd Wan Socket (21) — automated by role in §9.3; individual exclusions by tag | `do_not_monitor` |
@@ -877,7 +877,7 @@ Note that **Space Server** therefore has split coverage: the host itself is a no
 **Country Site Group** → default Agent + proxy + Sites/Roles hostgroups.  
 **Role** → transport exceptions + app templates + Extreme port macros.  
 **Platform (Template Rule)** → OS / Extreme / Forti template + `OS/…`.  
-**Tags** → `snmp` / `snmp-sap` opt-in transport, or overlays (`critical`, `do_not_monitor`).
+**Tags** → `snmp` / `` opt-in transport, or overlays (`critical`, `do_not_monitor`).
 
 Apply via the GUI (this checklist) — same policy with or without helper scripts.
 
