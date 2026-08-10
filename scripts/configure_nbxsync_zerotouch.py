@@ -925,7 +925,10 @@ def step7_template_assignments(server):
         (make_template(*TPL['mssql_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'MSSQL'),
         (make_template(*TPL['mssql_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'MSSQL Query Server'),
         (make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.ANY]), 'vCenter'),
-        (make_template(*TPL['pure_storage_http'], req=[HostInterfaceRequirementChoices.ANY]), 'Pure Storage'),
+        # Pure Storage: removed role assignment — HTTP template comes from the
+        # manufacturer-scoped TemplateRule (step 6). Physical arrays have
+        # manufacturer=Pure Storage and get the HTTP template there. VMs with
+        # role=Pure Storage (management VMs) get only their OS template.
         (make_template(*TPL['gitlab_http'], req=[HostInterfaceRequirementChoices.ANY]), 'GitLab'),
         (make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Virtual Appliance'),
         # Network Generic only on Network Device (no platform / no regex match).
@@ -959,6 +962,16 @@ def step7_template_assignments(server):
         ).delete()
         if deleted:
             logger.info('  PRUNED: %s MSSQL by ODBC assignment(s) (replaced by Agent 2)', deleted)
+
+    # Prune legacy Pure Storage role assignment (replaced by manufacturer-scoped TemplateRule).
+    old_pure_tpl = M.ZabbixTemplate.objects.filter(name__icontains='Pure Storage FlashArray').first()
+    if old_pure_tpl:
+        deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+            zabbixtemplate=old_pure_tpl,
+            assigned_object_type=ct(DeviceRole),
+        ).delete()
+        if deleted:
+            logger.info('  PRUNED: %s Pure Storage role assignment(s) (replaced by manufacturer TemplateRule)', deleted)
 
     # Prune legacy Switch*/AP → Network Generic floors (icmpping collision with EXOS/etc.).
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
