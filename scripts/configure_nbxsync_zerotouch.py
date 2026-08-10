@@ -135,6 +135,7 @@ TPL_NAMES = {
     'vmware_fqdn': 'VMware FQDN',
     'dell_idrac_snmp': 'Dell iDRAC by SNMP',
     'mssql_odbc': 'MSSQL by ODBC',
+    'mssql_agent2': 'MSSQL by Zabbix agent 2',
     'pure_storage_http': 'Pure Storage FlashArray v1 by HTTP',
     'gitlab_http': 'GitLab by HTTP',
     # Created in Zabbix: clone of Network Generic without snmptrap.fallback
@@ -853,6 +854,28 @@ def step6_template_rules(server, country_slugs=None):
     else:
         logger.warning("  Manufacturer 'Dell' not found, skipping Dell iDRAC TemplateRule")
 
+    # Pure Storage: Manufacturer → Pure Storage FlashArray v1 by HTTP.
+    # Pure arrays have role=Storage (not Pure Storage), so the role-level assignment
+    # on role 'Pure Storage' does not cover them. Use a manufacturer-scoped rule.
+    pure = Manufacturer.objects.filter(name='Pure Storage').first() or Manufacturer.objects.filter(slug__iexact='pure-storage').first()
+    tpl_pure = make_template(*TPL['pure_storage_http'], req=[HostInterfaceRequirementChoices.ANY])
+    if pure is not None:
+        defaults = {
+            'pattern': '.*',
+            'role_pattern': '',
+            'require_tags': '',
+            'manufacturer': pure,
+            'zabbixtemplate': tpl_pure,
+            'zabbixhostgroup': None,
+            'zabbixtag': None,
+            'enabled': True,
+            'priority': 80,
+        }
+        ensure(M.ZabbixTemplateRule, name='Pure Storage (HTTP)', defaults=defaults, update_fields=list(defaults.keys()))
+        logger.info('  Rule Pure Storage (HTTP) → %s', tpl_pure.name)
+    else:
+        logger.warning("  Manufacturer 'Pure Storage' not found, skipping Pure Storage TemplateRule")
+
     # Drop leftover os_family Zabbix tags from previous checklist / script runs.
     orphan_tags = M.ZabbixTag.objects.filter(tag='os_family')
     if orphan_tags.exists():
@@ -882,8 +905,8 @@ def step7_template_assignments(server):
         return obj
 
     assignments = [
-        (make_template(*TPL['mssql_odbc'], req=[HostInterfaceRequirementChoices.AGENT]), 'MSSQL'),
-        (make_template(*TPL['mssql_odbc'], req=[HostInterfaceRequirementChoices.AGENT]), 'MSSQL Query Server'),
+        (make_template(*TPL['mssql_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'MSSQL'),
+        (make_template(*TPL['mssql_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'MSSQL Query Server'),
         (make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.ANY]), 'vCenter'),
         (make_template(*TPL['pure_storage_http'], req=[HostInterfaceRequirementChoices.ANY]), 'Pure Storage'),
         (make_template(*TPL['gitlab_http'], req=[HostInterfaceRequirementChoices.ANY]), 'GitLab'),
@@ -909,6 +932,16 @@ def step7_template_assignments(server):
             assigned_object_id=role.id,
             defaults={},
         )
+
+    # Prune legacy MSSQL by ODBC assignments (replaced by MSSQL by Zabbix agent 2).
+    old_mssql_tpl = M.ZabbixTemplate.objects.filter(name='MSSQL by ODBC').first()
+    if old_mssql_tpl:
+        deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+            zabbixtemplate=old_mssql_tpl,
+            assigned_object_type=ct(DeviceRole),
+        ).delete()
+        if deleted:
+            logger.info('  PRUNED: %s MSSQL by ODBC assignment(s) (replaced by Agent 2)', deleted)
 
     # Prune legacy Switch*/AP → Network Generic floors (icmpping collision with EXOS/etc.).
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
@@ -1480,6 +1513,7 @@ def run_simulate() -> int:
             TPL['vmware_fqdn'] = (int(ensure_t(f'{PREFIX}vmware', f'{PREFIX}VMware FQDN')), f'{PREFIX}VMware FQDN')
             TPL['dell_idrac_snmp'] = (int(ensure_t(f'{PREFIX}idrac', f'{PREFIX}Dell iDRAC by SNMP')), f'{PREFIX}Dell iDRAC by SNMP')
             TPL['mssql_odbc'] = (int(ensure_t(f'{PREFIX}mssql', f'{PREFIX}MSSQL by ODBC')), f'{PREFIX}MSSQL by ODBC')
+            TPL['mssql_agent2'] = (int(ensure_t(f'{PREFIX}mssql.agent2', f'{PREFIX}MSSQL by Zabbix agent 2')), f'{PREFIX}MSSQL by Zabbix agent 2')
             TPL['pure_storage_http'] = (int(ensure_t(f'{PREFIX}pure', f'{PREFIX}Pure Storage FlashArray v1 by HTTP')), f'{PREFIX}Pure Storage FlashArray v1 by HTTP')
             TPL['gitlab_http'] = (int(ensure_t(f'{PREFIX}gitlab', f'{PREFIX}GitLab by HTTP')), f'{PREFIX}GitLab by HTTP')
             TPL['linux_snmp'] = (int(ensure_t(f'{PREFIX}linux.snmp', f'{PREFIX}Linux by SNMP')), f'{PREFIX}Linux by SNMP')
