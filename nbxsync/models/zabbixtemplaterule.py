@@ -43,8 +43,22 @@ class ZabbixTemplateRule(NetBoxModel):
         help_text='Optional. When set, the Device device_type.manufacturer must match. Empty = any manufacturer. Objects without a manufacturer (e.g. VMs) fail closed when this is set. PROTECT prevents deleting a Manufacturer that would silently widen matching rules.',
     )
     zabbixtemplate = models.ForeignKey(to='nbxsync.ZabbixTemplate', on_delete=models.PROTECT, related_name='zabbixtemplaterules')
-    zabbixhostgroup = models.ForeignKey(to='nbxsync.ZabbixHostgroup', on_delete=models.SET_NULL, related_name='zabbixtemplaterules', blank=True, null=True, help_text='Optional hostgroup assigned when the rule matches')
-    zabbixtag = models.ForeignKey(to='nbxsync.ZabbixTag', on_delete=models.SET_NULL, related_name='zabbixtemplaterules', blank=True, null=True, help_text='Optional tag assigned when the rule matches')
+    zabbixhostgroup = models.ForeignKey(
+        to='nbxsync.ZabbixHostgroup',
+        on_delete=models.PROTECT,
+        related_name='zabbixtemplaterules',
+        blank=True,
+        null=True,
+        help_text='Optional hostgroup assigned when the rule matches. PROTECT prevents deleting a hostgroup that would silently drop this side effect from matching rules.',
+    )
+    zabbixtag = models.ForeignKey(
+        to='nbxsync.ZabbixTag',
+        on_delete=models.PROTECT,
+        related_name='zabbixtemplaterules',
+        blank=True,
+        null=True,
+        help_text='Optional tag assigned when the rule matches. PROTECT prevents deleting a tag that would silently drop this side effect from matching rules.',
+    )
     enabled = models.BooleanField(default=True)
     priority = models.IntegerField(default=100, help_text='Lower value = higher priority')
 

@@ -40,7 +40,7 @@ class SNMPConfig(BaseModel):
 
 class BackgroundSyncConfig(BaseModel):
     enabled: bool = Field(default=True)
-    interval: int = Field(default=60)
+    interval: int = Field(default=360)
 
 
 class BackgroundSync(BaseModel):

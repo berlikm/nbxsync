@@ -32,6 +32,10 @@ class DeleteHostJob:
         failures = []
         servers_seen = set()
 
+        # Binding-based deletes intentionally omit sync_enabled checks.
+        # Deleting a Device/VM in NetBox is inventory retirement: the Zabbix
+        # host must go even if automatic sync was disabled on the assignment
+        # or server. The legacy path below still respects sync_enabled.
         for binding in self._bindings():
             servers_seen.add(binding.zabbixserver_id)
             assigned_object = self.instance if self.instance is not None else binding.assigned_object
