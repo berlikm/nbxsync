@@ -164,8 +164,9 @@ SNMP_ROLES = [
     'Firewall',
     'Network Device',
     'Virtual Appliance',
-    # SNMP-only storage (Pure is HTTP — not here)
-    'Storage',
+    # SNMP-transport storage: Pure is HTTP (TemplateRule manufacturer-scoped),
+    # Dell/Huawei use HTTP or SNMP — assign directly or via separate role if needed.
+    # 'Storage' not in SNMP CG: prevents Pure arrays from getting SNMP interface.
 ]
 
 # Self-referencing host macros that shadow Zabbix globals — prune on every run.
