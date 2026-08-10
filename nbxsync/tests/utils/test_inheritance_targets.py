@@ -190,6 +190,7 @@ class ConfigGroupInterfaceExpansionTestCase(TestCase):
 
         self.assertIn('useip', context.exception.message_dict)
 
+
 class VirtualMachineDeviceLeakTestCase(TestCase):
     """A VM linked to its hosting device (NetBox 4.3+) must not inherit the
     host's hardware-tier assignments (manufacturer, device_type, role via
