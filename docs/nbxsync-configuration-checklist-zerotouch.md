@@ -520,6 +520,17 @@ Renders against the device or VM at sync. Preview on a Site Group may show an er
 
 Plugin setting `exclude_tag` must be set to `do_not_monitor` (section 12).
 
+**What happens when a device/VM has the `do_not_monitor` tag:**
+
+| Stage | Effect |
+|---|---|
+| **Sync** | The host is **completely skipped** — no Zabbix host is created, no interfaces, no templates, no macros. If a Zabbix host already exists from a previous sync (before the tag was added), it is **deleted** from Zabbix. |
+| **Host binding** | Any existing `ZabbixHostBinding` is removed. The device will not appear in Zabbix at all. |
+| **Day-2 removal** | Tag a device `do_not_monitor` and re-sync: the Zabbix host disappears within one sync cycle. No manual deletion needed. The device stays in NetBox — only the Zabbix monitoring is removed. |
+| **Untag** | Remove the `do_not_monitor` tag and re-sync: the host is recreated in Zabbix with full template/interface/hostgroup configuration. |
+
+This works on both **Devices** and **Virtual Machines**. The tag can be applied at the individual object level or at the **Device Role** level (e.g., all Messpc and VDI hosts excluded by default — see the role assignment above).
+
 ---
 
 ## 10. Host inventory
