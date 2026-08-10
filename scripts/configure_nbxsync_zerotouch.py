@@ -887,14 +887,18 @@ def step6_template_rules(server, country_slugs=None):
     tpl_fortigate = make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     # HTTP/simple-check templates — ANY, not AGENT (ESXi often has no Zabbix agent)
     tpl_vmware = make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.ANY])
-
+    # Extreme VOSS / IQ Engine: optional templates, fall back to Network Generic when missing.
+    _voss_tpl = TPL.get('extreme_voss_snmp') or TPL['network_generic_snmp']
+    _iq_tpl = TPL.get('extreme_iq_engine_snmp') or TPL['network_generic_snmp']
+    tpl_voss = make_template(*_voss_tpl, req=[HostInterfaceRequirementChoices.SNMP])
+    tpl_iq = make_template(*_iq_tpl, req=[HostInterfaceRequirementChoices.SNMP])
     rules = [
         ('Windows Server', r'Windows Server', tpl_windows, hg_os_windows, 50),
         ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 200),
         ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100),
-        ('Extreme EXOS', r'EXOS', tpl_exos, hg_os_network, 100),
-        ('Extreme VOSS', r'VOSS', TPL.get('extreme_voss_snmp', TPL['network_generic_snmp']), hg_os_network, 100),
-        ('Extreme IQ Engine', r'IQ ENGINE', TPL.get('extreme_iq_engine_snmp', TPL['network_generic_snmp']), hg_os_network, 100),
+        ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100),
+        ('Extreme IQ Engine', r'IQ ENGINE', tpl_iq, hg_os_network, 100),
+
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100),
         ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50),
         ('VMware ESXi', r'ESXi|VMware ESX|vSphere', tpl_vmware, hg_os_vmware, 100),
