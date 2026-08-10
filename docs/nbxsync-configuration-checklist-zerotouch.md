@@ -242,7 +242,7 @@ SAP SNMPv3 profile. Transport-only until Robert confirms auth/priv and whether S
 
 | Case | How |
 |---|---|
-| `hu-deb-san01` (`LogicMonitor` SHA/AES) | Per-device `ZabbixHostInterface` on that Device (do not change fleet CGs) — **blocked: the device is not in NetBox yet** (§17) |
+| `hu-deb-san01` (`LogicMonitor` SHA/AES) | Per-device `ZabbixHostInterface` on that Device (do not change fleet CGs) — device exists in NetBox as `HU-DEB-SAN01`, role Storage, manufacturer Huawei |
 
 ---
 
@@ -855,7 +855,7 @@ Note that **Space Server** therefore has split coverage: the host itself is a no
 
 | # | Item | Question to answer | Blocks |
 |---|---|---|---|
-| 1 | **`hu-deb-san01`** (Huawei storage, HU) | Device does not exist in NetBox yet. Create it — site, role Storage, manufacturer Huawei, primary IP — then add the per-device SNMP interface override from §5 | §5 one-off override; Huawei Storage rule in §6.3 has nothing to match |
+| 1 | **`hu-deb-san01`** (Huawei storage, HU) | Device exists in NetBox as `HU-DEB-SAN01` (role Storage, manufacturer Huawei, model Dorado 3000 V6, site HU-DEB-NAG-A, IP 10.40.101.61). Per-device `ZabbixHostInterface` created with `LogicMonitor` SHA1/AES128 credentials. Synced in Zabbix with `Huawei Storage by SNMP` + `Storage Generic Device by SNMP` templates. | Resolved — device in NetBox, interface created, synced |
 | 2 | **Horizon View / VDI** | LM monitors VDI globally with `CH-UPA-Monitor`. What does it actually collect, and at what level — Connection Broker / Session Host, or individual desktops? Zabbix has no Horizon template. Decide: build one, cover it from the broker, or accept the loss | §9.3 excludes role VDI outright; §11.3 still sets `{$MEM.UTIL.CRIT}` on VDI — one of the two is dead |
 | 3 | **CH-STA-P-ENSA01 traps** | LM has an event source `SNMP Receive - Netsight` on this host. Capture what traps it is actually sending before deciding whether to build a Zabbix SNMP trapper for it. Same host is also the only **SNMPv2c** device in LM — the §5 CG model is v3-only | No trap handling anywhere in this checklist; no v2c profile in §5 |
 | 4 | **Cato** | What do we want from Cato in Zabbix — socket up/down, tunnel health, nothing? See 17.1: whatever we choose is not NetBox-driven | §9.3 `do_not_monitor` on Sd Wan Socket is currently an unexplained exclusion |
