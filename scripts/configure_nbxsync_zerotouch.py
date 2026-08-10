@@ -53,6 +53,7 @@ Usage::
   PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \\
     python scripts/configure_nbxsync_zerotouch.py --simulate
 """
+
 from __future__ import annotations
 
 import argparse
@@ -710,10 +711,13 @@ def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oo
 
     # §5.5b Cohesity VMs with primary_ip4 → SNMP Monitoring (not OOB SNMP Only,
     # which is for physical nodes with only oob_ip — VMs have no oob_ip).
-    cohesity_vms = list(VirtualMachine.objects.filter(
-        role__name__iexact='Cohesity', status='active',
-        primary_ip4__isnull=False,
-    ))
+    cohesity_vms = list(
+        VirtualMachine.objects.filter(
+            role__name__iexact='Cohesity',
+            status='active',
+            primary_ip4__isnull=False,
+        )
+    )
     for vm in cohesity_vms:
         get_or_create(
             M.ZabbixConfigurationGroupAssignment,
@@ -946,10 +950,7 @@ def step8_hostgroups(server, country_slugs=None):
         zabbixserver=server,
         name='Sites',
         defaults={
-            'value': (
-                'Sites/{{ object.site.group.get_ancestors(include_self=True) '
-                '| map(attribute="name") | join("/") }}/{{ object.site.name }}'
-            ),
+            'value': ('Sites/{{ object.site.group.get_ancestors(include_self=True) | map(attribute="name") | join("/") }}/{{ object.site.name }}'),
         },
         update_fields=['value'],
     )
@@ -1018,15 +1019,7 @@ def step9_tags(country_slugs=None):
         assign_tag(cluster_tag, ct(Cluster), c.id)
 
     env_template = (
-        '{% set n = object.name | lower -%}\n'
-        '{%- if "-p-" in n or n.endswith("-p") or "-p0" in n or "-p1" in n -%}Production\n'
-        '{%- elif "-d-" in n -%}Development\n'
-        '{%- elif "-q-" in n -%}QA\n'
-        '{%- elif "-s-" in n -%}Sandbox\n'
-        '{%- elif "-t-" in n -%}Test\n'
-        '{%- elif "vdi" in n -%}VDI\n'
-        '{%- else -%}Unknown\n'
-        '{%- endif -%}'
+        '{% set n = object.name | lower -%}\n{%- if "-p-" in n or n.endswith("-p") or "-p0" in n or "-p1" in n -%}Production\n{%- elif "-d-" in n -%}Development\n{%- elif "-q-" in n -%}QA\n{%- elif "-s-" in n -%}Sandbox\n{%- elif "-t-" in n -%}Test\n{%- elif "vdi" in n -%}VDI\n{%- else -%}Unknown\n{%- endif -%}'
     )
     env_tag, _ = get_or_create(
         M.ZabbixTag,
@@ -1145,14 +1138,16 @@ def ensure_storage_generic_template(server) -> None:
             if item['key_'] in skip:
                 continue
             try:
-                api.item.create({
-                    'hostid': tpl_id,
-                    'name': item['name'],
-                    'key_': item['key_'],
-                    'type': int(item['type']),
-                    'value_type': int(item.get('value_type', 3)),
-                    'delay': item.get('delay', '1h'),
-                })
+                api.item.create(
+                    {
+                        'hostid': tpl_id,
+                        'name': item['name'],
+                        'key_': item['key_'],
+                        'type': int(item['type']),
+                        'value_type': int(item.get('value_type', 3)),
+                        'delay': item.get('delay', '1h'),
+                    }
+                )
                 copied += 1
             except Exception:
                 pass
@@ -1255,24 +1250,27 @@ def run_verify(*, limit: int | None = None) -> int:
             if not AGENT_PLATFORM_HINT.search(plat):
                 agent_without_platform_fact += 1
         # Soft check: SNMP-ish roles should not sit on plain Agent without a template.
-        if role_name in SNMP_ROLE_NAMES and cg_name not in snmp_ish_cgs and not any(
-            n in cg_name for n in ('SNMP', 'OOB', 'VM by SNMP')
-        ):
+        if role_name in SNMP_ROLE_NAMES and cg_name not in snmp_ish_cgs and not any(n in cg_name for n in ('SNMP', 'OOB', 'VM by SNMP')):
             # already counted snmp_role_on_agent_cg when exact Agent name matches
             pass
 
     shadow = M.ZabbixMacro.objects.filter(macro__in=SHADOW_MACROS).count()
-    print(json.dumps({
-        'objects_scanned': len(objects),
-        'unprofiled': unprofiled,
-        'no_template': no_template,
-        'agent_cg_without_agent_platform_fact': agent_without_platform_fact,
-        'snmp_role_resolved_to_agent_cg': snmp_role_on_agent_cg,
-        'active_without_primary_or_oob_ip': active_no_primary,
-        'shadow_secret_macros_remaining': shadow,
-        'os_family_tags_remaining': os_family_tags_remaining,
-        'tag_targeted_host_interfaces_remaining': snmp_tag_ifs,
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                'objects_scanned': len(objects),
+                'unprofiled': unprofiled,
+                'no_template': no_template,
+                'agent_cg_without_agent_platform_fact': agent_without_platform_fact,
+                'snmp_role_resolved_to_agent_cg': snmp_role_on_agent_cg,
+                'active_without_primary_or_oob_ip': active_no_primary,
+                'shadow_secret_macros_remaining': shadow,
+                'os_family_tags_remaining': os_family_tags_remaining,
+                'tag_targeted_host_interfaces_remaining': snmp_tag_ifs,
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -1283,7 +1281,7 @@ def run_verify(*, limit: int | None = None) -> int:
 
 def record(name: str, ok: bool, detail: str = '', *, group: str = 'general') -> None:
     RESULTS.append({'name': name, 'ok': bool(ok), 'detail': detail, 'group': group})
-    print(f"[{'PASS' if ok else 'FAIL'}] {group}/{name}: {detail}")
+    print(f'[{"PASS" if ok else "FAIL"}] {group}/{name}: {detail}')
 
 
 def slugify(name: str) -> str:
@@ -1312,10 +1310,7 @@ def cleanup_lab() -> None:
             foreign = M.ZabbixServer.objects.filter(url=lab_url).exclude(name=SIM_SERVER_NAME)
             if foreign.exists():
                 names = ', '.join(foreign.values_list('name', flat=True))
-                raise SystemExit(
-                    f'Refusing --simulate cleanup: ZabbixServer(s) {names} share lab URL {lab_url!r} '
-                    f'but are not {SIM_SERVER_NAME!r}. Rename or remove them first.'
-                )
+                raise SystemExit(f'Refusing --simulate cleanup: ZabbixServer(s) {names} share lab URL {lab_url!r} but are not {SIM_SERVER_NAME!r}. Rename or remove them first.')
     for server in servers:
         # Scope deletes to PREFIX / lab SiteGroups and config groups — never wipe a shared prod server.
         lab_sg_ids = list(SiteGroup.objects.filter(slug__startswith=PREFIX).values_list('pk', flat=True))
@@ -1524,10 +1519,7 @@ def run_simulate() -> int:
             zabbixserver=server,
             name=f'{PREFIX}Sites',
             defaults={
-                'value': (
-                    'Sites/{{ object.site.group.get_ancestors(include_self=True) '
-                    '| map(attribute="name") | join("/") }}/{{ object.site.name }}'
-                ),
+                'value': ('Sites/{{ object.site.group.get_ancestors(include_self=True) | map(attribute="name") | join("/") }}/{{ object.site.name }}'),
             },
             update_fields=['value'],
         )
@@ -1655,11 +1647,7 @@ def run_simulate() -> int:
 
         def tpl_names(obj):
             a = get_assigned_zabbixobjects(obj)
-            return sorted(
-                t.zabbixtemplate.name
-                for t in (a.get('templates') or [])
-                if getattr(t, 'zabbixtemplate', None) is not None
-            )
+            return sorted(t.zabbixtemplate.name for t in (a.get('templates') or []) if getattr(t, 'zabbixtemplate', None) is not None)
 
         record('server_cg_oob', cg_name(objects['server_oob']) == server_oob_group.name, cg_name(objects['server_oob']), group='resolve')
         record('switch_cg_snmp', cg_name(objects['switch']) == snmp_group.name, cg_name(objects['switch']), group='resolve')
@@ -1706,9 +1694,7 @@ def run_simulate() -> int:
                     assigned_object_id=role.id,
                 ).count()
         record('no_switch_ap_netgeneric_floor', switch_floor_left == 0, f'leftover={switch_floor_left}', group='resolve')
-        agent_role_rows = M.ZabbixConfigurationGroupAssignment.objects.filter(
-            zabbixconfigurationgroup=agent_group, assigned_object_type=ct(DeviceRole)
-        ).count()
+        agent_role_rows = M.ZabbixConfigurationGroupAssignment.objects.filter(zabbixconfigurationgroup=agent_group, assigned_object_type=ct(DeviceRole)).count()
         record('zero_agent_role_sprawl', agent_role_rows == 0, f'rows={agent_role_rows}', group='resolve')
         mfr_cg = M.ZabbixConfigurationGroupAssignment.objects.filter(assigned_object_type=ct(Manufacturer), assigned_object_id=dell.pk).count()
         record('no_manufacturer_transport_cg', mfr_cg == 0, f'count={mfr_cg}', group='resolve')
@@ -1798,7 +1784,7 @@ def run_simulate() -> int:
             '|---|---|---|---|',
         ]
         for r in RESULTS:
-            lines.append(f"| {r['group']} | `{r['name']}` | {'PASS' if r['ok'] else 'FAIL'} | {r['detail'][:120].replace('|', '/')} |")
+            lines.append(f'| {r["group"]} | `{r["name"]}` | {"PASS" if r["ok"] else "FAIL"} | {r["detail"][:120].replace("|", "/")} |')
         REPORT_MD.write_text('\n'.join(lines) + '\n')
         print(f'\nSummary: {passed}/{total} — {REPORT_MD}')
         return 0 if passed == total else 1
