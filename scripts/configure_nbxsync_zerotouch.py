@@ -460,7 +460,7 @@ def step0_cleanup(*, mutate_netbox: bool):
         ('snmp', 'Zero-touch Linux SNMP: selects SNMP Monitoring (Linux) CG + Linux/Windows by SNMP TemplateRules'),
         ('snmp-sap', 'Zero-touch SAP SNMP: selects SNMP Monitoring (SAP) CG (confirm auth/priv with Robert)'),
     ]:
-        # Reuse existing tag by slug OR name (NetBox auto-slugifies '_' -> '-')
+    # Reuse existing tag by slug OR name (NetBox auto-slugifies '_' -> '-')
         t = Tag.objects.filter(slug=name).first() or Tag.objects.filter(name=name).first()
         if t is None:
             t = Tag.objects.create(slug=name, name=name, description=desc)
@@ -938,6 +938,27 @@ def step6_template_rules(server, country_slugs=None):
         }
         ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
 
+    # Oracle: tag-gated TemplateRule — tag any VM/Device with 'oracle' tag to get
+    # Oracle by Zabbix agent 2. Merges with OS template from platform rule (Linux/Windows).
+    tpl_oracle = make_template(*TPL['oracle_agent2'], req=[HostInterfaceRequirementChoices.AGENT])
+    ensure(
+        M.ZabbixTemplateRule,
+        name='Oracle (tag)',
+        defaults={
+            'pattern': '.*',
+            'zabbixtemplate': tpl_oracle,
+            'zabbixhostgroup': None,
+            'zabbixtag': None,
+            'require_tags': 'oracle',
+            'role_pattern': '',
+            'manufacturer': None,
+            'enabled': True,
+            'priority': 40,
+        },
+        update_fields=['pattern', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'require_tags', 'role_pattern', 'manufacturer', 'enabled', 'priority'],
+    )
+    logger.info('  Rule Oracle (tag) → %s', tpl_oracle.name)
+
     # Dell iDRAC: Manufacturer ∧ Server role (no NetBox tag). Additive merge means
     # Manufacturer-wide assignment is too wide — keep OEM templates on Device type.
     dell = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug='dell').first()
@@ -1085,7 +1106,8 @@ def step7_template_assignments(server):
         (make_template(*TPL['sap_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SAP ME'),
         (make_template(*TPL['acronis_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'Acronis Management'),
         (make_template(*TPL['sccm_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SCCM'),
-        (make_template(*TPL['print_spool_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'Print Server'),
+        # Oracle: tag-gated, not role-based. Tag VMs with 'oracle' tag.
+        # (make_template(*TPL['oracle_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'Database'),  # Removed — role doesn't exist
     ]
     for template, role_name in assignments:
         try:

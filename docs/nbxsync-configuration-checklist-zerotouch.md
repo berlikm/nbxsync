@@ -411,7 +411,7 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 | **Acronis by Zabbix agent** | Device Role Acronis Management | Placeholder — LM parity |
 | **SCCM by Zabbix agent** | Device Role SCCM | Placeholder — LM parity |
 | **Print Spool by Zabbix agent** | Device Role Print Server | Placeholder — LM parity (print spool monitoring for ME) |
-| **Oracle by Zabbix agent 2** | Device Role Database (if exists) | Placeholder — Oracle by ODBC equivalent; host names and role still unknown (§17) |
+| **Oracle by Zabbix agent 2** | **Tag-gated TemplateRule (tag `oracle`)** — §6.2 | Placeholder — LM parity (`ch-sta-p-disc04` confirmed; check for others); see §9.0a tagging guide |
 
 Do **not** assign Network Generic to Switch Core / Dist / Access / Mgmt / Hybrid or Access Point. Dell iDRAC is **not** in this table — use §6.3.
 
@@ -487,6 +487,21 @@ To mark a device: add NetBox tag `critical`. To unmark: remove the tag.
 | `critical` | Membership in hostgroup Priority/Critical |
 | `snmp` | Zero-touch Linux SNMP: selects **SNMP Monitoring (Linux)** CG + Linux/Windows by SNMP Template Rules |
 | `snmp-sap` | Zero-touch SAP SNMP: selects **SNMP Monitoring (SAP)** CG (after Robert confirms) |
+| `oracle` | Zero-touch Oracle: links **Oracle by Zabbix agent 2** template via tag-gated Template Rule |
+
+### 9.0a Tagging guide — which devices to tag (from LogicMonitor export)
+
+Tags are the zero-touch opt-in mechanism. Apply them in NetBox → Device/VM → Tags. Below is the mapping from the LM account export to the NetBox tags this checklist uses.
+
+| Tag | LM signal | Known hosts | NetBox tag to add |
+|---|---|---|---|
+| `snmp` | LM group "Devices by Type/Linux Servers" used `MONITORING-LINUX` SHA/AES; resource-level overrides on `ch-sta-p-disc04`, `ch-sta-p-lega01`, `ch-sta-p-dell04`, `CH-STA-P-ESD01`, `ch-sta-p-vmli01/02/03/09/13`, `hu-deb-p-dock01`, `nl-ens-d-serv01`, `CH-STA-P-M300` | Any Linux/Windows host that should be SNMP-monitored instead of agent | `snmp` |
+| `snmp-sap` | LM group "Devices by Type/SAP Systems" used `SAPUSER` | `ch-sta-d-sh01`, `ch-sta-p-sh01`, `ch-sta-q-sh01`, `ch-sta-p-me05/06/07/08` | `snmp-sap` (confirm auth/priv with Robert first) |
+| `oracle` | LM JDBC account `C##logicmonitor`; resource override `logicmonitor` on `ch-sta-p-disc04` | `ch-sta-p-disc04` (confirmed); other Oracle hosts unknown — check with DB team | `oracle` |
+| `critical` | LM alert routing / 24×7 escalation list | Set per operational priority — no 1:1 LM mapping | `critical` |
+| `do_not_monitor` | LM hosts with monitoring disabled; roles excluded by policy | VDI (22 VMs, all), Messpc (1421), Sd Wan Socket (21) — automated by role in §9.3; individual exclusions by tag | `do_not_monitor` |
+
+**How to tag:** In NetBox, open the Device or VM → Tags tab → Add tag. Re-sync the host. The tag takes effect immediately on the next sync cycle — no Zabbix Admin UI needed.
 
 ### 9.1 Environment (Jinja on Site Groups)
 
@@ -844,7 +859,7 @@ Note that **Space Server** therefore has split coverage: the host itself is a no
 | 2 | **Horizon View / VDI** | LM monitors VDI globally with `CH-UPA-Monitor`. What does it actually collect, and at what level — Connection Broker / Session Host, or individual desktops? Zabbix has no Horizon template. Decide: build one, cover it from the broker, or accept the loss | §9.3 excludes role VDI outright; §11.3 still sets `{$MEM.UTIL.CRIT}` on VDI — one of the two is dead |
 | 3 | **CH-STA-P-ENSA01 traps** | LM has an event source `SNMP Receive - Netsight` on this host. Capture what traps it is actually sending before deciding whether to build a Zabbix SNMP trapper for it. Same host is also the only **SNMPv2c** device in LM — the §5 CG model is v3-only | No trap handling anywhere in this checklist; no v2c profile in §5 |
 | 4 | **Cato** | What do we want from Cato in Zabbix — socket up/down, tunnel health, nothing? See 17.1: whatever we choose is not NetBox-driven | §9.3 `do_not_monitor` on Sd Wan Socket is currently an unexplained exclusion |
-| 5 | **Oracle JDBC** | LM uses account `C##logicmonitor`. **Which host(s)?** Find the server name(s) and whether a NetBox role exists for them — §7 assigns Oracle to role *Database (if exists)*, which silently skips when the role is missing | §7 Oracle row; assessment names `Oracle by ODBC`, §7 names `Oracle by Zabbix agent 2` — pick one |
+| 5 | **Oracle JDBC** | LM uses account `C##logicmonitor`; resource override on `ch-sta-p-disc04`. Host identified: `ch-sta-p-disc04` (RHEL 7.9, role Server). Tag it `oracle` in NetBox (§9.0a) to link the Oracle by Zabbix agent 2 template. Check with DB team for other Oracle hosts. | Resolved — tag-gated TemplateRule in §6.2 |
 
 ### 17.3 Also not covered here
 
