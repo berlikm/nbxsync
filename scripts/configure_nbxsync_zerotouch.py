@@ -1098,7 +1098,7 @@ def step7_template_assignments(server):
         # Switch*/AP must NOT get this floor — EXOS (etc.) TemplateRules already attach
         # specialized templates; pairing both yields duplicate icmpping item keys.
         (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Network Device'),
-        (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Storage'),
+        # Storage Generic only on Cohesity — Storage role gets manufacturer-specific templates via §6.3
         (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Cohesity'),
         (make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Firewall'),
         # Placeholder application templates — LM parity. Items built post-cutover,
@@ -1147,6 +1147,20 @@ def step7_template_assignments(server):
         ).delete()
         if deleted:
             logger.info('  PRUNED: %s Pure Storage role assignment(s) (replaced by manufacturer TemplateRule)', deleted)
+
+    # Prune legacy Storage Generic assignment from Storage role — manufacturer-specific
+    # templates (Dell HTTP, Huawei SNMP, Pure HTTP, Synology SNMP) now cover it via §6.3.
+    old_storage_tpl = M.ZabbixTemplate.objects.filter(name='Storage Generic Device by SNMP').first()
+    if old_storage_tpl:
+        storage_role = DeviceRole.objects.filter(name__iexact='Storage').first()
+        if storage_role:
+            deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+                zabbixtemplate=old_storage_tpl,
+                assigned_object_type=ct(DeviceRole),
+                assigned_object_id=storage_role.id,
+            ).delete()
+            if deleted:
+                logger.info('  PRUNED: %s Storage Generic assignment(s) from Storage role (manufacturer rules cover it)', deleted)
 
     # Prune legacy Switch*/AP → Network Generic floors (icmpping collision with EXOS/etc.).
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
