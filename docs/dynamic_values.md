@@ -14,7 +14,7 @@ For example, if a Hostgroup is given the value:
 
 and is applied to a `Device`, it will render as the device's Site name.
 
-During host synchronisation, tag and hostgroup templates are always rendered against the Device, VDC or VirtualMachine being synced — even when the assignment is inherited from a Role, Platform, Site or similar. That way templates such as `{{ object.name }}` or `{{ object.site.name }}` resolve to the host, not to the inheritance source.
+During host synchronisation, tag, hostgroup, macro and host-inventory templates are rendered against the Device, VDC or VirtualMachine being synced — even when the assignment is inherited from a Role, Platform, Site or similar. That way templates such as `{{ object.name }}` or `{{ object.site.name }}` resolve to the host, not to the inheritance source.
 
 In the UI preview (and when syncing a hostgroup assignment against a hierarchy object itself), `object` is the assignment target. Hierarchy targets such as DeviceRole or Site are exposed in a device-shaped form (`object.role`, `object.site`, …) so templates like `Roles/{{ object.role.name }}` work without borrowing a descendant device. Targets that cannot fill a single device-shaped value leave the template unresolved.
 
@@ -56,10 +56,9 @@ Each field on a `ZabbixHostInventory` record is rendered individually. The conte
 
 | Key      | Value            | Explanation                                                  |
 |----------|------------------|--------------------------------------------------------------|
-| `object` | assigned_object  | The Device, VDC, or VirtualMachine this inventory belongs to |
+| `object` | assigned_object  | The assignment target. During host sync this is the Device/VM/VDC being synced |
 
-Because `ZabbixHostInventory` is assigned directly to a Device, VDC, or VM (never to a DeviceType or other inheritance-chain object), `object` always
-refers to the host itself. This means device attributes like `object.site.name`, `object.rack.name`, or `object.primary_ip` are always available and always resolve to the correct host.
+Inventory can be assigned on hierarchy objects and inherited; during host sync `object` is always the host, so fields such as `object.site.name` or `object.primary_ip` resolve correctly.
 
 Note that each field has a maximum character length enforced at render time, values that exceed the limit are silently truncated. The `inventory_mode` field controls how Zabbix treats the inventory:
 - `Manual` (the default) means Zabbix only updates inventory via the API, which is how nbxSync writes it. 

@@ -16,6 +16,7 @@
 
 - Jinja2 tag and hostgroup values are rendered against the Device/VM being synchronised, not against the inheritance source (Role, Platform, Site, …)
 - UI previews for hierarchy assignments use a device-shaped view of the target object instead of borrowing a sample descendant device
+- UI previews skip Devices/VMs carrying the configured `exclude_tag` when selecting a representative host
 
 ## [1.0.0] - Initial Release
 
