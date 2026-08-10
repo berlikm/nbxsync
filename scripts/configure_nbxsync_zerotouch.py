@@ -8,23 +8,20 @@ docs/nbxsync/nbxsync-configuration-checklist.md step-for-step).
 Hostgroup-first ops model (chosen scenario): Zabbix navigation and alerting hang
 off ``Sites/*`` × ``Roles/*`` × ``OS/*`` (+ lean ``Priority/Critical`` via tag).
 Transport stays on Configuration Groups (SiteGroup Agent default + role SNMP /
-Server Agent+OOB exceptions). Multi-credential SNMPv3 profiles per CG (network /
-Linux / Dell iDRAC / SAP). NetBox tag ``snmp`` is the zero-touch opt-in for
-Linux SNMP transport (CG assignment on the tag — inheritance prefers tags).
+Server Agent+OOB exceptions). Tags are for overlays only — never transport.
 
 Deltas vs the old checklist script:
 
   Δ5b  Agent CG → each top-level country SiteGroup (not 31 role→Agent rows)
   Δ5b  Pure Storage stays on SiteGroup Agent + HTTP template (ANY) — not SNMP CG
-  Δ5b  Storage removed from SNMP CG (Dell → HTTP; Cohesity stays OOB SNMP Only)
-  Δ5b  Server BMC = "Server Agent+OOB" with MONITORING-DELL SHA/AES on OOB SNMP
-  Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,DELL,SAP}
-  Δ5   "SNMP Monitoring (Linux)" CG on NetBox tag snmp (was SNMP by tag / VM by SNMP)
-  Δ5   "Agent Monitoring (SPACE)" port 10060 on Space Server role
-  Δ5   "SNMP Monitoring (SAP)" CG on tag snmp-sap (provisional; confirm auth with Robert)
+  Δ5b  Storage → SNMP CG; Cohesity → OOB SNMP Only
+  Δ5b  Server BMC = one "Server Agent+OOB" CG (Agent + SNMP use_oob_ip) on Server
+       role — NOT Manufacturer Dell → separate OOB CG
+  Δ5   Drop snmp-tag HostInterface (I7: tags never carry transport).
+       "VM by SNMP" CG = SNMP interface only (per-VM override)
   Δ6   Platform TemplateRules attach OS/* hostgroups only — no os_family Zabbix tags
   Δ6b  snmp NetBox tag + compound TemplateRules → Linux by SNMP / Windows by SNMP
-       (OS templates; transport from SNMP Monitoring (Linux) CG on the same tag)
+       (OS-correct templates; pairs with VM-by-SNMP CG for transport)
   Δ8   Hostgroups: Sites + Roles Jinja @ SiteGroup + Priority/Critical; drop
        Managed/nbxSync and Teams/* (prefer Roles/* unless Zabbix RBAC needs Teams)
   Δ7   Role templates: Network Device → Network Generic fallback only; Firewall → FortiGate.
@@ -47,11 +44,6 @@ Usage::
 
   # Production apply (resolves template/proxy IDs from live Zabbix by name)
   export NBX_ZABBIX_TOKEN=...
-  export NBX_SNMP_AUTHPASS_MON=... NBX_SNMP_PRIVPASS_MON=...
-  export NBX_SNMP_AUTHPASS_LINUX=... NBX_SNMP_PRIVPASS_LINUX=...
-  export NBX_SNMP_AUTHPASS_DELL=... NBX_SNMP_PRIVPASS_DELL=...
-  # optional SAP (after Robert confirms auth/priv):
-  # export NBX_SNMP_AUTHPASS_SAP=... NBX_SNMP_PRIVPASS_SAP=...
   python scripts/configure_nbxsync_zerotouch.py
 
   # Read-only census (coverage gaps)
@@ -61,6 +53,7 @@ Usage::
   PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \\
     python scripts/configure_nbxsync_zerotouch.py --simulate
 """
+
 from __future__ import annotations
 
 import argparse
@@ -137,16 +130,12 @@ TPL_NAMES = {
     'linux_snmp': 'Linux by SNMP',
     'windows_snmp': 'Windows by SNMP',
     'extreme_exos_snmp': 'Extreme EXOS by SNMP',
-    'extreme_voss_snmp': 'Extreme VOSS by SNMP',
-    'extreme_iq_engine_snmp': 'Extreme IQ Engine by SNMP',
     'network_generic_snmp': 'Network Generic Device by SNMP',
     'fortigate_snmp': 'FortiGate by SNMP',
     'vmware_fqdn': 'VMware FQDN',
     'dell_idrac_snmp': 'Dell iDRAC by SNMP',
-    # Prefer Agent 2 plugin template when present; resolve_templates required=False for alt name.
-    'mssql_odbc': 'MSSQL by Zabbix agent 2',
+    'mssql_odbc': 'MSSQL by ODBC',
     'pure_storage_http': 'Pure Storage FlashArray v1 by HTTP',
-    'dell_storage_http': 'Dell Storage by HTTP',
     'gitlab_http': 'GitLab by HTTP',
     # Created in Zabbix: clone of Network Generic without snmptrap.fallback
     # and zabbix[host,snmp,available] to avoid collision with Dell iDRAC
@@ -165,52 +154,18 @@ PROXY_NAMES = {
     'cn': 'cn-proxy-1',
 }
 
-# Network SNMP only — Storage is HTTP/TBD (not MONITORING MD5/DES).
 SNMP_ROLES = [
     'Switch Core',
     'Switch Dist',
     'Switch Access',
     'Switch Mgmt',
-    'Switch Hybrid',
     'Access Point',
     'Firewall',
     'Network Device',
     'Virtual Appliance',
+    # SNMP-only storage (Pure is HTTP — not here)
+    'Storage',
 ]
-
-# SNMPv3 credential profiles (LogicMonitor account map). Passphrases from env.
-# Linux "SHA" in LM is treated as SHA1 until confirmed otherwise.
-SNMP_PROFILES = {
-    'network': {
-        'user': 'MONITORING',
-        'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.MD5,
-        'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.DES,
-        'auth_env': ('NBX_SNMP_AUTHPASS_MON', 'NBX_SNMP_AUTHPASS'),
-        'priv_env': ('NBX_SNMP_PRIVPASS_MON', 'NBX_SNMP_PRIVPASS'),
-    },
-    'linux': {
-        'user': 'MONITORING-LINUX',
-        'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1,
-        'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
-        'auth_env': ('NBX_SNMP_AUTHPASS_LINUX',),
-        'priv_env': ('NBX_SNMP_PRIVPASS_LINUX',),
-    },
-    'dell': {
-        'user': 'MONITORING-DELL',
-        'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1,
-        'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
-        'auth_env': ('NBX_SNMP_AUTHPASS_DELL',),
-        'priv_env': ('NBX_SNMP_PRIVPASS_DELL',),
-    },
-    # Provisional — confirm auth/priv with Robert before relying on SAP SNMP.
-    'sap': {
-        'user': 'SAPUSER',
-        'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1,
-        'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
-        'auth_env': ('NBX_SNMP_AUTHPASS_SAP',),
-        'priv_env': ('NBX_SNMP_PRIVPASS_SAP',),
-    },
-}
 
 # Self-referencing host macros that shadow Zabbix globals — prune on every run.
 SHADOW_MACROS = (
@@ -377,46 +332,19 @@ def resolve_proxies(server, names: dict[str, str] | None = None) -> dict[str, M.
     return proxies
 
 
-def _env_first(names: tuple[str, ...] | list[str]) -> str:
-    for name in names:
-        val = os.environ.get(name, '')
-        if val:
-            return val
-    return ''
-
-
-def _snmp_v3_fields(profile: str = 'network') -> dict:
-    """SNMPv3 fields for a named credential profile (see SNMP_PROFILES).
-
-    Passphrases are real secrets on the interface; with snmp_pushcommunity=True,
-    hostsync writes them as secret host macros and hostinterfacesync points the
-    Zabbix interface details at those macros.
-    """
-    try:
-        cfg = SNMP_PROFILES[profile]
-    except KeyError as exc:
-        raise SystemExit(f'Unknown SNMP profile {profile!r}; known: {sorted(SNMP_PROFILES)}') from exc
-    authpass = _env_first(cfg['auth_env'])
-    privpass = _env_first(cfg['priv_env'])
-    if not authpass or not privpass:
-        logger.warning(
-            'SNMP profile %r: auth/priv env unset or empty (%s / %s) — authPriv will fail until set',
-            profile,
-            cfg['auth_env'][0],
-            cfg['priv_env'][0],
-        )
+def _snmp_v3_fields() -> dict:
     return {
         'snmp_version': ZabbixHostInterfaceSNMPVersionChoices.SNMPV3,
         'snmp_usebulk': True,
         'snmp_max_repetitions': 10,
         'snmp_community': '',
-        'snmp_pushcommunity': True,
-        'snmpv3_security_name': cfg['user'],
+        'snmp_pushcommunity': False,
+        'snmpv3_security_name': 'MONITORING',
         'snmpv3_security_level': ZabbixInterfaceSNMPV3SecurityLevelChoices.AUTHPRIV,
-        'snmpv3_authentication_passphrase': authpass,
-        'snmpv3_authentication_protocol': cfg['auth'],
-        'snmpv3_privacy_passphrase': privpass,
-        'snmpv3_privacy_protocol': cfg['priv'],
+        'snmpv3_authentication_passphrase': '{$SNMP_AUTHPASS}',
+        'snmpv3_authentication_protocol': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA256,
+        'snmpv3_privacy_passphrase': '{$SNMP_PRIVPASS}',
+        'snmpv3_privacy_protocol': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
     }
 
 
@@ -436,11 +364,10 @@ def step0_cleanup(*, mutate_netbox: bool):
     )
     logger.info("  Tag 'do_not_monitor': %s (id=%s)", 'CREATED' if created else 'EXISTS', tag.id)
 
-    # Overlays / opt-ins: critical → Priority HG; snmp → Linux SNMP CG+templates; snmp-sap → SAP SNMP CG.
+    # Overlays: critical → Priority HG; snmp → Linux/Windows by SNMP TemplateRules (not transport).
     for name, desc in [
         ('critical', 'Priority/Critical hostgroup membership (24/7 escalation)'),
-        ('snmp', 'Zero-touch Linux SNMP: CG SNMP Monitoring (Linux) + Linux/Windows by SNMP TemplateRules'),
-        ('snmp-sap', 'Zero-touch SAP SNMP: CG SNMP Monitoring (SAP) — confirm auth/priv with Robert'),
+        ('snmp', 'SNMP OS template flavor: Linux by SNMP / Windows by SNMP (pair with VM by SNMP CG for interface)'),
     ]:
         # Reuse existing tag by slug OR name (NetBox auto-slugifies '_' -> '-')
         t = Tag.objects.filter(slug=name).first() or Tag.objects.filter(name=name).first()
@@ -574,84 +501,60 @@ def step3_server_assignments(server, proxies, ch_proxy_group, country_slugs=None
         )
 
 
-def _rename_cg(from_names: list[str], to_name: str, description: str) -> M.ZabbixConfigurationGroup:
-    """Rename the first matching legacy CG to to_name, or ensure to_name exists."""
-    target = M.ZabbixConfigurationGroup.objects.filter(name=to_name).first()
-    for old_name in from_names:
-        legacy = M.ZabbixConfigurationGroup.objects.filter(name=old_name).first()
-        if legacy is None or (target is not None and legacy.pk == target.pk):
-            continue
-        if target is None:
-            legacy.name = to_name
-            legacy.description = description
-            legacy.save(update_fields=['name', 'description'])
-            logger.info('  Renamed configuration group %s → %s', old_name, to_name)
-            return legacy
-        logger.warning('  Both %r and %r exist — using %r; retire %r manually', old_name, to_name, to_name, old_name)
-        return target
-    group, _ = ensure(
-        M.ZabbixConfigurationGroup,
-        name=to_name,
-        defaults={'description': description},
-        update_fields=['description'],
-    )
-    return group
-
-
 def step4_configgroups():
     logger.info('=' * 60)
-    logger.info('Step 4: Configuration Groups (multi-credential SNMP)')
+    logger.info('Step 4: Configuration Groups')
     logger.info('=' * 60)
     snmp_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
         name='SNMP Monitoring',
-        defaults={'description': 'SNMPv3 MONITORING MD5/DES — Extreme/Forti/AP/network roles'},
+        defaults={'description': 'SNMP v3 interface template for network + SNMP-only storage'},
     )
     agent_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
         name='Agent Monitoring',
         defaults={'description': 'Default agent transport (assigned at top SiteGroups)'},
     )
+    # Δ: complete BMC profile (replaces separate OOB-only CG used as Manufacturer assignment)
     server_oob_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
         name='Server Agent+OOB',
-        defaults={'description': 'Server: Agent @ primary + SNMP MONITORING-DELL @ oob_ip'},
+        defaults={'description': 'Server profile: Agent @ primary + SNMP @ oob_ip (use_oob_ip)'},
     )
-    # Legacy VM by SNMP / SNMP by tag → Linux credential profile CG.
-    linux_snmp_group = _rename_cg(
-        ['VM by SNMP', 'SNMP by tag'],
-        'SNMP Monitoring (Linux)',
-        'SNMPv3 MONITORING-LINUX SHA/AES — zero-touch via NetBox tag snmp',
-    )
+    # Prefer renaming legacy "VM by SNMP" → "SNMP by tag" (same CG, Device or VM).
+    legacy = M.ZabbixConfigurationGroup.objects.filter(name='VM by SNMP').first()
+    named = M.ZabbixConfigurationGroup.objects.filter(name='SNMP by tag').first()
+    if legacy is not None and named is None:
+        legacy.name = 'SNMP by tag'
+        legacy.description = 'SNMP transport for Device/VM overrides — pair with NetBox tag snmp → Linux/Windows by SNMP templates'
+        legacy.save(update_fields=['name', 'description'])
+        vm_snmp_group = legacy
+        logger.info('  Renamed configuration group VM by SNMP → SNMP by tag')
+    elif legacy is not None and named is not None and legacy.pk != named.pk:
+        logger.warning('  Both "VM by SNMP" and "SNMP by tag" exist — using SNMP by tag; retire VM by SNMP manually')
+        vm_snmp_group = named
+    else:
+        vm_snmp_group, _ = ensure(
+            M.ZabbixConfigurationGroup,
+            name='SNMP by tag',
+            defaults={
+                'description': 'SNMP transport for Device/VM overrides — pair with NetBox tag snmp → Linux/Windows by SNMP templates',
+            },
+            update_fields=['description'],
+        )
+
+    # OOB-only SNMP: for hardware with only oob_ip (no primary_ip4) — e.g. Cohesity Dell nodes
     oob_snmp_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
         name='OOB SNMP Only',
-        defaults={'description': 'SNMP MONITORING MD5/DES @ oob_ip — Cohesity physical (no primary IP)'},
+        defaults={'description': 'SNMP @ oob_ip only — for hardware without primary_ip4'},
     )
-    sap_snmp_group, _ = get_or_create(
-        M.ZabbixConfigurationGroup,
-        name='SNMP Monitoring (SAP)',
-        defaults={'description': 'SNMPv3 SAPUSER — provisional; confirm auth/priv with Robert'},
-    )
-    space_agent_group, _ = get_or_create(
-        M.ZabbixConfigurationGroup,
-        name='Agent Monitoring (SPACE)',
-        defaults={'description': 'Agent port 10060 — Space Server role (camLine uses 10050)'},
-    )
-    return {
-        'snmp': snmp_group,
-        'agent': agent_group,
-        'server_oob': server_oob_group,
-        'linux_snmp': linux_snmp_group,
-        'oob_snmp': oob_snmp_group,
-        'sap_snmp': sap_snmp_group,
-        'space_agent': space_agent_group,
-    }
+    return snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group
 
 
-def step5_host_interfaces(server, groups: dict):
+def step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group):
     logger.info('=' * 60)
-    logger.info('Step 5: ZabbixHostInterface (per-credential CG profiles)')
+    logger.info('Step 5: ZabbixHostInterface (Configuration Group profiles only)')
     logger.info('=' * 60)
     ct_cfg = ct(M.ZabbixConfigurationGroup)
 
@@ -659,57 +562,101 @@ def step5_host_interfaces(server, groups: dict):
         defaults = lookup_and_defaults.pop('defaults')
         ensure(M.ZabbixHostInterface, defaults=defaults, **lookup_and_defaults)
 
-    def snmp_if(group, *, profile: str, use_oob_ip: bool = False):
-        ensure_if(
-            zabbixserver=server,
-            assigned_object_type=ct_cfg,
-            assigned_object_id=group.id,
-            type=ZabbixHostInterfaceTypeChoices.SNMP,
-            use_oob_ip=use_oob_ip,
-            defaults={
-                'zabbixconfigurationgroup': group,
-                'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
-                'port': 161,
-                'useip': ZabbixInterfaceUseChoices.IP,
-                'dns': '',
-                **_snmp_v3_fields(profile),
-            },
-        )
-
-    def agent_if(group, *, port: int = 10050):
-        ensure_if(
-            zabbixserver=server,
-            assigned_object_type=ct_cfg,
-            assigned_object_id=group.id,
-            type=ZabbixHostInterfaceTypeChoices.AGENT,
-            defaults={
-                'zabbixconfigurationgroup': group,
-                'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
-                'port': port,
-                'useip': ZabbixInterfaceUseChoices.IP,
-                'tls_connect': ZabbixTLSChoices.NO_ENCRYPTION,
-                'dns': '',
-            },
-        )
-
-    # 5.1 Network SNMP — MONITORING MD5/DES
-    snmp_if(groups['snmp'], profile='network')
-    # 5.2 Default agent — 10050
-    agent_if(groups['agent'], port=10050)
-    # 5.3 Server Agent+OOB — agent + Dell iDRAC SNMP
-    agent_if(groups['server_oob'], port=10050)
-    snmp_if(groups['server_oob'], profile='dell', use_oob_ip=True)
-    # 5.4 Linux SNMP opt-in — MONITORING-LINUX SHA/AES
-    snmp_if(groups['linux_snmp'], profile='linux')
-    # 5.5 Cohesity OOB — network MONITORING (unchanged)
-    snmp_if(groups['oob_snmp'], profile='network', use_oob_ip=True)
-    # 5.6 SAP SNMP — SAPUSER (provisional)
-    snmp_if(groups['sap_snmp'], profile='sap')
-    # 5.7 SPACE agent — 10060
-    agent_if(groups['space_agent'], port=10060)
-
-    # HostInterface must not hang on tags (interface shape lives on the CG).
-    # CG→Tag assignment is the zero-touch transport selector (step 5b).
+    # 5.1 SNMP CG
+    ensure_if(
+        zabbixserver=server,
+        assigned_object_type=ct_cfg,
+        assigned_object_id=snmp_group.id,
+        type=ZabbixHostInterfaceTypeChoices.SNMP,
+        use_oob_ip=False,
+        defaults={
+            'zabbixconfigurationgroup': snmp_group,
+            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+            'port': 161,
+            'useip': ZabbixInterfaceUseChoices.IP,
+            'dns': '',
+            **_snmp_v3_fields(),
+        },
+    )
+    # 5.2 Agent CG
+    ensure_if(
+        zabbixserver=server,
+        assigned_object_type=ct_cfg,
+        assigned_object_id=agent_group.id,
+        type=ZabbixHostInterfaceTypeChoices.AGENT,
+        defaults={
+            'zabbixconfigurationgroup': agent_group,
+            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+            'port': 10050,
+            'useip': ZabbixInterfaceUseChoices.IP,
+            'tls_connect': ZabbixTLSChoices.NO_ENCRYPTION,
+            'dns': '',
+        },
+    )
+    # 5.3 Server Agent+OOB — both interfaces on ONE CG
+    ensure_if(
+        zabbixserver=server,
+        assigned_object_type=ct_cfg,
+        assigned_object_id=server_oob_group.id,
+        type=ZabbixHostInterfaceTypeChoices.AGENT,
+        defaults={
+            'zabbixconfigurationgroup': server_oob_group,
+            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+            'port': 10050,
+            'useip': ZabbixInterfaceUseChoices.IP,
+            'tls_connect': ZabbixTLSChoices.NO_ENCRYPTION,
+            'dns': '',
+        },
+    )
+    ensure_if(
+        zabbixserver=server,
+        assigned_object_type=ct_cfg,
+        assigned_object_id=server_oob_group.id,
+        type=ZabbixHostInterfaceTypeChoices.SNMP,
+        use_oob_ip=True,
+        defaults={
+            'zabbixconfigurationgroup': server_oob_group,
+            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+            'port': 161,
+            'useip': ZabbixInterfaceUseChoices.IP,
+            'dns': '',
+            **_snmp_v3_fields(),
+        },
+    )
+    # 5.4 VM by SNMP — transport only (SNMP IF). OS templates come from Δ6b rules.
+    ensure_if(
+        zabbixserver=server,
+        assigned_object_type=ct_cfg,
+        assigned_object_id=vm_snmp_group.id,
+        type=ZabbixHostInterfaceTypeChoices.SNMP,
+        use_oob_ip=False,
+        defaults={
+            'zabbixconfigurationgroup': vm_snmp_group,
+            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+            'port': 161,
+            'useip': ZabbixInterfaceUseChoices.IP,
+            'dns': '',
+            **_snmp_v3_fields(),
+        },
+    )
+    # 5.4b OOB SNMP Only (hardware without primary_ip4 — e.g. Cohesity Dell nodes)
+    ensure_if(
+        zabbixserver=server,
+        assigned_object_type=ct_cfg,
+        assigned_object_id=oob_snmp_group.id,
+        type=ZabbixHostInterfaceTypeChoices.SNMP,
+        use_oob_ip=True,
+        defaults={
+            'zabbixconfigurationgroup': oob_snmp_group,
+            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+            'port': 161,
+            'useip': ZabbixInterfaceUseChoices.IP,
+            'dns': '',
+            **_snmp_v3_fields(),
+        },
+    )
+    # Δ: snmp-tag HostInterface removed — never put transport on tags (I7).
+    # Per-VM: assign "VM by SNMP" CG (IF) + NetBox tag snmp (Linux/Windows by SNMP rules).
     pruned_ifs, _ = M.ZabbixHostInterface.objects.filter(
         zabbixserver=server,
         assigned_object_type=ct(Tag),
@@ -718,19 +665,12 @@ def step5_host_interfaces(server, groups: dict):
         logger.info('  PRUNED: %s tag-targeted HostInterface(s)', pruned_ifs)
 
 
-def step5b_configgroup_assignments(groups: dict, country_slugs=None):
-    """SiteGroup Agent default; network SNMP roles; tag/role zero-touch overrides."""
+def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oob_snmp_group=None, vm_snmp_group=None, country_slugs=None):
+    """Δ vs previous: SiteGroup Agent default; SNMP+storage exceptions; Server BMC CG."""
     logger.info('=' * 60)
     logger.info('Step 5b: ConfigurationGroupAssignment (zero-touch)')
     logger.info('=' * 60)
     country_slugs = country_slugs or COUNTRY_SLUGS
-    snmp_group = groups['snmp']
-    agent_group = groups['agent']
-    server_oob_group = groups['server_oob']
-    linux_snmp_group = groups['linux_snmp']
-    oob_snmp_group = groups['oob_snmp']
-    sap_snmp_group = groups['sap_snmp']
-    space_agent_group = groups['space_agent']
 
     for slug in country_slugs:
         sg = get_sitegroup(slug)
@@ -741,7 +681,7 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
             assigned_object_id=sg.id,
             defaults={},
         )
-    logger.info('  Agent Monitoring → %s top SiteGroups', len(country_slugs))
+    logger.info('  Agent Monitoring → %s top SiteGroups (replaces %s role→Agent rows)', len(country_slugs), len(AGENT_DEFAULT_ROLES_DOC) + 1)
 
     def assign_role(group, role_name):
         try:
@@ -757,50 +697,26 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
             defaults={},
         )
 
-    def assign_tag(group, slug: str, name: str | None = None):
-        tag, _ = Tag.objects.get_or_create(slug=slug, defaults={'name': name or slug})
-        get_or_create(
-            M.ZabbixConfigurationGroupAssignment,
-            zabbixconfigurationgroup=group,
-            assigned_object_type=ct(Tag),
-            assigned_object_id=tag.id,
-            defaults={},
-        )
-        logger.info('  %s → NetBox tag %s (zero-touch opt-in)', group.name, slug)
-
     for role_name in SNMP_ROLES:
         assign_role(snmp_group, role_name)
-
-    # Prune Storage → SNMP Monitoring (Dell/Huawei are not network MONITORING).
-    try:
-        storage_role = get_role('Storage')
-    except DeviceRole.DoesNotExist:
-        storage_role = None
-    if storage_role is not None:
-        deleted, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
-            zabbixconfigurationgroup=snmp_group,
-            assigned_object_type=ct(DeviceRole),
-            assigned_object_id=storage_role.id,
-        ).delete()
-        if deleted:
-            logger.info('  PRUNED: Storage → SNMP Monitoring (%s)', deleted)
-
     for role_name in SERVER_BMC_ROLES:
-        if role_name == 'Cohesity':
+        # Cohesity goes to OOB SNMP Only (no primary_ip4 — only oob_ip)
+        if role_name == 'Cohesity' and oob_snmp_group is not None:
             assign_role(oob_snmp_group, role_name)
             continue
         assign_role(server_oob_group, role_name)
 
-    assign_role(space_agent_group, 'Space Server')
+    # Explicitly do NOT assign OOB CG to Manufacturer Dell (previous script pattern — broken).
+    logger.info('  NOTE: Dell iDRAC is TemplateRule Dell∧Server (§6), not Manufacturer-wide / not a transport CG')
 
-    # Tag inheritance is collected before role/site — snmp / snmp-sap beat Agent default.
-    assign_tag(linux_snmp_group, 'snmp', 'snmp')
-    assign_tag(sap_snmp_group, 'snmp-sap', 'snmp-sap')
-    logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); OOB creds = MONITORING-DELL on Server Agent+OOB')
-
-    # Cohesity VMs with primary_ip4 → network SNMP (physical Cohesity stays OOB).
+    # §5.5b Cohesity VMs with primary_ip4 → SNMP Monitoring (not OOB SNMP Only,
+    # which is for physical nodes with only oob_ip — VMs have no oob_ip).
     cohesity_vms = list(
-        VirtualMachine.objects.filter(role__name__iexact='Cohesity', status='active', primary_ip4__isnull=False)
+        VirtualMachine.objects.filter(
+            role__name__iexact='Cohesity',
+            status='active',
+            primary_ip4__isnull=False,
+        )
     )
     for vm in cohesity_vms:
         get_or_create(
@@ -857,8 +773,6 @@ def step6_template_rules(server, country_slugs=None):
     tpl_linux_snmp = make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_windows_snmp = make_template(*TPL['windows_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_exos = make_template(*TPL['extreme_exos_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    tpl_voss = make_template(*TPL['extreme_voss_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    tpl_iq = make_template(*TPL['extreme_iq_engine_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_fortigate = make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     # HTTP/simple-check templates — ANY, not AGENT (ESXi often has no Zabbix agent)
@@ -870,8 +784,8 @@ def step6_template_rules(server, country_slugs=None):
         ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 200),
         ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100),
         ('Extreme EXOS', r'EXOS', tpl_exos, hg_os_network, 100),
-        ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100),
-        ('Extreme IQ Engine', r'IQ ENGINE', tpl_iq, hg_os_network, 100),
+        ('Extreme VOSS', r'VOSS', tpl_netgeneric, hg_os_network, 100),
+        ('Extreme IQ Engine', r'IQ ENGINE', tpl_netgeneric, hg_os_network, 100),
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100),
         ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50),
         ('VMware ESXi', r'ESXi|VMware ESX|vSphere', tpl_vmware, hg_os_vmware, 100),
@@ -913,12 +827,7 @@ def step6_template_rules(server, country_slugs=None):
 
     # Dell iDRAC: Manufacturer ∧ Server role (no NetBox tag). Additive merge means
     # Manufacturer-wide assignment is too wide — keep OEM templates on Device type.
-    # Lab simulate uses PREFIX+slug (e.g. ztc-dell) so also accept slugify('dell').
-    dell = (
-        Manufacturer.objects.filter(name='Dell').first()
-        or Manufacturer.objects.filter(slug='dell').first()
-        or Manufacturer.objects.filter(slug=slugify('dell')).first()
-    )
+    dell = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug='dell').first()
     tpl_idrac = make_template(*TPL['dell_idrac_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     if dell is not None:
         defaults = {
@@ -983,15 +892,10 @@ def step7_template_assignments(server):
         # Switch*/AP must NOT get this floor — EXOS (etc.) TemplateRules already attach
         # specialized templates; pairing both yields duplicate icmpping item keys.
         (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Network Device'),
-        # Storage role: no Storage Generic floor — Dell → HTTP (when template present); Huawei TBD.
+        (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Storage'),
         (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Cohesity'),
         (make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Firewall'),
     ]
-    # Optional Dell Storage by HTTP (import template in Zabbix first).
-    if 'dell_storage_http' in TPL:
-        assignments.append(
-            (make_template(*TPL['dell_storage_http'], req=[HostInterfaceRequirementChoices.ANY]), 'Storage'),
-        )
     for template, role_name in assignments:
         try:
             role = get_role(role_name)
@@ -1008,14 +912,7 @@ def step7_template_assignments(server):
 
     # Prune legacy Switch*/AP → Network Generic floors (icmpping collision with EXOS/etc.).
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    for role_name in (
-        'Switch Core',
-        'Switch Dist',
-        'Switch Access',
-        'Switch Mgmt',
-        'Switch Hybrid',
-        'Access Point',
-    ):
+    for role_name in ('Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Access Point'):
         try:
             role = get_role(role_name)
         except DeviceRole.DoesNotExist:
@@ -1030,29 +927,15 @@ def step7_template_assignments(server):
 
     # Dell iDRAC is scoped via TemplateRule (step 6: Dell ∧ Server), not Manufacturer.
 
-    # Prune Storage → Storage Generic (network SNMP floor no longer applies).
-    try:
-        storage_role = get_role('Storage')
-        storage_generic = make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+    # VM by SNMP CG is transport-only — prune any leftover CG→template links
+    # (Linux/Windows by SNMP come from tag compound TemplateRules in step 6).
+    for cg in M.ZabbixConfigurationGroup.objects.filter(name__endswith='VM by SNMP'):
         deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
-            zabbixtemplate=storage_generic,
-            assigned_object_type=ct(DeviceRole),
-            assigned_object_id=storage_role.id,
+            assigned_object_type=ct(M.ZabbixConfigurationGroup),
+            assigned_object_id=cg.id,
         ).delete()
         if deleted:
-            logger.info('  PRUNED: %s Storage Generic assignment(s) from Storage role', deleted)
-    except DeviceRole.DoesNotExist:
-        pass
-
-    # Transport-only CGs — prune leftover CG→template links.
-    for cg_name_suffix in ('VM by SNMP', 'SNMP by tag', 'SNMP Monitoring (Linux)', 'SNMP Monitoring (SAP)'):
-        for cg in M.ZabbixConfigurationGroup.objects.filter(name__endswith=cg_name_suffix):
-            deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
-                assigned_object_type=ct(M.ZabbixConfigurationGroup),
-                assigned_object_id=cg.id,
-            ).delete()
-            if deleted:
-                logger.info('  PRUNED: %s template assignment(s) from %s (transport-only)', deleted, cg.name)
+            logger.info('  PRUNED: %s template assignment(s) from %s (transport-only)', deleted, cg.name)
 
 
 def step8_hostgroups(server, country_slugs=None):
@@ -1067,10 +950,7 @@ def step8_hostgroups(server, country_slugs=None):
         zabbixserver=server,
         name='Sites',
         defaults={
-            'value': (
-                'Sites/{{ object.site.group.get_ancestors(include_self=True) '
-                '| map(attribute="name") | join("/") }}/{{ object.site.name }}'
-            ),
+            'value': ('Sites/{{ object.site.group.get_ancestors(include_self=True) | map(attribute="name") | join("/") }}/{{ object.site.name }}'),
         },
         update_fields=['value'],
     )
@@ -1139,15 +1019,7 @@ def step9_tags(country_slugs=None):
         assign_tag(cluster_tag, ct(Cluster), c.id)
 
     env_template = (
-        '{% set n = object.name | lower -%}\n'
-        '{%- if "-p-" in n or n.endswith("-p") or "-p0" in n or "-p1" in n -%}Production\n'
-        '{%- elif "-d-" in n -%}Development\n'
-        '{%- elif "-q-" in n -%}QA\n'
-        '{%- elif "-s-" in n -%}Sandbox\n'
-        '{%- elif "-t-" in n -%}Test\n'
-        '{%- elif "vdi" in n -%}VDI\n'
-        '{%- else -%}Unknown\n'
-        '{%- endif -%}'
+        '{% set n = object.name | lower -%}\n{%- if "-p-" in n or n.endswith("-p") or "-p0" in n or "-p1" in n -%}Production\n{%- elif "-d-" in n -%}Development\n{%- elif "-q-" in n -%}QA\n{%- elif "-s-" in n -%}Sandbox\n{%- elif "-t-" in n -%}Test\n{%- elif "vdi" in n -%}VDI\n{%- else -%}Unknown\n{%- endif -%}'
     )
     env_tag, _ = get_or_create(
         M.ZabbixTag,
@@ -1266,69 +1138,20 @@ def ensure_storage_generic_template(server) -> None:
             if item['key_'] in skip:
                 continue
             try:
-                api.item.create({
-                    'hostid': tpl_id,
-                    'name': item['name'],
-                    'key_': item['key_'],
-                    'type': int(item['type']),
-                    'value_type': int(item.get('value_type', 3)),
-                    'delay': item.get('delay', '1h'),
-                })
+                api.item.create(
+                    {
+                        'hostid': tpl_id,
+                        'name': item['name'],
+                        'key_': item['key_'],
+                        'type': int(item['type']),
+                        'value_type': int(item.get('value_type', 3)),
+                        'delay': item.get('delay', '1h'),
+                    }
+                )
                 copied += 1
             except Exception:
                 pass
         logger.info('  CREATED: %r in Zabbix (%d items, id=%s)', name, copied, tpl_id)
-
-
-_IMPORT_RULES = {
-    'templates': {'createMissing': True, 'updateExisting': True},
-    'template_groups': {'createMissing': True, 'updateExisting': True},
-    'valueMaps': {'createMissing': True, 'updateExisting': True},
-    'items': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-    'discoveryRules': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-    'triggers': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-    'graphs': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-    'httptests': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-    'templateDashboards': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
-}
-
-
-def _ensure_yaml_template(server, *, tpl_key: str, relpath: str, label: str) -> None:
-    """Import a repo YAML template into Zabbix if missing."""
-    name = TPL_NAMES[tpl_key]
-    path = Path(__file__).resolve().parents[1] / relpath
-    with ZabbixConnection(server) as api:
-        found = api.template.get(filter={'name': name}, output=['templateid']) or []
-        if found:
-            logger.info('  EXISTS: Zabbix template %r (id=%s)', name, found[0]['templateid'])
-            return
-        if not path.exists():
-            raise SystemExit(f'Missing {label} template YAML for import: {path}')
-        api.configuration.import_(format='yaml', rules=_IMPORT_RULES, source=path.read_text())
-        found = api.template.get(filter={'name': name}, output=['templateid']) or []
-        if not found:
-            raise SystemExit(f'{label} template missing after import: {name}')
-        logger.info('  IMPORTED: Zabbix template %r (id=%s)', name, found[0]['templateid'])
-
-
-def ensure_extreme_voss_template(server) -> None:
-    """Import Extreme VOSS by SNMP from repo YAML if missing (not a stock template)."""
-    _ensure_yaml_template(
-        server,
-        tpl_key='extreme_voss_snmp',
-        relpath='zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
-        label='VOSS',
-    )
-
-
-def ensure_extreme_iq_engine_template(server) -> None:
-    """Import Extreme IQ Engine by SNMP from repo YAML if missing (HiveOS APs)."""
-    _ensure_yaml_template(
-        server,
-        tpl_key='extreme_iq_engine_snmp',
-        relpath='zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
-        label='IQ Engine',
-    )
 
 
 def run_production(*, mutate_netbox: bool = False, url: str | None = None, token: str | None = None, lab_http: bool = False):
@@ -1340,31 +1163,14 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     step0_cleanup(mutate_netbox=mutate_netbox)
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
     ensure_storage_generic_template(server)
-    ensure_extreme_voss_template(server)
-    ensure_extreme_iq_engine_template(server)
-    optional_tpl = {'icmp_ping', 'dell_storage_http', 'mssql_odbc'}
-    required_names = {k: v for k, v in TPL_NAMES.items() if k not in optional_tpl}
+    required_names = {k: v for k, v in TPL_NAMES.items() if k != 'icmp_ping'}
     TPL = resolve_templates(server, names=required_names, required=True)
-    # MSSQL: prefer Agent 2 plugin template, fall back to ODBC name.
-    for mssql_name in ('MSSQL by Zabbix agent 2', 'MSSQL by ODBC'):
-        found = resolve_templates(server, names={'mssql_odbc': mssql_name}, required=False)
-        if found:
-            TPL.update(found)
-            break
-    if 'mssql_odbc' not in TPL:
-        raise SystemExit('Zabbix template(s) not found by name: MSSQL by Zabbix agent 2 (or MSSQL by ODBC)')
-    TPL.update(
-        resolve_templates(
-            server,
-            names={k: TPL_NAMES[k] for k in ('icmp_ping', 'dell_storage_http') if k in TPL_NAMES},
-            required=False,
-        )
-    )
+    TPL.update(resolve_templates(server, names={'icmp_ping': TPL_NAMES['icmp_ping']}, required=False))
     proxies, ch_proxy_group = step2_proxies(server)
     step3_server_assignments(server, proxies, ch_proxy_group)
-    groups = step4_configgroups()
-    step5_host_interfaces(server, groups)
-    step5b_configgroup_assignments(groups)
+    snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group = step4_configgroups()
+    step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group)
+    step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oob_snmp_group, vm_snmp_group)
     step6_template_rules(server)
     step7_template_assignments(server)
     step8_hostgroups(server)
@@ -1420,15 +1226,7 @@ def run_verify(*, limit: int | None = None) -> int:
     os_family_tags_remaining = M.ZabbixTag.objects.filter(tag='os_family').count()
     snmp_tag_ifs = M.ZabbixHostInterface.objects.filter(assigned_object_type=ct(Tag)).count()
     agent_cg_name = 'Agent Monitoring'
-    snmp_ish_cgs = {
-        'SNMP Monitoring',
-        'SNMP Monitoring (Linux)',
-        'SNMP Monitoring (SAP)',
-        'OOB SNMP Only',
-        'Server Agent+OOB',
-        'SNMP by tag',
-        'VM by SNMP',
-    }
+    snmp_ish_cgs = {'SNMP Monitoring', 'OOB SNMP Only', 'Server Agent+OOB', 'VM by SNMP'}
 
     for obj in objects:
         if getattr(obj, 'primary_ip4_id', None) is None and getattr(obj, 'primary_ip6_id', None) is None:
@@ -1452,24 +1250,27 @@ def run_verify(*, limit: int | None = None) -> int:
             if not AGENT_PLATFORM_HINT.search(plat):
                 agent_without_platform_fact += 1
         # Soft check: SNMP-ish roles should not sit on plain Agent without a template.
-        if role_name in SNMP_ROLE_NAMES and cg_name not in snmp_ish_cgs and not any(
-            n in cg_name for n in ('SNMP', 'OOB', 'VM by SNMP')
-        ):
+        if role_name in SNMP_ROLE_NAMES and cg_name not in snmp_ish_cgs and not any(n in cg_name for n in ('SNMP', 'OOB', 'VM by SNMP')):
             # already counted snmp_role_on_agent_cg when exact Agent name matches
             pass
 
     shadow = M.ZabbixMacro.objects.filter(macro__in=SHADOW_MACROS).count()
-    print(json.dumps({
-        'objects_scanned': len(objects),
-        'unprofiled': unprofiled,
-        'no_template': no_template,
-        'agent_cg_without_agent_platform_fact': agent_without_platform_fact,
-        'snmp_role_resolved_to_agent_cg': snmp_role_on_agent_cg,
-        'active_without_primary_or_oob_ip': active_no_primary,
-        'shadow_secret_macros_remaining': shadow,
-        'os_family_tags_remaining': os_family_tags_remaining,
-        'tag_targeted_host_interfaces_remaining': snmp_tag_ifs,
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                'objects_scanned': len(objects),
+                'unprofiled': unprofiled,
+                'no_template': no_template,
+                'agent_cg_without_agent_platform_fact': agent_without_platform_fact,
+                'snmp_role_resolved_to_agent_cg': snmp_role_on_agent_cg,
+                'active_without_primary_or_oob_ip': active_no_primary,
+                'shadow_secret_macros_remaining': shadow,
+                'os_family_tags_remaining': os_family_tags_remaining,
+                'tag_targeted_host_interfaces_remaining': snmp_tag_ifs,
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -1480,7 +1281,7 @@ def run_verify(*, limit: int | None = None) -> int:
 
 def record(name: str, ok: bool, detail: str = '', *, group: str = 'general') -> None:
     RESULTS.append({'name': name, 'ok': bool(ok), 'detail': detail, 'group': group})
-    print(f"[{'PASS' if ok else 'FAIL'}] {group}/{name}: {detail}")
+    print(f'[{"PASS" if ok else "FAIL"}] {group}/{name}: {detail}')
 
 
 def slugify(name: str) -> str:
@@ -1509,10 +1310,7 @@ def cleanup_lab() -> None:
             foreign = M.ZabbixServer.objects.filter(url=lab_url).exclude(name=SIM_SERVER_NAME)
             if foreign.exists():
                 names = ', '.join(foreign.values_list('name', flat=True))
-                raise SystemExit(
-                    f'Refusing --simulate cleanup: ZabbixServer(s) {names} share lab URL {lab_url!r} '
-                    f'but are not {SIM_SERVER_NAME!r}. Rename or remove them first.'
-                )
+                raise SystemExit(f'Refusing --simulate cleanup: ZabbixServer(s) {names} share lab URL {lab_url!r} but are not {SIM_SERVER_NAME!r}. Rename or remove them first.')
     for server in servers:
         # Scope deletes to PREFIX / lab SiteGroups and config groups — never wipe a shared prod server.
         lab_sg_ids = list(SiteGroup.objects.filter(slug__startswith=PREFIX).values_list('pk', flat=True))
@@ -1641,33 +1439,22 @@ def run_simulate() -> int:
         step3_server_assignments(server, proxies, pg, country_slugs=country_slugs)
 
         # Prefix CG names for lab isolation
-        cg_groups = {
-            'snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring', defaults={'description': 'lab'})[0],
-            'agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring', defaults={'description': 'lab'})[0],
-            'server_oob': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Server Agent+OOB', defaults={'description': 'lab'})[0],
-            'linux_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (Linux)', defaults={'description': 'lab'})[0],
-            'oob_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}OOB SNMP Only', defaults={'description': 'lab'})[0],
-            'sap_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (SAP)', defaults={'description': 'lab'})[0],
-            'space_agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring (SPACE)', defaults={'description': 'lab'})[0],
-        }
-        snmp_group = cg_groups['snmp']
-        agent_group = cg_groups['agent']
-        server_oob_group = cg_groups['server_oob']
-        linux_snmp_group = cg_groups['linux_snmp']
-        oob_snmp_group = cg_groups['oob_snmp']
-        space_agent_group = cg_groups['space_agent']
-        vm_snmp_group = linux_snmp_group  # legacy alias
+        snmp_group, _ = M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring', defaults={'description': 'lab'})
+        agent_group, _ = M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring', defaults={'description': 'lab'})
+        server_oob_group, _ = M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Server Agent+OOB', defaults={'description': 'lab'})
+        vm_snmp_group, _ = M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}VM by SNMP', defaults={'description': 'lab'})
+        oob_snmp_group, _ = M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}OOB SNMP Only', defaults={'description': 'lab'})
 
-        step5_host_interfaces(server, cg_groups)
-        step5b_configgroup_assignments(cg_groups, country_slugs=country_slugs)
+        step5_host_interfaces(server, snmp_group, agent_group, server_oob_group, vm_snmp_group, oob_snmp_group)
+        step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oob_snmp_group, vm_snmp_group, country_slugs=country_slugs)
 
         # Lab templates in Zabbix
         with ZabbixConnection(server) as api:
             for h in api.host.get(search={'host': PREFIX}, output=['hostid', 'host']) or []:
                 if h['host'].startswith(PREFIX):
                     api.host.delete(h['hostid'])
-            lab_hgs = api.hostgroup.get(filter={'name': f'{PREFIX}lab'})
-            gid = lab_hgs[0]['groupid'] if lab_hgs else api.hostgroup.create(name=f'{PREFIX}lab')['groupids'][0]
+            groups = api.hostgroup.get(filter={'name': f'{PREFIX}lab'})
+            gid = groups[0]['groupid'] if groups else api.hostgroup.create(name=f'{PREFIX}lab')['groupids'][0]
             tgroups = api.templategroup.get(filter={'name': f'{PREFIX}templates'})
             tgid = tgroups[0]['groupid'] if tgroups else api.templategroup.create(name=f'{PREFIX}templates')['groupids'][0]
 
@@ -1688,11 +1475,6 @@ def run_simulate() -> int:
             TPL['linux_agent'] = (int(ensure_t(f'{PREFIX}linux.agent', f'{PREFIX}Linux by Agent')), f'{PREFIX}Linux by Agent')
             TPL['windows_agent'] = (int(ensure_t(f'{PREFIX}windows.agent', f'{PREFIX}Windows by Agent')), f'{PREFIX}Windows by Agent')
             TPL['extreme_exos_snmp'] = (int(ensure_t(f'{PREFIX}exos.snmp', f'{PREFIX}Extreme EXOS by SNMP')), f'{PREFIX}Extreme EXOS by SNMP')
-            TPL['extreme_voss_snmp'] = (int(ensure_t(f'{PREFIX}voss.snmp', f'{PREFIX}Extreme VOSS by SNMP')), f'{PREFIX}Extreme VOSS by SNMP')
-            TPL['extreme_iq_engine_snmp'] = (
-                int(ensure_t(f'{PREFIX}iq.snmp', f'{PREFIX}Extreme IQ Engine by SNMP')),
-                f'{PREFIX}Extreme IQ Engine by SNMP',
-            )
             TPL['network_generic_snmp'] = (int(ensure_t(f'{PREFIX}net.snmp', f'{PREFIX}Network Generic Device by SNMP')), f'{PREFIX}Network Generic Device by SNMP')
             TPL['fortigate_snmp'] = (int(ensure_t(f'{PREFIX}forti.snmp', f'{PREFIX}FortiGate by SNMP')), f'{PREFIX}FortiGate by SNMP')
             TPL['vmware_fqdn'] = (int(ensure_t(f'{PREFIX}vmware', f'{PREFIX}VMware FQDN')), f'{PREFIX}VMware FQDN')
@@ -1705,11 +1487,10 @@ def run_simulate() -> int:
             TPL['storage_generic_snmp'] = (int(ensure_t(f'{PREFIX}storage.snmp', f'{PREFIX}Storage Generic Device by SNMP')), f'{PREFIX}Storage Generic Device by SNMP')
             TPL['icmp_ping'] = (int(ensure_t(f'{PREFIX}icmp', f'{PREFIX}ICMP Ping')), f'{PREFIX}ICMP Ping')
 
-        # Prefixed Dell before step6 so Dell∧Server iDRAC TemplateRule can bind.
-        # Never create a second Manufacturer literally named 'Dell' in the shared lab.
+        step6_template_rules(server, country_slugs=country_slugs)
+        # Prefixed Dell — never create a second Manufacturer named 'Dell'
         dell, _ = Manufacturer.objects.get_or_create(slug=slugify('dell'), defaults={'name': f'{PREFIX}Dell'})
         dtype, _ = DeviceType.objects.get_or_create(slug=slugify('poweredge'), defaults={'manufacturer': dell, 'model': f'{PREFIX}PowerEdge'})
-        step6_template_rules(server, country_slugs=country_slugs)
         step7_template_assignments(server)
 
         # Prove ensure() refreshes interface_requirements on re-run (P0.3)
@@ -1738,10 +1519,7 @@ def run_simulate() -> int:
             zabbixserver=server,
             name=f'{PREFIX}Sites',
             defaults={
-                'value': (
-                    'Sites/{{ object.site.group.get_ancestors(include_self=True) '
-                    '| map(attribute="name") | join("/") }}/{{ object.site.name }}'
-                ),
+                'value': ('Sites/{{ object.site.group.get_ancestors(include_self=True) | map(attribute="name") | join("/") }}/{{ object.site.name }}'),
             },
             update_fields=['value'],
         )
@@ -1782,7 +1560,6 @@ def run_simulate() -> int:
         plat_linux, _ = Platform.objects.get_or_create(slug=slugify('ubuntu'), defaults={'name': f'{PREFIX}Ubuntu 22.04 LTS'})
         plat_win, _ = Platform.objects.get_or_create(slug=slugify('windows'), defaults={'name': f'{PREFIX}Windows Server 2022'})
         plat_exos, _ = Platform.objects.get_or_create(slug=slugify('exos'), defaults={'name': f'{PREFIX}Extreme EXOS 32.1'})
-        plat_iq, _ = Platform.objects.get_or_create(slug=slugify('iq-engine'), defaults={'name': f'{PREFIX}Extreme IQ Engine'})
         ctype, _ = ClusterType.objects.get_or_create(slug=slugify('vmware'), defaults={'name': f'{PREFIX}VMware'})
         cluster, _ = Cluster.objects.get_or_create(name=f'{PREFIX}cluster-ch', defaults={'type': ctype, 'scope': site})
 
@@ -1822,18 +1599,11 @@ def run_simulate() -> int:
         objects['storage'] = stor
 
         # No platform — Firewall keeps FortiGate role floor (same template as FortiOS rule).
-        # Access Point: platform IQ Engine → Extreme IQ Engine by SNMP (no Network Generic floor).
+        # Access Point has no Network Generic role floor (platform rules only; see step 7).
         fw = Device.objects.create(name=f'{PREFIX}fw-zone-01', device_type=dtype, role=roles['Firewall'], site=site, status='active')
         attach_dev(fw, next_ip())
         objects['firewall'] = fw
-        ap = Device.objects.create(
-            name=f'{PREFIX}ap-acce-01',
-            device_type=dtype,
-            role=roles['Access Point'],
-            site=site,
-            platform=plat_iq,
-            status='active',
-        )
+        ap = Device.objects.create(name=f'{PREFIX}ap-acce-01', device_type=dtype, role=roles['Access Point'], site=site, status='active')
         attach_dev(ap, next_ip())
         objects['access_point'] = ap
 
@@ -1850,15 +1620,24 @@ def run_simulate() -> int:
         attach_vm(dc, next_ip())
         objects['dc'] = dc
 
-        # Tag snmp alone selects SNMP Monitoring (Linux) CG (zero-touch — no per-VM CG row).
         vm_ov = VirtualMachine.objects.create(name=f'{PREFIX}ensa-snmp-vm', cluster=cluster, role=roles['Server'], site=site, platform=plat_linux, status='active')
         attach_vm(vm_ov, next_ip())
         vm_ov.tags.add(snmp_tag)
+        M.ZabbixConfigurationGroupAssignment.objects.get_or_create(
+            zabbixconfigurationgroup=vm_snmp_group,
+            assigned_object_type=ct(VirtualMachine),
+            assigned_object_id=vm_ov.pk,
+        )
         objects['vm_snmp'] = vm_ov
 
         win_snmp = VirtualMachine.objects.create(name=f'{PREFIX}win-snmp-vm', cluster=cluster, role=roles['Server'], site=site, platform=plat_win, status='active')
         attach_vm(win_snmp, next_ip())
         win_snmp.tags.add(snmp_tag)
+        M.ZabbixConfigurationGroupAssignment.objects.get_or_create(
+            zabbixconfigurationgroup=vm_snmp_group,
+            assigned_object_type=ct(VirtualMachine),
+            assigned_object_id=win_snmp.pk,
+        )
         objects['win_snmp'] = win_snmp
 
         def cg_name(obj):
@@ -1868,19 +1647,14 @@ def run_simulate() -> int:
 
         def tpl_names(obj):
             a = get_assigned_zabbixobjects(obj)
-            return sorted(
-                t.zabbixtemplate.name
-                for t in (a.get('templates') or [])
-                if getattr(t, 'zabbixtemplate', None) is not None
-            )
+            return sorted(t.zabbixtemplate.name for t in (a.get('templates') or []) if getattr(t, 'zabbixtemplate', None) is not None)
 
         record('server_cg_oob', cg_name(objects['server_oob']) == server_oob_group.name, cg_name(objects['server_oob']), group='resolve')
         record('switch_cg_snmp', cg_name(objects['switch']) == snmp_group.name, cg_name(objects['switch']), group='resolve')
-        # Storage left SiteGroup Agent (no longer on network SNMP CG).
-        record('storage_cg_agent', cg_name(objects['storage']) == agent_group.name, cg_name(objects['storage']), group='resolve')
+        record('storage_cg_snmp', cg_name(objects['storage']) == snmp_group.name, cg_name(objects['storage']), group='resolve')
         record('new_role_sitegroup_agent', cg_name(objects['new_role']) == agent_group.name, cg_name(objects['new_role']), group='resolve')
         record('dc_sitegroup_agent', cg_name(objects['dc']) == agent_group.name, cg_name(objects['dc']), group='resolve')
-        record('vm_snmp_via_tag', cg_name(objects['vm_snmp']) == linux_snmp_group.name, cg_name(objects['vm_snmp']), group='resolve')
+        record('vm_snmp_override', cg_name(objects['vm_snmp']) == vm_snmp_group.name, cg_name(objects['vm_snmp']), group='resolve')
         record(
             'linux_snmp_template_rule',
             any('Linux by SNMP' in n for n in tpl_names(objects['vm_snmp'])),
@@ -1899,14 +1673,6 @@ def run_simulate() -> int:
             str(tpl_names(objects['firewall'])),
             group='resolve',
         )
-        ap_tpls = tpl_names(objects['access_point'])
-        record(
-            'ap_iq_engine_no_netgeneric',
-            any('IQ Engine' in n for n in ap_tpls) and not any('Network Generic' in n for n in ap_tpls),
-            str(ap_tpls),
-            group='resolve',
-        )
-        record('ap_cg_snmp', cg_name(objects['access_point']) == snmp_group.name, cg_name(objects['access_point']), group='resolve')
         switch_tpls = tpl_names(objects['switch'])
         record(
             'switch_exos_no_netgeneric',
@@ -1917,14 +1683,7 @@ def run_simulate() -> int:
         netgeneric_tpl = M.ZabbixTemplate.objects.filter(zabbixserver=server, name__icontains='Network Generic Device by SNMP').first()
         switch_floor_left = 0
         if netgeneric_tpl is not None:
-            for role_name in (
-        'Switch Core',
-        'Switch Dist',
-        'Switch Access',
-        'Switch Mgmt',
-        'Switch Hybrid',
-        'Access Point',
-    ):
+            for role_name in ('Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Access Point'):
                 try:
                     role = get_role(role_name)
                 except DeviceRole.DoesNotExist:
@@ -1935,9 +1694,7 @@ def run_simulate() -> int:
                     assigned_object_id=role.id,
                 ).count()
         record('no_switch_ap_netgeneric_floor', switch_floor_left == 0, f'leftover={switch_floor_left}', group='resolve')
-        agent_role_rows = M.ZabbixConfigurationGroupAssignment.objects.filter(
-            zabbixconfigurationgroup=agent_group, assigned_object_type=ct(DeviceRole)
-        ).count()
+        agent_role_rows = M.ZabbixConfigurationGroupAssignment.objects.filter(zabbixconfigurationgroup=agent_group, assigned_object_type=ct(DeviceRole)).count()
         record('zero_agent_role_sprawl', agent_role_rows == 0, f'rows={agent_role_rows}', group='resolve')
         mfr_cg = M.ZabbixConfigurationGroupAssignment.objects.filter(assigned_object_type=ct(Manufacturer), assigned_object_id=dell.pk).count()
         record('no_manufacturer_transport_cg', mfr_cg == 0, f'count={mfr_cg}', group='resolve')
@@ -1962,9 +1719,9 @@ def run_simulate() -> int:
                 primary = str(IPAddress.objects.get(id=objects['server_oob'].primary_ip4_id).address.ip)
                 record('zbx_dual_if', any(t == '1' for t, _, _ in ifs) and any(t == '2' for t, _, _ in ifs), str(ifs), group='zabbix')
                 record('zbx_oob_ip', any(t == '2' and ip == oob for t, ip, _ in ifs) and any(t == '1' and ip == primary for t, ip, _ in ifs), f'{ifs} oob={oob}', group='zabbix')
-                host_groups = [g['name'] for g in h.get('groups', [])]
-                record('zbx_sites_roles', any(g.startswith('Sites/') for g in host_groups) and any(g.startswith('Roles/') for g in host_groups), str(host_groups), group='zabbix')
-                record('zbx_os_linux', any(g == 'OS/Linux' or g.endswith('/OS/Linux') for g in host_groups) or 'OS/Linux' in host_groups, str(host_groups), group='zabbix')
+                groups = [g['name'] for g in h.get('groups', [])]
+                record('zbx_sites_roles', any(g.startswith('Sites/') for g in groups) and any(g.startswith('Roles/') for g in groups), str(groups), group='zabbix')
+                record('zbx_os_linux', any(g == 'OS/Linux' or g.endswith('/OS/Linux') for g in groups) or 'OS/Linux' in groups, str(groups), group='zabbix')
             else:
                 record('zbx_server_exists', False, 'missing', group='zabbix')
 
@@ -2008,93 +1765,7 @@ def run_simulate() -> int:
                 str(idrac_rule and (idrac_rule.manufacturer, idrac_rule.role_pattern, idrac_rule.pattern)),
                 group='hygiene',
             )
-            voss_rule = M.ZabbixTemplateRule.objects.filter(name='Extreme VOSS', enabled=True).select_related('zabbixtemplate').first()
-            voss_tpl_name = (voss_rule.zabbixtemplate.name if voss_rule and voss_rule.zabbixtemplate_id else None) or ''
-            record(
-                'voss_rule_extreme_voss',
-                bool(voss_rule and 'Extreme VOSS' in voss_tpl_name and 'Network Generic' not in voss_tpl_name),
-                str(voss_tpl_name or None),
-                group='hygiene',
-            )
-            iq_rule = M.ZabbixTemplateRule.objects.filter(name='Extreme IQ Engine', enabled=True).select_related('zabbixtemplate').first()
-            iq_tpl_name = (iq_rule.zabbixtemplate.name if iq_rule and iq_rule.zabbixtemplate_id else None) or ''
-            record(
-                'iq_rule_extreme_iq_engine',
-                bool(iq_rule and 'IQ Engine' in iq_tpl_name and 'Network Generic' not in iq_tpl_name),
-                str(iq_tpl_name or None),
-                group='hygiene',
-            )
-            def _snmp_if(group):
-                return M.ZabbixHostInterface.objects.filter(
-                    assigned_object_type=ct(M.ZabbixConfigurationGroup),
-                    assigned_object_id=group.id,
-                    type=ZabbixHostInterfaceTypeChoices.SNMP,
-                ).first()
-
-            net_if = _snmp_if(snmp_group)
-            record(
-                'snmp_network_md5_des',
-                bool(
-                    net_if
-                    and net_if.snmp_pushcommunity
-                    and net_if.snmpv3_security_name == 'MONITORING'
-                    and net_if.snmpv3_authentication_protocol == ZabbixInterfaceSNMPV3AuthProtoChoices.MD5
-                    and net_if.snmpv3_privacy_protocol == ZabbixInterfaceSNMPV3PrivProtoChoices.DES
-                ),
-                str((net_if.snmpv3_security_name, net_if.snmpv3_authentication_protocol, net_if.snmpv3_privacy_protocol) if net_if else None),
-                group='hygiene',
-            )
-            linux_if = _snmp_if(linux_snmp_group)
-            record(
-                'snmp_linux_sha_aes',
-                bool(
-                    linux_if
-                    and linux_if.snmpv3_security_name == 'MONITORING-LINUX'
-                    and linux_if.snmpv3_authentication_protocol == ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1
-                    and linux_if.snmpv3_privacy_protocol == ZabbixInterfaceSNMPV3PrivProtoChoices.AES128
-                ),
-                str((linux_if.snmpv3_security_name, linux_if.snmpv3_authentication_protocol, linux_if.snmpv3_privacy_protocol) if linux_if else None),
-                group='hygiene',
-            )
-            dell_if = _snmp_if(server_oob_group)
-            record(
-                'snmp_dell_idrac_profile',
-                bool(
-                    dell_if
-                    and dell_if.use_oob_ip
-                    and dell_if.snmpv3_security_name == 'MONITORING-DELL'
-                    and dell_if.snmpv3_authentication_protocol == ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1
-                ),
-                str((dell_if.snmpv3_security_name, dell_if.use_oob_ip, dell_if.snmpv3_authentication_protocol) if dell_if else None),
-                group='hygiene',
-            )
-            space_if = M.ZabbixHostInterface.objects.filter(
-                assigned_object_type=ct(M.ZabbixConfigurationGroup),
-                assigned_object_id=space_agent_group.id,
-                type=ZabbixHostInterfaceTypeChoices.AGENT,
-            ).first()
-            record('space_agent_port_10060', bool(space_if and int(space_if.port) == 10060), str(space_if.port if space_if else None), group='hygiene')
-            record(
-                'linux_snmp_cg_on_tag',
-                M.ZabbixConfigurationGroupAssignment.objects.filter(
-                    zabbixconfigurationgroup=linux_snmp_group,
-                    assigned_object_type=ct(Tag),
-                    assigned_object_id=snmp_tag.id,
-                ).exists(),
-                'ok',
-                group='hygiene',
-            )
-            record('vm_snmp_cg_transport_only', M.ZabbixTemplateAssignment.objects.filter(assigned_object_type=ct(M.ZabbixConfigurationGroup), assigned_object_id=linux_snmp_group.id).count() == 0, 'ok', group='hygiene')
-            record(
-                'storage_not_on_network_snmp',
-                not M.ZabbixConfigurationGroupAssignment.objects.filter(
-                    zabbixconfigurationgroup=snmp_group,
-                    assigned_object_type=ct(DeviceRole),
-                    assigned_object_id=roles['Storage'].id,
-                ).exists(),
-                'ok',
-                group='hygiene',
-            )
+            record('vm_snmp_cg_transport_only', M.ZabbixTemplateAssignment.objects.filter(assigned_object_type=ct(M.ZabbixConfigurationGroup), assigned_object_id=vm_snmp_group.id).count() == 0, 'ok', group='hygiene')
             record('no_teams_hostgroups', M.ZabbixHostgroup.objects.filter(zabbixserver=server, name__startswith='Teams').count() == 0, str(list(M.ZabbixHostgroup.objects.filter(zabbixserver=server, name__startswith='Teams').values_list('name', flat=True))), group='hygiene')
             record('no_managed_hostgroup', not M.ZabbixHostgroup.objects.filter(zabbixserver=server, name='Managed').exists(), 'ok', group='hygiene')
 
@@ -2113,7 +1784,7 @@ def run_simulate() -> int:
             '|---|---|---|---|',
         ]
         for r in RESULTS:
-            lines.append(f"| {r['group']} | `{r['name']}` | {'PASS' if r['ok'] else 'FAIL'} | {r['detail'][:120].replace('|', '/')} |")
+            lines.append(f'| {r["group"]} | `{r["name"]}` | {"PASS" if r["ok"] else "FAIL"} | {r["detail"][:120].replace("|", "/")} |')
         REPORT_MD.write_text('\n'.join(lines) + '\n')
         print(f'\nSummary: {passed}/{total} — {REPORT_MD}')
         return 0 if passed == total else 1
