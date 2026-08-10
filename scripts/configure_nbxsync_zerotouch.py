@@ -458,7 +458,7 @@ def step0_cleanup(*, mutate_netbox: bool):
     for name, desc in [
         ('critical', 'Priority/Critical hostgroup membership (24/7 escalation)'),
         ('snmp', 'Zero-touch Linux SNMP: selects SNMP Monitoring (Linux) CG + Linux/Windows by SNMP TemplateRules'),
-        ('snmp-sap', 'Zero-touch SAP SNMP: selects SNMP Monitoring (SAP) CG (confirm auth/priv with Robert)'),
+        # ('snmp-sap', '...'),  # Removed — SAP now uses role-based CG assignment
     ]:
     # Reuse existing tag by slug OR name (NetBox auto-slugifies '_' -> '-')
         t = Tag.objects.filter(slug=name).first() or Tag.objects.filter(name=name).first()
@@ -799,9 +799,13 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     assign_role(space_agent_group, 'Space Server')
 
-    # Tag inheritance is collected before role/site — snmp / snmp-sap beat Agent default.
+    # SAP HANA and SAP ME: assign SAP Monitoring (SAPUSER) CG on role, not tag.
+    # SAP HANA role covers *-sh01 hosts; SAP ME covers *-me0N hosts.
+    assign_role(sap_snmp_group, 'SAP HANA')
+    assign_role(sap_snmp_group, 'SAP ME')
+
+    # Tag inheritance is collected before role/site — snmp beats Agent default.
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
-    assign_tag(sap_snmp_group, 'snmp-sap', 'snmp-sap')
     logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); OOB creds = MONITORING-DELL on Server Agent+OOB')
 
     # §5.5b Cohesity VMs with primary_ip4 → SNMP Monitoring (not OOB SNMP Only,
@@ -1104,6 +1108,7 @@ def step7_template_assignments(server):
         (make_template(*TPL['cellmap_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'CellMap'),
         (make_template(*TPL['oracle_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'Database'),  # Oracle if role exists
         (make_template(*TPL['sap_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SAP ME'),
+        (make_template(*TPL['sap_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SAP HANA'),
         (make_template(*TPL['acronis_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'Acronis Management'),
         (make_template(*TPL['sccm_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SCCM'),
         # Oracle: tag-gated, not role-based. Tag VMs with 'oracle' tag.
@@ -1644,11 +1649,11 @@ def run_simulate() -> int:
         slug=slugify('CH-STA'),
         defaults={'name': f'{PREFIX}CH-STA', 'parent': SiteGroup.objects.get(slug=slugify('CH'))},
     )
-    site, _ = Site.objects.get_or_create(
+    site_l44, _ = SiteGroup.objects.get_or_create(
         slug=slugify('CH-STA-L44'),
         defaults={'name': f'{PREFIX}CH-STA-L44', 'group': leaf},
     )
-    role_names = sorted(set(SNMP_ROLES + SERVER_BMC_ROLES + AGENT_DEFAULT_ROLES_DOC + ['Messpc', 'Sd Wan Socket', 'Virtual Appliance', 'Pure Storage', 'Storage', 'Tableau', 'CellMap', 'SAP ME', 'Acronis Management', 'SCCM', 'Print Server', 'Database', 'Space Server']))
+    role_names = sorted(set(SNMP_ROLES + SERVER_BMC_ROLES + AGENT_DEFAULT_ROLES_DOC + ['Messpc', 'Sd Wan Socket', 'Virtual Appliance', 'Pure Storage', 'Storage', 'Tableau', 'CellMap', 'SAP ME', 'SAP HANA', 'Acronis Management', 'SCCM', 'Print Server', 'Database', 'Space Server']))
     roles = {}
     for name in role_names:
         roles[name], _ = DeviceRole.objects.get_or_create(
