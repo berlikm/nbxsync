@@ -402,6 +402,10 @@ Use together with configuration group **SNMP Monitoring (Linux)** (assigned on N
 | Name | Pattern | Role pattern | Manufacturer | Template | Hostgroup | Require tags | Priority | Enabled |
 |---|---|---|---|---|---|---|---|---|
 | Dell iDRAC (Server) | `.*` | `^Server$` | Dell | Dell iDRAC by SNMP | — | — | 80 | Yes |
+| Pure Storage (HTTP) | `.*` | — | Pure Storage | Pure Storage FlashArray v1 by HTTP | — | — | 80 | Yes |
+| Dell Storage (HTTP) | `.*` | `^Storage$` | Dell | Dell Storage by HTTP | — | — | 80 | Yes |
+| Huawei Storage (SNMP) | `.*` | — | Huawei | Huawei Storage by SNMP | — | — | 80 | Yes |
+| Synology NAS (SNMP) | `.*` | — | Synology | Synology NAS by SNMP | — | — | 80 | Yes |
 
 ---
 
