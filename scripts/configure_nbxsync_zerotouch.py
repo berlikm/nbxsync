@@ -142,6 +142,15 @@ TPL_NAMES = {
     # and zabbix[host,snmp,available] to avoid collision with Dell iDRAC
     # on Dell storage/Cohesity devices.
     'storage_generic_snmp': 'Storage Generic Device by SNMP',
+    # Placeholder application templates — LM parity, items built post-cutover.
+    'as_java_agent': 'AS Java by Zabbix agent',
+    'tableau_bridge_agent': 'Tableau Bridge by Zabbix agent',
+    'cellmap_agent': 'CellMap by Zabbix agent',
+    'oracle_agent2': 'Oracle by Zabbix agent 2',
+    'sap_agent': 'SAP by Zabbix agent',
+    'acronis_agent': 'Acronis by Zabbix agent',
+    'sccm_agent': 'SCCM by Zabbix agent',
+    'print_spool_agent': 'Print Spool by Zabbix agent',
     'icmp_ping': 'ICMP Ping',
 }
 
@@ -938,6 +947,15 @@ def step7_template_assignments(server):
         (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Storage'),
         (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Cohesity'),
         (make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Firewall'),
+        # Placeholder application templates — LM parity. Items built post-cutover,
+        # but the template is linked so hosts are discoverable in Zabbix.
+        # AS Java: only on 2 hosts (ch-sta-*-as01/02, role=Server). Not assignable by role.
+        (make_template(*TPL['tableau_bridge_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'Tableau'),
+        (make_template(*TPL['cellmap_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'CellMap'),
+        (make_template(*TPL['oracle_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'Database'),  # Oracle if role exists
+        (make_template(*TPL['sap_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SAP ME'),
+        (make_template(*TPL['acronis_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'Acronis Management'),
+        (make_template(*TPL['sccm_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SCCM'),
     ]
     for template, role_name in assignments:
         try:
@@ -1423,7 +1441,7 @@ def run_simulate() -> int:
         slug=slugify('CH-STA-L44'),
         defaults={'name': f'{PREFIX}CH-STA-L44', 'group': leaf},
     )
-    role_names = sorted(set(SNMP_ROLES + SERVER_BMC_ROLES + AGENT_DEFAULT_ROLES_DOC + ['Messpc', 'Sd Wan Socket', 'Virtual Appliance', 'Pure Storage', 'Storage']))
+    role_names = sorted(set(SNMP_ROLES + SERVER_BMC_ROLES + AGENT_DEFAULT_ROLES_DOC + ['Messpc', 'Sd Wan Socket', 'Virtual Appliance', 'Pure Storage', 'Storage', 'Tableau', 'CellMap', 'SAP ME', 'Acronis Management', 'SCCM', 'Print Server', 'Database', 'Space Server']))
     roles = {}
     for name in role_names:
         roles[name], _ = DeviceRole.objects.get_or_create(
