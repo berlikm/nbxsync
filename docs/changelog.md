@@ -5,7 +5,8 @@
 ### New features
 
 - Added `exclude_tag` configuration setting to exclude hosts from Zabbix sync entirely via a ZabbixTag assigned to any object in the inheritance chain (`ZabbixTag.tag` name match)
-- Added `ZabbixTemplateRule` model for regex-based template, hostgroup, and tag assignment by platform name (`re.search`, case-insensitive; nested-quantifier patterns rejected at save; 64-char platform-name cap); optional conjunctive criteria `role_pattern` (role regex) and `require_tags` (NetBox tag slugs, all required; all criteria ANDed)
+- Added `ZabbixTemplateRule` model for regex-based template, hostgroup, and tag assignment by platform name (`re.search`, case-insensitive; nested-quantifier patterns rejected at save; 64-char platform-name cap); optional conjunctive criteria `role_pattern` (role regex), `require_tags` (NetBox tag slugs, all required), and `manufacturer` (Device `device_type.manufacturer`; empty = any; VMs / objects without a manufacturer fail closed when set; FK uses `PROTECT`); all configured criteria are ANDed
+- Zabbix Hostgroup detail and list views surface TemplateRules that attach the group via `ZabbixTemplateRule.zabbixhostgroup` (assignment/rule counts on the list; Template rules table on the detail page), so OS-family groups are not mistaken for unused when they have no `ZabbixHostgroupAssignment` rows
 - Added Site/SiteGroup/Region inheritance paths (appended after role/platform so upgrades do not change Role/Platform precedence); cluster site uses `cluster._site` (NetBox ≥4.2)
 
 ### Improvements

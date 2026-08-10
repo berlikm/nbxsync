@@ -113,23 +113,28 @@ For example, assigning a `ZabbixServerAssignment` (proxy) to a `SiteGroup` means
 
 ## Zabbix Template Rules
 
-`ZabbixTemplateRule` allows automatic template assignment based on the device's or VM's platform name. Each rule has a regex pattern that is matched with case-insensitive `re.search` (substring match, not `fullmatch`) against the platform name. When a rule matches, the configured Zabbix template is assigned to the host.
+`ZabbixTemplateRule` allows automatic template (and optional hostgroup/tag) assignment based on criteria evaluated against the Device or VM. The primary match is the platform name: a regex matched with case-insensitive `re.search` (substring match, not `fullmatch`). When every configured criterion matches, the rule’s Zabbix template is assigned to the host.
 
 Rules are resolved after all direct and inherited assignments, so explicit `ZabbixTemplateAssignment` objects always take priority.
 
-Each rule can optionally also assign a hostgroup and a tag when the pattern matches — useful for OS-family grouping (e.g. a `Windows` rule that assigns the `Windows by Zabbix agent` template, a `Windows` hostgroup, and an `os_family=Windows` tag in one rule).
+Each rule can optionally also assign a hostgroup and a tag when the criteria match — useful for OS-family grouping (e.g. a `Windows` rule that assigns the `Windows by Zabbix agent` template, a `Windows` hostgroup, and an `os_family=Windows` tag in one rule). Hostgroups attached this way appear on the Zabbix Hostgroup detail page under **Template rules** (and as a rule count on the hostgroup list); an empty **Assigned objects** table does not mean the group is unused.
 
 | Field | Description |
 |-------|-------------|
 | `name` | Human-readable name |
-| `pattern` | Regex pattern matched against platform name (`re.search`, case-insensitive) |
+| `pattern` | Regex matched against platform name (`re.search`, case-insensitive). Use `.*` as a catch-all when scoping only by role, tags, and/or manufacturer |
+| `role_pattern` | Optional regex matched against the Device/VM role name (case-insensitive). Empty = any role. Set but roleless object → fail closed |
+| `require_tags` | Optional comma-separated NetBox **tag slugs** the Device/VM must carry (all required). Empty = tag-independent. Reads object tags, not DeviceType tags |
+| `manufacturer` | Optional NetBox Manufacturer. When set, the Device’s `device_type.manufacturer` must match. Empty = any manufacturer. Objects without a manufacturer (e.g. VMs) fail closed. Deleting a Manufacturer that is still referenced is blocked (`PROTECT`) so rules cannot silently widen |
 | `zabbixtemplate` | Template assigned when the rule matches |
 | `zabbixhostgroup` | Optional hostgroup assigned on match (nullable) |
 | `zabbixtag` | Optional tag assigned on match (nullable) |
 | `enabled` | Enable/disable rule without deleting it |
 | `priority` | Lower value = higher priority (rules evaluated in order) |
 
-Patterns are validated at save time with `re.compile` (without `IGNORECASE`). Nested-quantifier shapes that invite catastrophic backtracking are rejected. Matching uses plain `re.search` with a 64-character platform-name cap — no process signals or thread timeouts. Prefer simple patterns. A rule that exceeds the input bound or has an invalid stored pattern does not match and is logged. Optional hostgroups must belong to the same Zabbix server as the template.
+All non-empty criteria are **conjunctive (AND)**. Patterns are validated at save time with `re.compile` (without `IGNORECASE`). Nested-quantifier shapes that invite catastrophic backtracking are rejected. Matching uses plain `re.search` with a 64-character platform-name cap (role names capped at 100) — no process signals or thread timeouts. Prefer simple patterns. A rule that exceeds the input bound or has an invalid stored pattern does not match and is logged. Optional hostgroups must belong to the same Zabbix server as the template.
+
+Example: Dell servers with BMC monitoring — `pattern=.*`, `role_pattern=^Server$`, `manufacturer=Dell`, template = Dell iDRAC by SNMP — without assigning that template on every Dell Manufacturer object (which would also hit Dell storage).
 
 ## Configuration values
 

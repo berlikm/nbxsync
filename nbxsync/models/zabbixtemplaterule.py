@@ -31,9 +31,17 @@ def _compiled_pattern(pattern):
 class ZabbixTemplateRule(NetBoxModel):
     name = models.CharField(max_length=100, blank=False)
     description = models.CharField(max_length=200, blank=True)
-    pattern = models.CharField(max_length=500, blank=False, help_text='Regex pattern matched against Platform name (case-insensitive substring search). Use .* as a catch-all when matching on role/tags instead.')
+    pattern = models.CharField(max_length=500, blank=False, help_text='Case-insensitive regex matched with re.search against the Platform name (not anchored). Use .* as a catch-all when matching on role/tags/manufacturer instead.')
     role_pattern = models.CharField(max_length=500, blank=True, help_text='Optional regex matched against the Device/VM role name (case-insensitive). Empty = any role.')
     require_tags = models.CharField(max_length=200, blank=True, help_text='Optional comma-separated NetBox tag slugs the object must carry (all of them). Empty = tag-independent.')
+    manufacturer = models.ForeignKey(
+        to='dcim.Manufacturer',
+        on_delete=models.PROTECT,
+        related_name='zabbixtemplaterules',
+        blank=True,
+        null=True,
+        help_text='Optional. When set, the Device device_type.manufacturer must match. Empty = any manufacturer. Objects without a manufacturer (e.g. VMs) fail closed when this is set. PROTECT prevents deleting a Manufacturer that would silently widen matching rules.',
+    )
     zabbixtemplate = models.ForeignKey(to='nbxsync.ZabbixTemplate', on_delete=models.PROTECT, related_name='zabbixtemplaterules')
     zabbixhostgroup = models.ForeignKey(to='nbxsync.ZabbixHostgroup', on_delete=models.SET_NULL, related_name='zabbixtemplaterules', blank=True, null=True, help_text='Optional hostgroup assigned when the rule matches')
     zabbixtag = models.ForeignKey(to='nbxsync.ZabbixTag', on_delete=models.SET_NULL, related_name='zabbixtemplaterules', blank=True, null=True, help_text='Optional tag assigned when the rule matches')
@@ -77,13 +85,14 @@ class ZabbixTemplateRule(NetBoxModel):
         """Normalized list of required NetBox tag slugs (empty-safe, never raises)."""
         return [slug.strip() for slug in (self.require_tags or '').split(',') if slug.strip()]
 
-    def matches(self, platform_name, *, role_name=None, netbox_tags=None):  # noqa: C901 — conjunctive criteria ladder reads better flat than split
+    def matches(self, platform_name, *, role_name=None, netbox_tags=None, manufacturer_id=None):  # noqa: C901 — conjunctive criteria ladder reads better flat than split
         """Whether this rule applies to an object.
 
         Criteria are conjunctive (AND): every configured criterion must match.
         Empty criterion fields are wildcards. A set criterion with no value on
-        the object (e.g. role_pattern set but the object has no role) fails
-        closed — the rule does not fire.
+        the object (e.g. role_pattern set but the object has no role, or
+        manufacturer set but the object has none) fails closed — the rule
+        does not fire.
 
         Never raises: a rule that cannot be evaluated must not abort a host
         sync, and it must not match either — silently linking the wrong
@@ -121,6 +130,13 @@ class ZabbixTemplateRule(NetBoxModel):
         if required:
             tags = set(netbox_tags or ())
             if not all(slug in tags for slug in required):
+                return False
+
+        if self.manufacturer_id is not None:
+            # Fail closed: missing manufacturer (VMs, incomplete device_type) must
+            # not satisfy a vendor-scoped rule. Compare by PK only — never raise
+            # on a missing related object.
+            if manufacturer_id is None or manufacturer_id != self.manufacturer_id:
                 return False
 
         return True
