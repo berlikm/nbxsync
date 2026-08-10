@@ -73,7 +73,7 @@ At minimum, specify the Type, Port, and either IP Address or DNS name.
     A Hostgroup assignment is required
 
 !!! note "Hint"
-    Hostgroups can be assigned directly to the Device, VDC or VM, or inherited from the DeviceType, Cluster, Manufacturer, Platform, etc. Alternatively, Configuration Groups can be used.
+    Hostgroups can be assigned directly to the Device, VDC or VM, or inherited from the DeviceType, Cluster, Manufacturer, Platform, Site, SiteGroup, Region, etc. Alternatively, Configuration Groups can be used. See [Dynamic Values](dynamic_values.md) for Jinja rendering during sync and UI preview.
 
 Each host in Zabbix requires at least one Hostgroup. Create a hostgroup using the left-hand menu: `Zabbix` -> `Zabbix Hostgroups` and click `Add`. Ensure the hostgroup is associated with the same Zabbix Server. The value can be static or [dynamically rendered using a Jinja2 template](dynamic_values.md).
 
@@ -82,7 +82,7 @@ Once the Hostgroup is created, create a Hostgroup Assignment on the Device or Vi
 ### Step 3d: Assign a Template
 
 !!! note "Hint"
-    Templates can be assigned directly to the Device or VM, or inherited from the DeviceType, Cluster, Manufacturer, Platform, etc. Alternatively, Configuration Groups can be used.
+    Templates can be assigned directly to the Device or VM, or inherited from the DeviceType, Cluster, Manufacturer, Platform, Site, SiteGroup, Region, etc. Alternatively, Configuration Groups can be used.
 
 
 ## Debugging
