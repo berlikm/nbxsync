@@ -9,9 +9,9 @@ Zabbix type but describe different endpoints.
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from ipam.models import IPAddress
 
 from dcim.models import Region, Site, SiteGroup
-from ipam.models import IPAddress
 from utilities.testing import create_test_device
 
 from nbxsync.choices import ZabbixHostInterfaceTypeChoices, ZabbixInterfaceTypeChoices, ZabbixInterfaceUseChoices
@@ -189,3 +189,38 @@ class ConfigGroupInterfaceExpansionTestCase(TestCase):
             interface.full_clean()
 
         self.assertIn('useip', context.exception.message_dict)
+
+class VirtualMachineDeviceLeakTestCase(TestCase):
+    """A VM linked to its hosting device (NetBox 4.3+) must not inherit the
+    host's hardware-tier assignments (manufacturer, device_type, role via
+    'device'-prefixed chain paths). A guest is not the hypervisor's hardware.
+    """
+
+    def setUp(self):
+        from virtualization.models import VirtualMachine
+
+        from dcim.models import Manufacturer
+
+        self.server = ZabbixServer.objects.create(name='Leak Server', url='http://zabbix.local', token='abc123', validate_certs=True)
+        self.template = ZabbixTemplate.objects.create(name='Dell iDRAC by SNMP', zabbixserver=self.server, templateid=10255)
+        self.dell = Manufacturer.objects.create(name='Dell', slug='dell')
+        self.host = create_test_device(name='esx-host-01')
+        host_type = self.host.device_type
+        host_type.manufacturer = self.dell
+        host_type.save()
+        self.vm = VirtualMachine.objects.create(name='guest-vm-01', device=self.host)
+
+        manufacturer_ct = ContentType.objects.get_for_model(Manufacturer)
+        self.assignment = ZabbixTemplateAssignment.objects.create(
+            zabbixtemplate=self.template,
+            assigned_object_type=manufacturer_ct,
+            assigned_object_id=self.dell.pk,
+        )
+
+    def test_device_inherits_manufacturer_template(self):
+        result = get_assigned_zabbixobjects(self.host)
+        self.assertIn(self.template.pk, [obj.zabbixtemplate_id for obj in result['templates']])
+
+    def test_vm_does_not_inherit_manufacturer_template_via_associated_device(self):
+        result = get_assigned_zabbixobjects(self.vm)
+        self.assertNotIn(self.template.pk, [obj.zabbixtemplate_id for obj in result['templates']])

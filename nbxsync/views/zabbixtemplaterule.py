@@ -19,7 +19,7 @@ __all__ = (
 
 @register_model_view(ZabbixTemplateRule, name='list')
 class ZabbixTemplateRuleListView(ObjectListView):
-    queryset = ZabbixTemplateRule.objects.all()
+    queryset = ZabbixTemplateRule.objects.select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'manufacturer')
     table = ZabbixTemplateRuleTable
     filterset = ZabbixTemplateRuleFilterSet
     filterset_form = ZabbixTemplateRuleFilterForm
@@ -27,18 +27,18 @@ class ZabbixTemplateRuleListView(ObjectListView):
 
 @register_model_view(ZabbixTemplateRule)
 class ZabbixTemplateRuleView(ObjectView):
-    queryset = ZabbixTemplateRule.objects.all()
+    queryset = ZabbixTemplateRule.objects.select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'manufacturer')
 
 
 @register_model_view(ZabbixTemplateRule, 'edit')
 class ZabbixTemplateRuleEditView(ObjectEditView):
-    queryset = ZabbixTemplateRule.objects.all()
+    queryset = ZabbixTemplateRule.objects.select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'manufacturer')
     form = ZabbixTemplateRuleForm
 
 
 @register_model_view(ZabbixTemplateRule, 'bulk_edit')
 class ZabbixTemplateRuleBulkEditView(BulkEditView):
-    queryset = ZabbixTemplateRule.objects.all()
+    queryset = ZabbixTemplateRule.objects.select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'manufacturer')
     filterset = ZabbixTemplateRuleFilterSet
     table = ZabbixTemplateRuleTable
     form = ZabbixTemplateRuleBulkEditForm

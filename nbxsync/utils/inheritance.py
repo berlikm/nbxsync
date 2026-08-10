@@ -4,8 +4,11 @@ from collections import OrderedDict
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q, QuerySet
 from django.db.models.manager import BaseManager
+from virtualization.models import VirtualMachine
 
 from dcim.models import DeviceRole, Region, SiteGroup
+from extras.models import Tag
+from virtualization.models import VirtualMachine
 
 from nbxsync.constants import PATH_LABELS
 from nbxsync.models import ZabbixConfigurationGroupAssignment, ZabbixHostgroupAssignment, ZabbixHostInterface, ZabbixHostInventory, ZabbixMacroAssignment, ZabbixServerAssignment, ZabbixTagAssignment, ZabbixTemplateAssignment, ZabbixTemplateRule
@@ -210,49 +213,60 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
             resolved_template_ids.add(ta.zabbixtemplate_id)
 
     platform = getattr(instance, 'platform', None)
-    if platform:
-        rules_qs = ZabbixTemplateRule.objects.filter(enabled=True).select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag')
-        if zabbixserver:
-            rules_qs = rules_qs.filter(zabbixtemplate__zabbixserver=zabbixserver)
-        for rule in rules_qs.order_by('priority', 'name'):
-            if not rule.matches(platform.name):
-                continue
-            inherited_from = f'Regex: {rule.name}'
-            if rule.zabbixtemplate_id and rule.zabbixtemplate_id not in resolved_template_ids:
-                # Create an unsaved ZabbixTemplateAssignment wrapper so downstream
-                # code (table rendering, sync) sees the same interface as real assignments.
-                wrapper = ZabbixTemplateAssignment(
-                    zabbixtemplate=rule.zabbixtemplate,
-                    assigned_object_type=content_type,
-                    assigned_object_id=instance.id,
-                )
-                wrapper.pk = None
-                wrapper._is_inherited_copy = True
-                wrapper._inherited_from = inherited_from
-                merged_templates.append(wrapper)
-                resolved_template_ids.add(rule.zabbixtemplate_id)
-            if rule.zabbixhostgroup_id and rule.zabbixhostgroup_id not in resolved_hostgroup_ids:
-                wrapper = ZabbixHostgroupAssignment(
-                    zabbixhostgroup=rule.zabbixhostgroup,
-                    assigned_object_type=content_type,
-                    assigned_object_id=instance.id,
-                )
-                wrapper.pk = None
-                wrapper._is_inherited_copy = True
-                wrapper._inherited_from = inherited_from
-                merged_hostgroups.append(wrapper)
-                resolved_hostgroup_ids.add(rule.zabbixhostgroup_id)
-            if rule.zabbixtag_id and rule.zabbixtag_id not in resolved_tag_ids:
-                wrapper = ZabbixTagAssignment(
-                    zabbixtag=rule.zabbixtag,
-                    assigned_object_type=content_type,
-                    assigned_object_id=instance.id,
-                )
-                wrapper.pk = None
-                wrapper._is_inherited_copy = True
-                wrapper._inherited_from = inherited_from
-                merged_tags.append(wrapper)
-                resolved_tag_ids.add(rule.zabbixtag_id)
+    role = getattr(instance, 'role', None)
+    device_type = getattr(instance, 'device_type', None)
+    manufacturer_id = getattr(device_type, 'manufacturer_id', None) if device_type is not None else None
+    try:
+        object_tag_slugs = {tag.slug for tag in instance.tags.all()} if hasattr(instance, 'tags') else set()
+    except Exception:
+        object_tag_slugs = set()
+    rules_qs = ZabbixTemplateRule.objects.filter(enabled=True).select_related('zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'manufacturer')
+    if zabbixserver:
+        rules_qs = rules_qs.filter(zabbixtemplate__zabbixserver=zabbixserver)
+    for rule in rules_qs.order_by('priority', 'name'):
+        if not rule.matches(
+            platform.name if platform else None,
+            role_name=role.name if role else None,
+            netbox_tags=object_tag_slugs,
+            manufacturer_id=manufacturer_id,
+        ):
+            continue
+        inherited_from = f'Regex: {rule.name}'
+        if rule.zabbixtemplate_id and rule.zabbixtemplate_id not in resolved_template_ids:
+            # Create an unsaved ZabbixTemplateAssignment wrapper so downstream
+            # code (table rendering, sync) sees the same interface as real assignments.
+            wrapper = ZabbixTemplateAssignment(
+                zabbixtemplate=rule.zabbixtemplate,
+                assigned_object_type=content_type,
+                assigned_object_id=instance.id,
+            )
+            wrapper.pk = None
+            wrapper._is_inherited_copy = True
+            wrapper._inherited_from = inherited_from
+            merged_templates.append(wrapper)
+            resolved_template_ids.add(rule.zabbixtemplate_id)
+        if rule.zabbixhostgroup_id and rule.zabbixhostgroup_id not in resolved_hostgroup_ids:
+            wrapper = ZabbixHostgroupAssignment(
+                zabbixhostgroup=rule.zabbixhostgroup,
+                assigned_object_type=content_type,
+                assigned_object_id=instance.id,
+            )
+            wrapper.pk = None
+            wrapper._is_inherited_copy = True
+            wrapper._inherited_from = inherited_from
+            merged_hostgroups.append(wrapper)
+            resolved_hostgroup_ids.add(rule.zabbixhostgroup_id)
+        if rule.zabbixtag_id and rule.zabbixtag_id not in resolved_tag_ids:
+            wrapper = ZabbixTagAssignment(
+                zabbixtag=rule.zabbixtag,
+                assigned_object_type=content_type,
+                assigned_object_id=instance.id,
+            )
+            wrapper.pk = None
+            wrapper._is_inherited_copy = True
+            wrapper._inherited_from = inherited_from
+            merged_tags.append(wrapper)
+            resolved_tag_ids.add(rule.zabbixtag_id)
 
     return {
         'templates': merged_templates,
@@ -330,7 +344,35 @@ def resolve_inherited_zabbix_assignments(assigned_object, zabbixserver=None):  #
     # dedup preserves the original "first path an object is seen on wins" semantics.
     triples = []
     seen_objects = set()
+
+    # Tag-targeted assignments resolve at object level: an object inherits every
+    # assignment pointed at a NetBox Tag it carries. Collected before the
+    # hierarchy chain so an attribute-level source beats a distant hierarchy
+    # source on first-seen dedup. Guarded: only taggable models enter, and the
+    # tagging manager is never allowed to abort resolution.
+    if hasattr(assigned_object, 'tags'):
+        tag_ct = ContentType.objects.get_for_model(Tag, for_concrete_model=False)
+        try:
+            object_tags = list(assigned_object.tags.all())
+        except Exception:
+            object_tags = []
+        for tag in object_tags:
+            object_key = (tag_ct.pk, tag.pk)
+            if object_key in seen_objects:
+                continue
+            seen_objects.add(object_key)
+            triples.append((tag_ct, tag.pk, f'Tag: {tag.name}'))
+
     for path in pluginsettings.inheritance_chain:
+        # 'device'-prefixed paths describe the *associated physical device*
+        # (the VDC's parent, or — since NetBox 4.3 — a VM's hosting device).
+        # For a VirtualMachine that association is the hypervisor/sidecar, so
+        # walking these paths would leak host properties (manufacturer, role,
+        # hardware templates) onto the guest. VDCs keep the paths: a VDC is
+        # part of its parent device by definition.
+        if path and path[0] == 'device' and isinstance(assigned_object, VirtualMachine):
+            continue
+
         related_obj = resolve_path(assigned_object, path)
 
         if not related_obj:

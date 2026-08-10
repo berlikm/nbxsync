@@ -12,6 +12,7 @@ from nbxsync.choices.syncsot import SyncSOT
 from nbxsync.choices.zabbixstatus import ZabbixHostStatus
 from nbxsync.models import ZabbixHostInterface, ZabbixMaintenance, ZabbixMaintenanceObjectAssignment, ZabbixMaintenancePeriod
 from nbxsync.utils.host_binding import backfill_or_resolve_conflict, delete_host_binding, delete_host_binding_by_id, get_host_binding, set_host_binding
+from nbxsync.utils.sync.hostgroupsync import ensure_parent_hostgroups
 from nbxsync.utils.sync.hostinterfacesync import HostInterfaceSync
 
 logger = logging.getLogger(__name__)
@@ -479,6 +480,10 @@ class HostSync(ZabbixSyncBase):
                 if zbx_result:
                     groups.append({'groupid': zbx_result[0]['groupid']})
                     continue
+                # Materialize nested parents before the leaf so the subgroup
+                # inherits the parent's user-group permissions (see
+                # ensure_parent_hostgroups).
+                ensure_parent_hostgroups(self.api, name)
                 created = self.api.hostgroup.create({'name': name})
                 gid = created.get('groupids', [None])[0]
                 if gid:

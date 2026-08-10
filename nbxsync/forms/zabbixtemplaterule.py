@@ -5,6 +5,8 @@ from netbox.forms import NetBoxModelBulkEditForm, NetBoxModelFilterSetForm, NetB
 from utilities.forms.fields import DynamicModelChoiceField
 from utilities.forms.rendering import FieldSet
 
+from dcim.models import Manufacturer
+
 from nbxsync.models import ZabbixHostgroup, ZabbixServer, ZabbixTag, ZabbixTemplate, ZabbixTemplateRule
 
 __all__ = (
@@ -38,6 +40,13 @@ class ZabbixTemplateRuleForm(NetBoxModelForm):
         query_params={'zabbixserver_id': '$zabbixserver'},
     )
     zabbixtag = DynamicModelChoiceField(queryset=ZabbixTag.objects.all(), required=False, selector=True, label=_('Zabbix Tag'))
+    manufacturer = DynamicModelChoiceField(
+        queryset=Manufacturer.objects.all(),
+        required=False,
+        selector=True,
+        label=_('Manufacturer'),
+        help_text=_('Optional. When set, only Devices whose device type manufacturer matches. Empty = any. VMs fail closed.'),
+    )
 
     class Meta:
         model = ZabbixTemplateRule
@@ -45,6 +54,9 @@ class ZabbixTemplateRuleForm(NetBoxModelForm):
             'name',
             'description',
             'pattern',
+            'role_pattern',
+            'require_tags',
+            'manufacturer',
             'zabbixtemplate',
             'zabbixhostgroup',
             'zabbixtag',
@@ -67,6 +79,9 @@ class ZabbixTemplateRuleForm(NetBoxModelForm):
             'name',
             'description',
             'pattern',
+            'role_pattern',
+            'require_tags',
+            'manufacturer',
             'zabbixserver',
             'zabbixtemplate',
             'zabbixhostgroup',
@@ -84,9 +99,10 @@ class ZabbixTemplateRuleFilterForm(NetBoxModelFilterSetForm):
     model = ZabbixTemplateRule
     fieldsets = (
         FieldSet('q', 'filter_id'),
-        FieldSet('name', 'description', 'pattern', 'enabled', name=_('Zabbix Template Rule')),
+        FieldSet('name', 'description', 'pattern', 'role_pattern', 'require_tags', 'manufacturer', 'enabled', name=_('Zabbix Template Rule')),
     )
 
+    manufacturer = DynamicModelChoiceField(queryset=Manufacturer.objects.all(), required=False, label=_('Manufacturer'))
     enabled = forms.NullBooleanField(required=False, label=_('Enabled'))
 
 
@@ -95,11 +111,28 @@ class ZabbixTemplateRuleBulkEditForm(NetBoxModelBulkEditForm):
 
     description = forms.CharField(label=_('Description'), max_length=200, required=False)
     pattern = forms.CharField(label=_('Pattern'), max_length=500, required=False)
+    role_pattern = forms.CharField(label=_('Role Pattern'), max_length=500, required=False)
+    require_tags = forms.CharField(label=_('Require Tags'), max_length=200, required=False)
+    manufacturer = DynamicModelChoiceField(queryset=Manufacturer.objects.all(), required=False, selector=True, label=_('Manufacturer'))
     zabbixtemplate = forms.ModelChoiceField(queryset=ZabbixTemplate.objects.all(), required=False, label=_('Zabbix Template'))
     zabbixhostgroup = forms.ModelChoiceField(queryset=ZabbixHostgroup.objects.all(), required=False, label=_('Zabbix Hostgroup'))
     zabbixtag = forms.ModelChoiceField(queryset=ZabbixTag.objects.all(), required=False, label=_('Zabbix Tag'))
     enabled = forms.NullBooleanField(required=False, label=_('Enabled'))
     priority = forms.IntegerField(required=False, label=_('Priority'))
 
-    fieldsets = (FieldSet('description', 'pattern', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'enabled', 'priority', name=_('Zabbix Template Rule')),)
-    nullable_fields = ('description', 'zabbixhostgroup', 'zabbixtag')
+    fieldsets = (
+        FieldSet(
+            'description',
+            'pattern',
+            'role_pattern',
+            'require_tags',
+            'manufacturer',
+            'zabbixtemplate',
+            'zabbixhostgroup',
+            'zabbixtag',
+            'enabled',
+            'priority',
+            name=_('Zabbix Template Rule'),
+        ),
+    )
+    nullable_fields = ('description', 'role_pattern', 'require_tags', 'manufacturer', 'zabbixhostgroup', 'zabbixtag')
