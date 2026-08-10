@@ -66,7 +66,7 @@ Regex-driven automatic assignment of a Zabbix template (and optionally a hostgro
 | `enabled`          | BooleanField | Soft enable/disable |
 | `priority`         | IntegerField | Lower = higher priority |
 
-See [Zabbix Template Rules](configuration.md#zabbix-template-rules) for matching semantics (AND criteria, fail-closed behaviour, hostgroup UI).
+See [Zabbix Template Rules](configuration.md#zabbix-template-rules) for matching behaviour and the hostgroup UI.
 
 ### `ZabbixMacro`
 
@@ -197,7 +197,7 @@ Please note that on the `ZabbixHostInterface`, no IP address needs to be entered
 
 ### `ZabbixConfigurationGroupAssignment`
 
-Links a Device/Virtual Device Context/VirtualMachine to a `ZabbixConfigurationGroup` and as such determines the applied configuration on the linked object. Device/Virtual Device Context/VirtualMachines can only be assigned to a single `ZabbixConfigurationGroup`
+Links a NetBox object to a `ZabbixConfigurationGroup`. Besides Devices, Virtual Device Contexts and VirtualMachines, the group can be assigned on Site, SiteGroup, Region, Manufacturer, Role, DeviceType, Platform, Cluster or ClusterType so members inherit the group through the inheritance chain. An object can only be assigned to a single `ZabbixConfigurationGroup`.
 
 ---
 
@@ -206,9 +206,10 @@ Links a Device/Virtual Device Context/VirtualMachine to a `ZabbixConfigurationGr
 Templates, macros, and hostgroups can be inherited across these chains, by default:
 
 ```plaintext
-Manufacturer → Device Type    → Platform  → Role  → Device
-Manufacturer → Device Type    → Platform  → Role  → Virtual Device Context
+Manufacturer → Device Type → Platform → Role → Device
+Manufacturer → Device Type → Platform → Role → Virtual Device Context
 Cluster      → VirtualMachine
+(+ Site / SiteGroup / Region via inheritance_chain; see configuration.md)
 ```
 
 However, this is [configurable](configuration.md).
@@ -218,15 +219,15 @@ However, this is [configurable](configuration.md).
 Not all assignment types can be attached to the same set of NetBox objects.
 The table below shows what each model accepts as `assigned_object`.
 
-| Model                                | Can be assigned to                                                                                              |
-|--------------------------------------|-----------------------------------------------------------------------------------------------------------------|
-| `ZabbixMacro`                        | ZabbixServer, ZabbixTemplate                                                                                    |
-| `ZabbixServerAssignment`             | Device, VDC, VM, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType                           |
-| `ZabbixTemplateAssignment`           | Device, VDC, VM, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType                           |
-| `ZabbixMacroAssignment`              | Device, VDC, VM, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType                           |
-| `ZabbixTagAssignment`                | Device, VDC, VM, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType, ZabbixConfigurationGroup |
-| `ZabbixHostgroupAssignment`          | Device, VDC, VM, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType, ZabbixConfigurationGroup |
-| `ZabbixHostInterface`                | Device, VDC, VM, ZabbixConfigurationGroup                                                                       |
-| `ZabbixHostInventory`                | Device, VDC, VM (one record per object)                                                                         |
-| `ZabbixMaintenanceObjectAssignment`  | Device, VDC, VM, ZabbixHostgroup                                                                                |
-| `ZabbixConfigurationGroupAssignment` | Device, VDC, VM (one group per object)                                                                          |
+| Model                                | Can be assigned to |
+|--------------------------------------|--------------------|
+| `ZabbixMacro`                        | ZabbixServer, ZabbixTemplate |
+| `ZabbixServerAssignment`             | Device, VDC, VM, Site, SiteGroup, Region, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType |
+| `ZabbixTemplateAssignment`           | Device, VDC, VM, Site, SiteGroup, Region, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType |
+| `ZabbixMacroAssignment`              | Device, VDC, VM, Site, SiteGroup, Region, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType |
+| `ZabbixTagAssignment`                | Device, VDC, VM, Site, SiteGroup, Region, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType, ZabbixConfigurationGroup |
+| `ZabbixHostgroupAssignment`          | Device, VDC, VM, Site, SiteGroup, Region, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType, ZabbixConfigurationGroup |
+| `ZabbixHostInterface`                | Device, VDC, VM, ZabbixConfigurationGroup |
+| `ZabbixHostInventory`                | Device, VDC, VM, Site, SiteGroup, Region, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType, ZabbixConfigurationGroup |
+| `ZabbixMaintenanceObjectAssignment`  | Device, VDC, VM, ZabbixHostgroup |
+| `ZabbixConfigurationGroupAssignment` | Device, VDC, VM, Site, SiteGroup, Region, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, ClusterType |

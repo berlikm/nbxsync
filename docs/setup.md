@@ -73,7 +73,7 @@ At minimum, specify the Type, Port, and either IP Address or DNS name.
     A Hostgroup assignment is required
 
 !!! note "Hint"
-    Hostgroups can be assigned directly to the Device, VDC or VM, or inherited from the DeviceType, Cluster, Manufacturer, Platform, etc. Alternatively, Configuration Groups can be used.
+    Hostgroups can be assigned directly to the Device, VDC or VM, or inherited from the DeviceType, Cluster, Manufacturer, Platform, Site, SiteGroup, Region, etc. Alternatively, Configuration Groups can be used.
 
 Each host in Zabbix requires at least one Hostgroup. Create a hostgroup using the left-hand menu: `Zabbix` -> `Zabbix Hostgroups` and click `Add`. Ensure the hostgroup is associated with the same Zabbix Server. The value can be static or [dynamically rendered using a Jinja2 template](dynamic_values.md).
 

@@ -113,28 +113,26 @@ For example, assigning a `ZabbixServerAssignment` (proxy) to a `SiteGroup` means
 
 ## Zabbix Template Rules
 
-`ZabbixTemplateRule` allows automatic template (and optional hostgroup/tag) assignment based on criteria evaluated against the Device or VM. The primary match is the platform name: a regex matched with case-insensitive `re.search` (substring match, not `fullmatch`). When every configured criterion matches, the rule’s Zabbix template is assigned to the host.
+`ZabbixTemplateRule` assigns a Zabbix template (and optionally a hostgroup and tag) when a Device or VM matches the rule. The platform name is matched with case-insensitive `re.search`. Rules run after direct and inherited assignments, so explicit `ZabbixTemplateAssignment` objects always take priority.
 
-Rules are resolved after all direct and inherited assignments, so explicit `ZabbixTemplateAssignment` objects always take priority.
-
-Each rule can optionally also assign a hostgroup and a tag when the criteria match — useful for OS-family grouping (e.g. a `Windows` rule that assigns the `Windows by Zabbix agent` template, a `Windows` hostgroup, and an `os_family=Windows` tag in one rule). Hostgroups attached this way appear on the Zabbix Hostgroup detail page under **Template rules** (and as a rule count on the hostgroup list); an empty **Assigned objects** table does not mean the group is unused.
+Optional hostgroup/tag assignment is useful for OS-family grouping (for example a Windows rule that assigns the agent template, a `Windows` hostgroup and an `os_family=Windows` tag). Hostgroups attached by a rule appear on the Zabbix Hostgroup page under Template rules.
 
 | Field | Description |
 |-------|-------------|
 | `name` | Human-readable name |
-| `pattern` | Regex matched against platform name (`re.search`, case-insensitive). Use `.*` as a catch-all when scoping only by role, tags, and/or manufacturer |
-| `role_pattern` | Optional regex matched against the Device/VM role name (case-insensitive). Empty = any role. Set but roleless object → fail closed |
-| `require_tags` | Optional comma-separated NetBox **tag slugs** the Device/VM must carry (all required). Empty = tag-independent. Reads object tags, not DeviceType tags |
-| `manufacturer` | Optional NetBox Manufacturer. When set, the Device’s `device_type.manufacturer` must match. Empty = any manufacturer. Objects without a manufacturer (e.g. VMs) fail closed. Deleting a Manufacturer that is still referenced is blocked (`PROTECT`) so rules cannot silently widen |
+| `pattern` | Regex matched against platform name (`re.search`, case-insensitive). Use `.*` when matching only on role, tags or manufacturer |
+| `role_pattern` | Optional regex against the Device/VM role name. Empty = any role |
+| `require_tags` | Optional comma-separated NetBox tag slugs (all required). Empty = any. Uses object tags, not DeviceType tags |
+| `manufacturer` | Optional Manufacturer. When set, `device_type.manufacturer` must match. Empty = any. Objects without a manufacturer (e.g. VMs) do not match. Uses `PROTECT` on delete |
 | `zabbixtemplate` | Template assigned when the rule matches |
-| `zabbixhostgroup` | Optional hostgroup assigned on match (nullable) |
-| `zabbixtag` | Optional tag assigned on match (nullable) |
-| `enabled` | Enable/disable rule without deleting it |
-| `priority` | Lower value = higher priority (rules evaluated in order) |
+| `zabbixhostgroup` | Optional hostgroup assigned on match |
+| `zabbixtag` | Optional tag assigned on match |
+| `enabled` | Enable/disable without deleting the rule |
+| `priority` | Lower value = higher priority |
 
-All non-empty criteria are **conjunctive (AND)**. Patterns are validated at save time with `re.compile` (without `IGNORECASE`). Nested-quantifier shapes that invite catastrophic backtracking are rejected. Matching uses plain `re.search` with a 64-character platform-name cap (role names capped at 100) — no process signals or thread timeouts. Prefer simple patterns. A rule that exceeds the input bound or has an invalid stored pattern does not match and is logged. Optional hostgroups must belong to the same Zabbix server as the template.
+All non-empty criteria are combined with AND. Patterns are validated on save; nested-quantifier shapes that invite catastrophic backtracking are rejected. Platform names are capped at 64 characters (roles at 100). Optional hostgroups must belong to the same Zabbix server as the template.
 
-Example: Dell servers with BMC monitoring — `pattern=.*`, `role_pattern=^Server$`, `manufacturer=Dell`, template = Dell iDRAC by SNMP — without assigning that template on every Dell Manufacturer object (which would also hit Dell storage).
+Example: `pattern=.*`, `role_pattern=^Server$`, `manufacturer=Dell`, template = Dell iDRAC by SNMP — without assigning that template on every Dell Manufacturer object.
 
 ## Configuration values
 
