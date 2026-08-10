@@ -150,3 +150,114 @@ class GetAssignedZabbixObjectsTestCase(TestCase):
         self.assertEqual(result['server_assignments'], [])
         self.assertIsNone(result['hostinventory'])
         self.assertIsNone(result['configurationgroup'])
+
+
+class TagAssignmentTargetTestCase(TestCase):
+    """NetBox Tags are assignment targets: an object carrying the tag inherits
+    the assignment at object level; removing the tag removes the membership."""
+
+    def setUp(self):
+        from virtualization.models import VirtualMachine
+
+        from extras.models import Tag as NetBoxTag
+
+        self.server = ZabbixServer.objects.create(name='TagTarget Zabbix', url='http://zabbix.local', token='abc123', validate_certs=True)
+        self.other_server = ZabbixServer.objects.create(name='Other Zabbix', url='http://zabbix2.local', token='def456', validate_certs=True)
+        self.hostgroup = ZabbixHostgroup.objects.create(name='Priority/Critical', value='Priority/Critical', zabbixserver=self.server)
+        self.netbox_tag = NetBoxTag.objects.create(name='critical', slug='critical')
+        self.tag_ct = ContentType.objects.get_for_model(NetBoxTag)
+        self.assignment = ZabbixHostgroupAssignment.objects.create(zabbixhostgroup=self.hostgroup, assigned_object_type=self.tag_ct, assigned_object_id=self.netbox_tag.pk)
+        self.device = create_test_device(name='TaggedDev')
+        self.vm = VirtualMachine.objects.create(name='TaggedVM')
+        self.untagged = create_test_device(name='PlainDev')
+
+    def test_tagged_device_inherits_with_tag_label(self):
+        self.device.tags.add(self.netbox_tag)
+        result = get_assigned_zabbixobjects(self.device)
+        groups = result['hostgroups']
+        self.assertIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in groups])
+        match = next(g for g in groups if g.zabbixhostgroup_id == self.hostgroup.pk)
+        self.assertEqual(getattr(match, '_inherited_from', None), 'Tag: critical')
+
+    def test_untagged_device_gets_nothing(self):
+        result = get_assigned_zabbixobjects(self.untagged)
+        self.assertNotIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in result['hostgroups']])
+
+    def test_tag_removed_membership_leaves(self):
+        self.device.tags.add(self.netbox_tag)
+        self.assertIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in get_assigned_zabbixobjects(self.device)['hostgroups']])
+        self.device.tags.remove(self.netbox_tag)
+        self.assertNotIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in get_assigned_zabbixobjects(self.device)['hostgroups']])
+
+    def test_tagged_vm_inherits(self):
+        self.vm.tags.add(self.netbox_tag)
+        result = get_assigned_zabbixobjects(self.vm)
+        self.assertIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in result['hostgroups']])
+
+    def test_server_scoping_filters_tag_targeted_hostgroups(self):
+        self.device.tags.add(self.netbox_tag)
+        result = get_assigned_zabbixobjects(self.device, zabbixserver=self.other_server)
+        self.assertNotIn(self.hostgroup.pk, [g.zabbixhostgroup_id for g in result['hostgroups']])
+
+    def test_tag_targeted_hostinterface_resolves_with_device_ip(self):
+        from ipam.models import IPAddress
+
+        from nbxsync.choices import ZabbixHostInterfaceTypeChoices, ZabbixInterfaceTypeChoices, ZabbixInterfaceUseChoices
+        from nbxsync.models import ZabbixHostInterface
+
+        tag_if = ZabbixHostInterface(
+            zabbixserver=self.server,
+            type=ZabbixHostInterfaceTypeChoices.SNMP,
+            interface_type=ZabbixInterfaceTypeChoices.DEFAULT,
+            useip=ZabbixInterfaceUseChoices.IP,
+            port=161,
+            dns='',
+            assigned_object_type=self.tag_ct,
+            assigned_object_id=self.netbox_tag.pk,
+        )
+        tag_if.full_clean()
+        tag_if.save()
+        self.assertIsNone(tag_if.ip)  # endpoint cleared — resolved per device
+
+        self.device.tags.add(self.netbox_tag)
+        result = get_assigned_zabbixobjects(self.device)
+        matches = [hi for hi in result['hostinterfaces'] if int(hi.type) == ZabbixHostInterfaceTypeChoices.SNMP and int(hi.port) == 161]
+        self.assertEqual(len(matches), 1)
+        self.assertTrue(getattr(matches[0], '_is_inherited_copy', False))
+        self.assertEqual(getattr(matches[0], '_inherited_from', None), 'Tag: critical')
+
+        self.untagged_ifaces = [hi for hi in get_assigned_zabbixobjects(self.untagged)['hostinterfaces'] if int(hi.port) == 161]
+        self.assertEqual(self.untagged_ifaces, [])
+
+
+class VirtualMachineDeviceLeakTestCase(TestCase):
+    """A VM linked to its hosting device (NetBox 4.3+) must not inherit the
+    host's hardware-tier assignments (manufacturer etc. via 'device'-prefixed
+    chain paths). A guest is not the hypervisor's hardware.
+    """
+
+    def setUp(self):
+        from virtualization.models import VirtualMachine
+
+        self.server = ZabbixServer.objects.create(name='Leak Server', url='http://zabbix.local', token='abc123', validate_certs=True)
+        self.template = ZabbixTemplate.objects.create(name='Vendor OOB by SNMP', zabbixserver=self.server, templateid=10255)
+        self.dell = Manufacturer.objects.create(name='Dell', slug='dell-oss')
+        self.host = create_test_device(name='esx-host-01')
+        host_type = self.host.device_type
+        host_type.manufacturer = self.dell
+        host_type.save()
+        self.vm = VirtualMachine.objects.create(name='guest-vm-01', device=self.host)
+
+        self.assignment = ZabbixTemplateAssignment.objects.create(
+            zabbixtemplate=self.template,
+            assigned_object_type=ContentType.objects.get_for_model(Manufacturer),
+            assigned_object_id=self.dell.pk,
+        )
+
+    def test_device_inherits_manufacturer_template(self):
+        result = get_assigned_zabbixobjects(self.host)
+        self.assertIn(self.template.pk, [obj.zabbixtemplate_id for obj in result['templates']])
+
+    def test_vm_does_not_inherit_manufacturer_template_via_associated_device(self):
+        result = get_assigned_zabbixobjects(self.vm)
+        self.assertNotIn(self.template.pk, [obj.zabbixtemplate_id for obj in result['templates']])

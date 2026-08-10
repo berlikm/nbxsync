@@ -24,7 +24,7 @@ nbxSync integrates with the [Netbox Permission system](https://netbox.readthedoc
 
 **What it is:** The through-model that binds a NetBox object to one or more Zabbix host groups.
 
-**How it’s used:** Decide host placement in Zabbix UI and ACLs. Assignments can be placed on Devices/VDCs/VMs directly, or on Site/SiteGroup/Region (and other inheritance targets) so members inherit them.
+**How it’s used:** Decide host placement in Zabbix UI and ACLs. Assignments can be placed on Devices/VDCs/VMs directly, or on Site/SiteGroup/Region/Tag (and other inheritance targets) so members inherit them.
 
 **Typical permissions:**
 
@@ -96,7 +96,7 @@ nbxSync integrates with the [Netbox Permission system](https://netbox.readthedoc
 
 **What it is:** Attaches a macro to a NetBox object in the inheritance set with precedence over template-level macros.
 
-**How it’s used:** Host-specific or policy-level overrides — e.g. a unique SNMP community on a Device, or a shared value on a Site or Role.
+**How it’s used:** Host-specific or policy-level overrides — e.g. a unique SNMP community on a Device, or a shared value on a Site/Role/Tag.
 
 **Typical permissions:**
 
@@ -276,7 +276,7 @@ nbxSync integrates with the [Netbox Permission system](https://netbox.readthedoc
 
 **What it is:** Applies Zabbix tags to a NetBox object in the inheritance set so they appear on the Zabbix host/events.
 
-**How it’s used:** Drive alert routing, dashboards, and maintenance selection. Can be assigned on Devices/VDCs/VMs or inherited from Site/SiteGroup/Region and similar targets.
+**How it’s used:** Drive alert routing, dashboards, and maintenance selection. Can be assigned on Devices/VDCs/VMs or inherited from Site/SiteGroup/Region/Tag and similar targets.
 
 **Typical permissions:**
 
@@ -366,7 +366,7 @@ nbxSync integrates with the [Netbox Permission system](https://netbox.readthedoc
 
 **What it is:** The through-model that binds a NetBox object to a Zabbix Configuration Group
 
-**How it’s used:** Assign a Configuration Group to a Device/VDC/VM directly, or to a Site/SiteGroup/Region (and other inheritance targets) so members inherit the group's configuration
+**How it’s used:** Assign a Configuration Group to a Device/VDC/VM directly, or to a Site/SiteGroup/Region/Tag (and other inheritance targets) so members inherit the group's configuration
 
 **Typical permissions:**
 
