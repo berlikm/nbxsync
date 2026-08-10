@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('nbxsync', '0015_zabbixtemplaterule_hostgroup_tag'),
+        ('nbxsync', '0017_zabbixtemplaterule_hostgroup_tag'),
     ]
 
     operations = [
