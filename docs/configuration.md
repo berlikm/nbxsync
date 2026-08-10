@@ -97,21 +97,25 @@ The plugin is configuration to do exactly what you want, by means of the plugin 
 
 The `inheritance_chain` setting defines which NetBox objects are traversed when resolving Zabbix assignments. Assignments (templates, tags, hostgroups, macros, proxy/server, inventory, configuration groups) made on any object in the chain are inherited by the device or VM being synced, with direct assignments taking priority. Within inherited sources, **first path wins** (leaf-first order as listed).
 
-Host interfaces are the exception: they are defined on a Device/VM directly or on a `ZabbixConfigurationGroup`, because an interface needs a per-device endpoint. To apply interfaces to a whole Site, SiteGroup or Region, assign a Configuration Group at that level — its interfaces are then cloned onto every inheriting device with that device's IP (or its out-of-band IP, see `use_oob_ip`).
+Host interfaces are the exception: they are defined on a Device/VM directly or on a `ZabbixConfigurationGroup`, because an interface needs a per-device endpoint. To apply interfaces to a whole Site, SiteGroup or Region, assign a Configuration Group at that level — its interfaces are then cloned onto every inheriting device with that device's primary IP.
+
+### VirtualMachine and `device`-prefixed paths
+
+Paths that start with `device` describe the associated physical device. Virtual Device Contexts keep these paths. VirtualMachines skip them: since NetBox 4.3, `VirtualMachine.device` links a guest to its hosting device, and walking that path would leak host hardware assignments onto the guest.
 
 ### Site, SiteGroup, and Region Inheritance
 
-Hierarchy paths are **appended after** device/role/platform/manufacturer/cluster paths so upgrading into Site inheritance does not silently override existing Role or Platform assignments. SiteGroup and Region ancestors are walked automatically when a group or region is reached (`get_descendants` / parent chain).
+Hierarchy paths are appended after device/role/platform/manufacturer/cluster paths so upgrading into Site inheritance does not silently override existing Role or Platform assignments. SiteGroup and Region ancestors are walked automatically when a group or region is reached.
 
 | Path | Description |
 |------|-------------|
-| `['device', 'site']` | The device's site (also VDC → device → site) |
+| `['device', 'site']` | The device's site (also VDC → device → site; not walked for VirtualMachines) |
 | `['site']` | Site (direct) |
 | `['site', 'group']` | The site's SiteGroup (parents walked) |
 | `['site', 'region']` | The site's region (parents walked) |
 | `['cluster', '_site']` | The cluster's scoped site for VMs (NetBox ≥4.2 `CachedScopeMixin._site`) |
 
-**Upgrade note:** if you previously customized `inheritance_chain` with Site paths prepended ahead of Role/Platform, review hosts that have both a Site-level and a Role/Platform-level assignment — effective winners may change when adopting the default order above. Prefer appending hierarchy paths.
+If you previously customized `inheritance_chain` with Site paths ahead of Role/Platform, review hosts that have both a Site-level and a Role/Platform-level assignment — effective winners may change. Prefer appending hierarchy paths.
 
 For example, assigning a `ZabbixServerAssignment` (proxy) to a `SiteGroup` means every device at every site in that SiteGroup inherits the proxy — no per-device assignment needed.
 
@@ -126,6 +130,7 @@ Each rule can optionally also assign a hostgroup and a tag when the pattern matc
 | Field | Description |
 |-------|-------------|
 | `name` | Human-readable name |
+| `description` | Optional description |
 | `pattern` | Regex pattern matched against platform name (`re.search`, case-insensitive) |
 | `zabbixtemplate` | Template assigned when the rule matches |
 | `zabbixhostgroup` | Optional hostgroup assigned on match (nullable) |
@@ -295,7 +300,7 @@ Defaults to `False`.
 
 ### adopt_existing_hosts
 
-Controls whether nbxsync may bind to a Zabbix host it did not create. During sync, a host whose technical name matches and that carries the managed identity tags (`nb_type`/`nb_id`, see [Object tagging](#object-tagging)) can either be adopted or reported as a conflict.
+Controls whether nbxsync may bind to a Zabbix host it did not create. During sync, a host whose technical name matches and that carries the managed identity tags (`nb_type`/`nb_id`, see [attach_objtag](#attach_objtag)) can either be adopted or reported as a conflict.
 
 Adoption makes NetBox authoritative over that host immediately: its interfaces, templates, macros, tags and inventory are overwritten on the next sync. While disabled (the default), the sync fails with an actionable message naming the host and the setting, and nothing in Zabbix is changed.
 

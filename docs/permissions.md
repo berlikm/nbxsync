@@ -348,12 +348,7 @@ nbxSync integrates with the [Netbox Permission system](https://netbox.readthedoc
 
 **What it is:** The durable record of which Zabbix host a NetBox object owns on a given Zabbix server.
 
-**How it’s used:** Maintained by nbxsync so a host can still be retired when its assignment disappears. It is a system-managed bookkeeping object; operators normally only need _view_ to inspect or troubleshoot a binding.
-
-**Typical permissions:**
-
-- _view_ for troubleshooting which Zabbix host an object is bound to.
-- _change/delete_ only for administrators repairing a mis-bound host — editing a binding changes which Zabbix host NetBox will overwrite or delete.
+**How it’s used:** Maintained automatically by host sync and delete. There is intentionally no form, table, view or API — bindings are not edited by operators. Django model permissions exist only because NetBox registers them for every model; they are not used in normal workflows.
 
 ### Permissions
 

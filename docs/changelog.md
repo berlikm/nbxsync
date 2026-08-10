@@ -14,10 +14,16 @@
 
 ### Improvements
 
+- Nested hostgroups: missing path segments (`A/B/C`) are created parent-first in Zabbix so permissions can inherit into subgroups
+- Nested hostgroup rename: editing a static group's `ZabbixHostgroup.value` renames the Zabbix group in place via the stored `groupid`
 - Configuration Group interfaces are deduplicated by interface identity, so a second interface of the same Zabbix type is no longer dropped
 - A failing host interface no longer hides the failure: per-interface and template-linkage failures are recorded on the assignment and reported as an aggregated job error
 - Background host reconciliation collects host primary keys with queryset iterators instead of materialising full Device/VM lists
 - Minimum documented NetBox version is 4.2.6 (matches `PluginConfig.min_version` and cluster `_site` scope)
+
+### Bug fixes
+
+- VirtualMachines skip inheritance paths that start with `device`, so a guest no longer inherits assignments from its hosting Device via `VirtualMachine.device`
 
 ## [1.0.0] - Initial Release
 
