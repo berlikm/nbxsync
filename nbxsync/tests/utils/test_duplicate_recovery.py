@@ -83,4 +83,3 @@ class UpdateDuplicateRecoveryTestCase(TestCase):
 
         with self.assertRaises(_ApiError):
             sync.update_in_zabbix(object_id='23')
-
