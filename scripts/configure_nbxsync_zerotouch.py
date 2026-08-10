@@ -179,13 +179,11 @@ SNMP_ROLES = [
 ]
 
 # Self-referencing host macros that shadow Zabbix globals — prune on every run.
-SHADOW_MACROS = (
-    '{$MSSQL.USER}',
-    '{$MSSQL.PASSWORD}',
-    '{$VMWARE.USER}',
-    '{$VMWARE.PASSWORD}',
-    '{$PURESTORAGE.TOKEN}',
-)
+# Secret macros managed by zerotouch (role-level ZabbixMacro with ZabbixMacroAssignment).
+# These are NO LONGER shadow-macros — they get real values from env vars and are
+# pushed to hosts via the inheritance chain during sync.
+# Old self-referencing macros (if any remain from previous versions) are still pruned.
+SHADOW_MACROS = ()  # Empty — secrets are now managed in step11_macros
 
 # Previous script listed these under Agent; SiteGroup Agent default covers them now.
 # Server is carved out into Server Agent+OOB instead.
@@ -1170,9 +1168,40 @@ def step11_macros():
         ('{$IF.UTIL.MAX}', '90', 'Switch Dist'),
         ('{$MEM.UTIL.CRIT}', '85', 'VDI'),
         ('{$MSSQL.DSN}', 'nbxsync', 'MSSQL'),
-        # Secrets stay as Zabbix *global* macros — do not create self-referencing host macros.
         ('{$VMWARE.URL}', 'https://{{ object.name }}/sdk', 'vCenter'),
     ]
+    # Secret macros from env vars — pushed to hosts as type=1 (secret) host macros.
+    # Values are shared across all hosts in the role.
+    vmware_user = os.environ.get('NBX_VMWARE_USER', '')
+    vmware_pass = os.environ.get('NBX_VMWARE_PASS', '')
+    pure_token = os.environ.get('NBX_PURE_TOKEN', '')
+    mssql_user = os.environ.get('NBX_MSSQL_USER', '')
+    mssql_pass = os.environ.get('NBX_MSSQL_PASS', '')
+    secret_specs = [
+        ('{$VMWARE.USER}', vmware_user, 'vCenter'),
+        ('{$VMWARE.PASSWORD}', vmware_pass, 'vCenter'),
+        ('{$PURESTORAGE.TOKEN}', pure_token, 'Pure Storage'),
+        ('{$MSSQL.USER}', mssql_user, 'MSSQL'),
+        ('{$MSSQL.PASSWORD}', mssql_pass, 'MSSQL'),
+    ]
+    for macro_name, macro_value, role_name in secret_specs:
+        if not macro_value:
+            logger.warning('  Env var not set for %s on role %s — skipping', macro_name, role_name)
+            continue
+        try:
+            role = get_role(role_name)
+        except DeviceRole.DoesNotExist:
+            logger.warning('  Role not found: %s, skipping macro %s', role_name, macro_name)
+            continue
+        ensure(
+            M.ZabbixMacro,
+            macro=macro_name,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=role.id,
+            defaults={'value': macro_value, 'type': ZabbixMacroTypeChoices.SECRET, 'description': f'ztc:secret:{role_name}'},
+            update_fields=['value', 'type', 'description'],
+        )
+    # Regular (text) macros
     for macro_name, macro_value, role_name in macro_specs:
         try:
             role = get_role(role_name)
@@ -1187,7 +1216,6 @@ def step11_macros():
             defaults={'value': macro_value, 'type': ZabbixMacroTypeChoices.TEXT, 'description': f'ztc:{role_name}'},
             update_fields=['value', 'type', 'description'],
         )
-
 
 def ensure_storage_generic_template(server) -> None:
     """Create 'Storage Generic Device by SNMP' in Zabbix if missing.
