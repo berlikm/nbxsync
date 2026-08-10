@@ -102,7 +102,7 @@ class nbxSync(PluginConfig):
         'backgroundsync': {
             'objects': {
                 'enabled': True,
-                'interval': 60,  # 1 hour
+                'interval': 360,  # 6 hours
             },
             'templates': {
                 'enabled': True,

@@ -8,10 +8,12 @@ import nbxsync.models.zabbixhostbinding
 
 
 class Migration(migrations.Migration):
+    """ZabbixHostBinding plus hostid PositiveBigInteger alignment on assignments."""
+
     dependencies = [
         ('contenttypes', '0002_remove_content_type_name'),
         ('extras', '0122_charfield_null_choices'),
-        ('nbxsync', '0018_zabbixtemplaterule_require_tags_and_more'),
+        ('nbxsync', '0015_zabbixtemplaterule'),
     ]
 
     operations = [
@@ -44,6 +46,7 @@ class Migration(migrations.Migration):
             model_name='zabbixhostbinding',
             constraint=models.UniqueConstraint(fields=('zabbixserver', 'hostid'), name='nbxsync_zabbixhostbinding_unique_hostid_per_server', violation_error_message='The same Zabbix host ID cannot be bound to multiple objects on a server.'),
         ),
+        # Align assignment hostid storage with ZabbixHostBinding.hostid (PositiveBigInteger).
         migrations.AlterField(
             model_name='zabbixserverassignment',
             name='hostid',

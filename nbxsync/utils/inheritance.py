@@ -98,7 +98,9 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
     direct_server_assignments = list(direct_server_assignments)
 
     hostinventory = ZabbixHostInventory.objects.filter(assigned_object_type=content_type, assigned_object_id=instance.id).first()
-    direct_configurationgroup = ZabbixConfigurationGroupAssignment.objects.filter(assigned_object_type=content_type, assigned_object_id=instance.id).first()
+    # Multiple direct groups are allowed (unique is per group+object). Prefer the
+    # newest membership when picking the primary group for interface expansion.
+    direct_configurationgroup = ZabbixConfigurationGroupAssignment.objects.filter(assigned_object_type=content_type, assigned_object_id=instance.id).order_by('-created', '-pk').first()
 
     inherited = resolve_inherited_zabbix_assignments(instance, zabbixserver)
 
@@ -285,9 +287,23 @@ def _walk_ancestors(obj, parent_attr='parent'):
 
     Includes obj itself so callers can check assignments on the
     starting object AND all ancestors. Cycle-safe via a seen-set.
+
+    NestedGroupModel / MPTT types (SiteGroup, Region, DeviceRole, …) use
+    ``get_ancestors(include_self=True)`` — one query — matching NetBox's own
+    ConfigContext ancestry walk. Other parents fall back to attribute chasing.
     """
     if obj is None:
         return
+    get_ancestors = getattr(obj, 'get_ancestors', None)
+    if callable(get_ancestors):
+        try:
+            # MPTT returns root→leaf; inheritance is leaf-first (nearest wins).
+            ancestors = list(get_ancestors(include_self=True))
+            yield from reversed(ancestors)
+            return
+        except TypeError:
+            # Unexpected signature — fall through to the attribute walk.
+            pass
     seen = set()
     cur = obj
     while cur is not None and cur not in seen:

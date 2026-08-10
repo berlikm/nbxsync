@@ -60,9 +60,9 @@ Regex-driven automatic assignment of a Zabbix template (and optionally a hostgro
 | `role_pattern`     | CharField    | Optional regex against Device/VM role name; empty = any |
 | `require_tags`     | CharField    | Optional comma-separated NetBox tag slugs (all required); empty = any |
 | `manufacturer`     | ForeignKey   | Optional `dcim.Manufacturer`; empty = any; `PROTECT` on delete |
-| `zabbixtemplate`   | ForeignKey   | Template assigned on match |
-| `zabbixhostgroup`  | ForeignKey   | Optional hostgroup assigned on match |
-| `zabbixtag`        | ForeignKey   | Optional tag assigned on match |
+| `zabbixtemplate`   | ForeignKey   | Template assigned on match (`PROTECT`) |
+| `zabbixhostgroup`  | ForeignKey   | Optional hostgroup assigned on match (`PROTECT`) |
+| `zabbixtag`        | ForeignKey   | Optional tag assigned on match (`PROTECT`) |
 | `enabled`          | BooleanField | Soft enable/disable |
 | `priority`         | IntegerField | Lower = higher priority |
 
@@ -107,13 +107,13 @@ Includes rich SNMP and TLS configuration fields.
 | `use_oob_ip`     | Resolve the IP from the Device's NetBox `oob_ip` when no static `ip` is set |
 | `tls_*`          | TLS credentials if applicable                                        |
 | `snmp_*`         | SNMPv3 credentials                                                   |
-| `assigned_object`| Device, VDC, VirtualMachine, or ZabbixConfigurationGroup             |
+| `assigned_object`| Device, VDC, VirtualMachine, ZabbixConfigurationGroup, or Tag        |
 
 #### Out-of-band interfaces
 
 `use_oob_ip` resolves the interface IP from the Device's NetBox `oob_ip`. A static `ip` wins if both are set. There is no primary-IP fallback.
 
-Only Devices have an out-of-band IP, so the field is allowed on Devices and Configuration Groups and rejected on Virtual Machines and Virtual Device Contexts. Connect via must be IP.
+Only Devices have an out-of-band IP, so the field is allowed on Devices, Configuration Groups, and Tag-level interface templates, and rejected on Virtual Machines and Virtual Device Contexts. Connect via must be IP.
 
 On a Configuration Group, sync-time expansion clones the interface without substituting primary IP; each Device's `oob_ip` is resolved at host sync.
 
@@ -143,7 +143,7 @@ Durable mapping from a NetBox Device, VDC or VirtualMachine to a Zabbix `hostid`
 |-------------------|--------------|-------------|
 | `zabbixserver`    | ForeignKey   | Zabbix server |
 | `assigned_object` | Generic FK   | Device, VDC or VirtualMachine |
-| `hostid`          | IntegerField | Zabbix host ID |
+| `hostid`          | PositiveBigIntegerField | Zabbix host ID |
 | `hostname`        | CharField    | Last known hostname (informational) |
 
 ---

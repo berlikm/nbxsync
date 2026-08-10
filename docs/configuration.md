@@ -62,34 +62,34 @@ The plugin is configuration to do exactly what you want, by means of the plugin 
         ['site', 'region'],
         ['cluster', '_site'],
     ],
-    'backgroundsync': {
-        'objects': {
-            'enabled': True,
-            'interval': 60, # 1 hour
+        'backgroundsync': {
+            'objects': {
+                'enabled': True,
+                'interval': 360, # 6 hours
+            },
+            'templates': {
+                'enabled': True,
+                'interval': 1440, # 24 hours
+            },
+            'proxies': {
+                'enabled': True,
+                'interval': 1440, # 24 hours
+            },
+            'maintenance': {
+                'enabled': True,
+                'interval': 15, # 15 minutes
+            },
         },
-        'templates': {
-            'enabled': True,
-            'interval': 1440, # 24 hours
-        },
-        'proxies': {
-            'enabled': True,
-            'interval': 1440, # 24 hours
-        },
-        'maintenance': {
-            'enabled': True,
-            'interval': 15, # 15 minutes
-        },
-    },
-    'no_alerting_tag': 'NO_ALERTING',
-    'no_alerting_tag_value': '1',
-    'attach_objtag': True,
-    'objtag_type': 'nb_type',
-    'objtag_id': 'nb_id',
-    'custom_field_hostname':'',
-    'custom_field_display_name':'',
-    'exclude_tag': '',
-    'allow_inherited_deletion': False,
-    'adopt_existing_hosts': False,
+        'no_alerting_tag': 'NO_ALERTING',
+        'no_alerting_tag_value': '1',
+        'attach_objtag': True,
+        'objtag_type': 'nb_type',
+        'objtag_id': 'nb_id',
+        'custom_field_hostname':'',
+        'custom_field_display_name':'',
+        'exclude_tag': '',
+        'allow_inherited_deletion': False,
+        'adopt_existing_hosts': False,
 }
 ```
 
@@ -97,11 +97,7 @@ The plugin is configuration to do exactly what you want, by means of the plugin 
 
 The `inheritance_chain` setting defines which NetBox objects are traversed when resolving Zabbix assignments. Assignments (templates, tags, hostgroups, macros, proxy/server, inventory, configuration groups) made on any object in the chain are inherited by the device or VM being synced, with direct assignments taking priority. Within inherited sources, **first path wins** (leaf-first order as listed).
 
-Host interfaces are the exception: they are defined on a Device/VM directly or on a `ZabbixConfigurationGroup`, because an interface needs a per-device endpoint. To apply interfaces to a whole Site, SiteGroup or Region, assign a Configuration Group at that level — its interfaces are then cloned onto every inheriting device with that device's primary IP.
-
-### VirtualMachine and `device`-prefixed paths
-
-Paths that start with `device` describe the associated physical device. Virtual Device Contexts keep these paths. VirtualMachines skip them: since NetBox 4.3, `VirtualMachine.device` links a guest to its hosting device, and walking that path would leak host hardware assignments onto the guest.
+Host interfaces are the exception: they are defined on a Device/VM directly, on a `ZabbixConfigurationGroup`, or on a NetBox Tag (as a reusable interface template), because an interface needs a per-device endpoint. To apply interfaces to a whole Site, SiteGroup or Region, assign a Configuration Group at that level — its interfaces are then cloned onto every inheriting device with that device's primary IP.
 
 ### VirtualMachine and `device`-prefixed paths
 
@@ -119,7 +115,7 @@ Hierarchy paths are appended after device/role/platform/manufacturer/cluster pat
 | `['site']` | Site (direct) |
 | `['site', 'group']` | The site's SiteGroup (parents walked) |
 | `['site', 'region']` | The site's region (parents walked) |
-| `['cluster', '_site']` | The cluster's scoped site for VMs (NetBox ≥4.2 `CachedScopeMixin._site`) |
+| `['cluster', '_site']` | The cluster's scoped site for VMs (`CachedScopeMixin._site`, NetBox 4.2+; plugin requires ≥4.2.6) |
 
 If you previously customized `inheritance_chain` with Site paths ahead of Role/Platform, review hosts that have both a Site-level and a Role/Platform-level assignment — effective winners may change. Prefer appending hierarchy paths.
 
@@ -139,12 +135,12 @@ Optional hostgroup/tag assignment is useful for OS-family grouping (for example 
 | `require_tags` | Optional comma-separated NetBox tag slugs (all required). Empty = any. Uses object tags, not DeviceType tags |
 | `manufacturer` | Optional Manufacturer. When set, `device_type.manufacturer` must match. Empty = any. Objects without a manufacturer (e.g. VMs) do not match. Uses `PROTECT` on delete |
 | `zabbixtemplate` | Template assigned when the rule matches |
-| `zabbixhostgroup` | Optional hostgroup assigned on match |
-| `zabbixtag` | Optional tag assigned on match |
+| `zabbixhostgroup` | Optional hostgroup assigned on match (`PROTECT` on delete) |
+| `zabbixtag` | Optional tag assigned on match (`PROTECT` on delete) |
 | `enabled` | Enable/disable without deleting the rule |
 | `priority` | Lower value = higher priority |
 
-All non-empty criteria are combined with AND. Patterns are validated on save; nested-quantifier shapes that invite catastrophic backtracking are rejected. Platform names are capped at 64 characters (roles at 100). Optional hostgroups must belong to the same Zabbix server as the template.
+All non-empty criteria are combined with AND. Patterns are validated on save; common nested-quantifier shapes such as `(a+)+` / `(a*){2,}` are rejected as a ReDoS guard (not a complete regex safety analyser). Platform names are capped at 64 characters (roles at 100). Optional hostgroups must belong to the same Zabbix server as the template.
 
 Example: `pattern=.*`, `role_pattern=^Server$`, `manufacturer=Dell`, template = Dell iDRAC by SNMP — without assigning that template on every Dell Manufacturer object.
 
@@ -196,11 +192,9 @@ Either true or false (default: True). When enabled, a periodic job enumerates al
 
 ##### interval
 
-Used to determine the interval to sync Devices and Virtual Machines to/from Zabbix, in minutes (default: 60)
+Used to determine the interval to sync Devices and Virtual Machines to/from Zabbix, in minutes (default: 360 / 6 hours).
 
-Size the interval so a full reconciliation finishes well before the next one starts, otherwise runs queue up behind each other. Throughput depends on your Zabbix server, the number of interfaces and templates per host, and network latency, so measure it on your own installation: the job logs `duration_seconds` and the number of hosts enqueued on every run.
-
-As one measured example, an installation of ~1127 hosts reconciled in ~80 minutes (~14 hosts/min), for which an interval of 360 (6 hours) leaves ample headroom while anything under 90 minutes overlapped.
+Size the interval so a full reconciliation finishes well before the next one starts, otherwise runs queue up behind each other. Throughput depends on your Zabbix server, the number of interfaces and templates per host, and network latency — measure it on your installation (`duration_seconds` and hosts enqueued are logged each run) and raise the interval if runs overlap.
 
 #### templates
 
@@ -302,7 +296,7 @@ Not deleting Zabbix host for switch-01 on Zabbix EU (hostid 10842): no remaining
 deletion, but allow_inherited_deletion is disabled. Enable it to let nbxsync remove the host and its history.
 ```
 
-Review those log lines after restructuring the site hierarchy, then set the setting to `True` to let nbxsync reconcile. Explicit deletions are unaffected: a `statusmapping` entry that maps to `deleted`, an `exclude_tag` match, and deleting the Device/VM in NetBox always remove the Zabbix host.
+Review those log lines after restructuring the site hierarchy, then set the setting to `True` to let nbxsync reconcile. Explicit deletions are unaffected: a `statusmapping` entry that maps to `deleted`, an `exclude_tag` match, and deleting the Device/VM in NetBox always remove the Zabbix host — including when `sync_enabled` is False (inventory deletion is retirement, not a background sync).
 
 Defaults to `False`.
 
@@ -310,13 +304,15 @@ Defaults to `False`.
 
 `use_oob_ip` is a field on `ZabbixHostInterface`, not a `PLUGINS_CONFIG` key. When enabled, the interface IP is taken from the Device's NetBox `oob_ip` at sync time. A static `ip` on the interface still wins if set. There is no primary-IP fallback.
 
-Allowed on Devices and Configuration Groups only; rejected on Virtual Machines and Virtual Device Contexts. Connect via must be IP. On a Configuration Group, sync-time expansion leaves `ip` empty so each member Device resolves its own `oob_ip`.
+Allowed on Devices, Configuration Groups, and Tag-level interface templates; rejected on Virtual Machines and Virtual Device Contexts. Connect via must be IP. On a Configuration Group or Tag template, sync-time expansion leaves `ip` empty so each member Device resolves its own `oob_ip`.
 
 If a Device has no `oob_ip`, the interface is skipped for that sync. Existing Zabbix interfaces are retained while `allow_inherited_deletion` is disabled, and their type still counts for template requirements. See [Out-of-band interfaces](models.md#out-of-band-interfaces).
 
 ### adopt_existing_hosts
 
-Controls whether nbxsync may bind to a Zabbix host it did not create. During sync, a host whose technical name matches and that carries the managed identity tags (`nb_type`/`nb_id`, see [attach_objtag](#attach_objtag)) can either be adopted or reported as a conflict.
+Controls whether nbxsync may bind to a Zabbix host it did not create. During sync, a host whose technical name matches and that carries the managed identity tags (`nb_type`/`nb_id`) can either be adopted or reported as a conflict.
+
+Adoption requires `attach_objtag=True`: without those identity tags on the Zabbix host, adoption cannot safely prove the host belongs to this NetBox object.
 
 Adoption makes NetBox authoritative over that host immediately: its interfaces, templates, macros, tags and inventory are overwritten on the next sync. While disabled (the default), the sync fails with an actionable message naming the host and the setting, and nothing in Zabbix is changed.
 
