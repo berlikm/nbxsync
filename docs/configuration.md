@@ -95,13 +95,20 @@ The plugin is configuration to do exactly what you want, by means of the plugin 
 
 The `inheritance_chain` setting defines which NetBox objects are traversed when resolving Zabbix assignments. Assignments (templates, tags, hostgroups, macros, proxy/server, interfaces, inventory, configuration groups) made on any object in the chain are inherited by the device or VM being synced, with direct assignments taking priority. Within inherited sources, **first path wins** (leaf-first order as listed).
 
+### VirtualMachine and `device`-prefixed paths
+
+Paths that start with `device` (for example `['device']`, `['device', 'role']`, `['device', 'device_type', 'manufacturer']`, `['device', 'site']`) describe the **associated physical device**.
+
+- **Virtual Device Contexts** keep these paths: a VDC is part of its parent device.
+- **VirtualMachines** skip them. Since NetBox 4.3, `VirtualMachine.device` links a guest to its hosting device (hypervisor/sidecar). Walking `device…` for a VM would leak host hardware assignments (e.g. a manufacturer-level Dell iDRAC template) onto every guest. VMs still inherit via cluster / site / role / platform / tag paths that apply to the VM itself.
+
 ### Site, SiteGroup, and Region Inheritance
 
 Hierarchy paths are **appended after** device/role/platform/manufacturer/cluster paths so upgrading into Site inheritance does not silently override existing Role or Platform assignments. SiteGroup and Region ancestors are walked automatically when a group or region is reached (`get_descendants` / parent chain).
 
 | Path | Description |
 |------|-------------|
-| `['device', 'site']` | The device's site (also VDC → device → site) |
+| `['device', 'site']` | The device's site (also VDC → device → site; **not** walked for VirtualMachines — see above) |
 | `['site']` | Site (direct) |
 | `['site', 'group']` | The site's SiteGroup (parents walked) |
 | `['site', 'region']` | The site's region (parents walked) |

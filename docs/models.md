@@ -189,6 +189,8 @@ Manufacturer → Device Type    → Platform  → Role  → Virtual Device Conte
 Cluster      → VirtualMachine
 ```
 
+`device`-prefixed chain paths apply to Devices and Virtual Device Contexts. They are **not** walked for VirtualMachines when resolving the hosting device link (NetBox ≥4.3 `VirtualMachine.device`), so hypervisor manufacturer/role/hardware assignments do not leak onto guests. See [Inheritance Chain](configuration.md#inheritance-chain).
+
 However, this is [configurable](configuration.md).
 
 ## Assignment Scope
