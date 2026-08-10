@@ -150,6 +150,10 @@ TPL_NAMES = {
     # and zabbix[host,snmp,available] to avoid collision with Dell iDRAC
     # on Dell storage/Cohesity devices.
     'storage_generic_snmp': 'Storage Generic Device by SNMP',
+    # Placeholder storage templates — manufacturer-scoped (like Pure Storage).
+    'dell_storage_http': 'Dell Storage by HTTP',
+    'huawei_storage_snmp': 'Huawei Storage by SNMP',
+    'synology_storage_snmp': 'Synology NAS by SNMP',
     # Placeholder application templates — LM parity, items built post-cutover.
     'as_java_agent': 'AS Java by Zabbix agent',
     'tableau_bridge_agent': 'Tableau Bridge by Zabbix agent',
@@ -976,6 +980,49 @@ def step6_template_rules(server, country_slugs=None):
     else:
         logger.warning("  Manufacturer 'Pure Storage' not found, skipping Pure Storage TemplateRule")
 
+    # Dell Storage: Manufacturer → Dell Storage by HTTP (placeholder).
+    # Scoped to role=Storage so Dell servers (role=Server, iDRAC rule) are unaffected.
+    dell_mfr = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug__iexact='dell').first()
+    tpl_dell_storage = make_template(*TPL['dell_storage_http'], req=[HostInterfaceRequirementChoices.ANY])
+    if dell_mfr is not None:
+        defaults = {
+            'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
+            'manufacturer': dell_mfr, 'zabbixtemplate': tpl_dell_storage,
+            'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
+        }
+        ensure(M.ZabbixTemplateRule, name='Dell Storage (HTTP)', defaults=defaults, update_fields=list(defaults.keys()))
+        logger.info('  Rule Dell Storage (HTTP) → %s', tpl_dell_storage.name)
+    else:
+        logger.warning("  Manufacturer 'Dell' not found, skipping Dell Storage TemplateRule")
+
+    # Huawei Storage: Manufacturer → Huawei Storage by SNMP (placeholder).
+    huawei = Manufacturer.objects.filter(name='Huawei').first() or Manufacturer.objects.filter(slug__iexact='huawei').first()
+    tpl_huawei = make_template(*TPL['huawei_storage_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+    if huawei is not None:
+        defaults = {
+            'pattern': '.*', 'role_pattern': '', 'require_tags': '',
+            'manufacturer': huawei, 'zabbixtemplate': tpl_huawei,
+            'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
+        }
+        ensure(M.ZabbixTemplateRule, name='Huawei Storage (SNMP)', defaults=defaults, update_fields=list(defaults.keys()))
+        logger.info('  Rule Huawei Storage (SNMP) → %s', tpl_huawei.name)
+    else:
+        logger.warning("  Manufacturer 'Huawei' not found, skipping Huawei Storage TemplateRule")
+
+    # Synology NAS: Manufacturer → Synology NAS by SNMP (placeholder).
+    synology = Manufacturer.objects.filter(name='Synology').first() or Manufacturer.objects.filter(slug__iexact='synology').first()
+    tpl_synology = make_template(*TPL['synology_storage_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+    if synology is not None:
+        defaults = {
+            'pattern': '.*', 'role_pattern': '', 'require_tags': '',
+            'manufacturer': synology, 'zabbixtemplate': tpl_synology,
+            'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
+        }
+        ensure(M.ZabbixTemplateRule, name='Synology NAS (SNMP)', defaults=defaults, update_fields=list(defaults.keys()))
+        logger.info('  Rule Synology NAS (SNMP) → %s', tpl_synology.name)
+    else:
+        logger.warning("  Manufacturer 'Synology' not found, skipping Synology NAS TemplateRule")
+
     # Drop leftover os_family Zabbix tags from previous checklist / script runs.
     orphan_tags = M.ZabbixTag.objects.filter(tag='os_family')
     if orphan_tags.exists():
@@ -1707,6 +1754,9 @@ def run_simulate() -> int:
             TPL['linux_snmp'] = (int(ensure_t(f'{PREFIX}linux.snmp', f'{PREFIX}Linux by SNMP')), f'{PREFIX}Linux by SNMP')
             TPL['windows_snmp'] = (int(ensure_t(f'{PREFIX}windows.snmp', f'{PREFIX}Windows by SNMP')), f'{PREFIX}Windows by SNMP')
             TPL['storage_generic_snmp'] = (int(ensure_t(f'{PREFIX}storage.snmp', f'{PREFIX}Storage Generic Device by SNMP')), f'{PREFIX}Storage Generic Device by SNMP')
+            TPL['dell_storage_http'] = (int(ensure_t(f'{PREFIX}dell.storage', f'{PREFIX}Dell Storage by HTTP')), f'{PREFIX}Dell Storage by HTTP')
+            TPL['huawei_storage_snmp'] = (int(ensure_t(f'{PREFIX}huawei.storage', f'{PREFIX}Huawei Storage by SNMP')), f'{PREFIX}Huawei Storage by SNMP')
+            TPL['synology_storage_snmp'] = (int(ensure_t(f'{PREFIX}synology.nas', f'{PREFIX}Synology NAS by SNMP')), f'{PREFIX}Synology NAS by SNMP')
             TPL['icmp_ping'] = (int(ensure_t(f'{PREFIX}icmp', f'{PREFIX}ICMP Ping')), f'{PREFIX}ICMP Ping')
 
         step6_template_rules(server, country_slugs=country_slugs)
