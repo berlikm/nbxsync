@@ -728,6 +728,22 @@ def step5b_configgroup_assignments(snmp_group, agent_group, server_oob_group, oo
             assigned_object_id=vm.id,
             defaults={},
         )
+
+    # Prune SNMP Monitoring CG from roles no longer in SNMP_ROLES (e.g. Storage
+    # removed because Pure arrays use HTTP, not SNMP).
+    snmp_role_slugs = set()
+    for name in SNMP_ROLES:
+        role = DeviceRole.objects.filter(name__iexact=name).first()
+        if role:
+            snmp_role_slugs.add(role.id)
+    # Also keep Server (Server Agent+OOB has its own SNMP interface, not SNMP CG)
+    leftover_snmp = M.ZabbixConfigurationGroupAssignment.objects.filter(
+        zabbixconfigurationgroup=snmp_group,
+        assigned_object_type=ct(DeviceRole),
+    ).exclude(assigned_object_id__in=snmp_role_slugs)
+    if leftover_snmp.exists():
+        deleted, _ = leftover_snmp.delete()
+        logger.info('  PRUNED: %s SNMP Monitoring CG assignment(s) from roles no longer in SNMP_ROLES', deleted)
     if cohesity_vms:
         logger.info('  %s Cohesity VM(s) → SNMP Monitoring (direct override, have primary_ip4)', len(cohesity_vms))
 
