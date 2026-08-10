@@ -157,10 +157,17 @@ class ZabbixSyncBase:
         self.update_in_zabbix(object_id=object_id)
 
     def update_in_zabbix(self, **kwargs):
-        # print('Update params:')
-        # print(self.get_update_params(object_id=kwargs.get('object_id', None)))
-        result = self.api_object().update(**self.get_update_params(object_id=kwargs.get('object_id', None)))
-        # print(result)
+        params = self.get_update_params(object_id=kwargs.get('object_id', None))
+        try:
+            self.api_object().update(**params)
+        except Exception as err:
+            # Zabbix 7.0 hostgroup.update (and similar) rejects no-op updates
+            # where the name is unchanged with -32602 "already exists". The
+            # object is already in the desired state — treat as success.
+            if self._is_duplicate_error(err):
+                logger.debug(f'{self.__class__.__name__} update was a no-op (already desired state)')
+                return
+            raise
         logger.debug(f'Updated {self.__class__.__name__} ID {self.get_id()}')
 
     # --- Object-specific methods to override per implementation ---
