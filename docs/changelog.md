@@ -11,10 +11,11 @@
 ### Improvements
 
 - Minimum documented NetBox version is 4.2.6 (matches `PluginConfig.min_version` and cluster `_site` scope)
+- Inherited sync status on the Zabbix tab uses a neutral indicator (distinct from a direct local assignment)
 
 ### Bug fixes
 
-- VirtualMachines no longer inherit assignments via `device`-prefixed `inheritance_chain` paths (NetBox ≥4.3 `VirtualMachine.device` hosting link). Manufacturer / role / device-type templates on the hypervisor no longer leak onto guest VMs; Virtual Device Contexts still walk those paths
+- VirtualMachines no longer inherit assignments via `device`-prefixed `inheritance_chain` paths (NetBox ≥4.3 `VirtualMachine.device`). Host manufacturer/role/device-type templates no longer leak onto guest VMs; Virtual Device Contexts still walk those paths
 
 ## [1.0.0] - Initial Release
 
