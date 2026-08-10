@@ -16,6 +16,8 @@ Operator guide for wiring NetBox → nbxSync → Zabbix so new devices and VMs b
 | Onboarding one new switch / role / platform | **Day-2** (§15) |
 | Debugging a wrong or missing host | **Troubleshooting ladder** (§15.4) then compare to **What good looks like** (§13) |
 | Tuning Extreme ports / thresholds | **§11** + `zabbix/01-extreme-switching.md` / `zabbix/port-identity.md` |
+| Wondering why something LogicMonitor watched is not here | **§17** (scope boundary + open items) |
+| Bulk-applying the build instead of clicking | **Appendix A** (optional scripts) |
 
 Fill in production URLs, tokens, and secrets when you apply this in the real environment. Grey cells / *(italic)* values are placeholders.
 
@@ -72,7 +74,11 @@ In NetBox (not the Zabbix menu):
 - [ ] Servers that need BMC monitoring have **`oob_ip`** set
 - [ ] Required templates already exist in Zabbix (import missing ones first)
 - [ ] **Extreme VOSS by SNMP** imported from `zabbix/templates/extreme_voss_snmp/` before enabling that Template Rule (stock Zabbix has EXOS only)
+- [ ] **Extreme IQ Engine by SNMP** imported from `zabbix/templates/extreme_iq_engine_snmp/` (also not stock)
 - [ ] SNMP / VMware / Pure / MSSQL secrets available (see §5 and §11.4)
+
+Everything below is written as GUI clicks — that is the documented design and the operator source of truth. Optional helper scripts can bulk-apply the same policy; see **Appendix A**.
+
 ---
 
 
@@ -236,7 +242,7 @@ SAP SNMPv3 profile. Transport-only until Robert confirms auth/priv and whether S
 
 | Case | How |
 |---|---|
-| `hu-deb-san01` (`LogicMonitor` SHA/AES) | Per-device `ZabbixHostInterface` on that Device (do not change fleet CGs) |
+| `hu-deb-san01` (`LogicMonitor` SHA/AES) | Per-device `ZabbixHostInterface` on that Device (do not change fleet CGs) — **blocked: the device is not in NetBox yet** (§17) |
 
 ---
 
@@ -393,11 +399,11 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 | MSSQL by Zabbix agent 2 | Device Role MSSQL Query Server | |
 | VMware FQDN | Device Role vCenter | `{$VMWARE.URL}` / `{$VMWARE.USER}` / `{$VMWARE.PASSWORD}` via §11.4 |
 | Pure Storage FlashArray v1 by HTTP | Manufacturer TemplateRule (Pure Storage) | Pure arrays have role=Storage, not Pure Storage; manufacturer rule catches them; `{$PURESTORAGE.TOKEN}` via §11.4 |
-| Dell Storage by HTTP | Device Role Storage | When template imported; replaces Storage Generic on Storage |
+| Dell Storage by HTTP | **Manufacturer TemplateRule (Dell ∧ role Storage)** — §6.3 | Not a role assignment; keeps Dell servers (role Server → iDRAC) unaffected |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if platform does not match a rule |
 | Network Generic Device by SNMP | Device Role Network Device | Fallback when platform does not match a §6 rule |
-| Storage Generic Device by SNMP | Device Role Cohesity | Keep until a Cohesity-specific template exists |
+| Storage Generic Device by SNMP | Device Role Cohesity **and** Device Role Storage | Requires SNMP; role Storage is Agent-only by default, so it is silently dropped there — harmless floor until a Cohesity-specific template exists |
 | FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule adds the same template when platform matches |
 | **Tableau Bridge by Zabbix agent** | Device Role Tableau | Placeholder — LM parity, items built post-cutover |
 | **CellMap by Zabbix agent** | Device Role CellMap | Placeholder — LM parity (WinProcessStats_cellmap) |
@@ -405,9 +411,11 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 | **Acronis by Zabbix agent** | Device Role Acronis Management | Placeholder — LM parity |
 | **SCCM by Zabbix agent** | Device Role SCCM | Placeholder — LM parity |
 | **Print Spool by Zabbix agent** | Device Role Print Server | Placeholder — LM parity (print spool monitoring for ME) |
-| **Oracle by Zabbix agent 2** | Device Role Database (if exists) | Placeholder — Oracle by ODBC equivalent |
+| **Oracle by Zabbix agent 2** | Device Role Database (if exists) | Placeholder — Oracle by ODBC equivalent; host names and role still unknown (§17) |
 
 Do **not** assign Network Generic to Switch Core / Dist / Access / Mgmt / Hybrid or Access Point. Dell iDRAC is **not** in this table — use §6.3.
+
+**AS Java by Zabbix agent** is intentionally unassigned: only two hosts (`ch-sta-*-as01/02`) carry it and they share role `Server`, so a role assignment would over-apply. Link it per device.
 
 ### 7.1 Extreme capability templates (stage / post-cutover)
 
@@ -416,7 +424,7 @@ These **merge** with the platform template from §6.1. Assign on the **role**, n
 | Template | Assigned to | When |
 |---|---|---|
 | Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt / Hybrid (or globally on template) | Stage 4 — after stock LLD is stable. Uses own macros `{$PORTID.LLD.*}`, not `{$NET.IF.*}` |
-| Extreme Routing by SNMP | Switch Core, Switch Dist | Post-cutover — after `ospfNbrTable` canary |
+| Extreme Routing by SNMP | Switch Core, Switch Dist | Post-cutover — after `ospfNbrTable` canary. Always assigned by hand, never in bulk |
 
 Do **not** put Speed Expect / Routing on the platform Template Rule — role is the capability axis.
 
@@ -520,6 +528,8 @@ Renders against the device or VM at sync. Preview on a Site Group may show an er
 
 Plugin setting `exclude_tag` must be set to `do_not_monitor` (section 12).
 
+**VDI** and **Sd Wan Socket** are excluded here but *are* monitored in LogicMonitor (Horizon View / Cato API). Both are open items — see §17.
+
 **What happens when a device/VM has the `do_not_monitor` tag:**
 
 | Stage | Effect |
@@ -589,7 +599,7 @@ Speed Expect uses its own filter namespace (`{$PORTID.LLD.*}`) — do **not** re
 
 | Macro | Destination | Notes |
 |---|---|---|
-| `{$IF.UTIL.MAX}` | `101` | Stock util% off until stage 6; then raise via **context** macros (e.g. `{$IF.UTIL.MAX:"USW"}`) |
+| `{$IF.UTIL.MAX}` | `101` | Stock util% off until stage 6; then raise via **context** macros (e.g. `{$IF.UTIL.MAX:"USW"}`). **Overridden on Switch Core/Dist by the role macros in §11.3** |
 | `{$TEMP_WARN}` | **90** | EXOS G2+ / VOSS chassis — **not** stock 55 |
 | `{$TEMP_CRIT}` | **100** | **Not** stock 65 (fires while Extreme still says Normal) |
 | `{$TEMP_CRIT_LOW}` | `-273` | Silence 0 °C stack/VM false positive |
@@ -643,6 +653,10 @@ Remove the overlay and re-apply **destination** as soon as first-light noise is 
 | `{$MEM.UTIL.CRIT}` | 85 | VDI |
 | `{$MSSQL.DSN}` | nbxsync | MSSQL |
 | `{$VMWARE.URL}` | `https://{{ object.name }}/sdk` | vCenter |
+| `{$IF.UTIL.MAX}` | 80 | Switch Core |
+| `{$IF.UTIL.MAX}` | 90 | Switch Dist |
+
+> **Conflict to resolve before stage 6.** Role macros beat the `101` global in §11.2, so Core/Dist switches get util% alerting immediately instead of “off until stage 6”. Pick one: delete the two `{$IF.UTIL.MAX}` role macros (keep `101`), or accept 80/90 on Core/Dist and drop the “off until stage 6” wording.
 
 ### 11.4 Application secrets (role-level)
 
@@ -732,7 +746,7 @@ Initial build is §§1–14. After that, operators mostly do the following.
 1. NetBox: correct **role** (Core/Dist/Access/Mgmt/Hybrid), **platform** containing `EXOS` or `VOSS`, primary IP, site under a country Site Group.
 2. On-box: port labels per `zabbix/port-identity.md` — EXOS grammar in `display-string` (max **20**; leave `description-string` empty — it wins `ifAlias` if set). VOSS grammar in port `name`.
 3. Sync: expect SNMP Monitoring + Extreme EXOS/VOSS template + role IFALIAS macros from §11.1 — **not** Network Generic; exactly one `icmpping`; hostgroup `OS/Network`.
-4. If VOSS and the host still gets Network Generic: the Template Rule is wrong or the YAML was never imported — fix §6.1 before re-syncing.
+4. If VOSS and the host still gets Network Generic: the Template Rule is wrong, the YAML was never imported, or the rule was overwritten by a later bulk-configuration run (Appendix A) — fix §6.1 before re-syncing.
 
 ### 15.1c Extreme staged enablement (ops reminder)
 
@@ -803,7 +817,43 @@ After the initial build, and after major changes, confirm coverage against §13.
 
 **Unprofiled / wrong template symptoms:** host missing in Zabbix, empty template list, or only partial stack vs §13. Use the §15.4 ladder.
 
-**If you use the optional configure helper:** it can print a coverage census (`unprofiled`, hosts without templates, SNMP roles stuck on Agent, leftover shadow macros). Treat non-zero counts as tickets: map each metric back to §15.4. The GUI checklist remains the operator source of truth; the helper is a shortcut, not a second policy.
+**If you use the optional configure helper:** it can print a coverage census (`unprofiled`, hosts without templates, SNMP roles stuck on Agent, leftover shadow macros). Treat non-zero counts as tickets: map each metric back to §15.4. The GUI checklist remains the operator source of truth; the helper is a shortcut, not a second policy. See **Appendix A**.
+
+---
+
+## 17. Scope boundary and open items
+
+Everything in §§1–16 is driven from NetBox through nbxsync. Some things LogicMonitor watches today are **not** — either because there is no NetBox object to hang them on, or because we have not decided yet. Parity source: `zabbix/logicmonitor-assessment.md`.
+
+### 17.1 Monitored in Zabbix, but never modelled in NetBox
+
+nbxsync will never create these. Build them directly in Zabbix and do not expect them in §13.
+
+| Area | Why not in NetBox | Where it lives instead |
+|---|---|---|
+| **Website checks** (JIRA, Confluence, Sensinet + 2.0, Space Server CH/HU test+prod, Libellus, Nubo Sphere, Nubo Sensor API — 11 LM checks) | A URL is not a device or VM; there is no NetBox object to inherit from | Zabbix **web scenarios**, configured by hand in Zabbix |
+| **Cato SD-WAN** (LM API account 964) | Sockets are excluded from monitoring in §9.3; the data is an account-level API, not a per-device poll | Cato portal today; a Zabbix **HTTP agent** template if we decide to pull it in |
+
+Note that **Space Server** therefore has split coverage: the host itself is a normal Zabbix host on Agent `:10060` (§5.7), but the four LM web checks against it are not represented anywhere yet.
+
+### 17.2 Open questions — decide before declaring parity
+
+| # | Item | Question to answer | Blocks |
+|---|---|---|---|
+| 1 | **`hu-deb-san01`** (Huawei storage, HU) | Device does not exist in NetBox yet. Create it — site, role Storage, manufacturer Huawei, primary IP — then add the per-device SNMP interface override from §5 | §5 one-off override; Huawei Storage rule in §6.3 has nothing to match |
+| 2 | **Horizon View / VDI** | LM monitors VDI globally with `CH-UPA-Monitor`. What does it actually collect, and at what level — Connection Broker / Session Host, or individual desktops? Zabbix has no Horizon template. Decide: build one, cover it from the broker, or accept the loss | §9.3 excludes role VDI outright; §11.3 still sets `{$MEM.UTIL.CRIT}` on VDI — one of the two is dead |
+| 3 | **CH-STA-P-ENSA01 traps** | LM has an event source `SNMP Receive - Netsight` on this host. Capture what traps it is actually sending before deciding whether to build a Zabbix SNMP trapper for it. Same host is also the only **SNMPv2c** device in LM — the §5 CG model is v3-only | No trap handling anywhere in this checklist; no v2c profile in §5 |
+| 4 | **Cato** | What do we want from Cato in Zabbix — socket up/down, tunnel health, nothing? See 17.1: whatever we choose is not NetBox-driven | §9.3 `do_not_monitor` on Sd Wan Socket is currently an unexplained exclusion |
+| 5 | **Oracle JDBC** | LM uses account `C##logicmonitor`. **Which host(s)?** Find the server name(s) and whether a NetBox role exists for them — §7 assigns Oracle to role *Database (if exists)*, which silently skips when the role is missing | §7 Oracle row; assessment names `Oracle by ODBC`, §7 names `Oracle by Zabbix agent 2` — pick one |
+
+### 17.3 Also not covered here
+
+| Area | Owner |
+|---|---|
+| Media types, actions, escalation (cutover blocker #6) | Zabbix side — §14 |
+| Monitor-the-monitoring: unsupported items, proxy last-seen (cutover blocker #7) | Zabbix side — not yet designed |
+| SAP custom datasources / DNUS scripts | Robert, post-cutover |
+| Configuration backup | cfgit, not Zabbix |
 
 ---
 
@@ -815,3 +865,29 @@ After the initial build, and after major changes, confirm coverage against §13.
 **Tags** → `snmp` / `snmp-sap` opt-in transport, or overlays (`critical`, `do_not_monitor`).
 
 Apply via the GUI (this checklist) — same policy with or without helper scripts.
+
+---
+
+## Appendix A — Optional onboarding scripts
+
+Not required. Everything above is clickable in the GUI, and the GUI stays the source of truth. These scripts only save keystrokes on a first build or a large re-apply; they are idempotent and write the same objects this checklist describes. If a script and this document disagree, **this document wins** — fix the script.
+
+| Script | Applies | Run |
+|---|---|---|
+| `scripts/configure_nbxsync_zerotouch.py` | §§0–12 except the Extreme specifics | first |
+| `scripts/configure_nbxsync_network.py` | Extreme YAML import, Extreme rows of §6.1, §7.1, §11.1, §11.2 | **after** zerotouch |
+
+**Run order matters.** zerotouch fills the **Extreme VOSS** and **Extreme IQ Engine** Template Rules with *Network Generic* as a placeholder; the network script imports the YAML and retargets them. Running zerotouch on its own — or again afterwards — leaves those two rules on Network Generic, which §11.2 forbids on Switch*. Always finish with the network script, then spot-check §6.1 in the GUI.
+
+**Credentials come from the environment,** never from the repo:
+
+| Purpose | Variables |
+|---|---|
+| Zabbix API | `NBX_ZABBIX_URL`, `NBX_ZABBIX_TOKEN` |
+| SNMPv3 (§5) | `NBX_SNMP_AUTHPASS_MON` / `_LINUX` / `_DELL` / `_SAP` and the matching `NBX_SNMP_PRIVPASS_*` |
+| App secrets (§11.4) | `NBX_VMWARE_USER`, `NBX_VMWARE_PASS`, `NBX_PURE_TOKEN`, `NBX_MSSQL_USER`, `NBX_MSSQL_PASS` |
+
+An unset secret variable skips that macro with a warning; the template then shows “no data” — same symptom as forgetting it in the GUI.
+
+**Useful flags:** `--verify` (read-only coverage census, §16), `--mutate-netbox` (off by default; allows NetBox inventory edits), `--link-speed-expect` (stage 4, §7.1), `--cutover-silence` (temporary LM-migration macro overlay, §11.2).
+
