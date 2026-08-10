@@ -401,14 +401,21 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 |---|---|---|
 | MSSQL by Zabbix agent 2 | Device Role MSSQL | Prefer Agent 2 + MSSQL plugin; fallback name `MSSQL by ODBC` |
 | MSSQL by Zabbix agent 2 | Device Role MSSQL Query Server | |
-| VMware FQDN | Device Role vCenter | Per-vCenter `{$VMWARE.USER}` / `{$VMWARE.PASSWORD}` as needed |
-| Pure Storage FlashArray v1 by HTTP | Device Role Pure Storage | Pure stays on Agent transport; per-array token macros |
+| VMware FQDN | Device Role vCenter | `{$VMWARE.URL}` / `{$VMWARE.USER}` / `{$VMWARE.PASSWORD}` via §11.4 env vars |
+| Pure Storage FlashArray v1 by HTTP | Manufacturer TemplateRule (Pure Storage) | Pure arrays have role=Storage, not Pure Storage; manufacturer rule catches them; `{$PURESTORAGE.TOKEN}` via §11.4 env var |
 | Dell Storage by HTTP | Device Role Storage | When template imported; replaces Storage Generic on Storage |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if platform does not match a rule |
 | Network Generic Device by SNMP | Device Role Network Device | Fallback when platform does not match a §6 rule |
 | Storage Generic Device by SNMP | Device Role Cohesity | Keep until a Cohesity-specific template exists |
 | FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule adds the same template when platform matches |
+| **Tableau Bridge by Zabbix agent** | Device Role Tableau | Placeholder — LM parity, items built post-cutover |
+| **CellMap by Zabbix agent** | Device Role CellMap | Placeholder — LM parity (WinProcessStats_cellmap) |
+| **SAP by Zabbix agent** | Device Role SAP ME | Placeholder — DNUS scripts integrated by Robert post-cutover |
+| **Acronis by Zabbix agent** | Device Role Acronis Management | Placeholder — LM parity |
+| **SCCM by Zabbix agent** | Device Role SCCM | Placeholder — LM parity |
+| **Print Spool by Zabbix agent** | Device Role Print Server | Placeholder — LM parity (print spool monitoring for ME) |
+| **Oracle by Zabbix agent 2** | Device Role Database (if exists) | Placeholder — Oracle by ODBC equivalent |
 
 Do **not** assign Network Generic to Switch Core / Dist / Access / Mgmt / Hybrid or Access Point. Dell iDRAC is **not** in this table — use §6.3.
 
@@ -555,7 +562,7 @@ Fields such as `os` and `os_full` are filled by Zabbix templates when inventory 
 
 Path: **Zabbix → Macros → Add** (definition on Zabbix Server, then Macro Assignment on the role / or assign from the Role Zabbix tab)
 
-**Why on the role:** thresholds and Extreme port filters are class-wide policy. Secrets stay as Zabbix global macros (or Host Interface push for SNMPv3) so they are not copied into NetBox.
+**Why on the role:** thresholds and Extreme port filters are class-wide policy. Application secrets (VMware, Pure Storage, MSSQL) are managed by the zerotouch script via env vars — see §11.4.
 
 ### 11.1 Extreme switch port-scoping (required for EXOS/VOSS)
 
@@ -636,13 +643,21 @@ Remove the overlay and re-apply **destination** as soon as first-light noise is 
 | `{$MSSQL.DSN}` | nbxsync | MSSQL |
 | `{$VMWARE.URL}` | `https://{{ object.name }}/sdk` | vCenter |
 
-Define application secrets once as **global** macros in Zabbix:
+### 11.4 Application secrets (role-level, managed by zerotouch)
 
-- `{$MSSQL.USER}`, `{$MSSQL.PASSWORD}`
-- `{$VMWARE.USER}`, `{$VMWARE.PASSWORD}`
-- `{$PURESTORAGE.TOKEN}`
+Secrets are **no longer Zabbix global macros**. The zerotouch script creates them as **role-level ZabbixMacro** with type `SECRET` and values from **environment variables**. During sync, `hostsync` resolves the inheritance chain and pushes them as secret host macros — no manual Zabbix Admin setup needed.
 
-SNMPv3 auth/priv passphrases are **not** global macros: they live on the SNMP Host Interface (§5) and are pushed as secret **host** macros when SNMP push community is True.
+| Macro | Env var | Role | Type | Notes |
+|---|---|---|---|---|
+| `{$VMWARE.USER}` | `NBX_VMWARE_USER` | vCenter | Secret | Same user on all vCenters |
+| `{$VMWARE.PASSWORD}` | `NBX_VMWARE_PASS` | vCenter | Secret | Same password on all vCenters |
+| `{$PURESTORAGE.TOKEN}` | `NBX_PURE_TOKEN` | Pure Storage | Secret | One API token for all arrays (generate on each array) |
+| `{$MSSQL.USER}` | `NBX_MSSQL_USER` | MSSQL | Secret | |
+| `{$MSSQL.PASSWORD}` | `NBX_MSSQL_PASS` | MSSQL | Secret | |
+
+If an env var is not set, the macro is skipped with a warning. The template will show "no data" until the credential is provided.
+
+SNMPv3 auth/priv passphrases are **not** global or role macros: they live on the SNMP Host Interface (§5) and are pushed as secret **host** macros when SNMP push community is True.
 
 ---
 
