@@ -44,7 +44,7 @@ Assigns a template to a NetBox object (device, VM, etc.).
 | Field                  | Type         | Description                           |
 |------------------------|--------------|---------------------------------------|
 | `zabbixtemplate`       | ForeignKey   | Linked Zabbix template                |
-| `assigned_object`      | Generic FK   | Device, VM, Interface, etc.           |
+| `assigned_object`      | Generic FK   | Device, VM, Site, etc. (see Assignment Scope) |
 
 Templates can be inherited based on device/site hierarchy.
 
@@ -82,7 +82,7 @@ Defines a user macro at the Zabbix Server or Zabbix Template level. These macros
 
 ### `ZabbixMacroAssignment`
 
-Assigns a user macro to a specific NetBox object within the inheritance chain (Device, VDC, VM, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, or ClusterType).
+Assigns a user macro to a specific NetBox object within the inheritance chain (Device, VDC, VM, Site, SiteGroup, Region, Manufacturer, DeviceRole, DeviceType, Platform, Cluster, or ClusterType).
 Macros assigned here override template-level macros of the same name on the resulting Zabbix host.
 
 | Field             | Description                                                                |
@@ -106,7 +106,7 @@ Includes rich SNMP and TLS configuration fields.
 | `port`           | Connection port                            |
 | `tls_*`          | TLS credentials if applicable              |
 | `snmp_*`         | SNMPv3 credentials                         |
-| `assigned_object`| Mapped to NetBox interface or device       |
+| `assigned_object`| Device, VDC, VirtualMachine, or ZabbixConfigurationGroup |
 
 ## Sync & Assignment Models
 
@@ -197,22 +197,29 @@ Please note that on the `ZabbixHostInterface`, no IP address needs to be entered
 
 ### `ZabbixConfigurationGroupAssignment`
 
-Links a NetBox object to a `ZabbixConfigurationGroup`. Besides Devices, Virtual Device Contexts and VirtualMachines, the group can be assigned on Site, SiteGroup, Region, Manufacturer, Role, DeviceType, Platform, Cluster or ClusterType so members inherit the group through the inheritance chain. An object can only be assigned to a single `ZabbixConfigurationGroup`.
+Links a NetBox object to a `ZabbixConfigurationGroup`. Besides Devices, Virtual Device Contexts and VirtualMachines, the group can be assigned on Site, SiteGroup, Region, Manufacturer, Role, DeviceType, Platform, Cluster or ClusterType so members inherit the group through the inheritance chain. The same object can only be assigned once to the same Configuration Group.
 
 ---
 
-## 🧬 Inheritance Logic
+## Inheritance Logic
 
 Templates, macros, and hostgroups can be inherited across these chains, by default:
 
 ```plaintext
-Manufacturer → Device Type → Platform → Role → Device
-Manufacturer → Device Type → Platform → Role → Virtual Device Context
-Cluster      → VirtualMachine
-(+ Site / SiteGroup / Region via inheritance_chain; see configuration.md)
+Device / Virtual Device Context
+ ├─ Role (and Role parent)
+ ├─ DeviceType → Manufacturer
+ ├─ Platform → Manufacturer
+ └─ Site → SiteGroup / Region
+
+VirtualMachine
+ ├─ Role
+ ├─ Platform → Manufacturer
+ ├─ Cluster → ClusterType
+ └─ Site / cluster._site → SiteGroup / Region
 ```
 
-However, this is [configurable](configuration.md).
+The full path list is [configurable](configuration.md#inheritance-chain).
 
 ## Assignment Scope
 
