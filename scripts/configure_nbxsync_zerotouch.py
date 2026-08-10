@@ -1077,6 +1077,7 @@ def step7_template_assignments(server):
         (make_template(*TPL['sap_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SAP ME'),
         (make_template(*TPL['acronis_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'Acronis Management'),
         (make_template(*TPL['sccm_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SCCM'),
+        (make_template(*TPL['print_spool_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'Print Server'),
     ]
     for template, role_name in assignments:
         try:
