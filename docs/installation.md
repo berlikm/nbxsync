@@ -117,6 +117,7 @@ PLUGINS_CONFIG = {
         'objtag_id': 'nb_id',
         'custom_field_hostname':'',
         'custom_field_display_name':'',
+        'exclude_tag': '',
     }
 }
 ```

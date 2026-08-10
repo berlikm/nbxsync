@@ -12,15 +12,11 @@ For example, if a Hostgroup is given the value:
 {{ object.site.name }}
 ```
 
-and is applied to a `Device`, it will render as the device's `Site Name`. Here, object refers to the entity to which the assignment is made. This distinction is important: if a `Hostgroup` is assigned to a `DeviceType`, then the `DeviceType` becomes the object—even if the `Hostgroup` is later inherited by a `Device`.
+and is applied to a `Device`, it will render as the device's Site name.
 
-Therefore, using the following template:
+During host synchronisation, tag and hostgroup templates are always rendered against the Device, VDC or VirtualMachine being synced — even when the assignment is inherited from a Role, Platform, Site or similar. That way templates such as `{{ object.name }}` or `{{ object.site.name }}` resolve to the host, not to the inheritance source.
 
-```jinja2
-{{ object.site.name }}
-```
-
-on a `DeviceType` does not make sense, because a `DeviceType` does not have a `Site` attribute.
+In the UI preview (and when syncing a hostgroup assignment against a hierarchy object itself), `object` is the assignment target. Hierarchy targets such as DeviceRole or Site are exposed in a device-shaped form (`object.role`, `object.site`, …) so templates like `Roles/{{ object.role.name }}` work without borrowing a descendant device. Targets that cannot fill a single device-shaped value leave the template unresolved.
 
 ## Context
 
@@ -36,23 +32,23 @@ would be perfectly valid.
 
 Tags are rendered within a context that includes the following information:
 
-| Key         | Value                 | Explanation                                                                                  |
-|-------------|-----------------------|----------------------------------------------------------------------------------------------|
-| object      | assigned_object       | Refers to the assigned object; this could be a DeviceType, Device, VirtualMachine, etc. During sync, this is overridden with the actual Device/VM being synced, so that Jinja2 templates can access host-level attributes like `object.name` even when the tag is inherited from a Role or Platform. |
-| tag         | zabbixtag.tag         | Contains the Zabbix Tag value that this assignment refers to                                 |
-| value       | zabbixtag.value       | The value of the Zabbix Tag (typically the Jinja2 template)                                  |
-| name        | zabbixtag.name        | The name of the Zabbix Tag                                                                   |
-| description | zabbixtag.description | The description of the Zabbix Tag                                                            |
+| Key         | Value                 | Explanation |
+|-------------|-----------------------|-------------|
+| object      | assigned_object       | The assignment target. During host sync this is the Device/VM/VDC being synced |
+| tag         | zabbixtag.tag         | Contains the Zabbix Tag value that this assignment refers to |
+| value       | zabbixtag.value       | The value of the Zabbix Tag (typically the Jinja2 template) |
+| name        | zabbixtag.name        | The name of the Zabbix Tag |
+| description | zabbixtag.description | The description of the Zabbix Tag |
 
 ### Hostgroup
 
 Just like tags, hostgroups are rendered in a context:
 
-| Key         | Value                 | Explanation                                                                                  |
-|-------------|-----------------------|----------------------------------------------------------------------------------------------|
-| object      | assigned_object       | Refers to the assigned object; this could be a DeviceType, Device, VirtualMachine, etc. During sync, this is overridden with the actual Device/VM being synced. For UI / HostGroupSync against a DeviceRole, Site, Platform, … the target is exposed in device-shaped form (`object.role`, `object.site`, …) so templates like `Roles/{{ object.role.name }}` resolve against that role without borrowing a descendant device. Targets that cannot fill a single device-shaped value (e.g. SiteGroup + `object.role`) leave the template unresolved. |
-| value       | zabbixhostgroup.value | The value of the Zabbix Hostgroup (typically the Jinja2 template)                            |
-| name        | zabbixhostgroup.name  | The name of the Zabbix Hostgroup                                                             |
+| Key         | Value                 | Explanation |
+|-------------|-----------------------|-------------|
+| object      | assigned_object       | The assignment target. During host sync this is the Device/VM/VDC being synced |
+| value       | zabbixhostgroup.value | The value of the Zabbix Hostgroup (typically the Jinja2 template) |
+| name        | zabbixhostgroup.name  | The name of the Zabbix Hostgroup |
 
 ### Host Inventory
 
