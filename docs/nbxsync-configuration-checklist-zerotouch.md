@@ -13,7 +13,6 @@ Operator guide for wiring NetBox → nbxSync → Zabbix so new devices and VMs b
 | If you are… | Read |
 |---|---|
 | Building the estate the first time | **Before you start** → **Initial build** §§1–12 in order → **What good looks like** → **Verification** |
-| Using the helper scripts | **Scripts** below, then skim §§1–12 so you know what the script created |
 | Onboarding one new switch / role / platform | **Day-2** (§15) |
 | Debugging a wrong or missing host | **Troubleshooting ladder** (§15.4) then compare to **What good looks like** (§13) |
 | Tuning Extreme ports / thresholds | **§11** + `zabbix/01-extreme-switching.md` / `zabbix/port-identity.md` |
@@ -73,39 +72,9 @@ In NetBox (not the Zabbix menu):
 - [ ] Servers that need BMC monitoring have **`oob_ip`** set
 - [ ] Required templates already exist in Zabbix (import missing ones first)
 - [ ] **Extreme VOSS by SNMP** imported from `zabbix/templates/extreme_voss_snmp/` before enabling that Template Rule (stock Zabbix has EXOS only)
-- [ ] SNMP / VMware / Pure / MSSQL secrets available as env vars (see §5 and §11.4) if you use the scripts
-
+- [ ] SNMP / VMware / Pure / MSSQL secrets available (see §5 and §11.4)
 ---
 
-## Scripts (optional — same policy as this checklist)
-
-You can click everything in the GUI, or apply the same rows with helpers. **Policy lives in this checklist;** the scripts implement it.
-
-| Order | Script | What it does |
-|---|---|---|
-| 1 | `scripts/configure_nbxsync_zerotouch.py` | Fleet: server, proxies, CGs + interfaces, Template Rules, hostgroups, tags, inventory, app macros |
-| 2 | `scripts/configure_nbxsync_network.py` | Extreme half: VOSS/IQ/Speed Expect imports, Switch* IFALIAS macros, EXOS LLD/TEMP patches, §11.2 globals |
-| — | `scripts/create_dashboards.py` | Country / role / OS dashboards from nested hostgroups |
-
-```bash
-# Lab dry-run (synthetic estate + asserts)
-PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
-  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_zerotouch.py --simulate
-
-PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
-  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate
-
-# Production apply (after env vars are set — see scripts/setup_zabbix.env.example)
-export NBX_ZABBIX_TOKEN=...
-python scripts/configure_nbxsync_zerotouch.py
-python scripts/configure_nbxsync_network.py --apply
-```
-
-Coverage census (read-only): `python scripts/configure_nbxsync_zerotouch.py --verify`
-
-Details and flags: `scripts/README.md`. Network stage gates: `zabbix/00-monitoring-plan.md` and `zabbix/01-extreme-switching.md`.
-
----
 
 ## Initial build
 
@@ -203,14 +172,14 @@ Path: **Zabbix → Configuration groups → [group] → Host Interfaces → Add*
 
 Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeholders). **SNMP push community = True** so sync writes secret host macros and points the Zabbix interface at them.
 
-| Profile | CG | Security name | Auth | Priv | Script env (auth / priv) |
-|---|---|---|---|---|---|
-| Network | SNMP Monitoring, OOB SNMP Only | MONITORING | MD5 | DES | `NBX_SNMP_AUTHPASS_MON` / `NBX_SNMP_PRIVPASS_MON` (aliases: `NBX_SNMP_AUTHPASS` / `NBX_SNMP_PRIVPASS`) |
-| Linux | SNMP Monitoring (Linux) | MONITORING-LINUX | SHA1* | AES128 | `NBX_SNMP_AUTHPASS_LINUX` / `NBX_SNMP_PRIVPASS_LINUX` |
-| Dell iDRAC | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1* | AES128 | `NBX_SNMP_AUTHPASS_DELL` / `NBX_SNMP_PRIVPASS_DELL` |
-| SAP | SNMP Monitoring (SAP) | SAPUSER | *(confirm)* | *(confirm)* | `NBX_SNMP_AUTHPASS_SAP` / `NBX_SNMP_PRIVPASS_SAP` |
+| Profile | CG | Security name | Auth | Priv |
+|---|---|---|---|---|
+| Network | SNMP Monitoring, OOB SNMP Only | MONITORING | MD5 | DES |
+| Linux | SNMP Monitoring (Linux) | MONITORING-LINUX | SHA1* | AES128 |
+| Dell iDRAC | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1* | AES128 |
+| SAP | SNMP Monitoring (SAP) | SAPUSER | *(confirm)* | *(confirm)* |
 
-\*LM export says “SHA”; Zabbix offers SHA1 and SHA256 — default in the configure script is **SHA1** until confirmed.
+\*LM export says "SHA"; Zabbix offers SHA1 and SHA256 — use **SHA1** until confirmed.
 
 Common SNMP fields for all SNMP profiles: version **3**, bulk **True**, max repetitions **10**, security level **authPriv**, push community **True**, port **161**.
 
@@ -237,7 +206,7 @@ Common SNMP fields for all SNMP profiles: version **3**, bulk **True**, max repe
 | Interface | Type | Port / OOB | Credential |
 |---|---|---|---|
 | Primary | Agent | 10050, Use OOB = No | — |
-| BMC | SNMP | 161, Use OOB = **Yes** | Dell profile (`MONITORING-DELL`) |
+| BMC | SNMP | 161, Use OOB = **Yes** | Dell profile (MONITORING-DELL SHA/AES) |
 
 If `oob_ip` is empty, the SNMP interface is skipped; the agent still syncs.
 
@@ -382,7 +351,7 @@ Leave “require tags”, “role pattern”, and “manufacturer” empty unles
 | VMware ESXi | `ESXi\|VMware ESX\|vSphere` | VMware FQDN | OS/VMware | — | 100 | Yes |
 | VMware Photon | `Photon` | Linux by Zabbix agent | OS/Linux | — | 50 | Yes |
 
-**Extreme in one breath:** platform name picks EXOS vs VOSS template; **role** picks port-scoping macros (§11.1). Never put Network Generic on Switch* (duplicate `icmpping`). Import VOSS YAML before enabling the VOSS rule. Hybrid starts Access-like; flip to Core macros at stage 5. Stock EXOS LLD timing, EtherLike IFALIAS filters, and TEMP_* template macros are applied by `configure_nbxsync_network.py` — see **§11** and `zabbix/01-extreme-switching.md`. Port label grammar: `zabbix/port-identity.md`.
+**Extreme in one breath:** platform name picks EXOS vs VOSS template; **role** picks port-scoping macros (§11.1). Never put Network Generic on Switch* (duplicate `icmpping`). Import VOSS YAML before enabling the VOSS rule. Hybrid starts Access-like; flip to Core macros at stage 5. Stock EXOS LLD timing, EtherLike IFALIAS filters, and TEMP_* template macros need manual patching — see **§11** and `zabbix/01-extreme-switching.md`. Port label grammar: `zabbix/port-identity.md`.
 
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
 
@@ -422,8 +391,8 @@ Path: **Zabbix → Templates → [template] → Assigned objects → Add**
 |---|---|---|
 | MSSQL by Zabbix agent 2 | Device Role MSSQL | Prefer Agent 2 + MSSQL plugin; fallback name `MSSQL by ODBC` |
 | MSSQL by Zabbix agent 2 | Device Role MSSQL Query Server | |
-| VMware FQDN | Device Role vCenter | `{$VMWARE.URL}` / `{$VMWARE.USER}` / `{$VMWARE.PASSWORD}` via §11.4 env vars |
-| Pure Storage FlashArray v1 by HTTP | Manufacturer TemplateRule (Pure Storage) | Pure arrays have role=Storage, not Pure Storage; manufacturer rule catches them; `{$PURESTORAGE.TOKEN}` via §11.4 env var |
+| VMware FQDN | Device Role vCenter | `{$VMWARE.URL}` / `{$VMWARE.USER}` / `{$VMWARE.PASSWORD}` via §11.4 |
+| Pure Storage FlashArray v1 by HTTP | Manufacturer TemplateRule (Pure Storage) | Pure arrays have role=Storage, not Pure Storage; manufacturer rule catches them; `{$PURESTORAGE.TOKEN}` via §11.4 |
 | Dell Storage by HTTP | Device Role Storage | When template imported; replaces Storage Generic on Storage |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if platform does not match a rule |
@@ -583,10 +552,10 @@ Fields such as `os` and `os_full` are filled by Zabbix templates when inventory 
 
 Path: **Zabbix → Macros → Add** (definition on Zabbix Server, then Macro Assignment on the role / or assign from the Role Zabbix tab)
 
-**Why on the role:** thresholds and Extreme port filters are class-wide policy. Application secrets (VMware, Pure Storage, MSSQL) are managed by the zerotouch script via env vars — see §11.4.
+**Why on the role:** thresholds and Extreme port filters are class-wide policy. Application secrets (VMware, Pure Storage, MSSQL) are role-level secret macros — see §11.4.
 
 ### 11.1 Extreme switch port-scoping (required for EXOS/VOSS)
-
+**Why on the role:** thresholds and Extreme port filters are class-wide policy. Application secrets (VMware, Pure Storage, MSSQL) are role-level secret macros — see §11.4.
 Stock Extreme LLD evaluates **both** IFALIAS macros — set both on every Switch* role. `{$NET.IF.IFTYPE.MATCHES}` excludes EXOS VLAN pseudo-interfaces. Design detail: `zabbix/01-extreme-switching.md` §A.5 / §A.8.
 
 | Device Role | `{$NET.IF.IFALIAS.MATCHES}` | `{$NET.IF.IFALIAS.NOT_MATCHES}` | `{$NET.IF.IFTYPE.MATCHES}` | Meaning |
@@ -603,7 +572,7 @@ Stock Extreme LLD evaluates **both** IFALIAS macros — set both on every Switch
 
 ### 11.2 Extreme / fleet globals — destination standard
 
-These are the **production end-state** values. `configure_nbxsync_network.py` applies them by default (`--apply` / `--simulate`). Do **not** leave the estate on temporary silence macros.
+These are the **production end-state** values. Do **not** leave the estate on temporary silence macros.
 
 Speed Expect uses its own filter namespace (`{$PORTID.LLD.*}`) — do **not** reuse `{$NET.IF.*}`.
 
@@ -634,16 +603,16 @@ Speed Expect uses its own filter namespace (`{$PORTID.LLD.*}`) — do **not** re
 | Hybrid | Access-like until stage 5, then Core IFALIAS values per site |
 | Speed Expect | Stage 4 role link |
 | Routing / OSPF | Post-canary on Core/Dist |
-| SNMP credentials | `MONITORING` MD5/DES on network CG (zerotouch) |
+| SNMP credentials | `MONITORING` MD5/DES on network CG |
 | Optic power | Template JS → dBm; LLD `SupportsDDM=true`; prefer DOM status |
 
 **EXOS temperature:** `extremeCurrentTemperature` is an **internal** sensor, not closet ambient. Extreme GTAC [000088439](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000088439): Switch Engine / Summit G2 / Universal (e.g. 5720) report **~70–85 °C as Status=Normal** (Normal often **10–100**, Max **110**). Prefer vendor `extremeOverTemperatureAlarm` for hard critical. Ambient rack rating (~0–50 °C) is a different number — do not use it for this OID.
 
-**Macro precedence:** stock EXOS template macros (`55`/`65`) beat globals. Globals alone are not enough — `configure_nbxsync_network.py` must also patch template `{$TEMP_WARN}`/`{$TEMP_CRIT}`/`{$TEMP_CRIT_LOW}` (see EtherLike / TEMP_* bullets above).
+**Macro precedence:** stock EXOS template macros (`55`/`65`) beat globals. Globals alone are not enough — also patch the template `{$TEMP_WARN}`/`{$TEMP_CRIT}`/`{$TEMP_CRIT_LOW}` directly (see EtherLike / TEMP_* bullets above).
 
 #### Temporary cutover silence (optional overlay only)
 
-During LogicMonitor migration noise, operators may pass `--cutover-silence` to the network script. That overlays **only**:
+During LogicMonitor migration noise, temporarily set these macros to silence values. That overlays **only**:
 
 | Macro | Silence value |
 |---|---|
@@ -664,19 +633,19 @@ Remove the overlay and re-apply **destination** as soon as first-light noise is 
 | `{$MSSQL.DSN}` | nbxsync | MSSQL |
 | `{$VMWARE.URL}` | `https://{{ object.name }}/sdk` | vCenter |
 
-### 11.4 Application secrets (role-level, managed by zerotouch)
+### 11.4 Application secrets (role-level)
 
-Secrets are **no longer Zabbix global macros**. The zerotouch script creates them as **role-level ZabbixMacro** with type `SECRET` and values from **environment variables**. During sync, `hostsync` resolves the inheritance chain and pushes them as secret host macros — no manual Zabbix Admin setup needed.
+Create these as **role-level ZabbixMacros** with type `SECRET`. During sync, `hostsync` resolves the inheritance chain and pushes them as secret host macros to each Zabbix host.
 
-| Macro | Env var | Role | Type | Notes |
-|---|---|---|---|---|
-| `{$VMWARE.USER}` | `NBX_VMWARE_USER` | vCenter | Secret | Same user on all vCenters |
-| `{$VMWARE.PASSWORD}` | `NBX_VMWARE_PASS` | vCenter | Secret | Same password on all vCenters |
-| `{$PURESTORAGE.TOKEN}` | `NBX_PURE_TOKEN` | Pure Storage | Secret | One API token for all arrays (generate on each array) |
-| `{$MSSQL.USER}` | `NBX_MSSQL_USER` | MSSQL | Secret | |
-| `{$MSSQL.PASSWORD}` | `NBX_MSSQL_PASS` | MSSQL | Secret | |
+| Macro | Role | Type | Notes |
+|---|---|---|---|
+| `{$VMWARE.USER}` | vCenter | Secret | Same user on all vCenters |
+| `{$VMWARE.PASSWORD}` | vCenter | Secret | Same password on all vCenters |
+| `{$PURESTORAGE.TOKEN}` | Pure Storage | Secret | One API token for all arrays (generate on each array) |
+| `{$MSSQL.USER}` | MSSQL | Secret | |
+| `{$MSSQL.PASSWORD}` | MSSQL | Secret | |
 
-If an env var is not set, the macro is skipped with a warning. The template will show "no data" until the credential is provided.
+If a macro is not set, the template will show "no data" until the credential is provided.
 
 SNMPv3 auth/priv passphrases are **not** global or role macros: they live on the SNMP Host Interface (§5) and are pushed as secret **host** macros when SNMP push community is True.
 
@@ -760,7 +729,7 @@ Full stage gates live in `zabbix/01-extreme-switching.md` §A.7. Checklist hooks
 
 | Stage | Checklist action |
 |---|---|
-| 0–3 | Templates + §11.1 + §11.2 **destination** macros (optional `--cutover-silence` only during LM migration) |
+| 0–3 | Templates + §11.1 + §11.2 **destination** macros (temporary silence only during LM migration) |
 | 4 | Assign **Extreme Port Speed Expect** on Switch* roles (§7.1); confirm `{$PORTID.LLD.*}` globals |
 | 5 | Flip **Switch Hybrid** macros from Access-like → Core values (§11.1), per site |
 | Post-canary | Assign **Extreme Routing** on Core/Dist after OSPF canary (§7.1); set `{$VIST.CONTROL}=1` on VOSS fabric pairs |
@@ -834,4 +803,4 @@ After the initial build, and after major changes, confirm coverage against §13.
 **Platform (Template Rule)** → OS / Extreme / Forti template + `OS/…`.  
 **Tags** → `snmp` / `snmp-sap` opt-in transport, or overlays (`critical`, `do_not_monitor`).
 
-Apply with the GUI (this checklist) or `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py` — same policy either way.
+Apply via the GUI (this checklist) — same policy with or without helper scripts.
