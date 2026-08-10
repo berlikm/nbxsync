@@ -4,7 +4,7 @@
 
 A `ZabbixConfigurationGroup` is a reusable configuration template that lets you define a set of Zabbix assignments once and have them automatically propagated to many NetBox objects.
 
-Think of it as a "profile": you attach Zabbix servers, templates, tags, host groups, macros and host interfaces to the group itself, then assign that group to Devices, VDCs, VirtualMachines, or hierarchy objects such as Site, SiteGroup or Region. Whenever a member is added to the group, it immediately inherits all of those Zabbix configurations automatically.
+Think of it as a "profile": you attach Zabbix servers, templates, tags, host groups, macros and host interfaces to the group itself, then assign that group to Devices, VDCs, VirtualMachines, or hierarchy objects such as Site, SiteGroup, Region or Tag. Whenever a member is added to the group, it immediately inherits all of those Zabbix configurations automatically.
 
 ---
 
@@ -32,7 +32,7 @@ class ZabbixConfigurationGroupAssignment(NetBoxModel):
     assigned_object          = GenericForeignKey(...)
 ```
 
-This is the membership record: it links a group to a NetBox object in the inheritance set (Device, VDC, VM, Site, SiteGroup, Region, Manufacturer, Role, DeviceType, Platform, Cluster, ClusterType). A unique constraint prevents the same object from being added to the same group twice.
+This is the membership record: it links a group to a NetBox object in the inheritance set (Device, VDC, VM, Site, SiteGroup, Region, Manufacturer, Role, DeviceType, Platform, Cluster, ClusterType, Tag). A unique constraint prevents the same object from being added to the same group twice.
 
 The important distinction: this is **not** about Zabbix config per se — it is purely about group membership. The actual Zabbix config is stored on the group itself via the normal assignment models (see below).
 

@@ -32,8 +32,8 @@ would be perfectly valid.
 
 Tags are rendered within a context that includes the following information:
 
-| Key         | Value                 | Explanation |
-|-------------|-----------------------|-------------|
+| Key         | Value                 | Explanation                                                                                  |
+|-------------|-----------------------|----------------------------------------------------------------------------------------------|
 | object      | assigned_object       | The assignment target. During host sync this is the Device/VM/VDC being synced |
 | tag         | zabbixtag.tag         | Contains the Zabbix Tag value that this assignment refers to |
 | value       | zabbixtag.value       | The value of the Zabbix Tag (typically the Jinja2 template) |
@@ -44,9 +44,9 @@ Tags are rendered within a context that includes the following information:
 
 Just like tags, hostgroups are rendered in a context:
 
-| Key         | Value                 | Explanation |
-|-------------|-----------------------|-------------|
-| object      | assigned_object       | The assignment target. During host sync this is the Device/VM/VDC being synced |
+| Key         | Value                 | Explanation                                                                                  |
+|-------------|-----------------------|----------------------------------------------------------------------------------------------|
+| object      | assigned_object       | The assignment target (not overridden to the synced host during host sync) |
 | value       | zabbixhostgroup.value | The value of the Zabbix Hostgroup (typically the Jinja2 template) |
 | name        | zabbixhostgroup.name  | The name of the Zabbix Hostgroup |
 

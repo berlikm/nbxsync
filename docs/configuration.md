@@ -95,41 +95,50 @@ The plugin is configuration to do exactly what you want, by means of the plugin 
 
 The `inheritance_chain` setting defines which NetBox objects are traversed when resolving Zabbix assignments. Assignments (templates, tags, hostgroups, macros, proxy/server, interfaces, inventory, configuration groups) made on any object in the chain are inherited by the device or VM being synced, with direct assignments taking priority. Within inherited sources, **first path wins** (leaf-first order as listed).
 
+### VirtualMachine and `device`-prefixed paths
+
+Paths that start with `device` (for example `['device']`, `['device', 'role']`, `['device', 'device_type', 'manufacturer']`) describe the associated physical device.
+
+Virtual Device Contexts keep these paths (a VDC is part of its parent device). VirtualMachines skip them: since NetBox 4.3, `VirtualMachine.device` links a guest to its hosting device, and walking that path would leak host hardware assignments onto the guest. VMs still inherit via cluster, site, role, platform and tag paths that apply to the VM itself.
+
 ### Site, SiteGroup, and Region Inheritance
 
-Hierarchy paths are **appended after** device/role/platform/manufacturer/cluster paths so upgrading into Site inheritance does not silently override existing Role or Platform assignments. SiteGroup and Region ancestors are walked automatically when a group or region is reached (`get_descendants` / parent chain).
+Hierarchy paths are appended after device/role/platform/manufacturer/cluster paths so upgrading into Site inheritance does not silently override existing Role or Platform assignments. SiteGroup and Region ancestors are walked automatically when a group or region is reached.
 
 | Path | Description |
 |------|-------------|
-| `['device', 'site']` | The device's site (also VDC → device → site) |
+| `['device', 'site']` | The device's site (also VDC → device → site; not walked for VirtualMachines) |
 | `['site']` | Site (direct) |
 | `['site', 'group']` | The site's SiteGroup (parents walked) |
 | `['site', 'region']` | The site's region (parents walked) |
 | `['cluster', '_site']` | The cluster's scoped site for VMs (NetBox ≥4.2 `CachedScopeMixin._site`) |
 
-**Upgrade note:** if you previously customized `inheritance_chain` with Site paths prepended ahead of Role/Platform, review hosts that have both a Site-level and a Role/Platform-level assignment — effective winners may change when adopting the default order above. Prefer appending hierarchy paths.
+If you previously customized `inheritance_chain` with Site paths ahead of Role/Platform, review hosts that have both a Site-level and a Role/Platform-level assignment — effective winners may change. Prefer appending hierarchy paths.
 
 For example, assigning a `ZabbixServerAssignment` (proxy) to a `SiteGroup` means every device at every site in that SiteGroup inherits the proxy — no per-device assignment needed.
 
 ## Zabbix Template Rules
 
-`ZabbixTemplateRule` allows automatic template assignment based on the device's or VM's platform name. Each rule has a regex pattern that is matched with case-insensitive `re.search` (substring match, not `fullmatch`) against the platform name. When a rule matches, the configured Zabbix template is assigned to the host.
+`ZabbixTemplateRule` assigns a Zabbix template (and optionally a hostgroup and tag) when a Device or VM matches the rule. The platform name is matched with case-insensitive `re.search`. Rules run after direct and inherited assignments, so explicit `ZabbixTemplateAssignment` objects always take priority.
 
-Rules are resolved after all direct and inherited assignments, so explicit `ZabbixTemplateAssignment` objects always take priority.
-
-Each rule can optionally also assign a hostgroup and a tag when the pattern matches — useful for OS-family grouping (e.g. a `Windows` rule that assigns the `Windows by Zabbix agent` template, a `Windows` hostgroup, and an `os_family=Windows` tag in one rule).
+Optional hostgroup/tag assignment is useful for OS-family grouping (for example a Windows rule that assigns the agent template, a `Windows` hostgroup and an `os_family=Windows` tag). Hostgroups attached by a rule appear on the Zabbix Hostgroup page under Template rules.
 
 | Field | Description |
 |-------|-------------|
 | `name` | Human-readable name |
-| `pattern` | Regex pattern matched against platform name (`re.search`, case-insensitive) |
+| `pattern` | Regex matched against platform name (`re.search`, case-insensitive). Use `.*` when matching only on role, tags or manufacturer |
+| `role_pattern` | Optional regex against the Device/VM role name. Empty = any role |
+| `require_tags` | Optional comma-separated NetBox tag slugs (all required). Empty = any. Uses object tags, not DeviceType tags |
+| `manufacturer` | Optional Manufacturer. When set, `device_type.manufacturer` must match. Empty = any. Objects without a manufacturer (e.g. VMs) do not match. Uses `PROTECT` on delete |
 | `zabbixtemplate` | Template assigned when the rule matches |
-| `zabbixhostgroup` | Optional hostgroup assigned on match (nullable) |
-| `zabbixtag` | Optional tag assigned on match (nullable) |
-| `enabled` | Enable/disable rule without deleting it |
-| `priority` | Lower value = higher priority (rules evaluated in order) |
+| `zabbixhostgroup` | Optional hostgroup assigned on match |
+| `zabbixtag` | Optional tag assigned on match |
+| `enabled` | Enable/disable without deleting the rule |
+| `priority` | Lower value = higher priority |
 
-Patterns are validated at save time with `re.compile` (without `IGNORECASE`). Nested-quantifier shapes that invite catastrophic backtracking are rejected. Matching uses plain `re.search` with a 64-character platform-name cap — no process signals or thread timeouts. Prefer simple patterns. A rule that exceeds the input bound or has an invalid stored pattern does not match and is logged. Optional hostgroups must belong to the same Zabbix server as the template.
+All non-empty criteria are combined with AND. Patterns are validated on save; nested-quantifier shapes that invite catastrophic backtracking are rejected. Platform names are capped at 64 characters (roles at 100). Optional hostgroups must belong to the same Zabbix server as the template.
+
+Example: `pattern=.*`, `role_pattern=^Server$`, `manufacturer=Dell`, template = Dell iDRAC by SNMP — without assigning that template on every Dell Manufacturer object.
 
 ## Configuration values
 

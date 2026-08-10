@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from dcim.api.serializers import ManufacturerSerializer
 from netbox.api.serializers import NetBoxModelSerializer
 
 from nbxsync.api.serializers.zabbixhostgroup import ZabbixHostgroupSerializer
@@ -15,6 +16,7 @@ class ZabbixTemplateRuleSerializer(NetBoxModelSerializer):
     zabbixtemplate = ZabbixTemplateSerializer(nested=True)
     zabbixhostgroup = ZabbixHostgroupSerializer(nested=True, required=False, allow_null=True)
     zabbixtag = ZabbixTagSerializer(nested=True, required=False, allow_null=True)
+    manufacturer = ManufacturerSerializer(nested=True, required=False, allow_null=True)
 
     class Meta:
         model = ZabbixTemplateRule
@@ -25,6 +27,9 @@ class ZabbixTemplateRuleSerializer(NetBoxModelSerializer):
             'name',
             'description',
             'pattern',
+            'role_pattern',
+            'require_tags',
+            'manufacturer',
             'zabbixtemplate',
             'zabbixhostgroup',
             'zabbixtag',

@@ -5,12 +5,21 @@
 ### New features
 
 - Added `exclude_tag` configuration setting to exclude hosts from Zabbix sync entirely via a ZabbixTag assigned to any object in the inheritance chain (`ZabbixTag.tag` name match)
-- Added `ZabbixTemplateRule` model for regex-based template, hostgroup, and tag assignment by platform name (`re.search`, case-insensitive; nested-quantifier patterns rejected at save; 64-char platform-name cap)
+- Added `ZabbixTemplateRule` for regex-based template (and optional hostgroup/tag) assignment by platform name (`re.search`, case-insensitive)
+- Template rules support optional conjunctive criteria: `role_pattern`, `require_tags` (NetBox tag slugs) and `manufacturer` (fail-closed when set; `PROTECT` on delete)
+- Template rules that attach a hostgroup are shown on the Zabbix Hostgroup detail/list views
+- Added a REST API endpoint for `ZabbixTemplateRule` (`/api/plugins/nbxsync/zabbixtemplaterule/`)
 - Added Site/SiteGroup/Region inheritance paths (appended after role/platform so upgrades do not change Role/Platform precedence); cluster site uses `cluster._site` (NetBox ≥4.2)
+- Added NetBox Tag as an assignment target: any assignment can be pointed at a Tag; tagged Devices/VMs/VDCs inherit it at object level with automatic add/remove lifecycle (`Tag: <name>` shown as source)
 
 ### Improvements
 
 - Minimum documented NetBox version is 4.2.6 (matches `PluginConfig.min_version` and cluster `_site` scope)
+- Inherited sync status on the Zabbix tab uses a neutral indicator (distinct from a direct local assignment)
+
+### Bug fixes
+
+- VirtualMachines no longer inherit assignments via `device`-prefixed `inheritance_chain` paths (NetBox ≥4.3 `VirtualMachine.device`). Host manufacturer/role/device-type templates no longer leak onto guest VMs; Virtual Device Contexts still walk those paths
 
 ### Bug fixes
 

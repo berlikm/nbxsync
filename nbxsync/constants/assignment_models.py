@@ -10,6 +10,7 @@ ASSIGNMENT_MODELS = Q(
     | Q(app_label='dcim', model='devicerole')
     | Q(app_label='dcim', model='devicetype')
     | Q(app_label='dcim', model='platform')
+    | Q(app_label='extras', model='tag')
     | Q(app_label='virtualization', model='virtualmachine')
     | Q(app_label='virtualization', model='cluster')
     | Q(app_label='virtualization', model='clustertype')
@@ -20,3 +21,5 @@ MAINTENANCE_ASSIGNMENT_OBJECTS = Q(Q(Q(app_label='nbxsync', model='zabbixhostgro
 MAINTENANCE_ASSIGNMENT_TAGS = Q(app_label='nbxsync', model='zabbixtag')
 
 CONFIGGROUP_OBJECTS = Q(app_label='nbxsync', model='zabbixconfigurationgroup')
+
+TAG_OBJECTS = Q(app_label='extras', model='tag')
