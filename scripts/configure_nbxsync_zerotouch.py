@@ -138,6 +138,11 @@ TPL_NAMES = {
     'linux_snmp': 'Linux by SNMP',
     'windows_snmp': 'Windows by SNMP',
     'extreme_exos_snmp': 'Extreme EXOS by SNMP',
+    # Optional — resolved by name if the template exists in Zabbix (imported by
+    # configure_nbxsync_network.py or manually). When unresolved, the platform
+    # TemplateRule falls back to Network Generic (see step6_template_rules).
+    'extreme_voss_snmp': 'Extreme VOSS by SNMP',
+    'extreme_iq_engine_snmp': 'Extreme IQ Engine by SNMP',
     'network_generic_snmp': 'Network Generic Device by SNMP',
     'fortigate_snmp': 'FortiGate by SNMP',
     'vmware_fqdn': 'VMware FQDN',
@@ -883,14 +888,13 @@ def step6_template_rules(server, country_slugs=None):
     # HTTP/simple-check templates — ANY, not AGENT (ESXi often has no Zabbix agent)
     tpl_vmware = make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.ANY])
 
-    # Hostgroup-first: OS classification lives in OS/* groups, not os_family tags.
     rules = [
         ('Windows Server', r'Windows Server', tpl_windows, hg_os_windows, 50),
         ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 200),
         ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100),
         ('Extreme EXOS', r'EXOS', tpl_exos, hg_os_network, 100),
-        ('Extreme VOSS', r'VOSS', tpl_netgeneric, hg_os_network, 100),
-        ('Extreme IQ Engine', r'IQ ENGINE', tpl_netgeneric, hg_os_network, 100),
+        ('Extreme VOSS', r'VOSS', TPL.get('extreme_voss_snmp', TPL['network_generic_snmp']), hg_os_network, 100),
+        ('Extreme IQ Engine', r'IQ ENGINE', TPL.get('extreme_iq_engine_snmp', TPL['network_generic_snmp']), hg_os_network, 100),
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100),
         ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50),
         ('VMware ESXi', r'ESXi|VMware ESX|vSphere', tpl_vmware, hg_os_vmware, 100),
@@ -1289,8 +1293,8 @@ def step11_macros():
     macro_specs = [
         ('{$CPU.UTIL.CRIT}', '90', 'MSSQL'),
         ('{$CPU.UTIL.CRIT}', '80', 'Server'),
-        ('{$IF.UTIL.MAX}', '80', 'Switch Core'),
-        ('{$IF.UTIL.MAX}', '90', 'Switch Dist'),
+        # {$IF.UTIL.MAX} is 101 globally (silenced) — do NOT set per-role or it shadows the global.
+        # Enable utilisation alerts via context macros post-cutover (e.g. {$IF.UTIL.MAX:"USW"}).
         ('{$MEM.UTIL.CRIT}', '85', 'VDI'),
         ('{$MSSQL.DSN}', 'nbxsync', 'MSSQL'),
         ('{$VMWARE.URL}', 'https://{{ object.name }}/sdk', 'vCenter'),
@@ -1341,6 +1345,12 @@ def step11_macros():
             defaults={'value': macro_value, 'type': ZabbixMacroTypeChoices.TEXT, 'description': f'ztc:{role_name}'},
             update_fields=['value', 'type', 'description'],
         )
+
+    # Prune stale {$IF.UTIL.MAX} role macros that shadow the global 101.
+    ifutil_macros = M.ZabbixMacro.objects.filter(macro='{$IF.UTIL.MAX}')
+    deleted, _ = ifutil_macros.delete()
+    if deleted:
+        logger.info('  PRUNED: %s {$IF.UTIL.MAX} role macro(s) (global 101 must not be shadowed)', deleted)
 
 def ensure_storage_generic_template(server) -> None:
     """Create 'Storage Generic Device by SNMP' in Zabbix if missing.
@@ -1397,9 +1407,15 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     step0_cleanup(mutate_netbox=mutate_netbox)
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
     ensure_storage_generic_template(server)
-    required_names = {k: v for k, v in TPL_NAMES.items() if k != 'icmp_ping'}
+    required_names = {k: v for k, v in TPL_NAMES.items() if k not in ('icmp_ping', 'extreme_voss_snmp', 'extreme_iq_engine_snmp')}
     TPL = resolve_templates(server, names=required_names, required=True)
-    TPL.update(resolve_templates(server, names={'icmp_ping': TPL_NAMES['icmp_ping']}, required=False))
+    # Extrem VOSS and IQ Engine are optional — imported by configure_nbxsync_network.py.
+    # When missing, step6_template_rules falls back to Network Generic for those rules.
+    TPL.update(resolve_templates(server, names={
+        'extreme_voss_snmp': TPL_NAMES['extreme_voss_snmp'],
+        'extreme_iq_engine_snmp': TPL_NAMES['extreme_iq_engine_snmp'],
+        'icmp_ping': TPL_NAMES['icmp_ping'],
+    }, required=False))
     proxies, ch_proxy_group = step2_proxies(server)
     step3_server_assignments(server, proxies, ch_proxy_group)
     groups = step4_configgroups()
@@ -1744,6 +1760,8 @@ def run_simulate() -> int:
             TPL['linux_agent'] = (int(ensure_t(f'{PREFIX}linux.agent', f'{PREFIX}Linux by Agent')), f'{PREFIX}Linux by Agent')
             TPL['windows_agent'] = (int(ensure_t(f'{PREFIX}windows.agent', f'{PREFIX}Windows by Agent')), f'{PREFIX}Windows by Agent')
             TPL['extreme_exos_snmp'] = (int(ensure_t(f'{PREFIX}exos.snmp', f'{PREFIX}Extreme EXOS by SNMP')), f'{PREFIX}Extreme EXOS by SNMP')
+            TPL['extreme_voss_snmp'] = (int(ensure_t(f'{PREFIX}voss.snmp', f'{PREFIX}Extreme VOSS by SNMP')), f'{PREFIX}Extreme VOSS by SNMP')
+            TPL['extreme_iq_engine_snmp'] = (int(ensure_t(f'{PREFIX}iq.snmp', f'{PREFIX}Extreme IQ Engine by SNMP')), f'{PREFIX}Extreme IQ Engine by SNMP')
             TPL['network_generic_snmp'] = (int(ensure_t(f'{PREFIX}net.snmp', f'{PREFIX}Network Generic Device by SNMP')), f'{PREFIX}Network Generic Device by SNMP')
             TPL['fortigate_snmp'] = (int(ensure_t(f'{PREFIX}forti.snmp', f'{PREFIX}FortiGate by SNMP')), f'{PREFIX}FortiGate by SNMP')
             TPL['vmware_fqdn'] = (int(ensure_t(f'{PREFIX}vmware', f'{PREFIX}VMware FQDN')), f'{PREFIX}VMware FQDN')
