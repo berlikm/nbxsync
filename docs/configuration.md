@@ -119,9 +119,9 @@ For example, assigning a `ZabbixServerAssignment` (proxy) to a `SiteGroup` means
 
 ### Tag-based assignments
 
-NetBox Tags are assignment targets: hostgroup, template, tag, macro, server, inventory, configuration group and host interface assignments can be pointed at a Tag. Every Device, VDC or VirtualMachine carrying that tag then inherits the assignment. Direct assignments on the object still take priority.
+NetBox Tags are assignment targets: hostgroup, template, tag, macro, server, inventory, configuration group and host interface assignments can be pointed at a Tag. Every Device, VDC or VirtualMachine carrying that tag then inherits the assignment. Direct assignments on the object still take priority. Tag-targeted rows are collected before the `inheritance_chain` paths (first seen wins).
 
-Tagging an object adds the membership on the next sync; removing the tag removes it. The inherited source is shown as `Tag: <name>`.
+Tagging an object adds the membership on the next sync; removing the tag removes it. The inherited source is shown as `Tag: <name>`. Create Tag-targeted assignments via the API (`assigned_object_type` / `assigned_object_id`); the assignment forms expose Site hierarchy pickers but not a Tag picker.
 
 
 ## Configuration values
