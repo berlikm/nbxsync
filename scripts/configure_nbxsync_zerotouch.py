@@ -964,7 +964,7 @@ def step7_template_assignments(server):
             logger.info('  PRUNED: %s MSSQL by ODBC assignment(s) (replaced by Agent 2)', deleted)
 
     # Prune legacy Pure Storage role assignment (replaced by manufacturer-scoped TemplateRule).
-    old_pure_tpl = M.ZabbixTemplate.objects.filter(name__icontains='Pure Storage FlashArray').first()
+    old_pure_tpl = M.ZabbixTemplate.objects.filter(name=TPL['pure_storage_http'][1] if isinstance(TPL['pure_storage_http'], tuple) else 'Pure Storage FlashArray v1 by HTTP').first()
     if old_pure_tpl:
         deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
             zabbixtemplate=old_pure_tpl,
