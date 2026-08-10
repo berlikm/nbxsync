@@ -10,7 +10,7 @@
 - Added `ZabbixHostBinding`: a durable record of the Zabbix host owned by each NetBox object, so a host can still be retired after its (inherited) assignment disappears
 - Added a background sync job that enumerates Devices/VMs inheriting a Zabbix server assignment, providing zero-touch provisioning for newly created inventory
 - Added `allow_inherited_deletion` (default `False`) so inheritance-driven host deletions are reported with their impact before any Zabbix history is discarded
-- Added `use_oob_ip` on Zabbix Host Interfaces to resolve the interface IP from a device's out-of-band IP, usable on Configuration Groups for fleet-wide out-of-band monitoring
+- Added `use_oob_ip` on Zabbix Host Interfaces to resolve the interface IP from a Device's NetBox `oob_ip` (Devices and Configuration Groups only; Connect via must be IP; never falls back to primary IP)
 - Added `adopt_existing_hosts` (default `False`) so binding to a pre-existing Zabbix host is an explicit decision instead of a silent takeover
 
 ### Improvements
@@ -19,6 +19,14 @@
 - A failing host interface no longer hides the failure: per-interface and template-linkage failures are recorded on the assignment and reported as an aggregated job error
 - Background host reconciliation collects host primary keys with queryset iterators instead of materialising full Device/VM lists
 - Minimum documented NetBox version is 4.2.6 (matches `PluginConfig.min_version` and cluster `_site` scope)
+
+### Bug fixes
+
+- Fixed unresolvable `use_oob_ip` interfaces so existing Zabbix interfaces are retained when `allow_inherited_deletion` is disabled, including rows that still carry an `interfaceid`
+- Fixed template interface gating so retained OOB interfaces still satisfy SNMP (and other) template requirements instead of silently clearing those templates
+- Fixed host-interface matching to use type, port, connect mode, and main/non-main role so in-band and OOB interfaces of the same Zabbix type no longer collide
+- Fixed duplicate remote host interfaces that shared the full match tuple to converge on one canonical interface instead of creating another copy each sync
+- Fixed OOB/primary endpoint resolution to refetch `IPAddress` by id so a stale in-memory address string cannot break interface sync
 
 ## [1.0.0] - Initial Release
 

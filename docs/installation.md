@@ -117,9 +117,14 @@ PLUGINS_CONFIG = {
         'objtag_id': 'nb_id',
         'custom_field_hostname': '',
         'custom_field_display_name': '',
+        'exclude_tag': '',
+        'allow_inherited_deletion': False,
+        'adopt_existing_hosts': False,
     }
 }
 ```
+
+See [Configuration](configuration.md) for the meaning of each setting.
 
 #### Run migrations
 

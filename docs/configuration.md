@@ -126,6 +126,7 @@ Each rule can optionally also assign a hostgroup and a tag when the pattern matc
 | Field | Description |
 |-------|-------------|
 | `name` | Human-readable name |
+| `description` | Optional description |
 | `pattern` | Regex pattern matched against platform name (`re.search`, case-insensitive) |
 | `zabbixtemplate` | Template assigned when the rule matches |
 | `zabbixhostgroup` | Optional hostgroup assigned on match (nullable) |
@@ -293,9 +294,17 @@ Review those log lines after introducing an exclusion tag or restructuring the s
 
 Defaults to `False`.
 
+### use_oob_ip
+
+`use_oob_ip` is a field on `ZabbixHostInterface`, not a `PLUGINS_CONFIG` key. When enabled, the interface IP is taken from the Device's NetBox `oob_ip` at sync time. A static `ip` on the interface still wins if set. There is no primary-IP fallback.
+
+Allowed on Devices and Configuration Groups only; rejected on Virtual Machines and Virtual Device Contexts. Connect via must be IP. On a Configuration Group, sync-time expansion leaves `ip` empty so each member Device resolves its own `oob_ip`.
+
+If a Device has no `oob_ip`, the interface is skipped for that sync. Existing Zabbix interfaces are retained while `allow_inherited_deletion` is disabled, and their type still counts for template requirements. See [Out-of-band interfaces](models.md#out-of-band-interfaces).
+
 ### adopt_existing_hosts
 
-Controls whether nbxsync may bind to a Zabbix host it did not create. During sync, a host whose technical name matches and that carries the managed identity tags (`nb_type`/`nb_id`, see [Object tagging](#object-tagging)) can either be adopted or reported as a conflict.
+Controls whether nbxsync may bind to a Zabbix host it did not create. During sync, a host whose technical name matches and that carries the managed identity tags (`nb_type`/`nb_id`, see [attach_objtag](#attach_objtag)) can either be adopted or reported as a conflict.
 
 Adoption makes NetBox authoritative over that host immediately: its interfaces, templates, macros, tags and inventory are overwritten on the next sync. While disabled (the default), the sync fails with an actionable message naming the host and the setting, and nothing in Zabbix is changed.
 
