@@ -89,16 +89,22 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 
 ## Lab proof (Track A + Track B wiring)
 
+Policy source: `docs/nbxsync-configuration-checklist-zerotouch.md`. Apply fleet first, then Extreme:
+
 ```bash
-# Full NetBox → nbxsync → Zabbix (aligned with configure_nbxsync_zerotouch.py)
+# 1) Fleet (CGs, TemplateRules, hostgroups, …)
+PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
+  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_zerotouch.py --simulate
+
+# 2) Extreme half (IFALIAS, VOSS import, EXOS LLD/TEMP patches)
 PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
   /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate
 
-# Zabbix-only smoke
+# Zabbix-only smoke (no NetBox graph)
 python3 scripts/run_network_zabbix_sim.py --with-speed-expect
 ```
 
-Reports: `/opt/cursor/artifacts/NETWORK_NBXSYNC_SIM_REPORT.md` (26/26: VOSS≠Network Generic, Core `^X(-|$)` exclude, Access opt-in, SyncHostJob, single icmpping).
+Reports: `/opt/cursor/artifacts/ZEROTOUCH_*` and `NETWORK_NBXSYNC_SIM_REPORT.md`.
 
 ## Out of scope until listed
 

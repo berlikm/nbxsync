@@ -1,88 +1,115 @@
-# nbxSync Configuration Checklist
+# nbxSync configuration checklist
 
-Step-by-step configuration in NetBox. Execute in order for the initial build. Day-2 procedures are in §15; verification in §16.
+Operator guide for wiring NetBox → nbxSync → Zabbix so new devices and VMs become monitored hosts without per-host hand work.
 
-This checklist is for **GUI operators**. Fill in production URLs, tokens, and secrets when you apply it in the target environment.
+**Last verified:** 2026-08-06 (lab: NetBox 4.x / Zabbix 7.0.x). Update this stamp after a production re-check.
 
-**Last verified:** 2026-08-06 against NetBox 4.x / Zabbix 7.0.x (lab) — multi-credential SNMPv3 + Extreme EXOS/VOSS; §11.2 destination macros are the default. Update this stamp when you re-validate against production.
-
-**Canonical copy:** keep one authoritative home (this repo file or Confluence). If both exist, the other must be a pointer only — do not maintain two full copies by hand.
-
-**Extreme switching deep dive:** port grammar and LLD design live in `zabbix/port-identity.md` and `zabbix/01-extreme-switching.md`. This checklist only records the NetBox/nbxsync rows operators must create.
+**One home for this doc.** If Confluence also has a copy, that page must be a pointer here — do not maintain two full versions.
 
 ---
 
-## Design (why it is built this way)
+## How to use this document
 
-Monitoring membership and transport should follow **facts already in NetBox** (site, role, platform, manufacturer, a few tags). Operators encode business knowledge once; new devices onboard without new hand-maintained rows.
+| If you are… | Read |
+|---|---|
+| Building the estate the first time | **Before you start** → **Initial build** §§1–12 in order → **What good looks like** → **Verification** |
+| Using the helper scripts | **Scripts** below, then skim §§1–12 so you know what the script created |
+| Onboarding one new switch / role / platform | **Day-2** (§15) |
+| Debugging a wrong or missing host | **Troubleshooting ladder** (§15.4) then compare to **What good looks like** (§13) |
+| Tuning Extreme ports / thresholds | **§11** + `zabbix/01-extreme-switching.md` / `zabbix/port-identity.md` |
 
-| Fact in NetBox | Encoded as | Effect in Zabbix |
+Fill in production URLs, tokens, and secrets when you apply this in the real environment. Grey cells / *(italic)* values are placeholders.
+
+---
+
+## The model in one page
+
+Encode policy once from facts already in NetBox. New inventory inherits it.
+
+```
+Country Site Group          →  proxy + default Agent :10050 + Sites/… + Roles/… hostgroups
+Device Role                 →  transport exceptions (SNMP / OOB / SPACE) + app templates + Extreme port macros
+Platform name (Template Rule) → OS / Extreme / Forti template + OS/… hostgroup
+NetBox tags                 →  overlays (critical, do_not_monitor) or SNMP opt-in (snmp, snmp-sap)
+```
+
+| NetBox fact | Where you configure it | Result in Zabbix |
 |---|---|---|
-| Country / site | Hostgroup template on each country Site Group | Nested full path `Sites/<country>/…/<site>` (Site Group ancestry) |
-| Function (role) | Hostgroup template on each country Site Group | `Roles/<role name>` |
-| Platform / OS | Template Rule (regex on platform name) | OS template + `OS/Linux`, `OS/Windows`, `OS/Network`, or `OS/VMware` |
-| Criticality | NetBox tag `critical` | Hostgroup `Priority/Critical` |
-| Default transport | Configuration group **Agent Monitoring** on each country Site Group | Zabbix agent :10050 on the primary IP |
-| Network SNMP | **SNMP Monitoring** on Switch*/AP/Firewall/Network Device/Virtual Appliance | SNMPv3 `MONITORING` MD5/DES |
-| Extreme platform | Template Rule: `EXOS` → Extreme EXOS, `VOSS` → Extreme VOSS | Platform template + `OS/Network` (never Network Generic on Switch*) |
-| Extreme port scope | Role macros `{$NET.IF.IFALIAS.*}` / `{$NET.IF.IFTYPE.MATCHES}` on Switch* | Core/Dist/Mgmt = all ports except `X`; Access/Hybrid = labelled opt-in |
-| Extreme thresholds | Global macros §11.2 (**destination** defaults) | Temp 90/100, optic DOM+value, MLT on; util% off until stage 6 |
-| Linux SNMP opt-in | NetBox tag `snmp` → CG **SNMP Monitoring (Linux)** + Template Rules | SNMPv3 `MONITORING-LINUX` SHA/AES + Linux/Windows by SNMP |
-| SAP SNMP opt-in | NetBox tag `snmp-sap` → CG **SNMP Monitoring (SAP)** | SNMPv3 `SAPUSER` (confirm auth/priv with Robert) |
-| Server with Dell BMC | **Server Agent+OOB** on role Server | Agent :10050 + SNMPv3 `MONITORING-DELL` SHA/AES on `oob_ip` |
-| Cohesity physical | **OOB SNMP Only** on role Cohesity | SNMPv3 `MONITORING` MD5/DES on `oob_ip` only |
-| Space Server | **Agent Monitoring (SPACE)** on role Space Server | Agent **:10060** (camLine uses 10050) |
-| Pure / Dell storage HTTP | Role template (HTTP), SiteGroup Agent transport | No SNMP CG |
-| Application / OEM extras | Template assignment on Role or Manufacturer | Extra templates merged with the OS template |
+| Country / site | Hostgroup on country Site Group | `Sites/<country>/…/<site>` |
+| Role | Hostgroup on country Site Group | `Roles/<role name>` |
+| Platform / OS | Template Rule (regex) | OS or platform template + `OS/…` |
+| Default reachability | CG **Agent Monitoring** on country Site Group | Agent :10050 |
+| Network gear | CG **SNMP Monitoring** on Switch*/AP/Firewall/… | SNMPv3 `MONITORING` MD5/DES |
+| Linux/Windows SNMP opt-in | Tag `snmp` → CG **SNMP Monitoring (Linux)** | SNMPv3 `MONITORING-LINUX` SHA/AES |
+| SAP SNMP opt-in | Tag `snmp-sap` → CG **SNMP Monitoring (SAP)** | SNMPv3 `SAPUSER` (confirm with Robert) |
+| Dell server BMC | CG **Server Agent+OOB** on role Server | Agent :10050 + `MONITORING-DELL` on `oob_ip` |
+| Cohesity physical | CG **OOB SNMP Only** on role Cohesity | `MONITORING` on `oob_ip` only |
+| Space Server | CG **Agent Monitoring (SPACE)** on role | Agent **:10060** |
+| Criticality | Tag `critical` → hostgroup | `Priority/Critical` |
 
-### Why hostgroups hang on Site Groups (including Roles)
+**Rules of thumb**
 
-Zabbix hostgroups are the primary axis for dashboards, permissions, and alert routing. Two orthogonal trees cover almost every view:
+1. **One configuration group decides transport** (how we reach the host). Hostgroups and templates can stack; transport cannot.
+2. **Different SNMPv3 users need different CGs** — never reuse the network CG for Linux, SAP, or iDRAC.
+3. **Tags may select a CG** (`snmp`, `snmp-sap`). Do **not** put a Host Interface directly on a tag — put the interface on the CG, assign the CG to the tag.
+4. **Country Site Group is the control plane** for proxy, default Agent, Sites/Roles hostgroups, environment tag, and inventory. Assign Agent Monitoring only on **country** Site Groups, not campus mid-levels.
+5. **Hierarchy paths stay after Role/Platform** in plugin inheritance so upgrades do not change who already wins.
 
-- **Location** — `Sites/…` with the full Site Group chain (country → campus → site), e.g. `Sites/CH/CH-STA/CH-STA-L42`
-- **Function** — `Roles/…` (what the host is)
+**Where things show up in the GUI**
 
-Both templates are assigned on the **country Site Group**, not on every Device Role or every Site:
-
-1. **One row per country** — a new Device Role tomorrow still gets `Roles/<name>` automatically; you do not open the checklist again.
-2. **Same inheritance path as proxy and default transport** — country Site Group is already the control plane for “everything under this country.”
-3. **Jinja renders against the device/VM at sync** — `{{ object.role.name }}` and `{{ object.site… }}` resolve on the real host, so a Site Group assignment is enough.
-
-`OS/…` is a third tree for OS-centric views. It is attached by **Template Rules** (platform match), because OS is a property of the platform, not of the country.
-
-### Why transport uses configuration groups
-
-Exactly **one** configuration group decides how the host is reached (agent vs SNMP vs OOB). Hostgroups and templates can stack freely; transport cannot.
-
-**SNMPv3 credentials are part of the interface shape** — different LogicMonitor accounts (`MONITORING`, `MONITORING-LINUX`, `MONITORING-DELL`, `SAPUSER`) need **different CGs**. Do not share one SNMP CG across network and Linux/SAP/iDRAC.
-
-**Tag `snmp` / `snmp-sap` are intentional transport selectors.** Inheritance resolves tag-targeted CG assignments *before* role/site, so tagging a host is zero-touch opt-in to Linux or SAP SNMP (and beats the SiteGroup Agent default). Other tags (`critical`, `do_not_monitor`) stay overlays only — never put a Host Interface directly on a tag.
-
-Role-level network SNMP / Server Agent+OOB / SPACE **override** the country Site Group’s Agent default. Assign Agent Monitoring on **country** Site Groups only — not on campus mid-levels.
-
-### Where to look in the GUI
-
-- Role or Manufacturer **templates** appear on the Role (or Template) page.
-- `OS/*` membership comes from Template Rules — inspect under **Zabbix → Template Rules**. A hostgroup detail page may also list those rules when that card is available.
+- Top menu **Zabbix**: Servers, Proxies, Proxy Groups, Templates, Macros, Tags, Hostgroups, Configuration groups, Maintenance, Template Rules.
+- Most assignments and host interfaces are added from a parent’s **Zabbix** tab (Site Group, Role, Device, VM, …).
+- Role templates → Role (or Template) page. `OS/*` membership → **Zabbix → Template Rules**.
 
 ---
 
-## GUI nomenclature
+## Before you start
 
-The plugin registers one top-level menu labelled **Zabbix** with: Servers, Proxies, Proxy Groups, Templates, Macros, Tags, Hostgroups, Configuration groups, Maintenance, Template Rules.
+In NetBox (not the Zabbix menu):
 
-**Add pattern:** most child objects (assignments, host interfaces, host inventory) are added from a parent object’s detail page or its **Zabbix** tab. The tab’s Add buttons open the form with the parent already selected.
+- [ ] Country Site Groups with slugs: `ch`, `hu`, `jp`, `kr`, `nl`, `us`, `cn`
+- [ ] Device Roles named exactly as in this checklist (include **Switch Hybrid**)
+- [ ] Platforms whose names match the Template Rule patterns (`EXOS` / `VOSS` in Extreme platform names)
+- [ ] Servers that need BMC monitoring have **`oob_ip`** set
+- [ ] Required templates already exist in Zabbix (import missing ones first)
+- [ ] **Extreme VOSS by SNMP** imported from `zabbix/templates/extreme_voss_snmp/` before enabling that Template Rule (stock Zabbix has EXOS only)
+- [ ] SNMP / VMware / Pure / MSSQL secrets available as env vars (see §5 and §11.4) if you use the scripts
 
-The Zabbix tab appears on: Site Group, Site, Region, Cluster, Cluster Type, Manufacturer, Device Type, Device Role, Platform, Device, Virtual Machine, Virtual Device Context.
+---
 
-**NetBox data you need before starting** (created in NetBox itself, not in the Zabbix menu):
+## Scripts (optional — same policy as this checklist)
 
-- Country Site Groups with slugs: `ch`, `hu`, `jp`, `kr`, `nl`, `us`, `cn`
-- Device Roles named exactly as listed in this checklist (include **Switch Hybrid** for core∩access Extreme boxes)
-- Platforms whose names match the Template Rule patterns (Extreme platforms must contain `EXOS` or `VOSS`)
-- For BMC monitoring: each server’s **out-of-band IP** (`oob_ip`) filled in; without it the OOB SNMP interface is skipped
-- Required Zabbix templates already present in Zabbix (import any that are missing before assigning them here)
-- **Extreme VOSS by SNMP** YAML imported from `zabbix/templates/extreme_voss_snmp/` **before** enabling the Extreme VOSS Template Rule (§6.1) — stock Zabbix has EXOS, not VOSS
+You can click everything in the GUI, or apply the same rows with helpers. **Policy lives in this checklist;** the scripts implement it.
+
+| Order | Script | What it does |
+|---|---|---|
+| 1 | `scripts/configure_nbxsync_zerotouch.py` | Fleet: server, proxies, CGs + interfaces, Template Rules, hostgroups, tags, inventory, app macros |
+| 2 | `scripts/configure_nbxsync_network.py` | Extreme half: VOSS/IQ/Speed Expect imports, Switch* IFALIAS macros, EXOS LLD/TEMP patches, §11.2 globals |
+| — | `scripts/create_dashboards.py` | Country / role / OS dashboards from nested hostgroups |
+
+```bash
+# Lab dry-run (synthetic estate + asserts)
+PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
+  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_zerotouch.py --simulate
+
+PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
+  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate
+
+# Production apply (after env vars are set — see scripts/setup_zabbix.env.example)
+export NBX_ZABBIX_TOKEN=...
+python scripts/configure_nbxsync_zerotouch.py
+python scripts/configure_nbxsync_network.py --apply
+```
+
+Coverage census (read-only): `python scripts/configure_nbxsync_zerotouch.py --verify`
+
+Details and flags: `scripts/README.md`. Network stage gates: `zabbix/00-monitoring-plan.md` and `zabbix/01-extreme-switching.md`.
+
+---
+
+## Initial build
+
+Work top to bottom. After §12, jump to §13 and §16 before declaring the estate ready.
 
 ---
 
@@ -321,7 +348,7 @@ Ensure these Zabbix templates exist (create the nbxsync Template objects pointin
 | Extreme VOSS by SNMP | **Import** `zabbix/templates/extreme_voss_snmp/` — not stock |
 | Extreme Port Speed Expect by SNMP | Import thin LLD YAML — stage 4 |
 | Extreme Routing by SNMP | Import OSPF YAML — post-cutover, Core/Dist |
-| Network Generic Device by SNMP | Network Device / IQ Engine / FortiAnalyzer only — **not** Switch* |
+| Network Generic Device by SNMP | Network Device / FortiAnalyzer fallback only — **not** Switch* or AP (those use Extreme/Forti platform templates) |
 | FortiGate by SNMP | |
 | VMware FQDN | |
 | Storage Generic Device by SNMP | Cohesity (see §7) |
@@ -355,17 +382,7 @@ Leave “require tags”, “role pattern”, and “manufacturer” empty unles
 | VMware ESXi | `ESXi\|VMware ESX\|vSphere` | VMware FQDN | OS/VMware | — | 100 | Yes |
 | VMware Photon | `Photon` | Linux by Zabbix agent | OS/Linux | — | 50 | Yes |
 
-**Extreme EXOS / VOSS (orthogonal to role):**
-
-- Platform picks the **platform template** (`Extreme EXOS by SNMP` or `Extreme VOSS by SNMP`). Role picks **port-scoping macros** (§11.1) and, later, capability templates (Speed Expect / Routing — §7.1).
-- A VOSS core and an EXOS core share the same Core IFALIAS macros — never build a Core-EXOS / Core-VOSS matrix.
-- **VOSS must not use Network Generic** — both define `icmpping` and Zabbix rejects the link. Import the custom VOSS YAML before enabling the rule (zerotouch / network helper will import + retarget a leftover Network Generic VOSS rule).
-- **Switch Hybrid** starts Access-like (opt-in labels); flip to Core macros at stage 5 (§11.1 / §15.1c).
-- On-box labels: EXOS → `display-string` (max **20** chars; leave `description-string` empty). VOSS → port `name` → `ifAlias`. Grammar: `zabbix/port-identity.md`.
-- **Stock EXOS — EtherLike duplex LLD:** stock only keeps oper-up ports (bypasses Access IFALIAS). `configure_nbxsync_network.py` (`--apply` / `--simulate`) patches `net.if.duplex.discovery` on **Extreme EXOS by SNMP** (and verifies VOSS) to add the same `{#IFALIAS}` MATCHES / NOT_MATCHES macros as `net.if.discovery`. After apply, execute duplex discovery (or wait) so lost resources drop (`lifetime` / keep-lost 0 during rollout).
-- **Stock EXOS — `net.if.discovery` rollout:** stock delay is **1h** (VOSS YAML is 15m). Script patches EXOS IF LLD to **15m / lifetime 0**. Then **Execute now** on DIST/ACCE hosts (or wait). Macro names already match stock (`{$NET.IF.IFALIAS.*}` etc.) — Dist/Access scope is role values, not different macro names.
-- **EXOS LLD empty checklist:** (1) **Access** with no `USW|US|UP|MON|…` labels → **0 `net.if.*` is expected** (opt-in). (2) **Dist/Core** should use `MATCHES=.*` / `NOT_MATCHES=^X(-|$)` — if still 0, open host → Discovery rules → `net.if.discovery` **error** (often SNMP timeout on the heavy IF-MIB walk) and check `{$NET.IF.IFTYPE.MATCHES}=^(6|161)$` is present. Fan/PSU LLD can succeed while IF LLD fails.
-- **Stock EXOS — chassis TEMP_* macros:** stock template macros `{$TEMP_WARN}=55` / `{$TEMP_CRIT}=65` **override** globals. `configure_nbxsync_network.py` merges destination values (`90` / `100` / `-273`, or cutover-silence `999`) onto **Extreme EXOS by SNMP** and **Extreme VOSS by SNMP** via `template.update` (full macro merge — never send only TEMP_*). IQ Engine keeps AP-specific 70/85.
+**Extreme in one breath:** platform name picks EXOS vs VOSS template; **role** picks port-scoping macros (§11.1). Never put Network Generic on Switch* (duplicate `icmpping`). Import VOSS YAML before enabling the VOSS rule. Hybrid starts Access-like; flip to Core macros at stage 5. Stock EXOS LLD timing, EtherLike IFALIAS filters, and TEMP_* template macros are applied by `configure_nbxsync_network.py` — see **§11** and `zabbix/01-extreme-switching.md`. Port label grammar: `zabbix/port-identity.md`.
 
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
 
@@ -808,6 +825,9 @@ After the initial build, and after major changes, confirm coverage against §13.
 
 ## One-line standard
 
-**Country Site Group decides default transport and proxy; role decides transport exceptions and Extreme port macros; platform decides Extreme EXOS vs VOSS (and other OS templates); tags opt into Linux/SAP SNMP or overlays (`critical`, `do_not_monitor`).**
+**Country Site Group** → default Agent + proxy + Sites/Roles hostgroups.  
+**Role** → transport exceptions + app templates + Extreme port macros.  
+**Platform (Template Rule)** → OS / Extreme / Forti template + `OS/…`.  
+**Tags** → `snmp` / `snmp-sap` opt-in transport, or overlays (`critical`, `do_not_monitor`).
 
-**Helper scripts:** `scripts/configure_nbxsync_zerotouch.py` (fleet) then `scripts/configure_nbxsync_network.py` (Extreme templates + §11.1 macros + stock EXOS EtherLike IFALIAS + TEMP_* template macro patches).
+Apply with the GUI (this checklist) or `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py` — same policy either way.
