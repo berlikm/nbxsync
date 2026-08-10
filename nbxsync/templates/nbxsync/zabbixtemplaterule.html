@@ -25,6 +25,18 @@
                         <td><code>{{ object.pattern }}</code></td>
                     </tr>
                     <tr>
+                        <td>Role Pattern</td>
+                        <td>{% if object.role_pattern %}<code>{{ object.role_pattern }}</code>{% else %}{{ ''|placeholder }}{% endif %}</td>
+                    </tr>
+                    <tr>
+                        <td>Require Tags</td>
+                        <td>{% if object.require_tags %}<code>{{ object.require_tags }}</code>{% else %}{{ ''|placeholder }}{% endif %}</td>
+                    </tr>
+                    <tr>
+                        <td>Manufacturer</td>
+                        <td>{{ object.manufacturer|linkify|placeholder }}</td>
+                    </tr>
+                    <tr>
                         <td>Zabbix Template</td>
                         <td>{{ object.zabbixtemplate|linkify }}</td>
                     </tr>

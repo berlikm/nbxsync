@@ -13,6 +13,22 @@ __all__ = ('ZabbixHostgroupTable', 'ZabbixHostgroupObjectViewTable')
 class ZabbixHostgroupTable(NetBoxTable):
     name = tables.Column(linkify=True)
     zabbixserver = tables.Column(linkify=True, verbose_name=_('Zabbix Server'))
+    assignment_count = tables.Column(
+        verbose_name=_('Assignments'),
+        empty_values=(),
+        orderable=False,
+    )
+    rule_count = tables.Column(
+        verbose_name=_('Rules'),
+        empty_values=(),
+        orderable=False,
+    )
+
+    def render_assignment_count(self, record):
+        return getattr(record, 'assignment_count', '—')
+
+    def render_rule_count(self, record):
+        return getattr(record, 'rule_count', '—')
 
     class Meta(NetBoxTable.Meta):
         model = ZabbixHostgroup
@@ -23,14 +39,17 @@ class ZabbixHostgroupTable(NetBoxTable):
             'description',
             'value',
             'zabbixserver',
+            'assignment_count',
+            'rule_count',
             'created',
             'last_updated',
         )
         default_columns = (
             'pk',
             'name',
-            'description',
             'value',
+            'assignment_count',
+            'rule_count',
             'zabbixserver',
         )
 
@@ -42,12 +61,11 @@ class ZabbixHostgroupObjectViewTable(ZabbixInheritedAssignmentTable, NetBoxTable
 
     rendered_output = tables.TemplateColumn(
         template_code="""
-        {% load zabbix_hostgroups zabbix_preview %}
+        {% load zabbix_hostgroups %}
         {% render_zabbix_hostgroup_assignment record as rendered_output %}
-        {% zabbix_preview_representative record as preview_source %}
-        {% if preview_source %}<span title="Preview rendered with {{ preview_source|escape }}">{{ rendered_output|escape }}</span>{% else %}{{ rendered_output|escape }}{% endif %}
+        {{ rendered_output|escape }}
         """,
-        verbose_name='Value',
+        verbose_name=_('Value'),
     )
 
     class Meta(NetBoxTable.Meta):

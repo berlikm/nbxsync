@@ -5,7 +5,10 @@
 ### New features
 
 - Added `exclude_tag` configuration setting to exclude hosts from Zabbix sync entirely via a ZabbixTag assigned to any object in the inheritance chain (`ZabbixTag.tag` name match)
-- Added `ZabbixTemplateRule` model for regex-based template, hostgroup, and tag assignment by platform name (`re.search`, case-insensitive; nested-quantifier patterns rejected at save; 64-char platform-name cap)
+- Added `ZabbixTemplateRule` for regex-based template (and optional hostgroup/tag) assignment by platform name (`re.search`, case-insensitive)
+- Template rules support optional conjunctive criteria: `role_pattern`, `require_tags` (NetBox tag slugs) and `manufacturer` (fail-closed when set; `PROTECT` on delete)
+- Template rules that attach a hostgroup are shown on the Zabbix Hostgroup detail/list views
+- Added a REST API endpoint for `ZabbixTemplateRule` (`/api/plugins/nbxsync/zabbixtemplaterule/`)
 - Added Site/SiteGroup/Region inheritance paths (appended after role/platform so upgrades do not change Role/Platform precedence); cluster site uses `cluster._site` (NetBox ≥4.2)
 - Added `ZabbixHostBinding`: a durable record of the Zabbix host owned by each NetBox object, so a host can still be retired after its (inherited) assignment disappears
 - Added a background sync job that enumerates Devices/VMs inheriting a Zabbix server assignment, providing zero-touch provisioning for newly created inventory
@@ -20,6 +23,17 @@
 - A failing host interface no longer hides the failure: per-interface and template-linkage failures are recorded on the assignment and reported as an aggregated job error
 - Background host reconciliation collects host primary keys with queryset iterators instead of materialising full Device/VM lists
 - Minimum documented NetBox version is 4.2.6 (matches `PluginConfig.min_version` and cluster `_site` scope)
+- Inherited sync status on the Zabbix tab uses a neutral indicator (distinct from a direct local assignment)
+
+### Bug fixes
+
+- VirtualMachines no longer inherit assignments via `device`-prefixed `inheritance_chain` paths (NetBox ≥4.3 `VirtualMachine.device`). Host manufacturer/role/device-type templates no longer leak onto guest VMs; Virtual Device Contexts still walk those paths
+
+### Bug fixes
+
+- Jinja2 tag and hostgroup values are rendered against the Device/VM being synchronised, not against the inheritance source (Role, Platform, Site, …)
+- UI previews for hierarchy assignments use a device-shaped view of the target object instead of borrowing a sample descendant device
+- UI previews skip Devices/VMs carrying the configured `exclude_tag` when selecting a representative host
 
 ### Bug fixes
 

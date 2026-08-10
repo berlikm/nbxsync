@@ -16,7 +16,7 @@ and is applied to a `Device`, it will render as the device's Site name.
 
 During host synchronisation, tag, hostgroup, macro and host-inventory templates are rendered against the Device, VDC or VirtualMachine being synced — even when the assignment is inherited from a Role, Platform, Site or similar. That way templates such as `{{ object.name }}` or `{{ object.site.name }}` resolve to the host, not to the inheritance source.
 
-Outside host sync (for example when previewing an assignment on a hierarchy object itself), `object` is the assignment target. A template that needs host fields should therefore be written with host sync in mind.
+In the UI preview (and when syncing a hostgroup assignment against a hierarchy object itself), `object` is the assignment target. Hierarchy targets such as DeviceRole or Site are exposed in a device-shaped form (`object.role`, `object.site`, …) so templates like `Roles/{{ object.role.name }}` work without borrowing a descendant device. Targets that cannot fill a single device-shaped value leave the template unresolved.
 
 ## Context
 

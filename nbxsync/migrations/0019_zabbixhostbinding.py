@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('contenttypes', '0002_remove_content_type_name'),
         ('extras', '0122_charfield_null_choices'),
-        ('nbxsync', '0015_zabbixtemplaterule_hostgroup_tag'),
+        ('nbxsync', '0018_zabbixtemplaterule_require_tags_and_more'),
     ]
 
     operations = [
