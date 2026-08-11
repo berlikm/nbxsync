@@ -968,25 +968,17 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
     logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server / ESXi (§6); OOB creds = MONITORING-DELL')
 
-    # ESXi platforms → ESXi OOB iDRAC CG (beats Site Group Agent). No agent on ESXi.
-    # Dell iDRAC template comes from TemplateRule Dell iDRAC (ESXi) in §6.
-    # Uses MONITORING-DELL SHA/AES on oob_ip (same as Server Agent+OOB but no Agent).
+    # ESXi OOB iDRAC CG is now assigned on the ESXi Hypervisor role (line 960),
+    # not on the platform. Prune stale platform-level assignments.
     esxi_platforms = [p for p in Platform.objects.all() if ESXI_PLATFORM_RE.search(p.name or '')]
     for plat in esxi_platforms:
-        get_or_create(
-            M.ZabbixConfigurationGroupAssignment,
+        stale, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
             zabbixconfigurationgroup=esxi_oob_group,
             assigned_object_type=ct(Platform),
             assigned_object_id=plat.id,
-        )
-    if esxi_platforms:
-        logger.info(
-            '  ESXi OOB iDRAC → %s platform(s): %s',
-            len(esxi_platforms),
-            ', '.join(sorted(p.name for p in esxi_platforms)),
-        )
-    else:
-        logger.warning('  No NetBox platforms matching ESXi/VMware ESX — skip ESXi OOB CG assignment')
+        ).delete()
+        if stale:
+            logger.info('  PRUNED: ESXi OOB iDRAC platform assignment on %s (now role-based)', plat.name)
 
     # SNMP storage manufacturers — Site Group Agent would leave them without SNMP.
     # Manufacturer CG wins first in inheritance → SNMP Monitoring (network MONITORING).
