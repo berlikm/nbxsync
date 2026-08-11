@@ -1576,6 +1576,26 @@ def step7_template_assignments(server):
             defaults={},
         )
 
+    # Disable vmware.vm.discovery LLD rule on the VMware FQDN template.
+    # VM hosts are synced from NetBox via nbxSync — VM LLD would create
+    # duplicate/unmanaged hosts that bypass the onboarding exclude tag.
+    # Hypervisor + datastore + alarm discovery stay enabled.
+    if 'vmware_fqdn' in TPL:
+        vmware_tpl = M.ZabbixTemplate.objects.filter(
+            name=TPL['vmware_fqdn'][1], zabbixserver=server
+        ).first()
+        if vmware_tpl:
+            with ZabbixConnection(server) as api:
+                llds = api.discoveryrule.get(
+                    hostids=[vmware_tpl.templateid],
+                    search={'key_': 'vmware.vm.discovery'},
+                    output=['itemid', 'key_', 'status'],
+                ) or []
+                for lld in llds:
+                    if lld.get('status', '0') == '0':
+                        api.discoveryrule.update(itemid=lld['itemid'], status=1)
+                        logger.info('  DISABLED VMware VM discovery LLD on %s (VMs come from NetBox)', vmware_tpl.name)
+
     # Prune legacy MSSQL by ODBC assignments (replaced by MSSQL by Zabbix agent 2).
     old_mssql_tpl = M.ZabbixTemplate.objects.filter(name='MSSQL by ODBC').first()
     if old_mssql_tpl:
