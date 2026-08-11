@@ -18,8 +18,8 @@ Deltas vs the old checklist script:
   Δ5b  Pure Storage stays on SiteGroup Agent + HTTP template (ANY) — not SNMP CG
   Δ5b  Storage removed from SNMP CG (Cohesity → OOB SNMP Only)
   Δ5b  Server BMC = "Server Agent+OOB" with MONITORING-DELL SHA/AES on OOB SNMP
-  Δ5b  ESXi = CG "ESXi OOB iDRAC" (SNMPv2c public @ oob_ip) on ESXi Hypervisor role;
-       VMware FQDN only on role vCenter (disable legacy platform rule "VMware ESXi")
+  Δ5b  ESXi = CG "ESXi OOB iDRAC" (SNMPv2c public @ oob_ip) on ESXi platform;
+       ESXi hosts keep role=Server (no role change — other automations depend on it)
   Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,DELL,SAP}
   Δ5   "SNMP Monitoring (Linux)" CG on NetBox tag snmp (was SNMP by tag / VM by SNMP)
   Δ5   "Agent Monitoring (SPACE)" port 10060 on Space Server role
@@ -589,45 +589,9 @@ def step0_cleanup(*, mutate_netbox: bool):
     )
     logger.info("  Role 'Virtual Appliance': %s (id=%s)", 'CREATED' if created else 'EXISTS', role.id)
 
-    # ESXi Hypervisor role — separates ESXi hosts from regular Servers so they
-    # get ESXi OOB iDRAC CG (SNMP only on oob_ip) instead of Server Agent+OOB
-    # (which adds an unwanted Agent interface on primary_ip — ESXi has no agent).
-    esxi_role, esxi_created = DeviceRole.objects.get_or_create(
-        slug='esxi-hypervisor',
-        defaults={'name': 'ESXi Hypervisor', 'color': '00b0f0', 'vm_role': False},
-    )
-    logger.info("  Role 'ESXi Hypervisor': %s (id=%s)", 'CREATED' if esxi_created else 'EXISTS', esxi_role.id)
-
-    if not mutate_netbox:
-        logger.info('  Skipping NetBox inventory mutations (pass --mutate-netbox to enable previous step0.3–0.5)')
-        return
-
-    # Previous script behaviour (optional — locked design prefers no inventory edits)
-    updated = 0
-    for vm in VirtualMachine.objects.filter(platform__name__icontains='fortianalyzer'):
-        if vm.role and vm.role.slug == 'virtual-appliance':
-            continue
-        vm.role = role
-        vm.save()
-        updated += 1
-    for vm in VirtualMachine.objects.filter(platform__name__icontains='fortimanager'):
-        if vm.role and vm.role.slug == 'virtual-appliance':
-            continue
-        vm.role = role
-        vm.save()
-        updated += 1
-    logger.info('  Reassigned %s Forti* VM(s) → Virtual Appliance', updated)
-
-    # Migrate ESXi platform devices from Server role to ESXi Hypervisor
-    migrated = 0
-    for dev in Device.objects.filter(platform__name__iregex=ESXI_PLATFORM_RE.pattern):
-        if dev.role_id == esxi_role.id:
-            continue
-        dev.role = esxi_role
-        dev.save(update_fields=['role'])
-        migrated += 1
-    if migrated:
-        logger.info('  Migrated %s ESXi device(s) → ESXi Hypervisor role', migrated)
+    # ESXi hosts keep role=Server (other automations depend on it).
+    # The ESXi OOB iDRAC CG is assigned on the ESXi platform (step 5b),
+    # not on a separate role. This avoids creating a new DeviceRole.
 
     for slug, label in [('sd-wan-socket', 'Cato socket'), ('messpc', 'Messpc')]:
         qs = Device.objects.filter(role__slug=slug)
@@ -1038,8 +1002,6 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     assign_role(space_agent_group, 'Space Server')
 
-    # ESXi Hypervisor role → ESXi OOB iDRAC CG (SNMP only on oob_ip, no Agent)
-    assign_role(esxi_oob_group, 'ESXi Hypervisor')
 
     # SAP HANA and SAP ME: single dual-plane CG (Agent + SNMP in one CG).
     # No separate Agent Monitoring assignment — the SAP Agent+SNMP CG has both interfaces.
@@ -1064,17 +1026,26 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
     logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); ESXi iDRAC = SNMPv2c public; Server OOB creds = MONITORING-DELL')
 
-    # ESXi OOB iDRAC CG is now assigned on the ESXi Hypervisor role (line 960),
-    # not on the platform. Prune stale platform-level assignments.
+    # ESXi platforms → ESXi OOB iDRAC CG (SNMPv2c public on oob_ip, no Agent).
+    # Platform CG wins over Site Group Agent (inheritance). ESXi hosts keep
+    # role=Server (other automations depend on it — no ESXi Hypervisor role).
     esxi_platforms = [p for p in Platform.objects.all() if ESXI_PLATFORM_RE.search(p.name or '')]
     for plat in esxi_platforms:
-        stale, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
+        get_or_create(
+            M.ZabbixConfigurationGroupAssignment,
             zabbixconfigurationgroup=esxi_oob_group,
             assigned_object_type=ct(Platform),
             assigned_object_id=plat.id,
-        ).delete()
-        if stale:
-            logger.info('  PRUNED: ESXi OOB iDRAC platform assignment on %s (now role-based)', plat.name)
+            defaults={},
+        )
+    if esxi_platforms:
+        logger.info(
+            '  ESXi OOB iDRAC → %s platform(s): %s (SNMPv2c public on oob_ip)',
+            len(esxi_platforms),
+            ', '.join(sorted(p.name for p in esxi_platforms)),
+        )
+    else:
+        logger.warning('  No platforms matching ESXi/VMware ESX — skip ESXi OOB CG')
 
     # SNMP storage manufacturers — Site Group Agent would leave them without SNMP.
     # Manufacturer CG wins first in inheritance → SNMP Monitoring (network MONITORING).
@@ -2095,9 +2066,8 @@ def run_verify(*, limit: int | None = None) -> int:
     agent_without_platform_fact = 0
     active_no_primary = 0
     no_template = 0
-    esxi_on_server_role = 0
     snmp_role_on_agent_cg = 0
-    os_family_tags_remaining = M.ZabbixTag.objects.filter(tag='os_family').count()
+    esxi_on_platform = 0  # informational — ESXi platforms with ESXi OOB iDRAC CG
     snmp_tag_ifs = M.ZabbixHostInterface.objects.filter(assigned_object_type=ct(Tag)).count()
     agent_cg_name = 'Agent Monitoring'
     snmp_ish_cgs = {
@@ -2133,12 +2103,8 @@ def run_verify(*, limit: int | None = None) -> int:
                 agent_without_platform_fact += 1
         # Soft check: SNMP-ish roles should not sit on plain Agent without a template.
 
-        # ESXi platform must not have role Server — should be ESXi Hypervisor
-        plat_name = getattr(getattr(obj, 'platform', None), 'name', '') or ''
-        if ESXI_PLATFORM_RE.search(plat_name) and role_name == 'Server':
-            esxi_on_server_role += 1
-
-    shadow = M.ZabbixMacro.objects.filter(macro__in=SHADOW_MACROS).count()
+        # ESXi platforms correctly have role=Server (no separate ESXi Hypervisor role).
+        # The ESXi OOB iDRAC CG is assigned on the platform, not the role.
     print(
         json.dumps(
             {
@@ -2148,7 +2114,7 @@ def run_verify(*, limit: int | None = None) -> int:
                 'agent_cg_without_agent_platform_fact': agent_without_platform_fact,
                 'snmp_role_resolved_to_agent_cg': snmp_role_on_agent_cg,
                 'active_without_primary_or_oob_ip': active_no_primary,
-                'esxi_on_server_role': esxi_on_server_role,
+                'esxi_on_platform': esxi_on_platform,
                 'os_family_tags_remaining': os_family_tags_remaining,
                 'tag_targeted_host_interfaces_remaining': snmp_tag_ifs,
             },

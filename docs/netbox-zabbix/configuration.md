@@ -270,13 +270,15 @@ Manufacturer CG wins over Site Group Agent. Pure Storage and Dell Storage stay A
 
 SAP roles must **not** also carry Site Group / role Agent Monitoring — the dual-plane CG already includes Agent. Zerotouch prunes stale Agent Monitoring from SAP HANA / SAP ME.
 
-### ESXi Hypervisor → OOB iDRAC
+### ESXi platform → OOB iDRAC
 
 | Configuration group | Assigned to |
 |---|---|
-| ESXi OOB iDRAC | Device Role **ESXi Hypervisor** |
+| ESXi OOB iDRAC | Platform matching `ESXi\|VMware ESX` (any version) |
 
-CG is **role-based** (platform-level ESXi OOB assignments are pruned). Zerotouch creates DeviceRole `ESXi Hypervisor` (slug `esxi-hypervisor`) and, with `--mutate-netbox`, migrates Devices whose platform matches `ESXi|VMware ESX` off role `Server` so they do not inherit Server Agent+OOB. Transport: SNMPv2c `public` on `oob_ip` only. Dell iDRAC template: TemplateRule `Dell iDRAC (ESXi)` in §6.3.
+ESXi hosts keep **role=Server** (other automations depend on it — no separate ESXi Hypervisor role is created). The platform CG overrides the Site Group Agent default, providing SNMPv2c `public` on `oob_ip` only. No Zabbix agent on ESXi hosts. Dell iDRAC template comes from TemplateRule `Dell iDRAC (ESXi)` in §6.3 (pattern `ESXi\|VMware ESX` ∧ Manufacturer Dell).
+
+**Agent interface note:** ESXi hosts also inherit `Server Agent+OOB` from the Server role, which adds an Agent interface on primary_ip. This interface has 0 items linked (all Dell iDRAC items are on the SNMP interface). It shows "unavailable" in Zabbix — cosmetically visible but functionally harmless. This is standard behavior when a host inherits both Agent and SNMP CGs.
 
 ### Huawei device → SNMP Monitoring (Huawei)
 
@@ -726,7 +728,7 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP (rule **Dell Storage (HTTP)**; legacy HPE MSA disabled) | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP `MONITORING` on oob | Sites/CH/…, Roles/Cohesity |
 | Cohesity VM with primary IP | SNMP Monitoring (direct) | Storage Generic | SNMP `MONITORING` on primary | … |
-| ESXi hypervisor (Dell) | **ESXi OOB iDRAC** on role **ESXi Hypervisor** | Dell iDRAC by SNMP | SNMP **v2c `public`** on oob only (no agent) | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
+| ESXi hypervisor (Dell) | ESXi OOB iDRAC (platform `ESXi\|VMware ESX`) | Dell iDRAC by SNMP | SNMP **v2c `public`** on oob only | Sites/…, Roles/Server, OS/VMware |
 | vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (+ OS template if platform matches); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
 | Zabbix Proxy | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping + Remote Zabbix proxy health | Agent :10050 | Sites/…, Roles/Zabbix Proxy, OS/Linux |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
@@ -758,7 +760,7 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Sample Switch Hybrid (pre–stage 5) | Same platform template as peer EXOS/VOSS; IFALIAS macros still Access-like (`USW\|…` opt-in), not Core `.*` |
 | Sample Windows VM | Agent; Windows by agent; ICMP Ping when role matches Agent Host ICMP; OS/Windows; leaf under `Sites/CH/…` |
 | Sample SAP HANA / ME | CG **SAP Agent+SNMP**; Agent :10050 + SNMP `SAPUSER`; Linux + SAP `(stub)` + ICMP; **no** Site Group Agent CG |
-| Sample ESXi (Dell) | Role **ESXi Hypervisor**; CG **ESXi OOB iDRAC**; SNMPv2c **`public` @ oob** (not MONITORING-DELL); Dell iDRAC; OS/VMware; **no** agent; **no** VMware FQDN |
+| Sample ESXi (Dell) | Platform CG **ESXi OOB iDRAC** (role stays Server); SNMPv2c **`public` @ oob** (not MONITORING-DELL); Dell iDRAC; OS/VMware; **no** agent; **no** VMware FQDN |
 | Sample Huawei `HU-DEB-SAN01` | CG **SNMP Monitoring (Huawei)** on device; LogicMonitor on **CG HI** (not per-device HI); OceanStor template; no manufacturer SNMP CG |
 | Sample Dell Storage | Agent Monitoring; **HPE MSA 2060 Storage by HTTP** via Dell Storage (HTTP); legacy HPE MSA rule disabled |
 | Sample Pure array | Agent Monitoring; FlashArray HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` |
