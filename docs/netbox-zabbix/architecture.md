@@ -11,6 +11,7 @@ How nbxSync policy hangs off **existing** NetBox inventory so devices and VMs be
 | nbxSync GUI / API rows | [`configuration.md`](configuration.md) |
 | Expected host matrix | [`configuration.md`](configuration.md) §13 |
 | Day-2 procedures | [`runbooks/day2.md`](runbooks/day2.md) |
+| Phased onboarding | [`runbooks/onboarding.md`](runbooks/onboarding.md) |
 | Monitoring domains | [`../../zabbix/`](../../zabbix/README.md) |
 | First-build scripts | [`../../scripts/README.md`](../../scripts/README.md) |
 
@@ -44,8 +45,8 @@ Device Role            →  transport exceptions (SNMP / OOB / SPACE / SAP)
 Platform (Template Rule) → OS / Extreme / Forti / storage template
                          → OS/… hostgroup membership
 
-NetBox tags            →  overlays (critical, do_not_monitor)
-                       →  snmp / oracle opt-ins
+NetBox tags            →  overlays (`critical`) + opt-ins (`snmp`, `oracle`)
+Zabbix tag assignment  →  `do_not_monitor` exclude (object = waves; role = permanent)
 ```
 
 | NetBox fact | Configured as | Result in Zabbix |
