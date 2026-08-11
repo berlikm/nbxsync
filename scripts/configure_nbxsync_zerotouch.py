@@ -1197,15 +1197,6 @@ def step6_template_rules(server, country_slugs=None):
             }
             ensure(M.ZabbixTemplateRule, name='Huawei OceanStor (SNMP)', defaults=defaults, update_fields=list(defaults.keys()))
             logger.info('  Rule Huawei OceanStor (SNMP) → %s', tpl_huawei.name)
-            # ICMP alongside SNMP (production hosts link ICMP Ping + storage template).
-            if 'icmp_ping' in TPL:
-                tpl_icmp = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
-                defaults_icmp = {
-                    'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
-                    'manufacturer': huawei, 'zabbixtemplate': tpl_icmp,
-                    'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 85,
-                }
-                ensure(M.ZabbixTemplateRule, name='Huawei Storage ICMP', defaults=defaults_icmp, update_fields=list(defaults_icmp.keys()))
         else:
             logger.warning("  Manufacturer 'Huawei' not found, skipping Huawei TemplateRule")
     else:
@@ -1235,6 +1226,13 @@ def step6_template_rules(server, country_slugs=None):
             logger.warning("  Manufacturer 'Synology' not found, skipping Synology TemplateRule")
     else:
         logger.warning('  Template Synology DiskStation SNMPv3 not resolved — skip TemplateRule')
+
+    # Prune legacy Huawei Storage ICMP rule — Huawei OceanStor Dorado template
+    # already defines icmpping items; adding ICMP Ping causes duplicate key collision.
+    legacy_huawei_icmp = M.ZabbixTemplateRule.objects.filter(name='Huawei Storage ICMP').first()
+    if legacy_huawei_icmp is not None:
+        legacy_huawei_icmp.delete()
+        logger.info('  DELETED legacy TemplateRule %r (Huawei template already has icmpping)', 'Huawei Storage ICMP')
 
     # Zabbix Proxy role: proxy VMs (role=Zabbix Proxy via netbox-sync -ZABP\d+ pattern).
     # Platform rule already gives them Linux by Zabbix agent (Ubuntu). These two
