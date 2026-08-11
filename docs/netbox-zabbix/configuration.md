@@ -516,18 +516,22 @@ Two tag systems:
 1. **NetBox tags** — already on devices/VMs/roles in inventory. Sync reads them as inputs.
 2. **Zabbix tags** — written on the Zabbix host during sync from Jinja (§9.1, §9.2).
 
-### 9.0 NetBox tags (inputs — assumed present where needed)
+### 9.0 NetBox tags (inputs)
+
+Zerotouch step 0 creates `critical`, `snmp`, and `onboarding` if missing. `oracle` is operator-created when needed.
 
 | NetBox tag | Effect during sync | Typical scope |
 |---|---|---|
 | `critical` | Hostgroup `Priority/Critical` (§8.4) | Device/VM |
 | `snmp` | Transport → **SNMP Monitoring (Linux)** + Linux/Windows by SNMP templates | Device/VM |
 | `oracle` | Links **Oracle by Zabbix agent 2** (merges with OS template) | Device/VM |
-| `onboarding` | Inherits Zabbix exclude tag `do_not_monitor` (assignment on the Tag) — remove NetBox tag to start monitoring | Device/VM |
+| `onboarding` | Sync hold — inherits Zabbix exclude via Tag assignment (§9.3). **Remove this NetBox tag to start monitoring.** | Device/VM |
 
-Permanent never-monitor roles still get `do_not_monitor` directly on the Device Role — §9.3. Phased cutover: [`runbooks/onboarding.md`](runbooks/onboarding.md).
+**Do not** use a leftover NetBox tag `snmp-sap` (old SAP model). SAP transport is role-based **SAP Agent+SNMP** on SAP HANA / SAP ME — delete `snmp-sap` if it still exists in inventory.
 
-NetBox tags are **not** copied into Zabbix as tags; they drive interfaces, templates, hostgroups, and (for `onboarding`) exclusion via a Zabbix tag assignment on the Tag object. Zabbix tags are separate (§9.1–§9.2).
+Permanent never-monitor: Zabbix tag `do_not_monitor` on the Device Role — §9.3. Phased cutover: [`runbooks/onboarding.md`](runbooks/onboarding.md).
+
+NetBox tags are **not** copied into Zabbix as host tags; they drive interfaces, templates, hostgroups, and (for `onboarding`) exclusion. Zabbix tags are separate (§9.1–§9.2).
 
 ### 9.1 Zabbix host tags — Environment (Jinja on Site Groups)
 
@@ -540,8 +544,8 @@ nbxSync owns the tag definition and Site Group assignment. At sync, Jinja render
 | environment | *(template below)* | Site Groups CH … CN |
 
 ```
-{% set n = object.name | lower -%}
-{%- if "-p-" in n or n.endswith("-p") or "-p0" in n or "-p1" in n -%}Production
+{% set n = (object.name or "") | lower -%}
+{% if "-p-" in n or n.endswith("-p") or "-p0" in n or "-p1" in n -%}Production
 {%- elif "-d-" in n -%}Development
 {%- elif "-q-" in n -%}QA
 {%- elif "-s-" in n -%}Sandbox
@@ -551,7 +555,7 @@ nbxSync owns the tag definition and Site Group assignment. At sync, Jinja render
 {%- endif -%}
 ```
 
-Renders against the device or VM at sync. Preview on a Site Group may show an error — cosmetic.
+Renders against the device or VM at sync. **Name-pattern only** — no custom-field or role fallback. Preview on a Site Group may show an error — cosmetic.
 
 **Failure mode:** names that do not match the `-p-` / `-d-` / … conventions resolve to **`Unknown`**. That is silent. **Extreme switches** (`CH-STA-…-CORE01`, `…-MGMT01`, `…-ACCE01`, …) normally have no `-p-` token — `environment=Unknown` on them is expected, not a sync bug. Extend the Jinja later if needed (e.g. treat `Switch*` roles as Production) rather than renaming the fleet.
 
@@ -563,23 +567,22 @@ Renders against the device or VM at sync. Preview on a Site Group may show an er
 
 ### 9.3 Exclusion — `do_not_monitor` (two assignment targets)
 
-Plugin `exclude_tag` = `do_not_monitor` (§12). Same Zabbix tag name; different places you assign it:
+Plugin `exclude_tag` = `do_not_monitor` (§12) — one setting. Same nbxSync **Zabbix** tag; two places you assign it:
 
 | Zabbix tag | Value | Assign to | Operator day-2 |
 |---|---|---|---|
 | do_not_monitor | *(empty)* | **Device Role** — Messpc, Sd Wan Socket, VDI | Permanent — leave on the role |
-| do_not_monitor | *(empty)* | **NetBox Tag `onboarding`** (Tag → Zabbix tab → Tags) | Temporary — tag/untag Devices/VMs with NetBox tag `onboarding` |
+| do_not_monitor | *(empty)* | **NetBox Tag `onboarding`** (Organization → Tags → **onboarding** → Zabbix tab → Tags) | Temporary waves — tag/untag Devices/VMs with NetBox **`onboarding`** |
 
-nbxSync already resolves assignments pointed at a NetBox Tag onto every Device/VM that carries that tag. So:
+nbxSync resolves assignments on a NetBox Tag onto every Device/VM that carries that tag. Zerotouch: step 0 creates NetBox tag `onboarding`; step 9 assigns Zabbix `do_not_monitor` on it (and on the permanent roles).
 
-1. Create NetBox tag **`onboarding`**.
-2. On that Tag’s **Zabbix** tab, assign Zabbix tag **`do_not_monitor`** once.
-3. Bulk-tag not-ready Devices/VMs with NetBox **`onboarding`** → they inherit exclude → stay out of Zabbix.
-4. **Remove NetBox tag `onboarding`** from a host when ready → exclude gone → next sync monitors it.
+**Wave enable:** remove NetBox tag **`onboarding`** from the Device/VM → next sync starts monitoring. No per-host Zabbix-tab exclude row needed.
 
 Sync **skips** excluded objects (no host/interfaces/templates). An existing Zabbix host from a prior sync is **deleted**.
 
-Do **not** put `do_not_monitor` on role Server (or a Site Group) for waves — you cannot open a single child while the parent excludes. Prefer NetBox tag `onboarding` for waves.
+**Name collision:** zerotouch may also create a NetBox inventory tag named `do_not_monitor` (used with `--mutate-netbox` on some roles). That inventory tag is **not** the wave switch and does not exclude by itself. Waves use NetBox tag **`onboarding`** only. Plugin exclude matches the **Zabbix** tag name `do_not_monitor`.
+
+Do **not** put Zabbix `do_not_monitor` on role Server (or a Site Group) for waves — you cannot open a single child while the parent excludes.
 
 **Phased cutover:** [`runbooks/onboarding.md`](runbooks/onboarding.md).
 
@@ -711,7 +714,7 @@ Ask the NetBox administrator to set the following under the nbxsync plugin confi
 | Setting | Intended value |
 |---|---|
 | Source of truth for host, hostgroup, interface, template, tag, macro, proxy, maintenance | NetBox |
-| Exclude tag | `do_not_monitor` |
+| Exclude tag | `do_not_monitor` (Zabbix tag — on permanent roles **and** on NetBox Tag `onboarding`) |
 | Soft-state tag / value | `NO_ALERTING` / `1` (plugin host tag on paused VMs — monitoring packs interpret it) |
 | Attach object identity tags | Yes (`nb_type` / `nb_id`) |
 | Allow inherited deletion | No |

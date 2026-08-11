@@ -83,6 +83,7 @@ Work top-down:
 | Cohesity VMs with primary IP → SNMP Monitoring (checklist §5b) | When such VMs are created or found |
 | Extreme port labels / Hybrid flip / stage gates | Per [`zabbix/01-extreme-switching.md`](../../../zabbix/01-extreme-switching.md) and [`port-identity.md`](../../../zabbix/port-identity.md) |
 | Spot-check `environment=Unknown` | After naming-convention drift |
-| No manufacturer Huawei SNMP CG; no per-device HI on `HU-DEB-SAN01`; no leftover CG named `SNMP Monitoring (SAP)` | After zerotouch / credential changes |
+| No manufacturer Huawei SNMP CG; no per-device HI on `HU-DEB-SAN01`; no leftover CG `SNMP Monitoring (SAP)`; no NetBox tag `snmp-sap` (SAP = roles + **SAP Agent+SNMP**) | After zerotouch / credential changes |
+| Onboarding hold: NetBox Tag `onboarding` still has Zabbix `do_not_monitor` assigned; ready hosts have the NetBox tag removed | During cutover waves |
 | ESXi still on role **ESXi Hypervisor** with SNMPv2c `public` (not Server / MONITORING-DELL) | After role or platform inventory drift |
 | Update “Last verified” stamp on the [configuration checklist](../configuration.md) | After a production re-validation |
