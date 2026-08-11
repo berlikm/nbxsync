@@ -54,8 +54,9 @@ Usage::
   export NBX_SNMP_AUTHPASS_DELL=... NBX_SNMP_PRIVPASS_DELL=...
   # optional SAP (after Robert confirms auth/priv):
   # export NBX_SNMP_AUTHPASS_SAP=... NBX_SNMP_PRIVPASS_SAP=...
+  # Huawei (LogicMonitor user, non-fleet):
+  # export NBX_SNMP_AUTHPASS_HUAWEI=... NBX_SNMP_PRIVPASS_HUAWEI=...
   # Per-device Pure Storage API tokens (one per array):
-  # export NBX_PURE_TOKEN_HU_DEB_SAN11=...
   # Per-vCenter SSO credentials (one per vCenter VM):
   # export NBX_VMWARE_USER_CH_STA_P_VCSA02=...
   # export NBX_VMWARE_PASS_CH_STA_P_VCSA02=...
@@ -769,8 +770,8 @@ def step4_configgroups():
     )
     sap_snmp_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
-        name='SNMP Monitoring (SAP)',
-        defaults={'description': 'SNMPv3 SAPUSER — provisional; confirm auth/priv with Robert'},
+        name='SAP Agent+SNMP',
+        defaults={'description': 'SAP: Agent :10050 + SNMPv3 SAPUSER — dual-plane transport (one CG, both interfaces)'},
     )
     space_agent_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
@@ -873,7 +874,8 @@ def step5_host_interfaces(server, groups: dict):
     # 5.5b ESXi OOB — iDRAC SNMPv2c only (no agent; VMware via vCenter)
     # iDRACs use SNMPv2c community 'public' (no SNMPv3 configured on iDRACs).
     snmp_v2_if(groups['esxi_oob'], community='public', use_oob_ip=True)
-    # 5.6 SAP SNMP — SAPUSER (provisional SHA1/AES128)
+    # 5.6 SAP Agent+SNMP — dual-plane: Agent :10050 + SNMP SAPUSER (one CG, both interfaces)
+    agent_if(groups['sap_snmp'], port=10050)
     snmp_if(groups['sap_snmp'], profile='sap')
     # 5.6b Huawei SNMP — LogicMonitor SHA1/AES128 (non-fleet credential)
     huawei = groups['huawei_snmp']
@@ -894,6 +896,8 @@ def step5_host_interfaces(server, groups: dict):
             'snmpv3_security_name': 'LogicMonitor',
             'snmpv3_authentication_protocol': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1,
             'snmpv3_privacy_protocol': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
+            'snmpv3_authentication_passphrase': _env_first(('NBX_SNMP_AUTHPASS_HUAWEI',)),
+            'snmpv3_privacy_passphrase': _env_first(('NBX_SNMP_PRIVPASS_HUAWEI',)),
             'snmp_pushcommunity': True,
         },
     )
@@ -999,12 +1003,29 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     # ESXi Hypervisor role → ESXi OOB iDRAC CG (SNMP only on oob_ip, no Agent)
     assign_role(esxi_oob_group, 'ESXi Hypervisor')
 
-    # SAP HANA and SAP ME: dual-plane — Agent Monitoring (primary IP) + SAP SNMP (SAPUSER on oob/primary).
-    # SAP agent templates (§7) need an Agent interface; SAP SNMP CG provides SNMP for hardware monitoring.
-    assign_role(agent_group, 'SAP HANA')
-    assign_role(agent_group, 'SAP ME')
+    # SAP HANA and SAP ME: single dual-plane CG (Agent + SNMP in one CG).
+    # No separate Agent Monitoring assignment — the SAP Agent+SNMP CG has both interfaces.
     assign_role(sap_snmp_group, 'SAP HANA')
     assign_role(sap_snmp_group, 'SAP ME')
+
+    # Prune stale Agent Monitoring CG assignments from SAP roles (now in SAP Agent+SNMP CG).
+    for role_name in ('SAP HANA', 'SAP ME'):
+        role = get_role(role_name)
+        if role:
+            stale_agent = M.ZabbixConfigurationGroupAssignment.objects.filter(
+                zabbixconfigurationgroup=agent_group,
+                assigned_object_type=ct(DeviceRole),
+                assigned_object_id=role.id,
+            ).delete()
+            if stale_agent[0]:
+                logger.info('  PRUNED: Agent Monitoring from %s (now in SAP Agent+SNMP CG)', role_name)
+    # Rename old CG if it exists
+    old_sap_cg = M.ZabbixConfigurationGroup.objects.filter(name='SNMP Monitoring (SAP)').first()
+    if old_sap_cg:
+        old_sap_cg.name = 'SAP Agent+SNMP'
+        old_sap_cg.description = 'SAP: Agent :10050 + SNMPv3 SAPUSER — dual-plane transport (one CG, both interfaces)'
+        old_sap_cg.save(update_fields=['name', 'description'])
+        logger.info('  RENAMED: SNMP Monitoring (SAP) → SAP Agent+SNMP')
 
     # Tag inheritance is collected before role/site — snmp beats Agent default.
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
@@ -1996,6 +2017,7 @@ def run_verify(*, limit: int | None = None) -> int:
     active_no_primary = 0
     no_template = 0
     esxi_on_server_role = 0
+    snmp_role_on_agent_cg = 0
     os_family_tags_remaining = M.ZabbixTag.objects.filter(tag='os_family').count()
     snmp_tag_ifs = M.ZabbixHostInterface.objects.filter(assigned_object_type=ct(Tag)).count()
     agent_cg_name = 'Agent Monitoring'
