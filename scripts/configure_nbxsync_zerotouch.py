@@ -1285,9 +1285,10 @@ def step6_template_rules(server, country_slugs=None):
         }
         ensure(M.ZabbixTemplateRule, name='Dell iDRAC (Server)', defaults=defaults, update_fields=list(defaults.keys()))
         # ESXi hypervisors: iDRAC + OS/VMware hostgroup (no VMware FQDN template).
+        # Uses role_pattern='^ESXi Hypervisor$' — version-agnostic, role set by netbox-sync.
         defaults_esxi = {
-            'pattern': r'ESXi|VMware ESX',
-            'role_pattern': '',
+            'pattern': '.*',
+            'role_pattern': '^ESXi Hypervisor$',
             'require_tags': '',
             'manufacturer': dell,
             'zabbixtemplate': tpl_idrac,
@@ -1296,7 +1297,6 @@ def step6_template_rules(server, country_slugs=None):
             'enabled': True,
             'priority': 80,
         }
-        ensure(M.ZabbixTemplateRule, name='Dell iDRAC (ESXi)', defaults=defaults_esxi, update_fields=list(defaults_esxi.keys()))
         logger.info('  Rule Dell iDRAC (ESXi) → %s + OS/VMware', tpl_idrac.name)
         # Prune legacy Manufacturer-wide iDRAC assignment if present.
         deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
