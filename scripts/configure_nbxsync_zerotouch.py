@@ -10,7 +10,7 @@ Hostgroup-first ops model: Zabbix navigation hangs off
 Transport stays on Configuration Groups (SiteGroup Agent default + role SNMP /
 Server Agent+OOB / SPACE exceptions). Multi-credential SNMPv3 profiles per CG
 (network / Linux / Dell iDRAC / SAP). Tags CAN select transport via CG→Tag
-assignment (``snmp``, ``snmp-sap``); Host Interfaces must NOT sit on tags.
+assignment (``snmp``); Host Interfaces must NOT sit on tags. SAP uses role-based CG assignment (not tags).
 
 Deltas vs the old checklist script:
 
@@ -23,7 +23,7 @@ Deltas vs the old checklist script:
   Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,DELL,SAP}
   Δ5   "SNMP Monitoring (Linux)" CG on NetBox tag snmp (was SNMP by tag / VM by SNMP)
   Δ5   "Agent Monitoring (SPACE)" port 10060 on Space Server role
-  Δ5   "SNMP Monitoring (SAP)" CG on tag snmp-sap (provisional; confirm auth with Robert)
+  Δ5   "SNMP Monitoring (SAP)" CG on SAP HANA / SAP ME roles (provisional; confirm auth with Robert)
   Δ6   Platform TemplateRules attach OS/* hostgroups only — no os_family Zabbix tags
   Δ6b  snmp NetBox tag + compound TemplateRules → Linux by SNMP / Windows by SNMP
        (OS templates; transport from SNMP Monitoring (Linux) CG on the same tag)
@@ -981,8 +981,10 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     # ESXi Hypervisor role → ESXi OOB iDRAC CG (SNMP only on oob_ip, no Agent)
     assign_role(esxi_oob_group, 'ESXi Hypervisor')
 
-    # SAP HANA and SAP ME: assign SAP Monitoring (SAPUSER) CG on role, not tag.
-    # SAP HANA role covers *-sh01 hosts; SAP ME covers *-me0N hosts.
+    # SAP HANA and SAP ME: dual-plane — Agent Monitoring (primary IP) + SAP SNMP (SAPUSER on oob/primary).
+    # SAP agent templates (§7) need an Agent interface; SAP SNMP CG provides SNMP for hardware monitoring.
+    assign_role(agent_group, 'SAP HANA')
+    assign_role(agent_group, 'SAP ME')
     assign_role(sap_snmp_group, 'SAP HANA')
     assign_role(sap_snmp_group, 'SAP ME')
 
@@ -1658,7 +1660,7 @@ INVENTORY_PAYLOAD = {
     'location': '{{ object.site.name }}',
     'site_rack': '{{ object.rack.name if object.rack else "" }}',
     'name': '{{ object.name }}',
-    'url_a': 'https://netbox.sensirion.lokal/dcim/devices/{{ object.id }}/',
+    'url_a': '{% if object.device_type %}https://netbox.sensirion.lokal/dcim/devices/{{ object.id }}/{% else %}https://netbox.sensirion.lokal/virtualization/virtual-machines/{{ object.id }}/{% endif %}',
     'deployment_status': '{{ object.status }}',
 }
 
@@ -1869,6 +1871,23 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     logger.info('nbxSync Zero-Touch Configuration')
     logger.info('Successor to previous checklist configure_nbxsync.py')
     logger.info('=' * 60)
+    # Warn if required SNMP secrets are missing (fail-closed for first apply).
+    missing_snmp = [name for name in (
+        'NBX_SNMP_AUTHPASS_MON', 'NBX_SNMP_PRIVPASS_MON',
+        'NBX_SNMP_AUTHPASS_LINUX', 'NBX_SNMP_PRIVPASS_LINUX',
+    ) if not os.environ.get(name)]
+    if missing_snmp:
+        logger.warning('MISSING SNMP env vars: %s — SNMP interfaces will have empty passphrases', ', '.join(missing_snmp))
+        logger.warning('Set these before first apply: export %s=... etc.', ' '.join(missing_snmp))
+    # Optional SNMP profiles (Dell iDRAC, SAP) — warn but don't block.
+    missing_optional_snmp = [name for name in (
+        'NBX_SNMP_AUTHPASS_DELL', 'NBX_SNMP_PRIVPASS_DELL',
+    ) if not os.environ.get(name)]
+    if missing_optional_snmp:
+        logger.warning('Optional SNMP env unset (iDRAC/SAP): %s', ', '.join(missing_optional_snmp))
+
+    # Network script reminder.
+    logger.info('NOTE: Run scripts/configure_nbxsync_network.py after this for EXOS/VOSS/IQ Engine template imports and Extreme macros.')
     step0_cleanup(mutate_netbox=mutate_netbox)
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
     ensure_storage_generic_template(server)
@@ -1911,7 +1930,7 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
         logger.info('  %s: %s', model.__name__, model.objects.count())
     logger.info(
         'Zero-touch deltas: SiteGroup Agent, multi-credential SNMP CGs '
-        '(Linux/SAP via tags snmp/snmp-sap), SPACE :10060, Server Agent+OOB, '
+        '(Linux via tag snmp, SAP via roles), SPACE :10060, Server Agent+OOB, '
         'hostgroup-first (Sites×Roles×OS); HI never on tags'
     )
     return server
@@ -1936,7 +1955,7 @@ def run_verify(*, limit: int | None = None) -> int:
     agent_without_platform_fact = 0
     active_no_primary = 0
     no_template = 0
-    snmp_role_on_agent_cg = 0
+    esxi_on_server_role = 0
     os_family_tags_remaining = M.ZabbixTag.objects.filter(tag='os_family').count()
     snmp_tag_ifs = M.ZabbixHostInterface.objects.filter(assigned_object_type=ct(Tag)).count()
     agent_cg_name = 'Agent Monitoring'
@@ -1972,9 +1991,11 @@ def run_verify(*, limit: int | None = None) -> int:
             if not AGENT_PLATFORM_HINT.search(plat):
                 agent_without_platform_fact += 1
         # Soft check: SNMP-ish roles should not sit on plain Agent without a template.
-        if role_name in SNMP_ROLE_NAMES and cg_name not in snmp_ish_cgs and not any(n in cg_name for n in ('SNMP', 'OOB')):
-            # already counted snmp_role_on_agent_cg when exact Agent name matches
-            pass
+
+        # ESXi platform must not have role Server — should be ESXi Hypervisor
+        plat_name = getattr(getattr(obj, 'platform', None), 'name', '') or ''
+        if ESXI_PLATFORM_RE.search(plat_name) and role_name == 'Server':
+            esxi_on_server_role += 1
 
     shadow = M.ZabbixMacro.objects.filter(macro__in=SHADOW_MACROS).count()
     print(
@@ -1986,7 +2007,7 @@ def run_verify(*, limit: int | None = None) -> int:
                 'agent_cg_without_agent_platform_fact': agent_without_platform_fact,
                 'snmp_role_resolved_to_agent_cg': snmp_role_on_agent_cg,
                 'active_without_primary_or_oob_ip': active_no_primary,
-                'shadow_secret_macros_remaining': shadow,
+                'esxi_on_server_role': esxi_on_server_role,
                 'os_family_tags_remaining': os_family_tags_remaining,
                 'tag_targeted_host_interfaces_remaining': snmp_tag_ifs,
             },
