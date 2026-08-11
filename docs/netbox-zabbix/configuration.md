@@ -135,14 +135,10 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 |---|---|---|---|---|
 | Network | SNMP Monitoring, OOB SNMP Only | MONITORING | MD5 | DES |
 | Linux | SNMP Monitoring (Linux) | MONITORING-LINUX | SHA1* | AES128 |
-| Dell iDRAC | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1* | AES128 |
+| Dell iDRAC | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1 | AES128 |
 | Huawei | SNMP Monitoring (Huawei) | LogicMonitor | SHA1* | AES128 |
 | SAP | SAP Agent+SNMP (SNMP side) | SAPUSER | *(confirm)* | *(confirm)* |
 
-\*Source notes say "SHA"; Zabbix offers SHA1 and SHA256 — use **SHA1** until confirmed.
-
-Common SNMPv3 fields: version **3**, bulk **True**, max repetitions **10**, security level **authPriv**, push community **True**, port **161**.  
-**Exception:** ESXi OOB iDRAC uses **SNMPv2c** community `public` (not SNMPv3) — see §5.5b.
 
 ### 5.1 SNMP Monitoring (network)
 
