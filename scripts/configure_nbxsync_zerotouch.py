@@ -68,8 +68,8 @@ Usage::
   # Extreme EXOS/VOSS/IQ Engine template imports, TemplateRules, and macros.
   # Zerotouch creates the template objects but not the EXOS TemplateRule.
 
-  # --mutate-netbox: first build only — creates ESXi Hypervisor role, migrates
-  # ESXi devices from Server role, tags do_not_monitor on Cato/Messpc.
+  # --mutate-netbox: tags do_not_monitor on Cato/Messpc. Does NOT create
+  # roles — netbox-sync handles role assignment (incl. ESXi Hypervisor).
 
 Roadmap / known debt:
   - Agent TLS: currently "No encryption" (tls_connect=1). Proxies use cert
