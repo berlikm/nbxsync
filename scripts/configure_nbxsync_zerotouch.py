@@ -1720,7 +1720,15 @@ def step9_tags(country_slugs=None):
         assign_tag(cluster_tag, ct(Cluster), c.id)
 
     env_template = (
-        '{% set n = object.name | lower -%}\n{%- if "-p-" in n or n.endswith("-p") or "-p0" in n or "-p1" in n -%}Production\n{%- elif "-d-" in n -%}Development\n{%- elif "-q-" in n -%}QA\n{%- elif "-s-" in n -%}Sandbox\n{%- elif "-t-" in n -%}Test\n{%- elif "vdi" in n -%}VDI\n{%- else -%}Unknown\n{%- endif -%}'
+        '{% set n = (object.name or "") | lower -%}\n'
+        '{% if "-p-" in n or n.endswith("-p") or "-p0" in n or "-p1" in n -%}Production\n'
+        '{%- elif "-d-" in n -%}Development\n'
+        '{%- elif "-q-" in n -%}QA\n'
+        '{%- elif "-s-" in n -%}Sandbox\n'
+        '{%- elif "-t-" in n -%}Test\n'
+        '{%- elif "vdi" in n -%}VDI\n'
+        '{%- else -%}Unknown\n'
+        '{%- endif -%}'
     )
     env_tag, _ = get_or_create(
         M.ZabbixTag,
