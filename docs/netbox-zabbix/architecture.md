@@ -39,10 +39,11 @@ Country Site Group     →  proxy + default Agent :10050
                        →  environment tag + host inventory mapping
 
 Device Role            →  transport exceptions (SNMP / OOB / SPACE / SAP)
-                       →  application templates
+                       →  application templates (incl. VMware FQDN on vCenter only)
                        →  Extreme port-scoping macros (values in zabbix/01)
 
 Platform (Template Rule) → OS / Extreme / Forti / storage template
+                         → ESXi → Dell iDRAC + OS/VMware (hardware OOB; not VMware FQDN)
                          → OS/… hostgroup membership
 
 NetBox tags            →  overlays (`critical`) + opt-ins (`snmp`, `oracle`)
@@ -59,6 +60,8 @@ Zabbix tag assignment  →  `do_not_monitor` exclude (object = waves; role = per
 | Linux/Windows SNMP opt-in | Tag `snmp` → CG **SNMP Monitoring (Linux)** | SNMPv3 `MONITORING-LINUX` SHA/AES |
 | SAP SNMP | Roles **SAP HANA** / **SAP ME** → CG **SNMP Monitoring (SAP)** | SNMPv3 `SAPUSER` |
 | Dell server BMC | CG **Server Agent+OOB** on role Server | Agent :10050 + `MONITORING-DELL` on `oob_ip` |
+| ESXi hypervisor (Dell) | CG **ESXi OOB iDRAC** on platform ESXi | `MONITORING-DELL` on `oob_ip` only (no agent, no VMware SDK) |
+| vCenter | Role **vCenter** → template **VMware FQDN** | SDK macros; LLD covers hypervisors/VMs/cluster |
 | Cohesity physical | CG **OOB SNMP Only** on role Cohesity | `MONITORING` on `oob_ip` only |
 | Space Server | CG **Agent Monitoring (SPACE)** on role | Agent **:10060** |
 | Criticality | Tag `critical` → hostgroup | `Priority/Critical` |
