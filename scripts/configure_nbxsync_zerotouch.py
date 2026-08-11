@@ -54,6 +54,13 @@ Usage::
   export NBX_SNMP_AUTHPASS_DELL=... NBX_SNMP_PRIVPASS_DELL=...
   # optional SAP (after Robert confirms auth/priv):
   # export NBX_SNMP_AUTHPASS_SAP=... NBX_SNMP_PRIVPASS_SAP=...
+  # Per-device Pure Storage API tokens (one per array):
+  # export NBX_PURE_TOKEN_HU_DEB_SAN11=...
+  # Per-vCenter SSO credentials (one per vCenter VM):
+  # export NBX_VMWARE_USER_CH_STA_P_VCSA02=...
+  # export NBX_VMWARE_PASS_CH_STA_P_VCSA02=...
+  # MSSQL service account (shared):
+  # export NBX_MSSQL_USER=... NBX_MSSQL_PASS=...
   python scripts/configure_nbxsync_zerotouch.py
 
   # Read-only census (coverage gaps)
@@ -1557,72 +1564,129 @@ def step10_host_inventory(country_slugs=None):
         )
 
 
-def step11_macros():
+def _ensure_macro_assignment(server, macro_name, value, obj, mtype=ZabbixMacroTypeChoices.SECRET, description=''):
+    """Create server-level ZabbixMacro + ZabbixMacroAssignment on obj.
+
+    ZabbixMacro.assigned_object must be ZabbixServer (per MACRO_ASSIGNMENT_MODELS).
+    ZabbixMacroAssignment.assigned_object is the Device/DeviceRole/VM that inherits it.
+    """
+    # 1. Server-level macro definition
+    macro, _ = ensure(
+        M.ZabbixMacro,
+        macro=macro_name,
+        assigned_object_type=ct(M.ZabbixServer),
+        assigned_object_id=server.id,
+        defaults={'value': '', 'type': mtype,
+                  'description': description or f'ztc:{macro_name}'},
+        update_fields=['type', 'description'],
+    )
+    # 2. Assignment on the target object (carries the actual value)
+    ensure(
+        M.ZabbixMacroAssignment,
+        zabbixmacro=macro,
+        assigned_object_type=ContentType.objects.get_for_model(type(obj)),
+        assigned_object_id=obj.id,
+        defaults={'value': value, 'is_regex': False, 'context': ''},
+        update_fields=['value', 'is_regex', 'context'],
+    )
+    return macro
+
+
+def step11_macros(server):
     logger.info('=' * 60)
     logger.info('Step 11: ZabbixMacros')
     logger.info('=' * 60)
     prune_shadow_macros()
-    macro_specs = [
+
+    # ---- Text macros (role-level) ----
+    text_specs = [
         ('{$CPU.UTIL.CRIT}', '90', 'MSSQL'),
         ('{$CPU.UTIL.CRIT}', '80', 'Server'),
-        # {$IF.UTIL.MAX} is 101 globally (silenced) — do NOT set per-role or it shadows the global.
-        # Enable utilisation alerts via context macros post-cutover (e.g. {$IF.UTIL.MAX:"USW"}).
         ('{$MEM.UTIL.CRIT}', '85', 'VDI'),
         ('{$MSSQL.DSN}', 'nbxsync', 'MSSQL'),
         ('{$VMWARE.URL}', 'https://{{ object.name }}/sdk', 'vCenter'),
     ]
-    # Secret macros from env vars — pushed to hosts as type=1 (secret) host macros.
-    # Values are shared across all hosts in the role.
-    vmware_user = os.environ.get('NBX_VMWARE_USER', '')
-    vmware_pass = os.environ.get('NBX_VMWARE_PASS', '')
-    pure_token = os.environ.get('NBX_PURE_TOKEN', '')
+    for macro_name, macro_value, role_name in text_specs:
+        try:
+            role = get_role(role_name)
+        except DeviceRole.DoesNotExist:
+            logger.warning('  Role not found: %s, skipping macro %s', role_name, macro_name)
+            continue
+        _ensure_macro_assignment(
+            server, macro_name, macro_value, role,
+            mtype=ZabbixMacroTypeChoices.TEXT, description=f'ztc:{role_name}')
+
+    # ---- Secret macros: Pure Storage (per-device) ----
+    # Each array has its own API token. Assignment is on the Device.
+    # Env vars: NBX_PURE_TOKEN_<HOSTNAME> (uppercased, dashes→underscores).
+    pure_arrays = Device.objects.filter(
+        device_type__manufacturer__name__iexact='Pure Storage'
+    )
+    for dev in pure_arrays:
+        env_key = f'NBX_PURE_TOKEN_{dev.name.upper().replace("-", "_")}'
+        token = os.environ.get(env_key, '')
+        if token:
+            _ensure_macro_assignment(
+                server, '{$PURESTORAGE.TOKEN}', token, dev,
+                description=f'ztc:secret:pure:{dev.name}')
+            logger.info('  Macro {$PURESTORAGE.TOKEN} on %s', dev.name)
+        else:
+            logger.warning('  Env var %s not set — Pure array %s will have no API token', env_key, dev.name)
+
+    # ---- Secret macros: VMware vCenter (per-VM, per-SSO-domain) ----
+    # Env vars: NBX_VMWARE_USER_<HOSTNAME>, NBX_VMWARE_PASS_<HOSTNAME>.
+    vcenter_vms = VirtualMachine.objects.filter(role__name__iexact='vCenter')
+    for vm in vcenter_vms:
+        env_key_user = f'NBX_VMWARE_USER_{vm.name.upper().replace("-", "_")}'
+        env_key_pass = f'NBX_VMWARE_PASS_{vm.name.upper().replace("-", "_")}'
+        vmware_user = os.environ.get(env_key_user, '')
+        vmware_pass = os.environ.get(env_key_pass, '')
+        for macro_name, val in [
+            ('{$VMWARE.USER}', vmware_user),
+            ('{$VMWARE.PASSWORD}', vmware_pass),
+        ]:
+            if val:
+                _ensure_macro_assignment(
+                    server, macro_name, val, vm,
+                    description=f'ztc:secret:vcenter:{vm.name}')
+        if vmware_user and vmware_pass:
+            logger.info('  Macros {$VMWARE.USER}/{$VMWARE.PASSWORD} on %s', vm.name)
+        else:
+            logger.warning('  Env vars %s/%s not set — vCenter %s will have no SSO credentials',
+                           env_key_user, env_key_pass, vm.name)
+
+    # ---- Secret macros: MSSQL (role-level, shared) ----
     mssql_user = os.environ.get('NBX_MSSQL_USER', '')
     mssql_pass = os.environ.get('NBX_MSSQL_PASS', '')
-    secret_specs = [
-        ('{$VMWARE.USER}', vmware_user, 'vCenter'),
-        ('{$VMWARE.PASSWORD}', vmware_pass, 'vCenter'),
-        ('{$PURESTORAGE.TOKEN}', pure_token, 'Pure Storage'),
-        ('{$MSSQL.USER}', mssql_user, 'MSSQL'),
-        ('{$MSSQL.PASSWORD}', mssql_pass, 'MSSQL'),
-    ]
-    for macro_name, macro_value, role_name in secret_specs:
-        if not macro_value:
-            logger.warning('  Env var not set for %s on role %s — skipping', macro_name, role_name)
-            continue
-        try:
-            role = get_role(role_name)
-        except DeviceRole.DoesNotExist:
-            logger.warning('  Role not found: %s, skipping macro %s', role_name, macro_name)
-            continue
-        ensure(
-            M.ZabbixMacro,
-            macro=macro_name,
-            assigned_object_type=ct(DeviceRole),
-            assigned_object_id=role.id,
-            defaults={'value': macro_value, 'type': ZabbixMacroTypeChoices.SECRET, 'description': f'ztc:secret:{role_name}'},
-            update_fields=['value', 'type', 'description'],
-        )
-    # Regular (text) macros
-    for macro_name, macro_value, role_name in macro_specs:
-        try:
-            role = get_role(role_name)
-        except DeviceRole.DoesNotExist:
-            logger.warning('  Role not found: %s, skipping macro %s', role_name, macro_name)
-            continue
-        ensure(
-            M.ZabbixMacro,
-            macro=macro_name,
-            assigned_object_type=ct(DeviceRole),
-            assigned_object_id=role.id,
-            defaults={'value': macro_value, 'type': ZabbixMacroTypeChoices.TEXT, 'description': f'ztc:{role_name}'},
-            update_fields=['value', 'type', 'description'],
-        )
+    for macro_name, macro_value in [
+        ('{$MSSQL.USER}', mssql_user),
+        ('{$MSSQL.PASSWORD}', mssql_pass),
+    ]:
+        if macro_value:
+            try:
+                role = get_role('MSSQL')
+                _ensure_macro_assignment(
+                    server, macro_name, macro_value, role,
+                    description='ztc:secret:MSSQL')
+            except DeviceRole.DoesNotExist:
+                logger.warning('  Role MSSQL not found, skipping %s', macro_name)
+        else:
+            logger.warning('  Env var not set for %s — skipping', macro_name)
 
-    # Prune stale {$IF.UTIL.MAX} role macros that shadow the global 101.
-    ifutil_macros = M.ZabbixMacro.objects.filter(macro='{$IF.UTIL.MAX}')
-    deleted, _ = ifutil_macros.delete()
+    # ---- Prune stale ZabbixMacro objects with wrong assigned_object_type ----
+    # Previous script versions created ZabbixMacro directly on DeviceRole/Device/VM
+    # instead of ZabbixServer. These are invisible to inheritance — prune them.
+    for model_cls in (DeviceRole, Device, VirtualMachine, Manufacturer):
+        stale = M.ZabbixMacro.objects.filter(assigned_object_type=ct(model_cls))
+        deleted, _ = stale.delete()
+        if deleted:
+            logger.info('  PRUNED: %s stale %s-level ZabbixMacro(s)', deleted, model_cls.__name__)
+
+    # ---- Prune stale {$IF.UTIL.MAX} role macros ----
+    ifutil = M.ZabbixMacro.objects.filter(macro='{$IF.UTIL.MAX}')
+    deleted, _ = ifutil.delete()
     if deleted:
-        logger.info('  PRUNED: %s {$IF.UTIL.MAX} role macro(s) (global 101 must not be shadowed)', deleted)
+        logger.info('  PRUNED: %s {$IF.UTIL.MAX} macro(s) (global 101 must not be shadowed)', deleted)
 
 def ensure_storage_generic_template(server) -> None:
     """Create 'Storage Generic Device by SNMP' in Zabbix if missing.
@@ -1693,7 +1757,7 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     step8_hostgroups(server)
     step9_tags()
     step10_host_inventory()
-    step11_macros()
+    step11_macros(server)
 
     logger.info('=' * 60)
     logger.info('CONFIGURATION COMPLETE — Summary')
@@ -2004,6 +2068,17 @@ def run_simulate() -> int:
             ('NBX_SNMP_PRIVPASS_SAP', 'lab-sap-privpass'),
         ):
             os.environ.setdefault(key, val)
+        # Lab app credentials (per-device env vars)
+        for dev in Device.objects.filter(device_type__manufacturer__name__iexact=f'{PREFIX}Pure Storage'):
+            os.environ.setdefault(
+                f'NBX_PURE_TOKEN_{dev.name.upper().replace("-", "_")}', 'lab-pure-token')
+        for vm in VirtualMachine.objects.filter(role__name__iexact='vCenter'):
+            os.environ.setdefault(
+                f'NBX_VMWARE_USER_{vm.name.upper().replace("-", "_")}', 'lab-vmware-user')
+            os.environ.setdefault(
+                f'NBX_VMWARE_PASS_{vm.name.upper().replace("-", "_")}', 'lab-vmware-pass')
+        os.environ.setdefault('NBX_MSSQL_USER', 'lab-mssql-user')
+        os.environ.setdefault('NBX_MSSQL_PASS', 'lab-mssql-pass')
 
         step5_host_interfaces(server, cg_groups)
         step5b_configgroup_assignments(cg_groups, country_slugs=country_slugs)
@@ -2120,7 +2195,7 @@ def run_simulate() -> int:
 
         step9_tags(country_slugs=country_slugs)
         step10_host_inventory(country_slugs=country_slugs)
-        step11_macros()
+        step11_macros(server)
         record('shadow_macros_pruned', M.ZabbixMacro.objects.filter(macro__in=SHADOW_MACROS).count() == 0, str(SHADOW_MACROS), group='idempotent')
 
         plat_linux, _ = Platform.objects.get_or_create(slug=slugify('ubuntu'), defaults={'name': f'{PREFIX}Ubuntu 22.04 LTS'})
