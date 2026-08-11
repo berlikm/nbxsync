@@ -215,7 +215,7 @@ Without these assignments, the group’s interfaces are not applied during sync.
 |---|---|
 | Agent Monitoring | Site Group CH / HU / JP / KR / NL / US / CN |
 
-**Pure / HPE MSA** stay on this Agent default (HTTP templates). **Synology / Huawei** get SNMP via Manufacturer CG (§5b) — not the Storage role.
+**Pure / Dell Storage** stay on this Agent default (HTTP templates). **Synology / Huawei** get SNMP via Manufacturer CG (§5b) — not the Storage role.
 
 ### SNMP Monitoring → network Device Roles
 
@@ -305,8 +305,7 @@ Ensure these Zabbix templates exist (create the nbxsync Template objects pointin
 | Dell iDRAC by SNMP | |
 | MSSQL by Zabbix agent 2 | |
 | Pure Storage FlashArray v2 by HTTP | Production (v1 alias accepted by script) |
-| HPE MSA 2060 Storage by HTTP | |
-| Dell Storage by HTTP | Optional |
+| HPE MSA 2060 Storage by HTTP | Used for Dell Storage arrays in this estate |
 | Huawei OceanStor Dorado by SNMP | |
 | Synology DiskStation SNMPv3 | |
 | GitLab by HTTP | |
@@ -356,8 +355,7 @@ Scoped here so Manufacturer Dell does not put iDRAC on every Dell device. Server
 | Dell iDRAC (Server) | `.*` | `^Server$` | Dell | Dell iDRAC by SNMP | — | — | 80 | Yes |
 | Dell iDRAC (ESXi) | `ESXi\|VMware ESX` | — | Dell | Dell iDRAC by SNMP | OS/VMware | — | 80 | Yes |
 | Pure Storage (HTTP) | `.*` | — | Pure Storage | Pure Storage FlashArray v2 by HTTP | — | — | 80 | Yes |
-| HPE MSA (HTTP) | `.*` | `^Storage$` | HPE | HPE MSA 2060 Storage by HTTP | — | — | 80 | Yes |
-| Dell Storage (HTTP) | `.*` | `^Storage$` | Dell | Dell Storage by HTTP | — | — | 80 | Yes |
+| Dell Storage (HTTP) | `.*` | `^Storage$` | Dell | HPE MSA 2060 Storage by HTTP | — | — | 80 | Yes |
 | Huawei OceanStor (SNMP) | `.*` | `^Storage$` | Huawei | Huawei OceanStor Dorado by SNMP | — | — | 80 | Yes |
 | Huawei Storage ICMP | `.*` | `^Storage$` | Huawei | ICMP Ping | — | — | 85 | Yes |
 | Synology DiskStation (SNMP) | `.*` | `^Storage$` | Synology | Synology DiskStation SNMPv3 | — | — | 80 | Yes |
@@ -624,10 +622,9 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Firewall | SNMP Monitoring | Platform/role template (FortiGate, …) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/…, OS/Network |
 | Space Server | Agent Monitoring (SPACE) | OS by agent | Agent **:10060** | Sites/CH/…, Roles/Space Server, OS/… |
 | Storage (Pure) | Agent Monitoring | Pure Storage FlashArray v2 by HTTP | Agent / HTTP | Sites/…, Roles/Storage |
-| Storage (HPE MSA) | Agent Monitoring | HPE MSA 2060 Storage by HTTP | Agent / HTTP | Sites/…, Roles/Storage |
 | Storage (Synology) | SNMP Monitoring (Manufacturer) | Synology DiskStation SNMPv3 + ICMP Ping | SNMP `MONITORING` | Sites/…, Roles/Storage |
 | Storage (Huawei) | SNMP Monitoring (Manufacturer) | Huawei OceanStor Dorado by SNMP (+ ICMP); LogicMonitor creds → per-device IF | SNMP | Sites/…, Roles/Storage |
-| Storage (Dell) | Agent Monitoring | Dell Storage by HTTP (when imported) | Agent / HTTP | Sites/CH/…, Roles/Storage |
+| Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Pure Storage | Agent Monitoring | Pure Storage by HTTP | Agent / HTTP | Sites/CH/…, Roles/Pure Storage |
 | Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP `MONITORING` on oob | Sites/CH/…, Roles/Cohesity |
 | Cohesity VM with primary IP | SNMP Monitoring (direct) | Storage Generic | SNMP `MONITORING` on primary | … |

@@ -159,8 +159,8 @@ TPL_NAMES = {
     'storage_generic_snmp': 'Storage Generic Device by SNMP',
     # Production storage templates (manufacturer-scoped TemplateRules in §6.3).
     # Names must match Zabbix Cloud exactly (see hosts STOD*/snas*/san*).
+    # Dell Storage arrays use the HPE MSA HTTP template (same API shape in this estate).
     'hpe_msa_http': 'HPE MSA 2060 Storage by HTTP',
-    'dell_storage_http': 'Dell Storage by HTTP',  # optional — not all estates import it
     'huawei_storage_snmp': 'Huawei OceanStor Dorado by SNMP',
     'synology_storage_snmp': 'Synology DiskStation SNMPv3',
     # Placeholder application templates — LM parity, items built post-cutover.
@@ -363,7 +363,6 @@ OPTIONAL_TPL_KEYS = frozenset({
     'icmp_ping',
     'extreme_voss_snmp',
     'extreme_iq_engine_snmp',
-    'dell_storage_http',
 })
 
 # Alternate Zabbix names tried in order when the primary TPL_NAMES entry is absent.
@@ -1158,45 +1157,30 @@ def step6_template_rules(server, country_slugs=None):
     else:
         logger.warning("  Manufacturer 'Pure Storage' not found, skipping Pure Storage TemplateRule")
 
-    # HPE MSA: Manufacturer → HPE MSA 2060 Storage by HTTP (CN-SHA-P-STOD*).
-    hpe = (
-        Manufacturer.objects.filter(name__iexact='HPE').first()
-        or Manufacturer.objects.filter(name__iexact='Hewlett Packard Enterprise').first()
-        or Manufacturer.objects.filter(slug__iexact='hpe').first()
-        or Manufacturer.objects.filter(slug__iexact='hewlett-packard-enterprise').first()
-    )
-    if 'hpe_msa_http' in TPL:
-        tpl_hpe = make_template(*TPL['hpe_msa_http'], req=[HostInterfaceRequirementChoices.ANY])
-        if hpe is not None:
-            defaults = {
-                'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
-                'manufacturer': hpe, 'zabbixtemplate': tpl_hpe,
-                'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
-            }
-            ensure(M.ZabbixTemplateRule, name='HPE MSA (HTTP)', defaults=defaults, update_fields=list(defaults.keys()))
-            logger.info('  Rule HPE MSA (HTTP) → %s', tpl_hpe.name)
-        else:
-            logger.warning("  Manufacturer 'HPE' / 'Hewlett Packard Enterprise' not found, skipping HPE MSA TemplateRule")
-    else:
-        logger.warning('  Template HPE MSA 2060 Storage by HTTP not resolved — skip TemplateRule')
+    # Dell Storage: Manufacturer Dell ∧ role Storage → HPE MSA 2060 Storage by HTTP.
+    # Estate uses that template on Dell arrays (no separate Dell Storage by HTTP import).
+    # No HPE manufacturer rule — HPE MSA mapping removed.
+    legacy_hpe_msa = M.ZabbixTemplateRule.objects.filter(name='HPE MSA (HTTP)').first()
+    if legacy_hpe_msa is not None and legacy_hpe_msa.enabled:
+        legacy_hpe_msa.enabled = False
+        legacy_hpe_msa.save(update_fields=['enabled'])
+        logger.info('  DISABLED legacy TemplateRule %r (HPE MSA template is for Dell Storage)', 'HPE MSA (HTTP)')
 
-    # Dell Storage: Manufacturer → Dell Storage by HTTP (optional template).
-    # Scoped to role=Storage so Dell servers (role=Server, iDRAC rule) are unaffected.
     dell_mfr = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug__iexact='dell').first()
-    if 'dell_storage_http' in TPL:
-        tpl_dell_storage = make_template(*TPL['dell_storage_http'], req=[HostInterfaceRequirementChoices.ANY])
+    if 'hpe_msa_http' in TPL:
+        tpl_msa_http = make_template(*TPL['hpe_msa_http'], req=[HostInterfaceRequirementChoices.ANY])
         if dell_mfr is not None:
             defaults = {
                 'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
-                'manufacturer': dell_mfr, 'zabbixtemplate': tpl_dell_storage,
+                'manufacturer': dell_mfr, 'zabbixtemplate': tpl_msa_http,
                 'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
             }
             ensure(M.ZabbixTemplateRule, name='Dell Storage (HTTP)', defaults=defaults, update_fields=list(defaults.keys()))
-            logger.info('  Rule Dell Storage (HTTP) → %s', tpl_dell_storage.name)
+            logger.info('  Rule Dell Storage (HTTP) → %s', tpl_msa_http.name)
         else:
             logger.warning("  Manufacturer 'Dell' not found, skipping Dell Storage TemplateRule")
     else:
-        logger.warning('  Template Dell Storage by HTTP not resolved — skip TemplateRule')
+        logger.warning('  Template HPE MSA 2060 Storage by HTTP not resolved — skip Dell Storage TemplateRule')
 
     # Huawei OceanStor Dorado by SNMP (hu-deb-san01). Transport: SNMP CG on Manufacturer.
     huawei = Manufacturer.objects.filter(name='Huawei').first() or Manufacturer.objects.filter(slug__iexact='huawei').first()
@@ -1653,7 +1637,7 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     ensure_storage_generic_template(server)
     required_names = {k: v for k, v in TPL_NAMES.items() if k not in OPTIONAL_TPL_KEYS}
     TPL = resolve_templates(server, names=required_names, required=True)
-    # Extrem VOSS / IQ Engine / ICMP / Dell Storage HTTP — soft-resolve when present.
+    # Extreme VOSS / IQ Engine / ICMP — soft-resolve when present.
     TPL.update(resolve_templates(server, names={k: TPL_NAMES[k] for k in OPTIONAL_TPL_KEYS}, required=False))
     proxies, ch_proxy_group = step2_proxies(server)
     step3_server_assignments(server, proxies, ch_proxy_group)
@@ -2021,7 +2005,6 @@ def run_simulate() -> int:
             TPL['windows_snmp'] = (int(ensure_t(f'{PREFIX}windows.snmp', f'{PREFIX}Windows by SNMP')), f'{PREFIX}Windows by SNMP')
             TPL['storage_generic_snmp'] = (int(ensure_t(f'{PREFIX}storage.snmp', f'{PREFIX}Storage Generic Device by SNMP')), f'{PREFIX}Storage Generic Device by SNMP')
             TPL['hpe_msa_http'] = (int(ensure_t(f'{PREFIX}hpe.msa', f'{PREFIX}HPE MSA 2060 Storage by HTTP')), f'{PREFIX}HPE MSA 2060 Storage by HTTP')
-            TPL['dell_storage_http'] = (int(ensure_t(f'{PREFIX}dell.storage', f'{PREFIX}Dell Storage by HTTP')), f'{PREFIX}Dell Storage by HTTP')
             TPL['huawei_storage_snmp'] = (int(ensure_t(f'{PREFIX}huawei.storage', f'{PREFIX}Huawei OceanStor Dorado by SNMP')), f'{PREFIX}Huawei OceanStor Dorado by SNMP')
             TPL['synology_storage_snmp'] = (int(ensure_t(f'{PREFIX}synology.nas', f'{PREFIX}Synology DiskStation SNMPv3')), f'{PREFIX}Synology DiskStation SNMPv3')
             TPL['icmp_ping'] = (int(ensure_t(f'{PREFIX}icmp', f'{PREFIX}ICMP Ping')), f'{PREFIX}ICMP Ping')
