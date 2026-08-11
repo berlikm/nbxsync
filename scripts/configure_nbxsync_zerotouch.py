@@ -739,6 +739,11 @@ def step4_configgroups():
         name='Agent Monitoring (SPACE)',
         defaults={'description': 'Agent port 10060 — Space Server role (camLine uses 10050)'},
     )
+    huawei_snmp_group, _ = get_or_create(
+        M.ZabbixConfigurationGroup,
+        name='SNMP Monitoring (Huawei)',
+        defaults={'description': 'SNMPv3 LogicMonitor SHA1/AES128 — Huawei OceanStor (per-device creds, non-fleet)'},
+    )
     return {
         'snmp': snmp_group,
         'agent': agent_group,
@@ -748,6 +753,7 @@ def step4_configgroups():
         'esxi_oob': esxi_oob_group,
         'sap_snmp': sap_snmp_group,
         'space_agent': space_agent_group,
+        'huawei_snmp': huawei_snmp_group,
     }
 
 
@@ -809,6 +815,28 @@ def step5_host_interfaces(server, groups: dict):
     snmp_if(groups['esxi_oob'], profile='dell', use_oob_ip=True)
     # 5.6 SAP SNMP — SAPUSER (provisional SHA1/AES128)
     snmp_if(groups['sap_snmp'], profile='sap')
+    # 5.6b Huawei SNMP — LogicMonitor SHA1/AES128 (non-fleet credential)
+    huawei = groups['huawei_snmp']
+    ensure_if(
+        zabbixserver=server,
+        assigned_object_type=ct(M.ZabbixConfigurationGroup),
+        assigned_object_id=huawei.id,
+        type=ZabbixHostInterfaceTypeChoices.SNMP,
+        use_oob_ip=False,
+        defaults={
+            'zabbixconfigurationgroup': huawei,
+            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+            'port': 161,
+            'useip': ZabbixInterfaceUseChoices.IP,
+            'dns': '',
+            'snmp_version': ZabbixHostInterfaceSNMPVersionChoices.SNMPV3,
+            'snmpv3_security_level': ZabbixInterfaceSNMPV3SecurityLevelChoices.AUTHPRIV,
+            'snmpv3_security_name': 'LogicMonitor',
+            'snmpv3_authentication_protocol': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1,
+            'snmpv3_privacy_protocol': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
+            'snmp_pushcommunity': True,
+        },
+    )
     # 5.7 SPACE agent — 10060
     agent_if(groups['space_agent'], port=10060)
 
@@ -939,27 +967,24 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     # SNMP storage manufacturers — Site Group Agent would leave them without SNMP.
     # Manufacturer CG wins first in inheritance → SNMP Monitoring (network MONITORING).
     # Pure / HPE stay on Agent default (HTTP templates).
-    # Huawei does NOT get the fleet SNMP CG — HU-DEB-SAN01 uses a per-device
-    # ZabbixHostInterface with LogicMonitor SHA/AES credentials (different from fleet
-    # MONITORING MD5/DES). Assigning the manufacturer CG would create a second SNMP
-    # interface with wrong credentials, causing dual-interface conflicts.
+    # Huawei gets its own CG (SNMP Monitoring (Huawei)) with LogicMonitor SHA/AES
+    # credentials — different from the fleet SNMP Monitoring (MONITORING MD5/DES).
     assign_manufacturer(snmp_group, 'Synology')
 
-    # HU-DEB-SAN01 (Huawei storage): assign SNMP Monitoring CG directly on the
-    # device to override the SiteGroup Agent Monitoring default. The per-device
-    # ZabbixHostInterface provides the LogicMonitor SNMPv3 credentials.
-    # Without this CG, the device would only get an Agent interface (no agent
-    # runs on a storage array) and no SNMP interface.
+    # HU-DEB-SAN01 (Huawei storage): assign the Huawei-specific SNMP CG directly
+    # on the device. This overrides the SiteGroup Agent Monitoring default (same
+    # way switches get SNMP Monitoring via their role). The Huawei CG has its own
+    # HostInterface with LogicMonitor SHA1/AES128 credentials.
     huawei_san01 = Device.objects.filter(name__iexact='HU-DEB-SAN01').first()
     if huawei_san01:
         get_or_create(
             M.ZabbixConfigurationGroupAssignment,
-            zabbixconfigurationgroup=groups['snmp'],
+            zabbixconfigurationgroup=groups['huawei_snmp'],
             assigned_object_type=ct(Device),
             assigned_object_id=huawei_san01.id,
             defaults={},
         )
-        logger.info('  HU-DEB-SAN01 → SNMP Monitoring (direct, LogicMonitor creds via per-device IF)')
+        logger.info('  HU-DEB-SAN01 → SNMP Monitoring (Huawei) with LogicMonitor SHA/AES')
 
     # §5.5b Cohesity VMs with primary_ip4 → SNMP Monitoring (not OOB SNMP Only,
     # which is for physical nodes with only oob_ip — VMs have no oob_ip).
@@ -994,7 +1019,7 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         deleted, _ = leftover_snmp.delete()
         logger.info('  PRUNED: %s SNMP Monitoring CG assignment(s) from roles no longer in SNMP_ROLES', deleted)
 
-    # Prune stale Huawei manufacturer CG assignment (replaced by per-device interface).
+    # Prune stale Huawei manufacturer CG assignment (replaced by Huawei-specific CG).
     huawei = Manufacturer.objects.filter(name__iexact='Huawei').first()
     if huawei:
         stale_huawei_cg = M.ZabbixConfigurationGroupAssignment.objects.filter(
@@ -1004,7 +1029,29 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         )
         deleted, _ = stale_huawei_cg.delete()
         if deleted:
-            logger.info('  PRUNED: Huawei manufacturer SNMP CG assignment (per-device interface instead)')
+            logger.info('  PRUNED: Huawei manufacturer SNMP CG (replaced by SNMP Monitoring (Huawei) CG)')
+
+    # Prune stale fleet SNMP Monitoring CG on HU-DEB-SAN01 (replaced by Huawei CG).
+    if huawei_san01:
+        stale_dev_snmp = M.ZabbixConfigurationGroupAssignment.objects.filter(
+            zabbixconfigurationgroup=snmp_group,
+            assigned_object_type=ct(Device),
+            assigned_object_id=huawei_san01.id,
+        )
+        deleted, _ = stale_dev_snmp.delete()
+        if deleted:
+            logger.info('  PRUNED: fleet SNMP Monitoring CG from HU-DEB-SAN01 (replaced by Huawei CG)')
+
+    # Prune stale per-device HostInterface on HU-DEB-SAN01 (credentials now on the CG).
+    if huawei_san01:
+        stale_hi = M.ZabbixHostInterface.objects.filter(
+            zabbixserver=server,
+            assigned_object_type=ct(Device),
+            assigned_object_id=huawei_san01.id,
+        )
+        deleted, _ = stale_hi.delete()
+        if deleted:
+            logger.info('  PRUNED: per-device HostInterface on HU-DEB-SAN01 (now on Huawei CG)')
     if cohesity_vms:
         logger.info('  %s Cohesity VM(s) → SNMP Monitoring (direct override, have primary_ip4)', len(cohesity_vms))
 

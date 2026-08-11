@@ -135,6 +135,7 @@ sudo podman run -d --name zbx-server --pod "$POD_NAME" \
     -e POSTGRES_DB=zabbix \
     -e ZBX_HOSTNAME=zabbix \
     -e ZBX_CACHESIZE=256M \
+    -e ZBX_STARTVMWARECOLLECTORS=2 \
     --restart=unless-stopped \
     "$IMAGE_NAME" 2>&1 | tail -1
 
