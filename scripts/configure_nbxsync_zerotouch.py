@@ -739,6 +739,12 @@ def step4_configgroups():
         'SNMP Monitoring (Linux)',
         'SNMPv3 MONITORING-LINUX SHA/AES — zero-touch via NetBox tag snmp',
     )
+
+    # Prune orphaned legacy 'SNMP by tag' CG if it still exists (renamed to SNMP Monitoring (Linux)).
+    orphan_snmp_tag = M.ZabbixConfigurationGroup.objects.filter(name='SNMP by tag').first()
+    if orphan_snmp_tag is not None:
+        orphan_snmp_tag.delete()
+        logger.info("  DELETED orphaned CG 'SNMP by tag' (renamed to 'SNMP Monitoring (Linux)')")
     oob_snmp_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
         name='OOB SNMP Only',
