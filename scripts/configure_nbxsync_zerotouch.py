@@ -116,7 +116,7 @@ logger = logging.getLogger('configure_nbxsync_zerotouch')
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # ---- Production constants (same targets as previous checklist script) ----
-ZABBIX_URL = os.environ.get('NBX_ZABBIX_URL', 'http://10.0.105.144:8080')
+ZABBIX_URL = os.environ.get('NBX_ZABBIX_URL', 'https://sensirion.zabbix.cloud')
 
 
 def _read_token() -> str:

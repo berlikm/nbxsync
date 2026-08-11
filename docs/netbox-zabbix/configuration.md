@@ -39,13 +39,36 @@ Path: **Zabbix → Servers → Add**
 | Field | Value |
 |---|---|
 | Name | Zabbix Production |
-| URL | *(production Zabbix URL)* |
+| URL | `https://sensirion.zabbix.cloud` |
 | Token | *(API token)* |
 | Validate certs | True |
 | Sync enabled | True |
 | Skip version check | False |
 
-**Validate certs = True** requires an **HTTPS** URL with a certificate chain trusted by the NetBox host. With HTTP, or with HTTPS and an untrusted/self-signed cert and validation left on, the first sync fails in a confusing way. Production (Zabbix Cloud) must use HTTPS + validation on.
+**Production is Zabbix Cloud** at `https://sensirion.zabbix.cloud`. All proxy-to-cloud traffic uses **mutual TLS certificate authentication** (Sensirion PKI). The NetBox host (sync origin) connects via HTTPS with API token — no proxy certificates needed on the NetBox host.
+
+**Proxy TLS architecture:** Proxies operate in **active mode** — they initiate the connection to Zabbix Cloud and present their leaf certificate. Zabbix Cloud verifies against the uploaded Sensirion Root CA. Zabbix Cloud presents `CN=sensirion.zabbix.cloud` to the proxy; the proxy verifies via its local `TLSCAFile` (Intermediate CA + Root CA chain).
+
+**Certificate files per proxy host:**
+
+| File | Contents | Where |
+|---|---|---|
+| `CAcert.cer` | Sensirion Root CA only (top-level, self-signed) | Zabbix Cloud portal → Root CA certificates field |
+| `zabbix-proxy.key` | Proxy private key | Zabbix Cloud portal + proxy host (`TLSKeyFile`) |
+| `zabbix-proxy-chain.pem` | Proxy leaf cert + Intermediate CA (Issuing CA Server) | Zabbix Cloud portal + proxy host (`TLSCertFile`) |
+| `chain_fixed.pem` | Intermediate CA + Root CA (in this order) | Proxy host only (`TLSCAFile`) |
+
+**Certificate requirements:**
+- Template: **Sensirion Client Authentication Linux** (not Webserver — wrong template causes TLS handshake failure)
+- Validity: 1 year — set calendar reminder for renewal
+- SANs: all proxy FQDNs + short names + IPs (5 proxies share one certificate)
+  - `ch-sta-p-zabp01.sensirion.lokal` / `ch-sta-p-zabp01` / `10.0.104.235`
+  - `ch-sta-p-zabp02.sensirion.lokal` / `ch-sta-p-zabp02` / `10.0.105.235`
+  - `hu-deb-p-zabp01.sensirion.lokal` / `hu-deb-p-zabp01` / `10.40.100.235`
+  - `cn-sha-p-zabp01.sensirion.lokal` / `cn-sha-p-zabp01` / `10.31.100.235`
+  - `kr-sel-p-zabp01.sensirion.lokal` / `kr-sel-p-zabp01` / `10.30.100.235`
+- Key Usage: Digital Signature, Key Encipherment
+- Extended Key Usage: TLS Client Authentication (proxy), TLS Web Server Authentication (cloud)
 
 ---
 
