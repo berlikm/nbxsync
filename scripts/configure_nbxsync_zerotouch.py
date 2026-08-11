@@ -804,6 +804,27 @@ def step5_host_interfaces(server, groups: dict):
             },
         )
 
+    def snmp_v2_if(group, *, community='public', use_oob_ip: bool = False):
+        ensure_if(
+            zabbixserver=server,
+            assigned_object_type=ct_cfg,
+            assigned_object_id=group.id,
+            type=ZabbixHostInterfaceTypeChoices.SNMP,
+            use_oob_ip=use_oob_ip,
+            defaults={
+                'zabbixconfigurationgroup': group,
+                'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+                'port': 161,
+                'useip': ZabbixInterfaceUseChoices.IP,
+                'dns': '',
+                'snmp_version': ZabbixHostInterfaceSNMPVersionChoices.SNMPV2,
+                'snmp_usebulk': True,
+                'snmp_max_repetitions': 10,
+                'snmp_community': community,
+                'snmp_pushcommunity': True,
+            },
+        )
+
     def agent_if(group, *, port: int = 10050):
         ensure_if(
             zabbixserver=server,
@@ -831,9 +852,9 @@ def step5_host_interfaces(server, groups: dict):
     snmp_if(groups['linux_snmp'], profile='linux')
     # 5.5 Cohesity OOB — network MONITORING
     snmp_if(groups['oob_snmp'], profile='network', use_oob_ip=True)
-    # 5.5b ESXi OOB — iDRAC SNMP only (no agent; VMware via vCenter)
-    # iDRACs use MONITORING (MD5/DES) credentials, not MONITORING-DELL (SHA/AES).
-    snmp_if(groups['esxi_oob'], profile='network', use_oob_ip=True)
+    # 5.5b ESXi OOB — iDRAC SNMPv2c only (no agent; VMware via vCenter)
+    # iDRACs use SNMPv2c community 'public' (no SNMPv3 configured on iDRACs).
+    snmp_v2_if(groups['esxi_oob'], community='public', use_oob_ip=True)
     # 5.6 SAP SNMP — SAPUSER (provisional SHA1/AES128)
     snmp_if(groups['sap_snmp'], profile='sap')
     # 5.6b Huawei SNMP — LogicMonitor SHA1/AES128 (non-fleet credential)
