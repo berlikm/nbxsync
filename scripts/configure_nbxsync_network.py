@@ -1228,6 +1228,7 @@ def main() -> int:
         action='store_true',
         help='Temporary LM-migration overlay (TEMP/OPTIC=999, MLT=0). Default is destination end-state.',
     )
+    args = parser.parse_args()
     if args.simulate:
         return run_simulate(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
     if args.zabbix_only:

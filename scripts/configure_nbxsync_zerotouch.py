@@ -392,6 +392,15 @@ OPTIONAL_TPL_KEYS = frozenset({
     'proxy_health',
     'extreme_voss_snmp',
     'extreme_iq_engine_snmp',
+    # Placeholder app templates — soft-resolve (may not exist in Zabbix yet).
+    'as_java_agent',
+    'tableau_bridge_agent',
+    'cellmap_agent',
+    'oracle_agent2',
+    'sap_agent',
+    'acronis_agent',
+    'sccm_agent',
+    'print_spool_agent',
 })
 
 # Alternate Zabbix names tried in order when the primary TPL_NAMES entry is absent.
