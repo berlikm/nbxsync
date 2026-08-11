@@ -54,6 +54,7 @@ Pulled from `berlikm/nbxsync` branch `cursor/extreme-voss-snmp-template-e7f8` (P
 |---|---|
 | NetBox → Zabbix architecture | [`../docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md) |
 | nbxSync GUI rows | [`../docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md) |
+| nbxSync day-2 runbook | [`../docs/runbooks/nbxsync-day2.md`](../docs/runbooks/nbxsync-day2.md) |
 | First-build scripts (optional) | [`../scripts/README.md`](../scripts/README.md) |
 
 **Track A** = these `zabbix/` docs (what to monitor). **Track B** = architecture + checklist above (how NetBox drives hosts).

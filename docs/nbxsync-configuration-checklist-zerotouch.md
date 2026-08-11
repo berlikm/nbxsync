@@ -14,8 +14,8 @@ Optional first-build scripts: [`scripts/README.md`](../scripts/README.md) (Appen
 |---|---|
 | New to the design | [`nbxsync-architecture.md`](nbxsync-architecture.md) |
 | Configure nbxSync | §§1–12 → §13 → §16 |
-| Day-2 / new role or platform in NetBox | §15 |
-| Wrong or missing host | §15.4, then §13 |
+| Day-2 / new role or platform in NetBox | [runbook day-2](runbooks/nbxsync-day2.md) |
+| Wrong or missing host | [runbook §6](runbooks/nbxsync-day2.md#6-host-not-monitored--wrong-templates), then §13 |
 | Extreme ports / stages / TEMP_* | [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) |
 | Bulk first build | [scripts/README.md](../scripts/README.md) |
 
@@ -246,7 +246,7 @@ Without these assignments, the group’s interfaces are not applied during sync.
 
 ### Cohesity VMs with a primary IP
 
-Active Cohesity VMs with `primary_ip4` need a **direct** assignment to **SNMP Monitoring** (network profile) — they have no `oob_ip`. Track in §15 until a cleaner signal exists.
+Active Cohesity VMs with `primary_ip4` need a **direct** assignment to **SNMP Monitoring** (network profile) — they have no `oob_ip`. Track via [day-2 runbook §7](runbooks/nbxsync-day2.md#7-recurring-manual-checks) until a cleaner signal exists.
 
 ### Manufacturer
 
@@ -613,59 +613,13 @@ What to poll, thresholds, and notifications live under [`zabbix/`](../zabbix/REA
 
 ---
 
-## 15. Day-2 operations (after go-live)
+## 15. Day-2 operations
 
-Initial build is §§1–13 (+ plugin settings §12). After that, operators mostly do the following.
+After §§1–13 (+ §12), day-2 procedures live in the runbook — not in this checklist:
 
-### 15.1 New Device Role appeared
+→ [`runbooks/nbxsync-day2.md`](runbooks/nbxsync-day2.md)
 
-1. Does it need a **transport exception**? If it is agent-class → nothing (Site Group Agent default). If network SNMP → **SNMP Monitoring**. If SPACE → **Agent Monitoring (SPACE)**. If dual-plane BMC server → **Server Agent+OOB**. If OOB-only → **OOB SNMP Only**. If Linux SNMP opt-in → tag `snmp` (no new role CG).
-2. Does it need an **application template**? Add a Template assignment on the role (§7).
-3. New **Switch*** role? Copy IFALIAS / IFTYPE macros from the closest peer (`zabbix/01-extreme-switching.md` §5 / §8; create nbxSync assignments per §11.1). Platform Template Rules already cover EXOS/VOSS.
-4. Hostgroup `Roles/<name>` appears automatically from the Sites/Roles Jinja — do not create a per-role hostgroup assignment.
-
-### 15.1b New Extreme switch (day-2)
-
-On-box labels and stages: [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md), [`port-identity.md`](../zabbix/port-identity.md).  
-With role / platform / site / primary IP already in NetBox, sync should match the Extreme switch rows in **§13**. IFALIAS assignments: §11.1. If VOSS still gets Network Generic, fix §6.1 (YAML missing or onboarding re-run left the placeholder — see [scripts/README.md](../scripts/README.md)).
-
-### 15.1c Extreme staged enablement
-
-Stages and Hybrid flip: Extreme doc §7. nbxSync clicks at those stages: §7.1 and §11.1.
-
-### 15.2 New Platform appeared
-
-1. Does an existing Template Rule pattern already match? Check with the real platform name (regex `search`).
-2. If not, add or extend a rule in §6 (remember: every matching rule contributes — do not rely on priority to suppress another rule’s different template).
-3. Confirm the template’s **interface requirements** match the transport the host will have.
-
-### 15.3 New application template
-
-1. Import/create the template in Zabbix; create the nbxsync Template object.
-2. Set interface requirements (Agent / SNMP / ANY).
-3. Assign on the Device Role (or Device type / Manufacturer if that is the true scope) — §7.
-
-### 15.4 This host is not monitored / has the wrong templates
-
-Work top-down:
-
-1. **Excluded?** NetBox tag `do_not_monitor` (or role with that Zabbix tag) and plugin `exclude_tag`.
-2. **Site / Site Group?** Device or VM must resolve into a managed country (site set; cluster VMs need site or cluster site scope). No site → not profiled (§13).
-3. **Effective configuration group?** On the device/VM Zabbix tab (or inherited from role / Site Group). Wrong CG → wrong interfaces.
-4. **Interfaces present?** Agent and/or SNMP as expected; for BMC, is `oob_ip` set?
-5. **Template interface requirements?** Template needing Agent will not link on an SNMP-only host (silent drop) — §7.
-6. **Template Rules?** Platform name vs rule regex; `require_tags` (e.g. `snmp`); enabled flag. Remember all matching rules apply.
-7. **Status mapping?** Planned/offline/etc. may disable or delete the Zabbix host (§12).
-8. Re-sync the host and compare to the §13 expected-state row for that class.
-
-### 15.5 Recurring manual checks
-
-| Task | When |
-|---|---|
-| Cohesity VMs with primary IP → SNMP Monitoring (§5b) | When such VMs are created or found |
-| Extreme port labels / Hybrid flip / stage gates | Per [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) and [`port-identity.md`](../zabbix/port-identity.md) |
-| Spot-check `environment=Unknown` | After naming-convention drift |
-| Update “Last verified” stamp at top of this doc | After a production re-validation |
+(new role / platform / application template, Extreme switch & stages, host troubleshooting, recurring checks)
 
 ---
 
@@ -687,9 +641,9 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Role not listed in §5b SNMP/OOB | Still has Agent via Site Group |
 | VM without site | No useful profile until site/scope is set |
 
-**Unprofiled / wrong template symptoms:** host missing in Zabbix, empty template list, or only partial stack vs §13. Use the §15.4 ladder.
+**Unprofiled / wrong template symptoms:** host missing in Zabbix, empty template list, or only partial stack vs §13. Use the [day-2 runbook §6](runbooks/nbxsync-day2.md#6-host-not-monitored--wrong-templates) ladder.
 
-**Optional onboarding census:** see [`scripts/README.md`](../scripts/README.md) (`--verify`). Map gaps to §15.4.
+**Optional onboarding census:** see [`scripts/README.md`](../scripts/README.md) (`--verify`). Map gaps to that runbook.
 
 ---
 

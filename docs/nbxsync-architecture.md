@@ -7,7 +7,8 @@ How nbxSync policy hangs off **existing** NetBox inventory so devices and VMs be
 | Need | Document |
 |---|---|
 | Click-by-click nbxSync build (GUI / API) | [`nbxsync-configuration-checklist-zerotouch.md`](nbxsync-configuration-checklist-zerotouch.md) |
-| Expected host matrix, day-2 | Checklist §§13, 15 |
+| Expected host matrix | Checklist §13 |
+| Day-2 operator procedures | [`runbooks/nbxsync-day2.md`](runbooks/nbxsync-day2.md) |
 | Extreme ports, stages, TEMP_*/optics | [`../zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) |
 | On-box port labels | [`../zabbix/port-identity.md`](../zabbix/port-identity.md) |
 | Cutover / monitoring domains | [`../zabbix/00-monitoring-plan.md`](../zabbix/00-monitoring-plan.md), [`../zabbix/README.md`](../zabbix/README.md) |
