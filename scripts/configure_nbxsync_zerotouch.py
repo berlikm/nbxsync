@@ -541,6 +541,15 @@ def step0_cleanup(*, mutate_netbox: bool):
     )
     logger.info("  Role 'Virtual Appliance': %s (id=%s)", 'CREATED' if created else 'EXISTS', role.id)
 
+    # ESXi Hypervisor role — separates ESXi hosts from regular Servers so they
+    # get ESXi OOB iDRAC CG (SNMP only on oob_ip) instead of Server Agent+OOB
+    # (which adds an unwanted Agent interface on primary_ip — ESXi has no agent).
+    esxi_role, esxi_created = DeviceRole.objects.get_or_create(
+        slug='esxi-hypervisor',
+        defaults={'name': 'ESXi Hypervisor', 'color': '00b0f0', 'vm_role': False},
+    )
+    logger.info("  Role 'ESXi Hypervisor': %s (id=%s)", 'CREATED' if esxi_created else 'EXISTS', esxi_role.id)
+
     if not mutate_netbox:
         logger.info('  Skipping NetBox inventory mutations (pass --mutate-netbox to enable previous step0.3–0.5)')
         return
@@ -560,6 +569,17 @@ def step0_cleanup(*, mutate_netbox: bool):
         vm.save()
         updated += 1
     logger.info('  Reassigned %s Forti* VM(s) → Virtual Appliance', updated)
+
+    # Migrate ESXi platform devices from Server role to ESXi Hypervisor
+    migrated = 0
+    for dev in Device.objects.filter(platform__name__iregex=ESXI_PLATFORM_RE.pattern):
+        if dev.role_id == esxi_role.id:
+            continue
+        dev.role = esxi_role
+        dev.save(update_fields=['role'])
+        migrated += 1
+    if migrated:
+        logger.info('  Migrated %s ESXi device(s) → ESXi Hypervisor role', migrated)
 
     for slug, label in [('sd-wan-socket', 'Cato socket'), ('messpc', 'Messpc')]:
         qs = Device.objects.filter(role__slug=slug)
@@ -936,6 +956,9 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     assign_role(space_agent_group, 'Space Server')
 
+    # ESXi Hypervisor role → ESXi OOB iDRAC CG (SNMP only on oob_ip, no Agent)
+    assign_role(esxi_oob_group, 'ESXi Hypervisor')
+
     # SAP HANA and SAP ME: assign SAP Monitoring (SAPUSER) CG on role, not tag.
     # SAP HANA role covers *-sh01 hosts; SAP ME covers *-me0N hosts.
     assign_role(sap_snmp_group, 'SAP HANA')
@@ -945,7 +968,9 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
     logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server / ESXi (§6); OOB creds = MONITORING-DELL')
 
-    # ESXi platforms → OOB iDRAC CG (beats Site Group Agent). No VMware SDK on ESXi.
+    # ESXi platforms → ESXi OOB iDRAC CG (beats Site Group Agent). No agent on ESXi.
+    # Dell iDRAC template comes from TemplateRule Dell iDRAC (ESXi) in §6.
+    # Uses MONITORING-DELL SHA/AES on oob_ip (same as Server Agent+OOB but no Agent).
     esxi_platforms = [p for p in Platform.objects.all() if ESXI_PLATFORM_RE.search(p.name or '')]
     for plat in esxi_platforms:
         get_or_create(
@@ -953,7 +978,6 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
             zabbixconfigurationgroup=esxi_oob_group,
             assigned_object_type=ct(Platform),
             assigned_object_id=plat.id,
-            defaults={},
         )
     if esxi_platforms:
         logger.info(
