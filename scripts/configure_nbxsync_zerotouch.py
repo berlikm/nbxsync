@@ -551,11 +551,16 @@ def step0_cleanup(*, mutate_netbox: bool):
     )
     logger.info("  Tag 'do_not_monitor': %s (id=%s)", 'CREATED' if created else 'EXISTS', tag.id)
 
-    # Overlays / opt-ins: critical → Priority HG; snmp → Linux SNMP CG+templates.
+    # Overlays / opt-ins: critical → Priority HG; snmp → Linux SNMP CG+templates;
+    # onboarding → temporary exclude (Zabbix do_not_monitor assigned on this Tag in step 9).
     # SAP uses role-based CG SAP Agent+SNMP (SAP HANA / SAP ME) — no snmp-sap tag.
     for name, desc in [
         ('critical', 'Priority/Critical hostgroup membership (24/7 escalation)'),
         ('snmp', 'Zero-touch Linux SNMP: selects SNMP Monitoring (Linux) CG + Linux/Windows by SNMP TemplateRules'),
+        (
+            'onboarding',
+            'Temporary Zabbix sync hold: inherits do_not_monitor from Tag assignment; remove tag to enable monitoring',
+        ),
     ]:
         # Reuse existing tag by slug OR name (NetBox auto-slugifies '_' -> '-')
         t = Tag.objects.filter(slug=name).first() or Tag.objects.filter(name=name).first()
@@ -1739,6 +1744,16 @@ def step9_tags(country_slugs=None):
             logger.warning('  Role not found: %s (exclusion)', role_name)
             continue
         assign_tag(exclusion_tag, ct(DeviceRole), role.id)
+
+    # Onboarding waves: assign exclude once on NetBox Tag `onboarding`.
+    # Devices/VMs carrying that inventory tag inherit do_not_monitor; remove
+    # the NetBox tag to start monitoring (no per-object Zabbix-tab assignment).
+    onboarding_nb_tag = Tag.objects.filter(slug='onboarding').first() or Tag.objects.filter(name='onboarding').first()
+    if onboarding_nb_tag is None:
+        logger.warning("  NetBox tag 'onboarding' missing — skip exclude-on-Tag assignment")
+    else:
+        assign_tag(exclusion_tag, ct(Tag), onboarding_nb_tag.id)
+        logger.info("  Zabbix do_not_monitor → NetBox Tag 'onboarding' (id=%s)", onboarding_nb_tag.id)
 
 
 # Single inventory Jinja payload — applied identically to every country SiteGroup.

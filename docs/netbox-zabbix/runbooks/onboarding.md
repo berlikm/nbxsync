@@ -6,18 +6,29 @@ During cutover many NetBox objects are **inventory-true but not monitorable yet*
 
 ---
 
-## Mechanism (one switch)
+## Mechanism (NetBox tag switch — no plugin change)
 
-Plugin setting `exclude_tag` = `do_not_monitor` (configuration §12).
+Plugin setting `exclude_tag` = `do_not_monitor` (configuration §12) — unchanged.
 
-Exclusion is a **nbxSync Zabbix tag assignment** (`ZabbixTag` name `do_not_monitor`) on the Device, VM, or Role — **not** a NetBox inventory tag. Sync then **skips** the object (no Zabbix host; an existing one is deleted).
-
-| Scope | Use for |
+| Intent | How |
 |---|---|
-| **Device / VM** (object-level) | Onboarding waves — exclude many, enable **one by one** |
-| **Device Role** | Permanent classes that never sync (Messpc, Sd Wan Socket, VDI) |
+| **Onboarding / not ready** | NetBox inventory tag **`onboarding`** on the Device/VM. Once: assign Zabbix tag `do_not_monitor` on the **NetBox Tag** object (Tag → Zabbix tab). Every host carrying `onboarding` inherits exclude. |
+| **Permanent never-monitor** | Zabbix tag `do_not_monitor` on the **Device Role** (Messpc, Sd Wan Socket, VDI) |
+
+**Enable a host:** remove NetBox tag **`onboarding`** from that Device/VM → next sync creates/updates the Zabbix host.
+
+Sync **skips** excluded objects (no Zabbix host; an existing one is deleted).
 
 Do **not** put `do_not_monitor` on a Site Group or on role **Server** for waves. Inheritance would lock the whole class out; you cannot “open” a single child while the parent still excludes.
+
+---
+
+## One-time setup
+
+1. Plugin `exclude_tag` = `do_not_monitor` (already).
+2. Create NetBox tag **`onboarding`** (zerotouch step 0 does this).
+3. On **Tags → onboarding → Zabbix tab → Tags**, assign nbxSync Zabbix tag **`do_not_monitor`** (zerotouch step 9 does this).
+4. Permanent roles keep their role-level `do_not_monitor` assignment.
 
 ---
 
@@ -27,25 +38,25 @@ Policy (configuration §§1–13) can be fully built first. Hosts only appear in
 
 | Wave | What | Why |
 |---|---|---|
-| **0 — Policy** | Servers, proxies, CGs, Template Rules, hostgroups, macros | No host noise yet if agent fleet is excluded |
+| **0 — Policy** | Servers, proxies, CGs, Template Rules, hostgroups, macros | No host noise yet if agent fleet carries `onboarding` |
 | **1 — SNMP-ready** | Switch*, AP, Firewall, OOB/storage SNMP, … | No agent; credentials + reachability are enough |
 | **2 — Agent hosts** | Servers / VMs / SPACE / … | Enable only after agent installed and reachable |
 | **3 — Overlays** | `snmp` / `oracle` / `critical` where needed | Opt-in transport and hostgroups on already-synced hosts |
 
-Adjust wave order to your cutover; the switch is always the same: **object-level exclude on / off**.
+Adjust wave order to your cutover; the switch is always: **add/remove NetBox tag `onboarding`**.
 
 ---
 
 ## Bulk exclude (agent fleet)
 
-1. Confirm Zabbix tag `do_not_monitor` exists and plugin `exclude_tag` is set (configuration §9.3 / §12).
+1. Confirm setup above (NetBox tag `onboarding` has Zabbix `do_not_monitor` assigned).
 2. Permanent roles already have the role-level assignment — leave them.
 3. For every Device/VM that should **not** sync yet (typical: agent-class with status `active` but agent not ready):
-   - NetBox → object → **Zabbix** tab → Tags → assign **`do_not_monitor`**
-   - Or bulk via NetBox API / a one-shot script creating `ZabbixTagAssignment` rows (object-level only).
+   - NetBox → object → **Tags** → add **`onboarding`**
+   - Or bulk via NetBox UI / API tag edit.
 4. Re-sync (or wait for the job cycle). Those objects stay out of Zabbix.
 
-SNMP classes you want live in wave 1: **do not** assign the exclude tag on them.
+SNMP classes you want live in wave 1: **do not** assign `onboarding` on them.
 
 ---
 
@@ -58,8 +69,8 @@ When that object is ready to monitor:
    - Primary IP (and `oob_ip` if BMC) set
    - Agent installed and reachable **or** SNMP credentials match the CG
    - Not on a permanently excluded role
-2. Open the Device/VM → **Zabbix** tab → remove the **`do_not_monitor`** tag assignment.
-3. Re-sync that host.
+2. Open the Device/VM in NetBox → **remove tag `onboarding`**.
+3. Re-sync that host (or wait for the background cycle).
 4. Compare to configuration **§13** (expected CG / templates / interfaces). If wrong, use [`day2.md`](day2.md) §6.
 
 No new configuration group or Template Rule is required for a normal agent host — Site Group Agent default already covers it once exclusion is gone.
@@ -71,14 +82,16 @@ No new configuration group or Template Rule is required for a normal agent host 
 | Approach | Why it is a poor fit here |
 |---|---|
 | Role-level `do_not_monitor` on Server / VM roles | Cannot enable a single host until the whole role is opened |
+| Per-device Zabbix-tab `do_not_monitor` for waves | Works, but harder to bulk-edit than a NetBox inventory tag — prefer `onboarding` |
 | NetBox status `planned` / `staged` → Zabbix disabled | Host still created; meant for lifecycle status, not “agent not installed” |
 | Soft-state / `NO_ALERTING` | Host still polled; different problem |
 | Removing Agent CG from the country Site Group | Stops **everyone**; too coarse for one-by-one |
+| Plugin changes / second `exclude_*` setting | Not needed — Tag-targeted Zabbix assignments already inherit |
 
 ---
 
 ## After go-live
 
-- New objects that are not ready yet: assign object-level `do_not_monitor` at create time (or leave them until ready — if Agent default would sync them immediately, prefer exclude-first).
-- Permanent never-monitor classes: keep **role-level** assignment only.
+- New objects that are not ready yet: add NetBox tag `onboarding` at create time (or leave them until ready — if Agent default would sync them immediately, prefer tag-first).
+- Permanent never-monitor classes: keep **role-level** Zabbix tag `do_not_monitor` only.
 - Day-2 policy changes: [`day2.md`](day2.md).

@@ -46,8 +46,8 @@ Platform (Template Rule) → OS / Extreme / Forti / storage template
                          → Dell ∧ ESXi platform → Dell iDRAC + OS/VMware (template only; transport is role CG below)
                          → OS/… hostgroup membership
 
-NetBox tags            →  overlays (`critical`) + opt-ins (`snmp`, `oracle`)
-Zabbix tag assignment  →  `do_not_monitor` exclude (object = waves; role = permanent)
+NetBox tags            →  overlays (`critical`) + opt-ins (`snmp`, `oracle`) + exclude hold (`onboarding`)
+Zabbix tag assignment  →  `do_not_monitor` on role (permanent) or on NetBox Tag `onboarding` (waves)
 ```
 
 | NetBox fact | Configured as | Result in Zabbix |
