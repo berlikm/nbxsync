@@ -47,25 +47,18 @@ Path: **Zabbix → Servers → Add**
 
 **Validate certs = True** means the NetBox host must trust the HTTPS certificate for that URL (OS trust store / corporate root). That is the **API** path only — unrelated to proxy↔cloud mTLS.
 
-Proxy TLS certificates (files on proxy hosts, uploads in the Zabbix Cloud portal) are **not** configured in nbxSync. They live in the Sensirion proxy TLS / PKI runbook.
-
 ---
 
 ## 2. Proxies and proxy groups
 
 Path: **Zabbix → Proxies → Add**, **Zabbix → Proxy Groups → Add**
 
-**Why:** collectors are a geography decision. Binding proxy (or proxy group) on the country Site Group means every device under that country inherits the collector without per-host proxy rows. JP has no local proxy, so it uses KR; NL and US share the Swiss proxy group.
-
-Names below must match the proxy objects that already exist in Zabbix Cloud. Proxy↔cloud mTLS is already done on the proxy hosts and in the cloud portal — in NetBox only register the proxies and set **TLS accept = Certificate** on active proxies so a later NetBox→Zabbix proxy sync does not wipe encryption back to “no encryption”.
 
 ### 2.1 Proxy group
 
 | Name | Zabbix server | Description |
 |---|---|---|
 | Swiss proxy group | Zabbix Production | CH Stäfa pair (NL and US route through CH) |
-
-Proxy IDs must match Zabbix. Do **not** store CA/leaf/key PEM material in NetBox or in the onboarding scripts.
 
 ### 2.2 Proxies
 
