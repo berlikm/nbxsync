@@ -418,6 +418,11 @@ TPL_NAME_ALIASES: dict[str, tuple[str, ...]] = {
         'Synology NAS by SNMP',
     ),
 }
+# Stub template aliases — try the real Zabbix name if the (stub) name isn't found.
+for _key in ('as_java_agent', 'tableau_bridge_agent', 'cellmap_agent', 'oracle_agent2',
+             'sap_agent', 'acronis_agent', 'sccm_agent', 'print_spool_agent'):
+    _real_name = TPL_NAMES[_key].replace(' (stub)', '')
+    TPL_NAME_ALIASES[_key] = (_real_name,)
 
 
 def resolve_templates(server, *, names: dict[str, str] | None = None, required: bool = True) -> dict[str, tuple[int, str]]:
@@ -1259,24 +1264,27 @@ def step6_template_rules(server, country_slugs=None):
 
     # Oracle: tag-gated TemplateRule — tag any VM/Device with 'oracle' tag to get
     # Oracle by Zabbix agent 2. Merges with OS template from platform rule (Linux/Windows).
-    tpl_oracle = make_template(*TPL['oracle_agent2'], req=[HostInterfaceRequirementChoices.AGENT])
-    ensure(
-        M.ZabbixTemplateRule,
-        name='Oracle (tag)',
-        defaults={
-            'pattern': '.*',
-            'zabbixtemplate': tpl_oracle,
-            'zabbixhostgroup': None,
-            'zabbixtag': None,
-            'require_tags': 'oracle',
-            'role_pattern': '',
-            'manufacturer': None,
-            'enabled': True,
-            'priority': 40,
-        },
-        update_fields=['pattern', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'require_tags', 'role_pattern', 'manufacturer', 'enabled', 'priority'],
-    )
-    logger.info('  Rule Oracle (tag) → %s', tpl_oracle.name)
+    if 'oracle_agent2' in TPL:
+        tpl_oracle = make_template(*TPL['oracle_agent2'], req=[HostInterfaceRequirementChoices.AGENT])
+        ensure(
+            M.ZabbixTemplateRule,
+            name='Oracle (tag)',
+            defaults={
+                'pattern': '.*',
+                'zabbixtemplate': tpl_oracle,
+                'zabbixhostgroup': None,
+                'zabbixtag': None,
+                'require_tags': 'oracle',
+                'role_pattern': '',
+                'manufacturer': None,
+                'enabled': True,
+                'priority': 40,
+            },
+            update_fields=['pattern', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'require_tags', 'role_pattern', 'manufacturer', 'enabled', 'priority'],
+        )
+        logger.info('  Rule Oracle (tag) → %s', tpl_oracle.name)
+    else:
+        logger.warning('  Oracle template not resolved — skip Oracle (tag) TemplateRule')
 
     # Dell iDRAC: Manufacturer ∧ Server role (no NetBox tag). Additive merge means
     # Manufacturer-wide assignment is too wide — keep OEM templates on Device type.
@@ -1533,17 +1541,23 @@ def step7_template_assignments(server):
         (make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Firewall'),
         # Placeholder application templates — LM parity. Items built post-cutover,
         # but the template is linked so hosts are discoverable in Zabbix.
-        # AS Java: only on 2 hosts (ch-sta-*-as01/02, role=Server). Not assignable by role.
-        (make_template(*TPL['tableau_bridge_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'Tableau'),
-        (make_template(*TPL['cellmap_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'CellMap'),
-        (make_template(*TPL['oracle_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'Database'),  # Oracle if role exists
-        (make_template(*TPL['sap_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SAP ME'),
-        (make_template(*TPL['sap_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SAP HANA'),
-        (make_template(*TPL['acronis_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'Acronis Management'),
-        (make_template(*TPL['sccm_agent'], req=[HostInterfaceRequirementChoices.AGENT]), 'SCCM'),
-        # Oracle: tag-gated, not role-based. Tag VMs with 'oracle' tag.
-        # (make_template(*TPL['oracle_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'Database'),  # Removed — role doesn't exist
+        # Only assign when the template was resolved (soft-resolve may skip if absent).
     ]
+    # Stub template assignments — guarded so missing templates don't KeyError.
+    stub_assignments = [
+        ('tableau_bridge_agent', 'Tableau'),
+        ('cellmap_agent', 'CellMap'),
+        ('oracle_agent2', 'Database'),
+        ('sap_agent', 'SAP ME'),
+        ('sap_agent', 'SAP HANA'),
+        ('acronis_agent', 'Acronis Management'),
+        ('sccm_agent', 'SCCM'),
+    ]
+    for tpl_key, role_name in stub_assignments:
+        if tpl_key in TPL:
+            assignments.append(
+                (make_template(*TPL[tpl_key], req=[HostInterfaceRequirementChoices.AGENT]), role_name)
+            )
     for template, role_name in assignments:
         try:
             role = get_role(role_name)
