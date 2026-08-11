@@ -63,6 +63,24 @@ Usage::
   # export NBX_MSSQL_USER=... NBX_MSSQL_PASS=...
   python scripts/configure_nbxsync_zerotouch.py
 
+  # IMPORTANT: Run scripts/configure_nbxsync_network.py after zerotouch for
+  # Extreme EXOS/VOSS/IQ Engine template imports, TemplateRules, and macros.
+  # Zerotouch creates the template objects but not the EXOS TemplateRule.
+
+  # --mutate-netbox: first build only — creates ESXi Hypervisor role, migrates
+  # ESXi devices from Server role, tags do_not_monitor on Cato/Messpc.
+
+Roadmap / known debt:
+  - Agent TLS: currently "No encryption" (tls_connect=1). Proxies use cert
+    accept; agents do not. Plan a CG evolution (PSK/cert) when encrypted agent
+    traffic is required — don't leave it as silent debt.
+  - Cohesity VM selector: step5b queries VMs by role='Cohesity' + primary_ip4.
+    Future: use a tag or cluster type instead of inventory scrape so new VMs
+    don't require a re-run.
+  - Stage 6 capacity macros: zerotouch stops at destination globals ($IF.UTIL.MAX=101,
+    raised TEMP_*, optic floors). Context macros like {$IF.UTIL.MAX:"USW"} are
+    post-cutover (Extreme doc §7 stage 6).
+
   # Read-only census (coverage gaps)
   python scripts/configure_nbxsync_zerotouch.py --verify
 
@@ -171,14 +189,14 @@ TPL_NAMES = {
     'huawei_storage_snmp': 'Huawei OceanStor Dorado by SNMP',
     'synology_storage_snmp': 'Synology DiskStation SNMPv3',
     # Placeholder application templates — LM parity, items built post-cutover.
-    'as_java_agent': 'AS Java by Zabbix agent',
-    'tableau_bridge_agent': 'Tableau Bridge by Zabbix agent',
-    'cellmap_agent': 'CellMap by Zabbix agent',
-    'oracle_agent2': 'Oracle by Zabbix agent 2',
-    'sap_agent': 'SAP by Zabbix agent',
-    'acronis_agent': 'Acronis by Zabbix agent',
-    'sccm_agent': 'SCCM by Zabbix agent',
-    'print_spool_agent': 'Print Spool by Zabbix agent',
+    'as_java_agent': 'AS Java by Zabbix agent (stub)',
+    'tableau_bridge_agent': 'Tableau Bridge by Zabbix agent (stub)',
+    'cellmap_agent': 'CellMap by Zabbix agent (stub)',
+    'oracle_agent2': 'Oracle by Zabbix agent 2 (stub)',
+    'sap_agent': 'SAP by Zabbix agent (stub)',
+    'acronis_agent': 'Acronis by Zabbix agent (stub)',
+    'sccm_agent': 'SCCM by Zabbix agent (stub)',
+    'print_spool_agent': 'Print Spool by Zabbix agent (stub)',
     'icmp_ping': 'ICMP Ping',
     # Stock Zabbix template: proxy health (last access, version, config sync latency).
     'proxy_health': 'Remote Zabbix proxy health',
@@ -1400,6 +1418,28 @@ def step6_template_rules(server, country_slugs=None):
             update_fields=['pattern', 'role_pattern', 'require_tags', 'manufacturer', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'enabled', 'priority'],
         )
         logger.info('  Rule Zabbix Proxy Health → %s', tpl_health.name)
+
+    # ICMP Ping for agent-monitored hosts — distinguishes "host down" from "agent down".
+    # SNMP templates usually embed icmpping, but Linux/Windows agent templates do not.
+    if 'icmp_ping' in TPL:
+        tpl_icmp_agent = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
+        ensure(
+            M.ZabbixTemplateRule,
+            name='Agent Host ICMP',
+            defaults={
+                'pattern': '.*',
+                'role_pattern': '^(Server|Domain Controller|Fileserver|MSSQL|MSSQL Query Server|Tableau|GitLab|GitHub Runner|TeamCity|HLK|SCCM|PKI|NAC|Acronis Management|VDI|Session Host|Connection Broker|Azure Data Factory|FiveTran|CellMap|Production Backup|Solidworks PDM|Subversion|vCenter|SAP HANA|SAP ME|Space Server)$',
+                'require_tags': '',
+                'manufacturer': None,
+                'zabbixtemplate': tpl_icmp_agent,
+                'zabbixhostgroup': None,
+                'zabbixtag': None,
+                'enabled': True,
+                'priority': 95,
+            },
+            update_fields=['pattern', 'role_pattern', 'require_tags', 'manufacturer', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'enabled', 'priority'],
+        )
+        logger.info('  Rule Agent Host ICMP → %s', tpl_icmp_agent.name)
 
     # Rename leftovers from placeholder template names.
     for old_name in ('Huawei Storage (SNMP)', 'Synology NAS (SNMP)'):

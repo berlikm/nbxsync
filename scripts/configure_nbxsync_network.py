@@ -21,6 +21,17 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
   * Optional Speed Expect template link (stage 4); Routing stays unlinked until OSPF canary
 
+Stage matrix (what each flag enables):
+  ``--apply``                     = stages 0–3: template imports + EXOS/VOSS/IQ rules + IFALIAS + destination globals + TEMP patches
+  ``--apply --link-speed-expect`` = stage 4: + Speed Expect template assignments on Switch roles
+  ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
+  Routing / Hybrid flip / Stage 6 context macros = manual (Extreme doc §7)
+
+Import policy:
+  YAML imports use deleteMissing=False (safe — retired items linger but templates don't lose content).
+  Re-run ``--apply`` after Extreme template upgrades to re-assert TEMP/EtherLike patches (maintenance contract).
+  Speed Expect: re-running ``--apply`` without ``--link-speed-expect`` does NOT unlink existing assignments (future: add ``--unlink-speed-expect``).
+
 Does **not** re-implement SiteGroup Agent / hostgroup-first / Server OOB — call
 ``configure_nbxsync_zerotouch.py`` for that. This script assumes SNMP CG on Switch*
 roles (zerotouch step 5b) and only layers Extreme-specific templates + macros.
@@ -1157,11 +1168,20 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
 def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False) -> int:
     """Apply network deltas on the production / shared ZabbixServer row."""
     apply_macro_mode(cutover_silence=cutover_silence)
+    if cutover_silence:
+        logger.warning('CUTOVER-SILENCE IS ENABLED — TEMP_* set to 999, MLT/VIST disabled.')
+        logger.warning('This is a temporary LM migration overlay. Re-run without --cutover-silence to restore destination values.')
+    else:
+        # Warn if cutover-silence macros are still in place from a previous run
+        from nbxsync.models import ZabbixMacro
+        stuck = ZabbixMacro.objects.filter(macro='{$TEMP_WARN}', value='999').count()
+        if stuck:
+            logger.warning('CUTOVER-SILENCE STILL ACTIVE: %s macro(s) with TEMP_WARN=999 found. Re-run with --cutover-silence then without to clear, or manually verify.', stuck)
     token = os.environ.get('NBX_ZABBIX_TOKEN')
     if not token:
         raise SystemExit('Set NBX_ZABBIX_TOKEN (or use --simulate)')
     url = os.environ.get('NBX_ZABBIX_URL', 'http://10.0.105.144:8080')
-    server = M.ZabbixServer.objects.first()
+    server = M.ZabbixServer.objects.filter(name='Zabbix Production').first() or M.ZabbixServer.objects.first()
     if server is None:
         server = M.ZabbixServer.objects.create(name='Zabbix', url=url, token=token, validate_certs=False, sync_enabled=True)
     else:
@@ -1185,11 +1205,14 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     return 0
 
 
-def run_zabbix_only() -> int:
+def run_zabbix_only(*, link_speed_expect: bool = False) -> int:
     """Fallback smoke without NetBox object graph — delegates to run_network_zabbix_sim."""
     from run_network_zabbix_sim import main as sim_main
 
-    sys.argv = ['run_network_zabbix_sim.py', '--with-speed-expect']
+    argv = ['run_network_zabbix_sim.py']
+    if link_speed_expect:
+        argv.append('--with-speed-expect')
+    sys.argv = argv
     return sim_main()
 
 
@@ -1205,11 +1228,10 @@ def main() -> int:
         action='store_true',
         help='Temporary LM-migration overlay (TEMP/OPTIC=999, MLT=0). Default is destination end-state.',
     )
-    args = parser.parse_args()
     if args.simulate:
         return run_simulate(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
     if args.zabbix_only:
-        return run_zabbix_only()
+        return run_zabbix_only(link_speed_expect=args.link_speed_expect)
     return run_apply(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
 
 
