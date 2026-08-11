@@ -592,17 +592,61 @@ Do **not** duplicate those tables here — the Extreme doc is authoritative for 
 | `{$VMWARE.URL}` | `https://{{ object.name }}/sdk` | vCenter |
 
 
-### 11.4 Application secrets (role-level)
+### 11.4 Application secrets (per-device / per-site)
 
-Create these as **role-level ZabbixMacros** with type `SECRET`. During sync, `hostsync` resolves the inheritance chain and pushes them as secret host macros to each Zabbix host.
+Each macro is defined as a server-level **ZabbixMacro** (on ZabbixServer) with a **ZabbixMacroAssignment** on the target object (Device, VM, or DeviceRole). The assignment carries the secret value and is resolved during sync via the inheritance chain.
 
-| Macro | Role | Type | Notes |
+#### Pure Storage API tokens (per-device)
+
+Each Pure array has its own API token. The macro assignment is on each **Device** (not the manufacturer).
+
+| Macro | Target | Type | Env var |
 |---|---|---|---|
-| `{$VMWARE.USER}` | vCenter | Secret | Same user on all vCenters |
-| `{$VMWARE.PASSWORD}` | vCenter | Secret | Same password on all vCenters |
-| `{$PURESTORAGE.TOKEN}` | Pure Storage | Secret | One API token for all arrays (generate on each array) |
-| `{$MSSQL.USER}` | MSSQL | Secret | |
-| `{$MSSQL.PASSWORD}` | MSSQL | Secret | |
+| `{$PURESTORAGE.TOKEN}` | Device (per array) | Secret | `NBX_PURE_TOKEN_<HOSTNAME>` |
+
+| Array | Env var |
+|---|---|
+| `hu-deb-san11` | `NBX_PURE_TOKEN_HU_DEB_SAN11` |
+| `kr-sel-san11` | `NBX_PURE_TOKEN_KR_SEL_SAN11` |
+| `cn-sha-san11` | `NBX_PURE_TOKEN_CN_SHA_SAN11` |
+| `ch-zrh-zh4-san01` | `NBX_PURE_TOKEN_CH_ZRH_ZH4_SAN01` |
+| `ch-zrh-zh4-san02` | `NBX_PURE_TOKEN_CH_ZRH_ZH4_SAN02` |
+| `ch-zrh-zh5-san01` | `NBX_PURE_TOKEN_CH_ZRH_ZH5_SAN01` |
+| `ch-zrh-zh5-san02` | `NBX_PURE_TOKEN_CH_ZRH_ZH5_SAN02` |
+
+Token format: UUID (generated on each array via `purearray connect --api-token`).
+
+#### VMware vCenter SSO credentials (per-VM)
+
+SSO domains differ per site. The macro assignment is on each **VM** (not the role).
+
+| Macro | Target | Type | Env var |
+|---|---|---|---|
+| `{$VMWARE.USER}` | VM (per vCenter) | Secret | `NBX_VMWARE_USER_<HOSTNAME>` |
+| `{$VMWARE.PASSWORD}` | VM (per vCenter) | Secret | `NBX_VMWARE_PASS_<HOSTNAME>` |
+
+| vCenter | SSO domain | Env var prefix |
+|---|---|---|
+| `ch-sta-p-vcsa02` | `VCENTER-SSO.SENSIRION` | `NBX_VMWARE_USER/PASS_CH_STA_P_VCSA02` |
+| `ch-sta-p-vcsa10` | `VCENTER-SSO.SENSIRION` | `NBX_VMWARE_USER/PASS_CH_STA_P_VCSA10` |
+| `hu-deb-p-vcsa01` | `HU.VSPHERE.LOCAL` | `NBX_VMWARE_USER/PASS_HU_DEB_P_VCSA01` |
+| `kr-sel-p-vcsa01` | `KR.VSPHERE.LOCAL` | `NBX_VMWARE_USER/PASS_KR_SEL_P_VCSA01` |
+| `cn-sha-p-vcsa01` | `cn.vsphere.lokal` | `NBX_VMWARE_USER/PASS_CN_SHA_P_VCSA01` |
+
+Username format: `<SSO_DOMAIN>\LogicMonitor` (e.g. `VCENTER-SSO.SENSIRION\LogicMonitor`).
+
+#### MSSQL credentials (role-level, shared)
+
+Single service account across all MSSQL hosts. Assignment is on **DeviceRole = MSSQL**.
+
+| Macro | Target | Type | Env var |
+|---|---|---|---|
+| `{$MSSQL.USER}` | DeviceRole: MSSQL | Secret | `NBX_MSSQL_USER` |
+| `{$MSSQL.PASSWORD}` | DeviceRole: MSSQL | Secret | `NBX_MSSQL_PASS` |
+
+#### Huawei SAN01 (per-device SNMPv3 interface)
+
+`HU-DEB-SAN01` uses a non-fleet SNMPv3 credential (`LogicMonitor` user, SHA/AES). This is a **per-device ZabbixHostInterface** (created in §5), not a macro. The passphrases are set directly on the interface object with `snmp_pushcommunity=True`.
 
 If a macro is not set, the template will show "no data" until the credential is provided.
 
