@@ -2,58 +2,82 @@
 
 Status: building    Owner:    Depends on: [port-identity.md](port-identity.md)
 
+**Read this first.** Detail (LLD, macros, stages, EXOS vs VOSS) is below. Integration wiring (nbxSync): [`../docs/netbox-zabbix/`](../docs/netbox-zabbix/README.md).
+
+---
+
+## At a glance — what we collect vs what we alert
+
+Same intent for **EXOS and VOSS**. Ports are scoped by on-box `ifAlias` labels ([port-identity.md](port-identity.md)): Core/Dist/Mgmt = all active ports except `X…`; Access = opt-in class labels only.
+
+### Device
+
+| What | Collect | Alert | Sev | Notes |
+|---|---|---|---|---|
+| ICMP reachability | yes | **yes** | High | Site outage → one alert via dependencies, not one per host |
+| SNMP answering | yes | **yes** | Warning | Management path dead while ICMP still up |
+| Unplanned reboot (uptime) | yes | **yes** | Warning | |
+| Temperature critical / vendor alarm | yes | **yes** | High | Warning tier **silenced** (closet noise) |
+| PSU / fan failed | yes | **yes** | Average | Empty-slot quirks verified in stage 2 |
+| CPU high | yes | **yes** | Warning | |
+| Memory high | yes | **yes** | Average | Baseline fleet first — stock threshold may be wrong |
+| Firmware / OS / serial change | yes | **yes** | Info | Inventory change, not a page |
+| System name changed | yes | **no** | — | Disabled |
+
+### Ports (in discovery scope only)
+
+| What | Collect | Alert | Sev | Notes |
+|---|---|---|---|---|
+| Link down (was up → down) | yes | **yes** | Warning | `.diff()` guard — never-cabled admin-up stays quiet |
+| Link flapping | yes | **yes** | Warning | Build |
+| Wrong speed vs label | yes | **yes** | Warning | Thin speed-expect template; physical ports only |
+| Half duplex | yes | **yes** | Warning | |
+| Interface errors | yes | **yes** | Warning | Threshold from baseline |
+| Outbound discards (drops) | yes | **yes** | Warning | Real user impact; `USW` first |
+| Sustained util (1h avg) vs **intended** speed | yes | **yes** | Warning | `USW` only; does **not** page; stage 6 |
+| Traffic / util graphs | yes | **no** | — | Dashboards / percentiles for capacity planning |
+| CRC / FCS specifically | later | later | — | Not in stock template yet (§9) |
+| Anything on `X…` ports | **no** | **no** | — | Excluded from discovery |
+| Access / AP / endpoint util | yes* | **no** | — | \*traffic may exist; **no** util alerts |
+
+### Deliberately do **not** alert
+
+| Noise we refuse | Why |
+|---|---|
+| Laptop unplug on access | Access is opt-in labels only |
+| Util on access / AP / server ports | Owner of the endpoint, not the switch |
+| Util that fires on nightly backup | 1h average + class thresholds; not 15m stock util |
+| Temperature warning tier / “too low” | Closets + stack nodes returning 0 °C |
+| Stock bandwidth-usage trigger | Silenced via macro |
+| Fifty alerts for one site down | Trigger dependencies + proxy per site |
+| Alerts nobody can act on at 03:00 | Info / capacity only where noted |
+
+### Port scope (one line)
+
+| Role | Monitored ports | Excluded |
+|---|---|---|
+| Core / Dist / Mgmt | All admin-up physical/LAG **except** `X…` | `X…`; admin-down not discovered |
+| Access | Only `USW` `US` `UP` `MON` `UW` `TMON`… | Unlabelled, `N…`, `X…` |
+| Hybrid | Access rules until stage 5, then Core | Same as above |
+
+`N…` is a **note**, not an exclude — still monitored on Core. Use **`X`** or admin-down to silence.
+
 ---
 
 # §A EXOS
 
 ## 1. Scope
 
-In:  EXOS device health + port monitoring driven by the `ifAlias` label
+In:  EXOS device health + port monitoring driven by the `ifAlias` label  
 Out: VOSS (§B), OSPF routing (§C), access points (02), WAN circuits (05), LAG/MLAG (port-identity §5 TBD)
 
 ## 2. What we want to know
 
-Plain language. Each line is a question ops actually asks. This is the requirement; everything below is just how we answer it.
-
-### Is the switch alive and healthy?
-
-- Is the switch reachable at all?
-- Is it answering management queries, even if it still pings?
-- Did it reboot when nobody planned a reboot?
-- Is it overheating?
-- Has a power supply or a fan failed — are we running without redundancy and don't know it?
-- Is it slowly running out of CPU or memory in a way that will bite us later?
-- Was the hardware swapped or the firmware changed without us being told?
-
-### Are the links we care about up?
-
-- Did a link that was working stop working?
-- Is a link flapping — up and down repeatedly — rather than cleanly down?
-- Are we told about the links we chose to care about, and left alone about the rest?
-
-### Are the links performing as designed?
-
-- Is a 10G link silently running at 1G? (bad optic, bad patch panel, autoneg problem)
-- Is a link up but dirty — frame/CRC errors on something that otherwise looks fine?
-- Is a link stuck in half duplex?
-- Is an uplink sustainably full — not a brief spike, but genuinely running out of capacity?
-- Is the switch actually **dropping** traffic because a link is congested?
-
-### Can we trust the monitoring itself?
-
-- Are we monitoring every switch we own, or did one quietly get missed?
-- Did a check stop working without telling anyone?
-- When a whole site drops, do we get one alert or fifty?
+The requirement is the **At a glance** tables above. Below is how we answer those questions in Zabbix (signals, discovery, triggers, rollout).
 
 ### What we deliberately do NOT want
 
-- Alerts for ports we explicitly marked as uninteresting.
-- An alert every time somebody unplugs a laptop.
-- Utilisation alerts on access, AP or endpoint ports — a busy server port is the server's business.
-- Utilisation alerts that fire on a nightly backup.
-- Fifty alerts for one root cause.
-- Seasonal temperature warnings from closets that have never had cooling.
-- Alerts nobody can act on at 03:00.
+See **Deliberately do not alert** in the summary. Short list: uninteresting ports, laptop noise, access util pages, alert storms, seasonal temp warnings, non-actionable 03:00 noise.
 
 ## 3. Data path
 

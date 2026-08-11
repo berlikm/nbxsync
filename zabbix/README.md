@@ -11,7 +11,7 @@ Working notes and per-domain specs for the network monitoring build.
 |---|---|---|---|---|
 | — | [port-identity.md](port-identity.md) | label grammar | — | foundation |
 | 00 | [00-monitoring-plan.md](00-monitoring-plan.md) | index, order | — | active |
-| 01 | [01-extreme-switching.md](01-extreme-switching.md) | EXOS, VOSS | port-identity | **now** |
+| 01 | [01-extreme-switching.md](01-extreme-switching.md) | EXOS, VOSS — **start with “At a glance” tables** | port-identity | **now** |
 | 02 | [02-extreme-access-points.md](02-extreme-access-points.md) | HiveOS / IQ Engine | 01 | template v1 + wiring |
 | 03 | [03-fortinet.md](03-fortinet.md) | FortiGate, FortiManager, FortiAnalyzer | — | later |
 | 04 | [04-cato.md](04-cato.md) | overlay | — | later |
