@@ -77,6 +77,6 @@ Which CG/template/interface a given host class should end up with: checklist §1
 
 ## What stays outside this integration
 
-Things with no NetBox object to hang on (website checks, account-level APIs, …) and all **monitoring-domain** work (signals, thresholds, alerting) are out of scope here. See checklist §17 and the packs under [`../zabbix/`](../zabbix/README.md).
+Things with no NetBox object to hang on (website checks, account-level APIs, …) and all **monitoring-domain** work (what to poll, thresholds, notifications) are out of scope here. See checklist §14 and the packs under [`../zabbix/`](../zabbix/README.md).
 
-This page and the nbxSync checklist own **how** a NetBox object becomes a Zabbix host — not how Zabbix alerts on it.
+This page and the nbxSync checklist own **NetBox ↔ Zabbix integration** — host inventory, assignment rules, sync lifecycle — not the monitoring content that runs on those hosts.

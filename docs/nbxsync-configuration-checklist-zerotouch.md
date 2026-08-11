@@ -603,12 +603,12 @@ Ask the NetBox administrator to set the following under the nbxsync plugin confi
 |---|---|
 | Source of truth for host, hostgroup, interface, template, tag, macro, proxy, maintenance | NetBox |
 | Exclude tag | `do_not_monitor` |
-| No-alerting tag / value | `NO_ALERTING` / `1` |
+| Soft-state tag / value | `NO_ALERTING` / `1` (plugin host tag on paused VMs — monitoring packs interpret it) |
 | Attach object identity tags | Yes (`nb_type` / `nb_id`) |
 | Allow inherited deletion | No |
 | Adopt existing Zabbix hosts | No |
 | Device status → Zabbix | active → enabled; planned/staged → disabled; failed/offline/inventory/decommissioning → deleted |
-| VM status → Zabbix | active → enabled; planned → enabled in maintenance; paused → enabled with no-alerting tag; failed/offline → deleted |
+| VM status → Zabbix | active → enabled; planned → enabled in maintenance; paused → enabled + soft-state tag; failed/offline → deleted |
 | SNMP community / auth / priv macro names | `{$SNMP_COMMUNITY}`, `{$SNMP_AUTHPASS}`, `{$SNMP_PRIVPASS}` |
 
 Keep Site / Site Group inheritance **after** role and platform in the inheritance order (architecture rule 5) so country defaults do not override role SNMP or Server Agent+OOB.
@@ -644,7 +644,7 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 
 This document stops at **NetBox → nbxSync → Zabbix host wiring** (interfaces, templates, hostgroups, macros, sync).
 
-Alerting, escalations, media, dashboards, trigger tuning, and per-technology signal design belong in the monitoring domain docs under [`zabbix/`](../zabbix/README.md) — not here.
+What to poll, thresholds, and notifications live under [`zabbix/`](../zabbix/README.md) — not here.
 
 ---
 
@@ -757,7 +757,7 @@ Note that **Space Server** therefore has split coverage: the host itself is a no
 
 | Area | Where it lives |
 |---|---|
-| Alerting, media, dashboards, trigger design | Monitoring domain — [`zabbix/`](../zabbix/README.md) (§14) |
+| Monitoring content (signals, thresholds, notifications) | [`zabbix/`](../zabbix/README.md) (§14) |
 | SAP application content / DNUS scripts | Placeholder assignment in §7; content owned outside this integration |
 | Configuration backup | cfgit — not Zabbix / not nbxSync |
 
