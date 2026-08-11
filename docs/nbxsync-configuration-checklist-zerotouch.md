@@ -1,21 +1,22 @@
 # nbxSync configuration checklist
 
-GUI / API steps to create **nbxSync** objects.  
-Mental model and design rules: [`nbxsync-architecture.md`](nbxsync-architecture.md).  
-Extreme / domain monitoring design: [`zabbix/`](../zabbix/README.md) (start with [`01-extreme-switching.md`](../zabbix/01-extreme-switching.md)).  
-First-build scripts only: [`scripts/README.md`](../scripts/README.md) (Appendix A).
+GUI / API steps to create **nbxSync** objects on top of **existing NetBox inventory**.  
+Mental model: [`nbxsync-architecture.md`](nbxsync-architecture.md).  
+Domain monitoring: [`zabbix/`](../zabbix/README.md) (start with [`01-extreme-switching.md`](../zabbix/01-extreme-switching.md)).  
+Optional first-build scripts: [`scripts/README.md`](../scripts/README.md) (Appendix A).
 
 **Last verified:** 2026-08-06 (lab: NetBox 4.x / Zabbix 7.0.x). Update after a production re-check.  
 **One home:** if Confluence mirrors this, that page is a pointer only.
 
+**Assumption:** NetBox already holds country Site Groups, sites, device roles, platforms, primary IP / `oob_ip`, and tags (`critical`, `snmp`, `oracle`, `do_not_monitor`, …) as used below. This checklist does **not** cover inventoring or migrating that data.
+
 | If you are… | Go to |
 |---|---|
 | New to the design | [`nbxsync-architecture.md`](nbxsync-architecture.md) |
-| First estate build | **Before you start** → §§1–12 → §13 → §16 |
-| Day-2 / new role or platform | §15 |
+| Configure nbxSync | §§1–12 → §13 → §16 |
+| Day-2 / new role or platform in NetBox | §15 |
 | Wrong or missing host | §15.4, then §13 |
 | Extreme ports / stages / TEMP_* | [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) |
-| LM parity gaps | §17 |
 | Bulk first build | [scripts/README.md](../scripts/README.md) |
 
 *(Italic)* = fill in for your environment. Rows marked **placeholder** are intentional stubs — assign them now, refine template content closer to production. Operate in the **GUI or API** after the first build.
@@ -28,15 +29,11 @@ Top menu **Zabbix**: Servers, Proxies, Proxy Groups, Templates, Macros, Tags, Ho
 
 ## Before you start
 
-In NetBox (not the Zabbix menu):
+Only integration prerequisites (inventory is already in NetBox):
 
-- [ ] Country Site Groups with slugs: `ch`, `hu`, `jp`, `kr`, `nl`, `us`, `cn`
-- [ ] Device Roles named exactly as in this checklist (include **Switch Hybrid**)
-- [ ] Platforms whose names match the Template Rule patterns (`EXOS` / `VOSS` in Extreme platform names)
-- [ ] Servers that need BMC monitoring have **`oob_ip`** set
-- [ ] Required templates already exist in Zabbix (import missing ones first)
-- [ ] **Extreme VOSS by SNMP** and **Extreme IQ Engine by SNMP** imported (paths under `zabbix/templates/…`) before enabling those Template Rules in §6 — see Extreme docs for YAML and port grammar
-- [ ] SNMP / VMware / Pure / MSSQL secrets available (see §5 and §11.4)
+- [ ] Required Zabbix templates exist (including **Extreme VOSS by SNMP** / **Extreme IQ Engine by SNMP** before enabling those Template Rules in §6 — see Extreme docs)
+- [ ] SNMP / VMware / Pure / MSSQL secrets available (§5, §11.4)
+- [ ] Role / platform / tag names in NetBox match the strings this checklist uses (rename here if NetBox naming differs)
 
 ---
 
@@ -110,7 +107,7 @@ Create one assignment per country Site Group. Set a **proxy or a proxy group** �
 
 Path: **Zabbix → Configuration groups → Add**
 
-Each group is one **transport + credential** profile. Why these groups exist and which NetBox facts select them: [`nbxsync-architecture.md`](nbxsync-architecture.md). SNMPv3 user/auth/priv differ by LogicMonitor account — keep them on separate groups.
+Each group is one **transport + credential** profile. Why these groups exist and which NetBox facts select them: [`nbxsync-architecture.md`](nbxsync-architecture.md). Different SNMPv3 users stay on separate groups.
 
 | Name | Credential / port | Purpose |
 |---|---|---|
@@ -417,58 +414,37 @@ Created in §6. Membership is applied by Template Rules when the platform matche
 
 ### 8.4 Priority / Critical
 
-**Why a tag → hostgroup:** criticality is an orthogonal overlay. Tag a device `critical` in NetBox; sync puts it in the Zabbix hostgroup `Priority/Critical` — no per-device hostgroup rows.
+**Why a tag → hostgroup:** criticality is an orthogonal overlay. Devices already tagged `critical` in NetBox sync into Zabbix hostgroup `Priority/Critical` — no per-device hostgroup rows.
 
 | Name | Value | Assign to |
 |---|---|---|
 | Priority/Critical | `Priority/Critical` | NetBox tag `critical` |
 
-To mark a device: add NetBox tag `critical`. To unmark: remove the tag.
-
 ---
 
 ## 9. Tags
 
-There are **two different tag systems** that work together but must not be confused:
+Two tag systems:
 
-1. **NetBox tags** — applied to devices/VMs/roles in NetBox. These are the *trigger*: when sync runs, nbxsync reads them and decides what to do.
-2. **Zabbix tags** — written on the Zabbix host during sync from Jinja (§9.1, §9.2) or derived from the NetBox tags above.
+1. **NetBox tags** — already on devices/VMs/roles in inventory. Sync reads them as inputs.
+2. **Zabbix tags** — written on the Zabbix host during sync from Jinja (§9.1, §9.2).
 
-**§9.0–9.0a and §9.3 are about NetBox tags** (what you apply in NetBox to control monitoring behaviour).
-**§9.1–9.2 are about Zabbix tags** (what nbxsync writes to Zabbix hosts automatically — you do not touch these).
+### 9.0 NetBox tags (inputs — assumed present where needed)
 
-### 9.0 NetBox tags (create under NetBox → Tags)
-
-These NetBox tags control monitoring behaviour. Apply them in NetBox → Device/VM → Tags, or on a Device Role to affect all devices with that role.
-
-| NetBox tag | What it does when a device/VM has it | Apply where |
+| NetBox tag | Effect during sync | Typical scope |
 |---|---|---|
-| `do_not_monitor` | Host is **completely skipped** during sync. Existing Zabbix host is deleted. See §9.3 for details. | Per device/VM or per Device Role (Messpc, Sd Wan Socket, VDI) |
-| `critical` | Adds the host to Zabbix hostgroup `Priority/Critical`. | Per device/VM |
-| `snmp` | Switches transport from Agent to **SNMP Monitoring (Linux)** CG (MONITORING-LINUX SHA/AES) and links Linux/Windows by SNMP templates instead of agent templates. | Per device/VM — for Linux hosts that should be SNMP-polled instead of agent-polled |
-| `oracle` | Links **Oracle by Zabbix agent 2** template (merges with OS template from platform rule). | Per device/VM — `ch-sta-p-disc04` confirmed; check for others |
+| `do_not_monitor` | Host skipped; existing Zabbix host deleted. See §9.3. | Device/VM or Device Role (Messpc, Sd Wan Socket, VDI) |
+| `critical` | Hostgroup `Priority/Critical` (§8.4) | Device/VM |
+| `snmp` | Transport → **SNMP Monitoring (Linux)** + Linux/Windows by SNMP templates | Device/VM |
+| `oracle` | Links **Oracle by Zabbix agent 2** (merges with OS template) | Device/VM |
 
-**NetBox tags do not appear in Zabbix as tags.** They are read by nbxsync during sync and translated into Zabbix objects (interfaces, templates, hostgroups). Zabbix tags (§9.1–§9.2) are separate and auto-generated.
+NetBox tags are **not** copied into Zabbix as tags; they drive interfaces, templates, and hostgroups. Zabbix tags are separate (§9.1–§9.2).
 
-### 9.0a Which devices to tag — LogicMonitor mapping
+### 9.1 Zabbix host tags — Environment (Jinja on Site Groups)
 
-Below maps the LM account export to the NetBox tags or roles this checklist uses. For SAP, no tag is needed — the role is set automatically by netbox-sync.
+nbxSync owns the tag definition and Site Group assignment. At sync, Jinja renders a per-host value (e.g. `Production`) onto the Zabbix host.
 
-| LM signal | Known hosts | What to do in NetBox | Result |
-|---|---|---|---|
-| LM used `MONITORING-LINUX` SHA/AES (Linux servers group + resource overrides) | `ch-sta-p-disc04`, `ch-sta-p-lega01`, `ch-sta-p-dell04`, `CH-STA-P-ESD01`, `ch-sta-p-vmli01/02/03/09/13`, `hu-deb-p-dock01`, `nl-ens-d-serv01`, `CH-STA-P-M300` | Add NetBox tag `snmp` | SNMP Monitoring (Linux) CG + Linux by SNMP template |
-| LM used `SAPUSER` (SAP Systems group) | `ch-sta-d-sh01`, `ch-sta-p-sh01`, `ch-sta-q-sh01`, `ch-sta-p-me05/06/07/08` | **Nothing** — netbox-sync maps `-SH\d+` to `SAP HANA` role and `-ME\d+` to `SAP ME` role automatically | SNMP Monitoring (SAP) CG + SAP by Zabbix agent template |
-| LM used JDBC `C##logicmonitor` (Oracle) | `ch-sta-p-disc04` (confirmed); check with DB team for others | Add NetBox tag `oracle` | Oracle by Zabbix agent 2 template |
-| Marked critical in LM / ops priority list | Per operational priority | Add NetBox tag `critical` | Priority/Critical hostgroup membership |
-| LM monitoring disabled / excluded by policy | VDI (22 VMs), Messpc (1421), Sd Wan Socket (21) | Automated by Device Role in §9.3; per-device by tag `do_not_monitor` | Host excluded from Zabbix entirely |
-
-**How to tag:** In NetBox, open the Device or VM → Tags → Add tag. Re-sync the host. The tag takes effect on the next sync cycle.
-
-### 9.1 Zabbix host tags — Environment (auto-generated, Jinja on Site Groups)
-
-**You do not create these manually.** nbxsync creates the Zabbix tag definition and assigns it on each country Site Group. During sync, the Jinja template renders a value per host (e.g. `Production`, `Development`) and writes it as a Zabbix host tag.
-
-**Why Jinja from the hostname:** environment is encoded in naming conventions already; deriving it avoids a second manual taxonomy.
+**Why Jinja from the hostname:** environment is already encoded in naming; no second taxonomy.
 
 | Tag | Value | Assign to |
 |---|---|---|
@@ -496,26 +472,15 @@ Renders against the device or VM at sync. Preview on a Site Group may show an er
 |---|---|---|
 | cluster | `{{ object.cluster.name }}` | each Cluster |
 
-### 9.3 NetBox exclusion tag (do_not_monitor)
+### 9.3 Exclusion — `do_not_monitor`
+
+nbxSync Zabbix-tag assignment on roles (plugin `exclude_tag` = `do_not_monitor`, §12):
 
 | Tag | Value | Assign to Device Role |
 |---|---|---|
 | do_not_monitor | *(empty)* | Messpc, Sd Wan Socket, VDI |
 
-Plugin setting `exclude_tag` must be set to `do_not_monitor` (section 12).
-
-**VDI** and **Sd Wan Socket** are excluded here but *are* monitored in LogicMonitor (Horizon View / Cato API). Both are open items — see §17.
-
-**What happens when a device/VM has the `do_not_monitor` tag:**
-
-| Stage | Effect |
-|---|---|
-| **Sync** | The host is **completely skipped** — no Zabbix host is created, no interfaces, no templates, no macros. If a Zabbix host already exists from a previous sync (before the tag was added), it is **deleted** from Zabbix. |
-| **Host binding** | Any existing `ZabbixHostBinding` is removed. The device will not appear in Zabbix at all. |
-| **Day-2 removal** | Tag a device `do_not_monitor` and re-sync: the Zabbix host disappears within one sync cycle. No manual deletion needed. The device stays in NetBox — only the Zabbix monitoring is removed. |
-| **Untag** | Remove the `do_not_monitor` tag and re-sync: the host is recreated in Zabbix with full template/interface/hostgroup configuration. |
-
-This works on both **Devices** and **Virtual Machines**. The tag can be applied at the individual object level or at the **Device Role** level (e.g., all Messpc and VDI hosts excluded by default — see the role assignment above).
+Sync **skips** tagged devices/VMs (no host/interfaces/templates). An existing Zabbix host from a prior sync is **deleted**. Binding removed. Untag + re-sync recreates the host. Works on Devices, VMs, and role-level tags.
 
 ---
 
@@ -662,7 +627,7 @@ Initial build is §§1–13 (+ plugin settings §12). After that, operators most
 ### 15.1b New Extreme switch (day-2)
 
 On-box labels and stages: [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md), [`port-identity.md`](../zabbix/port-identity.md).  
-After NetBox role / platform / site / primary IP are set, sync should match the Extreme switch rows in **§13**. IFALIAS assignments: §11.1. If VOSS still gets Network Generic, fix §6.1 (YAML missing or onboarding re-run left the placeholder — see [scripts/README.md](../scripts/README.md)).
+With role / platform / site / primary IP already in NetBox, sync should match the Extreme switch rows in **§13**. IFALIAS assignments: §11.1. If VOSS still gets Network Generic, fix §6.1 (YAML missing or onboarding re-run left the placeholder — see [scripts/README.md](../scripts/README.md)).
 
 ### 15.1c Extreme staged enablement
 
@@ -728,36 +693,13 @@ After the initial build, and after major changes, confirm coverage against §13.
 
 ---
 
-## 17. Scope boundary and open items
-
-Everything in §§1–16 is driven from NetBox through nbxsync. Some things LogicMonitor watches today are **not** — either because there is no NetBox object to hang them on, or because we have not decided yet. Parity source: `zabbix/logicmonitor-assessment.md`.
-
-### 17.1 Monitored in Zabbix, but never modelled in NetBox
-
-nbxsync will never create these. Build them directly in Zabbix and do not expect them in §13.
-
-| Area | Why not in NetBox | Where it lives instead |
-|---|---|---|
-| **Website checks** (JIRA, Confluence, Sensinet + 2.0, Space Server CH/HU test+prod, Libellus, Nubo Sphere, Nubo Sensor API — 11 LM checks) | A URL is not a device or VM; there is no NetBox object to inherit from | Zabbix **web scenarios**, configured by hand in Zabbix |
-| **Cato SD-WAN** (LM API account 964) | Sockets are excluded from monitoring in §9.3; the data is an account-level API, not a per-device poll | Cato portal today; a Zabbix **HTTP agent** template if we decide to pull it in |
-
-Note that **Space Server** therefore has split coverage: the host itself is a normal Zabbix host on Agent `:10060` (§5.7), but the four LM web checks against it are not represented anywhere yet.
-
-### 17.2 Open questions — decide before declaring parity
-
-| # | Item | Question to answer | Blocks |
-|---|---|---|---|
-| 1 | **`hu-deb-san01`** (Huawei storage, HU) | Device exists in NetBox as `HU-DEB-SAN01` (role Storage, manufacturer Huawei, model Dorado 3000 V6, site HU-DEB-NAG-A, IP 10.40.101.61). Per-device `ZabbixHostInterface` created with `LogicMonitor` SHA1/AES128 credentials. Synced in Zabbix with `Huawei Storage by SNMP` template (manufacturer TemplateRule). | Resolved — device in NetBox, interface created, synced |
-| 2 | **Horizon View / VDI** | LM monitors VDI globally with `CH-UPA-Monitor`. What does it actually collect, and at what level — Connection Broker / Session Host, or individual desktops? Zabbix has no Horizon template. Decide: build one, cover it from the broker, or accept the loss | §9.3 excludes role VDI outright; §11.3 still sets `{$MEM.UTIL.CRIT}` on VDI — one of the two is dead |
-| 3 | **CH-STA-P-ENSA01 traps** | LM has an event source `SNMP Receive - Netsight` on this host. Capture what traps it is actually sending before deciding whether to build a Zabbix SNMP trapper for it. Same host is also the only **SNMPv2c** device in LM — the §5 CG model is v3-only | No trap handling anywhere in this checklist; no v2c profile in §5 |
-| 4 | **Cato** | What do we want from Cato in Zabbix — socket up/down, tunnel health, nothing? See 17.1: whatever we choose is not NetBox-driven | §9.3 `do_not_monitor` on Sd Wan Socket is currently an unexplained exclusion |
-| 5 | **Oracle JDBC** | LM uses account `C##logicmonitor`; resource override on `ch-sta-p-disc04`. Host identified: `ch-sta-p-disc04` (RHEL 7.9, role Server). Tag it `oracle` in NetBox (§9.0a) to link the Oracle by Zabbix agent 2 template. Check with DB team for other Oracle hosts. | Resolved — tag-gated TemplateRule in §6.2 |
-
-### 17.3 Also not covered here
+## 17. Not driven by this integration
 
 | Area | Where it lives |
 |---|---|
+| Objects with no NetBox device/VM (web scenarios, account-level APIs, …) | Configured in Zabbix / monitoring packs — [`zabbix/`](../zabbix/README.md) |
 | Monitoring content (signals, thresholds, notifications) | [`zabbix/`](../zabbix/README.md) (§14) |
+| NetBox inventory population / LM migration | Outside this checklist (data assumed present) |
 | SAP application content / DNUS scripts | Placeholder assignment in §7; content owned outside this integration |
 | Configuration backup | cfgit — not Zabbix / not nbxSync |
 

@@ -1,17 +1,19 @@
 # NetBox → nbxSync → Zabbix architecture
 
-How monitoring policy is derived from NetBox so new devices and VMs become Zabbix hosts without per-host hand configuration.
+How nbxSync policy hangs off **existing** NetBox inventory so devices and VMs become Zabbix hosts without per-host hand configuration.
+
+**Assumption:** sites, roles, platforms, IPs, `oob_ip`, and tags are already in NetBox. These pages configure the integration on top of that data — they do not describe how to populate NetBox.
 
 | Need | Document |
 |---|---|
 | Click-by-click nbxSync build (GUI / API) | [`nbxsync-configuration-checklist-zerotouch.md`](nbxsync-configuration-checklist-zerotouch.md) |
-| Expected host matrix, day-2, scope gaps | Checklist §§13, 15, 17 |
+| Expected host matrix, day-2 | Checklist §§13, 15 |
 | Extreme ports, stages, TEMP_*/optics | [`../zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) |
 | On-box port labels | [`../zabbix/port-identity.md`](../zabbix/port-identity.md) |
-| Cutover order / other domains | [`../zabbix/00-monitoring-plan.md`](../zabbix/00-monitoring-plan.md), [`../zabbix/README.md`](../zabbix/README.md) |
+| Cutover / monitoring domains | [`../zabbix/00-monitoring-plan.md`](../zabbix/00-monitoring-plan.md), [`../zabbix/README.md`](../zabbix/README.md) |
 | First-build helper scripts only | [`../scripts/README.md`](../scripts/README.md) |
 
-Day-to-day changes are done in the **GUI or API**. Scripts are an optional onboarding accelerator, not the operating interface.
+Day-to-day nbxSync changes are done in the **GUI or API**. Scripts are an optional onboarding accelerator, not the operating interface.
 
 ---
 
@@ -79,4 +81,4 @@ Which CG/template/interface a given host class should end up with: checklist §1
 
 Things with no NetBox object to hang on (website checks, account-level APIs, …) and all **monitoring-domain** work (what to poll, thresholds, notifications) are out of scope here. See checklist §14 and the packs under [`../zabbix/`](../zabbix/README.md).
 
-This page and the nbxSync checklist own **NetBox ↔ Zabbix integration** — host inventory, assignment rules, sync lifecycle — not the monitoring content that runs on those hosts.
+This page and the nbxSync checklist own **NetBox ↔ Zabbix integration** — assignment rules and sync lifecycle on top of existing NetBox data — not inventory hygiene and not the monitoring content that runs on those hosts.
