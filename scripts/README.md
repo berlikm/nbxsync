@@ -15,7 +15,7 @@ If a script and those docs disagree, **the docs win** — fix the script.
 
 | Order | Script | Applies |
 |---|---|---|
-| 1 | `configure_nbxsync_zerotouch.py` | Checklist §§1–12 fleet (server, proxies, CGs, Template Rules, hostgroups, tags, inventory, app secrets) |
+| 1 | `configure_nbxsync_zerotouch.py` | Checklist §§1–12 fleet (server, proxies, CGs, Template Rules, hostgroups, tags, inventory, app secrets). Sets proxy `tls_accept=Certificate` only — **not** proxy PEM files / cloud portal TLS. |
 | 2 | `configure_nbxsync_network.py` | Extreme YAML import, Switch* IFALIAS, destination globals, stock EXOS LLD + TEMP_* patches |
 | — | `create_dashboards.py` | Zabbix dashboards from nested hostgroups |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |

@@ -45,30 +45,9 @@ Path: **Zabbix → Servers → Add**
 | Sync enabled | True |
 | Skip version check | False |
 
-**Production is Zabbix Cloud** at `https://sensirion.zabbix.cloud`. All proxy-to-cloud traffic uses **mutual TLS certificate authentication** (Sensirion PKI). The NetBox host (sync origin) connects via HTTPS with API token — no proxy certificates needed on the NetBox host.
+**Validate certs = True** means the NetBox host must trust the HTTPS certificate for that URL (OS trust store / corporate root). That is the **API** path only — unrelated to proxy↔cloud mTLS.
 
-**Proxy TLS architecture:** Proxies operate in **active mode** — they initiate the connection to Zabbix Cloud and present their leaf certificate. Zabbix Cloud verifies against the uploaded Sensirion Root CA. Zabbix Cloud presents `CN=sensirion.zabbix.cloud` to the proxy; the proxy verifies via its local `TLSCAFile` (Intermediate CA + Root CA chain).
-
-**Certificate files per proxy host:**
-
-| File | Contents | Where |
-|---|---|---|
-| `CAcert.cer` | Sensirion Root CA only (top-level, self-signed) | Zabbix Cloud portal → Root CA certificates field |
-| `zabbix-proxy.key` | Proxy private key | Zabbix Cloud portal + proxy host (`TLSKeyFile`) |
-| `zabbix-proxy-chain.pem` | Proxy leaf cert + Intermediate CA (Issuing CA Server) | Zabbix Cloud portal + proxy host (`TLSCertFile`) |
-| `chain_fixed.pem` | Intermediate CA + Root CA (in this order) | Proxy host only (`TLSCAFile`) |
-
-**Certificate requirements:**
-- Template: **Sensirion Client Authentication Linux** (not Webserver — wrong template causes TLS handshake failure)
-- Validity: 1 year — set calendar reminder for renewal
-- SANs: all proxy FQDNs + short names + IPs (5 proxies share one certificate)
-  - `ch-sta-p-zabp01.sensirion.lokal` / `ch-sta-p-zabp01` / `10.0.104.235`
-  - `ch-sta-p-zabp02.sensirion.lokal` / `ch-sta-p-zabp02` / `10.0.105.235`
-  - `hu-deb-p-zabp01.sensirion.lokal` / `hu-deb-p-zabp01` / `10.40.100.235`
-  - `cn-sha-p-zabp01.sensirion.lokal` / `cn-sha-p-zabp01` / `10.31.100.235`
-  - `kr-sel-p-zabp01.sensirion.lokal` / `kr-sel-p-zabp01` / `10.30.100.235`
-- Key Usage: Digital Signature, Key Encipherment
-- Extended Key Usage: TLS Client Authentication (proxy), TLS Web Server Authentication (cloud)
+Proxy TLS certificates (files on proxy hosts, uploads in the Zabbix Cloud portal) are **not** configured in nbxSync. They live in the Sensirion proxy TLS / PKI runbook.
 
 ---
 
@@ -78,22 +57,25 @@ Path: **Zabbix → Proxies → Add**, **Zabbix → Proxy Groups → Add**
 
 **Why:** collectors are a geography decision. Binding proxy (or proxy group) on the country Site Group means every device under that country inherits the collector without per-host proxy rows. JP has no local proxy, so it uses KR; NL and US share the CH proxy group.
 
+Names below must match the proxy objects that already exist in Zabbix Cloud. Proxy↔cloud mTLS is already done on the proxy hosts and in the cloud portal — in NetBox only register the proxies and set **TLS accept = Certificate** on active proxies so a later NetBox→Zabbix proxy sync does not wipe encryption back to “no encryption”.
+
 ### 2.1 Proxy group
 
 | Name | Zabbix server | Description |
 |---|---|---|
-| CH Proxy Group | Zabbix Production | Proxy group for CH-based monitoring (NL and US route through CH) |
+| CH Proxy Group | Zabbix Production | CH Stäfa pair (NL and US route through CH) |
 
 ### 2.2 Proxies
 
-| Name | Mode | Proxy group | Local address | Local port |
-|---|---|---|---|---|
-| ch-proxy-1 | Active | CH Proxy Group | 127.0.0.1 | 10051 |
-| hu-proxy-1 | Active | — | — | — |
-| kr-proxy-1 | Active | — | — | — |
-| cn-proxy-1 | Active | — | — | — |
+| Name | Mode | Proxy group | TLS accept | Local address | Local port |
+|---|---|---|---|---|---|
+| ch-sta-p-zabp01 | Active | CH Proxy Group | Certificate | *(proxy local IP / address required by group)* | 10051 |
+| ch-sta-p-zabp02 | Active | CH Proxy Group | Certificate | *(proxy local IP / address required by group)* | 10051 |
+| hu-deb-p-zabp01 | Active | — | Certificate | — | — |
+| kr-sel-p-zabp01 | Active | — | Certificate | — | — |
+| cn-sha-p-zabp01 | Active | — | Certificate | — | — |
 
-Proxy IDs must match the proxies that already exist in Zabbix under these names.
+Proxy IDs must match Zabbix. Do **not** store CA/leaf/key PEM material in NetBox or in the onboarding scripts.
 
 ---
 
@@ -106,12 +88,12 @@ Create one assignment per country Site Group. Set a **proxy or a proxy group** �
 | Site Group | Proxy | Proxy group | Sync enabled |
 |---|---|---|---|
 | CH | — | CH Proxy Group | Yes |
-| HU | hu-proxy-1 | — | Yes |
-| JP | kr-proxy-1 | — | Yes |
-| KR | kr-proxy-1 | — | Yes |
+| HU | hu-deb-p-zabp01 | — | Yes |
+| JP | kr-sel-p-zabp01 | — | Yes |
+| KR | kr-sel-p-zabp01 | — | Yes |
 | NL | — | CH Proxy Group | Yes |
 | US | — | CH Proxy Group | Yes |
-| CN | cn-proxy-1 | — | Yes |
+| CN | cn-sha-p-zabp01 | — | Yes |
 
 ---
 

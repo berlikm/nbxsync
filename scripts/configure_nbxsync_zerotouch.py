@@ -170,20 +170,20 @@ TPL_NAMES = {
     'print_spool_agent': 'Print Spool by Zabbix agent',
     'icmp_ping': 'ICMP Ping',
 }
-n# Extra proxies that join the CH proxy group (high availability).
-CH_PROXY_GROUP_EXTRA = ['ch2']
 
 # Populated by resolve_templates() / lab ensure_t(): key → (templateid, name)
 TPL: dict[str, tuple[int, str]] = {}
 
 PROXY_NAMES = {
-    'ch': 'ch-sta-p-zabp01',
-    'hu': 'hu-deb-p-zabp01',
-    'kr': 'kr-sel-p-zabp01',
-    'cn': 'cn-sha-p-zabp01',
-    'ch2': 'ch-sta-p-zabp02',
+    # Production Zabbix Cloud names (must match exactly). Lab overrides: NBX_PROXY_CH, …
+    'ch': os.environ.get('NBX_PROXY_CH', 'ch-sta-p-zabp01'),
+    'ch2': os.environ.get('NBX_PROXY_CH2', 'ch-sta-p-zabp02'),
+    'hu': os.environ.get('NBX_PROXY_HU', 'hu-deb-p-zabp01'),
+    'kr': os.environ.get('NBX_PROXY_KR', 'kr-sel-p-zabp01'),
+    'cn': os.environ.get('NBX_PROXY_CN', 'cn-sha-p-zabp01'),
 }
-n# Extra proxies that join the CH proxy group (high availability).
+# Extra proxies that join the CH proxy group (high availability).
+CH_PROXY_GROUP_EXTRA = ['ch2']
 
 # Network SNMP only — Storage is HTTP/TBD (not MONITORING MD5/DES).
 SNMP_ROLES = [
@@ -232,7 +232,6 @@ SNMP_PROFILES = {
         'priv_env': ('NBX_SNMP_PRIVPASS_SAP',),
     },
 }
-n# Extra proxies that join the CH proxy group (high availability).
 
 # Self-referencing host macros that shadow Zabbix globals — prune on every run.
 # Secret macros managed by zerotouch (role-level ZabbixMacro with ZabbixMacroAssignment).
@@ -372,14 +371,19 @@ def resolve_templates(server, *, names: dict[str, str] | None = None, required: 
 
 
 def resolve_proxies(server, names: dict[str, str] | None = None) -> dict[str, M.ZabbixProxy]:
-    """Ensure NetBox ZabbixProxy rows exist with proxyid taken from Zabbix by name."""
+    """Ensure NetBox ZabbixProxy rows exist with proxyid taken from Zabbix by name.
+
+    Active proxies use mutual TLS on the proxy host + Zabbix Cloud portal (PEM files
+    are *not* managed here). NetBox only records tls_accept=Certificate so a later
+    NetBox→Zabbix proxy sync does not reset encryption to “no encryption”.
+    """
     names = names or PROXY_NAMES
     proxies: dict[str, M.ZabbixProxy] = {}
     with ZabbixConnection(server) as api:
-        for country, name in names.items():
+        for key, name in names.items():
             found = api.proxy.get(filter={'name': name}, output=['proxyid', 'name']) or []
             if not found:
-                raise SystemExit(f'Zabbix proxy not found by name: {name!r} (country={country})')
+                raise SystemExit(f'Zabbix proxy not found by name: {name!r} (key={key})')
             proxyid = int(found[0]['proxyid'])
             proxy, _ = ensure(
                 M.ZabbixProxy,
@@ -388,11 +392,12 @@ def resolve_proxies(server, names: dict[str, str] | None = None) -> dict[str, M.
                     'zabbixserver': server,
                     'operating_mode': ZabbixProxyTypeChoices.ACTIVE,
                     'proxyid': proxyid,
-                    'description': f'Proxy for {country.upper()}',
+                    'tls_accept': [ZabbixTLSChoices.CERT],
+                    'description': f'Proxy {name}',
                 },
-                update_fields=['zabbixserver', 'operating_mode', 'proxyid', 'description'],
+                update_fields=['zabbixserver', 'operating_mode', 'proxyid', 'tls_accept', 'description'],
             )
-            proxies[country] = proxy
+            proxies[key] = proxy
     return proxies
 
 
@@ -545,29 +550,26 @@ def step2_proxies(server):
         name='CH Proxy Group',
         defaults={
             'zabbixserver': server,
-            'description': 'Proxy group for CH-based monitoring (NL, US route through CH)',
+            'description': 'CH Stäfa proxy pair (NL, US route through CH)',
         },
         update_fields=['zabbixserver', 'description'],
     )
-    ch_proxy = proxies['ch']
-    if ch_proxy.proxygroup_id != ch_proxy_group.pk or not ch_proxy.local_address:
-        ch_proxy.proxygroup = ch_proxy_group
-        ch_proxy.local_address = ch_proxy.local_address or '127.0.0.1'
-        ch_proxy.local_port = ch_proxy.local_port or 10051
-        ch_proxy.save()
-        logger.info('  Linked %s → CH Proxy Group', ch_proxy.name)
-
-    # Link additional CH proxies to the proxy group (high availability).
-    for extra_key in CH_PROXY_GROUP_EXTRA:
-        if extra_key not in proxies:
+    for key in ('ch', *CH_PROXY_GROUP_EXTRA):
+        proxy = proxies.get(key)
+        if proxy is None:
             continue
-        extra = proxies[extra_key]
-        if extra.proxygroup_id != ch_proxy_group.pk or not extra.local_address:
-            extra.proxygroup = ch_proxy_group
-            extra.local_address = extra.local_address or '127.0.0.1'
-            extra.local_port = extra.local_port or 10051
-            extra.save()
-            logger.info('  Linked %s → CH Proxy Group (HA)', extra.name)
+        # local_address is required by nbxSync when a proxy is in a group.
+        if proxy.proxygroup_id != ch_proxy_group.pk or not proxy.local_address:
+            proxy.proxygroup = ch_proxy_group
+            if not proxy.local_address:
+                logger.warning(
+                    '  %s joined CH Proxy Group but local_address is empty — set it in NetBox/Zabbix',
+                    proxy.name,
+                )
+                proxy.local_address = proxy.local_address or '127.0.0.1'
+            proxy.local_port = proxy.local_port or 10051
+            proxy.save()
+            logger.info('  Linked %s → CH Proxy Group (tls_accept=%s)', proxy.name, proxy.tls_accept)
     return proxies, ch_proxy_group
 
 
@@ -1329,7 +1331,6 @@ INVENTORY_PAYLOAD = {
     'url_a': 'https://netbox.sensirion.lokal/dcim/devices/{{ object.id }}/',
     'deployment_status': '{{ object.status }}',
 }
-n# Extra proxies that join the CH proxy group (high availability).
 
 
 def step10_host_inventory(country_slugs=None):
@@ -1753,9 +1754,11 @@ def run_simulate() -> int:
                 defaults={
                     'zabbixserver': server,
                     'operating_mode': ZabbixProxyTypeChoices.ACTIVE,
-                    'proxygroup': pg if key == 'ch' else None,
-                    'local_address': '127.0.0.1' if key == 'ch' else '',
+                    'tls_accept': [ZabbixTLSChoices.CERT],
+                    'proxygroup': pg if key in ('ch', 'ch2') else None,
+                    'local_address': '127.0.0.1' if key in ('ch', 'ch2') else '',
                     'local_port': 10051,
+                    'description': 'lab',
                 },
             )
             proxies[key] = proxy
