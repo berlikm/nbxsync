@@ -214,8 +214,18 @@ PROXY_NAMES = {
     'kr': os.environ.get('NBX_PROXY_KR', 'kr-sel-p-zabp01'),
     'cn': os.environ.get('NBX_PROXY_CN', 'cn-sha-p-zabp01'),
 }
+# Proxy IP addresses (for local_address — required when proxy is in a group).
+# These are the proxy management IPs, not the Zabbix server address.
+PROXY_LOCAL_ADDRESS = {
+    'ch': '10.0.104.235',
+    'ch2': '10.0.105.235',
+    'hu': '10.40.100.235',
+    'kr': '10.30.100.235',
+    'cn': '10.31.100.235',
+}
 # Extra proxies that join the CH proxy group (high availability).
 CH_PROXY_GROUP_EXTRA = ['ch2']
+CH_PROXY_GROUP_NAME = 'Swiss proxy group'
 
 # Network SNMP only — Storage is HTTP/TBD (not MONITORING MD5/DES).
 SNMP_ROLES = [
@@ -659,7 +669,7 @@ def step2_proxies(server):
 
     ch_proxy_group, _ = ensure(
         M.ZabbixProxyGroup,
-        name='CH Proxy Group',
+        name=CH_PROXY_GROUP_NAME,
         defaults={
             'zabbixserver': server,
             'description': 'CH Stäfa proxy pair (NL, US route through CH)',
@@ -673,15 +683,10 @@ def step2_proxies(server):
         # local_address is required by nbxSync when a proxy is in a group.
         if proxy.proxygroup_id != ch_proxy_group.pk or not proxy.local_address:
             proxy.proxygroup = ch_proxy_group
-            if not proxy.local_address:
-                logger.warning(
-                    '  %s joined CH Proxy Group but local_address is empty — set it in NetBox/Zabbix',
-                    proxy.name,
-                )
-                proxy.local_address = proxy.local_address or '127.0.0.1'
+            proxy.local_address = PROXY_LOCAL_ADDRESS.get(key, proxy.local_address or '127.0.0.1')
             proxy.local_port = proxy.local_port or 10051
             proxy.save()
-            logger.info('  Linked %s → CH Proxy Group (tls_accept=%s)', proxy.name, proxy.tls_accept)
+            logger.info('  Linked %s → %s (local=%s)', proxy.name, CH_PROXY_GROUP_NAME, proxy.local_address)
     return proxies, ch_proxy_group
 
 
