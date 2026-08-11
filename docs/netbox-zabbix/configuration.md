@@ -70,29 +70,14 @@ Path: **Zabbix → Proxies → Add**, **Zabbix → Proxy Groups → Add**
 | kr-sel-p-zabp01 | Active | — | Certificate | — | — |
 | cn-sha-p-zabp01 | Active | — | Certificate | — | — |
 
-### 2.3 Proxy self-monitoring (role = Zabbix Proxy)
+### 2.3 Proxy self-monitoring
 
-Proxy VMs already exist in NetBox (e.g. `ch-sta-p-zabp01`, VM id 604). The `netbox-sync` `vm_role_relation` maps `-ZABP\d+` → `Zabbix Proxy`, so these VMs get `role=Zabbix Proxy` automatically. nbxSync then assigns:
-
-- **Linux by Zabbix agent** — platform rule (Ubuntu matches `Linux` pattern)
-- **ICMP Ping** — role-scoped TemplateRule (`role_pattern = ^Zabbix Proxy$`)
-- **Remote Zabbix proxy health** — role-scoped TemplateRule (stock Zabbix template: proxy-internal process utilization, buffer state, data sender, config sync, version, uptime)
+Proxy VMs get `role=Zabbix Proxy` via `netbox-sync` (`-ZABP\d+` pattern). The role carries three TemplateRules (see §6.3): Linux by Zabbix agent (platform), ICMP Ping, and Remote Zabbix proxy health. Proxy VMs inherit the proxy assignment from their SiteGroup — the proxy monitors itself (no circular dependency: proxy polls its own localhost agent).
 
 **Monitoring topology:**
-- Proxy → Cloud: **active** (proxy connects outbound to `sensirion.zabbix.cloud` on TCP 10051, mTLS with Sensirion PKI certificates)
-- Proxy → Agent: **passive** (proxy polls agents on TCP 10050)
+- Proxy → Cloud: **active** (TCP 10051, mTLS with Sensirion PKI certificates)
+- Proxy → Agent: **passive** (TCP 10050)
 
-Proxy VMs inherit the proxy assignment from their country SiteGroup — the proxy monitors itself. This is correct: the `Remote Zabbix proxy health` items are proxy-internal metrics (type 18) collected by the proxy daemon. The `Linux by Zabbix agent` items are polled from the proxy's own local agent. No circular dependency — a proxy can poll its own localhost agent while forwarding data to the cloud.
-
-Note: `{$ZABBIX.PROXY.ADDRESS}` / `{$ZABBIX.PROXY.PORT}` macros (3 remote-stats items) are not set by nbxSync — configure them in Zabbix Cloud if the `zabbix[stats,…]` queue items are needed. The remaining 51 proxy health items work without macros.
-
-| VM name | NetBox ID | Site | IP | Role | Templates (via nbxSync) |
-|---|---|---|---|---|---|
-| ch-sta-p-zabp01 | 604 | CH-ZRH-ZH4 | 10.0.104.235 | Zabbix Proxy | Linux by Zabbix agent, ICMP Ping, Remote Zabbix proxy health |
-| ch-sta-p-zabp02 | 610 | CH-ZRH-ZH5 | 10.0.105.235 | Zabbix Proxy | Linux by Zabbix agent, ICMP Ping, Remote Zabbix proxy health |
-| hu-deb-p-zabp01 | 608 | HU-DEB-NAG-DC | 10.40.100.235 | Zabbix Proxy | Linux by Zabbix agent, ICMP Ping, Remote Zabbix proxy health |
-| kr-sel-p-zabp01 | 609 | KR-SEL-HAN | 10.30.100.235 | Zabbix Proxy | Linux by Zabbix agent, ICMP Ping, Remote Zabbix proxy health |
-| cn-sha-p-zabp01 | 607 | CN-SHA-JIU | 10.31.100.235 | Zabbix Proxy | Linux by Zabbix agent, ICMP Ping, Remote Zabbix proxy health |
 
 ---
 
