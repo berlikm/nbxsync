@@ -1024,29 +1024,26 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
     logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); ESXi iDRAC = SNMPv2c public; Server OOB creds = MONITORING-DELL')
 
-    # ESXi platforms → ESXi OOB iDRAC CG. Regex matches any version —
-    # version-agnostic, scalable (1 CG row per Platform, not per device).
-    # New ESXi versions picked up automatically on zerotouch re-run.
-    esxi_platforms = [p for p in Platform.objects.all() if ESXI_PLATFORM_RE.search(p.name or '')]
-    for plat in esxi_platforms:
+    # ESXi Hypervisor role → ESXi OOB iDRAC CG (SNMPv2c public on oob_ip, no Agent).
+    # Role set by netbox-sync (host_role_relation: .*ESX.* = ESXi Hypervisor).
+    # Version-agnostic — no dependency on Platform name or version.
+    try:
+        esxi_role = get_role('ESXi Hypervisor')
+    except DeviceRole.DoesNotExist:
+        logger.warning("  Role 'ESXi Hypervisor' not found — skip ESXi OOB CG (run netbox-sync first)")
+        esxi_role = None
+    if esxi_role:
         get_or_create(
             M.ZabbixConfigurationGroupAssignment,
             zabbixconfigurationgroup=esxi_oob_group,
-            assigned_object_type=ct(Platform),
-            assigned_object_id=plat.id,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=esxi_role.id,
             defaults={},
         )
-    if esxi_platforms:
-        logger.info(
-            '  ESXi OOB iDRAC → %s platform(s): %s',
-            len(esxi_platforms),
-            ', '.join(sorted(p.name for p in esxi_platforms)),
-        )
-    else:
-        logger.warning('  No platforms matching ESXi/VMware ESX — skip ESXi OOB CG')
+        logger.info('  ESXi OOB iDRAC → DeviceRole ESXi Hypervisor (SNMPv2c public on oob_ip)')
 
-    # Prune stale role-level and per-device ESXi CG assignments.
-    for model_cls in (DeviceRole, Device):
+    # Prune stale platform-level and per-device ESXi CG assignments.
+    for model_cls in (Platform, Device):
         stale, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
             zabbixconfigurationgroup=esxi_oob_group,
             assigned_object_type=ct(model_cls),
