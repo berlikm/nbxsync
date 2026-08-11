@@ -938,10 +938,12 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     # SNMP storage manufacturers — Site Group Agent would leave them without SNMP.
     # Manufacturer CG wins first in inheritance → SNMP Monitoring (network MONITORING).
-    # Pure / HPE stay on Agent default (HTTP templates). Huawei with non-fleet SNMPv3
-    # (e.g. LogicMonitor user) keeps a per-device HostInterface override.
+    # Pure / HPE stay on Agent default (HTTP templates).
+    # Huawei does NOT get the fleet SNMP CG — HU-DEB-SAN01 uses a per-device
+    # ZabbixHostInterface with LogicMonitor SHA/AES credentials (different from fleet
+    # MONITORING MD5/DES). Assigning the manufacturer CG would create a second SNMP
+    # interface with wrong credentials, causing dual-interface conflicts.
     assign_manufacturer(snmp_group, 'Synology')
-    assign_manufacturer(snmp_group, 'Huawei')
 
     # §5.5b Cohesity VMs with primary_ip4 → SNMP Monitoring (not OOB SNMP Only,
     # which is for physical nodes with only oob_ip — VMs have no oob_ip).
@@ -975,6 +977,18 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     if leftover_snmp.exists():
         deleted, _ = leftover_snmp.delete()
         logger.info('  PRUNED: %s SNMP Monitoring CG assignment(s) from roles no longer in SNMP_ROLES', deleted)
+
+    # Prune stale Huawei manufacturer CG assignment (replaced by per-device interface).
+    huawei = Manufacturer.objects.filter(name__iexact='Huawei').first()
+    if huawei:
+        stale_huawei_cg = M.ZabbixConfigurationGroupAssignment.objects.filter(
+            zabbixconfigurationgroup=snmp_group,
+            assigned_object_type=ct(Manufacturer),
+            assigned_object_id=huawei.id,
+        )
+        deleted, _ = stale_huawei_cg.delete()
+        if deleted:
+            logger.info('  PRUNED: Huawei manufacturer SNMP CG assignment (per-device interface instead)')
     if cohesity_vms:
         logger.info('  %s Cohesity VM(s) → SNMP Monitoring (direct override, have primary_ip4)', len(cohesity_vms))
 
