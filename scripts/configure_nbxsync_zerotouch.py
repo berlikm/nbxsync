@@ -831,8 +831,9 @@ def step5_host_interfaces(server, groups: dict):
     snmp_if(groups['linux_snmp'], profile='linux')
     # 5.5 Cohesity OOB — network MONITORING
     snmp_if(groups['oob_snmp'], profile='network', use_oob_ip=True)
-    # 5.5b ESXi OOB — Dell iDRAC only (no agent; VMware via vCenter)
-    snmp_if(groups['esxi_oob'], profile='dell', use_oob_ip=True)
+    # 5.5b ESXi OOB — iDRAC SNMP only (no agent; VMware via vCenter)
+    # iDRACs use MONITORING (MD5/DES) credentials, not MONITORING-DELL (SHA/AES).
+    snmp_if(groups['esxi_oob'], profile='network', use_oob_ip=True)
     # 5.6 SAP SNMP — SAPUSER (provisional SHA1/AES128)
     snmp_if(groups['sap_snmp'], profile='sap')
     # 5.6b Huawei SNMP — LogicMonitor SHA1/AES128 (non-fleet credential)
