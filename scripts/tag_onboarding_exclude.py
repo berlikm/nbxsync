@@ -81,12 +81,10 @@ def main() -> int:
         dev_count = 0
         for dev in Device.objects.filter(tags=tag):
             dev.tags.remove(tag)
-            dev.save()
             dev_count += 1
         vm_count = 0
         for vm in VirtualMachine.objects.filter(tags=tag):
             vm.tags.remove(tag)
-            vm.save()
             vm_count += 1
         print(f'Removed onboarding tag from {dev_count} devices + {vm_count} VMs')
         print('Run a sync to bring hosts back into Zabbix.')
@@ -105,8 +103,6 @@ def main() -> int:
     for dev in devs:
         if tag not in dev.tags.all():
             dev.tags.add(tag)
-            if not args.dry_run:
-                dev.save()
             dev_count += 1
 
     # VMs
@@ -115,8 +111,6 @@ def main() -> int:
     for vm in vms:
         if tag not in vm.tags.all():
             vm.tags.add(tag)
-            if not args.dry_run:
-                vm.save()
             vm_count += 1
 
     mode = 'DRY RUN' if args.dry_run else 'TAGGED'
