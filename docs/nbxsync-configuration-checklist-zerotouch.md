@@ -242,7 +242,7 @@ SAP SNMPv3 profile. Transport-only until Robert confirms auth/priv and whether S
 
 | Case | How |
 |---|---|
-| `hu-deb-san01` (`LogicMonitor` SHA/AES) | Per-device `ZabbixHostInterface` on that Device (do not change fleet CGs) — device exists in NetBox as `HU-DEB-SAN01`, role Storage, manufacturer Huawei |
+| `HU-DEB-SAN01` (Huawei storage, `LogicMonitor` SHA/AES) | Per-device `ZabbixHostInterface` on that Device — the **Huawei Storage (SNMP)** TemplateRule (§6.3, manufacturer=Huawei) links the template automatically, but this device uses a different SNMPv3 credential (`LogicMonitor`) than any fleet CG. The per-device interface provides the transport with the right credentials. No CG assignment needed on the Storage role for this device. |
 
 ---
 
