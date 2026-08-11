@@ -318,7 +318,6 @@ First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and valu
 
 | Name | Pattern | Template | Hostgroup | Require tags | Priority | Enabled |
 |---|---|---|---|---|---|---|
-| Windows Server | `Windows Server` | Windows by Zabbix agent | OS/Windows | — | 50 | Yes |
 | Windows catch-all | `Windows` | Windows by Zabbix agent | OS/Windows | — | 200 | Yes |
 | Linux | `Ubuntu\|Debian\|Linux\|Red Hat\|CentOS\|Alma\|SUSE\|Arch\|Photon\|Other.*Linux` | Linux by Zabbix agent | OS/Linux | — | 100 | Yes |
 | Extreme EXOS | `EXOS` | Extreme EXOS by SNMP | OS/Network | — | 100 | Yes |
