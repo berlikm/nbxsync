@@ -1147,7 +1147,6 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     # Prune stale per-device HostInterface on HU-DEB-SAN01 (credentials now on the CG).
     if huawei_san01:
         stale_hi = M.ZabbixHostInterface.objects.filter(
-            zabbixserver=server,
             assigned_object_type=ct(Device),
             assigned_object_id=huawei_san01.id,
         )
