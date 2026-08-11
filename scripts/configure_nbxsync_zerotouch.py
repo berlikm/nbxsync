@@ -945,6 +945,22 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     # interface with wrong credentials, causing dual-interface conflicts.
     assign_manufacturer(snmp_group, 'Synology')
 
+    # HU-DEB-SAN01 (Huawei storage): assign SNMP Monitoring CG directly on the
+    # device to override the SiteGroup Agent Monitoring default. The per-device
+    # ZabbixHostInterface provides the LogicMonitor SNMPv3 credentials.
+    # Without this CG, the device would only get an Agent interface (no agent
+    # runs on a storage array) and no SNMP interface.
+    huawei_san01 = Device.objects.filter(name__iexact='HU-DEB-SAN01').first()
+    if huawei_san01:
+        get_or_create(
+            M.ZabbixConfigurationGroupAssignment,
+            zabbixconfigurationgroup=groups['snmp'],
+            assigned_object_type=ct(Device),
+            assigned_object_id=huawei_san01.id,
+            defaults={},
+        )
+        logger.info('  HU-DEB-SAN01 → SNMP Monitoring (direct, LogicMonitor creds via per-device IF)')
+
     # §5.5b Cohesity VMs with primary_ip4 → SNMP Monitoring (not OOB SNMP Only,
     # which is for physical nodes with only oob_ip — VMs have no oob_ip).
     cohesity_vms = list(
@@ -1643,8 +1659,9 @@ def step11_macros(server):
             _ensure_macro_assignment(
                 server, '{$PURE.FLASHARRAY.API.TOKEN}', token, dev,
                 description=f'ztc:secret:pure:{dev.name}')
-            # The template also needs the API URL — use the device's primary IP.
-            api_url = f'https://{dev.primary_ip4.address.ip}' if dev.primary_ip4 else f'https://{dev.name}'
+            # The template script appends 'api/{version}/login' to this URL.
+            # Base URL only — no /api path. Script adds trailing '/' if missing.
+            api_url = f'https://{dev.primary_ip4.address.ip}/' if dev.primary_ip4 else f'https://{dev.name}/'
             _ensure_macro_assignment(
                 server, '{$PURE.FLASHARRAY.API.URL}', api_url, dev,
                 mtype=ZabbixMacroTypeChoices.TEXT,
