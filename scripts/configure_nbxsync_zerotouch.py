@@ -913,8 +913,7 @@ def step5_host_interfaces(server, groups: dict):
             'snmp_pushcommunity': True,
         },
     )
-    # 5.7 SPACE agent — 10060
-    # Only set passphrases when env is non-empty (don't blank on re-run).
+    # Only set Huawei passphrases when env is non-empty (don't blank on re-run).
     _huawei_auth = _env_first(('NBX_SNMP_AUTHPASS_HUAWEI',))
     _huawei_priv = _env_first(('NBX_SNMP_PRIVPASS_HUAWEI',))
     if _huawei_auth or _huawei_priv:
@@ -930,6 +929,7 @@ def step5_host_interfaces(server, groups: dict):
             hi.save(update_fields=['snmpv3_authentication_passphrase', 'snmpv3_privacy_passphrase'])
     else:
         logger.warning('  NBX_SNMP_AUTHPASS_HUAWEI / NBX_SNMP_PRIVPASS_HUAWEI not set — Huawei authPriv will fail')
+    # 5.7 SPACE agent — 10060
     agent_if(groups['space_agent'], port=10060)
 
     # HostInterface must not hang on tags (interface shape lives on the CG).
@@ -1625,7 +1625,7 @@ def step7_template_assignments(server):
 
     # Transport-only CGs — prune leftover CG→template links
     # (Linux/Windows by SNMP come from tag compound TemplateRules in step 6).
-    for cg_name_suffix in ('VM by SNMP', 'SNMP by tag', 'SNMP Monitoring (Linux)', 'SNMP Monitoring (SAP)'):
+    for cg_name_suffix in ('VM by SNMP', 'SNMP by tag', 'SNMP Monitoring (Linux)', 'SAP Agent+SNMP'):
         for cg in M.ZabbixConfigurationGroup.objects.filter(name__endswith=cg_name_suffix):
             deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
                 assigned_object_type=ct(M.ZabbixConfigurationGroup),
