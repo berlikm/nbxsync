@@ -272,13 +272,15 @@ Manufacturer CG wins over Site Group Agent. Pure Storage and HPE stay Agent/HTTP
 | SNMP Monitoring (SAP) | SAP HANA |
 | SNMP Monitoring (SAP) | SAP ME |
 
-### ESXi platforms → OOB iDRAC
+### ESXi platforms → OOB iDRAC (role = ESXi Hypervisor)
 
 | Configuration group | Assigned to |
 |---|---|
-| ESXi OOB iDRAC | Platform name matching `ESXi\|VMware ESX` |
+| ESXi OOB iDRAC | Platform name matching `ESXi\|VMware ESX` AND role **ESXi Hypervisor** |
 
-Platform CG wins over Site Group Agent (inheritance). Keep ESXi devices off role **Server** (that role’s Server Agent+OOB would win first and reintroduce Agent).
+ESXi devices are migrated from role `Server` to `ESXi Hypervisor` by the zerotouch script (`--mutate-netbox`). This prevents inheriting `Server Agent+OOB` (which adds an unwanted Agent interface on primary IP — ESXi hosts have no Zabbix agent). The ESXi OOB iDRAC CG provides SNMP-only on oob_ip with `MONITORING-DELL` SHA/AES credentials. Dell iDRAC template comes from TemplateRule `Dell iDRAC (ESXi)` in §6.3.
+
+**NetBox role migration:** the script creates DeviceRole `ESXi Hypervisor` (slug `esxi-hypervisor`) and migrates all Devices with platform matching `ESXi|VMware ESX` from role `Server` to the new role. Run with `--mutate-netbox` once during initial build.
 
 ### Zero-touch tag opt-ins
 
