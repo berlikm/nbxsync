@@ -478,34 +478,44 @@ To mark a device: add NetBox tag `critical`. To unmark: remove the tag.
 
 ## 9. Tags
 
-**Why few tags:** team, site, role, OS, and priority already live in hostgroups. Tags carry only what is not derivable from those trees and is still useful for filtering or gating rules.
+There are **two different tag systems** that work together but must not be confused:
+
+1. **NetBox tags** — applied to devices/VMs/roles in NetBox. These are the *trigger*: when sync runs, nbxsync reads them and decides what to do.
+2. **Zabbix tags** — applied to Zabbix hosts during sync, derived from Jinja templates (§9.1, §9.2) or from the NetBox tags above. These end up on the Zabbix host for filtering in dashboards, actions, and problem views.
+
+**§9.0–9.0a and §9.3 are about NetBox tags** (what you apply in NetBox to control monitoring behaviour).
+**§9.1–9.2 are about Zabbix tags** (what nbxsync writes to Zabbix hosts automatically — you do not touch these).
 
 ### 9.0 NetBox tags (create under NetBox → Tags)
 
-| Name | Purpose |
-|---|---|
-| `do_not_monitor` | Exclude from monitoring (see §9.3 and plugin settings) |
-| `critical` | Membership in hostgroup Priority/Critical |
-| `snmp` | Zero-touch Linux SNMP: selects **SNMP Monitoring (Linux)** CG + Linux/Windows by SNMP Template Rules |
-| `oracle` | Zero-touch Oracle: links **Oracle by Zabbix agent 2** template via tag-gated Template Rule |
+These NetBox tags control monitoring behaviour. Apply them in NetBox → Device/VM → Tags, or on a Device Role to affect all devices with that role.
 
-### 9.0a Tagging guide — which devices to tag (from LogicMonitor export)
+| NetBox tag | What it does when a device/VM has it | Apply where |
+|---|---|---|
+| `do_not_monitor` | Host is **completely skipped** during sync. Existing Zabbix host is deleted. See §9.3 for details. | Per device/VM or per Device Role (Messpc, Sd Wan Socket, VDI) |
+| `critical` | Adds the host to Zabbix hostgroup `Priority/Critical` (for 24/7 alert escalation). | Per device/VM |
+| `snmp` | Switches transport from Agent to **SNMP Monitoring (Linux)** CG (MONITORING-LINUX SHA/AES) and links Linux/Windows by SNMP templates instead of agent templates. | Per device/VM — for Linux hosts that should be SNMP-polled instead of agent-polled |
+| `oracle` | Links **Oracle by Zabbix agent 2** template (merges with OS template from platform rule). | Per device/VM — `ch-sta-p-disc04` confirmed; check for others |
 
-Tags are the zero-touch opt-in mechanism. Apply them in NetBox → Device/VM → Tags. Below is the mapping from the LM account export to the NetBox tags this checklist uses.
+**NetBox tags do not appear in Zabbix as tags.** They are read by nbxsync during sync and translated into Zabbix objects (interfaces, templates, hostgroups). Zabbix tags (§9.1–§9.2) are separate and auto-generated.
 
-| Tag | LM signal | Known hosts | NetBox tag to add |
+### 9.0a Which devices to tag — LogicMonitor mapping
+
+Below maps the LM account export to the NetBox tags or roles this checklist uses. For SAP, no tag is needed — the role is set automatically by netbox-sync.
+
+| LM signal | Known hosts | What to do in NetBox | Result |
 |---|---|---|---|
-| `snmp` | LM group "Devices by Type/Linux Servers" used `MONITORING-LINUX` SHA/AES; resource-level overrides on `ch-sta-p-disc04`, `ch-sta-p-lega01`, `ch-sta-p-dell04`, `CH-STA-P-ESD01`, `ch-sta-p-vmli01/02/03/09/13`, `hu-deb-p-dock01`, `nl-ens-d-serv01`, `CH-STA-P-M300` | Any Linux/Windows host that should be SNMP-monitored instead of agent | `snmp` |
-| *(role, not tag)* | LM group "Devices by Type/SAP Systems" used `SAPUSER` | `ch-sta-d-sh01`, `ch-sta-p-sh01`, `ch-sta-q-sh01`, `ch-sta-p-me05/06/07/08` | **No tag needed** — netbox-sync maps `-SH\d+` (d/p/q/s/x, not `-v-` jumphost) to `SAP HANA` role; `SAP ME` role for `-ME\d+` |
-| `oracle` | LM JDBC account `C##logicmonitor`; resource override `logicmonitor` on `ch-sta-p-disc04` | `ch-sta-p-disc04` (confirmed); other Oracle hosts unknown — check with DB team | `oracle` |
-| `critical` | LM alert routing / 24×7 escalation list | Set per operational priority — no 1:1 LM mapping | `critical` |
-| `do_not_monitor` | LM hosts with monitoring disabled; roles excluded by policy | VDI (22 VMs, all), Messpc (1421), Sd Wan Socket (21) — automated by role in §9.3; individual exclusions by tag | `do_not_monitor` |
+| LM used `MONITORING-LINUX` SHA/AES (Linux servers group + resource overrides) | `ch-sta-p-disc04`, `ch-sta-p-lega01`, `ch-sta-p-dell04`, `CH-STA-P-ESD01`, `ch-sta-p-vmli01/02/03/09/13`, `hu-deb-p-dock01`, `nl-ens-d-serv01`, `CH-STA-P-M300` | Add NetBox tag `snmp` | SNMP Monitoring (Linux) CG + Linux by SNMP template |
+| LM used `SAPUSER` (SAP Systems group) | `ch-sta-d-sh01`, `ch-sta-p-sh01`, `ch-sta-q-sh01`, `ch-sta-p-me05/06/07/08` | **Nothing** — netbox-sync maps `-SH\d+` to `SAP HANA` role and `-ME\d+` to `SAP ME` role automatically | SNMP Monitoring (SAP) CG + SAP by Zabbix agent template |
+| LM used JDBC `C##logicmonitor` (Oracle) | `ch-sta-p-disc04` (confirmed); check with DB team for others | Add NetBox tag `oracle` | Oracle by Zabbix agent 2 template |
+| LM 24×7 escalation list | Per operational priority | Add NetBox tag `critical` | Priority/Critical hostgroup membership |
+| LM monitoring disabled / excluded by policy | VDI (22 VMs), Messpc (1421), Sd Wan Socket (21) | Automated by Device Role in §9.3; per-device by tag `do_not_monitor` | Host excluded from Zabbix entirely |
 
-**How to tag:** In NetBox, open the Device or VM → Tags tab → Add tag. Re-sync the host. The tag takes effect immediately on the next sync cycle — no Zabbix Admin UI needed.
+**How to tag:** In NetBox, open the Device or VM → Tags → Add tag. Re-sync the host. The tag takes effect on the next sync cycle.
 
-### 9.1 Environment (Jinja on Site Groups)
+### 9.1 Zabbix host tags — Environment (auto-generated, Jinja on Site Groups)
 
-Path: **Zabbix → Tags → Add**, then assign to each country Site Group.
+**You do not create these manually.** nbxsync creates the Zabbix tag definition and assigns it on each country Site Group. During sync, the Jinja template renders a value per host (e.g. `Production`, `Development`) and writes it as a Zabbix host tag.
 
 **Why Jinja from the hostname:** environment is encoded in naming conventions already; deriving it avoids a second manual taxonomy.
 
@@ -529,13 +539,13 @@ Renders against the device or VM at sync. Preview on a Site Group may show an er
 
 **Failure mode:** names that do not match the `-p-` / `-d-` / … conventions resolve to **`Unknown` with no alert**. That is silent. **Extreme switches** (`CH-STA-…-CORE01`, `…-MGMT01`, `…-ACCE01`, …) normally have no `-p-` token — `environment=Unknown` on them is expected, not a sync bug. If alert routing needs a value later, extend the Jinja (e.g. treat `Switch*` roles as Production) rather than renaming the fleet.
 
-### 9.2 Cluster
+### 9.2 Zabbix host tags — Cluster (auto-generated, Jinja on Clusters)
 
 | Tag | Value | Assign to |
 |---|---|---|
 | cluster | `{{ object.cluster.name }}` | each Cluster |
 
-### 9.3 Exclusion
+### 9.3 NetBox exclusion tag (do_not_monitor)
 
 | Tag | Value | Assign to Device Role |
 |---|---|---|
