@@ -140,7 +140,7 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 | Dell iDRAC | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1* | AES128 |
 | SAP | SNMP Monitoring (SAP) | SAPUSER | *(confirm)* | *(confirm)* |
 
-\*LM export says "SHA"; Zabbix offers SHA1 and SHA256 — use **SHA1** until confirmed.
+\*Source notes say "SHA"; Zabbix offers SHA1 and SHA256 — use **SHA1** until confirmed.
 
 Common SNMP fields for all SNMP profiles: version **3**, bulk **True**, max repetitions **10**, security level **authPriv**, push community **True**, port **161**.
 
@@ -197,7 +197,7 @@ SAP SNMPv3 profile (`SAPUSER` — confirm auth/priv before production). Transpor
 
 | Case | How |
 |---|---|
-| `HU-DEB-SAN01` (Huawei storage, `LogicMonitor` SHA/AES) | Per-device `ZabbixHostInterface` on that Device — the **Huawei Storage (SNMP)** TemplateRule (§6.3, manufacturer=Huawei) links the template automatically, but this device uses a different SNMPv3 credential (`LogicMonitor`) than any fleet CG. The per-device interface provides the transport with the right credentials. No CG assignment needed on the Storage role for this device. |
+| `HU-DEB-SAN01` (Huawei, SNMPv3 user `LogicMonitor` SHA/AES) | Per-device `ZabbixHostInterface` — TemplateRule (§6.3) links the template; credential differs from fleet CGs so transport stays on the device. |
 
 ---
 
@@ -488,7 +488,7 @@ Sync **skips** tagged devices/VMs (no host/interfaces/templates). An existing Za
 
 Path: Site Group → Zabbix tab → Host Inventory → Add
 
-**Why one payload on every country Site Group:** inventory fields are the same mapping everywhere; only the device data changes. Country assignment keeps inventory on the same control plane as Sites, Roles, proxy, and Agent default.
+**Why on every country Site Group:** same Jinja mapping everywhere; values come from the existing NetBox object. Same control plane as Sites, Roles, proxy, and Agent default.
 
 | Field | Value |
 |---|---|
