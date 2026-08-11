@@ -62,7 +62,7 @@ nbxSync clicks at those stages: checklist §7.1 and §11.1.
 
 Work top-down:
 
-1. **Excluded?** NetBox tag `do_not_monitor` (or role with that Zabbix tag) and plugin `exclude_tag`.
+1. **Excluded?** Object- or role-level Zabbix tag `do_not_monitor` and plugin `exclude_tag` (see [`onboarding.md`](onboarding.md)).
 2. **Site / Site Group?** Device or VM must resolve into a managed country (site set; cluster VMs need site or cluster site scope). No site → not profiled (checklist §13).
 3. **Effective configuration group?** On the device/VM Zabbix tab (or inherited from role / Site Group). Wrong CG → wrong interfaces.
 4. **Interfaces present?** Agent and/or SNMP as expected; for BMC, is `oob_ip` set?

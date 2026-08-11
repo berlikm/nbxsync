@@ -422,10 +422,11 @@ Two tag systems:
 
 | NetBox tag | Effect during sync | Typical scope |
 |---|---|---|
-| `do_not_monitor` | Host skipped; existing Zabbix host deleted. See §9.3. | Device/VM or Device Role (Messpc, Sd Wan Socket, VDI) |
 | `critical` | Hostgroup `Priority/Critical` (§8.4) | Device/VM |
 | `snmp` | Transport → **SNMP Monitoring (Linux)** + Linux/Windows by SNMP templates | Device/VM |
 | `oracle` | Links **Oracle by Zabbix agent 2** (merges with OS template) | Device/VM |
+
+**Exclusion** uses a separate nbxSync **Zabbix** tag assignment named `do_not_monitor` (not a NetBox inventory tag) — §9.3. Phased cutover: [`runbooks/onboarding.md`](runbooks/onboarding.md).
 
 NetBox tags are **not** copied into Zabbix as tags; they drive interfaces, templates, and hostgroups. Zabbix tags are separate (§9.1–§9.2).
 
@@ -463,15 +464,16 @@ Renders against the device or VM at sync. Preview on a Site Group may show an er
 
 ### 9.3 Exclusion — `do_not_monitor`
 
-nbxSync Zabbix-tag assignment on roles (plugin `exclude_tag` = `do_not_monitor`, §12):
+Plugin `exclude_tag` = `do_not_monitor` (§12). Assign the nbxSync **Zabbix** tag (Zabbix tab → Tags), not a NetBox inventory tag.
 
-| Tag | Value | Assign to Device Role |
+| Tag | Value | Assign to |
 |---|---|---|
-| do_not_monitor | *(empty)* | Messpc, Sd Wan Socket, VDI |
+| do_not_monitor | *(empty)* | **Role** — Messpc, Sd Wan Socket, VDI (permanent) |
+| do_not_monitor | *(empty)* | **Device / VM** — onboarding waves (temporary) |
 
-Sync **skips** tagged devices/VMs (no host/interfaces/templates). An existing Zabbix host from a prior sync is **deleted**. Binding removed. Untag + re-sync recreates the host. Works on Devices, VMs, and role-level tags.
+Sync **skips** excluded objects (no host/interfaces/templates). An existing Zabbix host from a prior sync is **deleted**. Untag + re-sync recreates the host.
 
----
+**Phased cutover** (exclude agent fleet, enable one-by-one): [`runbooks/onboarding.md`](runbooks/onboarding.md). Use **object-level** assignments for waves — role-level inheritance cannot open a single host.
 
 ## 10. Host inventory
 

@@ -20,6 +20,7 @@ It is **not** the upstream nbxSync product manual (that stays under [`../`](../i
 | [`architecture.md`](architecture.md) | Mental model — layers, control plane, rules of thumb | First read / design discussion |
 | [`configuration.md`](configuration.md) | Authoritative nbxSync GUI/API rows + host matrix + verify | Building or changing policy |
 | [`runbooks/day2.md`](runbooks/day2.md) | Operator procedures after go-live | New role/platform, broken host, recurring checks |
+| [`runbooks/onboarding.md`](runbooks/onboarding.md) | Phased cutover — exclude most, enable one-by-one | Agent not ready / wave enablement |
 
 One fact has **one home**. Link across tracks; do not copy tables.
 
@@ -28,6 +29,7 @@ One fact has **one home**. Link across tracks; do not copy tables.
 ```
 understand  →  architecture.md
 build       →  configuration.md  (§§1–13, then verify)
+onboard     →  runbooks/onboarding.md   (exclude fleet, open hosts one-by-one)
 operate     →  runbooks/day2.md
 signals     →  ../../zabbix/   (Extreme, Forti, …)
 speed-run   →  ../../scripts/README.md   (optional, first build only)
