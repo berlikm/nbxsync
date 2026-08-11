@@ -170,16 +170,20 @@ TPL_NAMES = {
     'print_spool_agent': 'Print Spool by Zabbix agent',
     'icmp_ping': 'ICMP Ping',
 }
+n# Extra proxies that join the CH proxy group (high availability).
+CH_PROXY_GROUP_EXTRA = ['ch2']
 
 # Populated by resolve_templates() / lab ensure_t(): key → (templateid, name)
 TPL: dict[str, tuple[int, str]] = {}
 
 PROXY_NAMES = {
-    'ch': 'ch-proxy-1',
-    'hu': 'hu-proxy-1',
-    'kr': 'kr-proxy-1',
-    'cn': 'cn-proxy-1',
+    'ch': 'ch-sta-p-zabp01',
+    'hu': 'hu-deb-p-zabp01',
+    'kr': 'kr-sel-p-zabp01',
+    'cn': 'cn-sha-p-zabp01',
+    'ch2': 'ch-sta-p-zabp02',
 }
+n# Extra proxies that join the CH proxy group (high availability).
 
 # Network SNMP only — Storage is HTTP/TBD (not MONITORING MD5/DES).
 SNMP_ROLES = [
@@ -228,6 +232,7 @@ SNMP_PROFILES = {
         'priv_env': ('NBX_SNMP_PRIVPASS_SAP',),
     },
 }
+n# Extra proxies that join the CH proxy group (high availability).
 
 # Self-referencing host macros that shadow Zabbix globals — prune on every run.
 # Secret macros managed by zerotouch (role-level ZabbixMacro with ZabbixMacroAssignment).
@@ -551,6 +556,18 @@ def step2_proxies(server):
         ch_proxy.local_port = ch_proxy.local_port or 10051
         ch_proxy.save()
         logger.info('  Linked %s → CH Proxy Group', ch_proxy.name)
+
+    # Link additional CH proxies to the proxy group (high availability).
+    for extra_key in CH_PROXY_GROUP_EXTRA:
+        if extra_key not in proxies:
+            continue
+        extra = proxies[extra_key]
+        if extra.proxygroup_id != ch_proxy_group.pk or not extra.local_address:
+            extra.proxygroup = ch_proxy_group
+            extra.local_address = extra.local_address or '127.0.0.1'
+            extra.local_port = extra.local_port or 10051
+            extra.save()
+            logger.info('  Linked %s → CH Proxy Group (HA)', extra.name)
     return proxies, ch_proxy_group
 
 
@@ -1312,6 +1329,7 @@ INVENTORY_PAYLOAD = {
     'url_a': 'https://netbox.sensirion.lokal/dcim/devices/{{ object.id }}/',
     'deployment_status': '{{ object.status }}',
 }
+n# Extra proxies that join the CH proxy group (high availability).
 
 
 def step10_host_inventory(country_slugs=None):
@@ -1729,7 +1747,7 @@ def run_simulate() -> int:
             defaults={'zabbixserver': server, 'description': 'lab'},
         )
         proxies = {}
-        for key, name in [('ch', 'ch-proxy-1'), ('hu', 'hu-proxy-1'), ('kr', 'kr-proxy-1'), ('cn', 'cn-proxy-1')]:
+        for key, name in [('ch', 'nwn-ch-zabp01'), ('ch2', 'nwn-ch-zabp02'), ('hu', 'nwn-hu-zabp01'), ('kr', 'nwn-kr-zabp01'), ('cn', 'nwn-cn-zabp01')]:
             proxy, _ = M.ZabbixProxy.objects.get_or_create(
                 name=f'{PREFIX}{name}',
                 defaults={
