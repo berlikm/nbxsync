@@ -1627,9 +1627,15 @@ def step11_macros(server):
         token = os.environ.get(env_key, '')
         if token:
             _ensure_macro_assignment(
-                server, '{$PURESTORAGE.TOKEN}', token, dev,
+                server, '{$PURE.FLASHARRAY.API.TOKEN}', token, dev,
                 description=f'ztc:secret:pure:{dev.name}')
-            logger.info('  Macro {$PURESTORAGE.TOKEN} on %s', dev.name)
+            # The template also needs the API URL — use the device's primary IP.
+            api_url = f'https://{dev.primary_ip4.address.ip}' if dev.primary_ip4 else f'https://{dev.name}'
+            _ensure_macro_assignment(
+                server, '{$PURE.FLASHARRAY.API.URL}', api_url, dev,
+                mtype=ZabbixMacroTypeChoices.TEXT,
+                description=f'ztc:pure-url:{dev.name}')
+            logger.info('  Macros {$PURE.FLASHARRAY.API.TOKEN}/{$PURE.FLASHARRAY.API.URL} on %s', dev.name)
         else:
             logger.warning('  Env var %s not set — Pure array %s will have no API token', env_key, dev.name)
 
@@ -1642,7 +1648,7 @@ def step11_macros(server):
         vmware_user = os.environ.get(env_key_user, '')
         vmware_pass = os.environ.get(env_key_pass, '')
         for macro_name, val in [
-            ('{$VMWARE.USER}', vmware_user),
+            ('{$VMWARE.USERNAME}', vmware_user),
             ('{$VMWARE.PASSWORD}', vmware_pass),
         ]:
             if val:
@@ -1650,7 +1656,7 @@ def step11_macros(server):
                     server, macro_name, val, vm,
                     description=f'ztc:secret:vcenter:{vm.name}')
         if vmware_user and vmware_pass:
-            logger.info('  Macros {$VMWARE.USER}/{$VMWARE.PASSWORD} on %s', vm.name)
+            logger.info('  Macros {$VMWARE.USERNAME}/{$VMWARE.PASSWORD} on %s', vm.name)
         else:
             logger.warning('  Env vars %s/%s not set — vCenter %s will have no SSO credentials',
                            env_key_user, env_key_pass, vm.name)
@@ -1681,6 +1687,13 @@ def step11_macros(server):
         deleted, _ = stale.delete()
         if deleted:
             logger.info('  PRUNED: %s stale %s-level ZabbixMacro(s)', deleted, model_cls.__name__)
+
+    # Also prune old wrong-name macros from previous script versions
+    for old_macro in ('{$PURESTORAGE.TOKEN}', '{$VMWARE.USER}'):
+        old = M.ZabbixMacro.objects.filter(macro=old_macro)
+        deleted, _ = old.delete()
+        if deleted:
+            logger.info('  PRUNED: %s stale %s macro(s) (renamed to match template)', deleted, old_macro)
 
     # ---- Prune stale {$IF.UTIL.MAX} role macros ----
     ifutil = M.ZabbixMacro.objects.filter(macro='{$IF.UTIL.MAX}')
