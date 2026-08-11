@@ -4,7 +4,7 @@ GUI / API steps to create **nbxSync** objects on top of **existing NetBox invent
 
 **Folder map:** [`README.md`](README.md) · **Mental model:** [`architecture.md`](architecture.md) · **Day-2:** [`runbooks/day2.md`](runbooks/day2.md)
 
-**Last verified:** 2026-08-06 (lab: NetBox 4.x / Zabbix 7.0.x). Update after a production re-check.
+**Last verified:** 2026-08-11 (lab: NetBox 4.x / Zabbix 7.0.x). Update after a production re-check.
 
 **Assumption:** NetBox inventory (Site Groups, roles, platforms, IPs, tags) already exists. This page only configures nbxSync.
 
@@ -131,11 +131,12 @@ Each group is one **transport + credential** profile. Why these groups exist and
 |---|---|---|
 | SNMP Monitoring | `MONITORING` MD5/DES | Extreme / Forti / AP / network roles |
 | SNMP Monitoring (Linux) | `MONITORING-LINUX` SHA/AES | Opt-in Linux/Windows SNMP (tag `snmp`) |
-| SNMP Monitoring (SAP) | `SAPUSER` (confirm auth/priv) | SAP HANA and SAP ME roles |
+| SNMP Monitoring (Huawei) | `LogicMonitor` SHA/AES | `HU-DEB-SAN01` (non-fleet SNMPv3) |
+| SAP Agent+SNMP | Agent :10050 + `SAPUSER` (confirm auth/priv) | SAP HANA / SAP ME dual-plane (one CG) |
 | Agent Monitoring | Agent :10050 | Default transport on country Site Groups |
 | Agent Monitoring (SPACE) | Agent :10060 | Space Server role (camLine occupies 10050) |
 | Server Agent+OOB | Agent :10050 + `MONITORING-DELL` SHA/AES @ oob | Dell iDRAC dual-plane servers |
-| ESXi OOB iDRAC | `MONITORING-DELL` SHA/AES @ oob | ESXi hypervisors (BMC only; no agent) |
+| ESXi OOB iDRAC | SNMPv2c community `public` @ oob | ESXi hypervisors (BMC only; no agent) |
 | OOB SNMP Only | `MONITORING` MD5/DES @ oob | Cohesity physical (no primary IP) |
 
 ---
@@ -156,12 +157,14 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 |---|---|---|---|---|
 | Network | SNMP Monitoring, OOB SNMP Only | MONITORING | MD5 | DES |
 | Linux | SNMP Monitoring (Linux) | MONITORING-LINUX | SHA1* | AES128 |
-| Dell iDRAC | Server Agent+OOB (SNMP side), ESXi OOB iDRAC | MONITORING-DELL | SHA1* | AES128 |
-| SAP | SNMP Monitoring (SAP) | SAPUSER | *(confirm)* | *(confirm)* |
+| Dell iDRAC | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1* | AES128 |
+| Huawei | SNMP Monitoring (Huawei) | LogicMonitor | SHA1* | AES128 |
+| SAP | SAP Agent+SNMP (SNMP side) | SAPUSER | *(confirm)* | *(confirm)* |
 
 \*Source notes say "SHA"; Zabbix offers SHA1 and SHA256 — use **SHA1** until confirmed.
 
-Common SNMP fields for all SNMP profiles: version **3**, bulk **True**, max repetitions **10**, security level **authPriv**, push community **True**, port **161**.
+Common SNMPv3 fields: version **3**, bulk **True**, max repetitions **10**, security level **authPriv**, push community **True**, port **161**.  
+**Exception:** ESXi OOB iDRAC uses **SNMPv2c** community `public` (not SNMPv3) — see §5.5b.
 
 ### 5.1 SNMP Monitoring (network)
 
@@ -202,13 +205,29 @@ Network SNMPv3 profile, Use OOB IP = **Yes**. Cohesity physical nodes.
 
 ### 5.5b ESXi OOB iDRAC
 
-Dell SNMPv3 profile (`MONITORING-DELL`), Use OOB IP = **Yes**. **No Agent interface.**
+| Field | Value |
+|---|---|
+| Type | SNMP |
+| Version | **2** (SNMPv2c) |
+| Community | `public` (push community **True**) |
+| Use OOB IP | **Yes** |
+
+**No Agent interface.** Estate iDRACs are SNMPv2c `public`, not `MONITORING-DELL` SNMPv3.
 
 **Why a separate group:** ESXi hosts are not dual-plane servers. Hardware health is iDRAC on `oob_ip`; hypervisor/VM/cluster metrics come from **vCenter** (VMware FQDN + LLD). Do not put VMware FQDN on ESXi platforms.
 
-### 5.6 SNMP Monitoring (SAP)
+### 5.6 SAP Agent+SNMP (two interfaces)
 
-SAP SNMPv3 profile (`SAPUSER` — confirm auth/priv before production). Transport-only; application templates are separate (§7).
+**Why both on one group:** SAP agent templates need Agent; hardware SNMP uses `SAPUSER`. Plugin rule: **one CG wins** — two separate CGs on the same role would not dual-plane.
+
+| Interface | Type | Port / OOB | Credential |
+|---|---|---|---|
+| Primary | Agent | 10050, Use OOB = No | — |
+| SNMP | SNMP | 161, Use OOB = No | SAP profile (`SAPUSER` — confirm auth/priv) |
+
+### 5.6b SNMP Monitoring (Huawei)
+
+Huawei SNMPv3 profile (`LogicMonitor` SHA/AES). Passphrases from env `NBX_SNMP_AUTHPASS_HUAWEI` / `NBX_SNMP_PRIVPASS_HUAWEI` (only written when set — re-run does not blank secrets).
 
 ### 5.7 Agent Monitoring (SPACE)
 
@@ -222,7 +241,7 @@ SAP SNMPv3 profile (`SAPUSER` — confirm auth/priv before production). Transpor
 
 | Case | How |
 |---|---|
-| `HU-DEB-SAN01` (Huawei, SNMPv3 user `LogicMonitor` SHA/AES) | Per-device `ZabbixHostInterface` — TemplateRule (§6.3) links the template; credential differs from fleet CGs so transport stays on the device. |
+| `HU-DEB-SAN01` (Huawei, SNMPv3 user `LogicMonitor`) | Assign CG **SNMP Monitoring (Huawei)** on the **Device** (§5b). Credentials live on that CG’s Host Interface — not a per-device HI. TemplateRule §6.3 links Huawei OceanStor. |
 
 ---
 
@@ -239,7 +258,7 @@ Without these assignments, the group’s interfaces are not applied during sync.
 |---|---|
 | Agent Monitoring | Site Group CH / HU / JP / KR / NL / US / CN |
 
-**Pure / Dell Storage** stay on this Agent default (HTTP templates). **Synology / Huawei** get SNMP via Manufacturer CG (§5b) — not the Storage role.
+**Pure / Dell Storage** stay on this Agent default (HTTP templates). **Synology** gets SNMP via Manufacturer CG below. **Huawei** (`HU-DEB-SAN01`) uses the dedicated Huawei CG on the device — not Manufacturer SNMP.
 
 ### SNMP Monitoring → network Device Roles
 
@@ -251,36 +270,43 @@ Without these assignments, the group’s interfaces are not applied during sync.
 | SNMP Monitoring | Network Device |
 | SNMP Monitoring | Virtual Appliance |
 
-**Do not** assign role Storage here (Pure/HPE would inherit SNMP). Synology / Huawei use Manufacturer assignment below.
+**Do not** assign role Storage here (Pure/Dell HTTP would inherit SNMP). Synology uses Manufacturer assignment below.
 
 ### Manufacturer → SNMP (storage exceptions)
 
 | Configuration group | Assigned to |
 |---|---|
 | SNMP Monitoring | Manufacturer **Synology** |
-| SNMP Monitoring | Manufacturer **Huawei** |
 
-Manufacturer CG wins over Site Group Agent. Pure Storage and HPE stay Agent/HTTP. If a Huawei box uses non-fleet SNMPv3 (`LogicMonitor`), keep the per-device HostInterface override (§5 one-off).
+Manufacturer CG wins over Site Group Agent. Pure Storage and Dell Storage stay Agent/HTTP. **Do not** assign fleet SNMP Monitoring on Manufacturer Huawei — that would use wrong `MONITORING` creds.
 
-### Server / Cohesity / SPACE roles
+### Server / Cohesity / SPACE / SAP roles
 
 | Configuration group | Assigned to |
 |---|---|
 | Server Agent+OOB | Server |
 | OOB SNMP Only | Cohesity |
 | Agent Monitoring (SPACE) | Space Server |
-| SNMP Monitoring (SAP) | SAP HANA |
-| SNMP Monitoring (SAP) | SAP ME |
+| SAP Agent+SNMP | SAP HANA |
+| SAP Agent+SNMP | SAP ME |
 
-### ESXi platforms → OOB iDRAC (role = ESXi Hypervisor)
+SAP roles must **not** also carry Site Group / role Agent Monitoring — the dual-plane CG already includes Agent. Zerotouch prunes stale Agent Monitoring from SAP HANA / SAP ME.
+
+### ESXi Hypervisor → OOB iDRAC
 
 | Configuration group | Assigned to |
 |---|---|
-| ESXi OOB iDRAC | Platform name matching `ESXi\|VMware ESX` AND role **ESXi Hypervisor** |
+| ESXi OOB iDRAC | Device Role **ESXi Hypervisor** |
 
-ESXi devices are migrated from role `Server` to `ESXi Hypervisor` by the zerotouch script (`--mutate-netbox`). This prevents inheriting `Server Agent+OOB` (which adds an unwanted Agent interface on primary IP — ESXi hosts have no Zabbix agent). The ESXi OOB iDRAC CG provides SNMP-only on oob_ip with `MONITORING-DELL` SHA/AES credentials. Dell iDRAC template comes from TemplateRule `Dell iDRAC (ESXi)` in §6.3.
+CG is **role-based** (platform-level ESXi OOB assignments are pruned). Zerotouch creates DeviceRole `ESXi Hypervisor` (slug `esxi-hypervisor`) and, with `--mutate-netbox`, migrates Devices whose platform matches `ESXi|VMware ESX` off role `Server` so they do not inherit Server Agent+OOB. Transport: SNMPv2c `public` on `oob_ip` only. Dell iDRAC template: TemplateRule `Dell iDRAC (ESXi)` in §6.3.
 
-**NetBox role migration:** the script creates DeviceRole `ESXi Hypervisor` (slug `esxi-hypervisor`) and migrates all Devices with platform matching `ESXi|VMware ESX` from role `Server` to the new role. Run with `--mutate-netbox` once during initial build.
+### Huawei device → SNMP Monitoring (Huawei)
+
+| Configuration group | Assigned to |
+|---|---|
+| SNMP Monitoring (Huawei) | Device **`HU-DEB-SAN01`** |
+
+Overrides Site Group Agent. Credentials are on the CG Host Interface (§5.6b). Zerotouch prunes fleet SNMP Monitoring CG and any stale per-device HI on that device.
 
 ### Zero-touch tag opt-ins
 
@@ -290,11 +316,11 @@ ESXi devices are migrated from role `Server` to `ESXi Hypervisor` by the zerotou
 
 ### Cohesity VMs with a primary IP
 
-Active Cohesity VMs with `primary_ip4` need a **direct** assignment to **SNMP Monitoring** (network profile) — they have no `oob_ip`. Track via [day-2 runbook §7](runbooks/day2.md#7-recurring-manual-checks) until a cleaner signal exists.
+Active Cohesity VMs with `primary_ip4` need a **direct** assignment to **SNMP Monitoring** (network profile) — they have no `oob_ip`. Track via [day-2 runbook §7](runbooks/day2.md#7-recurring-manual-checks) until a cleaner signal exists (inventory scrape today; future tag/role).
 
 ### Manufacturer
 
-Do **not** assign Dell iDRAC on Manufacturer Dell. Use Template Rules §6.3 (Dell ∧ Server, and Dell ∧ ESXi platform). OOB SNMP credentials come from **Server Agent+OOB** or **ESXi OOB iDRAC** (`MONITORING-DELL`).
+Do **not** assign Dell iDRAC on Manufacturer Dell. Use Template Rules §6.3 (Dell ∧ Server, and Dell ∧ ESXi platform). Server BMC credentials: **Server Agent+OOB** (`MONITORING-DELL`). ESXi BMC: **ESXi OOB iDRAC** (SNMPv2c `public`).
 
 ---
 
@@ -335,10 +361,12 @@ Ensure these Zabbix templates exist (create the nbxsync Template objects pointin
 | Huawei OceanStor Dorado by SNMP | |
 | Synology DiskStation SNMPv3 | |
 | GitLab by HTTP | |
-| Oracle by Zabbix agent 2 | Placeholder for now |
-| Tableau / CellMap / SAP / Acronis / SCCM / Print Spool by agent | Placeholders for now — assign the role; fill template content closer to production |
+| Oracle by Zabbix agent 2 `(stub)` | Placeholder — soft-resolve also accepts non-stub name |
+| Tableau / CellMap / SAP / Acronis / SCCM by agent `(stub)` | Placeholders — soft-resolve also accepts non-stub alias |
+| Remote Zabbix proxy health | Stock — proxy self-monitoring (`OPTIONAL_TPL_KEYS`) |
+| ICMP Ping | Agent Host ICMP + Synology Storage ICMP + Zabbix Proxy ICMP (`OPTIONAL_TPL_KEYS`) |
 
-Create the matching nbxSync **Template** objects (name → Zabbix template) under **Zabbix → Templates** before the rules below. Placeholder names can point at a stub template until the real content exists.
+Create the matching nbxSync **Template** objects (name → Zabbix template) under **Zabbix → Templates** before the rules below. Soft-resolve (`OPTIONAL_TPL_KEYS`): placeholder app templates **plus** `icmp_ping`, `proxy_health`, Extreme VOSS/IQ — role rules/assignments that need a missing template are skipped until it exists; preferred names use `(stub)` with non-stub / Pure v1 / Huawei alt-name aliases.
 
 **How matching works (short):** pattern is a case-insensitive regex (`search` on the platform name). Every matching rule can add its template/hostgroup; priority only orders evaluation. Leave require-tags / role / manufacturer empty unless the table sets them (AND; missing data fails closed).
 
@@ -358,7 +386,7 @@ Create the matching nbxSync **Template** objects (name → Zabbix template) unde
 
 **VMware:** do **not** attach VMware FQDN via an ESXi platform rule (legacy rule `VMware ESXi` stays disabled). Hypervisor/VM/cluster discovery is vCenter LLD (§7). ESXi hardware = §5.5b + §6.3 Dell iDRAC (ESXi).
 
-**Extreme:** platform rules above attach EXOS / VOSS / IQ Engine — never Network Generic on Switch* (`icmpping` collision). Macro values, stages, LLD patches → [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md); labels → [`port-identity.md`](../../zabbix/port-identity.md); nbxSync macro assignment clicks → §11.1.
+**Extreme:** VOSS / IQ Engine rows above are created by zerotouch (soft-resolve until YAML import). **Extreme EXOS** TemplateRule is created/retargeted by `configure_nbxsync_network.py` (not zerotouch). Never Network Generic on Switch* (`icmpping` collision). Macro values, stages, LLD patches → [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md); labels → [`port-identity.md`](../../zabbix/port-identity.md); nbxSync macro assignment clicks → §11.1. Run network `--apply` after zerotouch (Appendix A).
 
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
 
@@ -377,6 +405,7 @@ Use together with configuration group **SNMP Monitoring (Linux)** (assigned on N
 Scoped here so Manufacturer Dell does not put iDRAC on every Dell device. Server BMC transport stays **Server Agent+OOB** (`oob_ip`); ESXi BMC transport stays **ESXi OOB iDRAC**. Map matches production Zabbix hosts (STOD* / snas* / san* / ESXi).
 
 | Name | Pattern | Role pattern | Manufacturer | Template | Hostgroup | Require tags | Priority | Enabled |
+|---|---|---|---|---|---|---|---|---|
 | Dell iDRAC (Server) | `.*` | `^Server$` | Dell | Dell iDRAC by SNMP | — | — | 80 | Yes |
 | Dell iDRAC (ESXi) | `ESXi\|VMware ESX` | — | Dell | Dell iDRAC by SNMP | OS/VMware | — | 80 | Yes |
 | Pure Storage (HTTP) | `.*` | — | Pure Storage | Pure Storage FlashArray v2 by HTTP | — | — | 80 | Yes |
@@ -384,8 +413,15 @@ Scoped here so Manufacturer Dell does not put iDRAC on every Dell device. Server
 | Huawei OceanStor (SNMP) | `.*` | `^Storage$` | Huawei | Huawei OceanStor Dorado by SNMP | — | — | 80 | Yes |
 | Synology DiskStation (SNMP) | `.*` | `^Storage$` | Synology | Synology DiskStation SNMPv3 | — | — | 80 | Yes |
 | Synology Storage ICMP | `.*` | `^Storage$` | Synology | ICMP Ping | — | — | 85 | Yes |
+| Agent Host ICMP | `.*` | *(agent-class roles — see note)* | — | ICMP Ping | — | — | 95 | Yes |
 | Zabbix Proxy ICMP | `.*` | `^Zabbix Proxy$` | — | ICMP Ping | — | — | 90 | Yes |
 | Zabbix Proxy Health | `.*` | `^Zabbix Proxy$` | — | Remote Zabbix proxy health | — | — | 90 | Yes |
+
+**Dell Storage:** TemplateRule **`Dell Storage (HTTP)`** maps Dell ∧ Storage → HPE MSA 2060 HTTP. Legacy rule **`HPE MSA (HTTP)`** is **disabled**; do not re-enable a manufacturer-HPE MSA rule — MSA HTTP is for Dell Storage in this estate.
+
+**Huawei OceanStor:** template mapping only. Transport is device CG **SNMP Monitoring (Huawei)** on `HU-DEB-SAN01` (§5.6b / §5b) — not Manufacturer SNMP. Do **not** add a Huawei Storage ICMP rule (OceanStor already has `icmpping`).
+
+**Agent Host ICMP** `role_pattern`: `^(Server|Domain Controller|Fileserver|MSSQL|MSSQL Query Server|Tableau|GitLab|GitHub Runner|TeamCity|HLK|SCCM|PKI|NAC|Acronis Management|VDI|Session Host|Connection Broker|Azure Data Factory|FiveTran|CellMap|Production Backup|Solidworks PDM|Subversion|vCenter|SAP HANA|SAP ME|Space Server)$`. New agent-class roles must extend this pattern (day-2 §1).
 
 ---
 
@@ -408,15 +444,16 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 | Network Generic Device by SNMP | Device Role Network Device | Fallback only |
 | Storage Generic Device by SNMP | Device Role Cohesity | Placeholder/generic for now |
 | FortiGate by SNMP | Device Role Firewall | Also via FortiOS platform rule |
-| Tableau Bridge by Zabbix agent | Device Role Tableau | Placeholder |
-| CellMap by Zabbix agent | Device Role CellMap | Placeholder |
-| SAP by Zabbix agent | Device Role SAP ME, SAP HANA | Placeholder |
-| Acronis by Zabbix agent | Device Role Acronis Management | Placeholder |
-| SCCM by Zabbix agent | Device Role SCCM | Placeholder |
-| Print Spool by Zabbix agent | Device Role Print Server | Placeholder |
+| Tableau Bridge by Zabbix agent `(stub)` | Device Role Tableau | Soft-resolve; skipped if template absent |
+| CellMap by Zabbix agent `(stub)` | Device Role CellMap | Soft-resolve |
+| Oracle by Zabbix agent 2 `(stub)` | Device Role Database | Soft-resolve; also tag rule §6.2 |
+| SAP by Zabbix agent `(stub)` | Device Role SAP ME, SAP HANA | Soft-resolve |
+| Acronis by Zabbix agent `(stub)` | Device Role Acronis Management | Soft-resolve |
+| SCCM by Zabbix agent `(stub)` | Device Role SCCM | Soft-resolve |
 
 Pure / Dell / Huawei / Synology storage and Dell iDRAC: §6.3 (and tag `oracle` → §6.2).  
-One-off templates on a single host (e.g. AS Java): assign on the Device, not the role.
+One-off templates on a single host (e.g. AS Java): assign on the Device, not the role.  
+**Print Spool** is not role-assigned by zerotouch today (template may exist as soft-resolve only).
 
 ### 7.1 Extreme capability templates
 
@@ -553,7 +590,7 @@ Path: Site Group → Zabbix tab → Host Inventory → Add
 | location | `{{ object.site.name }}` |
 | site_rack | `{{ object.rack.name if object.rack else "" }}` |
 | name | `{{ object.name }}` |
-| url_a | `https://netbox.sensirion.lokal/dcim/devices/{{ object.id }}/` |
+| url_a | `{% if object.device_type %}https://netbox.sensirion.lokal/dcim/devices/{{ object.id }}/{% else %}https://netbox.sensirion.lokal/virtualization/virtual-machines/{{ object.id }}/{% endif %}` |
 | deployment_status | `{{ object.status }}` |
 
 Assign to Site Groups: CH, HU, JP, KR, NL, US, CN.
@@ -598,13 +635,14 @@ Do **not** duplicate those tables here — the Extreme doc is authoritative for 
 
 Each macro is defined as a server-level **ZabbixMacro** (on ZabbixServer) with a **ZabbixMacroAssignment** on the target object (Device, VM, or DeviceRole). The assignment carries the secret value and is resolved during sync via the inheritance chain.
 
-#### Pure Storage API tokens (per-device)
+#### Pure Storage API token + URL (per-device)
 
-Each Pure array has its own API token. The macro assignment is on each **Device** (not the manufacturer).
+Each Pure array has its own API token and base URL. Macro assignments are on each **Device** (not the manufacturer). Zerotouch **prunes** the legacy name `{$PURESTORAGE.TOKEN}`.
 
-| Macro | Target | Type | Env var |
+| Macro | Target | Type | Env var / value |
 |---|---|---|---|
-| `{$PURESTORAGE.TOKEN}` | Device (per array) | Secret | `NBX_PURE_TOKEN_<HOSTNAME>` |
+| `{$PURE.FLASHARRAY.API.TOKEN}` | Device (per array) | Secret | `NBX_PURE_TOKEN_<HOSTNAME>` |
+| `{$PURE.FLASHARRAY.API.URL}` | Device (per array) | Text | `https://<primary_ip>/` (from device IP) |
 
 | Array | Env var |
 |---|---|
@@ -620,11 +658,11 @@ Token format: UUID (generated on each array via `purearray connect --api-token`)
 
 #### VMware vCenter SSO credentials (per-VM)
 
-SSO domains differ per site. The macro assignment is on each **VM** (not the role).
+SSO domains differ per site. The macro assignment is on each **VM** (not the role). Zerotouch **prunes** the legacy name `{$VMWARE.USER}`.
 
 | Macro | Target | Type | Env var |
 |---|---|---|---|
-| `{$VMWARE.USER}` | VM (per vCenter) | Secret | `NBX_VMWARE_USER_<HOSTNAME>` |
+| `{$VMWARE.USERNAME}` | VM (per vCenter) | Secret | `NBX_VMWARE_USER_<HOSTNAME>` |
 | `{$VMWARE.PASSWORD}` | VM (per vCenter) | Secret | `NBX_VMWARE_PASS_<HOSTNAME>` |
 
 | vCenter | SSO domain | Env var prefix |
@@ -646,13 +684,13 @@ Single service account across all MSSQL hosts. Assignment is on **DeviceRole = M
 | `{$MSSQL.USER}` | DeviceRole: MSSQL | Secret | `NBX_MSSQL_USER` |
 | `{$MSSQL.PASSWORD}` | DeviceRole: MSSQL | Secret | `NBX_MSSQL_PASS` |
 
-#### Huawei SAN01 (per-device SNMPv3 interface)
+#### Huawei SAN01 (CG Host Interface — not a macro)
 
-`HU-DEB-SAN01` uses a non-fleet SNMPv3 credential (`LogicMonitor` user, SHA/AES). This is a **per-device ZabbixHostInterface** (created in §5), not a macro. The passphrases are set directly on the interface object with `snmp_pushcommunity=True`.
+`HU-DEB-SAN01` uses non-fleet SNMPv3 (`LogicMonitor` SHA/AES). Credentials live on the **SNMP Monitoring (Huawei)** configuration-group Host Interface (§5.6b), with the CG assigned on the **Device** (§5b). Passphrases from env `NBX_SNMP_AUTHPASS_HUAWEI` / `NBX_SNMP_PRIVPASS_HUAWEI` (only written when set). Zerotouch **prunes** per-device Host Interfaces and manufacturer/fleet SNMP CG on that device — do not recreate a device-level HI for Huawei.
 
-If a macro is not set, the template will show "no data" until the credential is provided.
+If passphrases are unset, the OceanStor template will show "no data" until the env vars are provided and zerotouch re-run.
 
-SNMPv3 auth/priv passphrases are **not** global or role macros: they live on the SNMP Host Interface (§5) and are pushed as secret **host** macros when SNMP push community is True.
+SNMPv3 auth/priv passphrases for other profiles are **not** global or role macros: they live on the SNMP Host Interface (§5) and are pushed as secret **host** macros when SNMP push community is True.
 
 ---
 
@@ -682,26 +720,26 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 
 | Object | Configuration group | Typical templates | Interfaces | Hostgroups |
 |---|---|---|---|---|
-| Linux server (role Server) | Server Agent+OOB | Linux by agent (+ Dell iDRAC if Dell and oob IP set) | Agent :10050 + SNMP `MONITORING-DELL` on oob | Sites/CH/…, Roles/Server, OS/Linux |
-| Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) | Agent :10050 | Sites/CH/…, Roles/…, OS/… |
-| SAP HANA | SNMP Monitoring (SAP) | Linux by agent + SAP by Zabbix agent | SNMP `SAPUSER` | Sites/…, Roles/SAP HANA, OS/Linux |
+| Linux server (role Server) | Server Agent+OOB | Linux by agent + ICMP Ping (+ Dell iDRAC if Dell and oob IP set) | Agent :10050 + SNMP `MONITORING-DELL` on oob | Sites/CH/…, Roles/Server, OS/Linux |
+| Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) + ICMP Ping when role matches Agent Host ICMP | Agent :10050 | Sites/CH/…, Roles/…, OS/… |
+| SAP HANA / SAP ME | **SAP Agent+SNMP** | Linux by agent + SAP by agent `(stub)` + ICMP Ping | Agent :10050 + SNMP `SAPUSER` | Sites/…, Roles/SAP HANA or SAP ME, OS/Linux |
 | Host with tag `snmp` only | SNMP Monitoring (Linux) via tag | Linux or Windows by SNMP | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
 | EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP (+ role IFALIAS macros) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
 | VOSS Switch Core/Access/Hybrid | SNMP Monitoring | Extreme VOSS by SNMP (**not** Network Generic) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
-| Storage (Huawei) | SNMP Monitoring (Manufacturer) | Huawei OceanStor Dorado by SNMP (template already has `icmpping`); LogicMonitor creds → per-device IF | SNMP | Sites/…, Roles/Storage |
+| Access Point | SNMP Monitoring | Extreme IQ Engine / platform template (**not** Network Generic) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Access Point, OS/Network |
 | Firewall | SNMP Monitoring | Platform/role template (FortiGate, …) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/…, OS/Network |
-| Space Server | Agent Monitoring (SPACE) | OS by agent | Agent **:10060** | Sites/CH/…, Roles/Space Server, OS/… |
-| Storage (Pure) | Agent Monitoring | Pure Storage FlashArray v2 by HTTP | Agent / HTTP | Sites/…, Roles/Storage |
-| Storage (Synology) | SNMP Monitoring (Manufacturer) | Synology DiskStation SNMPv3 + ICMP Ping | SNMP `MONITORING` | Sites/…, Roles/Storage |
-| Storage (Huawei) | SNMP Monitoring (Manufacturer) | Huawei OceanStor Dorado by SNMP (+ ICMP); LogicMonitor creds → per-device IF | SNMP | Sites/…, Roles/Storage |
-| Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP | Agent / HTTP | Sites/CH/…, Roles/Storage |
-| Pure Storage | Agent Monitoring | Pure Storage by HTTP | Agent / HTTP | Sites/CH/…, Roles/Pure Storage |
+| Space Server | Agent Monitoring (SPACE) | OS by agent + ICMP Ping | Agent **:10060** | Sites/CH/…, Roles/Space Server, OS/… |
+| Storage (Pure) | Agent Monitoring | Pure Storage FlashArray v2 by HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` | Agent / HTTP | Sites/…, Roles/Storage |
+| Storage (Synology) | SNMP Monitoring → Manufacturer Synology | Synology DiskStation SNMPv3 + ICMP Ping | SNMP `MONITORING` | Sites/…, Roles/Storage |
+| Storage (Huawei) `HU-DEB-SAN01` | **SNMP Monitoring (Huawei)** on Device | Huawei OceanStor Dorado by SNMP (has `icmpping`; no extra ICMP rule); LogicMonitor on **CG HI** | SNMP `LogicMonitor` | Sites/…, Roles/Storage |
+| Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP (rule **Dell Storage (HTTP)**; legacy HPE MSA disabled) | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP `MONITORING` on oob | Sites/CH/…, Roles/Cohesity |
 | Cohesity VM with primary IP | SNMP Monitoring (direct) | Storage Generic | SNMP `MONITORING` on primary | … |
-| ESXi hypervisor (Dell) | ESXi OOB iDRAC (platform) | Dell iDRAC by SNMP | SNMP `MONITORING-DELL` on oob only | Sites/…, Roles/…, OS/VMware |
-| vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN (+ OS template if platform matches) | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
+| ESXi hypervisor (Dell) | **ESXi OOB iDRAC** on role **ESXi Hypervisor** | Dell iDRAC by SNMP | SNMP **v2c `public`** on oob only (no agent) | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
+| vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (+ OS template if platform matches); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
+| Zabbix Proxy | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping + Remote Zabbix proxy health | Agent :10050 | Sites/…, Roles/Zabbix Proxy, OS/Linux |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
-| Brand-new role tomorrow | Agent Monitoring (from Site Group) unless listed in §5b | OS Template Rule if platform set | Agent | Roles/\<new name\> appears automatically |
+| Brand-new role tomorrow | Agent Monitoring (from Site Group) unless listed in §5b | OS Template Rule if platform set; extend Agent Host ICMP if agent-class | Agent | Roles/\<new name\> appears automatically |
 | VM on a cluster with no site | none | — | — | Not profiled until the VM or cluster has a site |
 
 ---
@@ -723,13 +761,19 @@ After the initial build, and after major changes, confirm coverage against §13.
 
 | Check | Expect |
 |---|---|
-| Sample Linux server | Server Agent+OOB; agent + oob SNMP; OS/Linux; Roles/Server; leaf under `Sites/CH/…` |
+| Sample Linux server | Server Agent+OOB; agent + oob SNMP `MONITORING-DELL`; **ICMP Ping**; OS/Linux; Roles/Server; leaf under `Sites/CH/…` |
 | Sample EXOS switch | SNMP Monitoring; **Extreme EXOS by SNMP**; role IFALIAS macros (§11.1 / Extreme doc); no Network Generic; single `icmpping`; OS/Network |
 | Sample VOSS switch | SNMP Monitoring; **Extreme VOSS by SNMP** (imported YAML); same role IFALIAS as EXOS peer role; no Network Generic; single `icmpping` |
 | Sample Switch Hybrid (pre–stage 5) | Same platform template as peer EXOS/VOSS; IFALIAS macros still Access-like (`USW\|…` opt-in), not Core `.*` |
-| Sample Windows VM | Agent; Windows by agent; OS/Windows; leaf under `Sites/CH/…` |
-| Sample ESXi (Dell) | ESXi OOB iDRAC; Dell iDRAC on oob; OS/VMware; **no** VMware FQDN template |
-| Sample vCenter | VMware FQDN + SDK macros; hypervisors appear via LLD, not as separate NetBox→VMware-template hosts |
+| Sample Windows VM | Agent; Windows by agent; ICMP Ping when role matches Agent Host ICMP; OS/Windows; leaf under `Sites/CH/…` |
+| Sample SAP HANA / ME | CG **SAP Agent+SNMP**; Agent :10050 + SNMP `SAPUSER`; Linux + SAP `(stub)` + ICMP; **no** Site Group Agent CG |
+| Sample ESXi (Dell) | Role **ESXi Hypervisor**; CG **ESXi OOB iDRAC**; SNMPv2c **`public` @ oob** (not MONITORING-DELL); Dell iDRAC; OS/VMware; **no** agent; **no** VMware FQDN |
+| Sample Huawei `HU-DEB-SAN01` | CG **SNMP Monitoring (Huawei)** on device; LogicMonitor on **CG HI** (not per-device HI); OceanStor template; no manufacturer SNMP CG |
+| Sample Dell Storage | Agent Monitoring; **HPE MSA 2060 Storage by HTTP** via Dell Storage (HTTP); legacy HPE MSA rule disabled |
+| Sample Pure array | Agent Monitoring; FlashArray HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` |
+| Sample Zabbix Proxy | Agent; Linux by agent + ICMP Ping + Remote Zabbix proxy health; Roles/Zabbix Proxy |
+| Sample vCenter | VMware FQDN + `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}`; hypervisors via LLD, not NetBox→VMware-template hosts |
+| Inventory `url_a` | Device → `/dcim/devices/<id>/`; VM → `/virtualization/virtual-machines/<id>/` |
 | Nested Sites path | Host is leaf under `Sites/CH/…`; parent groups exist without duplicating membership |
 | Host with `critical` | Also in hostgroup Priority/Critical |
 | Role not listed in §5b SNMP/OOB | Still has Agent via Site Group |
@@ -757,4 +801,6 @@ After the initial build, and after major changes, confirm coverage against §13.
 
 First-build helpers only — not day-2. Commands, env vars, flags, and run order: [`scripts/README.md`](../../scripts/README.md).  
 This checklist remains authoritative for the objects those scripts create.
+
+**Order:** `configure_nbxsync_zerotouch.py --apply` first, then `configure_nbxsync_network.py --apply`. The network script owns Extreme EXOS TemplateRule create/retarget, VOSS/IQ retarget off Network Generic, Switch* IFALIAS/IFTYPE MacroAssignments, destination globals / optional `--cutover-silence` / `--link-speed-expect`, stock EXOS EtherLike IFALIAS + `net.if.discovery` 15m, and Extreme TEMP_* template macro overrides.
 

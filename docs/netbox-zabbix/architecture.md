@@ -43,7 +43,7 @@ Device Role            →  transport exceptions (SNMP / OOB / SPACE / SAP)
                        →  Extreme port-scoping macros (values in zabbix/01)
 
 Platform (Template Rule) → OS / Extreme / Forti / storage template
-                         → ESXi → Dell iDRAC + OS/VMware (hardware OOB; not VMware FQDN)
+                         → Dell ∧ ESXi platform → Dell iDRAC + OS/VMware (template only; transport is role CG below)
                          → OS/… hostgroup membership
 
 NetBox tags            →  overlays (`critical`) + opt-ins (`snmp`, `oracle`)
@@ -58,9 +58,12 @@ Zabbix tag assignment  →  `do_not_monitor` exclude (object = waves; role = per
 | Default reachability | CG **Agent Monitoring** on country Site Group | Agent :10050 |
 | Network gear | CG **SNMP Monitoring** on Switch*/AP/Firewall/… | SNMPv3 `MONITORING` MD5/DES |
 | Linux/Windows SNMP opt-in | Tag `snmp` → CG **SNMP Monitoring (Linux)** | SNMPv3 `MONITORING-LINUX` SHA/AES |
-| SAP SNMP | Roles **SAP HANA** / **SAP ME** → CG **SNMP Monitoring (SAP)** | SNMPv3 `SAPUSER` |
+| SAP dual-plane | Roles **SAP HANA** / **SAP ME** → CG **SAP Agent+SNMP** | Agent :10050 + SNMPv3 `SAPUSER` (one CG) |
 | Dell server BMC | CG **Server Agent+OOB** on role Server | Agent :10050 + `MONITORING-DELL` on `oob_ip` |
-| ESXi hypervisor (Dell) | CG **ESXi OOB iDRAC** on platform ESXi | `MONITORING-DELL` on `oob_ip` only (no agent, no VMware SDK) |
+| ESXi hypervisor (Dell) | Role **ESXi Hypervisor** → CG **ESXi OOB iDRAC** | SNMPv2c `public` on `oob_ip` only (no agent, no VMware SDK) |
+| Huawei SAN | Device **`HU-DEB-SAN01`** → CG **SNMP Monitoring (Huawei)** | SNMPv3 `LogicMonitor` on CG HI |
+| Agent-class ICMP | TemplateRule **Agent Host ICMP** on agent-class roles | ICMP Ping |
+| Zabbix Proxy | Role **Zabbix Proxy** → ICMP + Remote Zabbix proxy health | Linux agent + proxy self-mon |
 | vCenter | Role **vCenter** → template **VMware FQDN** | SDK macros; LLD covers hypervisors/VMs/cluster |
 | Cohesity physical | CG **OOB SNMP Only** on role Cohesity | `MONITORING` on `oob_ip` only |
 | Space Server | CG **Agent Monitoring (SPACE)** on role | Agent **:10060** |
@@ -75,7 +78,7 @@ Which CG/template/interface a given host class should end up with: configuration
 
 1. **One configuration group decides transport** (how we reach the host). Hostgroups and templates can stack; transport cannot.
 2. **Different SNMPv3 users need different CGs** — never reuse the network CG for Linux, SAP, or iDRAC.
-3. **Tags may select a CG** (`snmp`). SAP uses **role-based** CG assignment (SAP HANA, SAP ME), not tags. Host Interfaces sit on the CG — never directly on a tag.
+3. **Tags may select a CG** (`snmp`). SAP uses **role-based** dual-plane CG **SAP Agent+SNMP** (SAP HANA, SAP ME), not tags and not two separate CGs. Host Interfaces sit on the CG — never directly on a tag.
 4. **Country Site Group is the control plane** for proxy, default Agent, Sites/Roles hostgroups, environment tag, and inventory. Assign Agent Monitoring only on **country** Site Groups, not campus mid-levels.
 5. **Hierarchy paths stay after Role/Platform** in plugin inheritance so a plugin upgrade does not change who already wins for existing installs.
 6. **Templates merge** — Role + Platform + Manufacturer rules all accumulate. Colliding item keys (e.g. Network Generic + Extreme both defining `icmpping`) must be avoided by assignment design, not by hoping one replaces the other.
