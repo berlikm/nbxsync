@@ -1033,7 +1033,7 @@ def step6_template_rules(server, country_slugs=None):
     tpl_huawei = make_template(*TPL['huawei_storage_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     if huawei is not None:
         defaults = {
-            'pattern': '.*', 'role_pattern': '', 'require_tags': '',
+            'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
             'manufacturer': huawei, 'zabbixtemplate': tpl_huawei,
             'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
         }
@@ -1047,7 +1047,7 @@ def step6_template_rules(server, country_slugs=None):
     tpl_synology = make_template(*TPL['synology_storage_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     if synology is not None:
         defaults = {
-            'pattern': '.*', 'role_pattern': '', 'require_tags': '',
+            'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
             'manufacturer': synology, 'zabbixtemplate': tpl_synology,
             'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
         }
