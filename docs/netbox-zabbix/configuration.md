@@ -114,7 +114,7 @@ Each group is one **transport + credential** profile. Why these groups exist and
 | Agent Monitoring | Agent :10050 | Default transport on country Site Groups |
 | Agent Monitoring (SPACE) | Agent :10060 | Space Server role (camLine occupies 10050) |
 | Server Agent+OOB | Agent :10050 + `MONITORING-DELL` SHA/AES @ oob | Dell iDRAC dual-plane servers |
-| ESXi OOB iDRAC | SNMPv2c community `public` @ oob | ESXi hypervisors (BMC only; no agent) |
+| OOB SNMP Only (ESXi) | SNMPv3 MONITORING MD5/DES @ oob | ESXi hypervisors (role=ESXi Hypervisor) |
 | OOB SNMP Only | `MONITORING` MD5/DES @ oob | Cohesity physical (no primary IP) |
 
 ---
@@ -177,7 +177,7 @@ Same shape as §5.1 with the **Linux** SNMPv3 profile. Transport-only — no tem
 
 Network SNMPv3 profile, Use OOB IP = **Yes**. Cohesity physical nodes.
 
-### 5.5b ESXi OOB iDRAC
+### 5.5b ESXi → OOB SNMP Only
 
 | Field | Value |
 |---|---|
@@ -188,7 +188,7 @@ Network SNMPv3 profile, Use OOB IP = **Yes**. Cohesity physical nodes.
 
 **No Agent interface.** Estate iDRACs are SNMPv2c `public`, not `MONITORING-DELL` SNMPv3.
 
-**Why a separate group:** ESXi hosts are not dual-plane servers. Hardware health is iDRAC on `oob_ip`; hypervisor/VM/cluster metrics come from **vCenter** (VMware FQDN + LLD). Do not put VMware FQDN on ESXi platforms.
+**Why OOB SNMP Only:** ESXi hosts are not dual-plane servers. Hardware health is iDRAC on `oob_ip` via SNMPv3 MONITORING; hypervisor/VM/cluster metrics come from **vCenter** (VMware FQDN + LLD). ESXi Hypervisor role gets `OOB SNMP Only` CG (same as Cohesity physical).
 
 ### 5.6 SAP Agent+SNMP (two interfaces)
 
@@ -266,15 +266,15 @@ Manufacturer CG wins over Site Group Agent. Pure Storage and Dell Storage stay A
 
 SAP roles must **not** also carry Site Group / role Agent Monitoring — the dual-plane CG already includes Agent. Zerotouch prunes stale Agent Monitoring from SAP HANA / SAP ME.
 
-### ESXi platform → OOB iDRAC
+### ESXi Hypervisor → OOB SNMP Only
 
 | Configuration group | Assigned to |
 |---|---|
-| ESXi OOB iDRAC | Platform matching `ESXi\|VMware ESX` (any version) |
+| OOB SNMP Only | Device Role **ESXi Hypervisor** (set by netbox-sync) |
 
-ESXi hosts keep **role=Server** (other automations depend on it — no separate ESXi Hypervisor role is created). The platform CG overrides the Site Group Agent default, providing SNMPv2c `public` on `oob_ip` only. No Zabbix agent on ESXi hosts. Dell iDRAC template comes from TemplateRule `Dell iDRAC (ESXi)` in §6.3 (pattern `ESXi\|VMware ESX` ∧ Manufacturer Dell).
+ESXi hosts get `role=ESXi Hypervisor` from netbox-sync (`host_role_relation: (?i).*ESX.* = ESXi Hypervisor`). The `OOB SNMP Only` CG provides SNMPv3 MONITORING (MD5/DES) on `oob_ip` only — no Agent interface. Dell iDRAC template comes from TemplateRule `Dell iDRAC (ESXi)` in §6.3 (role_pattern `^ESXi Hypervisor$` ∧ Manufacturer Dell).
 
-**Agent interface note:** ESXi hosts also inherit `Server Agent+OOB` from the Server role, which adds an Agent interface on primary_ip. This interface has 0 items linked (all Dell iDRAC items are on the SNMP interface). It shows "unavailable" in Zabbix — cosmetically visible but functionally harmless. This is standard behavior when a host inherits both Agent and SNMP CGs.
+
 
 ### Huawei device → SNMP Monitoring (Huawei)
 
@@ -290,13 +290,13 @@ Overrides Site Group Agent. Credentials are on the CG Host Interface (§5.6b). Z
 |---|---|---|
 | SNMP Monitoring (Linux) | NetBox tag **`snmp`** | Tag the Device/VM — no per-host CG row |
 
-### Cohesity VMs with a primary IP
+### Cohesity Appliance role → SNMP Monitoring
 
-Active Cohesity VMs with `primary_ip4` need a **direct** assignment to **SNMP Monitoring** (network profile) — they have no `oob_ip`. Track via [day-2 runbook §7](runbooks/day2.md#7-recurring-manual-checks) until a cleaner signal exists (inventory scrape today; future tag/role).
+Cohesity VMs (role=Cohesity Appliance, set by netbox-sync via `vm_role_relation`) inherit **SNMP Monitoring** CG (MONITORING MD5/DES on primary_ip). Physical Cohesity nodes keep role=Cohesity → **OOB SNMP Only** (oob_ip only).
 
 ### Manufacturer
 
-Do **not** assign Dell iDRAC on Manufacturer Dell. Use Template Rules §6.3 (Dell ∧ Server, and Dell ∧ ESXi platform). Server BMC credentials: **Server Agent+OOB** (`MONITORING-DELL`). ESXi BMC: **ESXi OOB iDRAC** (SNMPv2c `public`).
+Do **not** assign Dell iDRAC on Manufacturer Dell. Use Template Rules §6.3 (Dell ∧ Server, and Dell ∧ ESXi Hypervisor). Server BMC credentials: **Server Agent+OOB** (`MONITORING-DELL`). ESXi BMC: **OOB SNMP Only** (`MONITORING` MD5/DES).
 
 ---
 
@@ -378,7 +378,7 @@ Use together with configuration group **SNMP Monitoring (Linux)** (assigned on N
 
 ### 6.3 Manufacturer ∧ role rules
 
-Scoped here so Manufacturer Dell does not put iDRAC on every Dell device. Server BMC transport stays **Server Agent+OOB** (`oob_ip`); ESXi BMC transport stays **ESXi OOB iDRAC**. Map matches production Zabbix hosts (STOD* / snas* / san* / ESXi).
+Scoped here so Manufacturer Dell does not put iDRAC on every Dell device. Server BMC transport stays **Server Agent+OOB** (`oob_ip`); ESXi BMC transport stays **OOB SNMP Only** (role=ESXi Hypervisor). Map matches production Zabbix hosts (STOD* / snas* / san* / ESXi).
 
 | Name | Pattern | Role pattern | Manufacturer | Template | Hostgroup | Require tags | Priority | Enabled |
 |---|---|---|---|---|---|---|---|---|
@@ -723,8 +723,8 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Storage (Huawei) `HU-DEB-SAN01` | **SNMP Monitoring (Huawei)** on Device | Huawei OceanStor Dorado by SNMP (has `icmpping`; no extra ICMP rule); LogicMonitor on **CG HI** | SNMP `LogicMonitor` | Sites/…, Roles/Storage |
 | Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP (rule **Dell Storage (HTTP)**; legacy HPE MSA disabled) | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP `MONITORING` on oob | Sites/CH/…, Roles/Cohesity |
-| Cohesity VM with primary IP | SNMP Monitoring (direct) | Storage Generic | SNMP `MONITORING` on primary | … |
-| ESXi hypervisor (Dell) | ESXi OOB iDRAC (platform `ESXi\|VMware ESX`) | Dell iDRAC by SNMP | SNMP **v2c `public`** on oob only | Sites/…, Roles/Server, OS/VMware |
+| Cohesity Appliance (VM) | SNMP Monitoring (role) | Storage Generic | SNMP `MONITORING` on primary | Sites/…, Roles/Cohesity Appliance |
+| ESXi hypervisor (Dell) | OOB SNMP Only (role=ESXi Hypervisor) | Dell iDRAC by SNMP | SNMP **v3 MONITORING** on oob only | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
 | vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (+ OS template if platform matches); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
 | Zabbix Proxy | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping + Remote Zabbix proxy health | Agent :10050 | Sites/…, Roles/Zabbix Proxy, OS/Linux |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
