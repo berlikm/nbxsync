@@ -77,6 +77,24 @@ Names below must match the proxy objects that already exist in Zabbix Cloud. Pro
 
 Proxy IDs must match Zabbix. Do **not** store CA/leaf/key PEM material in NetBox or in the onboarding scripts.
 
+### 2.3 Proxy self-monitoring (role = Zabbix Proxy)
+
+Proxy VMs already exist in NetBox (e.g. `ch-sta-p-zabp01`, VM id 604). The `netbox-sync` `vm_role_relation` maps `-ZABP\d+` → `Zabbix Proxy`, so these VMs get `role=Zabbix Proxy` automatically. nbxSync then assigns:
+
+- **Linux by Zabbix agent** — platform rule (Ubuntu matches `Linux` pattern)
+- **ICMP Ping** — role-scoped TemplateRule (`role_pattern = ^Zabbix Proxy$`)
+- **Remote Zabbix proxy health** — role-scoped TemplateRule (stock Zabbix template: last access, version mismatch, config sync latency, performance counters)
+
+Transport: **Agent Monitoring** CG inherited from the country SiteGroup (agent port 10050).
+
+| VM name | NetBox ID | Site | IP | Role | Templates (via nbxSync) |
+|---|---|---|---|---|---|
+| ch-sta-p-zabp01 | 604 | CH-ZRH-ZH4 | 10.0.104.235 | Zabbix Proxy | Linux by Zabbix agent, ICMP Ping, Remote Zabbix proxy health |
+| ch-sta-p-zabp02 | 610 | CH-ZRH-ZH5 | 10.0.105.235 | Zabbix Proxy | Linux by Zabbix agent, ICMP Ping, Remote Zabbix proxy health |
+| hu-deb-p-zabp01 | 608 | HU-DEB-NAG-DC | 10.40.100.235 | Zabbix Proxy | Linux by Zabbix agent, ICMP Ping, Remote Zabbix proxy health |
+| kr-sel-p-zabp01 | 609 | KR-SEL-HAN | 10.30.100.235 | Zabbix Proxy | Linux by Zabbix agent, ICMP Ping, Remote Zabbix proxy health |
+| cn-sha-p-zabp01 | 607 | CN-SHA-JIU | 10.31.100.235 | Zabbix Proxy | Linux by Zabbix agent, ICMP Ping, Remote Zabbix proxy health |
+
 ---
 
 ## 3. Server assignment (per country Site Group)

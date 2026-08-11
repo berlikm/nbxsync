@@ -173,6 +173,8 @@ TPL_NAMES = {
     'sccm_agent': 'SCCM by Zabbix agent',
     'print_spool_agent': 'Print Spool by Zabbix agent',
     'icmp_ping': 'ICMP Ping',
+    # Stock Zabbix template: proxy health (last access, version, config sync latency).
+    'proxy_health': 'Remote Zabbix proxy health',
 }
 
 # Populated by resolve_templates() / lab ensure_t(): key → (templateid, name)
@@ -361,6 +363,7 @@ def prune_shadow_macros() -> int:
 # Templates that may be missing in lab / early cutover — resolve soft.
 OPTIONAL_TPL_KEYS = frozenset({
     'icmp_ping',
+    'proxy_health',
     'extreme_voss_snmp',
     'extreme_iq_engine_snmp',
 })
@@ -1232,6 +1235,49 @@ def step6_template_rules(server, country_slugs=None):
             logger.warning("  Manufacturer 'Synology' not found, skipping Synology TemplateRule")
     else:
         logger.warning('  Template Synology DiskStation SNMPv3 not resolved — skip TemplateRule')
+
+    # Zabbix Proxy role: proxy VMs (role=Zabbix Proxy via netbox-sync -ZABP\d+ pattern).
+    # Platform rule already gives them Linux by Zabbix agent (Ubuntu). These two
+    # add-on templates provide ICMP reachability + Zabbix's stock proxy-health metrics
+    # (last access, version mismatch, config sync latency, performance counters).
+    if 'icmp_ping' in TPL:
+        tpl_icmp_proxy = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
+        ensure(
+            M.ZabbixTemplateRule,
+            name='Zabbix Proxy ICMP',
+            defaults={
+                'pattern': '.*',
+                'role_pattern': '^Zabbix Proxy$',
+                'require_tags': '',
+                'manufacturer': None,
+                'zabbixtemplate': tpl_icmp_proxy,
+                'zabbixhostgroup': None,
+                'zabbixtag': None,
+                'enabled': True,
+                'priority': 90,
+            },
+            update_fields=['pattern', 'role_pattern', 'require_tags', 'manufacturer', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'enabled', 'priority'],
+        )
+        logger.info('  Rule Zabbix Proxy ICMP → %s', tpl_icmp_proxy.name)
+    if 'proxy_health' in TPL:
+        tpl_health = make_template(*TPL['proxy_health'], req=[HostInterfaceRequirementChoices.ANY])
+        ensure(
+            M.ZabbixTemplateRule,
+            name='Zabbix Proxy Health',
+            defaults={
+                'pattern': '.*',
+                'role_pattern': '^Zabbix Proxy$',
+                'require_tags': '',
+                'manufacturer': None,
+                'zabbixtemplate': tpl_health,
+                'zabbixhostgroup': None,
+                'zabbixtag': None,
+                'enabled': True,
+                'priority': 90,
+            },
+            update_fields=['pattern', 'role_pattern', 'require_tags', 'manufacturer', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'enabled', 'priority'],
+        )
+        logger.info('  Rule Zabbix Proxy Health → %s', tpl_health.name)
 
     # Rename leftovers from placeholder template names.
     for old_name in ('Huawei Storage (SNMP)', 'Synology NAS (SNMP)'):
