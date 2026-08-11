@@ -1024,27 +1024,29 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
     logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); ESXi iDRAC = SNMPv2c public; Server OOB creds = MONITORING-DELL')
 
-    # ESXi devices → ESXi OOB iDRAC CG per-device (SNMPv2c public on oob_ip).
-    # no dependency on a specific Platform object or role change.
-    esxi_devices = list(Device.objects.filter(platform__name__iregex=ESXI_PLATFORM_RE.pattern))
-    for dev in esxi_devices:
+    # ESXi platforms → ESXi OOB iDRAC CG. Regex matches any version —
+    # version-agnostic, scalable (1 CG row per Platform, not per device).
+    # New ESXi versions picked up automatically on zerotouch re-run.
+    esxi_platforms = [p for p in Platform.objects.all() if ESXI_PLATFORM_RE.search(p.name or '')]
+    for plat in esxi_platforms:
         get_or_create(
             M.ZabbixConfigurationGroupAssignment,
             zabbixconfigurationgroup=esxi_oob_group,
-            assigned_object_type=ct(Device),
-            assigned_object_id=dev.id,
+            assigned_object_type=ct(Platform),
+            assigned_object_id=plat.id,
             defaults={},
         )
-    if esxi_devices:
+    if esxi_platforms:
         logger.info(
-            '  ESXi OOB iDRAC → %s device(s) (SNMPv2c public on oob_ip)',
-            len(esxi_devices),
+            '  ESXi OOB iDRAC → %s platform(s): %s',
+            len(esxi_platforms),
+            ', '.join(sorted(p.name for p in esxi_platforms)),
         )
     else:
-        logger.warning('  No devices with ESXi/VMware ESX platform — skip ESXi OOB CG')
+        logger.warning('  No platforms matching ESXi/VMware ESX — skip ESXi OOB CG')
 
-    # Prune stale platform-level and role-level ESXi CG assignments.
-    for model_cls in (Platform, DeviceRole):
+    # Prune stale role-level and per-device ESXi CG assignments.
+    for model_cls in (DeviceRole, Device):
         stale, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
             zabbixconfigurationgroup=esxi_oob_group,
             assigned_object_type=ct(model_cls),
@@ -1052,13 +1054,7 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         if stale:
             logger.info('  PRUNED: %s stale ESXi OOB iDRAC %s assignment(s)', stale, model_cls.__name__)
 
-    # SNMP storage manufacturers — Site Group Agent would leave them without SNMP.
-    # Manufacturer CG wins first in inheritance → SNMP Monitoring (network MONITORING).
-    # Pure / HPE stay on Agent default (HTTP templates).
-    # Huawei gets its own CG (SNMP Monitoring (Huawei)) with LogicMonitor SHA/AES
-    # credentials — different from the fleet SNMP Monitoring (MONITORING MD5/DES).
-    assign_manufacturer(snmp_group, 'Synology')
-
+    # SNMP storage manufacturers
     # HU-DEB-SAN01 (Huawei storage): assign the Huawei-specific SNMP CG directly
     # on the device. This overrides the SiteGroup Agent Monitoring default (same
     # way switches get SNMP Monitoring via their role). The Huawei CG has its own
