@@ -9,7 +9,7 @@ Source: LM account export (Aug 2026) + Zabbix 7.0 nbxsync stack
 |---|---|---|---|---|
 | `MONITORING` (global) | MD5/DES | Switches, APs, firewalls, network | `SNMP Monitoring` CG → MONITORING/MD5/DES | ✅ Covered |
 | `MONITORING-LINUX` (group override) | SHA/AES | Linux servers (SNMP) | `SNMP Monitoring (Linux)` CG → MONITORING-LINUX/SHA/AES | ✅ CG built (hosts need tag `snmp`) |
-| `SAPUSER` (group override) | SHA/AES | SAP systems | `SNMP Monitoring (SAP)` CG → SAPUSER/SHA/AES | ✅ CG built (hosts need tag `snmp-sap`) |
+| `SAPUSER` (group override) | SHA/AES | SAP systems | CG **SAP Agent+SNMP** → Agent + SAPUSER/SHA/AES on roles SAP HANA / SAP ME | ✅ CG built (role-based; no `snmp-sap` tag) |
 | `MONITORING-DELL` (resource override) | SHA/AES | CN-SHA-P-STOD (Dell storage) | Not yet — Dell storage needs HTTP template | ❌ Gap |
 | `LogicMonitor` (resource override) | SHA/AES | hu-deb-san01 (Huawei storage) | Not yet — Huawei needs template | ❌ Gap |
 | v2c community (resource override) | — | CH-STA-P-ENSA01 | v2c not in CG model | ❌ Gap (single device) |

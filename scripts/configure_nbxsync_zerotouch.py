@@ -551,13 +551,13 @@ def step0_cleanup(*, mutate_netbox: bool):
     )
     logger.info("  Tag 'do_not_monitor': %s (id=%s)", 'CREATED' if created else 'EXISTS', tag.id)
 
-    # Overlays / opt-ins: critical → Priority HG; snmp → Linux SNMP CG+templates; SAP uses role-based SAP Agent+SNMP CG.
+    # Overlays / opt-ins: critical → Priority HG; snmp → Linux SNMP CG+templates.
+    # SAP uses role-based CG SAP Agent+SNMP (SAP HANA / SAP ME) — no snmp-sap tag.
     for name, desc in [
         ('critical', 'Priority/Critical hostgroup membership (24/7 escalation)'),
         ('snmp', 'Zero-touch Linux SNMP: selects SNMP Monitoring (Linux) CG + Linux/Windows by SNMP TemplateRules'),
-        # ('snmp-sap', '...'),  # Removed — SAP now uses role-based CG assignment
     ]:
-    # Reuse existing tag by slug OR name (NetBox auto-slugifies '_' -> '-')
+        # Reuse existing tag by slug OR name (NetBox auto-slugifies '_' -> '-')
         t = Tag.objects.filter(slug=name).first() or Tag.objects.filter(name=name).first()
         if t is None:
             t = Tag.objects.create(slug=name, name=name, description=desc)
