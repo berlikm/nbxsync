@@ -2,9 +2,16 @@
 
 How monitoring policy is derived from NetBox so new devices and VMs become Zabbix hosts without per-host hand configuration.
 
-**Audience:** anyone who needs the picture — product owners, Zabbix admins, reviewers.  
-**Not this doc:** click-by-click build steps → [`nbxsync-configuration-checklist-zerotouch.md`](nbxsync-configuration-checklist-zerotouch.md).  
-**Not this doc:** what Extreme/Forti/Cato templates measure → [`zabbix/`](../zabbix/README.md).
+| Need | Document |
+|---|---|
+| Click-by-click nbxSync build (GUI / API) | [`nbxsync-configuration-checklist-zerotouch.md`](nbxsync-configuration-checklist-zerotouch.md) |
+| Expected host matrix, day-2, scope gaps | Checklist §§13, 15, 17 |
+| Extreme ports, stages, TEMP_*/optics | [`../zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) |
+| On-box port labels | [`../zabbix/port-identity.md`](../zabbix/port-identity.md) |
+| Cutover order / other domains | [`../zabbix/00-monitoring-plan.md`](../zabbix/00-monitoring-plan.md), [`../zabbix/README.md`](../zabbix/README.md) |
+| First-build helper scripts only | [`../scripts/README.md`](../scripts/README.md) |
+
+Day-to-day changes are done in the **GUI or API**. Scripts are an optional onboarding accelerator, not the operating interface.
 
 ---
 
@@ -52,6 +59,9 @@ NetBox tags            →  overlays (critical, do_not_monitor)
 | Space Server | CG **Agent Monitoring (SPACE)** on role | Agent **:10060** |
 | Criticality | Tag `critical` → hostgroup | `Priority/Critical` |
 
+Hostgroup Jinja and assignment clicks: checklist §8.  
+Which CG/template/interface a given host class should end up with: checklist §13.
+
 ---
 
 ## Rules of thumb
@@ -65,55 +75,8 @@ NetBox tags            →  overlays (critical, do_not_monitor)
 
 ---
 
-## What a typical host looks like
-
-| Object | Configuration group | Typical templates | Interfaces |
-|---|---|---|---|
-| Linux server (role Server) | Server Agent+OOB | Linux by agent (+ Dell iDRAC if Dell + `oob_ip`) | Agent :10050 + SNMP on oob |
-| Linux / Windows VM | Agent Monitoring (Site Group) | OS by agent (Template Rule) | Agent :10050 |
-| SAP HANA / SAP ME | SNMP Monitoring (SAP) | Linux by agent + SAP by agent (placeholder) | SNMP `SAPUSER` |
-| Host with tag `snmp` | SNMP Monitoring (Linux) | Linux/Windows by SNMP | SNMP `MONITORING-LINUX` |
-| Extreme switch | SNMP Monitoring | Extreme EXOS or VOSS by SNMP | SNMP `MONITORING` |
-| Access Point | SNMP Monitoring | Extreme IQ Engine by SNMP | SNMP `MONITORING` |
-| Firewall | SNMP Monitoring | FortiGate by SNMP | SNMP `MONITORING` |
-| Space Server | Agent Monitoring (SPACE) | OS by agent | Agent :10060 |
-| Pure / Dell storage | Agent Monitoring | HTTP templates (manufacturer rules) | Agent / HTTP |
-| Cohesity physical | OOB SNMP Only | Storage Generic | SNMP on oob |
-| + tag `critical` | unchanged | unchanged | + hostgroup Priority/Critical |
-
-Full expected-state matrix (including hostgroups): checklist §13.
-
----
-
-## Four hostgroup axes
-
-Zabbix navigation and alerting use hostgroups, not a second tag taxonomy:
-
-| Axis | Example | Source |
-|---|---|---|
-| Location | `Sites/CH/CH-STA/CH-STA-L42` | Jinja on country Site Group (full Site Group ancestry) |
-| Function | `Roles/Switch Core` | Jinja on country Site Group (`object.role.name`) |
-| OS / platform family | `OS/Linux`, `OS/Network` | Template Rules |
-| Criticality | `Priority/Critical` | NetBox tag `critical` |
-
-Hosts are members of the **leaf** site group only; dashboards filter on parents (`Sites/CH`). Organisation access is global — nested Sites are for location views, not regional RBAC.
-
----
-
 ## What stays outside NetBox / nbxSync
 
-Some monitoring has no inventory object to hang on (or is deliberately Zabbix-native). Examples: website checks, account-level APIs (Cato), media/actions/escalation. Those are built in Zabbix directly — see checklist §17 and `zabbix/logicmonitor-assessment.md`.
+Some monitoring has no inventory object to hang on (or is deliberately Zabbix-native): website checks, account-level APIs, media/actions/escalation, and similar. Details and open items: checklist §17 and [`../zabbix/logicmonitor-assessment.md`](../zabbix/logicmonitor-assessment.md).
 
-Domain packs under `zabbix/` own **what** we measure on a technology (signals, stages, thresholds). This architecture and the nbxSync checklist own **how** a NetBox object becomes a Zabbix host.
-
----
-
-## Related documents
-
-| Doc | Purpose |
-|---|---|
-| [`nbxsync-configuration-checklist-zerotouch.md`](nbxsync-configuration-checklist-zerotouch.md) | GUI build of nbxSync objects (source of truth for rows) |
-| [`../zabbix/00-monitoring-plan.md`](../zabbix/00-monitoring-plan.md) | Cutover order and parity bar |
-| [`../zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) | Extreme port scope, stages, TEMP_*/optic macros |
-| [`../zabbix/port-identity.md`](../zabbix/port-identity.md) | On-box port label grammar |
-| [`../scripts/README.md`](../scripts/README.md) | Optional **onboarding** helpers only — day-2 is GUI/API |
+Domain packs under `zabbix/` own **what** we measure on a technology. This page and the nbxSync checklist own **how** a NetBox object becomes a Zabbix host.

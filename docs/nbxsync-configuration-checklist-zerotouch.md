@@ -1,39 +1,28 @@
 # nbxSync configuration checklist
 
-GUI (and API-equivalent) steps to configure **nbxSync** so NetBox inventory becomes Zabbix hosts.
+GUI / API steps to create **nbxSync** objects.  
+Mental model and design rules: [`nbxsync-architecture.md`](nbxsync-architecture.md).  
+Extreme / domain monitoring design: [`zabbix/`](../zabbix/README.md) (start with [`01-extreme-switching.md`](../zabbix/01-extreme-switching.md)).  
+First-build scripts only: [`scripts/README.md`](../scripts/README.md) (Appendix A).
 
-**Architecture / mental model:** [`nbxsync-architecture.md`](nbxsync-architecture.md) — read that first if you are new.  
-**Domain monitoring design** (Extreme ports, stages, TEMP_*, …): [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) and siblings under `zabbix/`.  
-**This file:** only nbxSync objects and assignments. Day-to-day changes are done in the **GUI or API**; helper scripts are an optional onboarding accelerator (Appendix A).
+**Last verified:** 2026-08-06 (lab: NetBox 4.x / Zabbix 7.0.x). Update after a production re-check.  
+**One home:** if Confluence mirrors this, that page is a pointer only.
 
-**Last verified:** 2026-08-06 (lab: NetBox 4.x / Zabbix 7.0.x). Update this stamp after a production re-check.
-
-**One home for this doc.** If Confluence also has a copy, that page must be a pointer here — do not maintain two full versions.
-
----
-
-## How to use this document
-
-| If you are… | Read |
+| If you are… | Go to |
 |---|---|
-| New to the design | [`nbxsync-architecture.md`](nbxsync-architecture.md), then come back here |
-| Building the estate the first time | **Before you start** → **Initial build** §§1–12 in order → **What good looks like** → **Verification** |
-| Onboarding one new role / platform / host class | **Day-2** (§15) |
-| Debugging a wrong or missing host | **Troubleshooting ladder** (§15.4) then compare to **What good looks like** (§13) |
-| Configuring Extreme ports / thresholds / stages | [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) + [`port-identity.md`](../zabbix/port-identity.md) — not this file |
-| Wondering why something LogicMonitor watched is not here | **§17** (scope boundary + open items) |
-| Bulk-applying the *first* build only | **Appendix A** (optional onboarding scripts) |
+| New to the design | [`nbxsync-architecture.md`](nbxsync-architecture.md) |
+| First estate build | **Before you start** → §§1–12 → §13 → §16 |
+| Day-2 / new role or platform | §15 |
+| Wrong or missing host | §15.4, then §13 |
+| Extreme ports / stages / TEMP_* | [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) |
+| LM parity gaps | §17 |
+| Bulk first build | [scripts/README.md](../scripts/README.md) |
 
-Fill in production URLs, tokens, and secrets when you apply this in the real environment. Grey cells / *(italic)* values are placeholders.
+Placeholders in tables are *(italic)*. Operate in the **GUI or API** after the first build.
 
----
+### GUI map
 
-## Where things show up in the GUI
-
-- Top menu **Zabbix**: Servers, Proxies, Proxy Groups, Templates, Macros, Tags, Hostgroups, Configuration groups, Maintenance, Template Rules.
-- Most assignments and host interfaces are added from a parent’s **Zabbix** tab (Site Group, Role, Device, VM, …).
-- Role templates → Role (or Template) page. `OS/*` membership → **Zabbix → Template Rules**.
-- Control-plane summary (Site Group / Role / Platform / tags): [`nbxsync-architecture.md`](nbxsync-architecture.md).
+Top menu **Zabbix**: Servers, Proxies, Proxy Groups, Templates, Macros, Tags, Hostgroups, Configuration groups, Maintenance, Template Rules. Most assignments and host interfaces are added from a parent’s **Zabbix** tab. Role templates → Role/Template page; `OS/*` membership → Template Rules.
 
 ---
 
@@ -46,13 +35,8 @@ In NetBox (not the Zabbix menu):
 - [ ] Platforms whose names match the Template Rule patterns (`EXOS` / `VOSS` in Extreme platform names)
 - [ ] Servers that need BMC monitoring have **`oob_ip`** set
 - [ ] Required templates already exist in Zabbix (import missing ones first)
-- [ ] **Extreme VOSS by SNMP** imported from `zabbix/templates/extreme_voss_snmp/` before enabling that Template Rule (stock Zabbix has EXOS only)
-- [ ] **Extreme IQ Engine by SNMP** imported from `zabbix/templates/extreme_iq_engine_snmp/` (also not stock)
+- [ ] **Extreme VOSS by SNMP** and **Extreme IQ Engine by SNMP** imported (paths under `zabbix/templates/…`) before enabling those Template Rules in §6 — see Extreme docs for YAML and port grammar
 - [ ] SNMP / VMware / Pure / MSSQL secrets available (see §5 and §11.4)
-
-Everything below is written as **GUI clicks** (or the same objects via API). That is the operating model. Optional scripts exist only to accelerate a first build — see **Appendix A**; they are not used for day-2.
-
-Extreme template YAML imports (VOSS, IQ Engine) and port-label grammar are owned by the Extreme docs; you still need those templates present in Zabbix before enabling the Template Rules in §6.
 
 ---
 
@@ -126,7 +110,7 @@ Create one assignment per country Site Group. Set a **proxy or a proxy group** �
 
 Path: **Zabbix → Configuration groups → Add**
 
-Each group is one **transport + credential** profile. SNMPv3 user/auth/priv differ by LogicMonitor account — keep them on separate groups.
+Each group is one **transport + credential** profile. Why these groups exist and which NetBox facts select them: [`nbxsync-architecture.md`](nbxsync-architecture.md). SNMPv3 user/auth/priv differ by LogicMonitor account — keep them on separate groups.
 
 | Name | Credential / port | Purpose |
 |---|---|---|
@@ -332,7 +316,7 @@ Leave “require tags”, “role pattern”, and “manufacturer” empty unles
 | VMware ESXi | `ESXi\|VMware ESX\|vSphere` | VMware FQDN | OS/VMware | — | 100 | Yes |
 | VMware Photon | `Photon` | Linux by Zabbix agent | OS/Linux | — | 50 | Yes |
 
-**Extreme (nbxSync vs domain doc):** platform Template Rules in this section attach EXOS / VOSS / IQ Engine templates. Never put Network Generic on Switch* (duplicate `icmpping`). Import VOSS / IQ Engine YAML before enabling those rules. Port-scoping macros, TEMP_*/optic globals, Hybrid stage 5, and LLD patches are owned by [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md); on-box labels by [`zabbix/port-identity.md`](../zabbix/port-identity.md). Create the Switch* macro *assignments* in nbxSync as described in §11.
+**Extreme:** platform rules above attach EXOS / VOSS / IQ Engine — never Network Generic on Switch* (`icmpping` collision). Macro values, stages, LLD patches → [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md); labels → [`port-identity.md`](../zabbix/port-identity.md); nbxSync macro assignment clicks → §11.1.
 
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
 
@@ -410,7 +394,7 @@ Do **not** put Speed Expect / Routing on the platform Template Rule — role is 
 
 Path: **Zabbix → Hostgroups → Add**, then assignments on each hostgroup or from the Site Group / tag Zabbix tab.
 
-**Why these four axes:** location, function, OS, and criticality are the views operations actually use. Keeping them as hostgroups (not duplicated as tags) matches how Zabbix dashboards, permissions, and actions filter.
+Axes (Sites / Roles / OS / Priority): [`nbxsync-architecture.md`](nbxsync-architecture.md). Below are the Jinja values and assignment clicks only.
 
 ### 8.1 Sites
 
@@ -433,7 +417,7 @@ Hosts stay members of the **leaf** only. Country dashboards and location filters
 |---|---|---|
 | Roles | `Roles/{{ object.role.name }}` | Site Groups CH, HU, JP, KR, NL, US, CN |
 
-Assigned on each country Site Group so every device under that country inherits the Roles template; the role *name* still comes from the device. See [`nbxsync-architecture.md`](nbxsync-architecture.md).
+Assigned on each country Site Group so every device under that country inherits the Roles template; the role *name* still comes from the device.
 
 ### 8.3 OS hostgroups
 
@@ -635,11 +619,13 @@ Ask the NetBox administrator to set the following under the nbxsync plugin confi
 | VM status → Zabbix | active → enabled; planned → enabled in maintenance; paused → enabled with no-alerting tag; failed/offline → deleted |
 | SNMP community / auth / priv macro names | `{$SNMP_COMMUNITY}`, `{$SNMP_AUTHPASS}`, `{$SNMP_PRIVPASS}` |
 
-Keep Site / Site Group inheritance **after** role and platform in the inheritance order so country defaults do not override role SNMP or Server Agent+OOB.
+Keep Site / Site Group inheritance **after** role and platform in the inheritance order (architecture rule 5) so country defaults do not override role SNMP or Server Agent+OOB.
 
 ---
 
 ## 13. What a typical host should look like
+
+Authoritative expected-state matrix (architecture links here; do not copy this table elsewhere).
 
 | Object | Configuration group | Typical templates | Interfaces | Hostgroups |
 |---|---|---|---|---|
@@ -685,22 +671,14 @@ Initial build is §§1–14. After that, operators mostly do the following.
 3. New **Switch*** role? Copy IFALIAS / IFTYPE macros from the closest peer (`zabbix/01-extreme-switching.md` §5 / §8; create nbxSync assignments per §11.1). Platform Template Rules already cover EXOS/VOSS.
 4. Hostgroup `Roles/<name>` appears automatically from the Sites/Roles Jinja — do not create a per-role hostgroup assignment.
 
-### 15.1b New Extreme switch (day-2) — nbxSync checks
+### 15.1b New Extreme switch (day-2)
 
-Full on-box / stage procedure: [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) and [`port-identity.md`](../zabbix/port-identity.md).
-
-After NetBox has the right **role**, **platform** (`EXOS` / `VOSS`), primary IP, and site under a country Site Group, sync should show:
-
-1. Configuration group **SNMP Monitoring**
-2. Platform template **Extreme EXOS** or **Extreme VOSS** (not Network Generic)
-3. Role IFALIAS macros present (created per §11.1; values from Extreme doc)
-4. Exactly one `icmpping`; hostgroup `OS/Network`
-
-If VOSS still gets Network Generic: Template Rule wrong, YAML never imported, or a bulk onboarding re-run retargeted the rule (Appendix A) — fix §6.1 before re-syncing.
+On-box labels and stages: [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md), [`port-identity.md`](../zabbix/port-identity.md).  
+After NetBox role / platform / site / primary IP are set, sync should match the Extreme switch rows in **§13**. IFALIAS assignments: §11.1. If VOSS still gets Network Generic, fix §6.1 (YAML missing or onboarding re-run left the placeholder — see [scripts/README.md](../scripts/README.md)).
 
 ### 15.1c Extreme staged enablement
 
-Stage gates, Hybrid flip, Speed Expect, Routing, and capacity enablement are owned by [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) §7. nbxSync actions at those stages are the Template / macro assignments in §7.1 and §11.1 — do not track stage policy in this file.
+Stages and Hybrid flip: Extreme doc §7. nbxSync clicks at those stages: §7.1 and §11.1.
 
 ### 15.2 New Platform appeared
 
@@ -758,7 +736,7 @@ After the initial build, and after major changes, confirm coverage against §13.
 
 **Unprofiled / wrong template symptoms:** host missing in Zabbix, empty template list, or only partial stack vs §13. Use the §15.4 ladder.
 
-**Optional onboarding census:** `configure_nbxsync_zerotouch.py --verify` can print coverage gaps. Treat non-zero counts as tickets (§15.4). The GUI/API remains the operator interface; the script is only an onboarding accelerator. See **Appendix A**.
+**Optional onboarding census:** see [`scripts/README.md`](../scripts/README.md) (`--verify`). Map gaps to §15.4.
 
 ---
 
@@ -798,28 +776,8 @@ Note that **Space Server** therefore has split coverage: the host itself is a no
 
 ---
 
-## One-line standard
-
-See [`nbxsync-architecture.md`](nbxsync-architecture.md) for the full picture. In short: **Site Group** = default Agent + proxy + Sites/Roles hostgroups; **Role** = transport exceptions + app templates; **Platform** = OS/vendor template + `OS/…`; **Tags/roles** = `snmp` / SAP HANA·ME / `critical` / `do_not_monitor`.
-
-**Operate via GUI or API.** Helper scripts (Appendix A) are only for accelerating a first build.
-
----
-
 ## Appendix A — Optional onboarding scripts
 
-**Not the operating interface.** Day-2 and ongoing changes are done in the **GUI or via API**. These scripts only accelerate a **first build** (or a rare full re-apply) by writing the same objects this checklist describes. They are idempotent. If a script and this document disagree, **this document wins** — fix the script.
-
-Details and lab commands: [`scripts/README.md`](../scripts/README.md).
-
-| Script | Applies | Run |
-|---|---|---|
-| `scripts/configure_nbxsync_zerotouch.py` | §§1–12 fleet (except Extreme-specific macros/imports) | first |
-| `scripts/configure_nbxsync_network.py` | Extreme YAML import, Extreme Template Rules retarget, §7.1 / §11.1 rows, destination globals in Extreme §8 | **after** zerotouch |
-
-**Run order matters for onboarding.** zerotouch may leave **Extreme VOSS** / **IQ Engine** Template Rules on *Network Generic* as a placeholder; the network script imports YAML and retargets them. Always finish an onboarding run with the network script, then spot-check §6.1 in the GUI.
-
-**Credentials come from the environment,** never from the repo: `NBX_ZABBIX_*`, `NBX_SNMP_*`, `NBX_VMWARE_*`, `NBX_PURE_*`, `NBX_MSSQL_*` (see `scripts/setup_zabbix.env.example`). An unset secret skips that macro with a warning — same as forgetting it in the GUI.
-
-**Useful flags (onboarding only):** `--verify` (read-only census, §16), `--link-speed-expect` (Extreme stage 4), `--cutover-silence` (temporary LM overlay — Extreme §8).
+First-build helpers only — not day-2. Commands, env vars, flags, and run order: [`scripts/README.md`](../scripts/README.md).  
+This checklist remains authoritative for the objects those scripts create.
 

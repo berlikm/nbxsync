@@ -48,26 +48,12 @@ Pulled from `berlikm/nbxsync` branch `cursor/extreme-voss-snmp-template-e7f8` (P
 | `reference/aerohive-mibs/` | Official XIQ Auxiliary `AH-*` MIB texts (AP template source) |
 | `reference/*-zabbix.md` | Older design snapshots — prefer numbered docs above when they disagree |
 
-## Scripts
+## Related (do not duplicate here)
 
-Sibling of `configure_nbxsync_zerotouch.py` (same `ensure` / TemplateRule / SyncHostJob model).
-
-| Script | Purpose |
+| Concern | Doc |
 |---|---|
-| [`../scripts/configure_nbxsync_network.py`](../scripts/configure_nbxsync_network.py) | NetBox + Zabbix: Extreme VOSS/EXOS rules, Switch* IFALIAS macros, `--simulate` lab |
-| [`../scripts/run_network_zabbix_sim.py`](../scripts/run_network_zabbix_sim.py) | Zabbix-API-only smoke (no NetBox) |
+| NetBox → Zabbix architecture | [`../docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md) |
+| nbxSync GUI rows | [`../docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md) |
+| First-build scripts (optional) | [`../scripts/README.md`](../scripts/README.md) |
 
-```bash
-PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
-  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate
-```
-
-## Track split
-
-- **Track A (these docs)** — what we monitor, in what order, template content.
-- **Track B (nbxSync)** — how NetBox drives Zabbix hosts:
-  - Architecture: [`../docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md)
-  - GUI checklist: [`../docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md)
-  - Onboarding scripts only: [`../scripts/README.md`](../scripts/README.md) — day-2 is GUI/API
-
-If the work is "make NetBox drive Zabbix" it is Track B. If it is "what should we monitor next" it is Track A.
+**Track A** = these `zabbix/` docs (what to monitor). **Track B** = architecture + checklist above (how NetBox drives hosts).

@@ -455,7 +455,7 @@ Stock **Extreme EXOS by SNMP** also defines template-level `{$TEMP_WARN}=55` / `
 | `{$OPTIC.RX.DBM.MIN}` | `-100` |
 | `{$MLT.CONTROL}` | `0` |
 
-nbxSync wiring for Switch* roles (CG, Template Rules, where to click) lives in [`docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md). Architecture overview: [`docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md).
+nbxSync clicks for Switch* CGs / Template Rules / macro *assignments*: [`docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md) (§6, §7.1, §11.1). Architecture: [`docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md).
 
 **Device role** — port scoping. Set **both** IFALIAS macros on every role:
 

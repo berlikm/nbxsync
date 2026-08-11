@@ -87,26 +87,10 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 5. Prefer macro overrides over cloning stock templates — keeps the upgrade path.
 6. Signals with no trigger and no dashboard get deleted.
 
-## Lab proof (optional onboarding scripts)
+## Lab proof
 
-Architecture: `docs/nbxsync-architecture.md`.  
-nbxSync GUI rows: `docs/nbxsync-configuration-checklist-zerotouch.md`.  
-Day-2 is GUI/API; scripts only accelerate a first build (`scripts/README.md`).
-
-```bash
-# 1) Fleet (CGs, TemplateRules, hostgroups, …)
-PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
-  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_zerotouch.py --simulate
-
-# 2) Extreme half (IFALIAS, VOSS import, EXOS LLD/TEMP patches)
-PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
-  /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate
-
-# Zabbix-only smoke (no NetBox graph)
-python3 scripts/run_network_zabbix_sim.py --with-speed-expect
-```
-
-Reports: `/opt/cursor/artifacts/ZEROTOUCH_*` and `NETWORK_NBXSYNC_SIM_REPORT.md`.
+Optional first-build scripts and commands: [`../scripts/README.md`](../scripts/README.md).  
+Architecture / nbxSync rows: [`../docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md), [`../docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md).
 
 ## Out of scope until listed
 
