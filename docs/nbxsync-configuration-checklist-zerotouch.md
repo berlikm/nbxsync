@@ -344,8 +344,9 @@ Use together with configuration group **SNMP Monitoring (Linux)** (assigned on N
 |---|---|---|---|---|---|---|
 | SNMP Linux (tag) | *(same Linux pattern as above)* | Linux by SNMP | OS/Linux | snmp | 40 | Yes |
 | SNMP Windows (tag) | `Windows` | Windows by SNMP | OS/Windows | snmp | 40 | Yes |
+| Oracle (tag) | `.*` | Oracle by Zabbix agent 2 | — | oracle | 40 | Yes |
 
-### 6.3 Dell iDRAC (Manufacturer ∧ role)
+### 6.3 Manufacturer ∧ role rules
 
 **Do not** assign Dell iDRAC on Manufacturer Dell — merge is additive and would attach iDRAC to Dell storage and other SNMP Dell hosts. Scope it here instead. Transport stays **Server Agent+OOB** (`oob_ip`); empty `oob_ip` skips the OOB SNMP interface only. OEM model templates stay on Device type (they add; they do not remove iDRAC).
 
