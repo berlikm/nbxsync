@@ -58,7 +58,7 @@ Path: **Zabbix → Proxies → Add**, **Zabbix → Proxy Groups → Add**
 
 | Name | Zabbix server | Description |
 |---|---|---|
-| Swiss proxy group | Zabbix Production | CH Stäfa pair (NL and US route through CH) |
+| Swiss proxy group | Zabbix Production | CH proxy pair (NL and US route through CH) |
 
 ### 2.2 Proxies
 

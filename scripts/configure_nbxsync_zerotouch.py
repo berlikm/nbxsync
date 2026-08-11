@@ -672,7 +672,7 @@ def step2_proxies(server):
         name=CH_PROXY_GROUP_NAME,
         defaults={
             'zabbixserver': server,
-            'description': 'CH Stäfa proxy pair (NL, US route through CH)',
+            'description': 'CH proxy pair (NL and US route through CH)',
         },
         update_fields=['zabbixserver', 'description'],
     )
