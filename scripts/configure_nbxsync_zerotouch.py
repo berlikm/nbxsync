@@ -18,6 +18,8 @@ Deltas vs the old checklist script:
   Δ5b  Pure Storage stays on SiteGroup Agent + HTTP template (ANY) — not SNMP CG
   Δ5b  Storage removed from SNMP CG (Cohesity → OOB SNMP Only)
   Δ5b  Server BMC = "Server Agent+OOB" with MONITORING-DELL SHA/AES on OOB SNMP
+  Δ5b  ESXi = CG "ESXi OOB iDRAC" (MONITORING-DELL @ oob_ip) on ESXi platforms;
+       VMware FQDN only on role vCenter (disable legacy platform rule "VMware ESXi")
   Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,DELL,SAP}
   Δ5   "SNMP Monitoring (Linux)" CG on NetBox tag snmp (was SNMP by tag / VM by SNMP)
   Δ5   "Agent Monitoring (SPACE)" port 10060 on Space Server role
@@ -275,6 +277,10 @@ AGENT_DEFAULT_ROLES_DOC = [
 ]
 
 SERVER_BMC_ROLES = ['Server', 'Cohesity']  # Cohesity: Dell nodes with only oob_ip
+
+# Platforms that are ESXi hypervisors (not vCenter appliances). VMware API monitoring
+# is vCenter-only; these hosts get Dell iDRAC on oob_ip and OS/VMware hostgroup.
+ESXI_PLATFORM_RE = re.compile(r'ESXi|VMware ESX', re.I)
 
 LAB_JSON = Path('/home/ubuntu/zabbix-docker/lab.json')
 REPORT_JSON = Path('/opt/cursor/artifacts/zerotouch_configure_sim_results.json')
@@ -704,6 +710,16 @@ def step4_configgroups():
         name='OOB SNMP Only',
         defaults={'description': 'SNMP MONITORING MD5/DES @ oob_ip — Cohesity physical (no primary IP)'},
     )
+    esxi_oob_group, _ = get_or_create(
+        M.ZabbixConfigurationGroup,
+        name='ESXi OOB iDRAC',
+        defaults={
+            'description': (
+                'ESXi hypervisor: SNMP MONITORING-DELL @ oob_ip only — no agent, no VMware SDK. '
+                'Hypervisor/VM metrics come from vCenter (VMware FQDN).'
+            ),
+        },
+    )
     sap_snmp_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
         name='SNMP Monitoring (SAP)',
@@ -720,6 +736,7 @@ def step4_configgroups():
         'server_oob': server_oob_group,
         'linux_snmp': linux_snmp_group,
         'oob_snmp': oob_snmp_group,
+        'esxi_oob': esxi_oob_group,
         'sap_snmp': sap_snmp_group,
         'space_agent': space_agent_group,
     }
@@ -779,6 +796,8 @@ def step5_host_interfaces(server, groups: dict):
     snmp_if(groups['linux_snmp'], profile='linux')
     # 5.5 Cohesity OOB — network MONITORING
     snmp_if(groups['oob_snmp'], profile='network', use_oob_ip=True)
+    # 5.5b ESXi OOB — Dell iDRAC only (no agent; VMware via vCenter)
+    snmp_if(groups['esxi_oob'], profile='dell', use_oob_ip=True)
     # 5.6 SAP SNMP — SAPUSER (provisional SHA1/AES128)
     snmp_if(groups['sap_snmp'], profile='sap')
     # 5.7 SPACE agent — 10060
@@ -805,6 +824,7 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     server_oob_group = groups['server_oob']
     linux_snmp_group = groups['linux_snmp']
     oob_snmp_group = groups['oob_snmp']
+    esxi_oob_group = groups['esxi_oob']
     sap_snmp_group = groups['sap_snmp']
     space_agent_group = groups['space_agent']
 
@@ -886,7 +906,26 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     # Tag inheritance is collected before role/site — snmp beats Agent default.
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
-    logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); OOB creds = MONITORING-DELL on Server Agent+OOB')
+    logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server / ESXi (§6); OOB creds = MONITORING-DELL')
+
+    # ESXi platforms → OOB iDRAC CG (beats Site Group Agent). No VMware SDK on ESXi.
+    esxi_platforms = [p for p in Platform.objects.all() if ESXI_PLATFORM_RE.search(p.name or '')]
+    for plat in esxi_platforms:
+        get_or_create(
+            M.ZabbixConfigurationGroupAssignment,
+            zabbixconfigurationgroup=esxi_oob_group,
+            assigned_object_type=ct(Platform),
+            assigned_object_id=plat.id,
+            defaults={},
+        )
+    if esxi_platforms:
+        logger.info(
+            '  ESXi OOB iDRAC → %s platform(s): %s',
+            len(esxi_platforms),
+            ', '.join(sorted(p.name for p in esxi_platforms)),
+        )
+    else:
+        logger.warning('  No NetBox platforms matching ESXi/VMware ESX — skip ESXi OOB CG assignment')
 
     # SNMP storage manufacturers — Site Group Agent would leave them without SNMP.
     # Manufacturer CG wins first in inheritance → SNMP Monitoring (network MONITORING).
@@ -976,8 +1015,7 @@ def step6_template_rules(server, country_slugs=None):
     tpl_exos = make_template(*TPL['extreme_exos_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_fortigate = make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    # HTTP/simple-check templates — ANY, not AGENT (ESXi often has no Zabbix agent)
-    tpl_vmware = make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.ANY])
+    # VMware FQDN is vCenter-role only (step 7) — not linked via ESXi platform rules.
     # Extreme VOSS / IQ Engine: optional templates, fall back to Network Generic when missing.
     _voss_tpl = TPL.get('extreme_voss_snmp') or TPL['network_generic_snmp']
     _iq_tpl = TPL.get('extreme_iq_engine_snmp') or TPL['network_generic_snmp']
@@ -992,7 +1030,7 @@ def step6_template_rules(server, country_slugs=None):
 
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100),
         ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50),
-        ('VMware ESXi', r'ESXi|VMware ESX|vSphere', tpl_vmware, hg_os_vmware, 100),
+        # Photon guests / appliances — Linux agent (not ESXi hypervisors).
         ('VMware Photon', r'Photon', tpl_linux, hg_os_linux, 50),
     ]
     for name, pattern, template, hostgroup, priority in rules:
@@ -1008,6 +1046,13 @@ def step6_template_rules(server, country_slugs=None):
             'manufacturer': None,
         }
         ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
+
+    # Legacy: VMware FQDN on ESXi platform — hypervisors are discovered from vCenter only.
+    legacy_esxi_vmware = M.ZabbixTemplateRule.objects.filter(name='VMware ESXi').first()
+    if legacy_esxi_vmware is not None and legacy_esxi_vmware.enabled:
+        legacy_esxi_vmware.enabled = False
+        legacy_esxi_vmware.save(update_fields=['enabled'])
+        logger.info('  DISABLED legacy TemplateRule %r (VMware FQDN is vCenter-only)', 'VMware ESXi')
 
     # Δ6b: NetBox tag snmp → OS-correct SNMP templates.
     # Pair with "SNMP Monitoring (Linux)" CG (assigned on the same tag) for the interface.
@@ -1067,6 +1112,20 @@ def step6_template_rules(server, country_slugs=None):
             'priority': 80,
         }
         ensure(M.ZabbixTemplateRule, name='Dell iDRAC (Server)', defaults=defaults, update_fields=list(defaults.keys()))
+        # ESXi hypervisors: iDRAC + OS/VMware hostgroup (no VMware FQDN template).
+        defaults_esxi = {
+            'pattern': r'ESXi|VMware ESX',
+            'role_pattern': '',
+            'require_tags': '',
+            'manufacturer': dell,
+            'zabbixtemplate': tpl_idrac,
+            'zabbixhostgroup': hg_os_vmware,
+            'zabbixtag': None,
+            'enabled': True,
+            'priority': 80,
+        }
+        ensure(M.ZabbixTemplateRule, name='Dell iDRAC (ESXi)', defaults=defaults_esxi, update_fields=list(defaults_esxi.keys()))
+        logger.info('  Rule Dell iDRAC (ESXi) → %s + OS/VMware', tpl_idrac.name)
         # Prune legacy Manufacturer-wide iDRAC assignment if present.
         deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
             zabbixtemplate=tpl_idrac,
@@ -1230,10 +1289,8 @@ def step7_template_assignments(server):
         (make_template(*TPL['mssql_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'MSSQL'),
         (make_template(*TPL['mssql_agent2'], req=[HostInterfaceRequirementChoices.AGENT]), 'MSSQL Query Server'),
         (make_template(*TPL['vmware_fqdn'], req=[HostInterfaceRequirementChoices.ANY]), 'vCenter'),
-        # Pure Storage: removed role assignment — HTTP template comes from the
-        # manufacturer-scoped TemplateRule (step 6). Physical arrays have
-        # manufacturer=Pure Storage and get the HTTP template there. VMs with
-        # role=Pure Storage (management VMs) get only their OS template.
+        # VMware FQDN is ONLY on vCenter. ESXi: ESXi OOB iDRAC CG + Dell iDRAC TemplateRule.
+        # Pure Storage: no role assignment — HTTP template is manufacturer TemplateRule (step 6).
         (make_template(*TPL['gitlab_http'], req=[HostInterfaceRequirementChoices.ANY]), 'GitLab'),
         (make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Virtual Appliance'),
         # Network Generic only on Network Device (no platform / no regex match).
@@ -1891,6 +1948,7 @@ def run_simulate() -> int:
             'server_oob': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Server Agent+OOB', defaults={'description': 'lab'})[0],
             'linux_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (Linux)', defaults={'description': 'lab'})[0],
             'oob_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}OOB SNMP Only', defaults={'description': 'lab'})[0],
+            'esxi_oob': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}ESXi OOB iDRAC', defaults={'description': 'lab'})[0],
             'sap_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (SAP)', defaults={'description': 'lab'})[0],
             'space_agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring (SPACE)', defaults={'description': 'lab'})[0],
         }
@@ -1898,8 +1956,13 @@ def run_simulate() -> int:
         agent_group = cg_groups['agent']
         server_oob_group = cg_groups['server_oob']
         linux_snmp_group = cg_groups['linux_snmp']
+        esxi_oob_group = cg_groups['esxi_oob']
         space_agent_group = cg_groups['space_agent']
         vm_snmp_group = linux_snmp_group  # legacy alias for hygiene asserts
+
+        # ESXi platform so step5b can assign ESXi OOB iDRAC (production looks up by name).
+        Platform.objects.get_or_create(name=f'{PREFIX}VMware ESXi', defaults={'slug': slugify(f'{PREFIX}vmware-esxi')})
+        Manufacturer.objects.get_or_create(name='Dell', defaults={'slug': 'dell'})
 
         # Lab SNMP secrets (satisfy authPriv profile create; not production values)
         for key, val in (
@@ -2233,6 +2296,26 @@ def run_simulate() -> int:
                 str(idrac_rule and (idrac_rule.manufacturer, idrac_rule.role_pattern, idrac_rule.pattern)),
                 group='hygiene',
             )
+            idrac_esxi = M.ZabbixTemplateRule.objects.filter(name='Dell iDRAC (ESXi)', enabled=True).select_related('manufacturer', 'zabbixhostgroup').first()
+            record(
+                'dell_idrac_esxi_rule',
+                bool(
+                    idrac_esxi
+                    and idrac_esxi.manufacturer_id
+                    and idrac_esxi.zabbixhostgroup
+                    and 'VMware' in (idrac_esxi.zabbixhostgroup.name or '')
+                    and 'ESXi' in (idrac_esxi.pattern or '')
+                ),
+                str(idrac_esxi and (idrac_esxi.pattern, getattr(idrac_esxi.zabbixhostgroup, 'name', None))),
+                group='hygiene',
+            )
+            legacy_vmware_esxi = M.ZabbixTemplateRule.objects.filter(name='VMware ESXi').first()
+            record(
+                'vmware_esxi_platform_rule_disabled',
+                legacy_vmware_esxi is None or not legacy_vmware_esxi.enabled,
+                str(legacy_vmware_esxi and legacy_vmware_esxi.enabled),
+                group='hygiene',
+            )
             record('vm_snmp_cg_transport_only', M.ZabbixTemplateAssignment.objects.filter(assigned_object_type=ct(M.ZabbixConfigurationGroup), assigned_object_id=vm_snmp_group.id).count() == 0, 'ok', group='hygiene')
 
             def _snmp_if(group):
@@ -2241,6 +2324,37 @@ def run_simulate() -> int:
                     assigned_object_id=group.id,
                     type=ZabbixHostInterfaceTypeChoices.SNMP,
                 ).first()
+
+            esxi_if = _snmp_if(esxi_oob_group)
+            esxi_agent_ifs = M.ZabbixHostInterface.objects.filter(
+                assigned_object_type=ct(M.ZabbixConfigurationGroup),
+                assigned_object_id=esxi_oob_group.id,
+                type=ZabbixHostInterfaceTypeChoices.AGENT,
+            ).count()
+            record(
+                'esxi_oob_dell_snmp_only',
+                bool(
+                    esxi_if
+                    and esxi_if.use_oob_ip
+                    and esxi_if.snmpv3_security_name == 'MONITORING-DELL'
+                    and esxi_agent_ifs == 0
+                ),
+                str((esxi_if.snmpv3_security_name, esxi_if.use_oob_ip, esxi_agent_ifs) if esxi_if else None),
+                group='hygiene',
+            )
+            vmware_tpl = M.ZabbixTemplate.objects.filter(zabbixserver=server, name__icontains='VMware FQDN').first()
+            vmware_role_ok = False
+            vmware_detail = 'no template'
+            if vmware_tpl is not None:
+                role_names = []
+                for a in M.ZabbixTemplateAssignment.objects.filter(zabbixtemplate=vmware_tpl):
+                    if a.assigned_object_type_id == ct(DeviceRole).id:
+                        role = DeviceRole.objects.filter(pk=a.assigned_object_id).first()
+                        if role:
+                            role_names.append(role.name.replace(PREFIX, ''))
+                vmware_role_ok = role_names == ['vCenter']
+                vmware_detail = str(role_names)
+            record('vmware_fqdn_vcenter_only', vmware_role_ok, vmware_detail, group='hygiene')
 
             net_if = _snmp_if(snmp_group)
             record(

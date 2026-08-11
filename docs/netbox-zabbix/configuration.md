@@ -111,6 +111,7 @@ Each group is one **transport + credential** profile. Why these groups exist and
 | Agent Monitoring | Agent :10050 | Default transport on country Site Groups |
 | Agent Monitoring (SPACE) | Agent :10060 | Space Server role (camLine occupies 10050) |
 | Server Agent+OOB | Agent :10050 + `MONITORING-DELL` SHA/AES @ oob | Dell iDRAC dual-plane servers |
+| ESXi OOB iDRAC | `MONITORING-DELL` SHA/AES @ oob | ESXi hypervisors (BMC only; no agent) |
 | OOB SNMP Only | `MONITORING` MD5/DES @ oob | Cohesity physical (no primary IP) |
 
 ---
@@ -131,7 +132,7 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 |---|---|---|---|---|
 | Network | SNMP Monitoring, OOB SNMP Only | MONITORING | MD5 | DES |
 | Linux | SNMP Monitoring (Linux) | MONITORING-LINUX | SHA1* | AES128 |
-| Dell iDRAC | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1* | AES128 |
+| Dell iDRAC | Server Agent+OOB (SNMP side), ESXi OOB iDRAC | MONITORING-DELL | SHA1* | AES128 |
 | SAP | SNMP Monitoring (SAP) | SAPUSER | *(confirm)* | *(confirm)* |
 
 \*Source notes say "SHA"; Zabbix offers SHA1 and SHA256 — use **SHA1** until confirmed.
@@ -174,6 +175,12 @@ Same shape as §5.1 with the **Linux** SNMPv3 profile. Transport-only — no tem
 ### 5.5 OOB SNMP Only
 
 Network SNMPv3 profile, Use OOB IP = **Yes**. Cohesity physical nodes.
+
+### 5.5b ESXi OOB iDRAC
+
+Dell SNMPv3 profile (`MONITORING-DELL`), Use OOB IP = **Yes**. **No Agent interface.**
+
+**Why a separate group:** ESXi hosts are not dual-plane servers. Hardware health is iDRAC on `oob_ip`; hypervisor/VM/cluster metrics come from **vCenter** (VMware FQDN + LLD). Do not put VMware FQDN on ESXi platforms.
 
 ### 5.6 SNMP Monitoring (SAP)
 
@@ -241,6 +248,14 @@ Manufacturer CG wins over Site Group Agent. Pure Storage and HPE stay Agent/HTTP
 | SNMP Monitoring (SAP) | SAP HANA |
 | SNMP Monitoring (SAP) | SAP ME |
 
+### ESXi platforms → OOB iDRAC
+
+| Configuration group | Assigned to |
+|---|---|
+| ESXi OOB iDRAC | Platform name matching `ESXi\|VMware ESX` |
+
+Platform CG wins over Site Group Agent (inheritance). Keep ESXi devices off role **Server** (that role’s Server Agent+OOB would win first and reintroduce Agent).
+
 ### Zero-touch tag opt-ins
 
 | Configuration group | Assigned to | Operator action |
@@ -253,7 +268,7 @@ Active Cohesity VMs with `primary_ip4` need a **direct** assignment to **SNMP Mo
 
 ### Manufacturer
 
-Do **not** assign Dell iDRAC on Manufacturer Dell. Use Template Rule §6.3 (Dell ∧ Server). OOB SNMP credentials come from **Server Agent+OOB** (`MONITORING-DELL`).
+Do **not** assign Dell iDRAC on Manufacturer Dell. Use Template Rules §6.3 (Dell ∧ Server, and Dell ∧ ESXi platform). OOB SNMP credentials come from **Server Agent+OOB** or **ESXi OOB iDRAC** (`MONITORING-DELL`).
 
 ---
 
@@ -314,8 +329,9 @@ Create the matching nbxSync **Template** objects (name → Zabbix template) unde
 | Extreme IQ Engine | `IQ ENGINE` | **Extreme IQ Engine by SNMP** (`zabbix/templates/extreme_iq_engine_snmp/`) | OS/Network | — | 100 | Yes |
 | FortiOS | `FORTIOS\|FortiOS` | FortiGate by SNMP | OS/Network | — | 100 | Yes |
 | FortiAnalyzer/Manager | `FortiAnalyzer\|FortiManager` | Network Generic Device by SNMP | OS/Network | — | 50 | Yes |
-| VMware ESXi | `ESXi\|VMware ESX\|vSphere` | VMware FQDN | OS/VMware | — | 100 | Yes |
 | VMware Photon | `Photon` | Linux by Zabbix agent | OS/Linux | — | 50 | Yes |
+
+**VMware:** do **not** attach VMware FQDN via an ESXi platform rule (legacy rule `VMware ESXi` stays disabled). Hypervisor/VM/cluster discovery is vCenter LLD (§7). ESXi hardware = §5.5b + §6.3 Dell iDRAC (ESXi).
 
 **Extreme:** platform rules above attach EXOS / VOSS / IQ Engine — never Network Generic on Switch* (`icmpping` collision). Macro values, stages, LLD patches → [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md); labels → [`port-identity.md`](../../zabbix/port-identity.md); nbxSync macro assignment clicks → §11.1.
 
@@ -333,11 +349,12 @@ Use together with configuration group **SNMP Monitoring (Linux)** (assigned on N
 
 ### 6.3 Manufacturer ∧ role rules
 
-Scoped here so Manufacturer Dell does not put iDRAC on every Dell device. Server BMC transport stays **Server Agent+OOB** (`oob_ip`). Map matches production Zabbix hosts (STOD* / snas* / san*).
+Scoped here so Manufacturer Dell does not put iDRAC on every Dell device. Server BMC transport stays **Server Agent+OOB** (`oob_ip`); ESXi BMC transport stays **ESXi OOB iDRAC**. Map matches production Zabbix hosts (STOD* / snas* / san* / ESXi).
 
 | Name | Pattern | Role pattern | Manufacturer | Template | Hostgroup | Require tags | Priority | Enabled |
 |---|---|---|---|---|---|---|---|---|
 | Dell iDRAC (Server) | `.*` | `^Server$` | Dell | Dell iDRAC by SNMP | — | — | 80 | Yes |
+| Dell iDRAC (ESXi) | `ESXi\|VMware ESX` | — | Dell | Dell iDRAC by SNMP | OS/VMware | — | 80 | Yes |
 | Pure Storage (HTTP) | `.*` | — | Pure Storage | Pure Storage FlashArray v2 by HTTP | — | — | 80 | Yes |
 | HPE MSA (HTTP) | `.*` | `^Storage$` | HPE | HPE MSA 2060 Storage by HTTP | — | — | 80 | Yes |
 | Dell Storage (HTTP) | `.*` | `^Storage$` | Dell | Dell Storage by HTTP | — | — | 80 | Yes |
@@ -361,7 +378,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 |---|---|---|
 | MSSQL by Zabbix agent 2 | Device Role MSSQL | |
 | MSSQL by Zabbix agent 2 | Device Role MSSQL Query Server | |
-| VMware FQDN | Device Role vCenter | Secrets via §11.4 |
+| VMware FQDN | Device Role vCenter | **Only** on vCenter — not on ESXi platforms. Secrets via §11.4 |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if no platform rule matches |
 | Network Generic Device by SNMP | Device Role Network Device | Fallback only |
@@ -614,6 +631,8 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Pure Storage | Agent Monitoring | Pure Storage by HTTP | Agent / HTTP | Sites/CH/…, Roles/Pure Storage |
 | Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP `MONITORING` on oob | Sites/CH/…, Roles/Cohesity |
 | Cohesity VM with primary IP | SNMP Monitoring (direct) | Storage Generic | SNMP `MONITORING` on primary | … |
+| ESXi hypervisor (Dell) | ESXi OOB iDRAC (platform) | Dell iDRAC by SNMP | SNMP `MONITORING-DELL` on oob only | Sites/…, Roles/…, OS/VMware |
+| vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN (+ OS template if platform matches) | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
 | Brand-new role tomorrow | Agent Monitoring (from Site Group) unless listed in §5b | OS Template Rule if platform set | Agent | Roles/\<new name\> appears automatically |
 | VM on a cluster with no site | none | — | — | Not profiled until the VM or cluster has a site |
@@ -642,6 +661,8 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Sample VOSS switch | SNMP Monitoring; **Extreme VOSS by SNMP** (imported YAML); same role IFALIAS as EXOS peer role; no Network Generic; single `icmpping` |
 | Sample Switch Hybrid (pre–stage 5) | Same platform template as peer EXOS/VOSS; IFALIAS macros still Access-like (`USW\|…` opt-in), not Core `.*` |
 | Sample Windows VM | Agent; Windows by agent; OS/Windows; leaf under `Sites/CH/…` |
+| Sample ESXi (Dell) | ESXi OOB iDRAC; Dell iDRAC on oob; OS/VMware; **no** VMware FQDN template |
+| Sample vCenter | VMware FQDN + SDK macros; hypervisors appear via LLD, not as separate NetBox→VMware-template hosts |
 | Nested Sites path | Host is leaf under `Sites/CH/…`; parent groups exist without duplicating membership |
 | Host with `critical` | Also in hostgroup Priority/Critical |
 | Role not listed in §5b SNMP/OOB | Still has Agent via Site Group |

@@ -47,6 +47,7 @@ nbxSync clicks at those stages: checklist §7.1 and §11.1.
 1. Does an existing Template Rule pattern already match? Check with the real platform name (regex `search`).
 2. If not, add or extend a rule in checklist §6 (every matching rule contributes — do not rely on priority to suppress another rule’s different template).
 3. Confirm the template’s **interface requirements** match the transport the host will have.
+4. **ESXi / VMware:** new ESXi-like platforms need CG **ESXi OOB iDRAC** (§5b) + Dell iDRAC (ESXi) Template Rule when manufacturer is Dell. Do **not** re-enable a VMware FQDN platform rule — keep VMware FQDN on role **vCenter** only.
 
 ---
 
@@ -65,7 +66,7 @@ Work top-down:
 1. **Excluded?** Object- or role-level Zabbix tag `do_not_monitor` and plugin `exclude_tag` (see [`onboarding.md`](onboarding.md)).
 2. **Site / Site Group?** Device or VM must resolve into a managed country (site set; cluster VMs need site or cluster site scope). No site → not profiled (checklist §13).
 3. **Effective configuration group?** On the device/VM Zabbix tab (or inherited from role / Site Group). Wrong CG → wrong interfaces.
-4. **Interfaces present?** Agent and/or SNMP as expected; for BMC, is `oob_ip` set?
+4. **Interfaces present?** Agent and/or SNMP as expected; for BMC / ESXi, is `oob_ip` set? ESXi should be SNMP OOB only (no agent).
 5. **Template interface requirements?** Template needing Agent will not link on an SNMP-only host (silent drop) — checklist §7.
 6. **Template Rules?** Platform name vs rule regex; `require_tags` (e.g. `snmp`); enabled flag. Remember all matching rules apply.
 7. **Status mapping?** Planned/offline/etc. may disable or delete the Zabbix host (checklist §12).
