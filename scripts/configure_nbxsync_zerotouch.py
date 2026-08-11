@@ -2,11 +2,11 @@
 """
 nbxSync Zero-Touch Configuration Script
 
-Successor to the previous checklist script (configure_nbxsync.py that implemented
-docs/nbxsync/nbxsync-configuration-checklist.md step-for-step).
+Applies ``docs/netbox-zabbix/configuration.md`` for a first-build speed-run.
+Day-to-day ops use the NetBox GUI/API; see ``docs/netbox-zabbix/README.md``.
 
-Hostgroup-first ops model (chosen scenario): Zabbix navigation and alerting hang
-off ``Sites/*`` × ``Roles/*`` × ``OS/*`` (+ lean ``Priority/Critical`` via tag).
+Hostgroup-first ops model: Zabbix navigation hangs off
+``Sites/*`` × ``Roles/*`` × ``OS/*`` (+ lean ``Priority/Critical`` via tag).
 Transport stays on Configuration Groups (SiteGroup Agent default + role SNMP /
 Server Agent+OOB / SPACE exceptions). Multi-credential SNMPv3 profiles per CG
 (network / Linux / Dell iDRAC / SAP). Tags CAN select transport via CG→Tag

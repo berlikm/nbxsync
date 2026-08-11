@@ -90,7 +90,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 ## Lab proof
 
 Optional first-build scripts and commands: [`../scripts/README.md`](../scripts/README.md).  
-Architecture / nbxSync rows: [`../docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md), [`../docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md).
+NetBox ↔ Zabbix integration: [`../docs/netbox-zabbix/README.md`](../docs/netbox-zabbix/README.md).
 
 ## Out of scope until listed
 

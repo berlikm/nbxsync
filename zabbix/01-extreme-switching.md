@@ -455,7 +455,7 @@ Stock **Extreme EXOS by SNMP** also defines template-level `{$TEMP_WARN}=55` / `
 | `{$OPTIC.RX.DBM.MIN}` | `-100` |
 | `{$MLT.CONTROL}` | `0` |
 
-nbxSync clicks for Switch* CGs / Template Rules / macro *assignments*: [`docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md) (§6, §7.1, §11.1). Architecture: [`docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md).
+nbxSync clicks for Switch* CGs / Template Rules / macro *assignments*: [`docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) (§6, §7.1, §11.1). Map: [`docs/netbox-zabbix/README.md`](../docs/netbox-zabbix/README.md).
 
 **Device role** — port scoping. Set **both** IFALIAS macros on every role:
 

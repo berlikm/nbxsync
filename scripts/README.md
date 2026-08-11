@@ -6,8 +6,9 @@ Policy source of truth:
 
 | Doc | Owns |
 |---|---|
-| [`docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md) | Mental model |
-| [`docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md) | nbxSync rows (GUI checklist) |
+| [`docs/netbox-zabbix/README.md`](../docs/netbox-zabbix/README.md) | Integration map |
+| [`docs/netbox-zabbix/architecture.md`](../docs/netbox-zabbix/architecture.md) | Mental model |
+| [`docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) | nbxSync rows (GUI / API) |
 | [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) | Extreme ports, stages, TEMP_*/optic macros |
 
 If a script and those docs disagree, **the docs win** — fix the script.
