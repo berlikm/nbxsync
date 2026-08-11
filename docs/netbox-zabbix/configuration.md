@@ -55,7 +55,7 @@ Proxy TLS certificates (files on proxy hosts, uploads in the Zabbix Cloud portal
 
 Path: **Zabbix → Proxies → Add**, **Zabbix → Proxy Groups → Add**
 
-**Why:** collectors are a geography decision. Binding proxy (or proxy group) on the country Site Group means every device under that country inherits the collector without per-host proxy rows. JP has no local proxy, so it uses KR; NL and US share the CH proxy group.
+**Why:** collectors are a geography decision. Binding proxy (or proxy group) on the country Site Group means every device under that country inherits the collector without per-host proxy rows. JP has no local proxy, so it uses KR; NL and US share the Swiss proxy group.
 
 Names below must match the proxy objects that already exist in Zabbix Cloud. Proxy↔cloud mTLS is already done on the proxy hosts and in the cloud portal — in NetBox only register the proxies and set **TLS accept = Certificate** on active proxies so a later NetBox→Zabbix proxy sync does not wipe encryption back to “no encryption”.
 
@@ -63,19 +63,19 @@ Names below must match the proxy objects that already exist in Zabbix Cloud. Pro
 
 | Name | Zabbix server | Description |
 |---|---|---|
-| CH Proxy Group | Zabbix Production | CH Stäfa pair (NL and US route through CH) |
+| Swiss proxy group | Zabbix Production | CH Stäfa pair (NL and US route through CH) |
+
+Proxy IDs must match Zabbix. Do **not** store CA/leaf/key PEM material in NetBox or in the onboarding scripts.
 
 ### 2.2 Proxies
 
 | Name | Mode | Proxy group | TLS accept | Local address | Local port |
 |---|---|---|---|---|---|
-| ch-sta-p-zabp01 | Active | CH Proxy Group | Certificate | *(proxy local IP / address required by group)* | 10051 |
-| ch-sta-p-zabp02 | Active | CH Proxy Group | Certificate | *(proxy local IP / address required by group)* | 10051 |
+| ch-sta-p-zabp01 | Active | Swiss proxy group | Certificate | 10.0.104.235 | 10051 |
+| ch-sta-p-zabp02 | Active | Swiss proxy group | Certificate | 10.0.105.235 | 10051 |
 | hu-deb-p-zabp01 | Active | — | Certificate | — | — |
 | kr-sel-p-zabp01 | Active | — | Certificate | — | — |
 | cn-sha-p-zabp01 | Active | — | Certificate | — | — |
-
-Proxy IDs must match Zabbix. Do **not** store CA/leaf/key PEM material in NetBox or in the onboarding scripts.
 
 ### 2.3 Proxy self-monitoring (role = Zabbix Proxy)
 
@@ -111,12 +111,12 @@ Create one assignment per country Site Group. Set a **proxy or a proxy group** �
 
 | Site Group | Proxy | Proxy group | Sync enabled |
 |---|---|---|---|
-| CH | — | CH Proxy Group | Yes |
+| CH | — | Swiss proxy group | Yes |
 | HU | hu-deb-p-zabp01 | — | Yes |
 | JP | kr-sel-p-zabp01 | — | Yes |
 | KR | kr-sel-p-zabp01 | — | Yes |
-| NL | — | CH Proxy Group | Yes |
-| US | — | CH Proxy Group | Yes |
+| NL | — | Swiss proxy group | Yes |
+| US | — | Swiss proxy group | Yes |
 | CN | cn-sha-p-zabp01 | — | Yes |
 
 ---
