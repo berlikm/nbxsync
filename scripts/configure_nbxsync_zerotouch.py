@@ -734,16 +734,10 @@ def step4_configgroups():
     )
     # Legacy VM by SNMP / SNMP by tag → Linux credential profile CG.
     linux_snmp_group = _rename_cg(
-        ['VM by SNMP', 'SNMP by tag'],
-        'SNMP Monitoring (Linux)',
-        'SNMPv3 MONITORING-LINUX SHA/AES — zero-touch via NetBox tag snmp',
+        ['VM by SNMP', 'SNMP by tag', 'SNMP Monitoring (Linux)'],
+        'SNMP Monitoring (by tag)',
+        'SNMPv3 MONITORING-LINUX SHA/AES — zero-touch via NetBox tag snmp (Linux and Windows)',
     )
-
-    # Prune orphaned legacy 'SNMP by tag' CG if it still exists (renamed to SNMP Monitoring (Linux)).
-    orphan_snmp_tag = M.ZabbixConfigurationGroup.objects.filter(name='SNMP by tag').first()
-    if orphan_snmp_tag is not None:
-        orphan_snmp_tag.delete()
-        logger.info("  DELETED orphaned CG 'SNMP by tag' (renamed to 'SNMP Monitoring (Linux)')")
     oob_snmp_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
         name='OOB SNMP Only',
@@ -1623,7 +1617,7 @@ def step7_template_assignments(server):
 
     # Transport-only CGs — prune leftover CG→template links
     # (Linux/Windows by SNMP come from tag compound TemplateRules in step 6).
-    for cg_name_suffix in ('VM by SNMP', 'SNMP by tag', 'SNMP Monitoring (Linux)', 'SAP Agent+SNMP'):
+    for cg_name_suffix in ('VM by SNMP', 'SNMP by tag', 'SNMP Monitoring (by tag)', 'SAP Agent+SNMP'):
         for cg in M.ZabbixConfigurationGroup.objects.filter(name__endswith=cg_name_suffix):
             deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
                 assigned_object_type=ct(M.ZabbixConfigurationGroup),
@@ -2293,14 +2287,11 @@ def run_simulate() -> int:
             'snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring', defaults={'description': 'lab'})[0],
             'agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring', defaults={'description': 'lab'})[0],
             'server_oob': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Server Agent+OOB', defaults={'description': 'lab'})[0],
-            'linux_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (Linux)', defaults={'description': 'lab'})[0],
+            'linux_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (by tag)', defaults={'description': 'lab'})[0],
             'oob_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}OOB SNMP Only', defaults={'description': 'lab'})[0],
             'sap_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SAP Agent+SNMP', defaults={'description': 'lab'})[0],
             'space_agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring (SPACE)', defaults={'description': 'lab'})[0],
         }
-        snmp_group = cg_groups['snmp']
-        agent_group = cg_groups['agent']
-        server_oob_group = cg_groups['server_oob']
         linux_snmp_group = cg_groups['linux_snmp']
         oob_snmp_group = cg_groups['oob_snmp']
         vm_snmp_group = linux_snmp_group  # legacy alias for hygiene asserts

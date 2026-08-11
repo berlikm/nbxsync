@@ -108,7 +108,7 @@ Each group is one **transport + credential** profile. Why these groups exist and
 | Name | Credential / port | Purpose |
 |---|---|---|
 | SNMP Monitoring | `MONITORING` MD5/DES | Extreme / Forti / AP / network roles |
-| SNMP Monitoring (Linux) | `MONITORING-LINUX` SHA/AES | Opt-in Linux/Windows SNMP (tag `snmp`) |
+| SNMP Monitoring (by tag) | `MONITORING-LINUX` SHA/AES | Opt-in Linux/Windows SNMP (tag `snmp`) |
 | SNMP Monitoring (Huawei) | `LogicMonitor` SHA/AES | `HU-DEB-SAN01` (non-fleet SNMPv3) |
 | SAP Agent+SNMP | Agent :10050 + `SAPUSER` (confirm auth/priv) | SAP HANA / SAP ME dual-plane (one CG) |
 | Agent Monitoring | Agent :10050 | Default transport on country Site Groups |
@@ -134,7 +134,7 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 | Profile | CG | Security name | Auth | Priv |
 |---|---|---|---|---|
 | Network | SNMP Monitoring, OOB SNMP Only | MONITORING | MD5 | DES |
-| Linux | SNMP Monitoring (Linux) | MONITORING-LINUX | SHA1* | AES128 |
+| Linux | SNMP Monitoring (by tag) | MONITORING-LINUX | SHA1* | AES128 |
 | Dell iDRAC | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1 | AES128 |
 | Huawei | SNMP Monitoring (Huawei) | LogicMonitor | SHA1* | AES128 |
 | SAP | SAP Agent+SNMP (SNMP side) | SAPUSER | *(confirm)* | *(confirm)* |
@@ -169,7 +169,7 @@ If `oob_ip` is empty, the SNMP interface is skipped; the agent still syncs.
 
 > Non-Dell BMC (iLO/XCC) is not covered by `MONITORING-DELL`. Add a separate CG later if needed.
 
-### 5.4 SNMP Monitoring (Linux)
+### 5.4 SNMP Monitoring (by tag)
 
 Same shape as §5.1 with the **Linux** SNMPv3 profile. Transport-only — no templates on the CG. OS templates come from Template Rules (§6.2) when the host has tag `snmp`.
 
@@ -288,7 +288,7 @@ Overrides Site Group Agent. Credentials are on the CG Host Interface (§5.6b). Z
 
 | Configuration group | Assigned to | Operator action |
 |---|---|---|
-| SNMP Monitoring (Linux) | NetBox tag **`snmp`** | Tag the Device/VM — no per-host CG row |
+| SNMP Monitoring (by tag) | NetBox tag **`snmp`** | Tag the Device/VM — no per-host CG row |
 
 ### Cohesity Appliance role → SNMP Monitoring
 
@@ -366,7 +366,7 @@ Create the matching nbxSync **Template** objects (name → Zabbix template) unde
 
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
 
-Use together with configuration group **SNMP Monitoring (Linux)** (assigned on NetBox tag `snmp`) for the interface.
+Use together with configuration group **SNMP Monitoring (by tag)** (assigned on NetBox tag `snmp`) for the interface.
 
 **Why a tag gate:** only selected hosts should switch from agent OS templates to SNMP OS templates. The tag is an explicit operator choice; the configuration group supplies the SNMP interface (Device or VM).
 
@@ -499,7 +499,7 @@ Zerotouch step 0 creates `critical`, `snmp`, and `onboarding` if missing. `oracl
 | NetBox tag | Effect during sync | Typical scope |
 |---|---|---|
 | `critical` | Hostgroup `Priority/Critical` (§8.4) | Device/VM |
-| `snmp` | Transport → **SNMP Monitoring (Linux)** + Linux/Windows by SNMP templates | Device/VM |
+| `snmp` | Transport → **SNMP Monitoring (by tag)** + Linux/Windows by SNMP templates | Device/VM |
 | `oracle` | Links **Oracle by Zabbix agent 2** (merges with OS template) | Device/VM |
 | `onboarding` | Sync hold — inherits Zabbix exclude via Tag assignment (§9.3). **Remove this NetBox tag to start monitoring.** | Device/VM |
 
@@ -712,7 +712,7 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Linux server (role Server) | Server Agent+OOB | Linux by agent + ICMP Ping (+ Dell iDRAC if Dell and oob IP set) | Agent :10050 + SNMP `MONITORING-DELL` on oob | Sites/CH/…, Roles/Server, OS/Linux |
 | Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) + ICMP Ping when role matches Agent Host ICMP | Agent :10050 | Sites/CH/…, Roles/…, OS/… |
 | SAP HANA / SAP ME | **SAP Agent+SNMP** | Linux by agent + SAP by agent `(stub)` + ICMP Ping | Agent :10050 + SNMP `SAPUSER` | Sites/…, Roles/SAP HANA or SAP ME, OS/Linux |
-| Host with tag `snmp` only | SNMP Monitoring (Linux) via tag | Linux or Windows by SNMP | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
+| Host with tag `snmp` only | SNMP Monitoring (by tag) via tag | Linux or Windows by SNMP | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
 | EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP (+ role IFALIAS macros) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
 | VOSS Switch Core/Access/Hybrid | SNMP Monitoring | Extreme VOSS by SNMP (**not** Network Generic) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
 | Access Point | SNMP Monitoring | Extreme IQ Engine / platform template (**not** Network Generic) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Access Point, OS/Network |
