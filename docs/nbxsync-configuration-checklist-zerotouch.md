@@ -31,7 +31,7 @@ Encode policy once from facts already in NetBox. New inventory inherits it.
 Country Site Group          →  proxy + default Agent :10050 + Sites/… + Roles/… hostgroups
 Device Role                 →  transport exceptions (SNMP / OOB / SPACE) + app templates + Extreme port macros
 Platform name (Template Rule) → OS / Extreme / Forti template + OS/… hostgroup
-NetBox tags                 →  overlays (critical, do_not_monitor) or SNMP opt-in (snmp) or SAP role
+NetBox tags                 →  overlays (critical, do_not_monitor) or SNMP opt-in (snmp) or SAP via role
 ```
 
 | NetBox fact | Where you configure it | Result in Zabbix |
@@ -52,7 +52,7 @@ NetBox tags                 →  overlays (critical, do_not_monitor) or SNMP opt
 
 1. **One configuration group decides transport** (how we reach the host). Hostgroups and templates can stack; transport cannot.
 2. **Different SNMPv3 users need different CGs** — never reuse the network CG for Linux, SAP, or iDRAC.
-3. **Tags may select a CG** (`snmp`, ``). Do **not** put a Host Interface directly on a tag — put the interface on the CG, assign the CG to the tag.
+3. **Tags may select a CG** (`snmp`). SAP uses role-based CG assignment (SAP HANA, SAP ME), not tags. Do **not** put a Host Interface directly on a tag — put the interface on the CG, assign the CG to the tag.
 4. **Country Site Group is the control plane** for proxy, default Agent, Sites/Roles hostgroups, environment tag, and inventory. Assign Agent Monitoring only on **country** Site Groups, not campus mid-levels.
 5. **Hierarchy paths stay after Role/Platform** in plugin inheritance so upgrades do not change who already wins.
 
@@ -280,13 +280,14 @@ Without these assignments, the group’s interfaces are not applied during sync.
 | Server Agent+OOB | Server |
 | OOB SNMP Only | Cohesity |
 | Agent Monitoring (SPACE) | Space Server |
+| SNMP Monitoring (SAP) | SAP HANA |
+| SNMP Monitoring (SAP) | SAP ME |
 
 ### Zero-touch tag opt-ins
 
 | Configuration group | Assigned to | Operator action |
 |---|---|---|
 | SNMP Monitoring (Linux) | NetBox tag **`snmp`** | Tag the Device/VM — no per-host CG row |
-| SNMP Monitoring (SAP) | NetBox tag **``** | Tag SAP hosts that need SNMP (after Robert confirms) |
 
 ### Cohesity VMs with a primary IP
 
@@ -486,7 +487,6 @@ To mark a device: add NetBox tag `critical`. To unmark: remove the tag.
 | `do_not_monitor` | Exclude from monitoring (see §9.3 and plugin settings) |
 | `critical` | Membership in hostgroup Priority/Critical |
 | `snmp` | Zero-touch Linux SNMP: selects **SNMP Monitoring (Linux)** CG + Linux/Windows by SNMP Template Rules |
-| `` | Zero-touch SAP SNMP: selects **SNMP Monitoring (SAP)** CG (after Robert confirms) |
 | `oracle` | Zero-touch Oracle: links **Oracle by Zabbix agent 2** template via tag-gated Template Rule |
 
 ### 9.0a Tagging guide — which devices to tag (from LogicMonitor export)
@@ -591,9 +591,7 @@ Path: **Zabbix → Macros → Add** (definition on Zabbix Server, then Macro Ass
 **Why on the role:** thresholds and Extreme port filters are class-wide policy. Application secrets (VMware, Pure Storage, MSSQL) are role-level secret macros — see §11.4.
 
 ### 11.1 Extreme switch port-scoping (required for EXOS/VOSS)
-**Why on the role:** thresholds and Extreme port filters are class-wide policy. Application secrets (VMware, Pure Storage, MSSQL) are role-level secret macros — see §11.4.
 Stock Extreme LLD evaluates **both** IFALIAS macros — set both on every Switch* role. `{$NET.IF.IFTYPE.MATCHES}` excludes EXOS VLAN pseudo-interfaces. Design detail: `zabbix/01-extreme-switching.md` §A.5 / §A.8.
-
 | Device Role | `{$NET.IF.IFALIAS.MATCHES}` | `{$NET.IF.IFALIAS.NOT_MATCHES}` | `{$NET.IF.IFTYPE.MATCHES}` | Meaning |
 |---|---|---|---|---|
 | Switch Core | `.*` | `^X(-\|$)` | `^(6\|161)$` | All ethernet/LAG ports except `X` exclude |
@@ -614,7 +612,7 @@ Speed Expect uses its own filter namespace (`{$PORTID.LLD.*}`) — do **not** re
 
 | Macro | Destination | Notes |
 |---|---|---|
-| `{$IF.UTIL.MAX}` | `101` | Stock util% off until stage 6; then raise via **context** macros (e.g. `{$IF.UTIL.MAX:"USW"}`). **Overridden on Switch Core/Dist by the role macros in §11.3** |
+| `{$IF.UTIL.MAX}` | `101` | Stock util% off until stage 6; then raise via **context** macros (e.g. `{$IF.UTIL.MAX:"USW"}`) |
 | `{$TEMP_WARN}` | **90** | EXOS G2+ / VOSS chassis — **not** stock 55 |
 | `{$TEMP_CRIT}` | **100** | **Not** stock 65 (fires while Extreme still says Normal) |
 | `{$TEMP_CRIT_LOW}` | `-273` | Silence 0 °C stack/VM false positive |
@@ -668,10 +666,7 @@ Remove the overlay and re-apply **destination** as soon as first-light noise is 
 | `{$MEM.UTIL.CRIT}` | 85 | VDI |
 | `{$MSSQL.DSN}` | nbxsync | MSSQL |
 | `{$VMWARE.URL}` | `https://{{ object.name }}/sdk` | vCenter |
-| `{$IF.UTIL.MAX}` | 80 | Switch Core |
-| `{$IF.UTIL.MAX}` | 90 | Switch Dist |
 
-> **Conflict to resolve before stage 6.** Role macros beat the `101` global in §11.2, so Core/Dist switches get util% alerting immediately instead of “off until stage 6”. Pick one: delete the two `{$IF.UTIL.MAX}` role macros (keep `101`), or accept 80/90 on Core/Dist and drop the “off until stage 6” wording.
 
 ### 11.4 Application secrets (role-level)
 
@@ -717,6 +712,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 |---|---|---|---|---|
 | Linux server (role Server) | Server Agent+OOB | Linux by agent (+ Dell iDRAC if Dell and oob IP set) | Agent :10050 + SNMP `MONITORING-DELL` on oob | Sites/CH/…, Roles/Server, OS/Linux |
 | Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) | Agent :10050 | Sites/CH/…, Roles/…, OS/… |
+| SAP HANA | SNMP Monitoring (SAP) | Linux by agent + SAP by Zabbix agent | SNMP `SAPUSER` | Sites/…, Roles/SAP HANA, OS/Linux |
 | Host with tag `snmp` only | SNMP Monitoring (Linux) via tag | Linux or Windows by SNMP | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
 | EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP (+ role IFALIAS macros) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
 | VOSS Switch Core/Access/Hybrid | SNMP Monitoring | Extreme VOSS by SNMP (**not** Network Generic) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
@@ -877,7 +873,7 @@ Note that **Space Server** therefore has split coverage: the host itself is a no
 **Country Site Group** → default Agent + proxy + Sites/Roles hostgroups.  
 **Role** → transport exceptions + app templates + Extreme port macros.  
 **Platform (Template Rule)** → OS / Extreme / Forti template + `OS/…`.  
-**Tags** → `snmp` / `` opt-in transport, or overlays (`critical`, `do_not_monitor`).
+**Tags** → `snmp` opt-in transport; SAP via role (SAP HANA/SAP ME), or overlays (`critical`, `do_not_monitor`).
 
 Apply via the GUI (this checklist) — same policy with or without helper scripts.
 
