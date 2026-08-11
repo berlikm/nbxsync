@@ -21,7 +21,7 @@ Day-to-day changes are done in the **GUI or API**. Scripts are an optional onboa
 |---|---|
 | **NetBox** | Inventory truth — site, role, platform, manufacturer, tags, primary IP / `oob_ip` |
 | **nbxSync** | Policy bus — inheritance, configuration groups, Template Rules, hostgroups, macros |
-| **Zabbix** | Telemetry engine — collects, alerts, dashboards |
+| **Zabbix** | Receives hosts, interfaces, templates, hostgroups, macros from sync |
 
 Operators encode policy once on NetBox objects. Sync pushes the effective result to Zabbix.
 
@@ -75,8 +75,8 @@ Which CG/template/interface a given host class should end up with: checklist §1
 
 ---
 
-## What stays outside NetBox / nbxSync
+## What stays outside this integration
 
-Some monitoring has no inventory object to hang on (or is deliberately Zabbix-native): website checks, account-level APIs, media/actions/escalation, and similar. Details and open items: checklist §17 and [`../zabbix/logicmonitor-assessment.md`](../zabbix/logicmonitor-assessment.md).
+Things with no NetBox object to hang on (website checks, account-level APIs, …) and all **monitoring-domain** work (signals, thresholds, alerting) are out of scope here. See checklist §17 and the packs under [`../zabbix/`](../zabbix/README.md).
 
-Domain packs under `zabbix/` own **what** we measure on a technology. This page and the nbxSync checklist own **how** a NetBox object becomes a Zabbix host.
+This page and the nbxSync checklist own **how** a NetBox object becomes a Zabbix host — not how Zabbix alerts on it.

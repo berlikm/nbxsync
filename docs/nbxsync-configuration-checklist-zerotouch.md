@@ -18,7 +18,7 @@ First-build scripts only: [`scripts/README.md`](../scripts/README.md) (Appendix 
 | LM parity gaps | §17 |
 | Bulk first build | [scripts/README.md](../scripts/README.md) |
 
-Placeholders in tables are *(italic)*. Operate in the **GUI or API** after the first build.
+*(Italic)* = fill in for your environment. Rows marked **placeholder** are intentional stubs — assign them now, refine template content closer to production. Operate in the **GUI or API** after the first build.
 
 ### GUI map
 
@@ -186,7 +186,7 @@ Network SNMPv3 profile, Use OOB IP = **Yes**. Cohesity physical nodes.
 
 ### 5.6 SNMP Monitoring (SAP)
 
-SAP SNMPv3 profile. Transport-only until Robert confirms auth/priv and whether SAP hosts use SNMP at all (many are agent + DNUS scripts only).
+SAP SNMPv3 profile (`SAPUSER` — confirm auth/priv before production). Transport-only; application templates are separate (§7).
 
 ### 5.7 Agent Monitoring (SPACE)
 
@@ -330,7 +330,7 @@ Use together with configuration group **SNMP Monitoring (Linux)** (assigned on N
 
 ### 6.3 Manufacturer ∧ role rules
 
-**Do not** assign Dell iDRAC on Manufacturer Dell — merge is additive and would attach iDRAC to Dell storage and other SNMP Dell hosts. Scope it here instead. Transport stays **Server Agent+OOB** (`oob_ip`); empty `oob_ip` skips the OOB SNMP interface only. OEM model templates stay on Device type (they add; they do not remove iDRAC).
+Scoped here so Manufacturer Dell does not put iDRAC on every Dell device. Server BMC transport stays **Server Agent+OOB** (`oob_ip`). Storage HTTP/SNMP templates may be placeholders until the final Zabbix content is ready — the assignment still stands.
 
 | Name | Pattern | Role pattern | Manufacturer | Template | Hostgroup | Require tags | Priority | Enabled |
 |---|---|---|---|---|---|---|---|---|
@@ -401,7 +401,7 @@ This is the configured Sites value. `get_ancestors(include_self=True)` walks the
 | Site under campus CH-STA (parent CH) | `Sites/CH/CH-STA/CH-STA-L42` | `Sites`, `Sites/CH`, `Sites/CH-STA` |
 | Site directly under country CH | `Sites/CH/<site>` | `Sites`, `Sites/CH` |
 
-Hosts stay members of the **leaf** only. Country dashboards and location filters use parent `Sites/CH` (nested children included) — do not also put hosts in a flat country group. Monitoring access in Zabbix is **global** (flat organisation); nested Sites are for location views, not regional RBAC. A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
+Hosts stay members of the **leaf** only. Parent groups such as `Sites/CH` exist for nested membership; do not also put hosts in a flat country group. A preview error when viewing the assignment on a Site Group is cosmetic and does not affect sync.
 
 ### 8.2 Roles
 
@@ -417,7 +417,7 @@ Created in §6. Membership is applied by Template Rules when the platform matche
 
 ### 8.4 Priority / Critical
 
-**Why a tag → hostgroup:** criticality is an orthogonal overlay. Operators mark individual devices with NetBox tag `critical`; the single hostgroup assignment turns that into Zabbix membership for 24/7 escalation without maintaining per-device hostgroup rows.
+**Why a tag → hostgroup:** criticality is an orthogonal overlay. Tag a device `critical` in NetBox; sync puts it in the Zabbix hostgroup `Priority/Critical` — no per-device hostgroup rows.
 
 | Name | Value | Assign to |
 |---|---|---|
@@ -432,7 +432,7 @@ To mark a device: add NetBox tag `critical`. To unmark: remove the tag.
 There are **two different tag systems** that work together but must not be confused:
 
 1. **NetBox tags** — applied to devices/VMs/roles in NetBox. These are the *trigger*: when sync runs, nbxsync reads them and decides what to do.
-2. **Zabbix tags** — applied to Zabbix hosts during sync, derived from Jinja templates (§9.1, §9.2) or from the NetBox tags above. These end up on the Zabbix host for filtering in dashboards, actions, and problem views.
+2. **Zabbix tags** — written on the Zabbix host during sync from Jinja (§9.1, §9.2) or derived from the NetBox tags above.
 
 **§9.0–9.0a and §9.3 are about NetBox tags** (what you apply in NetBox to control monitoring behaviour).
 **§9.1–9.2 are about Zabbix tags** (what nbxsync writes to Zabbix hosts automatically — you do not touch these).
@@ -444,7 +444,7 @@ These NetBox tags control monitoring behaviour. Apply them in NetBox → Device/
 | NetBox tag | What it does when a device/VM has it | Apply where |
 |---|---|---|
 | `do_not_monitor` | Host is **completely skipped** during sync. Existing Zabbix host is deleted. See §9.3 for details. | Per device/VM or per Device Role (Messpc, Sd Wan Socket, VDI) |
-| `critical` | Adds the host to Zabbix hostgroup `Priority/Critical` (for 24/7 alert escalation). | Per device/VM |
+| `critical` | Adds the host to Zabbix hostgroup `Priority/Critical`. | Per device/VM |
 | `snmp` | Switches transport from Agent to **SNMP Monitoring (Linux)** CG (MONITORING-LINUX SHA/AES) and links Linux/Windows by SNMP templates instead of agent templates. | Per device/VM — for Linux hosts that should be SNMP-polled instead of agent-polled |
 | `oracle` | Links **Oracle by Zabbix agent 2** template (merges with OS template from platform rule). | Per device/VM — `ch-sta-p-disc04` confirmed; check for others |
 
@@ -459,7 +459,7 @@ Below maps the LM account export to the NetBox tags or roles this checklist uses
 | LM used `MONITORING-LINUX` SHA/AES (Linux servers group + resource overrides) | `ch-sta-p-disc04`, `ch-sta-p-lega01`, `ch-sta-p-dell04`, `CH-STA-P-ESD01`, `ch-sta-p-vmli01/02/03/09/13`, `hu-deb-p-dock01`, `nl-ens-d-serv01`, `CH-STA-P-M300` | Add NetBox tag `snmp` | SNMP Monitoring (Linux) CG + Linux by SNMP template |
 | LM used `SAPUSER` (SAP Systems group) | `ch-sta-d-sh01`, `ch-sta-p-sh01`, `ch-sta-q-sh01`, `ch-sta-p-me05/06/07/08` | **Nothing** — netbox-sync maps `-SH\d+` to `SAP HANA` role and `-ME\d+` to `SAP ME` role automatically | SNMP Monitoring (SAP) CG + SAP by Zabbix agent template |
 | LM used JDBC `C##logicmonitor` (Oracle) | `ch-sta-p-disc04` (confirmed); check with DB team for others | Add NetBox tag `oracle` | Oracle by Zabbix agent 2 template |
-| LM 24×7 escalation list | Per operational priority | Add NetBox tag `critical` | Priority/Critical hostgroup membership |
+| Marked critical in LM / ops priority list | Per operational priority | Add NetBox tag `critical` | Priority/Critical hostgroup membership |
 | LM monitoring disabled / excluded by policy | VDI (22 VMs), Messpc (1421), Sd Wan Socket (21) | Automated by Device Role in §9.3; per-device by tag `do_not_monitor` | Host excluded from Zabbix entirely |
 
 **How to tag:** In NetBox, open the Device or VM → Tags → Add tag. Re-sync the host. The tag takes effect on the next sync cycle.
@@ -488,7 +488,7 @@ Below maps the LM account export to the NetBox tags or roles this checklist uses
 
 Renders against the device or VM at sync. Preview on a Site Group may show an error — cosmetic.
 
-**Failure mode:** names that do not match the `-p-` / `-d-` / … conventions resolve to **`Unknown` with no alert**. That is silent. **Extreme switches** (`CH-STA-…-CORE01`, `…-MGMT01`, `…-ACCE01`, …) normally have no `-p-` token — `environment=Unknown` on them is expected, not a sync bug. If alert routing needs a value later, extend the Jinja (e.g. treat `Switch*` roles as Production) rather than renaming the fleet.
+**Failure mode:** names that do not match the `-p-` / `-d-` / … conventions resolve to **`Unknown`**. That is silent. **Extreme switches** (`CH-STA-…-CORE01`, `…-MGMT01`, `…-ACCE01`, …) normally have no `-p-` token — `environment=Unknown` on them is expected, not a sync bug. Extend the Jinja later if needed (e.g. treat `Switch*` roles as Production) rather than renaming the fleet.
 
 ### 9.2 Zabbix host tags — Cluster (auto-generated, Jinja on Clusters)
 
@@ -640,21 +640,17 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 
 ---
 
-## 14. After configuration (Zabbix side)
+## 14. Out of scope for this checklist
 
-These hang off the hostgroups and tags above; they are configured in Zabbix, not in nbxsync:
+This document stops at **NetBox → nbxSync → Zabbix host wiring** (interfaces, templates, hostgroups, macros, sync).
 
-1. Alert actions / escalations using `Priority/Critical`, `Roles/*`, and `Sites/*`
-2. User group permissions — **global** across the estate (flat organisation); nested `Sites/CH` remains available for location-scoped views if ever needed, but we are not splitting access by continent/region
-3. Dashboards filtered on parent groups (`Sites/CH`, `Roles/Switch Core`, `OS/Linux`, …) — nested site groups are included by the UI
-4. Extra proxies in CH Proxy Group if you need high availability
-5. Maintenance windows and trigger dependencies as needed
+Alerting, escalations, media, dashboards, trigger tuning, and per-technology signal design belong in the monitoring domain docs under [`zabbix/`](../zabbix/README.md) — not here.
 
 ---
 
 ## 15. Day-2 operations (after go-live)
 
-Initial build is §§1–14. After that, operators mostly do the following.
+Initial build is §§1–13 (+ plugin settings §12). After that, operators mostly do the following.
 
 ### 15.1 New Device Role appeared
 
@@ -721,8 +717,8 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Sample VOSS switch | SNMP Monitoring; **Extreme VOSS by SNMP** (imported YAML); same role IFALIAS as EXOS peer role; no Network Generic; single `icmpping` |
 | Sample Switch Hybrid (pre–stage 5) | Same platform template as peer EXOS/VOSS; IFALIAS macros still Access-like (`USW\|…` opt-in), not Core `.*` |
 | Sample Windows VM | Agent; Windows by agent; OS/Windows; leaf under `Sites/CH/…` |
-| Country dashboard / ACL | Filter on parent `Sites/CH` for location views; hosts are leaf members only. Org access is global — no regional permission split |
-| Host with `critical` | Also in Priority/Critical |
+| Nested Sites path | Host is leaf under `Sites/CH/…`; parent groups exist without duplicating membership |
+| Host with `critical` | Also in hostgroup Priority/Critical |
 | Role not listed in §5b SNMP/OOB | Still has Agent via Site Group |
 | VM without site | No useful profile until site/scope is set |
 
@@ -759,12 +755,11 @@ Note that **Space Server** therefore has split coverage: the host itself is a no
 
 ### 17.3 Also not covered here
 
-| Area | Owner |
+| Area | Where it lives |
 |---|---|
-| Media types, actions, escalation (cutover blocker #6) | Zabbix side — §14 |
-| Monitor-the-monitoring: unsupported items, proxy last-seen (cutover blocker #7) | Zabbix side — not yet designed |
-| SAP custom datasources / DNUS scripts | Robert, post-cutover |
-| Configuration backup | cfgit, not Zabbix |
+| Alerting, media, dashboards, trigger design | Monitoring domain — [`zabbix/`](../zabbix/README.md) (§14) |
+| SAP application content / DNUS scripts | Placeholder assignment in §7; content owned outside this integration |
+| Configuration backup | cfgit — not Zabbix / not nbxSync |
 
 ---
 
