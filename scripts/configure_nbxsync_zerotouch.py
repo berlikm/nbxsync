@@ -18,12 +18,12 @@ Deltas vs the old checklist script:
   Δ5b  Pure Storage stays on SiteGroup Agent + HTTP template (ANY) — not SNMP CG
   Δ5b  Storage removed from SNMP CG (Cohesity → OOB SNMP Only)
   Δ5b  Server BMC = "Server Agent+OOB" with MONITORING-DELL SHA/AES on OOB SNMP
-  Δ5b  ESXi = CG "ESXi OOB iDRAC" (MONITORING-DELL @ oob_ip) on ESXi platforms;
+  Δ5b  ESXi = CG "ESXi OOB iDRAC" (SNMPv2c public @ oob_ip) on ESXi Hypervisor role;
        VMware FQDN only on role vCenter (disable legacy platform rule "VMware ESXi")
   Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,DELL,SAP}
   Δ5   "SNMP Monitoring (Linux)" CG on NetBox tag snmp (was SNMP by tag / VM by SNMP)
   Δ5   "Agent Monitoring (SPACE)" port 10060 on Space Server role
-  Δ5   "SNMP Monitoring (SAP)" CG on SAP HANA / SAP ME roles (provisional; confirm auth with Robert)
+  Δ5   "SAP Agent+SNMP" CG (dual-plane: Agent + SAPUSER) on SAP HANA / SAP ME roles
   Δ6   Platform TemplateRules attach OS/* hostgroups only — no os_family Zabbix tags
   Δ6b  snmp NetBox tag + compound TemplateRules → Linux by SNMP / Windows by SNMP
        (OS templates; transport from SNMP Monitoring (Linux) CG on the same tag)
@@ -546,7 +546,7 @@ def step0_cleanup(*, mutate_netbox: bool):
     )
     logger.info("  Tag 'do_not_monitor': %s (id=%s)", 'CREATED' if created else 'EXISTS', tag.id)
 
-    # Overlays / opt-ins: critical → Priority HG; snmp → Linux SNMP CG+templates; snmp-sap → SAP SNMP CG.
+    # Overlays / opt-ins: critical → Priority HG; snmp → Linux SNMP CG+templates; SAP uses role-based SAP Agent+SNMP CG.
     for name, desc in [
         ('critical', 'Priority/Critical hostgroup membership (24/7 escalation)'),
         ('snmp', 'Zero-touch Linux SNMP: selects SNMP Monitoring (Linux) CG + Linux/Windows by SNMP TemplateRules'),
@@ -772,15 +772,15 @@ def step4_configgroups():
         name='ESXi OOB iDRAC',
         defaults={
             'description': (
-                'ESXi hypervisor: SNMP MONITORING-DELL @ oob_ip only — no agent, no VMware SDK. '
+                'ESXi hypervisor: SNMPv2c community public @ oob_ip only — no agent, no VMware SDK. '
                 'Hypervisor/VM metrics come from vCenter (VMware FQDN).'
             ),
         },
     )
-    sap_snmp_group, _ = get_or_create(
-        M.ZabbixConfigurationGroup,
-        name='SAP Agent+SNMP',
-        defaults={'description': 'SAP: Agent :10050 + SNMPv3 SAPUSER — dual-plane transport (one CG, both interfaces)'},
+    sap_snmp_group = _rename_cg(
+        ['SNMP Monitoring (SAP)'],
+        'SAP Agent+SNMP',
+        'SAP: Agent :10050 + SNMPv3 SAPUSER — dual-plane transport (one CG, both interfaces)',
     )
     space_agent_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
@@ -905,12 +905,26 @@ def step5_host_interfaces(server, groups: dict):
             'snmpv3_security_name': 'LogicMonitor',
             'snmpv3_authentication_protocol': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1,
             'snmpv3_privacy_protocol': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
-            'snmpv3_authentication_passphrase': _env_first(('NBX_SNMP_AUTHPASS_HUAWEI',)),
-            'snmpv3_privacy_passphrase': _env_first(('NBX_SNMP_PRIVPASS_HUAWEI',)),
             'snmp_pushcommunity': True,
         },
     )
     # 5.7 SPACE agent — 10060
+    # Only set passphrases when env is non-empty (don't blank on re-run).
+    _huawei_auth = _env_first(('NBX_SNMP_AUTHPASS_HUAWEI',))
+    _huawei_priv = _env_first(('NBX_SNMP_PRIVPASS_HUAWEI',))
+    if _huawei_auth or _huawei_priv:
+        hi = M.ZabbixHostInterface.objects.filter(
+            zabbixserver=server,
+            zabbixconfigurationgroup=huawei,
+        ).first()
+        if hi:
+            if _huawei_auth:
+                hi.snmpv3_authentication_passphrase = _huawei_auth
+            if _huawei_priv:
+                hi.snmpv3_privacy_passphrase = _huawei_priv
+            hi.save(update_fields=['snmpv3_authentication_passphrase', 'snmpv3_privacy_passphrase'])
+    else:
+        logger.warning('  NBX_SNMP_AUTHPASS_HUAWEI / NBX_SNMP_PRIVPASS_HUAWEI not set — Huawei authPriv will fail')
     agent_if(groups['space_agent'], port=10060)
 
     # HostInterface must not hang on tags (interface shape lives on the CG).
@@ -1019,26 +1033,21 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     # Prune stale Agent Monitoring CG assignments from SAP roles (now in SAP Agent+SNMP CG).
     for role_name in ('SAP HANA', 'SAP ME'):
-        role = get_role(role_name)
-        if role:
-            stale_agent = M.ZabbixConfigurationGroupAssignment.objects.filter(
-                zabbixconfigurationgroup=agent_group,
-                assigned_object_type=ct(DeviceRole),
-                assigned_object_id=role.id,
-            ).delete()
-            if stale_agent[0]:
-                logger.info('  PRUNED: Agent Monitoring from %s (now in SAP Agent+SNMP CG)', role_name)
-    # Rename old CG if it exists
-    old_sap_cg = M.ZabbixConfigurationGroup.objects.filter(name='SNMP Monitoring (SAP)').first()
-    if old_sap_cg:
-        old_sap_cg.name = 'SAP Agent+SNMP'
-        old_sap_cg.description = 'SAP: Agent :10050 + SNMPv3 SAPUSER — dual-plane transport (one CG, both interfaces)'
-        old_sap_cg.save(update_fields=['name', 'description'])
-        logger.info('  RENAMED: SNMP Monitoring (SAP) → SAP Agent+SNMP')
+        try:
+            role = get_role(role_name)
+        except DeviceRole.DoesNotExist:
+            continue
+        stale_agent, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
+            zabbixconfigurationgroup=agent_group,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=role.id,
+        ).delete()
+        if stale_agent:
+            logger.info('  PRUNED: Agent Monitoring from %s (now in SAP Agent+SNMP CG)', role_name)
 
     # Tag inheritance is collected before role/site — snmp beats Agent default.
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
-    logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server / ESXi (§6); OOB creds = MONITORING-DELL')
+    logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); ESXi iDRAC = SNMPv2c public; Server OOB creds = MONITORING-DELL')
 
     # ESXi OOB iDRAC CG is now assigned on the ESXi Hypervisor role (line 960),
     # not on the platform. Prune stale platform-level assignments.
@@ -2033,7 +2042,7 @@ def run_verify(*, limit: int | None = None) -> int:
     snmp_ish_cgs = {
         'SNMP Monitoring',
         'SNMP Monitoring (Linux)',
-        'SNMP Monitoring (SAP)',
+        'SAP Agent+SNMP',
         'OOB SNMP Only',
         'Server Agent+OOB',
         'SNMP by tag',
@@ -2262,7 +2271,7 @@ def run_simulate() -> int:
             'linux_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (Linux)', defaults={'description': 'lab'})[0],
             'oob_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}OOB SNMP Only', defaults={'description': 'lab'})[0],
             'esxi_oob': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}ESXi OOB iDRAC', defaults={'description': 'lab'})[0],
-            'sap_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (SAP)', defaults={'description': 'lab'})[0],
+            'sap_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SAP Agent+SNMP', defaults={'description': 'lab'})[0],
             'space_agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring (SPACE)', defaults={'description': 'lab'})[0],
         }
         snmp_group = cg_groups['snmp']
