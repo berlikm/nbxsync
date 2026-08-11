@@ -149,16 +149,18 @@ TPL_NAMES = {
     'dell_idrac_snmp': 'Dell iDRAC by SNMP',
     'mssql_odbc': 'MSSQL by ODBC',
     'mssql_agent2': 'MSSQL by Zabbix agent 2',
-    'pure_storage_http': 'Pure Storage FlashArray v1 by HTTP',
+    'pure_storage_http': 'Pure Storage FlashArray v2 by HTTP',
     'gitlab_http': 'GitLab by HTTP',
     # Created in Zabbix: clone of Network Generic without snmptrap.fallback
     # and zabbix[host,snmp,available] to avoid collision with Dell iDRAC
     # on Dell storage/Cohesity devices.
     'storage_generic_snmp': 'Storage Generic Device by SNMP',
-    # Placeholder storage templates — manufacturer-scoped (like Pure Storage).
-    'dell_storage_http': 'Dell Storage by HTTP',
-    'huawei_storage_snmp': 'Huawei Storage by SNMP',
-    'synology_storage_snmp': 'Synology NAS by SNMP',
+    # Production storage templates (manufacturer-scoped TemplateRules in §6.3).
+    # Names must match Zabbix Cloud exactly (see hosts STOD*/snas*/san*).
+    'hpe_msa_http': 'HPE MSA 2060 Storage by HTTP',
+    'dell_storage_http': 'Dell Storage by HTTP',  # optional — not all estates import it
+    'huawei_storage_snmp': 'Huawei OceanStor Dorado by SNMP',
+    'synology_storage_snmp': 'Synology DiskStation SNMPv3',
     # Placeholder application templates — LM parity, items built post-cutover.
     'as_java_agent': 'AS Java by Zabbix agent',
     'tableau_bridge_agent': 'Tableau Bridge by Zabbix agent',
@@ -350,18 +352,55 @@ def prune_shadow_macros() -> int:
     return deleted
 
 
+# Templates that may be missing in lab / early cutover — resolve soft.
+OPTIONAL_TPL_KEYS = frozenset({
+    'icmp_ping',
+    'extreme_voss_snmp',
+    'extreme_iq_engine_snmp',
+    'dell_storage_http',
+})
+
+# Alternate Zabbix names tried in order when the primary TPL_NAMES entry is absent.
+TPL_NAME_ALIASES: dict[str, tuple[str, ...]] = {
+    'pure_storage_http': (
+        'Pure Storage FlashArray v2 by HTTP',
+        'Pure Storage FlashArray v1 by HTTP',
+    ),
+    'huawei_storage_snmp': (
+        'Huawei OceanStor Dorado by SNMP',
+        'Huawei Storage by SNMP',
+    ),
+    'synology_storage_snmp': (
+        'Synology DiskStation SNMPv3',
+        'Synology NAS by SNMP',
+    ),
+}
+
+
 def resolve_templates(server, *, names: dict[str, str] | None = None, required: bool = True) -> dict[str, tuple[int, str]]:
-    """Resolve template keys to (templateid, name) via Zabbix API name lookup."""
+    """Resolve template keys to (templateid, name) via Zabbix API name lookup.
+
+    ``names`` values are preferred display names. ``TPL_NAME_ALIASES`` supplies
+    fallbacks (e.g. Pure v2 → v1) when the preferred name is not imported yet.
+    """
     names = names or TPL_NAMES
     resolved: dict[str, tuple[int, str]] = {}
     missing: list[str] = []
     with ZabbixConnection(server) as api:
         for key, name in names.items():
-            found = api.template.get(filter={'name': name}, output=['templateid', 'name']) or []
-            if not found:
+            candidates = (name,) + tuple(a for a in TPL_NAME_ALIASES.get(key, ()) if a != name)
+            found_row = None
+            for candidate in candidates:
+                found = api.template.get(filter={'name': candidate}, output=['templateid', 'name']) or []
+                if found:
+                    found_row = found[0]
+                    if candidate != name:
+                        logger.info('  Template %s: using alias %r (preferred %r missing)', key, candidate, name)
+                    break
+            if not found_row:
                 missing.append(name)
                 continue
-            resolved[key] = (int(found[0]['templateid']), found[0]['name'])
+            resolved[key] = (int(found_row['templateid']), found_row['name'])
     if missing and required:
         raise SystemExit('Zabbix template(s) not found by name (fix names or import templates): ' + ', '.join(missing))
     if missing:
@@ -807,6 +846,28 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         )
         logger.info('  %s → NetBox tag %s (zero-touch opt-in)', group.name, slug)
 
+    def assign_manufacturer(group, *names: str):
+        """Assign CG to the first matching Manufacturer (inheritance beats Site Group Agent)."""
+        mfr = None
+        for name in names:
+            mfr = (
+                Manufacturer.objects.filter(name__iexact=name).first()
+                or Manufacturer.objects.filter(slug__iexact=name.lower().replace(' ', '-')).first()
+            )
+            if mfr is not None:
+                break
+        if mfr is None:
+            logger.warning('  Manufacturer not found (%s) — skip CG %s', '/'.join(names), group.name)
+            return
+        get_or_create(
+            M.ZabbixConfigurationGroupAssignment,
+            zabbixconfigurationgroup=group,
+            assigned_object_type=ct(Manufacturer),
+            assigned_object_id=mfr.id,
+            defaults={},
+        )
+        logger.info('  %s → Manufacturer %s (SNMP storage; beats Site Group Agent)', group.name, mfr.name)
+
     for role_name in SNMP_ROLES:
         assign_role(snmp_group, role_name)
     for role_name in SERVER_BMC_ROLES:
@@ -826,6 +887,13 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     # Tag inheritance is collected before role/site — snmp beats Agent default.
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
     logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); OOB creds = MONITORING-DELL on Server Agent+OOB')
+
+    # SNMP storage manufacturers — Site Group Agent would leave them without SNMP.
+    # Manufacturer CG wins first in inheritance → SNMP Monitoring (network MONITORING).
+    # Pure / HPE stay on Agent default (HTTP templates). Huawei with non-fleet SNMPv3
+    # (e.g. LogicMonitor user) keeps a per-device HostInterface override.
+    assign_manufacturer(snmp_group, 'Synology')
+    assign_manufacturer(snmp_group, 'Huawei')
 
     # §5.5b Cohesity VMs with primary_ip4 → SNMP Monitoring (not OOB SNMP Only,
     # which is for physical nodes with only oob_ip — VMs have no oob_ip).
@@ -1010,9 +1078,8 @@ def step6_template_rules(server, country_slugs=None):
     else:
         logger.warning("  Manufacturer 'Dell' not found, skipping Dell iDRAC TemplateRule")
 
-    # Pure Storage: Manufacturer → Pure Storage FlashArray v1 by HTTP.
-    # Pure arrays have role=Storage (not Pure Storage), so the role-level assignment
-    # on role 'Pure Storage' does not cover them. Use a manufacturer-scoped rule.
+    # Pure Storage: Manufacturer → FlashArray by HTTP (v2 preferred; v1 alias).
+    # Arrays use role=Storage; stay on Site Group Agent (HTTP / ANY). Not SNMP CG.
     pure = Manufacturer.objects.filter(name='Pure Storage').first() or Manufacturer.objects.filter(slug__iexact='pure-storage').first()
     tpl_pure = make_template(*TPL['pure_storage_http'], req=[HostInterfaceRequirementChoices.ANY])
     if pure is not None:
@@ -1032,48 +1099,96 @@ def step6_template_rules(server, country_slugs=None):
     else:
         logger.warning("  Manufacturer 'Pure Storage' not found, skipping Pure Storage TemplateRule")
 
-    # Dell Storage: Manufacturer → Dell Storage by HTTP (placeholder).
+    # HPE MSA: Manufacturer → HPE MSA 2060 Storage by HTTP (CN-SHA-P-STOD*).
+    hpe = (
+        Manufacturer.objects.filter(name__iexact='HPE').first()
+        or Manufacturer.objects.filter(name__iexact='Hewlett Packard Enterprise').first()
+        or Manufacturer.objects.filter(slug__iexact='hpe').first()
+        or Manufacturer.objects.filter(slug__iexact='hewlett-packard-enterprise').first()
+    )
+    if 'hpe_msa_http' in TPL:
+        tpl_hpe = make_template(*TPL['hpe_msa_http'], req=[HostInterfaceRequirementChoices.ANY])
+        if hpe is not None:
+            defaults = {
+                'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
+                'manufacturer': hpe, 'zabbixtemplate': tpl_hpe,
+                'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
+            }
+            ensure(M.ZabbixTemplateRule, name='HPE MSA (HTTP)', defaults=defaults, update_fields=list(defaults.keys()))
+            logger.info('  Rule HPE MSA (HTTP) → %s', tpl_hpe.name)
+        else:
+            logger.warning("  Manufacturer 'HPE' / 'Hewlett Packard Enterprise' not found, skipping HPE MSA TemplateRule")
+    else:
+        logger.warning('  Template HPE MSA 2060 Storage by HTTP not resolved — skip TemplateRule')
+
+    # Dell Storage: Manufacturer → Dell Storage by HTTP (optional template).
     # Scoped to role=Storage so Dell servers (role=Server, iDRAC rule) are unaffected.
     dell_mfr = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug__iexact='dell').first()
-    tpl_dell_storage = make_template(*TPL['dell_storage_http'], req=[HostInterfaceRequirementChoices.ANY])
-    if dell_mfr is not None:
-        defaults = {
-            'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
-            'manufacturer': dell_mfr, 'zabbixtemplate': tpl_dell_storage,
-            'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
-        }
-        ensure(M.ZabbixTemplateRule, name='Dell Storage (HTTP)', defaults=defaults, update_fields=list(defaults.keys()))
-        logger.info('  Rule Dell Storage (HTTP) → %s', tpl_dell_storage.name)
+    if 'dell_storage_http' in TPL:
+        tpl_dell_storage = make_template(*TPL['dell_storage_http'], req=[HostInterfaceRequirementChoices.ANY])
+        if dell_mfr is not None:
+            defaults = {
+                'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
+                'manufacturer': dell_mfr, 'zabbixtemplate': tpl_dell_storage,
+                'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
+            }
+            ensure(M.ZabbixTemplateRule, name='Dell Storage (HTTP)', defaults=defaults, update_fields=list(defaults.keys()))
+            logger.info('  Rule Dell Storage (HTTP) → %s', tpl_dell_storage.name)
+        else:
+            logger.warning("  Manufacturer 'Dell' not found, skipping Dell Storage TemplateRule")
     else:
-        logger.warning("  Manufacturer 'Dell' not found, skipping Dell Storage TemplateRule")
+        logger.warning('  Template Dell Storage by HTTP not resolved — skip TemplateRule')
 
-    # Huawei Storage: Manufacturer → Huawei Storage by SNMP (placeholder).
+    # Huawei OceanStor Dorado by SNMP (hu-deb-san01). Transport: SNMP CG on Manufacturer.
     huawei = Manufacturer.objects.filter(name='Huawei').first() or Manufacturer.objects.filter(slug__iexact='huawei').first()
-    tpl_huawei = make_template(*TPL['huawei_storage_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    if huawei is not None:
-        defaults = {
-            'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
-            'manufacturer': huawei, 'zabbixtemplate': tpl_huawei,
-            'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
-        }
-        ensure(M.ZabbixTemplateRule, name='Huawei Storage (SNMP)', defaults=defaults, update_fields=list(defaults.keys()))
-        logger.info('  Rule Huawei Storage (SNMP) → %s', tpl_huawei.name)
+    if 'huawei_storage_snmp' in TPL:
+        tpl_huawei = make_template(*TPL['huawei_storage_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+        if huawei is not None:
+            defaults = {
+                'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
+                'manufacturer': huawei, 'zabbixtemplate': tpl_huawei,
+                'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
+            }
+            ensure(M.ZabbixTemplateRule, name='Huawei OceanStor (SNMP)', defaults=defaults, update_fields=list(defaults.keys()))
+            logger.info('  Rule Huawei OceanStor (SNMP) → %s', tpl_huawei.name)
+            # ICMP alongside SNMP (production hosts link ICMP Ping + storage template).
+            if 'icmp_ping' in TPL:
+                tpl_icmp = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
+                defaults_icmp = {
+                    'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
+                    'manufacturer': huawei, 'zabbixtemplate': tpl_icmp,
+                    'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 85,
+                }
+                ensure(M.ZabbixTemplateRule, name='Huawei Storage ICMP', defaults=defaults_icmp, update_fields=list(defaults_icmp.keys()))
+        else:
+            logger.warning("  Manufacturer 'Huawei' not found, skipping Huawei TemplateRule")
     else:
-        logger.warning("  Manufacturer 'Huawei' not found, skipping Huawei Storage TemplateRule")
+        logger.warning('  Template Huawei OceanStor Dorado by SNMP not resolved — skip TemplateRule')
 
-    # Synology NAS: Manufacturer → Synology NAS by SNMP (placeholder).
+    # Synology DiskStation SNMPv3 (hu-deb-p-snas01). Transport: SNMP CG on Manufacturer.
     synology = Manufacturer.objects.filter(name='Synology').first() or Manufacturer.objects.filter(slug__iexact='synology').first()
-    tpl_synology = make_template(*TPL['synology_storage_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    if synology is not None:
-        defaults = {
-            'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
-            'manufacturer': synology, 'zabbixtemplate': tpl_synology,
-            'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
-        }
-        ensure(M.ZabbixTemplateRule, name='Synology NAS (SNMP)', defaults=defaults, update_fields=list(defaults.keys()))
-        logger.info('  Rule Synology NAS (SNMP) → %s', tpl_synology.name)
+    if 'synology_storage_snmp' in TPL:
+        tpl_synology = make_template(*TPL['synology_storage_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+        if synology is not None:
+            defaults = {
+                'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
+                'manufacturer': synology, 'zabbixtemplate': tpl_synology,
+                'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
+            }
+            ensure(M.ZabbixTemplateRule, name='Synology DiskStation (SNMP)', defaults=defaults, update_fields=list(defaults.keys()))
+            logger.info('  Rule Synology DiskStation (SNMP) → %s', tpl_synology.name)
+            if 'icmp_ping' in TPL:
+                tpl_icmp = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
+                defaults_icmp = {
+                    'pattern': '.*', 'role_pattern': '^Storage$', 'require_tags': '',
+                    'manufacturer': synology, 'zabbixtemplate': tpl_icmp,
+                    'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 85,
+                }
+                ensure(M.ZabbixTemplateRule, name='Synology Storage ICMP', defaults=defaults_icmp, update_fields=list(defaults_icmp.keys()))
+        else:
+            logger.warning("  Manufacturer 'Synology' not found, skipping Synology TemplateRule")
     else:
-        logger.warning("  Manufacturer 'Synology' not found, skipping Synology NAS TemplateRule")
+        logger.warning('  Template Synology DiskStation SNMPv3 not resolved — skip TemplateRule')
 
     # Drop leftover os_family Zabbix tags from previous checklist / script runs.
     orphan_tags = M.ZabbixTag.objects.filter(tag='os_family')
@@ -1471,15 +1586,10 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     step0_cleanup(mutate_netbox=mutate_netbox)
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
     ensure_storage_generic_template(server)
-    required_names = {k: v for k, v in TPL_NAMES.items() if k not in ('icmp_ping', 'extreme_voss_snmp', 'extreme_iq_engine_snmp')}
+    required_names = {k: v for k, v in TPL_NAMES.items() if k not in OPTIONAL_TPL_KEYS}
     TPL = resolve_templates(server, names=required_names, required=True)
-    # Extrem VOSS and IQ Engine are optional — imported by configure_nbxsync_network.py.
-    # When missing, step6_template_rules falls back to Network Generic for those rules.
-    TPL.update(resolve_templates(server, names={
-        'extreme_voss_snmp': TPL_NAMES['extreme_voss_snmp'],
-        'extreme_iq_engine_snmp': TPL_NAMES['extreme_iq_engine_snmp'],
-        'icmp_ping': TPL_NAMES['icmp_ping'],
-    }, required=False))
+    # Extrem VOSS / IQ Engine / ICMP / Dell Storage HTTP — soft-resolve when present.
+    TPL.update(resolve_templates(server, names={k: TPL_NAMES[k] for k in OPTIONAL_TPL_KEYS}, required=False))
     proxies, ch_proxy_group = step2_proxies(server)
     step3_server_assignments(server, proxies, ch_proxy_group)
     groups = step4_configgroups()
@@ -1834,14 +1944,15 @@ def run_simulate() -> int:
             TPL['dell_idrac_snmp'] = (int(ensure_t(f'{PREFIX}idrac', f'{PREFIX}Dell iDRAC by SNMP')), f'{PREFIX}Dell iDRAC by SNMP')
             TPL['mssql_odbc'] = (int(ensure_t(f'{PREFIX}mssql', f'{PREFIX}MSSQL by ODBC')), f'{PREFIX}MSSQL by ODBC')
             TPL['mssql_agent2'] = (int(ensure_t(f'{PREFIX}mssql.agent2', f'{PREFIX}MSSQL by Zabbix agent 2')), f'{PREFIX}MSSQL by Zabbix agent 2')
-            TPL['pure_storage_http'] = (int(ensure_t(f'{PREFIX}pure', f'{PREFIX}Pure Storage FlashArray v1 by HTTP')), f'{PREFIX}Pure Storage FlashArray v1 by HTTP')
+            TPL['pure_storage_http'] = (int(ensure_t(f'{PREFIX}pure', f'{PREFIX}Pure Storage FlashArray v2 by HTTP')), f'{PREFIX}Pure Storage FlashArray v2 by HTTP')
             TPL['gitlab_http'] = (int(ensure_t(f'{PREFIX}gitlab', f'{PREFIX}GitLab by HTTP')), f'{PREFIX}GitLab by HTTP')
             TPL['linux_snmp'] = (int(ensure_t(f'{PREFIX}linux.snmp', f'{PREFIX}Linux by SNMP')), f'{PREFIX}Linux by SNMP')
             TPL['windows_snmp'] = (int(ensure_t(f'{PREFIX}windows.snmp', f'{PREFIX}Windows by SNMP')), f'{PREFIX}Windows by SNMP')
             TPL['storage_generic_snmp'] = (int(ensure_t(f'{PREFIX}storage.snmp', f'{PREFIX}Storage Generic Device by SNMP')), f'{PREFIX}Storage Generic Device by SNMP')
+            TPL['hpe_msa_http'] = (int(ensure_t(f'{PREFIX}hpe.msa', f'{PREFIX}HPE MSA 2060 Storage by HTTP')), f'{PREFIX}HPE MSA 2060 Storage by HTTP')
             TPL['dell_storage_http'] = (int(ensure_t(f'{PREFIX}dell.storage', f'{PREFIX}Dell Storage by HTTP')), f'{PREFIX}Dell Storage by HTTP')
-            TPL['huawei_storage_snmp'] = (int(ensure_t(f'{PREFIX}huawei.storage', f'{PREFIX}Huawei Storage by SNMP')), f'{PREFIX}Huawei Storage by SNMP')
-            TPL['synology_storage_snmp'] = (int(ensure_t(f'{PREFIX}synology.nas', f'{PREFIX}Synology NAS by SNMP')), f'{PREFIX}Synology NAS by SNMP')
+            TPL['huawei_storage_snmp'] = (int(ensure_t(f'{PREFIX}huawei.storage', f'{PREFIX}Huawei OceanStor Dorado by SNMP')), f'{PREFIX}Huawei OceanStor Dorado by SNMP')
+            TPL['synology_storage_snmp'] = (int(ensure_t(f'{PREFIX}synology.nas', f'{PREFIX}Synology DiskStation SNMPv3')), f'{PREFIX}Synology DiskStation SNMPv3')
             TPL['icmp_ping'] = (int(ensure_t(f'{PREFIX}icmp', f'{PREFIX}ICMP Ping')), f'{PREFIX}ICMP Ping')
 
         step6_template_rules(server, country_slugs=country_slugs)
