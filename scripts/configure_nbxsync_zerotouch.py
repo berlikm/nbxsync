@@ -1216,12 +1216,11 @@ def step6_template_rules(server, country_slugs=None):
         }
         ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
 
-    # Legacy: VMware FQDN on ESXi platform — hypervisors are discovered from vCenter only.
-    legacy_esxi_vmware = M.ZabbixTemplateRule.objects.filter(name='VMware ESXi').first()
-    if legacy_esxi_vmware is not None and legacy_esxi_vmware.enabled:
-        legacy_esxi_vmware.enabled = False
-        legacy_esxi_vmware.save(update_fields=['enabled'])
-        logger.info('  DISABLED legacy TemplateRule %r (VMware FQDN is vCenter-only)', 'VMware ESXi')
+    # Delete legacy: VMware FQDN on ESXi platform — hypervisors are discovered from vCenter only.
+    legacy_vmware_esxi = M.ZabbixTemplateRule.objects.filter(name='VMware ESXi').first()
+    if legacy_vmware_esxi is not None:
+        legacy_vmware_esxi.delete()
+        logger.info('  DELETED legacy TemplateRule %r (VMware FQDN is vCenter-only)', 'VMware ESXi')
 
     # Δ6b: NetBox tag snmp → OS-correct SNMP templates.
     # Pair with "SNMP Monitoring (Linux)" CG (assigned on the same tag) for the interface.
