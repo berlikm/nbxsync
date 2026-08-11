@@ -278,28 +278,26 @@ Ensure these Zabbix templates exist (create the nbxsync Template objects pointin
 | Linux by Zabbix agent | |
 | Linux by SNMP | |
 | Windows by SNMP | |
-| Extreme EXOS by SNMP | Stock (Zabbix 7.0 branch) |
-| Extreme VOSS by SNMP | **Import** `zabbix/templates/extreme_voss_snmp/` — not stock |
-| Extreme Port Speed Expect by SNMP | Import thin LLD YAML — stage 4 |
-| Extreme Routing by SNMP | Import OSPF YAML — post-cutover, Core/Dist |
-| Network Generic Device by SNMP | Network Device / FortiAnalyzer fallback only — **not** Switch* or AP (those use Extreme/Forti platform templates) |
+| Extreme EXOS by SNMP | Stock (Zabbix 7.0) |
+| Extreme VOSS by SNMP | Import from `zabbix/templates/extreme_voss_snmp/` |
+| Extreme Port Speed Expect by SNMP | Import when ready (Extreme stages) |
+| Extreme Routing by SNMP | Import when ready (Extreme stages) |
+| Extreme IQ Engine by SNMP | Import from `zabbix/templates/extreme_iq_engine_snmp/` |
+| Network Generic Device by SNMP | Fallback only — not Switch* / AP |
 | FortiGate by SNMP | |
 | VMware FQDN | |
-| Storage Generic Device by SNMP | Cohesity (see §7) |
+| Storage Generic Device by SNMP | Cohesity — use a suitable SNMP storage/generic template for now; refine later |
 | Dell iDRAC by SNMP | |
-| MSSQL by Zabbix agent 2 (or MSSQL by ODBC) | |
+| MSSQL by Zabbix agent 2 | |
 | Pure Storage FlashArray v1 by HTTP | |
-| Dell Storage by HTTP (optional) | |
+| Dell Storage by HTTP | When available |
 | GitLab by HTTP | |
+| Oracle by Zabbix agent 2 | Placeholder for now |
+| Tableau / CellMap / SAP / Acronis / SCCM / Print Spool by agent | Placeholders for now — assign the role; fill template content closer to production |
 
-**Storage Generic Device by SNMP:** clone from Network Generic Device by SNMP **without** items that collide with Dell iDRAC (`snmptrap.fallback` and `zabbix[host,snmp,available]`). Preferred method in the Zabbix UI: **Export** the Network Generic template as YAML → delete those two items (and keep discovery rules, prototypes, triggers, value maps) → **Import** under the new name `Storage Generic Device by SNMP`. Do not recreate the template by copying items one-by-one in the UI — that drops LLD and related objects. Import Dell iDRAC from the Zabbix template library if it is not already installed.
+Create the matching nbxSync **Template** objects (name → Zabbix template) under **Zabbix → Templates** before the rules below. Placeholder names can point at a stub template until the real content exists.
 
-**How matching works**
-
-- The **pattern** is a **case-insensitive regular expression**, matched with `search` (substring of the platform name — **not** a full-string match, and **not** a plain text substring). Examples in the table (`Ubuntu|Debian|…`, `Other.*Linux`) are regex. A literal platform string pasted as the pattern (for example `Windows Server 2019 (x64)`) may never match or may be an invalid regex — write a real expression (for example `Windows Server`).
-- **Every matching rule contributes** its template and optional hostgroup. Priority only sets **evaluation order** (`order_by priority, name`). A template (or hostgroup) already resolved by an earlier rule or an explicit assignment is not added twice. A higher-priority rule does **not** suppress a lower-priority rule that points at a *different* template. To stop a catch-all from also applying, narrow its pattern or disable it — do not assume “lower number wins exclusively.” (Today Windows Server and Windows catch-all both point at the same template, so the collision is invisible.)
-
-Leave “require tags”, “role pattern”, and “manufacturer” empty unless noted. Criteria are AND: every set field must match (missing role/manufacturer on the object fails closed).
+**How matching works (short):** pattern is a case-insensitive regex (`search` on the platform name). Every matching rule can add its template/hostgroup; priority only orders evaluation. Leave require-tags / role / manufacturer empty unless the table sets them (AND; missing data fails closed).
 
 ### 6.1 Platform rules
 
@@ -344,49 +342,43 @@ Use together with configuration group **SNMP Monitoring (Linux)** (assigned on N
 
 ---
 
-## 7. Template assignments (Role / Manufacturer)
+## 7. Template assignments (Role)
 
 Path: **Zabbix → Templates → [template] → Assigned objects → Add**  
-(or Device Role / Manufacturer → Zabbix tab)
+(or Device Role → Zabbix tab)
 
-**Why here:** application and OEM templates are business knowledge (“MSSQL role gets MSSQL by Agent 2”). They **merge** with OS / platform templates from §6 — different template IDs all accumulate; nothing is subtracted. Do **not** put Network Generic on Switch*/AP roles: those roles already get Extreme EXOS / VOSS / IQ Engine / FortiOS (etc.) from §6, and Network Generic + EXOS both define `icmpping` so Zabbix rejects the link. Use **Network Device** only as the no-platform fallback. Firewall keeps FortiGate on the role. Storage Generic stays on **Cohesity only** — generic Storage uses HTTP (Dell) when available, not network SNMP.
+Assignments **merge** with Template Rules from §6. Do **not** assign Network Generic on Switch* or Access Point (those already get Extreme/Forti from §6). Manufacturer-scoped storage / iDRAC rules are in §6.3 — not repeated below.
 
-**Interface requirements (silent drop):** each nbxsync Template can declare required interface types (Agent, SNMP, ANY, …). At sync, a template is **linked only if the host already has those interface types**. If the requirement is not met, the template is skipped with no dramatic error — it simply does not appear on the Zabbix host. That makes broad Role assignment safer across transport classes. It does **not** prevent two SNMP templates from both linking and colliding on item keys — avoid overlapping assignments (Switch+Network Generic vs EXOS; Storage Generic vs iDRAC).
+Set each template’s interface requirement (Agent / SNMP / ANY) to match the transport the host will have.
 
 | Template | Assigned to | Notes |
 |---|---|---|
-| MSSQL by Zabbix agent 2 | Device Role MSSQL | Prefer Agent 2 + MSSQL plugin; fallback name `MSSQL by ODBC` |
+| MSSQL by Zabbix agent 2 | Device Role MSSQL | |
 | MSSQL by Zabbix agent 2 | Device Role MSSQL Query Server | |
-| VMware FQDN | Device Role vCenter | `{$VMWARE.URL}` / `{$VMWARE.USER}` / `{$VMWARE.PASSWORD}` via §11.4 |
-| Pure Storage FlashArray v1 by HTTP | Manufacturer TemplateRule (Pure Storage) | Pure arrays have role=Storage, not Pure Storage; manufacturer rule catches them; `{$PURESTORAGE.TOKEN}` via §11.4 |
-| Dell Storage by HTTP | **Manufacturer TemplateRule (Dell ∧ role Storage)** — §6.3 | Not a role assignment; keeps Dell servers (role Server → iDRAC) unaffected |
+| VMware FQDN | Device Role vCenter | Secrets via §11.4 |
 | GitLab by HTTP | Device Role GitLab | |
-| Linux by SNMP | Device Role Virtual Appliance | Baseline if platform does not match a rule |
-| Network Generic Device by SNMP | Device Role Network Device | Fallback when platform does not match a §6 rule |
-| Storage Generic Device by SNMP | Device Role **Cohesity only** | Removed from Storage role — manufacturer-specific templates (Dell HTTP, Huawei SNMP, Pure HTTP, Synology SNMP) now cover Storage via §6.3 |
-| FortiGate by SNMP | Device Role Firewall | Baseline; FortiOS rule adds the same template when platform matches |
-| **Tableau Bridge by Zabbix agent** | Device Role Tableau | Placeholder — LM parity, items built post-cutover |
-| **CellMap by Zabbix agent** | Device Role CellMap | Placeholder — LM parity (WinProcessStats_cellmap) |
-| **SAP by Zabbix agent** | Device Role SAP ME and SAP HANA | Placeholder — DNUS scripts integrated by Robert post-cutover |
-| **Acronis by Zabbix agent** | Device Role Acronis Management | Placeholder — LM parity |
-| **SCCM by Zabbix agent** | Device Role SCCM | Placeholder — LM parity |
-| **Print Spool by Zabbix agent** | Device Role Print Server | Placeholder — LM parity (print spool monitoring for ME) |
-| **Oracle by Zabbix agent 2** | **Tag-gated TemplateRule (tag `oracle`)** — §6.2 | Placeholder — LM parity (`ch-sta-p-disc04` confirmed; check for others); see §9.0a tagging guide |
+| Linux by SNMP | Device Role Virtual Appliance | Baseline if no platform rule matches |
+| Network Generic Device by SNMP | Device Role Network Device | Fallback only |
+| Storage Generic Device by SNMP | Device Role Cohesity | Placeholder/generic for now |
+| FortiGate by SNMP | Device Role Firewall | Also via FortiOS platform rule |
+| Tableau Bridge by Zabbix agent | Device Role Tableau | Placeholder |
+| CellMap by Zabbix agent | Device Role CellMap | Placeholder |
+| SAP by Zabbix agent | Device Role SAP ME, SAP HANA | Placeholder |
+| Acronis by Zabbix agent | Device Role Acronis Management | Placeholder |
+| SCCM by Zabbix agent | Device Role SCCM | Placeholder |
+| Print Spool by Zabbix agent | Device Role Print Server | Placeholder |
 
-Do **not** assign Network Generic to Switch Core / Dist / Access / Mgmt / Hybrid or Access Point. Dell iDRAC is **not** in this table — use §6.3.
+Pure / Dell / Huawei / Synology storage and Dell iDRAC: §6.3 (and tag `oracle` → §6.2).  
+One-off templates on a single host (e.g. AS Java): assign on the Device, not the role.
 
-**AS Java by Zabbix agent** is intentionally unassigned: only two hosts (`ch-sta-*-as01/02`) carry it and they share role `Server`, so a role assignment would over-apply. Link it per device.
+### 7.1 Extreme capability templates
 
-### 7.1 Extreme capability templates (nbxSync assignments)
+Assign on the **role** when Extreme staging says so ([`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) §7) — not on the platform Template Rule.
 
-These **merge** with the platform template from §6.1. Assign on the **role**, not on the platform. **When** to enable each stage is defined in [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) §7 — not repeated here.
-
-| Template | Assigned to | When (see Extreme §7) |
-|---|---|---|
-| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt / Hybrid (or globally on template) | Stage 4 — after stock LLD is stable. Uses own macros `{$PORTID.LLD.*}`, not `{$NET.IF.*}` |
-| Extreme Routing by SNMP | Switch Core, Switch Dist | Post-cutover — after `ospfNbrTable` canary. Always assigned by hand, never in bulk |
-
-Do **not** put Speed Expect / Routing on the platform Template Rule — role is the capability axis.
+| Template | Assigned to |
+|---|---|
+| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt / Hybrid |
+| Extreme Routing by SNMP | Switch Core, Switch Dist |
 
 ---
 
