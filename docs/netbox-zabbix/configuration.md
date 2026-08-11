@@ -313,35 +313,6 @@ First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and valu
 - `OS/Network`
 - `OS/VMware`
 
-Ensure these Zabbix templates exist (create the nbxsync Template objects pointing at them under **Zabbix → Templates** if needed):
-
-| Template name in Zabbix | Notes |
-|---|---|
-| Windows by Zabbix agent | |
-| Linux by Zabbix agent | |
-| Linux by SNMP | |
-| Windows by SNMP | |
-| Extreme EXOS by SNMP | Stock (Zabbix 7.0) |
-| Extreme VOSS by SNMP | Import from `zabbix/templates/extreme_voss_snmp/` |
-| Extreme Port Speed Expect by SNMP | Import when ready (Extreme stages) |
-| Extreme Routing by SNMP | Import when ready (Extreme stages) |
-| Extreme IQ Engine by SNMP | Import from `zabbix/templates/extreme_iq_engine_snmp/` |
-| Network Generic Device by SNMP | Fallback only — not Switch* / AP |
-| FortiGate by SNMP | |
-| VMware FQDN | |
-| Storage Generic Device by SNMP | Cohesity — use a suitable SNMP storage/generic template for now; refine later |
-| Dell iDRAC by SNMP | |
-| MSSQL by Zabbix agent 2 | |
-| Pure Storage FlashArray v2 by HTTP | Production (v1 alias accepted by script) |
-| HPE MSA 2060 Storage by HTTP | Used for Dell Storage arrays in this estate |
-| Huawei OceanStor Dorado by SNMP | |
-| Synology DiskStation SNMPv3 | |
-| GitLab by HTTP | |
-| Oracle by Zabbix agent 2 `(stub)` | Placeholder — soft-resolve also accepts non-stub name |
-| Tableau / CellMap / SAP / Acronis / SCCM by agent `(stub)` | Placeholders — soft-resolve also accepts non-stub alias |
-| Remote Zabbix proxy health | Stock — proxy self-monitoring (`OPTIONAL_TPL_KEYS`) |
-| ICMP Ping | Agent Host ICMP + Synology Storage ICMP + Zabbix Proxy ICMP (`OPTIONAL_TPL_KEYS`) |
-
 
 ### 6.1 Platform rules
 
