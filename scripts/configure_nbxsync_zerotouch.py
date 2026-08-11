@@ -583,11 +583,9 @@ def step0_cleanup(*, mutate_netbox: bool):
                 t.save(update_fields=['description'])
             logger.info("  Tag '%s': EXISTS as slug=%s (id=%s)", name, t.slug, t.id)
 
-    role, created = DeviceRole.objects.get_or_create(
-        slug='virtual-appliance',
-        defaults={'name': 'Virtual Appliance', 'color': '9e9e9e', 'vm_role': True},
-    )
-    logger.info("  Role 'Virtual Appliance': %s (id=%s)", 'CREATED' if created else 'EXISTS', role.id)
+    # NOTE: zerotouch does NOT create any new DeviceRoles in NetBox.
+    # Roles are managed by other automations (netbox-sync, manual).
+    # If a referenced role doesn't exist, zerotouch logs a warning and skips.
 
     # ESXi hosts keep role=Server (other automations depend on it).
     # The ESXi OOB iDRAC CG is assigned on the ESXi platform (step 5b),
@@ -1026,26 +1024,33 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
     logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); ESXi iDRAC = SNMPv2c public; Server OOB creds = MONITORING-DELL')
 
-    # ESXi platforms → ESXi OOB iDRAC CG (SNMPv2c public on oob_ip, no Agent).
-    # Platform CG wins over Site Group Agent (inheritance). ESXi hosts keep
-    # role=Server (other automations depend on it — no ESXi Hypervisor role).
-    esxi_platforms = [p for p in Platform.objects.all() if ESXI_PLATFORM_RE.search(p.name or '')]
-    for plat in esxi_platforms:
+    # ESXi devices → ESXi OOB iDRAC CG per-device (SNMPv2c public on oob_ip).
+    # no dependency on a specific Platform object or role change.
+    esxi_devices = list(Device.objects.filter(platform__name__iregex=ESXI_PLATFORM_RE.pattern))
+    for dev in esxi_devices:
         get_or_create(
             M.ZabbixConfigurationGroupAssignment,
             zabbixconfigurationgroup=esxi_oob_group,
-            assigned_object_type=ct(Platform),
-            assigned_object_id=plat.id,
+            assigned_object_type=ct(Device),
+            assigned_object_id=dev.id,
             defaults={},
         )
-    if esxi_platforms:
+    if esxi_devices:
         logger.info(
-            '  ESXi OOB iDRAC → %s platform(s): %s (SNMPv2c public on oob_ip)',
-            len(esxi_platforms),
-            ', '.join(sorted(p.name for p in esxi_platforms)),
+            '  ESXi OOB iDRAC → %s device(s) (SNMPv2c public on oob_ip)',
+            len(esxi_devices),
         )
     else:
-        logger.warning('  No platforms matching ESXi/VMware ESX — skip ESXi OOB CG')
+        logger.warning('  No devices with ESXi/VMware ESX platform — skip ESXi OOB CG')
+
+    # Prune stale platform-level and role-level ESXi CG assignments.
+    for model_cls in (Platform, DeviceRole):
+        stale, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
+            zabbixconfigurationgroup=esxi_oob_group,
+            assigned_object_type=ct(model_cls),
+        ).delete()
+        if stale:
+            logger.info('  PRUNED: %s stale ESXi OOB iDRAC %s assignment(s)', stale, model_cls.__name__)
 
     # SNMP storage manufacturers — Site Group Agent would leave them without SNMP.
     # Manufacturer CG wins first in inheritance → SNMP Monitoring (network MONITORING).
