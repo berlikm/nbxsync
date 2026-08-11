@@ -1190,6 +1190,14 @@ def step6_template_rules(server, country_slugs=None):
     else:
         logger.warning('  Template Synology DiskStation SNMPv3 not resolved — skip TemplateRule')
 
+    # Rename leftovers from placeholder template names.
+    for old_name in ('Huawei Storage (SNMP)', 'Synology NAS (SNMP)'):
+        stale = M.ZabbixTemplateRule.objects.filter(name=old_name).first()
+        if stale is not None:
+            stale.enabled = False
+            stale.save(update_fields=['enabled'])
+            logger.info('  DISABLED legacy TemplateRule %r (replaced by production names)', old_name)
+
     # Drop leftover os_family Zabbix tags from previous checklist / script runs.
     orphan_tags = M.ZabbixTag.objects.filter(tag='os_family')
     if orphan_tags.exists():
