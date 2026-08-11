@@ -342,9 +342,6 @@ Ensure these Zabbix templates exist (create the nbxsync Template objects pointin
 | Remote Zabbix proxy health | Stock — proxy self-monitoring (`OPTIONAL_TPL_KEYS`) |
 | ICMP Ping | Agent Host ICMP + Synology Storage ICMP + Zabbix Proxy ICMP (`OPTIONAL_TPL_KEYS`) |
 
-Create the matching nbxSync **Template** objects (name → Zabbix template) under **Zabbix → Templates** before the rules below. Soft-resolve (`OPTIONAL_TPL_KEYS`): placeholder app templates **plus** `icmp_ping`, `proxy_health`, Extreme VOSS/IQ — role rules/assignments that need a missing template are skipped until it exists; preferred names use `(stub)` with non-stub / Pure v1 / Huawei alt-name aliases.
-
-**How matching works (short):** pattern is a case-insensitive regex (`search` on the platform name). Every matching rule can add its template/hostgroup; priority only orders evaluation. Leave require-tags / role / manufacturer empty unless the table sets them (AND; missing data fails closed).
 
 ### 6.1 Platform rules
 
