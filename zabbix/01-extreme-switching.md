@@ -421,7 +421,7 @@ One template set for every role — never a per-role copy of the template. Two c
 
 ### Macro assignments — destination standard
 
-**Global** (or on the Zabbix server object) — production end-state. Applied by `configure_nbxsync_network.py` by default. Temporary LM silence is `--cutover-silence` only (see checklist §11.2).
+**Global** (or on the Zabbix server object) — production end-state. Applied by `configure_nbxsync_network.py` by default. Temporary LM silence is `--cutover-silence` only (table below).
 
 ```
 {$IF.UTIL.MAX}                = 101          # stock util% off until stage 6 context macros
@@ -444,7 +444,18 @@ One template set for every role — never a per-role copy of the template. Two c
 {$PORTID.LLD.IFTYPE.MATCHES}  = ^6$
 ```
 
-Stock **Extreme EXOS by SNMP** also defines template-level `{$TEMP_WARN}=55` / `{$TEMP_CRIT}=65`, which **override** globals. `configure_nbxsync_network.py` patches those (and VOSS) to the destination values above — globals alone are not enough.
+Stock **Extreme EXOS by SNMP** also defines template-level `{$TEMP_WARN}=55` / `{$TEMP_CRIT}=65`, which **override** globals. `configure_nbxsync_network.py` patches those (and VOSS) to the destination values above — globals alone are not enough. IQ Engine keeps AP-specific 70/85.
+
+**Temporary cutover silence** (optional overlay during LogicMonitor migration noise only — not the target architecture). Re-apply destination values as soon as first-light noise is understood:
+
+| Macro | Silence value |
+|---|---|
+| `{$TEMP_WARN}` / `{$TEMP_CRIT}` | `999` |
+| `{$OPTIC.TEMP.CRIT}` | `999` |
+| `{$OPTIC.RX.DBM.MIN}` | `-100` |
+| `{$MLT.CONTROL}` | `0` |
+
+nbxSync wiring for Switch* roles (CG, Template Rules, where to click) lives in [`docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md). Architecture overview: [`docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md).
 
 **Device role** — port scoping. Set **both** IFALIAS macros on every role:
 

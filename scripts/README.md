@@ -1,25 +1,33 @@
-# Lab / configure scripts
+# Onboarding scripts (optional)
 
-These helpers apply the same policy as
-[`docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md).
-**The checklist is the operator source of truth.** Run scripts in order; do not treat them as a second design doc.
+**Day-to-day operations use the NetBox GUI or API.** These scripts only accelerate a **first build** (or a rare full re-apply). They are not a second control plane.
 
-| Order | Script | Covers checklist |
+Policy source of truth:
+
+| Doc | Owns |
+|---|---|
+| [`docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md) | Mental model |
+| [`docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md) | nbxSync rows (GUI checklist) |
+| [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) | Extreme ports, stages, TEMP_*/optic macros |
+
+If a script and those docs disagree, **the docs win** — fix the script.
+
+| Order | Script | Applies |
 |---|---|---|
-| 1 | `configure_nbxsync_zerotouch.py` | §§1–12 fleet (server, proxies, CGs + SNMPv3 profiles, Template Rules, hostgroups, tags, inventory, app secrets) |
-| 2 | `configure_nbxsync_network.py` | Extreme half: VOSS/IQ/Speed Expect imports, Switch* IFALIAS (§11.1), §11.2 globals, stock EXOS LLD + TEMP_* patches |
-| — | `create_dashboards.py` | Zabbix dashboards from nested `Sites/*` / `Roles/*` / `OS/*` parents |
-| — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap (+ optional configure/sync) |
-| — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox graph) |
-| — | `zabbix_api.py` | Shared JSON-RPC helper for the Zabbix-only smoke |
+| 1 | `configure_nbxsync_zerotouch.py` | Checklist §§1–12 fleet (server, proxies, CGs, Template Rules, hostgroups, tags, inventory, app secrets) |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, Switch* IFALIAS, destination globals, stock EXOS LLD + TEMP_* patches |
+| — | `create_dashboards.py` | Zabbix dashboards from nested hostgroups |
+| — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
+| — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
+| — | `zabbix_api.py` | Shared JSON-RPC helper |
 
-## Quick start (lab)
+## Lab first build
 
 ```bash
 cp scripts/setup_zabbix.env.example scripts/setup_zabbix.env
-# edit: NBX_ZABBIX_URL, NBX_SNMP_* / NBX_VMWARE_* / NBX_PURE_* / NBX_MSSQL_* as needed
+# edit: NBX_ZABBIX_URL, SNMP / VMware / Pure / MSSQL secrets as needed
 
-./scripts/setup_zabbix.sh   # optional — brings up local Zabbix
+./scripts/setup_zabbix.sh   # optional local Zabbix
 
 PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
   /workspace/.deps/venv/bin/python scripts/configure_nbxsync_zerotouch.py --simulate
@@ -28,45 +36,29 @@ PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
   /workspace/.deps/venv/bin/python scripts/configure_nbxsync_network.py --simulate
 ```
 
-Reports land under `/opt/cursor/artifacts/` (`ZEROTOUCH_*`, `NETWORK_*`).
+Reports: `/opt/cursor/artifacts/` (`ZEROTOUCH_*`, `NETWORK_*`).
 
-## Production apply
+## Production first build
 
 ```bash
 export NBX_ZABBIX_TOKEN=...
-# SNMP / app secrets — see setup_zabbix.env.example and checklist §5 / §11.4
 python scripts/configure_nbxsync_zerotouch.py
 python scripts/configure_nbxsync_network.py --apply
-
-# Optional during LogicMonitor cutover noise only (not the end state):
-python scripts/configure_nbxsync_network.py --apply --cutover-silence
-
-# Stage 4 — link Port Speed Expect on Switch* roles:
-python scripts/configure_nbxsync_network.py --apply --link-speed-expect
 ```
 
-Read-only coverage census:
+Always finish with the network script so VOSS / IQ Engine Template Rules are not left on Network Generic.
 
-```bash
-python scripts/configure_nbxsync_zerotouch.py --verify
-```
+Optional flags (onboarding only): `--verify` (census), `--link-speed-expect` (Extreme stage 4), `--cutover-silence` (temporary LM overlay — see Extreme §8).
 
-## Who owns which rows
+## Who writes which rows
 
 | Concern | Zerotouch | Network |
 |---|---|---|
 | Country SiteGroup Agent default | yes | assumes present |
 | SNMP Monitoring on Switch* (incl. Hybrid) | yes | assumes present |
-| Linux/SAP SNMP CGs on tags `snmp` / `snmp-sap` | yes | — |
+| Linux SNMP CG on tag `snmp`; SAP CG on SAP HANA / SAP ME roles | yes | — |
 | Server Agent+OOB / SPACE :10060 / OOB SNMP Only | yes | — |
-| Extreme TemplateRules (EXOS/VOSS/IQ) | yes (also ensured) | yes |
+| Extreme TemplateRules (EXOS/VOSS/IQ) | placeholder / ensure | import + retarget |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* | — | yes |
-| §11.2 destination globals | — | yes |
-
-## Related docs
-
-- Operator checklist: `docs/nbxsync-configuration-checklist-zerotouch.md`
-- Cutover order / Extreme stages: `zabbix/00-monitoring-plan.md`, `zabbix/01-extreme-switching.md`
-- Port labels: `zabbix/port-identity.md`
-- LM credential map: `zabbix/logicmonitor-assessment.md`
+| Extreme destination globals | — | yes |

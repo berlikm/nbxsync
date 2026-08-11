@@ -87,9 +87,11 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 5. Prefer macro overrides over cloning stock templates — keeps the upgrade path.
 6. Signals with no trigger and no dashboard get deleted.
 
-## Lab proof (Track A + Track B wiring)
+## Lab proof (optional onboarding scripts)
 
-Policy source: `docs/nbxsync-configuration-checklist-zerotouch.md`. Apply fleet first, then Extreme:
+Architecture: `docs/nbxsync-architecture.md`.  
+nbxSync GUI rows: `docs/nbxsync-configuration-checklist-zerotouch.md`.  
+Day-2 is GUI/API; scripts only accelerate a first build (`scripts/README.md`).
 
 ```bash
 # 1) Fleet (CGs, TemplateRules, hostgroups, …)

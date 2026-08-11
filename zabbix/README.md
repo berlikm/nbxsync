@@ -65,6 +65,9 @@ PYTHONPATH=/workspace/.deps/netbox/netbox:/workspace \
 ## Track split
 
 - **Track A (these docs)** — what we monitor, in what order, template content.
-- **Track B (separate backlog)** — NetBox drives Zabbix: nbxsync rules, sync jobs, compliance diff, alert actions, label push tooling.
+- **Track B (nbxSync)** — how NetBox drives Zabbix hosts:
+  - Architecture: [`../docs/nbxsync-architecture.md`](../docs/nbxsync-architecture.md)
+  - GUI checklist: [`../docs/nbxsync-configuration-checklist-zerotouch.md`](../docs/nbxsync-configuration-checklist-zerotouch.md)
+  - Onboarding scripts only: [`../scripts/README.md`](../scripts/README.md) — day-2 is GUI/API
 
 If the work is "make NetBox drive Zabbix" it is Track B. If it is "what should we monitor next" it is Track A.
