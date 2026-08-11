@@ -83,9 +83,15 @@ Proxy VMs already exist in NetBox (e.g. `ch-sta-p-zabp01`, VM id 604). The `netb
 
 - **Linux by Zabbix agent** — platform rule (Ubuntu matches `Linux` pattern)
 - **ICMP Ping** — role-scoped TemplateRule (`role_pattern = ^Zabbix Proxy$`)
-- **Remote Zabbix proxy health** — role-scoped TemplateRule (stock Zabbix template: last access, version mismatch, config sync latency, performance counters)
+- **Remote Zabbix proxy health** — role-scoped TemplateRule (stock Zabbix template: proxy-internal process utilization, buffer state, data sender, config sync, version, uptime)
 
-Transport: **Agent Monitoring** CG inherited from the country SiteGroup (agent port 10050).
+**Monitoring topology:**
+- Proxy → Cloud: **active** (proxy connects outbound to `sensirion.zabbix.cloud` on TCP 10051, mTLS with Sensirion PKI certificates)
+- Proxy → Agent: **passive** (proxy polls agents on TCP 10050)
+
+Proxy VMs inherit the proxy assignment from their country SiteGroup — the proxy monitors itself. This is correct: the `Remote Zabbix proxy health` items are proxy-internal metrics (type 18) collected by the proxy daemon. The `Linux by Zabbix agent` items are polled from the proxy's own local agent. No circular dependency — a proxy can poll its own localhost agent while forwarding data to the cloud.
+
+Note: `{$ZABBIX.PROXY.ADDRESS}` / `{$ZABBIX.PROXY.PORT}` macros (3 remote-stats items) are not set by nbxSync — configure them in Zabbix Cloud if the `zabbix[stats,…]` queue items are needed. The remaining 51 proxy health items work without macros.
 
 | VM name | NetBox ID | Site | IP | Role | Templates (via nbxSync) |
 |---|---|---|---|---|---|
@@ -369,15 +375,15 @@ Use together with configuration group **SNMP Monitoring (Linux)** (assigned on N
 Scoped here so Manufacturer Dell does not put iDRAC on every Dell device. Server BMC transport stays **Server Agent+OOB** (`oob_ip`); ESXi BMC transport stays **ESXi OOB iDRAC**. Map matches production Zabbix hosts (STOD* / snas* / san* / ESXi).
 
 | Name | Pattern | Role pattern | Manufacturer | Template | Hostgroup | Require tags | Priority | Enabled |
-|---|---|---|---|---|---|---|---|---|
 | Dell iDRAC (Server) | `.*` | `^Server$` | Dell | Dell iDRAC by SNMP | — | — | 80 | Yes |
 | Dell iDRAC (ESXi) | `ESXi\|VMware ESX` | — | Dell | Dell iDRAC by SNMP | OS/VMware | — | 80 | Yes |
 | Pure Storage (HTTP) | `.*` | — | Pure Storage | Pure Storage FlashArray v2 by HTTP | — | — | 80 | Yes |
 | Dell Storage (HTTP) | `.*` | `^Storage$` | Dell | HPE MSA 2060 Storage by HTTP | — | — | 80 | Yes |
 | Huawei OceanStor (SNMP) | `.*` | `^Storage$` | Huawei | Huawei OceanStor Dorado by SNMP | — | — | 80 | Yes |
-| Huawei Storage ICMP | `.*` | `^Storage$` | Huawei | ICMP Ping | — | — | 85 | Yes |
 | Synology DiskStation (SNMP) | `.*` | `^Storage$` | Synology | Synology DiskStation SNMPv3 | — | — | 80 | Yes |
 | Synology Storage ICMP | `.*` | `^Storage$` | Synology | ICMP Ping | — | — | 85 | Yes |
+| Zabbix Proxy ICMP | `.*` | `^Zabbix Proxy$` | — | ICMP Ping | — | — | 90 | Yes |
+| Zabbix Proxy Health | `.*` | `^Zabbix Proxy$` | — | Remote Zabbix proxy health | — | — | 90 | Yes |
 
 ---
 
@@ -636,7 +642,7 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Host with tag `snmp` only | SNMP Monitoring (Linux) via tag | Linux or Windows by SNMP | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
 | EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP (+ role IFALIAS macros) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
 | VOSS Switch Core/Access/Hybrid | SNMP Monitoring | Extreme VOSS by SNMP (**not** Network Generic) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
-| Access Point | SNMP Monitoring | Platform `IQ ENGINE` → **Extreme IQ Engine by SNMP** | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Access Point, OS/Network |
+| Storage (Huawei) | SNMP Monitoring (Manufacturer) | Huawei OceanStor Dorado by SNMP (template already has `icmpping`); LogicMonitor creds → per-device IF | SNMP | Sites/…, Roles/Storage |
 | Firewall | SNMP Monitoring | Platform/role template (FortiGate, …) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/…, OS/Network |
 | Space Server | Agent Monitoring (SPACE) | OS by agent | Agent **:10060** | Sites/CH/…, Roles/Space Server, OS/… |
 | Storage (Pure) | Agent Monitoring | Pure Storage FlashArray v2 by HTTP | Agent / HTTP | Sites/…, Roles/Storage |
