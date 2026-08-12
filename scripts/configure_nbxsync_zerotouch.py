@@ -1153,6 +1153,8 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         )
         logger.info('  HU-DEB-SAN01 → SNMP Monitoring (Huawei) with LogicMonitor SHA/AES')
 
+    assign_manufacturer(snmp_group, 'Synology')
+
     # Cohesity Appliance role → SNMP Monitoring CG (VMs with primary_ip4).
     # Role set by netbox-sync (vm_role_relation: COHE/COHY = Cohesity Appliance).
     # Physical Cohesity nodes keep role=Cohesity → OOB SNMP Only (oob_ip only).
