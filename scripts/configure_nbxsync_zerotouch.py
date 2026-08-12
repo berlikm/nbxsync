@@ -992,15 +992,12 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         assign_role(dell_idrac_group, role_name)
 
     # Prune Dell iDRAC HTTP from roles that should use Site Group Agent (e.g. Server).
-    try:
-        _dell_cg_role_ids = {get_role(n).id for n in DELL_IDRAC_OOB_CG_ROLES}
-    except DeviceRole.DoesNotExist:
-        _dell_cg_role_ids = set()
-        for n in DELL_IDRAC_OOB_CG_ROLES:
-            try:
-                _dell_cg_role_ids.add(get_role(n).id)
-            except DeviceRole.DoesNotExist:
-                pass
+    _dell_cg_role_ids = set()
+    for n in DELL_IDRAC_OOB_CG_ROLES:
+        try:
+            _dell_cg_role_ids.add(get_role(n).id)
+        except DeviceRole.DoesNotExist:
+            pass
     stale_dell_cg, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
         zabbixconfigurationgroup=dell_idrac_group,
         assigned_object_type=ct(DeviceRole),
