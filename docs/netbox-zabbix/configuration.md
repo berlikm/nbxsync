@@ -117,7 +117,7 @@ Each group is one **transport + credential** profile. Why these groups exist and
 | Dell iDRAC SNMP (AES128) | `MONITORING-IDRAC` SHA384/AES128 @ oob | KR/CN ESXi exception hosts (iDRAC AES only) |
 | Dell iDRAC SNMP (Legacy) | `MONITORING-IDRAC` SHA1/AES128 @ oob | Cohesity (C6420 fw 6.10 max) |
 
-Two SNMPv3 CGs by firmware tier — same `MONITORING-IDRAC` user, same passphrases, different protocols. **Server** stays on Site Group Agent Monitoring @ primary (real agent). Legacy **Server Agent+OOB** is deleted by zerotouch. iDRAC SNMPv3 user must be configured on each iDRAC (via iDRAC UI or racadm).
+Three SNMPv3 iDRAC CGs by firmware tier — same `MONITORING-IDRAC` user, same passphrases, different protocols. **Server** stays on Site Group Agent Monitoring @ primary (real agent). Legacy **Server Agent+OOB** / **Dell iDRAC HTTP** are deleted by zerotouch. iDRAC SNMPv3 user must be configured on each iDRAC (via iDRAC UI or racadm).
 
 ---
 
@@ -143,7 +143,7 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 | Dell iDRAC (Legacy) | Dell iDRAC SNMP (Legacy) | MONITORING-IDRAC | SHA1 | AES128 |
 \*SHA1 is what the stock Zabbix SNMPv3 security-level field offers for these profiles today.
 
-**Redfish (HTTP):** Dell PowerEdge iDRAC uses HTTPS API macros on Device Roles **Server** / **ESXi Hypervisor** / **Cohesity** — not an SNMP profile, not on the CG (§5.5 / §11.4).
+Two SNMPv3 iDRAC profiles (AES256 fleet + AES128 exceptions + Legacy) share `MONITORING-IDRAC` — see §5.5.
 
 
 ### 5.1 SNMP Monitoring (network)
@@ -166,19 +166,22 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 
 Same shape as §5.1 with the **Linux** SNMPv3 profile. Transport-only — no templates on the CG. OS templates come from Template Rules (§6.2) when the host has tag `snmp`.
 
-### 5.5 Dell iDRAC SNMPv3 (two tiers by firmware)
+### 5.5 Dell iDRAC SNMPv3 (three tiers by firmware)
 
 | Piece | Where | Why |
 |---|---|---|
-| SNMPv3 :161, **Use OOB IP = Yes** | CG **Dell iDRAC SNMP** (SHA384/AES256) on role **ESXi Hypervisor** | iDRAC9 7.x / iDRAC10 support SHA384/AES128 |
+| SNMPv3 :161, **Use OOB IP = Yes** | CG **Dell iDRAC SNMP** (SHA384/AES256) on role **ESXi Hypervisor** | Fleet iDRAC9 7.x / iDRAC10 |
+| SNMPv3 :161, **Use OOB IP = Yes** | CG **Dell iDRAC SNMP (AES128)** (SHA384/AES128) on **Device** (KR/CN list) | iDRACs that reject AES256 priv |
 | SNMPv3 :161, **Use OOB IP = Yes** | CG **Dell iDRAC SNMP (Legacy)** (SHA1/AES128) on role **Cohesity** | C6420 fw 6.10 tops out at SHA1/AES128 |
 | Template | TemplateRules §6.3 — Manufacturer **Dell**∧ Server/ESXi/Cohesity → Dell iDRAC by SNMP | Storage stays on HPE MSA HTTP |
 
 **Same `MONITORING-IDRAC` user, same passphrases** — only the protocol differs. Env vars `NBX_SNMP_AUTHPASS_IDRAC` / `NBX_SNMP_PRIVPASS_IDRAC`.
 
+**AES128 exceptions:** assign the AES128 CG on the **Device** so it wins over the role AES256 CG (plugin: one CG expands HostInterfaces). Do **not** leave durable per-device HostInterfaces — CG propagate stamps `ip=primary`, which beats `use_oob_ip` at sync. Zerotouch prunes those device HIs after assigning the exception CG.
+
 **Server role** stays on Site Group **Agent Monitoring** @ primary (real Zabbix agent); iDRAC template via TemplateRule only.
 
-**iDRAC SNMPv3 user must be configured on each iDRAC** (via iDRAC UI or racadm) with the `MONITORING-IDRAC` user, SHA384 auth, AES256 priv (or AES128 for KR/CN exception hosts).
+**iDRAC SNMPv3 user must be configured on each iDRAC** (via iDRAC UI or racadm) with the `MONITORING-IDRAC` user, SHA384 auth, AES256 priv (or AES128 for KR/CN exception hosts; SHA1/AES128 for Cohesity Legacy).
 
 **Retired:** CG **Server Agent+OOB** (Agent + SNMP `MONITORING-DELL` @ oob) — deleted by zerotouch. CG **Dell iDRAC HTTP** (Redfish API) — superseded by SNMPv3.
 
@@ -322,7 +325,7 @@ First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and valu
 | FortiAnalyzer/Manager | `FortiAnalyzer\|FortiManager` | Network Generic Device by SNMP | OS/Network | — | 50 | Yes |
 | VMware Photon | `Photon` | Linux by Zabbix agent | OS/Linux | — | 50 | Yes |
 
-**VMware:** do **not** attach VMware FQDN via an ESXi platform rule (legacy rule `VMware ESXi` stays disabled). Hypervisor/VM/cluster discovery is vCenter LLD (§7). ESXi hardware = §5.5 + §6.3 Dell iDRAC (ESXi) + role Redfish macros.
+**VMware:** do **not** attach VMware FQDN via an ESXi platform rule (legacy rule `VMware ESXi` stays disabled). Hypervisor/VM/cluster discovery is vCenter LLD (§7). ESXi hardware = §5.5 + §6.3 Dell iDRAC (ESXi) SNMPv3.
 
 **Extreme:** VOSS / IQ Engine rows above are created by zerotouch (soft-resolve until YAML import). **Extreme EXOS** TemplateRule is created/retargeted by `configure_nbxsync_network.py` (not zerotouch). Never Network Generic on Switch* (`icmpping` collision). Macro values, stages, LLD patches → [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md); labels → [`port-identity.md`](../../zabbix/port-identity.md); nbxSync macro assignment clicks → §11.1. Run network `--apply` after zerotouch (Appendix A).
 
@@ -692,7 +695,7 @@ Ask the NetBox administrator to set the following under the nbxsync plugin confi
 | VM status → Zabbix | active → enabled; planned → enabled in maintenance; paused → enabled + soft-state tag; failed/offline → deleted |
 | SNMP community / auth / priv macro names | `{$SNMP_COMMUNITY}`, `{$SNMP_AUTHPASS}`, `{$SNMP_PRIVPASS}` |
 
-Keep Site / Site Group inheritance **after** role and platform in the inheritance order (architecture rule 5) so country defaults do not override role SNMP or Dell iDRAC HTTP.
+Keep Site / Site Group inheritance **after** role and platform in the inheritance order (architecture rule 5) so country defaults do not override role SNMP or Dell iDRAC SNMP.
 
 ---
 
@@ -716,7 +719,7 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Storage (Huawei) `HU-DEB-SAN01` | **SNMP Monitoring (Huawei)** on Device | Huawei OceanStor Dorado by SNMP (has `icmpping`; no extra ICMP rule); LogicMonitor on **CG HI** | SNMP `LogicMonitor` | Sites/…, Roles/Storage |
 | Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP (rule **Dell Storage (HTTP)**; legacy HPE MSA disabled); macros `{$HPE.MSA.API.HOST}` / `{$HPE.MSA.API.USERNAME}` / `{$HPE.MSA.API.PASSWORD}` (§11.4) | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Cohesity physical (oob only) | Dell iDRAC SNMP (Legacy) (SHA1/AES128) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC** on oob | Sites/CH/…, Roles/Cohesity |
-| ESXi hypervisor (Dell) | Dell iDRAC SNMP (SHA384/AES256) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC SHA384/AES128** on oob | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
+| ESXi hypervisor (Dell) | Dell iDRAC SNMP (SHA384/AES256) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC SHA384/AES256** on oob | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
 | vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (+ OS template if platform matches); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
 | Zabbix Proxy | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping + Remote Zabbix proxy health | Agent :10050 | Sites/…, Roles/Zabbix Proxy, OS/Linux |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
