@@ -411,6 +411,10 @@ Assign on the **role** when Extreme staging says so ([`zabbix/01-extreme-switchi
 | Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt / Hybrid |
 | Extreme Routing by SNMP | Switch Core, Switch Dist |
 
+**Template fixes (YAML → import):**
+- **VOSS IST items → LLD**: `fabric.ist.status` and `fabric.ist.peer` are now discovered via `ist.discovery` LLD rule (walks `rcMltIstSessionStatus` table). V-IST-only switches (most of the estate) return no rows — no more NOTSUPPORTED noise. The IST trigger remains gated by `{$IST.CONTROL}=0`.
+- **IQ Engine fan**: `ah.system.fan.rpm` preprocessing returns `0` for fanless APs (e.g. AP305C) instead of throwing. Item stays OK with value 0.
+
 ---
 
 ## 8. Hostgroups

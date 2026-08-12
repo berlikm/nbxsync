@@ -285,7 +285,7 @@ zabbix_export:
       units: rpm
       description: |
         ahEnvirmentFan (MIB spelling). Wall APs (e.g. AP305C) are fanless and return 0 —
-        treat ≤0 as unsupported so Latest data is not a fake 0 rpm metric.
+        return 0 instead of throwing so the item stays OK with a clean 0 rpm value.
       tags:
       - tag: component
         value: system
@@ -295,7 +295,7 @@ zabbix_export:
         - |
           var n = Number(value);
           if (isNaN(n) || n <= 0) {
-            throw 'Fanless / unsupported (ahEnvirmentFan≤0)';
+            return 0;
           }
           return n;
     - uuid: 1538bddd67124dfbb3178de15d7c38b8

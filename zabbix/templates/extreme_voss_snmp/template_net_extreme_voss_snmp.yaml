@@ -643,39 +643,6 @@ zabbix_export:
       tags:
       - tag: component
         value: fabric
-    - uuid: 86a9684f23514d7d8723c22deb7d8e3b
-      name: 'IST session status'
-      type: SNMP_AGENT
-      snmp_oid: get[1.3.6.1.4.1.2272.1.17.4.0]
-      key: fabric.ist.status[rcMltIstSessionStatus.0]
-      delay: 1m
-      description: 'MIB: rcMltIstSessionStatus ΓÇö up(1) down(2).'
-      valuemap:
-        name: 'RAPID-CITY::rcMltIstSessionStatus'
-      tags:
-      - tag: component
-        value: fabric
-      triggers:
-      - uuid: 4e0b8c5d64234efcb7a27a2deccf05b2
-        expression: '{$IST.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.ist.status[rcMltIstSessionStatus.0])={$IST.DOWN_STATUS}'
-        name: 'Extreme VOSS: IST session is down'
-        priority: HIGH
-        description: 'MLT IST session is down (if IST is used).'
-        tags:
-        - tag: scope
-          value: availability
-    - uuid: afbdb40ff2f84740a3c5bb5d16dc23d0
-      name: 'IST peer IP'
-      type: SNMP_AGENT
-      snmp_oid: get[1.3.6.1.4.1.2272.1.17.5.0]
-      key: fabric.ist.peer[rcMltIstPeerIp.0]
-      delay: 5m
-      value_type: CHAR
-      trends: '0'
-      description: 'MIB: rcMltIstPeerIp'
-      tags:
-      - tag: component
-        value: fabric
     - uuid: 07107f0a7b6f483f8c86284419ed2017
       name: 'SPBM / PLSB global enable'
       type: SNMP_AGENT
@@ -777,6 +744,47 @@ zabbix_export:
       - tag: component
         value: network
     discovery_rules:
+    - uuid: 86a9684f23514d7d8723c22deb7d8e3b
+      name: 'IST (classic MLT IST) discovery'
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.17.4]
+      key: ist.discovery
+      delay: 1h
+      description: 'Discovers classic MLT IST instances. V-IST-only switches return no rows — items do not appear, avoiding NOTSUPPORTED noise. The trigger is gated by {$IST.CONTROL}=1 (default 0).'
+      item_prototypes:
+      - uuid: afbdb40ff2f84740a3c5bb5d16dc23d0
+        name: 'IST {#SNMPINDEX}: Session status'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.17.4.{#SNMPINDEX}]
+        key: fabric.ist.status[rcMltIstSessionStatus.{#SNMPINDEX}]
+        delay: 1m
+        description: 'MIB: rcMltIstSessionStatus — up(1) down(2). Only discovered on switches with classic IST configured.'
+        valuemap:
+          name: 'RAPID-CITY::rcMltIstSessionStatus'
+        tags:
+        - tag: component
+          value: fabric
+        trigger_prototypes:
+        - uuid: 4e0b8c5d64234efcb7a27a2deccf05b2
+          expression: '{$IST.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.ist.status[rcMltIstSessionStatus.{#SNMPINDEX}])={$IST.DOWN_STATUS}'
+          name: 'Extreme VOSS: IST {#SNMPINDEX}: Session is down'
+          priority: HIGH
+          description: 'MLT IST session is down (if IST is used).'
+          tags:
+          - tag: scope
+            value: availability
+      - uuid: afbdb40ff2f84740a3c5bb5d16dc23f0
+        name: 'IST {#SNMPINDEX}: Peer IP'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.17.5.{#SNMPINDEX}]
+        key: fabric.ist.peer[rcMltIstPeerIp.{#SNMPINDEX}]
+        delay: 5m
+        value_type: CHAR
+        trends: '0'
+        description: 'MIB: rcMltIstPeerIp. Only discovered on switches with classic IST configured.'
+        tags:
+        - tag: component
+          value: fabric
     - uuid: 45c2d7874f464d96a9cc9dfaea618499
       name: FAN Discovery
       type: SNMP_AGENT
