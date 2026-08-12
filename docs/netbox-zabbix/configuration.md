@@ -264,7 +264,6 @@ Manufacturer CG wins over Site Group Agent. Pure Storage and Dell Storage stay A
 | SAP Agent+SNMP | SAP HANA |
 | SAP Agent+SNMP | SAP ME |
 
-SAP roles must **not** also carry Site Group / role Agent Monitoring — the dual-plane CG already includes Agent. Zerotouch prunes stale Agent Monitoring from SAP HANA / SAP ME.
 
 ### ESXi Hypervisor → OOB SNMP Only
 
@@ -282,7 +281,7 @@ ESXi hosts get `role=ESXi Hypervisor` from netbox-sync (`host_role_relation: (?i
 |---|---|
 | SNMP Monitoring (Huawei) | Device **`HU-DEB-SAN01`** |
 
-Overrides Site Group Agent. Credentials are on the CG Host Interface (§5.6b). Zerotouch prunes fleet SNMP Monitoring CG and any stale per-device HI on that device.
+Overrides Site Group Agent. Credentials are on the CG Host Interface (§5.6b).
 
 ### Zero-touch tag opt-ins
 
