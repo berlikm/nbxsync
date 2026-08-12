@@ -760,6 +760,11 @@ def step4_configgroups():
         name='OOB SNMP v2c (ESXi iDRAC)',
         defaults={'description': 'SNMPv2c public @ oob_ip — ESXi iDRACs (migrate to v3 post-cutover)'},
     )
+    dell_idrac_group, _ = get_or_create(
+        M.ZabbixConfigurationGroup,
+        name='Dell iDRAC HTTP',
+        defaults={'description': 'Redfish API macros only (no HostInterface) — Dell PowerEdge iDRAC via HTTP'},
+    )
     # NOTE: ESXi OOB iDRAC CG removed — ESXi uses OOB SNMP Only CG (same as Cohesity physical).
     # snmp_v2_if removed — ESXi iDRACs will use SNMPv3 MONITORING via OOB SNMP Only CG.
     sap_snmp_group = _rename_cg(
@@ -781,7 +786,7 @@ def step4_configgroups():
         'snmp': snmp_group,
         'agent': agent_group,
         'server_oob': server_oob_group,
-        'linux_snmp': linux_snmp_group,
+        'dell_idrac': dell_idrac_group,
         'oob_snmp': oob_snmp_group,
         'esxi_oob': esxi_oob_group,
         'sap_snmp': sap_snmp_group,
@@ -1153,10 +1158,33 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         logger.warning("  Role 'ESXi Hypervisor' not found — skip ESXi prune (run netbox-sync first)")
         esxi_role = None
     if esxi_role:
-        # ESXi iDRAC monitoring is via Dell PowerEdge HTTP (Redfish) template, not SNMP.
-        # No CG assignment needed — the HTTP template uses no Zabbix interface.
-        # The {$DELL.HTTP.API.URL} macro is set per-device in step11_macros.
-        logger.info('  ESXi Hypervisor: Dell iDRAC HTTP template (no SNMP CG needed)')
+        # Dell iDRAC HTTP CG carries the Redfish macros (URL/USER/PASSWORD).
+        # No HostInterface — the HTTP template uses Script items with interfaceid=0.
+        dell_idrac_group = groups.get('dell_idrac')
+        if dell_idrac_group:
+            get_or_create(
+                M.ZabbixConfigurationGroupAssignment,
+                zabbixconfigurationgroup=dell_idrac_group,
+                assigned_object_type=ct(DeviceRole),
+                assigned_object_id=esxi_role.id,
+                defaults={},
+            )
+            logger.info('  ESXi Hypervisor → Dell iDRAC HTTP CG (Redfish macros)')
+        # Also assign to Server and Cohesity roles.
+        for role_name in ('Server', 'Cohesity'):
+            try:
+                role = get_role(role_name)
+                if dell_idrac_group:
+                    get_or_create(
+                        M.ZabbixConfigurationGroupAssignment,
+                        zabbixconfigurationgroup=dell_idrac_group,
+                        assigned_object_type=ct(DeviceRole),
+                        assigned_object_id=role.id,
+                        defaults={},
+                    )
+                    logger.info('  %s → Dell iDRAC HTTP CG (Redfish macros)', role_name)
+            except DeviceRole.DoesNotExist:
+                pass
 
     # Prune stale ESXi OOB iDRAC CG + old OOB SNMP v2c/Only assignments on ESXi role.
     stale_esxi_cg = M.ZabbixConfigurationGroup.objects.filter(name='ESXi OOB iDRAC').first()
@@ -2074,40 +2102,51 @@ def step11_macros(server):
         else:
             logger.warning('  Env var not set for %s — skipping', macro_name)
 
-    # ---- Dell iDRAC Redfish API macros (role-level for ESXi Hypervisor + Server + Cohesity) ----
+    # ---- Dell iDRAC Redfish API macros (on "Dell iDRAC HTTP" CG) ----
     # Template macros: {$DELL.HTTP.API.URL}, {$DELL.HTTP.API.USER}, {$DELL.HTTP.API.PASSWORD}
-    # Uses the shared Redfish read-only account from NBS_REDFISH_USERNAME / NBS_REDFISH_PASSWORD.
-    # The URL macro is a Jinja template that resolves to https://<oob_ip> per device.
+    # CG-level: one assignment, inherited by all roles (ESXi/Server/Cohesity).
+    # The URL macro uses Jinja: resolves to https://<oob_ip> per device at sync time.
     redfish_user = os.environ.get('NBS_REDFISH_USERNAME', '')
     redfish_pass = os.environ.get('NBS_REDFISH_PASSWORD', '')
-    # Assign to Manufacturer Dell (covers all Dell PowerEdge servers with oob_ip).
-    dell_mfr = Manufacturer.objects.filter(name__iexact='Dell').first()
-    if dell_mfr and redfish_user:
+    dell_idrac_cg = M.ZabbixConfigurationGroup.objects.filter(name='Dell iDRAC HTTP').first()
+    if dell_idrac_cg and redfish_user:
         _ensure_macro_assignment(
-            server, '{$DELL.HTTP.API.USER}', redfish_user, dell_mfr,
+            server, '{$DELL.HTTP.API.USER}', redfish_user, dell_idrac_cg,
             mtype=ZabbixMacroTypeChoices.TEXT,
-            description='ztc: Dell Redfish user (shared)')
+            description='ztc: Dell Redfish user (shared on CG)')
         _ensure_macro_assignment(
-            server, '{$DELL.HTTP.API.PASSWORD}', redfish_pass, dell_mfr,
-            description='ztc:secret: Dell Redfish password (shared)')
-        logger.info('  Macros {$DELL.HTTP.API.USER/PASSWORD} on Manufacturer Dell (Redfish)')
+            server, '{$DELL.HTTP.API.PASSWORD}', redfish_pass, dell_idrac_cg,
+            description='ztc:secret: Dell Redfish password (shared on CG)')
+        _ensure_macro_assignment(
+            server, '{$DELL.HTTP.API.URL}', 'https://{{ object.oob_ip.address.ip }}', dell_idrac_cg,
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description='ztc: Dell Redfish URL (Jinja: https://<oob_ip>)')
+        logger.info('  Macros {$DELL.HTTP.API.*} on Dell iDRAC HTTP CG (3 macros, CG-level)')
     else:
-        logger.warning('  NBS_REDFISH_USERNAME/PASSWORD not set — Dell iDRAC HTTP will fail')
+        if not redfish_user:
+            logger.warning('  NBS_REDFISH_USERNAME/PASSWORD not set — Dell iDRAC HTTP will fail')
+        if not dell_idrac_cg:
+            logger.warning('  Dell iDRAC HTTP CG not found — run step4 first')
 
-    # Per-device {$DELL.HTTP.API.URL} for Dell servers with oob_ip (Redfish API endpoint).
-    dell_servers = Device.objects.filter(
-        device_type__manufacturer__name__iexact='Dell',
-        oob_ip__isnull=False,
+    # Prune stale per-device Dell URL macros from previous script versions.
+    _stale_dell_url = M.ZabbixMacro.objects.filter(macro='{$DELL.HTTP.API.URL}')
+    _stale_dell_url_assigns = M.ZabbixMacroAssignment.objects.filter(
+        zabbixmacro__in=_stale_dell_url,
+        assigned_object_type=ct(Device),
     )
-    for dev in dell_servers:
-        if dev.oob_ip and dev.oob_ip.address:
-            oob_ip = str(dev.oob_ip.address.ip)
-            _ensure_macro_assignment(
-                server, '{$DELL.HTTP.API.URL}', f'https://{oob_ip}', dev,
-                mtype=ZabbixMacroTypeChoices.TEXT,
-                description=f'ztc:dell-idrac-url:{dev.name}')
-    if dell_servers.exists():
-        logger.info('  Macros {$DELL.HTTP.API.URL} on %d Dell server(s) with oob_ip', dell_servers.count())
+    _deleted_dell, _ = _stale_dell_url_assigns.delete()
+    if _deleted_dell:
+        logger.info('  PRUNED: %s per-device {$DELL.HTTP.API.URL} macro(s) (moved to CG)', _deleted_dell)
+    # Also prune Manufacturer-level Dell Redfish macros from previous runs.
+    _stale_mfr = M.ZabbixMacroAssignment.objects.filter(
+        zabbixmacro__macro__in=('{$DELL.HTTP.API.USER}', '{$DELL.HTTP.API.PASSWORD}', '{$DELL.HTTP.API.URL}'),
+        assigned_object_type=ct(Manufacturer),
+    )
+    _deleted_mfr, _ = _stale_mfr.delete()
+    if _deleted_mfr:
+        logger.info('  PRUNED: %s Manufacturer-level Dell Redfish macro(s) (moved to CG)', _deleted_mfr)
+    # The CG has no HostInterface — it only carries the shared Redfish credentials.
+
 
     # ---- Secret macros: HPE MSA storage (per-device, API credentials) ----
     # Template macros: {$HPE.MSA.API.HOST}, {$HPE.MSA.API.USERNAME}, {$HPE.MSA.API.PASSWORD}
