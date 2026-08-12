@@ -204,9 +204,9 @@ TPL_NAMES = {
     'as_java_agent': 'AS Java by Zabbix agent (stub)',
     'tableau_bridge_agent': 'Tableau Bridge by Zabbix agent (stub)',
     'cellmap_agent': 'CellMap by Zabbix agent (stub)',
-    'oracle_agent2': 'Oracle by Zabbix agent 2 (stub)',
-    'sap_agent': 'SAP by Zabbix agent (stub)',
-    'acronis_agent': 'Acronis by Zabbix agent (stub)',
+    'oracle_agent2': 'Oracle by Zabbix agent 2',
+    'sap_agent': 'SAP template from Sensirion',
+    'acronis_agent': 'Acronis Cyber Protect Cloud by HTTP',
     'sccm_agent': 'SCCM by Zabbix agent (stub)',
     'print_spool_agent': 'Print Spool by Zabbix agent (stub)',
     'icmp_ping': 'ICMP Ping',
@@ -1531,8 +1531,6 @@ def step7_template_assignments(server):
         # Switch*/AP must NOT get this floor — EXOS (etc.) TemplateRules already attach
         # specialized templates; pairing both yields duplicate icmpping item keys.
         (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Network Device'),
-        # Storage Generic only on Cohesity — Storage role gets manufacturer-specific templates via §6.3
-        (make_template(*TPL['storage_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Cohesity'),
         (make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Firewall'),
         # Placeholder application templates — LM parity. Items built post-cutover,
         # but the template is linked so hosts are discoverable in Zabbix.
