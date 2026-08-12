@@ -283,6 +283,13 @@ SNMP_PROFILES = {
     'idrac': {
         'user': 'MONITORING-IDRAC',
         'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA384,
+        'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.AES256,
+        'auth_env': ('NBX_SNMP_AUTHPASS_IDRAC',),
+        'priv_env': ('NBX_SNMP_PRIVPASS_IDRAC',),
+    },
+    'idrac_aes128': {
+        'user': 'MONITORING-IDRAC',
+        'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA384,
         'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
         'auth_env': ('NBX_SNMP_AUTHPASS_IDRAC',),
         'priv_env': ('NBX_SNMP_PRIVPASS_IDRAC',),
@@ -762,16 +769,28 @@ def step4_configgroups():
         'SNMP Monitoring (by tag)',
         'SNMPv3 MONITORING-LINUX SHA/AES — zero-touch via NetBox tag snmp (Linux and Windows)',
     )
-    # Dell iDRAC SNMPv3 — two tiers by firmware:
-    # ESXi Hypervisor: SHA384/AES128 (iDRAC9 7.x / iDRAC10)
+    # Dell iDRAC SNMPv3 — three tiers by firmware:
+    # ESXi Hypervisor: SHA384/AES256 (iDRAC9 7.x / iDRAC10) — most hosts
+    # ESXi exception: SHA384/AES128 (KR/CN iDRACs with AES priv only)
     # Cohesity: SHA1/AES128 (C6420 fw 6.10 max)
     dell_idrac_group, _ = ensure(
         M.ZabbixConfigurationGroup,
         name='Dell iDRAC SNMP',
         defaults={
             'description': (
-                'Dell PowerEdge iDRAC: SNMPv3 MONITORING-IDRAC SHA384/AES128 @ oob_ip. '
+                'Dell PowerEdge iDRAC: SNMPv3 MONITORING-IDRAC SHA384/AES256 @ oob_ip. '
                 'ESXi Hypervisor (iDRAC9 7.x / iDRAC10).'
+            ),
+        },
+        update_fields=['description', 'name'],
+    )
+    dell_idrac_aes128_group, _ = ensure(
+        M.ZabbixConfigurationGroup,
+        name='Dell iDRAC SNMP (AES128)',
+        defaults={
+            'description': (
+                'Dell PowerEdge iDRAC: SNMPv3 MONITORING-IDRAC SHA384/AES128 @ oob_ip. '
+                'Exception hosts (KR/CN iDRACs with AES priv only).'
             ),
         },
         update_fields=['description', 'name'],
@@ -806,6 +825,7 @@ def step4_configgroups():
         'snmp': snmp_group,
         'agent': agent_group,
         'dell_idrac': dell_idrac_group,
+        'dell_idrac_aes128': dell_idrac_aes128_group,
         'dell_idrac_legacy': dell_idrac_legacy_group,
         'linux_snmp': linux_snmp_group,
         'sap_snmp': sap_snmp_group,
@@ -887,6 +907,7 @@ def step5_host_interfaces(server, groups: dict):
     # 5.5 Dell iDRAC SNMP — SNMPv2c public @ oob_ip
     # 5.5 Dell iDRAC SNMPv3 — two tiers by firmware (ESXi: SHA384/AES256, Cohesity: SHA1/AES128)
     snmp_if(groups['dell_idrac'],        profile='idrac',        use_oob_ip=True)
+    snmp_if(groups['dell_idrac_aes128'], profile='idrac_aes128', use_oob_ip=True)
     snmp_if(groups['dell_idrac_legacy'], profile='idrac_legacy', use_oob_ip=True)
     # Prune stale v2c HostInterface on Dell iDRAC SNMP (now v3).
     _old_dell_if = M.ZabbixHostInterface.objects.filter(
@@ -1055,6 +1076,27 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         ).exclude(assigned_object_id__in=_valid_ids).delete()
         if stale:
             logger.info('  PRUNED: %s stale %s role assignment(s)', stale, _cg_key.name)
+
+    # Per-host exception: KR/CN iDRACs that only support AES (not AES256).
+    # These hosts get the Dell iDRAC SNMP (AES128) CG assignment directly on the Device,
+    # overriding the role-level Dell iDRAC SNMP (AES256) CG.
+    _IDRAC_AES128_HOSTS = [
+        'cn-sha-p-esx11.sensirion.lokal', 'cn-sha-p-esx12.sensirion.lokal', 'cn-sha-p-esx13.sensirion.lokal',
+        'kr-sel-p-esx11.sensirion.lokal', 'kr-sel-p-esx12.sensirion.lokal', 'kr-sel-p-esx13.sensirion.lokal',
+    ]
+    _aes128_cg = groups.get('dell_idrac_aes128')
+    if _aes128_cg:
+        for hostname in _IDRAC_AES128_HOSTS:
+            dev = Device.objects.filter(name__iexact=hostname).first()
+            if dev:
+                get_or_create(
+                    M.ZabbixConfigurationGroupAssignment,
+                    zabbixconfigurationgroup=_aes128_cg,
+                    assigned_object_type=ct(Device),
+                    assigned_object_id=dev.id,
+                    defaults={},
+                )
+        logger.info('  %d KR/CN exception hosts → Dell iDRAC SNMP (AES128) per-device', len(_IDRAC_AES128_HOSTS))
 
     assign_role(space_agent_group, 'Space Server')
 
