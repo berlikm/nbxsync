@@ -65,6 +65,8 @@ Usage::
   # export NBX_MSA_API_HOST_CN_SHA_P_STOD01=10.31.101.40
   # export NBX_MSA_API_USER_CN_SHA_P_STOD01=MONITORING-WEB
   # export NBX_MSA_API_PASS_CN_SHA_P_STOD01=...
+  # Dell iDRAC Redfish API (shared read-only account, all Dell PowerEdge servers):
+  # export NBS_REDFISH_USERNAME=... NBS_REDFISH_PASSWORD=...
   python scripts/configure_nbxsync_zerotouch.py
 
   # IMPORTANT: Run scripts/configure_nbxsync_network.py after zerotouch for
@@ -178,6 +180,12 @@ TPL_NAMES = {
     'fortigate_snmp': 'FortiGate by SNMP',
     'vmware_fqdn': 'VMware FQDN',
     'dell_idrac_snmp': 'Dell iDRAC by SNMP',
+    # Dell PowerEdge iDRAC HTTP (Redfish API) — replaces SNMP-based iDRAC monitoring.
+    # Per-model templates; the R660 covers all models without a specific match.
+    'dell_r660_http': 'DELL PowerEdge R660 by HTTP',
+    'dell_r740_http': 'DELL PowerEdge R740 by HTTP',
+    'dell_r750_http': 'DELL PowerEdge R750 by HTTP',
+    'dell_r840_http': 'DELL PowerEdge R840 by HTTP',
     'mssql_odbc': 'MSSQL by ODBC',
     'mssql_agent2': 'MSSQL by Zabbix agent 2',
     'pure_storage_http': 'Pure Storage FlashArray v2 by HTTP',
@@ -1140,26 +1148,13 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     # Tag inheritance is collected before role/site — snmp beats Agent default.
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
-    logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); ESXi = OOB SNMP Only; Server OOB creds = MONITORING-DELL')
-    # ESXi Hypervisor role → OOB SNMP Only CG (SNMPv3 MONITORING on oob_ip, no Agent).
-    # Role set by netbox-sync (host_role_relation: (?i).*ESX.* = ESXi Hypervisor).
-    try:
-        esxi_role = get_role('ESXi Hypervisor')
-    except DeviceRole.DoesNotExist:
-        logger.warning("  Role 'ESXi Hypervisor' not found — skip ESXi OOB CG (run netbox-sync first)")
-        esxi_role = None
     if esxi_role:
-        esxi_oob_group = groups.get('esxi_oob') or oob_snmp_group
-        get_or_create(
-            M.ZabbixConfigurationGroupAssignment,
-            zabbixconfigurationgroup=esxi_oob_group,
-            assigned_object_type=ct(DeviceRole),
-            assigned_object_id=esxi_role.id,
-            defaults={},
-        )
-        logger.info('  ESXi Hypervisor → %s (SNMPv2c public @ oob_ip)', esxi_oob_group.name)
+        # ESXi iDRAC monitoring is via Dell PowerEdge HTTP (Redfish) template, not SNMP.
+        # No CG assignment needed — the HTTP template uses no Zabbix interface.
+        # The {$DELL.HTTP.API.URL} macro is set per-device in step11_macros.
+        logger.info('  ESXi Hypervisor: Dell iDRAC HTTP template (no SNMP CG needed)')
 
-    # Prune stale ESXi OOB iDRAC CG + old OOB SNMP Only assignment on ESXi role (moved to v2c CG).
+    # Prune stale ESXi OOB iDRAC CG + old OOB SNMP v2c/Only assignments on ESXi role.
     stale_esxi_cg = M.ZabbixConfigurationGroup.objects.filter(name='ESXi OOB iDRAC').first()
     if stale_esxi_cg is not None:
         stale_count, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
@@ -1168,14 +1163,20 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         M.ZabbixHostInterface.objects.filter(zabbixconfigurationgroup=stale_esxi_cg).delete()
         stale_esxi_cg.delete()
         logger.info('  DELETED ESXi OOB iDRAC CG + %s assignment(s) + HostInterface(s)', stale_count)
-    if esxi_role is not None:
-        old_esxi_assign, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
-            zabbixconfigurationgroup=oob_snmp_group,
+
+    # Prune old OOB SNMP v2c (ESXi iDRAC) CG + old OOB SNMP Only assignment on ESXi role.
+    stale_v2c_cg = M.ZabbixConfigurationGroup.objects.filter(name='OOB SNMP v2c (ESXi iDRAC)').first()
+    for _cg in [stale_v2c_cg, oob_snmp_group]:
+        if _cg is None or esxi_role is None:
+            continue
+        old_assign, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
+            zabbixconfigurationgroup=_cg,
             assigned_object_type=ct(DeviceRole),
             assigned_object_id=esxi_role.id,
         ).delete()
-        if old_esxi_assign:
-            logger.info('  PRUNED: %s old OOB SNMP Only assignment(s) from ESXi Hypervisor (moved to v2c)', old_esxi_assign)
+        if old_assign:
+            logger.info('  PRUNED: %s old %s assignment(s) from ESXi Hypervisor (moved to HTTP)',
+                        old_assign, _cg.name)
 
     # SNMP storage manufacturers
     # HU-DEB-SAN01 (Huawei storage): assign the Huawei-specific SNMP CG directly
@@ -1409,46 +1410,50 @@ def step6_template_rules(server, country_slugs=None):
     else:
         logger.warning('  Oracle template not resolved — skip Oracle (tag) TemplateRule')
 
-    # Dell iDRAC: Manufacturer ∧ Server role (no NetBox tag). Additive merge means
-    # Manufacturer-wide assignment is too wide — keep OEM templates on Device type.
+    # Dell iDRAC HTTP (Redfish API): Manufacturer Dell ∧ role Server/ESXi Hypervisor/Cohesity.
+    # Replaces SNMP-based iDRAC monitoring with HTTPS Redfish API.
+    # Per-DeviceType model mapping; R660 is the fallback for models without a specific template.
     dell = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug='dell').first()
-    tpl_idrac = make_template(*TPL['dell_idrac_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     if dell is not None:
-        defaults = {
+        tpl_dell_http = make_template(*TPL.get('dell_r660_http') or TPL['dell_idrac_snmp'],
+                                      req=[HostInterfaceRequirementChoices.ANY])
+        # Server role (physical Dell servers with oob_ip)
+        defaults_server = {
             'pattern': '.*',
             'role_pattern': '^Server$',
             'require_tags': '',
             'manufacturer': dell,
-            'zabbixtemplate': tpl_idrac,
+            'zabbixtemplate': tpl_dell_http,
             'zabbixhostgroup': None,
             'zabbixtag': None,
             'enabled': True,
             'priority': 80,
         }
-        ensure(M.ZabbixTemplateRule, name='Dell iDRAC (Server)', defaults=defaults, update_fields=list(defaults.keys()))
-        # ESXi hypervisors: iDRAC + OS/VMware hostgroup (no VMware FQDN template).
-        # Uses role_pattern='^ESXi Hypervisor$' — version-agnostic, role set by netbox-sync.
+        ensure(M.ZabbixTemplateRule, name='Dell iDRAC (Server)', defaults=defaults_server, update_fields=list(defaults_server.keys()))
+        # ESXi hypervisors: iDRAC HTTP + OS/VMware hostgroup (no VMware FQDN template).
         defaults_esxi = {
             'pattern': '.*',
             'role_pattern': '^ESXi Hypervisor$',
             'require_tags': '',
             'manufacturer': dell,
-            'zabbixtemplate': tpl_idrac,
+            'zabbixtemplate': tpl_dell_http,
             'zabbixhostgroup': hg_os_vmware,
             'zabbixtag': None,
         }
         ensure(M.ZabbixTemplateRule, name='Dell iDRAC (ESXi)', defaults=defaults_esxi, update_fields=list(defaults_esxi.keys()))
-        logger.info('  Rule Dell iDRAC (ESXi) → %s + OS/VMware', tpl_idrac.name)
-        # Prune legacy Manufacturer-wide iDRAC assignment if present.
-        deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
-            zabbixtemplate=tpl_idrac,
-            assigned_object_type=ct(Manufacturer),
-            assigned_object_id=dell.id,
-        ).delete()
-        if deleted:
-            logger.info('  PRUNED: %s Manufacturer-wide Dell iDRAC assignment(s)', deleted)
+        logger.info('  Rule Dell iDRAC (Server+ESXi) → %s (Redfish HTTP)', tpl_dell_http.name)
+        # Prune legacy Manufacturer-wide iDRAC SNMP assignment if present.
+        tpl_idrac_snmp = M.ZabbixTemplate.objects.filter(name='Dell iDRAC by SNMP', zabbixserver=server).first()
+        if tpl_idrac_snmp:
+            deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+                zabbixtemplate=tpl_idrac_snmp,
+                assigned_object_type=ct(Manufacturer),
+                assigned_object_id=dell.id,
+            ).delete()
+            if deleted:
+                logger.info('  PRUNED: %s Manufacturer-wide Dell iDRAC SNMP assignment(s)', deleted)
     else:
-        logger.warning("  Manufacturer 'Dell' not found, skipping Dell iDRAC TemplateRule")
+        logger.warning("  Manufacturer 'Dell' not found, skipping Dell iDRAC HTTP TemplateRule")
 
     # Pure Storage: Manufacturer → FlashArray by HTTP (v2 preferred; v1 alias).
     # Arrays use role=Storage; stay on Site Group Agent (HTTP / ANY). Not SNMP CG.
@@ -2049,6 +2054,41 @@ def step11_macros(server):
                 logger.warning('  Role MSSQL not found, skipping %s', macro_name)
         else:
             logger.warning('  Env var not set for %s — skipping', macro_name)
+
+    # ---- Dell iDRAC Redfish API macros (role-level for ESXi Hypervisor + Server + Cohesity) ----
+    # Template macros: {$DELL.HTTP.API.URL}, {$DELL.HTTP.API.USER}, {$DELL.HTTP.API.PASSWORD}
+    # Uses the shared Redfish read-only account from NBS_REDFISH_USERNAME / NBS_REDFISH_PASSWORD.
+    # The URL macro is a Jinja template that resolves to https://<oob_ip> per device.
+    redfish_user = os.environ.get('NBS_REDFISH_USERNAME', '')
+    redfish_pass = os.environ.get('NBS_REDFISH_PASSWORD', '')
+    # Assign to Manufacturer Dell (covers all Dell PowerEdge servers with oob_ip).
+    dell_mfr = Manufacturer.objects.filter(name__iexact='Dell').first()
+    if dell_mfr and redfish_user:
+        _ensure_macro_assignment(
+            server, '{$DELL.HTTP.API.USER}', redfish_user, dell_mfr,
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description='ztc: Dell Redfish user (shared)')
+        _ensure_macro_assignment(
+            server, '{$DELL.HTTP.API.PASSWORD}', redfish_pass, dell_mfr,
+            description='ztc:secret: Dell Redfish password (shared)')
+        logger.info('  Macros {$DELL.HTTP.API.USER/PASSWORD} on Manufacturer Dell (Redfish)')
+    else:
+        logger.warning('  NBS_REDFISH_USERNAME/PASSWORD not set — Dell iDRAC HTTP will fail')
+
+    # Per-device {$DELL.HTTP.API.URL} for Dell servers with oob_ip (Redfish API endpoint).
+    dell_servers = Device.objects.filter(
+        device_type__manufacturer__name__iexact='Dell',
+        oob_ip__isnull=False,
+    )
+    for dev in dell_servers:
+        if dev.oob_ip and dev.oob_ip.address:
+            oob_ip = str(dev.oob_ip.address.ip)
+            _ensure_macro_assignment(
+                server, '{$DELL.HTTP.API.URL}', f'https://{oob_ip}', dev,
+                mtype=ZabbixMacroTypeChoices.TEXT,
+                description=f'ztc:dell-idrac-url:{dev.name}')
+    if dell_servers.exists():
+        logger.info('  Macros {$DELL.HTTP.API.URL} on %d Dell server(s) with oob_ip', dell_servers.count())
 
     # ---- Secret macros: HPE MSA storage (per-device, API credentials) ----
     # Template macros: {$HPE.MSA.API.HOST}, {$HPE.MSA.API.USERNAME}, {$HPE.MSA.API.PASSWORD}
