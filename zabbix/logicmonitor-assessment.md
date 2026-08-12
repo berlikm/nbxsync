@@ -1,7 +1,8 @@
 # LogicMonitor → Zabbix migration assessment
 
-Status: draft  
-Source: LM account export (Aug 2026) + Zabbix 7.0 nbxsync stack
+Status: updated (Aug 2026)
+Source: LM account export (Aug 2026) + Zabbix 7.0 nbxsync stack (dev-verified)
+Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objects carrying onboarding tag; prod counts will be higher once onboarding waves complete.
 
 ## 1. SNMP monitoring accounts
 
@@ -10,9 +11,9 @@ Source: LM account export (Aug 2026) + Zabbix 7.0 nbxsync stack
 | `MONITORING` (global) | MD5/DES | Switches, APs, firewalls, network | `SNMP Monitoring` CG → MONITORING/MD5/DES | ✅ Covered |
 | `MONITORING-LINUX` (group override) | SHA/AES | Linux servers (SNMP) | `SNMP Monitoring (Linux)` CG → MONITORING-LINUX/SHA/AES | ✅ CG built (hosts need tag `snmp`) |
 | `SAPUSER` (group override) | SHA/AES | SAP systems | CG **SAP Agent+SNMP** → Agent + SAPUSER/SHA/AES on roles SAP HANA / SAP ME | ✅ CG built (role-based; no `snmp-sap` tag) |
-| `MONITORING-DELL` (resource override) | SHA/AES | CN-SHA-P-STOD (Dell storage) | Not yet — Dell storage needs HTTP template | ❌ Gap |
-| `LogicMonitor` (resource override) | SHA/AES | hu-deb-san01 (Huawei storage) | Not yet — Huawei needs template | ❌ Gap |
-| v2c community (resource override) | — | CH-STA-P-ENSA01 | v2c not in CG model | ❌ Gap (single device) |
+| `MONITORING-DELL` (resource override) | SHA/AES | CN-SHA-P-STOD (Dell storage) | HPE MSA 2060 Storage by HTTP template (REST API, not SNMP); per-device macros `{$HPE.MSA.API.HOST/USERNAME/PASSWORD}` (§11.4) | ✅ Covered |
+| `LogicMonitor` (resource override) | SHA/AES | hu-deb-san01 (Huawei storage) | Huawei OceanStor Dorado by SNMP on `SNMP Monitoring (Huawei)` CG with LogicMonitor SHA/AES on CG Host Interface (§5.6b) | ✅ Covered |
+| v2c community (resource override) | — | CH-STA-P-ENSA01 | `snmp_v2_if()` helper exists in zerotouch (SNMPv2 + `snmp_community`/`snmp_pushcommunity`); unused since ESXi iDRACs moved to SNMPv3. Not a model gap — just not configured. | ⚠️ Not configured (not a gap) |
 
 ## 2. Non-SNMP monitoring
 
@@ -21,14 +22,14 @@ Source: LM account export (Aug 2026) + Zabbix 7.0 nbxsync stack
 | **WMI** (global `CH-UPA-Monitor`) | Windows servers | `Windows by Zabbix agent` (agent, not WMI) | ✅ Covered (agent replaces WMI) |
 | **WMI** (DC override `CORP-UPA-Dom_Monitor`) | Domain Controllers | Agent — DCs get Windows by agent via platform rule | ✅ Covered |
 | **JDBC Oracle** (`C##logicmonitor`) | Oracle DBs | Not yet — Oracle by ODBC needed | ❌ Gap |
-| **ESX/vCenter** (`LogicMonitor` SSO) | 4 vCenters (per-site SSO) | `VMware FQDN` template + per-vCenter `{$VMWARE.USER}`/`{$VMWARE.PASSWORD}` macros | ✅ Covered (host-level macros needed per vCenter) |
+| **ESX/vCenter** (`LogicMonitor` SSO) | 4 vCenters (per-site SSO) | `VMware FQDN` template + per-vCenter `{$VMWARE.USERNAME}`/`{$VMWARE.PASSWORD}`/`{$VMWARE.URL}` macros (old `{$VMWARE.USER}` pruned) | ✅ Covered (per-vCenter macros via §11.4) |
 | **Horizon View** (`CH-UPA-Monitor`) | VDI | Not yet — Zabbix doesn't have Horizon template | ❌ Gap (post-cutover) |
 
 ## 3. API / token monitoring
 
 | LM API | Scope | Zabbix equivalent | Status |
 |---|---|---|---|
-| **Pure Storage** (per-array token) | 7 SAN arrays | `Pure Storage FlashArray v1 by HTTP` via manufacturer TemplateRule | ✅ Covered (need per-array `{$PURESTORAGE.TOKEN}` macros) |
+| **Pure Storage** (per-array token) | 7 SAN arrays | `Pure Storage FlashArray v2 by HTTP` via manufacturer TemplateRule; per-array `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` macros (old `{$PURESTORAGE.TOKEN}` pruned) | ✅ Covered (per-array macros via §11.4) |
 | **SAP** (`C_PROMONITOR`) | 11 SAP hosts | Not yet — SAP scripts from DNUS, integrated by Robert | ❌ Gap (post-cutover) |
 | **CATO SD-WAN** (account 964) | Cato sockets | Not yet — Cato by HTTP template needed | ❌ Gap (post-cutover) |
 
@@ -70,10 +71,10 @@ All 38 ConfigSources in LM are standard Exchange content. Zabbix doesn't have a 
 | Switch/AP/Firewall SNMP | ~568 devices | ✅ 568 synced | 0 | Templates: EXOS, VOSS, IQ Engine, FortiGate |
 | Windows servers (agent/WMI) | ~100+ | ✅ 37+ synced | 0 | Windows by Zabbix agent replaces WMI |
 | Linux servers (agent) | ~50+ | ✅ 9+ synced | 0 | Linux by Zabbix agent |
-| VMware/vCenter | 4 vCenters + ESXi | ✅ 24 ESXi synced | Per-vCenter macros needed | `{$VMWARE.USER}`/`{$VMWARE.PASSWORD}` per host |
+| VMware/vCenter | 4 vCenters + ESXi | ✅ 24 ESXi synced | 0 | `{$VMWARE.USERNAME}`/`{$VMWARE.PASSWORD}`/`{$VMWARE.URL}` per vCenter (§11.4) |
 | MSSQL | ~30 | ✅ 2 synced (Agent 2) | 0 | `MSSQL by Zabbix agent 2` on MSSQL role |
-| Pure Storage | 7 arrays | ✅ 7 synced | Per-array token macros needed | `{$PURESTORAGE.TOKEN}` per host |
-| Dell/Huawei storage | 2 devices | ❌ | 2 | Need HTTP/SNMP templates |
+| Pure Storage | 7 arrays | ✅ 7 synced | 0 | `Pure Storage FlashArray v2 by HTTP`; `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` per array (§11.4) |
+| Dell/Huawei storage | 2 devices | ✅ 2 synced | 0 | HPE MSA HTTP (Dell); Huawei OceanStor SNMP (Huawei CG) |
 | SAP | 11 hosts | ❌ | 11 | DNUS scripts, post-cutover |
 | CATO SD-WAN | (API) | ❌ | 1 | Cato by HTTP, post-cutover |
 | Website checks | 11 | ❌ | 11 | Zabbix web scenarios |
