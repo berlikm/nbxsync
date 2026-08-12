@@ -8,18 +8,19 @@ Day-to-day ops use the NetBox GUI/API; see ``docs/netbox-zabbix/README.md``.
 Hostgroup-first ops model: Zabbix navigation hangs off
 ``Sites/*`` × ``Roles/*`` × ``OS/*`` (+ lean ``Priority/Critical`` via tag).
 Transport stays on Configuration Groups (SiteGroup Agent default + role SNMP /
-Dell iDRAC HTTP / SPACE exceptions). Multi-credential SNMPv3 profiles per CG
-(network / Linux / SAP). Tags CAN select transport via CG→Tag
+Dell iDRAC SNMPv3 / SPACE exceptions). Multi-credential SNMPv3 profiles per CG
+(network / Linux / SAP / iDRAC). Tags CAN select transport via CG→Tag
 assignment (``snmp``); Host Interfaces must NOT sit on tags. SAP uses role-based CG assignment (not tags).
 
 Deltas vs the old checklist script:
 
   Δ5b  Agent CG → each top-level country SiteGroup (not 31 role→Agent rows)
   Δ5b  Pure Storage stays on SiteGroup Agent + HTTP template (ANY) — not SNMP CG
-  Δ5b  Storage removed from SNMP CG (Cohesity physical → Dell iDRAC HTTP)
-  Δ5b  Server / ESXi / Cohesity = CG "Dell iDRAC HTTP" (Agent :10050 + Redfish macros; no SNMP BMC)
-  Δ5b  Retired: Server Agent+OOB, ESXi OOB iDRAC, OOB SNMP Only / v2c
-  Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,SAP}
+  Δ5b  Storage removed from SNMP CG (Cohesity physical → Dell iDRAC SNMP Legacy)
+  Δ5b  ESXi → Dell iDRAC SNMP (SHA384/AES256); Cohesity → Legacy (SHA1/AES128);
+       KR/CN AES128 exceptions per-device; Server stays SiteGroup Agent @ primary
+  Δ5b  Retired: Server Agent+OOB, ESXi OOB iDRAC, OOB SNMP Only / v2c, Dell iDRAC HTTP
+  Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,SAP,IDRAC}
   Δ5   "SNMP Monitoring (Linux)" CG on NetBox tag snmp (was SNMP by tag / VM by SNMP)
   Δ5   "Agent Monitoring (SPACE)" port 10060 on Space Server role
   Δ5   "SAP Agent+SNMP" CG (dual-plane: Agent + SAPUSER) on SAP HANA / SAP ME roles
@@ -180,7 +181,7 @@ TPL_NAMES = {
     'fortigate_snmp': 'FortiGate by SNMP',
     'vmware_fqdn': 'VMware FQDN',
     'dell_idrac_snmp': 'Dell iDRAC by SNMP',
-    # Dell PowerEdge iDRAC HTTP (Redfish API) — replaces SNMP-based iDRAC monitoring.
+    # Dell PowerEdge iDRAC SNMPv3 (MONITORING-IDRAC) — TemplateRule Dell ∧ role.
     # Per-model templates; the R660 covers all models without a specific match.
     'dell_r660_http': 'DELL PowerEdge R660 by HTTP',
     'dell_r740_http': 'DELL PowerEdge R740 by HTTP',
@@ -277,9 +278,10 @@ SNMP_PROFILES = {
         'auth_env': ('NBX_SNMP_AUTHPASS_SAP',),
         'priv_env': ('NBX_SNMP_PRIVPASS_SAP',),
     },
-    # Dell iDRAC SNMPv3 — same user/passphrases, two auth tiers:
-    # ESXi Hypervisor: SHA384/AES128 (iDRAC9 7.x / iDRAC10)
-    # C6420 fw 6.10: SHA1/AES128 (Cohesity nodes)
+    # Dell iDRAC SNMPv3 — same user/passphrases, three privilege tiers:
+    # ESXi Hypervisor (fleet): SHA384/AES256
+    # KR/CN exceptions: SHA384/AES128 (per-device CG)
+    # Cohesity C6420 fw 6.10: SHA1/AES128 (Legacy CG)
     'idrac': {
         'user': 'MONITORING-IDRAC',
         'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA384,
@@ -310,7 +312,7 @@ SNMP_PROFILES = {
 SHADOW_MACROS = ()  # Empty — secrets are now managed in step11_macros
 
 # Previous script listed these under Agent; SiteGroup Agent default covers them now.
-# Server / Cohesity / ESXi Hypervisor → Dell iDRAC HTTP; Space Server → Agent Monitoring (SPACE).
+# Space Server → Agent Monitoring (SPACE). ESXi/Cohesity → Dell iDRAC SNMP CGs below.
 AGENT_DEFAULT_ROLES_DOC = [
     'Domain Controller',
     'Fileserver',
@@ -339,17 +341,12 @@ AGENT_DEFAULT_ROLES_DOC = [
     'Subversion',
 ]
 
-# Roles that get Redfish macros {$DELL.HTTP.API.*} (inheritance resolves role macros).
-DELL_IDRAC_HTTP_ROLES = ['Server', 'ESXi Hypervisor', 'Cohesity']
-# CG Dell iDRAC SNMP — ESXi (SHA384/AES128) + Cohesity (SHA1/AES128 legacy).
-DELL_IDRAC_OOB_CG_ROLES        = ['ESXi Hypervisor']   # SHA384/AES128 (iDRAC9 7.x / iDRAC10)
-DELL_IDRAC_LEGACY_CG_ROLES     = ['Cohesity']          # SHA1/AES128 (C6420 fw 6.10)
-
-# Roles that get Redfish macros {$DELL.HTTP.API.*} (inheritance resolves role macros).
-DELL_IDRAC_HTTP_ROLES = ['Server', 'ESXi Hypervisor', 'Cohesity']
-# CG Dell iDRAC HTTP (Agent placeholder @ oob_ip) — ESXi/Cohesity only.
-# Server keeps Site Group Agent @ primary (real Zabbix agent); macros still on role Server.
-DELL_IDRAC_OOB_CG_ROLES = ['ESXi Hypervisor', 'Cohesity']
+# Roles that get Dell iDRAC TemplateRules (SNMP template; Server stays on SiteGroup Agent).
+DELL_IDRAC_TEMPLATE_ROLES = ['Server', 'ESXi Hypervisor', 'Cohesity']
+# CG Dell iDRAC SNMP (SHA384/AES256) — ESXi only. Do NOT include Cohesity (Legacy CG).
+DELL_IDRAC_OOB_CG_ROLES = ['ESXi Hypervisor']
+# CG Dell iDRAC SNMP (Legacy) SHA1/AES128 — Cohesity C6420 fw 6.10.
+DELL_IDRAC_LEGACY_CG_ROLES = ['Cohesity']
 
 # Platforms that are ESXi hypervisors (not vCenter appliances). VMware API monitoring
 # is vCenter-only; these hosts get Dell iDRAC on oob_ip and OS/VMware hostgroup.
@@ -903,9 +900,7 @@ def step5_host_interfaces(server, groups: dict):
     snmp_if(groups['snmp'], profile='network')
     # 5.2 Default agent — 10050
     agent_if(groups['agent'], port=10050)
-    # 5.5 Dell iDRAC HTTP — Agent placeholder @ oob_ip (ESXi/Cohesity; no SNMP)
-    # 5.5 Dell iDRAC SNMP — SNMPv2c public @ oob_ip
-    # 5.5 Dell iDRAC SNMPv3 — two tiers by firmware (ESXi: SHA384/AES256, Cohesity: SHA1/AES128)
+    # 5.5 Dell iDRAC SNMPv3 — three tiers (ESXi AES256, AES128 exceptions, Cohesity Legacy)
     snmp_if(groups['dell_idrac'],        profile='idrac',        use_oob_ip=True)
     snmp_if(groups['dell_idrac_aes128'], profile='idrac_aes128', use_oob_ip=True)
     snmp_if(groups['dell_idrac_legacy'], profile='idrac_legacy', use_oob_ip=True)
@@ -982,7 +977,7 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     snmp_group = groups['snmp']
     agent_group = groups['agent']
     linux_snmp_group = groups['linux_snmp']
-    # OOB SNMP groups removed — Dell servers use HTTP (Redfish).
+    # Retired OOB / HTTP BMC CGs (Server Agent+OOB, ESXi OOB, OOB SNMP, Dell iDRAC HTTP).
     sap_snmp_group = groups['sap_snmp']
     space_agent_group = groups['space_agent']
     dell_idrac_group = groups['dell_idrac']
@@ -1050,8 +1045,9 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     for role_name in SNMP_ROLES:
         assign_role(snmp_group, role_name)
 
-    # Dell iDRAC SNMPv3: two CGs by firmware tier.
-    # ESXi Hypervisor → SHA384/AES256; Cohesity → SHA1/AES128 (C6420 fw 6.10 max).
+    # Dell iDRAC SNMPv3: role CGs by firmware tier (one CG per role — never stack).
+    # ESXi Hypervisor → SHA384/AES256; Cohesity → SHA1/AES128 (Legacy).
+    # KR/CN AES128 exceptions are per-device only (below) — device CG wins over role.
     for role_name in DELL_IDRAC_OOB_CG_ROLES:
         assign_role(dell_idrac_group, role_name)
     for role_name in DELL_IDRAC_LEGACY_CG_ROLES:
@@ -1077,9 +1073,11 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         if stale:
             logger.info('  PRUNED: %s stale %s role assignment(s)', stale, _cg_key.name)
 
-    # Per-host exception: KR/CN iDRACs that only support AES (not AES256).
-    # These hosts get the Dell iDRAC SNMP (AES128) CG assignment directly on the Device,
-    # overriding the role-level Dell iDRAC SNMP (AES256) CG.
+    # Per-host exception: KR/CN iDRACs that only support AES128 (not AES256).
+    # Device CG assignment wins over role AES256 for HostInterface expansion.
+    # IMPORTANT: prune durable device-level HostInterfaces — CG propagate clones
+    # set ip=primary_ip, and HostInterfaceSync prefers ip_id over use_oob_ip.
+    # Sync-time in-memory CG expansion keeps use_oob_ip → oob_ip correctly.
     _IDRAC_AES128_HOSTS = [
         'cn-sha-p-esx11.sensirion.lokal', 'cn-sha-p-esx12.sensirion.lokal', 'cn-sha-p-esx13.sensirion.lokal',
         'kr-sel-p-esx11.sensirion.lokal', 'kr-sel-p-esx12.sensirion.lokal', 'kr-sel-p-esx13.sensirion.lokal',
@@ -1088,14 +1086,22 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     if _aes128_cg:
         for hostname in _IDRAC_AES128_HOSTS:
             dev = Device.objects.filter(name__iexact=hostname).first()
-            if dev:
-                get_or_create(
-                    M.ZabbixConfigurationGroupAssignment,
-                    zabbixconfigurationgroup=_aes128_cg,
-                    assigned_object_type=ct(Device),
-                    assigned_object_id=dev.id,
-                    defaults={},
-                )
+            if not dev:
+                continue
+            get_or_create(
+                M.ZabbixConfigurationGroupAssignment,
+                zabbixconfigurationgroup=_aes128_cg,
+                assigned_object_type=ct(Device),
+                assigned_object_id=dev.id,
+                defaults={},
+            )
+            # Drop durable device HIs so only CG expand (oob) is used at sync.
+            stale_hi, _ = M.ZabbixHostInterface.objects.filter(
+                assigned_object_type=ct(Device),
+                assigned_object_id=dev.id,
+            ).delete()
+            if stale_hi:
+                logger.info('  PRUNED: %s durable HostInterface(s) on %s (AES128 CG → oob expand)', stale_hi, hostname)
         logger.info('  %d KR/CN exception hosts → Dell iDRAC SNMP (AES128) per-device', len(_IDRAC_AES128_HOSTS))
 
     assign_role(space_agent_group, 'Space Server')
@@ -1128,7 +1134,7 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         logger.warning("  Role 'ESXi Hypervisor' not found — skip ESXi prune (run netbox-sync first)")
         esxi_role = None
     if esxi_role:
-        logger.info('  ESXi Hypervisor → Dell iDRAC SNMP CG (SNMPv2c public @ oob_ip)')
+        logger.info('  ESXi Hypervisor → Dell iDRAC SNMP CG (SNMPv3 SHA384/AES256 @ oob_ip)')
 
     # Do not delete Dell iDRAC SNMP — it is the active iDRAC CG.
 
@@ -1180,7 +1186,7 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     # Cohesity Appliance role → SNMP Monitoring CG (VMs with primary_ip4).
     # Role set by netbox-sync (vm_role_relation: COHE/COHY = Cohesity Appliance).
-    # Physical Cohesity nodes keep role=Cohesity → Dell iDRAC HTTP (oob_ip / Redfish).
+    # Physical Cohesity nodes keep role=Cohesity → Dell iDRAC SNMP (Legacy) @ oob_ip.
     try:
         cohesity_appliance_role = get_role('Cohesity Appliance')
     except DeviceRole.DoesNotExist:
@@ -1392,8 +1398,8 @@ def step6_template_rules(server, country_slugs=None):
     else:
         logger.warning('  Oracle template not resolved — skip Oracle (tag) TemplateRule')
 
-    # Dell iDRAC HTTP (Redfish API): Manufacturer Dell ∧ role Server/ESXi Hypervisor/Cohesity.
-    # Replaces SNMP-based iDRAC monitoring with HTTPS Redfish API.
+    # Dell iDRAC by SNMP: Manufacturer Dell ∧ role Server/ESXi Hypervisor/Cohesity.
+    # Transport is SNMPv3 on the matching Dell iDRAC SNMP CG (AES256 / AES128 / Legacy).
     # Per-DeviceType model mapping; R660 is the fallback for models without a specific template.
     dell = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug='dell').first()
     if dell is not None:
@@ -1423,7 +1429,7 @@ def step6_template_rules(server, country_slugs=None):
             'zabbixtag': None,
         }
         ensure(M.ZabbixTemplateRule, name='Dell iDRAC (ESXi)', defaults=defaults_esxi, update_fields=list(defaults_esxi.keys()))
-        logger.info('  Rule Dell iDRAC (Server+ESXi) → %s (SNMPv2c public)', tpl_dell_snmp.name)
+        logger.info('  Rule Dell iDRAC (Server+ESXi) → %s (SNMPv3 @ oob)', tpl_dell_snmp.name)
         # Prune legacy Manufacturer-wide iDRAC SNMP assignment if present.
         tpl_idrac_snmp = M.ZabbixTemplate.objects.filter(name='Dell iDRAC by SNMP', zabbixserver=server).first()
         if tpl_idrac_snmp:
@@ -1435,7 +1441,7 @@ def step6_template_rules(server, country_slugs=None):
             if deleted:
                 logger.info('  PRUNED: %s Manufacturer-wide Dell iDRAC SNMP assignment(s)', deleted)
     else:
-        logger.warning("  Manufacturer 'Dell' not found, skipping Dell iDRAC HTTP TemplateRule")
+        logger.warning("  Manufacturer 'Dell' not found, skipping Dell iDRAC TemplateRule")
 
     # Pure Storage: Manufacturer → FlashArray by HTTP (v2 preferred; v1 alias).
     # Arrays use role=Storage; stay on Site Group Agent (HTTP / ANY). Not SNMP CG.
@@ -2036,9 +2042,9 @@ def step11_macros(server):
         else:
             logger.warning('  Env var not set for %s — skipping', macro_name)
 
-    # ---- Dell iDRAC: SNMPv2c public (no Redfish macros needed) ----
-    # iDRAC monitoring is via SNMPv2c public on oob_ip (Dell iDRAC by SNMP template).
-    # Redfish HTTP macros are pruned below if present from previous script versions.
+    # ---- Dell iDRAC: SNMPv3 (no Redfish macros) ----
+    # iDRAC monitoring is SNMPv3 MONITORING-IDRAC on oob_ip (Dell iDRAC by SNMP template).
+    # Prune stale Redfish HTTP macros from earlier script versions.
 
     # Prune ALL stale Redfish macros (HTTP → SNMP migration).
     _macro_names = ('{$DELL.HTTP.API.USER}', '{$DELL.HTTP.API.PASSWORD}', '{$DELL.HTTP.API.URL}')
@@ -2046,7 +2052,7 @@ def step11_macros(server):
         zabbixmacro__macro__in=_macro_names,
     ).delete()
     if _stale_dell:
-        logger.info('  PRUNED: %s Dell Redfish macro(s) (migrated to SNMPv2c public)', _stale_dell)
+        logger.info('  PRUNED: %s Dell Redfish macro(s) (migrated to SNMPv3)', _stale_dell)
     # Also prune the ZabbixMacro definitions
     _stale_dell_defs, _ = M.ZabbixMacro.objects.filter(
         macro__in=_macro_names,
@@ -2169,8 +2175,11 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     if missing_snmp:
         logger.warning('MISSING SNMP env vars: %s — SNMP interfaces will have empty passphrases', ', '.join(missing_snmp))
         logger.warning('Set these before first apply: export %s=... etc.', ' '.join(missing_snmp))
-    if not os.environ.get('NBS_REDFISH_USERNAME'):
-        logger.warning('NBS_REDFISH_USERNAME/PASSWORD unset — Dell iDRAC HTTP Redfish macros will be empty')
+    missing_idrac = [name for name in (
+        'NBX_SNMP_AUTHPASS_IDRAC', 'NBX_SNMP_PRIVPASS_IDRAC',
+    ) if not os.environ.get(name)]
+    if missing_idrac:
+        logger.warning('MISSING iDRAC SNMP env vars: %s — iDRAC interfaces will have empty passphrases', ', '.join(missing_idrac))
 
     # Network script reminder.
     logger.info('NOTE: Run scripts/configure_nbxsync_network.py after this for EXOS/VOSS/IQ Engine template imports and Extreme macros.')
@@ -2386,7 +2395,7 @@ def run_simulate() -> int:
         slug=slugify('CH-STA-L44'),
         defaults={'name': f'{PREFIX}CH-STA-L44', 'group': leaf},
     )
-    role_names = sorted(set(SNMP_ROLES + DELL_IDRAC_HTTP_ROLES + AGENT_DEFAULT_ROLES_DOC + ['Messpc', 'Sd Wan Socket', 'Virtual Appliance', 'Pure Storage', 'Storage', 'Tableau', 'CellMap', 'SAP ME', 'SAP HANA', 'Acronis Management', 'SCCM', 'Print Server', 'Database', 'Space Server']))
+    role_names = sorted(set(SNMP_ROLES + DELL_IDRAC_TEMPLATE_ROLES + AGENT_DEFAULT_ROLES_DOC + ['Messpc', 'Sd Wan Socket', 'Virtual Appliance', 'Pure Storage', 'Storage', 'Tableau', 'CellMap', 'SAP ME', 'SAP HANA', 'Acronis Management', 'SCCM', 'Print Server', 'Database', 'Space Server']))
     roles = {}
     for name in role_names:
         roles[name], _ = DeviceRole.objects.get_or_create(
@@ -2472,7 +2481,13 @@ def run_simulate() -> int:
             'agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring', defaults={'description': 'lab'})[0],
             'linux_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (by tag)', defaults={'description': 'lab'})[0],
             'dell_idrac': M.ZabbixConfigurationGroup.objects.get_or_create(
-                name=f'{PREFIX}Dell iDRAC HTTP', defaults={'description': 'lab'}
+                name=f'{PREFIX}Dell iDRAC SNMP', defaults={'description': 'lab'}
+            )[0],
+            'dell_idrac_aes128': M.ZabbixConfigurationGroup.objects.get_or_create(
+                name=f'{PREFIX}Dell iDRAC SNMP (AES128)', defaults={'description': 'lab'}
+            )[0],
+            'dell_idrac_legacy': M.ZabbixConfigurationGroup.objects.get_or_create(
+                name=f'{PREFIX}Dell iDRAC SNMP (Legacy)', defaults={'description': 'lab'}
             )[0],
             'sap_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SAP Agent+SNMP', defaults={'description': 'lab'})[0],
             'space_agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring (SPACE)', defaults={'description': 'lab'})[0],
@@ -2485,7 +2500,7 @@ def run_simulate() -> int:
         space_agent_group = cg_groups['space_agent']
         vm_snmp_group = linux_snmp_group  # alias used by hygiene asserts
 
-        # ESXi platform so step5b can assign Dell iDRAC HTTP (production looks up by name).
+        # ESXi platform so step5b can assign Dell iDRAC SNMP (production looks up by name).
         Platform.objects.get_or_create(name=f'{PREFIX}VMware ESXi', defaults={'slug': slugify(f'{PREFIX}vmware-esxi')})
         Manufacturer.objects.get_or_create(name='Dell', defaults={'slug': 'dell'})
 
@@ -2497,8 +2512,8 @@ def run_simulate() -> int:
             ('NBX_SNMP_PRIVPASS_LINUX', 'lab-linux-privpass'),
             ('NBX_SNMP_AUTHPASS_SAP', 'lab-sap-authpass'),
             ('NBX_SNMP_PRIVPASS_SAP', 'lab-sap-privpass'),
-            ('NBS_REDFISH_USERNAME', 'lab-redfish-user'),
-            ('NBS_REDFISH_PASSWORD', 'lab-redfish-pass'),
+            ('NBX_SNMP_AUTHPASS_IDRAC', 'lab-idrac-authpass'),
+            ('NBX_SNMP_PRIVPASS_IDRAC', 'lab-idrac-privpass'),
         ):
             os.environ.setdefault(key, val)
         # Lab app credentials (per-device env vars)
@@ -2782,7 +2797,7 @@ def run_simulate() -> int:
                 ifs = [(i.get('type'), i.get('ip'), i.get('port')) for i in h.get('interfaces', [])]
                 objects['server'].refresh_from_db()
                 primary = str(IPAddress.objects.get(id=objects['server'].primary_ip4_id).address.ip)
-                # Dell iDRAC HTTP: Agent only (Redfish is HTTPS macros, not SNMP IF).
+                # Server role: Site Group Agent @ primary (no iDRAC SNMP CG on Server).
                 record('zbx_agent_if', any(t == '1' for t, _, _ in ifs) and not any(t == '2' for t, _, _ in ifs), str(ifs), group='zabbix')
                 record('zbx_agent_primary_ip', any(t == '1' and ip == primary for t, ip, _ in ifs), f'{ifs} primary={primary}', group='zabbix')
                 groups = [g['name'] for g in h.get('groups', [])]
@@ -2860,16 +2875,6 @@ def run_simulate() -> int:
                     type=ZabbixHostInterfaceTypeChoices.SNMP,
                 ).first()
 
-            # ESXi should have no SNMP interface (Redfish HTTP, not SNMP).
-            esxi_snmp_ifs = M.ZabbixHostInterface.objects.filter(
-                type=ZabbixHostInterfaceTypeChoices.SNMP,
-            ).count()
-            record(
-                'esxi_no_snmp_interface',
-                esxi_snmp_ifs == 0,
-                f'{esxi_snmp_ifs} SNMP interfaces total (should be 0 for Dell HTTP)',
-                group='hygiene',
-            )
             vmware_tpl = M.ZabbixTemplate.objects.filter(zabbixserver=server, name__icontains='VMware FQDN').first()
             vmware_role_ok = False
             vmware_detail = 'no template'
@@ -2909,21 +2914,33 @@ def run_simulate() -> int:
                 str((linux_if.snmpv3_security_name, linux_if.snmpv3_authentication_protocol, linux_if.snmpv3_privacy_protocol) if linux_if else None),
                 group='hygiene',
             )
+            # Dell iDRAC SNMP CG: SNMPv3 SHA384/AES256 @ oob (no Agent IF on the CG).
+            dell_snmp = _snmp_if(dell_idrac_group)
+            record(
+                'dell_idrac_snmp_oob',
+                bool(
+                    dell_snmp
+                    and dell_snmp.use_oob_ip
+                    and dell_snmp.snmpv3_security_name == 'MONITORING-IDRAC'
+                    and dell_snmp.snmpv3_authentication_protocol == ZabbixInterfaceSNMPV3AuthProtoChoices.SHA384
+                    and dell_snmp.snmpv3_privacy_protocol == ZabbixInterfaceSNMPV3PrivProtoChoices.AES256
+                ),
+                str((
+                    getattr(dell_snmp, 'use_oob_ip', None),
+                    getattr(dell_snmp, 'snmpv3_security_name', None),
+                    getattr(dell_snmp, 'snmpv3_authentication_protocol', None),
+                    getattr(dell_snmp, 'snmpv3_privacy_protocol', None),
+                ) if dell_snmp else None),
+                group='hygiene',
+            )
             dell_agent = M.ZabbixHostInterface.objects.filter(
                 assigned_object_type=ct(M.ZabbixConfigurationGroup),
                 assigned_object_id=dell_idrac_group.id,
                 type=ZabbixHostInterfaceTypeChoices.AGENT,
             ).first()
-            record(
-                'dell_idrac_agent_if',
-                bool(dell_agent and int(dell_agent.port) == 10050 and dell_agent.use_oob_ip),
-                str((dell_agent.port, getattr(dell_agent, 'use_oob_ip', None)) if dell_agent else None),
-                group='hygiene',
-            )
-            dell_snmp = _snmp_if(dell_idrac_group)
-            record('dell_idrac_no_snmp_if', dell_snmp is None, str(dell_snmp), group='hygiene')
+            record('dell_idrac_no_agent_if', dell_agent is None, str(dell_agent), group='hygiene')
             retired_oob = M.ZabbixConfigurationGroup.objects.filter(
-                name__in=[f'{PREFIX}Server Agent+OOB', 'Server Agent+OOB'],
+                name__in=[f'{PREFIX}Server Agent+OOB', 'Server Agent+OOB', f'{PREFIX}Dell iDRAC HTTP', 'Dell iDRAC HTTP'],
             ).count()
             record('no_server_agent_oob_cg', retired_oob == 0, f'count={retired_oob}', group='hygiene')
             space_if = M.ZabbixHostInterface.objects.filter(
