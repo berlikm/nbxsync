@@ -8,18 +8,18 @@ Day-to-day ops use the NetBox GUI/API; see ``docs/netbox-zabbix/README.md``.
 Hostgroup-first ops model: Zabbix navigation hangs off
 ``Sites/*`` × ``Roles/*`` × ``OS/*`` (+ lean ``Priority/Critical`` via tag).
 Transport stays on Configuration Groups (SiteGroup Agent default + role SNMP /
-Server Agent+OOB / SPACE exceptions). Multi-credential SNMPv3 profiles per CG
-(network / Linux / Dell iDRAC / SAP). Tags CAN select transport via CG→Tag
+Dell iDRAC HTTP / SPACE exceptions). Multi-credential SNMPv3 profiles per CG
+(network / Linux / SAP). Tags CAN select transport via CG→Tag
 assignment (``snmp``); Host Interfaces must NOT sit on tags. SAP uses role-based CG assignment (not tags).
 
 Deltas vs the old checklist script:
 
   Δ5b  Agent CG → each top-level country SiteGroup (not 31 role→Agent rows)
   Δ5b  Pure Storage stays on SiteGroup Agent + HTTP template (ANY) — not SNMP CG
-  Δ5b  Storage removed from SNMP CG (Cohesity → OOB SNMP Only)
-  Δ5b  Server BMC = "Server Agent+OOB" with MONITORING-DELL SHA/AES on OOB SNMP
-  Δ5b  ESXi = OOB SNMP v2c (ESXi iDRAC) CG (SNMPv2c public @ oob_ip) on ESXi Hypervisor role; migrate to v3 post-cutover
-  Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,DELL,SAP}
+  Δ5b  Storage removed from SNMP CG (Cohesity physical → Dell iDRAC HTTP)
+  Δ5b  Server / ESXi / Cohesity = CG "Dell iDRAC HTTP" (Agent :10050 + Redfish macros; no SNMP BMC)
+  Δ5b  Retired: Server Agent+OOB, ESXi OOB iDRAC, OOB SNMP Only / v2c
+  Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,SAP}
   Δ5   "SNMP Monitoring (Linux)" CG on NetBox tag snmp (was SNMP by tag / VM by SNMP)
   Δ5   "Agent Monitoring (SPACE)" port 10060 on Space Server role
   Δ5   "SAP Agent+SNMP" CG (dual-plane: Agent + SAPUSER) on SAP HANA / SAP ME roles
@@ -50,7 +50,6 @@ Usage::
   export NBX_ZABBIX_TOKEN=...
   export NBX_SNMP_AUTHPASS_MON=... NBX_SNMP_PRIVPASS_MON=...
   export NBX_SNMP_AUTHPASS_LINUX=... NBX_SNMP_PRIVPASS_LINUX=...
-  export NBX_SNMP_AUTHPASS_DELL=... NBX_SNMP_PRIVPASS_DELL=...
   # optional SAP (after Robert confirms auth/priv):
   # export NBX_SNMP_AUTHPASS_SAP=... NBX_SNMP_PRIVPASS_SAP=...
   # Huawei (LogicMonitor user, non-fleet):
@@ -65,8 +64,7 @@ Usage::
   # export NBX_MSA_API_HOST_CN_SHA_P_STOD01=10.31.101.40
   # export NBX_MSA_API_USER_CN_SHA_P_STOD01=MONITORING-WEB
   # export NBX_MSA_API_PASS_CN_SHA_P_STOD01=...
-  # Dell iDRAC Redfish API (shared read-only account; macros on roles Server /
-  # ESXi Hypervisor / Cohesity — not Manufacturer Dell):
+  # Dell iDRAC Redfish API (shared; macros on CG Dell iDRAC HTTP):
   # export NBS_REDFISH_USERNAME=... NBS_REDFISH_PASSWORD=...
   python scripts/configure_nbxsync_zerotouch.py
 
@@ -122,6 +120,7 @@ import django
 django.setup()
 
 from django.contrib.contenttypes.models import ContentType
+from django.db.models import Q
 from dcim.models import Device, DeviceRole, DeviceType, Interface, Manufacturer, Platform, Site, SiteGroup
 from extras.models import Tag
 from ipam.models import IPAddress
@@ -270,13 +269,6 @@ SNMP_PROFILES = {
         'auth_env': ('NBX_SNMP_AUTHPASS_LINUX',),
         'priv_env': ('NBX_SNMP_PRIVPASS_LINUX',),
     },
-    'dell': {
-        'user': 'MONITORING-DELL',
-        'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1,
-        'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
-        'auth_env': ('NBX_SNMP_AUTHPASS_DELL',),
-        'priv_env': ('NBX_SNMP_PRIVPASS_DELL',),
-    },
     # Provisional — confirm auth/priv with Robert before relying on SAP SNMP.
     'sap': {
         'user': 'SAPUSER',
@@ -295,7 +287,7 @@ SNMP_PROFILES = {
 SHADOW_MACROS = ()  # Empty — secrets are now managed in step11_macros
 
 # Previous script listed these under Agent; SiteGroup Agent default covers them now.
-# Server is carved out into Server Agent+OOB; Space Server → Agent Monitoring (SPACE).
+# Server / Cohesity / ESXi Hypervisor → Dell iDRAC HTTP; Space Server → Agent Monitoring (SPACE).
 AGENT_DEFAULT_ROLES_DOC = [
     'Domain Controller',
     'Fileserver',
@@ -326,7 +318,8 @@ AGENT_DEFAULT_ROLES_DOC = [
     'Subversion',
 ]
 
-SERVER_BMC_ROLES = ['Server', 'Cohesity']  # Cohesity: Dell nodes with only oob_ip
+# Roles that use CG Dell iDRAC HTTP (Agent + Redfish macros). Cohesity: Dell nodes with oob_ip.
+DELL_IDRAC_HTTP_ROLES = ['Server', 'ESXi Hypervisor', 'Cohesity']
 
 # Platforms that are ESXi hypervisors (not vCenter appliances). VMware API monitoring
 # is vCenter-only; these hosts get Dell iDRAC on oob_ip and OS/VMware hostgroup.
@@ -740,21 +733,26 @@ def step4_configgroups():
         name='Agent Monitoring',
         defaults={'description': 'Default agent transport (assigned at top SiteGroups)'},
     )
-    server_oob_group, _ = get_or_create(
-        M.ZabbixConfigurationGroup,
-        name='Server Agent+OOB',
-        defaults={'description': 'Server: Agent @ primary + SNMP MONITORING-DELL @ oob_ip'},
-    )
     # Legacy VM by SNMP / SNMP by tag → Linux credential profile CG.
     linux_snmp_group = _rename_cg(
         ['VM by SNMP', 'SNMP by tag', 'SNMP Monitoring (Linux)'],
         'SNMP Monitoring (by tag)',
         'SNMPv3 MONITORING-LINUX SHA/AES — zero-touch via NetBox tag snmp (Linux and Windows)',
     )
-    # OOB SNMP Only and OOB SNMP v2c CGs removed — Dell servers use HTTP (Redfish).
-    # Pruned below in step5b.
-    # NOTE: ESXi OOB iDRAC CG removed — ESXi uses OOB SNMP Only CG (same as Cohesity physical).
-    # snmp_v2_if removed — ESXi iDRACs will use SNMPv3 MONITORING via OOB SNMP Only CG.
+    # Dell PowerEdge iDRAC via Redfish — one CG for clarity:
+    # Agent :10050 (so this CG can be primary without stealing Site Group Agent)
+    # + Redfish macros (no SNMP HI — template is HTTPS Script items).
+    # Assigned to Server / ESXi Hypervisor / Cohesity. Not Manufacturer Dell (Storage).
+    dell_idrac_group, _ = get_or_create(
+        M.ZabbixConfigurationGroup,
+        name='Dell iDRAC HTTP',
+        defaults={
+            'description': (
+                'Dell PowerEdge iDRAC: Agent :10050 + Redfish macros {$DELL.HTTP.API.*} '
+                '(no SNMP — HTTPS Script template)'
+            ),
+        },
+    )
     sap_snmp_group = _rename_cg(
         ['SNMP Monitoring (SAP)'],
         'SAP Agent+SNMP',
@@ -773,128 +771,12 @@ def step4_configgroups():
     return {
         'snmp': snmp_group,
         'agent': agent_group,
-        'server_oob': server_oob_group,
+        'dell_idrac': dell_idrac_group,
         'linux_snmp': linux_snmp_group,
         'sap_snmp': sap_snmp_group,
         'space_agent': space_agent_group,
         'huawei_snmp': huawei_snmp_group,
     }
-
-    def snmp_if(group, *, profile: str, use_oob_ip: bool = False):
-        ensure_if(
-            zabbixserver=server,
-            assigned_object_type=ct_cfg,
-            assigned_object_id=group.id,
-            type=ZabbixHostInterfaceTypeChoices.SNMP,
-            use_oob_ip=use_oob_ip,
-            defaults={
-                'zabbixconfigurationgroup': group,
-                'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
-                'port': 161,
-                'useip': ZabbixInterfaceUseChoices.IP,
-                'dns': '',
-                **_snmp_v3_fields(profile),
-            },
-        )
-
-    def snmp_v2_if(group, *, community='public', use_oob_ip: bool = False):
-        ensure_if(
-            zabbixserver=server,
-            assigned_object_type=ct_cfg,
-            assigned_object_id=group.id,
-            type=ZabbixHostInterfaceTypeChoices.SNMP,
-            use_oob_ip=use_oob_ip,
-            defaults={
-                'zabbixconfigurationgroup': group,
-                'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
-                'port': 161,
-                'useip': ZabbixInterfaceUseChoices.IP,
-                'dns': '',
-                'snmp_version': ZabbixHostInterfaceSNMPVersionChoices.SNMPV2,
-                'snmp_usebulk': True,
-                'snmp_max_repetitions': 10,
-                'snmp_community': community,
-                'snmp_pushcommunity': True,
-            },
-        )
-
-    def agent_if(group, *, port: int = 10050):
-        ensure_if(
-            zabbixserver=server,
-            assigned_object_type=ct_cfg,
-            assigned_object_id=group.id,
-            type=ZabbixHostInterfaceTypeChoices.AGENT,
-            defaults={
-                'zabbixconfigurationgroup': group,
-                'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
-                'port': port,
-                'useip': ZabbixInterfaceUseChoices.IP,
-                'tls_connect': ZabbixTLSChoices.NO_ENCRYPTION,
-                'dns': '',
-            },
-        )
-
-    # 5.1 Network SNMP — MONITORING MD5/DES
-    snmp_if(groups['snmp'], profile='network')
-    # 5.2 Default agent — 10050
-    agent_if(groups['agent'], port=10050)
-    # 5.3 Server Agent+OOB — agent + Dell iDRAC SNMP
-    agent_if(groups['server_oob'], port=10050)
-    snmp_if(groups['server_oob'], profile='dell', use_oob_ip=True)
-    # 5.4 Linux SNMP opt-in — MONITORING-LINUX SHA/AES
-    snmp_if(groups['linux_snmp'], profile='linux')
-    # 5.6 SAP Agent+SNMP — dual-plane: Agent :10050 + SNMP SAPUSER (one CG, both interfaces)
-    agent_if(groups['sap_snmp'], port=10050)
-    snmp_if(groups['sap_snmp'], profile='sap')
-    # 5.6b Huawei SNMP — LogicMonitor SHA1/AES128 (non-fleet credential)
-    huawei = groups['huawei_snmp']
-    ensure_if(
-        zabbixserver=server,
-        assigned_object_type=ct(M.ZabbixConfigurationGroup),
-        assigned_object_id=huawei.id,
-        type=ZabbixHostInterfaceTypeChoices.SNMP,
-        use_oob_ip=False,
-        defaults={
-            'zabbixconfigurationgroup': huawei,
-            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
-            'port': 161,
-            'useip': ZabbixInterfaceUseChoices.IP,
-            'dns': '',
-            'snmp_version': ZabbixHostInterfaceSNMPVersionChoices.SNMPV3,
-            'snmpv3_security_level': ZabbixInterfaceSNMPV3SecurityLevelChoices.AUTHPRIV,
-            'snmpv3_security_name': 'LogicMonitor',
-            'snmpv3_authentication_protocol': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1,
-            'snmpv3_privacy_protocol': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
-            'snmp_pushcommunity': True,
-        },
-    )
-    # Only set Huawei passphrases when env is non-empty (don't blank on re-run).
-    _huawei_auth = _env_first(('NBX_SNMP_AUTHPASS_HUAWEI',))
-    _huawei_priv = _env_first(('NBX_SNMP_PRIVPASS_HUAWEI',))
-    if _huawei_auth or _huawei_priv:
-        hi = M.ZabbixHostInterface.objects.filter(
-            zabbixserver=server,
-            zabbixconfigurationgroup=huawei,
-        ).first()
-        if hi:
-            if _huawei_auth:
-                hi.snmpv3_authentication_passphrase = _huawei_auth
-            if _huawei_priv:
-                hi.snmpv3_privacy_passphrase = _huawei_priv
-            hi.save(update_fields=['snmpv3_authentication_passphrase', 'snmpv3_privacy_passphrase'])
-    else:
-        logger.warning('  NBX_SNMP_AUTHPASS_HUAWEI / NBX_SNMP_PRIVPASS_HUAWEI not set — Huawei authPriv will fail')
-    # 5.7 SPACE agent — 10060
-    agent_if(groups['space_agent'], port=10060)
-
-    # HostInterface must not hang on tags (interface shape lives on the CG).
-    # CG→Tag assignment is the zero-touch transport selector (step 5b).
-    pruned_ifs, _ = M.ZabbixHostInterface.objects.filter(
-        zabbixserver=server,
-        assigned_object_type=ct(Tag),
-    ).delete()
-    if pruned_ifs:
-        logger.info('  PRUNED: %s tag-targeted HostInterface(s)', pruned_ifs)
 
 
 def step5_host_interfaces(server, groups: dict):
@@ -965,9 +847,8 @@ def step5_host_interfaces(server, groups: dict):
     snmp_if(groups['snmp'], profile='network')
     # 5.2 Default agent — 10050
     agent_if(groups['agent'], port=10050)
-    # 5.3 Server Agent+OOB — agent + Dell iDRAC SNMP
-    agent_if(groups['server_oob'], port=10050)
-    snmp_if(groups['server_oob'], profile='dell', use_oob_ip=True)
+    # 5.5 Dell iDRAC HTTP — Agent + Redfish macros (no SNMP)
+    agent_if(groups['dell_idrac'], port=10050)
     # 5.4 SNMP Monitoring (by tag) — MONITORING-LINUX SHA/AES
     snmp_if(groups['linux_snmp'], profile='linux')
     # 5.6 SAP Agent+SNMP — dual-plane: Agent :10050 + SNMP SAPUSER (one CG, both interfaces)
@@ -1031,11 +912,11 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     country_slugs = country_slugs or COUNTRY_SLUGS
     snmp_group = groups['snmp']
     agent_group = groups['agent']
-    server_oob_group = groups['server_oob']
     linux_snmp_group = groups['linux_snmp']
     # OOB SNMP groups removed — Dell servers use HTTP (Redfish).
     sap_snmp_group = groups['sap_snmp']
     space_agent_group = groups['space_agent']
+    dell_idrac_group = groups['dell_idrac']
 
     for slug in country_slugs:
         sg = get_sitegroup(slug)
@@ -1099,13 +980,10 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     for role_name in SNMP_ROLES:
         assign_role(snmp_group, role_name)
-    for role_name in SERVER_BMC_ROLES:
-        # Cohesity physical nodes are Dell PowerEdge servers — they get the Dell
-        # iDRAC HTTP (Redfish) template via Manufacturer Dell TemplateRule (§6),
-        # same as ESXi. No OOB SNMP CG assignment needed.
-        if role_name == 'Cohesity':
-            continue
-        assign_role(server_oob_group, role_name)
+
+    # Dell iDRAC HTTP (Redfish) on Server / ESXi Hypervisor / Cohesity.
+    for role_name in DELL_IDRAC_HTTP_ROLES:
+        assign_role(dell_idrac_group, role_name)
 
     assign_role(space_agent_group, 'Space Server')
 
@@ -1137,49 +1015,36 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         logger.warning("  Role 'ESXi Hypervisor' not found — skip ESXi prune (run netbox-sync first)")
         esxi_role = None
     if esxi_role:
-        # Dell Redfish macros are on Device Roles Server / ESXi Hypervisor / Cohesity
-        # (step11) — same scope as TemplateRules. Not Manufacturer Dell (would hit Storage)
-        # and not a macros-only CG (would steal primary Agent CG).
-        logger.info('  ESXi Hypervisor: Dell iDRAC HTTP via TemplateRule + Redfish macros on roles (no CG)')
+        logger.info('  ESXi Hypervisor → Dell iDRAC HTTP CG (Agent + Redfish macros)')
 
-    # Prune stale Dell iDRAC HTTP CG assignments from roles (if present from previous runs).
-    dell_idrac_cg = M.ZabbixConfigurationGroup.objects.filter(name='Dell iDRAC HTTP').first()
-    if dell_idrac_cg:
-        old_dell_assigns, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
-            zabbixconfigurationgroup=dell_idrac_cg,
-            assigned_object_type=ct(DeviceRole),
-        ).delete()
-        if old_dell_assigns:
-            logger.info('  PRUNED: %s Dell iDRAC HTTP CG role assignment(s) (macros moved to Device Roles)', old_dell_assigns)
+    # Do not delete Dell iDRAC HTTP — it is the active Redfish CG.
 
-    # Prune stale ESXi OOB iDRAC CG + old OOB SNMP v2c/Only assignments on ESXi role.
-    stale_esxi_cg = M.ZabbixConfigurationGroup.objects.filter(name='ESXi OOB iDRAC').first()
-    if stale_esxi_cg is not None:
-        stale_count, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
-            zabbixconfigurationgroup=stale_esxi_cg,
-        ).delete()
-        M.ZabbixHostInterface.objects.filter(zabbixconfigurationgroup=stale_esxi_cg).delete()
-        stale_esxi_cg.delete()
-        logger.info('  DELETED ESXi OOB iDRAC CG + %s assignment(s) + HostInterface(s)', stale_count)
-
-    # Prune old OOB SNMP v2c (ESXi iDRAC) CG + old OOB SNMP Only assignment on ESXi role.
-    # Prune old OOB SNMP v2c + OOB SNMP Only CGs (removed — Dell uses HTTP now).
-    for _cg_name in ('OOB SNMP v2c (ESXi iDRAC)', 'OOB SNMP Only', 'Dell iDRAC HTTP'):
+    # Prune retired OOB / SNMP BMC CGs (Server Agent+OOB, ESXi OOB, OOB SNMP).
+    for _cg_name in (
+        'Server Agent+OOB',
+        'ESXi OOB iDRAC',
+        'OOB SNMP v2c (ESXi iDRAC)',
+        'OOB SNMP Only',
+    ):
         _cg = M.ZabbixConfigurationGroup.objects.filter(name=_cg_name).first()
         if _cg is None:
             continue
-        # Remove role assignments
         old_assign, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
             zabbixconfigurationgroup=_cg,
         ).delete()
-        # Remove HostInterfaces
         old_ifs, _ = M.ZabbixHostInterface.objects.filter(
             zabbixconfigurationgroup=_cg,
         ).delete()
-        # Delete the CG itself
+        # Macros that may have been wrongly hung on the retired CG.
+        old_macros, _ = M.ZabbixMacroAssignment.objects.filter(
+            assigned_object_type=ct(M.ZabbixConfigurationGroup),
+            assigned_object_id=_cg.id,
+        ).delete()
         _cg.delete()
-        if old_assign or old_ifs:
-            logger.info('  DELETED %s: %s assignment(s), %s HostInterface(s)', _cg_name, old_assign, old_ifs)
+        logger.info(
+            '  DELETED %s: %s assignment(s), %s HostInterface(s), %s macro assignment(s)',
+            _cg_name, old_assign, old_ifs, old_macros,
+        )
 
     # SNMP storage manufacturers
     # HU-DEB-SAN01 (Huawei storage): assign the Huawei-specific SNMP CG directly
@@ -1201,7 +1066,7 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     # Cohesity Appliance role → SNMP Monitoring CG (VMs with primary_ip4).
     # Role set by netbox-sync (vm_role_relation: COHE/COHY = Cohesity Appliance).
-    # Physical Cohesity nodes keep role=Cohesity → OOB SNMP Only (oob_ip only).
+    # Physical Cohesity nodes keep role=Cohesity → Dell iDRAC HTTP (oob_ip / Redfish).
     try:
         cohesity_appliance_role = get_role('Cohesity Appliance')
     except DeviceRole.DoesNotExist:
@@ -2058,47 +1923,53 @@ def step11_macros(server):
         else:
             logger.warning('  Env var not set for %s — skipping', macro_name)
 
-    # ---- Dell iDRAC Redfish API macros (on Device Roles — not Manufacturer, not CG) ----
+    # ---- Dell iDRAC Redfish API macros (on CG "Dell iDRAC HTTP" only) ----
     # Template macros: {$DELL.HTTP.API.URL}, {$DELL.HTTP.API.USER}, {$DELL.HTTP.API.PASSWORD}
-    # Role-level: Server / ESXi Hypervisor / Cohesity only — same scope as TemplateRules §6.3.
-    # Do NOT put these on Manufacturer Dell: Dell Storage arrays would inherit Redfish macros.
-    # Do NOT put these on a macros-only CG: the plugin picks one primary CG for HostInterfaces
-    # and that CG would override Site Group Agent Monitoring.
-    # URL Jinja resolves to https://<oob_ip> per device at sync time.
+    # One CG, three macros — inherited by Server / ESXi Hypervisor / Cohesity via CG assignment.
+    # Agent IF lives on the same CG so it can be primary without stealing Site Group Agent.
+    # Do NOT put macros on Manufacturer Dell (hits Storage).
     redfish_user = os.environ.get('NBS_REDFISH_USERNAME', '')
     redfish_pass = os.environ.get('NBS_REDFISH_PASSWORD', '')
-    redfish_roles = []
-    for role_name in ('Server', 'ESXi Hypervisor', 'Cohesity'):
-        try:
-            redfish_roles.append(get_role(role_name))
-        except DeviceRole.DoesNotExist:
-            logger.warning('  Role %s not found — skip Redfish macros on that role', role_name)
-    if redfish_user and redfish_roles:
-        for role in redfish_roles:
-            _ensure_macro_assignment(
-                server, '{$DELL.HTTP.API.USER}', redfish_user, role,
-                mtype=ZabbixMacroTypeChoices.TEXT,
-                description=f'ztc: Dell Redfish user (role {role.name})')
-            _ensure_macro_assignment(
-                server, '{$DELL.HTTP.API.PASSWORD}', redfish_pass, role,
-                description=f'ztc:secret: Dell Redfish password (role {role.name})')
-            _ensure_macro_assignment(
-                server, '{$DELL.HTTP.API.URL}', 'https://{{ object.oob_ip.address.ip }}', role,
-                mtype=ZabbixMacroTypeChoices.TEXT,
-                description=f'ztc: Dell Redfish URL (role {role.name})')
-            logger.info('  Macros {$DELL.HTTP.API.*} on role %s (Redfish)', role.name)
-    elif not redfish_user:
-        logger.warning('  NBS_REDFISH_USERNAME/PASSWORD not set — Dell iDRAC HTTP will fail')
+    dell_idrac_cg = M.ZabbixConfigurationGroup.objects.filter(name='Dell iDRAC HTTP').first()
+    if dell_idrac_cg and redfish_user:
+        _ensure_macro_assignment(
+            server, '{$DELL.HTTP.API.USER}', redfish_user, dell_idrac_cg,
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description='ztc: Dell Redfish user (CG Dell iDRAC HTTP)')
+        _ensure_macro_assignment(
+            server, '{$DELL.HTTP.API.PASSWORD}', redfish_pass, dell_idrac_cg,
+            description='ztc:secret: Dell Redfish password (CG Dell iDRAC HTTP)')
+        _ensure_macro_assignment(
+            server, '{$DELL.HTTP.API.URL}', 'https://{{ object.oob_ip.address.ip }}', dell_idrac_cg,
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description='ztc: Dell Redfish URL (CG Dell iDRAC HTTP)')
+        logger.info('  Macros {$DELL.HTTP.API.*} on CG Dell iDRAC HTTP (Redfish)')
+    else:
+        if not redfish_user:
+            logger.warning('  NBS_REDFISH_USERNAME/PASSWORD not set — Dell iDRAC HTTP will fail')
+        if not dell_idrac_cg:
+            logger.warning('  Dell iDRAC HTTP CG not found — run step4 first')
 
-    # Prune stale Dell Redfish macros from previous script versions
-    # (per-device, CG-level, Manufacturer Dell — all superseded by role assignments).
-    _stale_dell = M.ZabbixMacroAssignment.objects.filter(
-        zabbixmacro__macro__in=('{$DELL.HTTP.API.USER}', '{$DELL.HTTP.API.PASSWORD}', '{$DELL.HTTP.API.URL}'),
-        assigned_object_type__in=[ct(Device), ct(M.ZabbixConfigurationGroup), ct(Manufacturer)],
+    # Prune stale Redfish macros from roles / Manufacturer / per-device /
+    # and any CG other than Dell iDRAC HTTP.
+    _macro_names = ('{$DELL.HTTP.API.USER}', '{$DELL.HTTP.API.PASSWORD}', '{$DELL.HTTP.API.URL}')
+    _stale_q = Q(
+        zabbixmacro__macro__in=_macro_names,
+        assigned_object_type__in=[ct(Device), ct(DeviceRole), ct(Manufacturer)],
     )
-    _deleted_dell, _ = _stale_dell.delete()
+    if dell_idrac_cg:
+        _stale_q |= Q(
+            zabbixmacro__macro__in=_macro_names,
+            assigned_object_type=ct(M.ZabbixConfigurationGroup),
+        ) & ~Q(assigned_object_id=dell_idrac_cg.id)
+    else:
+        _stale_q |= Q(
+            zabbixmacro__macro__in=_macro_names,
+            assigned_object_type=ct(M.ZabbixConfigurationGroup),
+        )
+    _deleted_dell, _ = M.ZabbixMacroAssignment.objects.filter(_stale_q).delete()
     if _deleted_dell:
-        logger.info('  PRUNED: %s stale Dell Redfish macro(s) (moved to Device Roles)', _deleted_dell)
+        logger.info('  PRUNED: %s stale Dell Redfish macro(s) (canonical = CG Dell iDRAC HTTP)', _deleted_dell)
 
     # ---- Secret macros: HPE MSA storage (per-device, API credentials) ----
     # Template macros: {$HPE.MSA.API.HOST}, {$HPE.MSA.API.USERNAME}, {$HPE.MSA.API.PASSWORD}
@@ -2210,16 +2081,13 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     missing_snmp = [name for name in (
         'NBX_SNMP_AUTHPASS_MON', 'NBX_SNMP_PRIVPASS_MON',
         'NBX_SNMP_AUTHPASS_LINUX', 'NBX_SNMP_PRIVPASS_LINUX',
+        'NBX_SNMP_AUTHPASS_SAP', 'NBX_SNMP_PRIVPASS_SAP',
     ) if not os.environ.get(name)]
     if missing_snmp:
         logger.warning('MISSING SNMP env vars: %s — SNMP interfaces will have empty passphrases', ', '.join(missing_snmp))
         logger.warning('Set these before first apply: export %s=... etc.', ' '.join(missing_snmp))
-    # Optional SNMP profiles (Dell iDRAC, SAP) — warn but don't block.
-    missing_optional_snmp = [name for name in (
-        'NBX_SNMP_AUTHPASS_DELL', 'NBX_SNMP_PRIVPASS_DELL',
-    ) if not os.environ.get(name)]
-    if missing_optional_snmp:
-        logger.warning('Optional SNMP env unset (iDRAC/SAP): %s', ', '.join(missing_optional_snmp))
+    if not os.environ.get('NBS_REDFISH_USERNAME'):
+        logger.warning('NBS_REDFISH_USERNAME/PASSWORD unset — Dell iDRAC HTTP Redfish macros will be empty')
 
     # Network script reminder.
     logger.info('NOTE: Run scripts/configure_nbxsync_network.py after this for EXOS/VOSS/IQ Engine template imports and Extreme macros.')
@@ -2265,7 +2133,7 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
         logger.info('  %s: %s', model.__name__, model.objects.count())
     logger.info(
         'Zero-touch deltas: SiteGroup Agent, multi-credential SNMP CGs '
-        '(Linux via tag snmp, SAP via roles), SPACE :10060, Server Agent+OOB, '
+        '(Linux via tag snmp, SAP via roles), SPACE :10060, Dell iDRAC HTTP, '
         'hostgroup-first (Sites×Roles×OS); HI never on tags'
     )
     return server
@@ -2297,6 +2165,7 @@ def run_verify(*, limit: int | None = None) -> int:
     snmp_ish_cgs = {
         'SNMP Monitoring',
         'SNMP Monitoring (Linux)',
+        'SNMP Monitoring (by tag)',
         'SAP Agent+SNMP',
         'OOB SNMP Only',
         'Server Agent+OOB',
@@ -2434,7 +2303,7 @@ def run_simulate() -> int:
         slug=slugify('CH-STA-L44'),
         defaults={'name': f'{PREFIX}CH-STA-L44', 'group': leaf},
     )
-    role_names = sorted(set(SNMP_ROLES + SERVER_BMC_ROLES + AGENT_DEFAULT_ROLES_DOC + ['Messpc', 'Sd Wan Socket', 'Virtual Appliance', 'Pure Storage', 'Storage', 'Tableau', 'CellMap', 'SAP ME', 'SAP HANA', 'Acronis Management', 'SCCM', 'Print Server', 'Database', 'Space Server']))
+    role_names = sorted(set(SNMP_ROLES + DELL_IDRAC_HTTP_ROLES + AGENT_DEFAULT_ROLES_DOC + ['Messpc', 'Sd Wan Socket', 'Virtual Appliance', 'Pure Storage', 'Storage', 'Tableau', 'CellMap', 'SAP ME', 'SAP HANA', 'Acronis Management', 'SCCM', 'Print Server', 'Database', 'Space Server']))
     roles = {}
     for name in role_names:
         roles[name], _ = DeviceRole.objects.get_or_create(
@@ -2518,15 +2387,22 @@ def run_simulate() -> int:
         cg_groups = {
             'snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring', defaults={'description': 'lab'})[0],
             'agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring', defaults={'description': 'lab'})[0],
-            'server_oob': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Server Agent+OOB', defaults={'description': 'lab'})[0],
             'linux_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (by tag)', defaults={'description': 'lab'})[0],
+            'dell_idrac': M.ZabbixConfigurationGroup.objects.get_or_create(
+                name=f'{PREFIX}Dell iDRAC HTTP', defaults={'description': 'lab'}
+            )[0],
             'sap_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SAP Agent+SNMP', defaults={'description': 'lab'})[0],
             'space_agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring (SPACE)', defaults={'description': 'lab'})[0],
+            'huawei_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (Huawei)', defaults={'description': 'lab'})[0],
         }
+        snmp_group = cg_groups['snmp']
+        agent_group = cg_groups['agent']
         linux_snmp_group = cg_groups['linux_snmp']
-        # dell_idrac CG removed — Redfish macros on Device Roles (not Manufacturer).
+        dell_idrac_group = cg_groups['dell_idrac']
+        space_agent_group = cg_groups['space_agent']
+        vm_snmp_group = linux_snmp_group  # alias used by hygiene asserts
 
-        # ESXi platform so step5b can assign ESXi OOB iDRAC (production looks up by name).
+        # ESXi platform so step5b can assign Dell iDRAC HTTP (production looks up by name).
         Platform.objects.get_or_create(name=f'{PREFIX}VMware ESXi', defaults={'slug': slugify(f'{PREFIX}vmware-esxi')})
         Manufacturer.objects.get_or_create(name='Dell', defaults={'slug': 'dell'})
 
@@ -2536,10 +2412,10 @@ def run_simulate() -> int:
             ('NBX_SNMP_PRIVPASS_MON', 'lab-mon-privpass'),
             ('NBX_SNMP_AUTHPASS_LINUX', 'lab-linux-authpass'),
             ('NBX_SNMP_PRIVPASS_LINUX', 'lab-linux-privpass'),
-            ('NBX_SNMP_AUTHPASS_DELL', 'lab-dell-authpass'),
-            ('NBX_SNMP_PRIVPASS_DELL', 'lab-dell-privpass'),
             ('NBX_SNMP_AUTHPASS_SAP', 'lab-sap-authpass'),
             ('NBX_SNMP_PRIVPASS_SAP', 'lab-sap-privpass'),
+            ('NBS_REDFISH_USERNAME', 'lab-redfish-user'),
+            ('NBS_REDFISH_PASSWORD', 'lab-redfish-pass'),
         ):
             os.environ.setdefault(key, val)
         # Lab app credentials (per-device env vars)
@@ -2702,7 +2578,7 @@ def run_simulate() -> int:
         objects = {}
         d = Device.objects.create(name=f'{PREFIX}linux-srv-p-01', device_type=dtype, role=roles['Server'], site=site, platform=plat_linux, status='active')
         attach_dev(d, next_ip(), oob=next_ip('10.91.254'))
-        objects['server_oob'] = d
+        objects['server'] = d
 
         sw = Device.objects.create(name=f'{PREFIX}sw-core-01', device_type=dtype, role=roles['Switch Core'], site=site, platform=plat_exos, status='active')
         attach_dev(sw, next_ip())
@@ -2755,7 +2631,7 @@ def run_simulate() -> int:
             a = get_assigned_zabbixobjects(obj)
             return sorted(t.zabbixtemplate.name for t in (a.get('templates') or []) if getattr(t, 'zabbixtemplate', None) is not None)
 
-        record('server_cg_oob', cg_name(objects['server_oob']) == server_oob_group.name, cg_name(objects['server_oob']), group='resolve')
+        record('server_cg_dell_idrac', cg_name(objects['server']) == dell_idrac_group.name, cg_name(objects['server']), group='resolve')
         record('switch_cg_snmp', cg_name(objects['switch']) == snmp_group.name, cg_name(objects['switch']), group='resolve')
         # Storage left SiteGroup Agent (no longer on network SNMP CG).
         record('storage_cg_agent', cg_name(objects['storage']) == agent_group.name, cg_name(objects['storage']), group='resolve')
@@ -2807,7 +2683,7 @@ def run_simulate() -> int:
         record('no_manufacturer_transport_cg', mfr_cg == 0, f'count={mfr_cg}', group='resolve')
 
         with ZabbixConnection(server) as api:
-            for key in ('server_oob', 'switch', 'storage', 'firewall', 'access_point', 'win_vm', 'new_role', 'dc', 'vm_snmp', 'win_snmp'):
+            for key in ('server', 'switch', 'storage', 'firewall', 'access_point', 'win_vm', 'new_role', 'dc', 'vm_snmp', 'win_snmp'):
                 try:
                     SyncHostJob(instance=objects[key]).run()
                     record(f'sync_{key}', True, objects[key].name, group='sync')
@@ -2818,14 +2694,14 @@ def run_simulate() -> int:
                 found = api.host.get(filter={'host': name}, selectInterfaces='extend', selectParentTemplates=['name'], selectGroups=['name'])
                 return found[0] if found else None
 
-            h = host(objects['server_oob'].name)
+            h = host(objects['server'].name)
             if h:
                 ifs = [(i.get('type'), i.get('ip'), i.get('port')) for i in h.get('interfaces', [])]
-                objects['server_oob'].refresh_from_db()
-                oob = str(IPAddress.objects.get(id=objects['server_oob'].oob_ip_id).address.ip)
-                primary = str(IPAddress.objects.get(id=objects['server_oob'].primary_ip4_id).address.ip)
-                record('zbx_dual_if', any(t == '1' for t, _, _ in ifs) and any(t == '2' for t, _, _ in ifs), str(ifs), group='zabbix')
-                record('zbx_oob_ip', any(t == '2' and ip == oob for t, ip, _ in ifs) and any(t == '1' and ip == primary for t, ip, _ in ifs), f'{ifs} oob={oob}', group='zabbix')
+                objects['server'].refresh_from_db()
+                primary = str(IPAddress.objects.get(id=objects['server'].primary_ip4_id).address.ip)
+                # Dell iDRAC HTTP: Agent only (Redfish is HTTPS macros, not SNMP IF).
+                record('zbx_agent_if', any(t == '1' for t, _, _ in ifs) and not any(t == '2' for t, _, _ in ifs), str(ifs), group='zabbix')
+                record('zbx_agent_primary_ip', any(t == '1' and ip == primary for t, ip, _ in ifs), f'{ifs} primary={primary}', group='zabbix')
                 groups = [g['name'] for g in h.get('groups', [])]
                 record('zbx_sites_roles', any(g.startswith('Sites/') for g in groups) and any(g.startswith('Roles/') for g in groups), str(groups), group='zabbix')
                 record('zbx_os_linux', any(g == 'OS/Linux' or g.endswith('/OS/Linux') for g in groups) or 'OS/Linux' in groups, str(groups), group='zabbix')
@@ -2950,18 +2826,23 @@ def run_simulate() -> int:
                 str((linux_if.snmpv3_security_name, linux_if.snmpv3_authentication_protocol, linux_if.snmpv3_privacy_protocol) if linux_if else None),
                 group='hygiene',
             )
-            dell_if = _snmp_if(server_oob_group)
+            dell_agent = M.ZabbixHostInterface.objects.filter(
+                assigned_object_type=ct(M.ZabbixConfigurationGroup),
+                assigned_object_id=dell_idrac_group.id,
+                type=ZabbixHostInterfaceTypeChoices.AGENT,
+            ).first()
             record(
-                'snmp_dell_idrac_profile',
-                bool(
-                    dell_if
-                    and dell_if.use_oob_ip
-                    and dell_if.snmpv3_security_name == 'MONITORING-DELL'
-                    and dell_if.snmpv3_authentication_protocol == ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1
-                ),
-                str((dell_if.snmpv3_security_name, dell_if.use_oob_ip, dell_if.snmpv3_authentication_protocol) if dell_if else None),
+                'dell_idrac_agent_if',
+                bool(dell_agent and int(dell_agent.port) == 10050),
+                str(dell_agent.port if dell_agent else None),
                 group='hygiene',
             )
+            dell_snmp = _snmp_if(dell_idrac_group)
+            record('dell_idrac_no_snmp_if', dell_snmp is None, str(dell_snmp), group='hygiene')
+            retired_oob = M.ZabbixConfigurationGroup.objects.filter(
+                name__in=[f'{PREFIX}Server Agent+OOB', 'Server Agent+OOB'],
+            ).count()
+            record('no_server_agent_oob_cg', retired_oob == 0, f'count={retired_oob}', group='hygiene')
             space_if = M.ZabbixHostInterface.objects.filter(
                 assigned_object_type=ct(M.ZabbixConfigurationGroup),
                 assigned_object_id=space_agent_group.id,

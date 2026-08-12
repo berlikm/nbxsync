@@ -16,9 +16,8 @@ Extreme domain steps: [`../../../zabbix/01-extreme-switching.md`](../../../zabbi
    - Agent-class → nothing (Site Group Agent default); if ICMP Ping should apply, extend TemplateRule **Agent Host ICMP** `role_pattern` (checklist §6.3)
    - Network SNMP → **SNMP Monitoring**
    - SPACE → **Agent Monitoring (SPACE)**
-   - Dual-plane BMC server (legacy SNMP) → **Server Agent+OOB**
    - SAP dual-plane → **SAP Agent+SNMP** (one CG with Agent + SNMP — not SNMP-only, not two CGs)
-   - ESXi / Dell PowerEdge iDRAC (Redfish) → role **ESXi Hypervisor** / Server / Cohesity + TemplateRule Dell ∧ role + Redfish macros on that **role** (not Manufacturer, not a CG)
+   - Dell PowerEdge iDRAC (Redfish) → CG **Dell iDRAC HTTP** on Server / ESXi Hypervisor / Cohesity (Agent + Redfish macros; not Manufacturer Dell)
    - Linux SNMP opt-in → NetBox tag `snmp` (no new role CG)
 2. Does it need an **application template**? Add a Template assignment on the role (checklist §7).
 3. New **Switch*** role? Copy IFALIAS / IFTYPE macros from the closest peer (`zabbix/01-extreme-switching.md` §5 / §8; nbxSync assignments per checklist §11.1). Platform Template Rules already cover EXOS/VOSS (EXOS rule from network script).
@@ -48,7 +47,7 @@ nbxSync clicks at those stages: checklist §7.1 and §11.1.
 1. Does an existing Template Rule pattern already match? Check with the real platform name (regex `search`).
 2. If not, add or extend a rule in checklist §6 (every matching rule contributes — do not rely on priority to suppress another rule’s different template).
 3. Confirm the template’s **interface requirements** match the transport the host will have.
-4. **ESXi / VMware / Redfish:** new ESXi devices need role **ESXi Hypervisor**. iDRAC = TemplateRule Dell ∧ that role + `{$DELL.HTTP.API.*}` macros on the **role** (checklist §5.5 / §11.4). Do **not** put Redfish macros on Manufacturer Dell (hits Storage) or on a macros-only CG (steals Agent IF). Do **not** re-enable legacy **VMware ESXi** or a VMware FQDN platform rule — keep VMware FQDN on role **vCenter** only.
+4. **ESXi / VMware / Redfish:** new ESXi devices need role **ESXi Hypervisor**. iDRAC = TemplateRule Dell ∧ that role + CG **Dell iDRAC HTTP** with `{$DELL.HTTP.API.*}` (checklist §5.5 / §11.4). Do **not** put Redfish macros on Manufacturer Dell (hits Storage) or on a macros-only CG (steals Agent IF). Do **not** re-enable legacy **VMware ESXi** or a VMware FQDN platform rule — keep VMware FQDN on role **vCenter** only.
 
 ---
 
@@ -67,7 +66,7 @@ Work top-down:
 1. **Excluded?** NetBox tag `onboarding` (inherits Zabbix `do_not_monitor` from the Tag) and/or role-level Zabbix `do_not_monitor` — see [`onboarding.md`](onboarding.md).
 2. **Site / Site Group?** Device or VM must resolve into a managed country (site set; cluster VMs need site or cluster site scope). No site → not profiled (checklist §13).
 3. **Effective configuration group?** On the device/VM Zabbix tab (or inherited from role / Site Group). Wrong CG → wrong interfaces.
-4. **Interfaces present?** Agent and/or SNMP as expected; for Redfish iDRAC, is `oob_ip` set (URL Jinja)? ESXi should be role **ESXi Hypervisor** + PowerEdge HTTP (no SNMP IF, not Server Agent+OOB / MONITORING-DELL).
+4. **Interfaces present?** Agent and/or SNMP as expected; for Redfish iDRAC, is `oob_ip` set (URL Jinja)? ESXi should be role **ESXi Hypervisor** + CG **Dell iDRAC HTTP** (Agent + Redfish; no SNMP IF).
 5. **Template interface requirements?** Template needing Agent will not link on an SNMP-only host (silent drop) — checklist §7.
 6. **Template Rules?** Platform name vs rule regex; `require_tags` (e.g. `snmp`); enabled flag. Remember all matching rules apply.
 7. **Status mapping?** Planned/offline/etc. may disable or delete the Zabbix host (checklist §12).
@@ -84,5 +83,5 @@ Work top-down:
 | Spot-check `environment=Unknown` | After naming-convention drift |
 | No manufacturer Huawei SNMP CG; no per-device HI on `HU-DEB-SAN01`; no leftover CG `SNMP Monitoring (SAP)`; no NetBox tag `snmp-sap` (SAP = roles + **SAP Agent+SNMP**) | After zerotouch / credential changes |
 | Onboarding hold: NetBox Tag `onboarding` still has Zabbix `do_not_monitor` assigned; ready hosts have the NetBox tag removed | During cutover waves |
-| ESXi / Redfish: role **ESXi Hypervisor**; macros on roles not Manufacturer Dell; no leftover CG `Dell iDRAC HTTP` / `ESXi OOB iDRAC`; Dell Storage has **no** `{$DELL.HTTP.API.*}` | After role / manufacturer / macro changes |
+| ESXi / Redfish: role **ESXi Hypervisor**; macros on CG **Dell iDRAC HTTP** (not Manufacturer Dell); no leftover `Server Agent+OOB` / `ESXi OOB iDRAC`; Dell Storage has **no** `{$DELL.HTTP.API.*}` | After role / manufacturer / macro changes |
 | Update “Last verified” stamp on the [configuration checklist](../configuration.md) | After a production re-validation |

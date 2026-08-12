@@ -58,7 +58,7 @@ Optional flags (onboarding only): `--verify` (census), `--link-speed-expect` (Ex
 | Country SiteGroup Agent default | yes | assumes present |
 | SNMP Monitoring on Switch* (incl. Hybrid) | yes | assumes present |
 | Linux SNMP CG on tag `snmp`; SAP CG on SAP HANA / SAP ME roles | yes | — |
-| Server Agent+OOB / SPACE :10060 / OOB SNMP Only | yes | — |
+| Dell iDRAC HTTP / SPACE :10060 | yes | — |
 | Extreme TemplateRules (EXOS/VOSS/IQ) | placeholder / ensure | import + retarget |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* | — | yes |

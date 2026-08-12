@@ -58,16 +58,15 @@ Zabbix tag assignment  →  `do_not_monitor` on role (permanent) or on NetBox Ta
 | Platform / OS | Template Rule (regex on platform name) | OS or platform template + `OS/…` |
 | Default reachability | CG **Agent Monitoring** on country Site Group | Agent :10050 |
 | Network gear | CG **SNMP Monitoring** on Switch*/AP/Firewall/… | SNMPv3 `MONITORING` MD5/DES |
-| Linux/Windows SNMP opt-in | Tag `snmp` → CG **SNMP Monitoring (Linux)** | SNMPv3 `MONITORING-LINUX` SHA/AES |
+| Linux/Windows SNMP opt-in | Tag `snmp` → CG **SNMP Monitoring (by tag)** | SNMPv3 `MONITORING-LINUX` SHA/AES |
 | SAP dual-plane | Roles **SAP HANA** / **SAP ME** → CG **SAP Agent+SNMP** | Agent :10050 + SNMPv3 `SAPUSER` (one CG) |
-| Dell server BMC (legacy SNMP) | CG **Server Agent+OOB** on role Server | Agent :10050 + `MONITORING-DELL` on `oob_ip` (BACK01/02) |
-| Dell PowerEdge iDRAC (Redfish) | TemplateRule Dell ∧ Server\|Cohesity\|ESXi Hypervisor + macros on those **roles** | HTTPS Redfish (`{$DELL.HTTP.API.*}`) — not Manufacturer, not a CG |
-| ESXi hypervisor (Dell) | Role **ESXi Hypervisor** + Redfish as above | PowerEdge HTTP + OS/VMware (no VMware SDK on ESXi) |
+| Dell PowerEdge iDRAC (Redfish) | CG **Dell iDRAC HTTP** on Server / ESXi Hypervisor / Cohesity + TemplateRule Dell ∧ role | Agent :10050 + HTTPS Redfish macros on that CG |
+| ESXi hypervisor (Dell) | Role **ESXi Hypervisor** + Dell iDRAC HTTP | PowerEdge HTTP + OS/VMware |
 | Huawei SAN | Device **`HU-DEB-SAN01`** → CG **SNMP Monitoring (Huawei)** | SNMPv3 `LogicMonitor` on CG HI |
 | Agent-class ICMP | TemplateRule **Agent Host ICMP** on agent-class roles | ICMP Ping |
 | Zabbix Proxy | Role **Zabbix Proxy** → ICMP + Remote Zabbix proxy health | Linux agent + proxy self-mon |
 | vCenter | Role **vCenter** → template **VMware FQDN** | SDK macros; LLD covers hypervisors/VMs/cluster |
-| Cohesity physical | Role **Cohesity** + Redfish macros / Dell ∧ Cohesity rule | PowerEdge HTTP (no OOB SNMP CG) |
+| Cohesity physical | Role **Cohesity** + Dell iDRAC HTTP | PowerEdge HTTP + Redfish macros on CG |
 | Space Server | CG **Agent Monitoring (SPACE)** on role | Agent **:10060** |
 | Criticality | Tag `critical` → hostgroup | `Priority/Critical` |
 
@@ -79,7 +78,7 @@ Which CG/template/interface a given host class should end up with: configuration
 ## Rules of thumb
 
 1. **One configuration group decides transport** (how we reach the host). Hostgroups and templates can stack; transport cannot.
-2. **Different SNMPv3 users need different CGs** — never reuse the network CG for Linux, SAP, or iDRAC.
+2. **Different SNMPv3 users need different CGs** — never reuse the network CG for Linux or SAP.
 3. **Tags may select a CG** (`snmp`). SAP uses **role-based** dual-plane CG **SAP Agent+SNMP** (SAP HANA, SAP ME), not tags and not two separate CGs. Host Interfaces sit on the CG — never directly on a tag.
 4. **Country Site Group is the control plane** for proxy, default Agent, Sites/Roles hostgroups, environment tag, and inventory. Assign Agent Monitoring only on **country** Site Groups, not campus mid-levels.
 5. **Hierarchy paths stay after Role/Platform** in plugin inheritance so a plugin upgrade does not change who already wins for existing installs.
