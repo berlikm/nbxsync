@@ -985,8 +985,6 @@ def step5_host_interfaces(server, groups: dict):
     snmp_if(groups['linux_snmp'], profile='linux')
     # 5.5 OOB SNMP Only — Cohesity physical (SNMPv3 MONITORING on oob_ip)
     snmp_if(groups['oob_snmp'], profile='network', use_oob_ip=True)
-    # 5.5b ESXi iDRACs use SNMPv2c public on oob_ip (migrate to v3 post-cutover).
-    snmp_v2_if(groups['esxi_oob'], community='public', use_oob_ip=True)
     # 5.6 SAP Agent+SNMP — dual-plane: Agent :10050 + SNMP SAPUSER (one CG, both interfaces)
     agent_if(groups['sap_snmp'], port=10050)
     snmp_if(groups['sap_snmp'], profile='sap')
@@ -1148,6 +1146,11 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
 
     # Tag inheritance is collected before role/site — snmp beats Agent default.
     assign_tag(linux_snmp_group, 'snmp', 'snmp')
+    try:
+        esxi_role = get_role('ESXi Hypervisor')
+    except DeviceRole.DoesNotExist:
+        logger.warning("  Role 'ESXi Hypervisor' not found — skip ESXi prune (run netbox-sync first)")
+        esxi_role = None
     if esxi_role:
         # ESXi iDRAC monitoring is via Dell PowerEdge HTTP (Redfish) template, not SNMP.
         # No CG assignment needed — the HTTP template uses no Zabbix interface.
