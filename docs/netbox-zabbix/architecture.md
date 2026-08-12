@@ -60,13 +60,13 @@ Zabbix tag assignment  →  `do_not_monitor` on role (permanent) or on NetBox Ta
 | Network gear | CG **SNMP Monitoring** on Switch*/AP/Firewall/… | SNMPv3 `MONITORING` MD5/DES |
 | Linux/Windows SNMP opt-in | Tag `snmp` → CG **SNMP Monitoring (by tag)** | SNMPv3 `MONITORING-LINUX` SHA/AES |
 | SAP dual-plane | Roles **SAP HANA** / **SAP ME** → CG **SAP Agent+SNMP** | Agent :10050 + SNMPv3 `SAPUSER` (one CG) |
-| Dell PowerEdge iDRAC (Redfish) | CG **Dell iDRAC HTTP** (Agent) on Server / ESXi Hypervisor / Cohesity + TemplateRule Dell ∧ role | Agent :10050; Redfish macros on those **Device Roles** |
-| ESXi hypervisor (Dell) | Role **ESXi Hypervisor** + Dell iDRAC HTTP | PowerEdge HTTP + OS/VMware |
+| Dell PowerEdge iDRAC (Redfish) | Macros on roles Server / ESXi / Cohesity; CG **Dell iDRAC HTTP** (Agent @ oob) on ESXi / Cohesity; TemplateRule Dell ∧ role | Server: Agent @ primary; ESXi/Cohesity: Agent @ **oob_ip** + Redfish |
+| ESXi hypervisor (Dell) | Role **ESXi Hypervisor** + Dell iDRAC HTTP | PowerEdge HTTP + Agent IF = iDRAC `oob_ip` |
 | Huawei SAN | Device **`HU-DEB-SAN01`** → CG **SNMP Monitoring (Huawei)** | SNMPv3 `LogicMonitor` on CG HI |
 | Agent-class ICMP | TemplateRule **Agent Host ICMP** on agent-class roles | ICMP Ping |
 | Zabbix Proxy | Role **Zabbix Proxy** → ICMP + Remote Zabbix proxy health | Linux agent + proxy self-mon |
 | vCenter | Role **vCenter** → template **VMware FQDN** | SDK macros; LLD covers hypervisors/VMs/cluster |
-| Cohesity physical | Role **Cohesity** + Dell iDRAC HTTP | PowerEdge HTTP + Redfish macros on **role** |
+| Cohesity physical | Role **Cohesity** + Dell iDRAC HTTP | PowerEdge HTTP + Agent IF = `oob_ip` |
 | Space Server | CG **Agent Monitoring (SPACE)** on role | Agent **:10060** |
 | Criticality | Tag `critical` → hostgroup | `Priority/Critical` |
 

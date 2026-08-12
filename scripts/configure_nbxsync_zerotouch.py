@@ -318,8 +318,11 @@ AGENT_DEFAULT_ROLES_DOC = [
     'Subversion',
 ]
 
-# Roles that use CG Dell iDRAC HTTP (Agent + Redfish macros). Cohesity: Dell nodes with oob_ip.
+# Roles that get Redfish macros {$DELL.HTTP.API.*} (inheritance resolves role macros).
 DELL_IDRAC_HTTP_ROLES = ['Server', 'ESXi Hypervisor', 'Cohesity']
+# CG Dell iDRAC HTTP (Agent placeholder @ oob_ip) — ESXi/Cohesity only.
+# Server keeps Site Group Agent @ primary (real Zabbix agent); macros still on role Server.
+DELL_IDRAC_OOB_CG_ROLES = ['ESXi Hypervisor', 'Cohesity']
 
 # Platforms that are ESXi hypervisors (not vCenter appliances). VMware API monitoring
 # is vCenter-only; these hosts get Dell iDRAC on oob_ip and OS/VMware hostgroup.
@@ -739,19 +742,20 @@ def step4_configgroups():
         'SNMP Monitoring (by tag)',
         'SNMPv3 MONITORING-LINUX SHA/AES — zero-touch via NetBox tag snmp (Linux and Windows)',
     )
-    # Dell PowerEdge iDRAC via Redfish — one CG for clarity:
-    # Agent :10050 (so this CG can be primary without stealing Site Group Agent)
-    # + Redfish macros (no SNMP HI — template is HTTPS Script items).
-    # Assigned to Server / ESXi Hypervisor / Cohesity. Not Manufacturer Dell (Storage).
-    dell_idrac_group, _ = get_or_create(
+    # Dell PowerEdge iDRAC via Redfish — Agent placeholder for hosts without a real agent.
+    # use_oob_ip=True so Zabbix shows the iDRAC address (Redfish target), not ESXi/primary.
+    # Assigned to ESXi Hypervisor / Cohesity only. Server uses Site Group Agent @ primary.
+    # Redfish macros live on Device Roles (inheritance); not on this CG.
+    dell_idrac_group, _ = ensure(
         M.ZabbixConfigurationGroup,
         name='Dell iDRAC HTTP',
         defaults={
             'description': (
-                'Dell PowerEdge iDRAC: Agent :10050 + Redfish macros {$DELL.HTTP.API.*} '
-                '(no SNMP — HTTPS Script template)'
+                'Dell PowerEdge iDRAC: Agent :10050 @ oob_ip (placeholder; Redfish is HTTPS). '
+                'ESXi Hypervisor / Cohesity. Macros on Device Roles — not this CG.'
             ),
         },
+        update_fields=['description'],
     )
     sap_snmp_group = _rename_cg(
         ['SNMP Monitoring (SAP)'],
@@ -827,7 +831,7 @@ def step5_host_interfaces(server, groups: dict):
             },
         )
 
-    def agent_if(group, *, port: int = 10050):
+    def agent_if(group, *, port: int = 10050, use_oob_ip: bool = False):
         ensure_if(
             zabbixserver=server,
             assigned_object_type=ct_cfg,
@@ -840,6 +844,7 @@ def step5_host_interfaces(server, groups: dict):
                 'useip': ZabbixInterfaceUseChoices.IP,
                 'tls_connect': ZabbixTLSChoices.NO_ENCRYPTION,
                 'dns': '',
+                'use_oob_ip': use_oob_ip,
             },
         )
 
@@ -847,8 +852,8 @@ def step5_host_interfaces(server, groups: dict):
     snmp_if(groups['snmp'], profile='network')
     # 5.2 Default agent — 10050
     agent_if(groups['agent'], port=10050)
-    # 5.5 Dell iDRAC HTTP — Agent + Redfish macros (no SNMP)
-    agent_if(groups['dell_idrac'], port=10050)
+    # 5.5 Dell iDRAC HTTP — Agent placeholder @ oob_ip (ESXi/Cohesity; no SNMP)
+    agent_if(groups['dell_idrac'], port=10050, use_oob_ip=True)
     # 5.4 SNMP Monitoring (by tag) — MONITORING-LINUX SHA/AES
     snmp_if(groups['linux_snmp'], profile='linux')
     # 5.6 SAP Agent+SNMP — dual-plane: Agent :10050 + SNMP SAPUSER (one CG, both interfaces)
@@ -981,9 +986,30 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     for role_name in SNMP_ROLES:
         assign_role(snmp_group, role_name)
 
-    # Dell iDRAC HTTP (Redfish) on Server / ESXi Hypervisor / Cohesity.
-    for role_name in DELL_IDRAC_HTTP_ROLES:
+    # Dell iDRAC HTTP: Agent @ oob_ip for ESXi Hypervisor / Cohesity only.
+    # Server stays on Site Group Agent @ primary (real agent); Redfish macros still on role Server.
+    for role_name in DELL_IDRAC_OOB_CG_ROLES:
         assign_role(dell_idrac_group, role_name)
+
+    # Prune Dell iDRAC HTTP from roles that should use Site Group Agent (e.g. Server).
+    try:
+        _dell_cg_role_ids = {get_role(n).id for n in DELL_IDRAC_OOB_CG_ROLES}
+    except DeviceRole.DoesNotExist:
+        _dell_cg_role_ids = set()
+        for n in DELL_IDRAC_OOB_CG_ROLES:
+            try:
+                _dell_cg_role_ids.add(get_role(n).id)
+            except DeviceRole.DoesNotExist:
+                pass
+    stale_dell_cg, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
+        zabbixconfigurationgroup=dell_idrac_group,
+        assigned_object_type=ct(DeviceRole),
+    ).exclude(assigned_object_id__in=_dell_cg_role_ids).delete()
+    if stale_dell_cg:
+        logger.info(
+            '  PRUNED: %s Dell iDRAC HTTP role assignment(s) (CG = ESXi/Cohesity @ oob_ip only)',
+            stale_dell_cg,
+        )
 
     assign_role(space_agent_group, 'Space Server')
 
@@ -1015,7 +1041,7 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         logger.warning("  Role 'ESXi Hypervisor' not found — skip ESXi prune (run netbox-sync first)")
         esxi_role = None
     if esxi_role:
-        logger.info('  ESXi Hypervisor → Dell iDRAC HTTP CG (Agent + Redfish macros)')
+        logger.info('  ESXi Hypervisor → Dell iDRAC HTTP CG (Agent @ oob_ip; Redfish macros on role)')
 
     # Do not delete Dell iDRAC HTTP — it is the active Redfish CG.
 
@@ -2623,7 +2649,7 @@ def run_simulate() -> int:
             a = get_assigned_zabbixobjects(obj)
             return sorted(t.zabbixtemplate.name for t in (a.get('templates') or []) if getattr(t, 'zabbixtemplate', None) is not None)
 
-        record('server_cg_dell_idrac', cg_name(objects['server']) == dell_idrac_group.name, cg_name(objects['server']), group='resolve')
+        record('server_cg_sitegroup_agent', cg_name(objects['server']) == agent_group.name, cg_name(objects['server']), group='resolve')
         record('switch_cg_snmp', cg_name(objects['switch']) == snmp_group.name, cg_name(objects['switch']), group='resolve')
         # Storage left SiteGroup Agent (no longer on network SNMP CG).
         record('storage_cg_agent', cg_name(objects['storage']) == agent_group.name, cg_name(objects['storage']), group='resolve')
@@ -2825,8 +2851,8 @@ def run_simulate() -> int:
             ).first()
             record(
                 'dell_idrac_agent_if',
-                bool(dell_agent and int(dell_agent.port) == 10050),
-                str(dell_agent.port if dell_agent else None),
+                bool(dell_agent and int(dell_agent.port) == 10050 and dell_agent.use_oob_ip),
+                str((dell_agent.port, getattr(dell_agent, 'use_oob_ip', None)) if dell_agent else None),
                 group='hygiene',
             )
             dell_snmp = _snmp_if(dell_idrac_group)
