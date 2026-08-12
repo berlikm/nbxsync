@@ -1845,7 +1845,7 @@ def step11_macros(server):
         ('{$CPU.UTIL.CRIT}', '80', 'Server'),
         ('{$MEM.UTIL.CRIT}', '85', 'VDI'),
         ('{$MSSQL.DSN}', 'nbxsync', 'MSSQL'),
-        ('{$VMWARE.URL}', 'https://{{ object.name }}/sdk', 'vCenter'),
+        ('{$VMWARE.URL}', 'https://{{ object.primary_ip4.address.ip }}/sdk', 'vCenter'),
     ]
     for macro_name, macro_value, role_name in text_specs:
         try:
