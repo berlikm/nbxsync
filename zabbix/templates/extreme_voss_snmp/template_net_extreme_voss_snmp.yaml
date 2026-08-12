@@ -12,7 +12,7 @@ zabbix_export:
 
       MIBs used:
 
-      RAPID-CITY (enterprises.2272) ΓÇö rcKhi, rcChassis, rcVossSystem, rcSystem,
+      RAPID-CITY (enterprises.2272) — rcKhi, rcChassis, rcVossSystem, rcSystem,
       rcPlugOptMod, rcIsis/SPBM, rcVirtualIst, rcMlt, rcCard
       LLDP-MIB
 
@@ -27,7 +27,7 @@ zabbix_export:
 
       Modeled on official Extreme EXOS by SNMP; OIDs remapped for VOSS.
 
-      Note: rcSysCpuUtil/rcSysDram* are NOT supported on VOSS ΓÇö using rcKhiSlot*.
+      Note: rcSysCpuUtil/rcSysDram* are NOT supported on VOSS — using rcKhiSlot*.
 
       '
     groups:
@@ -206,7 +206,7 @@ zabbix_export:
       value_type: CHAR
       description: 'MIB: ENTITY-MIB entPhysicalFirmwareRev (index 1)
 
-        May be empty on some VOSS platforms ΓÇö verify with snmpget.'
+        May be empty on some VOSS platforms — verify with snmpget.'
       preprocessing:
       - type: DISCARD_UNCHANGED_HEARTBEAT
         parameters:
@@ -280,7 +280,7 @@ zabbix_export:
       units: uptime
       description: 'MIB: HOST-RESOURCES-MIB
 
-        HOST-RESOURCES hrSystemUptime ΓÇö often unsupported on VOSS/Fabric Engine (No Such Object).
+        HOST-RESOURCES hrSystemUptime — often unsupported on VOSS/Fabric Engine (No Such Object).
         Preprocessing maps not-supported to 0; restart trigger falls back to sysUpTime.
 
         '
@@ -485,7 +485,7 @@ zabbix_export:
       key: system.cpu.util.avg1[rcKhiSlotCpu1MinAve.1]
       value_type: FLOAT
       units: '%'
-      description: 'MIB: rcKhiSlotCpu1MinAve ΓÇö 1-minute average CPU util for slot 1.'
+      description: 'MIB: rcKhiSlotCpu1MinAve — 1-minute average CPU util for slot 1.'
       tags:
       - tag: component
         value: cpu
@@ -496,7 +496,7 @@ zabbix_export:
       key: system.cpu.util.avg5[rcKhiSlotCpu5MinAve.1]
       value_type: FLOAT
       units: '%'
-      description: 'MIB: rcKhiSlotCpu5MinAve ΓÇö 5-minute average CPU util for slot 1.'
+      description: 'MIB: rcKhiSlotCpu5MinAve — 5-minute average CPU util for slot 1.'
       tags:
       - tag: component
         value: cpu
@@ -509,17 +509,6 @@ zabbix_export:
         tags:
         - tag: scope
           value: performance
-    - uuid: 4baf753d9a3d4c6185b6a9dfc6cbe2b6
-      name: 'Memory utilization 5m avg (slot 1)'
-      type: SNMP_AGENT
-      snmp_oid: get[1.3.6.1.4.1.2272.1.85.10.1.1.9.1]
-      key: vm.memory.util.avg5[rcKhiSlotMem5MinAve.1]
-      value_type: FLOAT
-      units: '%'
-      description: 'MIB: rcKhiSlotMem5MinAve ΓÇö 5-minute average memory util for slot 1.'
-      tags:
-      - tag: component
-        value: memory
     - uuid: cce780d5a5bc4172a6724fadfc26e9aa
       name: 'Chassis number of slots'
       type: SNMP_AGENT
@@ -606,7 +595,7 @@ zabbix_export:
       snmp_oid: get[1.3.6.1.4.1.2272.1.211.1.0]
       key: fabric.vist.status[rcVirtualIstSessionStatus.0]
       delay: 1m
-      description: 'MIB: rcVirtualIstSessionStatus ΓÇö up(1) down(2).'
+      description: 'MIB: rcVirtualIstSessionStatus — up(1) down(2).'
       valuemap:
         name: 'RAPID-CITY::rcVirtualIstSessionStatus'
       tags:
@@ -649,7 +638,7 @@ zabbix_export:
       snmp_oid: get[1.3.6.1.4.1.2272.1.78.1.2.0]
       key: fabric.plsb.enable[rcPlsbGlobalEnable.0]
       delay: 5m
-      description: 'MIB: rcPlsbGlobalEnable ΓÇö enable(1) disable(2).'
+      description: 'MIB: rcPlsbGlobalEnable — enable(1) disable(2).'
       valuemap:
         name: 'RAPID-CITY::EnableValue'
       tags:
@@ -797,10 +786,10 @@ zabbix_export:
         type: SNMP_AGENT
         snmp_oid: get[1.3.6.1.4.1.2272.1.4.7.1.1.3.{#SNMPINDEX}]
         key: sensor.fan.temp[rcChasFanAmbientTemperature.{#SNMPINDEX}]
-        units: ┬░C
+        units: °C
         description: 'MIB: RAPID-CITY rcChasFanAmbientTemperature
 
-          Air temperature entering the fan (┬░C).'
+          Air temperature entering the fan (°C).'
         tags:
         - tag: component
           value: fan
@@ -832,7 +821,7 @@ zabbix_export:
             value: availability
           - tag: scope
             value: performance
-      description: RAPID-CITY rcChasFanTable ΓÇö fan id discovery.
+      description: RAPID-CITY rcChasFanTable — fan id discovery.
     - uuid: 543dd008b3df42c5b6f486833a0e3e5f
       name: Slot memory discovery
       type: SNMP_AGENT
@@ -935,7 +924,7 @@ zabbix_export:
           item:
             host: Extreme VOSS by SNMP
             key: vm.memory.util[rcKhiSlotMemUtil.{#SNMPINDEX}]
-      description: RAPID-CITY rcKhiSlotPerfTable ΓÇö memory per slot. CPU uses scalar item for slot 1 (rcKhiSlotCpuCurrentUtil.1).
+      description: RAPID-CITY rcKhiSlotPerfTable — memory per slot. CPU uses scalar item for slot 1 (rcKhiSlotCpuCurrentUtil.1).
     - uuid: c0e08139247945038307dfe2a3a5a579
       name: Network interfaces discovery
       type: SNMP_AGENT
@@ -1262,7 +1251,7 @@ zabbix_export:
         snmp_oid: get[1.3.6.1.4.1.2272.1.4.10.1.1.21.{#SNMPINDEX}]
         key: net.if.flaps[rcPortNumStateTransition.{#SNMPINDEX}]
         delay: 5m
-        description: 'MIB: rcPortNumStateTransition ΓÇö link state change count.'
+        description: 'MIB: rcPortNumStateTransition — link state change count.'
         tags:
         - tag: component
           value: network
@@ -1572,7 +1561,7 @@ zabbix_export:
       snmp_oid: discovery[{#SENSOR_DESCR},1.3.6.1.4.1.2272.1.101.1.1.2.1.2]
       key: temperature.discovery
       delay: 1h
-      description: RAPID-CITY rcVossSystemTemperatureTable ΓÇö per-sensor temperature.
+      description: RAPID-CITY rcVossSystemTemperatureTable — per-sensor temperature.
       item_prototypes:
       - uuid: a26ae4767ee44c66917b6e5066bd3b63
         name: 'Temperature sensor {#SNMPINDEX}'
@@ -1581,10 +1570,10 @@ zabbix_export:
         key: sensor.temp.value[rcVossSystemTemperatureTemperature.{#SNMPINDEX}]
         delay: 1m
         value_type: FLOAT
-        units: ┬░C
+        units: °C
         description: 'MIB: RAPID-CITY rcVossSystemTemperatureTemperature
 
-          Sensor temperature in ┬░C.'
+          Sensor temperature in °C.'
         tags:
         - tag: component
           value: temperature
@@ -1870,7 +1859,7 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.0.8802.1.1.2.1.4.1.1.9]
       key: lldp.discovery
       delay: 1h
-      description: LLDP-MIB lldpRemTable ΓÇö neighbors (needs LLDP peers).
+      description: LLDP-MIB lldpRemTable — neighbors (needs LLDP peers).
       item_prototypes:
       - uuid: 2e354d7e7d744e70b3b72b35a47c9470
         name: 'LLDP {#SNMPINDEX}: Remote system name'
@@ -1989,7 +1978,7 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.4.9.1.1.1]
       key: card.discovery
       delay: 1h
-      description: RAPID-CITY rcCardTable ΓÇö may be empty on fixed VOSS-VM.
+      description: RAPID-CITY rcCardTable — may be empty on fixed VOSS-VM.
       item_prototypes:
       - uuid: 30fc14675051429586c18e58120e94e8
         name: 'Card {#SNMPINDEX}: Type'
@@ -2043,7 +2032,7 @@ zabbix_export:
         snmp_oid: get[1.3.6.1.4.1.2272.1.4.9.1.1.6.{#SNMPINDEX}]
         key: system.hw.card.status[rcCardOperStatus.{#SNMPINDEX}]
         delay: 3m
-        description: 'MIB: rcCardOperStatus ΓÇö up(1) down(2) testing(3) unknown(4) dormant(5).'
+        description: 'MIB: rcCardOperStatus — up(1) down(2) testing(3) unknown(4) dormant(5).'
         valuemap:
           name: 'RAPID-CITY::rcCardOperStatus'
         tags:
@@ -2071,7 +2060,7 @@ zabbix_export:
         snmp_oid: get[1.3.6.1.4.1.2272.1.63.2.1.8.{#SNMPINDEX}]
         key: fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}]
         delay: 1m
-        description: 'MIB: rcIsisCircuitOperState ΓÇö unknown(0) up(1) down(2).'
+        description: 'MIB: rcIsisCircuitOperState — unknown(0) up(1) down(2).'
         valuemap:
           name: 'RAPID-CITY::rcIsisCircuitOperState'
         tags:
@@ -2101,7 +2090,7 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.63.10.1.3]
       key: isis.adj.discovery
       delay: 1h
-      description: RAPID-CITY rcIsisAdjTable ΓÇö SPBM/ISIS neighbors.
+      description: RAPID-CITY rcIsisAdjTable — SPBM/ISIS neighbors.
       item_prototypes:
       - uuid: 7f7b7794aecc4df3a87cba62bba6f526
         name: 'ISIS adjacency {#SNMPINDEX}: Hostname'
@@ -2145,13 +2134,21 @@ zabbix_export:
         tags:
         - tag: component
           value: fabric
-      - uuid: 5d0da3e5c34d4585a5e43b3f3f71c74c
+    - uuid: 353b057685104ea1a6e31289123deaeb
+      name: 'SPBM PLSB state discovery'
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.63.4.1.6]
+      key: spbm.plsbstate.discovery
+      delay: 1h
+      description: 'Discovers SPBM nodes with PLSB state (rcIsisPlsbState). SPBM-only devices without PLSB return no rows — avoids NOTSUPPORTED noise.'
+      item_prototypes:
+      - uuid: a21fc05bf91141d292341c955a908438
         name: 'SPBM node {#SNMPINDEX}: PLSB state'
         type: SNMP_AGENT
         snmp_oid: get[1.3.6.1.4.1.2272.1.63.4.1.6.{#SNMPINDEX}]
         key: fabric.spbm.state[rcIsisPlsbState.{#SNMPINDEX}]
         delay: 1m
-        description: 'MIB: rcIsisPlsbState ΓÇö enable(1) disable(2).'
+        description: 'MIB: rcIsisPlsbState — enable(1) disable(2). Only discovered on SPBM nodes that support PLSB.'
         valuemap:
           name: 'RAPID-CITY::EnableValue'
         tags:
@@ -2163,7 +2160,7 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.17.10.1.2]
       key: mlt.discovery
       delay: 1h
-      description: RAPID-CITY rcMltTable ΓÇö MLT/SMLT aggregates.
+      description: RAPID-CITY rcMltTable — MLT/SMLT aggregates.
       item_prototypes:
       - uuid: 25c3d2e0f808476a965945a30cb1a60b
         name: 'MLT {#SNMPINDEX}: Name'
@@ -2177,23 +2174,13 @@ zabbix_export:
         tags:
         - tag: component
           value: network
-      - uuid: 6b0416236f8a4fdc8cb0997b2d7c39b6
-        name: 'MLT {#SNMPINDEX}: SMLT ID'
-        type: SNMP_AGENT
-        snmp_oid: get[1.3.6.1.4.1.2272.1.17.10.1.13.{#SNMPINDEX}]
-        key: net.mlt.smltid[rcMltSmltId.{#SNMPINDEX}]
-        delay: 5m
-        description: 'MIB: rcMltSmltId'
-        tags:
-        - tag: component
-          value: fabric
       - uuid: c7c180ab1af64d49ba9ec14673e11a04
         name: 'MLT {#SNMPINDEX}: Aggregation oper state'
         type: SNMP_AGENT
         snmp_oid: get[1.3.6.1.4.1.2272.1.17.10.1.22.{#SNMPINDEX}]
         key: net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}]
         delay: 1m
-        description: 'MIB: rcMltAggOperState ΓÇö enable(1) disable(2).'
+        description: 'MIB: rcMltAggOperState — enable(1) disable(2).'
         valuemap:
           name: 'RAPID-CITY::EnableValue'
         tags:
@@ -2209,6 +2196,24 @@ zabbix_export:
           tags:
           - tag: scope
             value: availability
+    - uuid: 4143f03888bd4651b45bb8f432487f74
+      name: 'SMLT (Split-MLT) discovery'
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.17.10.1.13]
+      key: smlt.discovery
+      delay: 1h
+      description: 'Discovers SMLT-capable MLTs by walking rcMltSmltId. Non-SMLT MLTs return no rows — avoids NOTSUPPORTED noise on the rcMltSmltId OID.'
+      item_prototypes:
+      - uuid: 03b8930535ee466b94a8b58ac7729dfa
+        name: 'MLT {#SNMPINDEX}: SMLT ID'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.2272.1.17.10.1.13.{#SNMPINDEX}]
+        key: net.mlt.smltid[rcMltSmltId.{#SNMPINDEX}]
+        delay: 5m
+        description: 'MIB: rcMltSmltId. Only discovered on SMLT-capable MLTs.'
+        tags:
+        - tag: component
+          value: fabric
     tags:
     - tag: class
       value: network
@@ -2254,8 +2259,8 @@ zabbix_export:
     - macro: '{$NET.IF.IFNAME.MATCHES}'
       value: ^.*$
     - macro: '{$NET.IF.IFNAME.NOT_MATCHES}'
-      value: (^Software Loopback Interface|^NULL[0-9.]*$|^[Ll]o[0-9.]*$|^[Ss]ystem$|^Nu[0-9.]*$|^veth[0-9a-z]+$|docker[0-9]+|br-[a-z0-9]{12})
-      description: Filter out loopbacks, nulls, docker veth links and docker0 bridge by default
+      value: (^Software Loopback Interface|^NULL[0-9.]*$|^[Ll]o[0-9.]*$|^[Ss]ystem$|^Nu[0-9.]*$|^veth[0-9a-z]+$|docker[0-9]+|br-[a-z0-9]{12}|^Mgmt-)
+      description: Filter out loopbacks, nulls, docker veth links, docker0 bridge and VOSS management interfaces (Mgmt-clip/Mgmt-oob — no ifTable counters) by default
     - macro: '{$NET.IF.IFOPERSTATUS.MATCHES}'
       value: ^.*$
     - macro: '{$NET.IF.IFOPERSTATUS.NOT_MATCHES}'
@@ -2328,7 +2333,7 @@ zabbix_export:
       description: rcPlugOptMod*Status lowAlarm(5)
     - macro: '{$IF.FLAP.WARN}'
       value: '0'
-      description: 'Link-flap warning ΓÇö fire when rcPortNumStateTransition change exceeds this (context-capable).'
+      description: 'Link-flap warning — fire when rcPortNumStateTransition change exceeds this (context-capable).'
     dashboards:
     - uuid: 6c3fa785af5d4bd38c94805bd0ccbecb
       name: Network interfaces
