@@ -928,6 +928,27 @@ def step5_host_interfaces(server, groups: dict):
             },
         )
 
+    def snmp_v2_if(group, *, community='public', use_oob_ip: bool = False):
+        ensure_if(
+            zabbixserver=server,
+            assigned_object_type=ct_cfg,
+            assigned_object_id=group.id,
+            type=ZabbixHostInterfaceTypeChoices.SNMP,
+            use_oob_ip=use_oob_ip,
+            defaults={
+                'zabbixconfigurationgroup': group,
+                'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+                'port': 161,
+                'useip': ZabbixInterfaceUseChoices.IP,
+                'dns': '',
+                'snmp_version': ZabbixHostInterfaceSNMPVersionChoices.SNMPV2,
+                'snmp_usebulk': True,
+                'snmp_max_repetitions': 10,
+                'snmp_community': community,
+                'snmp_pushcommunity': True,
+            },
+        )
+
     def agent_if(group, *, port: int = 10050):
         ensure_if(
             zabbixserver=server,
@@ -1307,18 +1328,18 @@ def step6_template_rules(server, country_slugs=None):
     tpl_voss = make_template(*_voss_tpl, req=[HostInterfaceRequirementChoices.SNMP])
     tpl_iq = make_template(*_iq_tpl, req=[HostInterfaceRequirementChoices.SNMP])
     rules = [
-        ('Windows Server', r'Windows Server', tpl_windows, hg_os_windows, 50),
-        ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 200),
-        ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100),
-        ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100),
-        ('Extreme IQ Engine', r'IQ ENGINE', tpl_iq, hg_os_network, 100),
+        ('Windows Server', r'Windows Server', tpl_windows, hg_os_windows, 50, ''),
+        ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 200, ''),
+        ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100, '^(?!vCenter$).*'),
+        ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100, ''),
+        ('Extreme IQ Engine', r'IQ ENGINE', tpl_iq, hg_os_network, 100, ''),
 
-        ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100),
-        ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50),
-        # Photon guests / appliances — Linux agent (not ESXi hypervisors).
-        ('VMware Photon', r'Photon', tpl_linux, hg_os_linux, 50),
+        ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100, ''),
+        ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50, ''),
+        # Photon guests / appliances — Linux agent (not ESXi hypervisors, not vCenter).
+        ('VMware Photon', r'Photon', tpl_linux, hg_os_linux, 50, '^(?!vCenter$).*'),
     ]
-    for name, pattern, template, hostgroup, priority in rules:
+    for name, pattern, template, hostgroup, priority, role_pattern in rules:
         defaults = {
             'pattern': pattern,
             'zabbixtemplate': template,
@@ -1327,7 +1348,7 @@ def step6_template_rules(server, country_slugs=None):
             'zabbixtag': None,
             'zabbixhostgroup': hostgroup,
             'require_tags': '',
-            'role_pattern': '',
+            'role_pattern': role_pattern,
             'manufacturer': None,
         }
         ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
