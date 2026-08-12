@@ -113,7 +113,8 @@ Each group is one **transport + credential** profile. Why these groups exist and
 | SAP Agent+SNMP | Agent :10050 + `SAPUSER` (confirm auth/priv) | SAP HANA / SAP ME dual-plane (one CG) |
 | Agent Monitoring | Agent :10050 | Default transport on country Site Groups |
 | Agent Monitoring (SPACE) | Agent :10060 | Space Server role (camLine occupies 10050) |
-| Dell iDRAC SNMP | `MONITORING-IDRAC` **SHA384/AES128** @ oob | ESXi Hypervisor (iDRAC9 7.x / iDRAC10) |
+| Dell iDRAC SNMP | `MONITORING-IDRAC` **SHA384/AES256** @ oob | ESXi Hypervisor (iDRAC9 7.x / iDRAC10) |
+| Dell iDRAC SNMP (AES128) | `MONITORING-IDRAC` SHA384/AES128 @ oob | KR/CN ESXi exception hosts (iDRAC AES only) |
 | Dell iDRAC SNMP (Legacy) | `MONITORING-IDRAC` SHA1/AES128 @ oob | Cohesity (C6420 fw 6.10 max) |
 
 Two SNMPv3 CGs by firmware tier — same `MONITORING-IDRAC` user, same passphrases, different protocols. **Server** stays on Site Group Agent Monitoring @ primary (real agent). Legacy **Server Agent+OOB** is deleted by zerotouch. iDRAC SNMPv3 user must be configured on each iDRAC (via iDRAC UI or racadm).
@@ -138,6 +139,7 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 | Linux | SNMP Monitoring (by tag) | MONITORING-LINUX | SHA1* | AES128 |
 | Huawei | SNMP Monitoring (Huawei) | LogicMonitor | SHA1* | AES128 |
 | Dell iDRAC | Dell iDRAC SNMP | MONITORING-IDRAC | **SHA384** | **AES256** |
+| Dell iDRAC (AES128) | Dell iDRAC SNMP (AES128) | MONITORING-IDRAC | **SHA384** | **AES128** |
 | Dell iDRAC (Legacy) | Dell iDRAC SNMP (Legacy) | MONITORING-IDRAC | SHA1 | AES128 |
 \*SHA1 is what the stock Zabbix SNMPv3 security-level field offers for these profiles today.
 
@@ -168,7 +170,7 @@ Same shape as §5.1 with the **Linux** SNMPv3 profile. Transport-only — no tem
 
 | Piece | Where | Why |
 |---|---|---|
-| SNMPv3 :161, **Use OOB IP = Yes** | CG **Dell iDRAC SNMP** (SHA384/AES128) on role **ESXi Hypervisor** | iDRAC9 7.x / iDRAC10 support SHA384/AES128 |
+| SNMPv3 :161, **Use OOB IP = Yes** | CG **Dell iDRAC SNMP** (SHA384/AES256) on role **ESXi Hypervisor** | iDRAC9 7.x / iDRAC10 support SHA384/AES128 |
 | SNMPv3 :161, **Use OOB IP = Yes** | CG **Dell iDRAC SNMP (Legacy)** (SHA1/AES128) on role **Cohesity** | C6420 fw 6.10 tops out at SHA1/AES128 |
 | Template | TemplateRules §6.3 — Manufacturer **Dell**∧ Server/ESXi/Cohesity → Dell iDRAC by SNMP | Storage stays on HPE MSA HTTP |
 
@@ -176,7 +178,7 @@ Same shape as §5.1 with the **Linux** SNMPv3 profile. Transport-only — no tem
 
 **Server role** stays on Site Group **Agent Monitoring** @ primary (real Zabbix agent); iDRAC template via TemplateRule only.
 
-**iDRAC SNMPv3 user must be configured on each iDRAC** (via iDRAC UI or racadm) with the `MONITORING-IDRAC` user, SHA384 auth, AES256 priv.
+**iDRAC SNMPv3 user must be configured on each iDRAC** (via iDRAC UI or racadm) with the `MONITORING-IDRAC` user, SHA384 auth, AES256 priv (or AES128 for KR/CN exception hosts).
 
 **Retired:** CG **Server Agent+OOB** (Agent + SNMP `MONITORING-DELL` @ oob) — deleted by zerotouch. CG **Dell iDRAC HTTP** (Redfish API) — superseded by SNMPv3.
 
@@ -248,7 +250,8 @@ Manufacturer CG wins over Site Group Agent. Pure Storage and Dell Storage stay A
 
 | Configuration group | Assigned to |
 |---|---|
-| Dell iDRAC SNMP (SHA384/AES128) | ESXi Hypervisor |
+| Dell iDRAC SNMP (SHA384/AES256) | ESXi Hypervisor |
+| Dell iDRAC SNMP (AES128) | KR/CN exception hosts (per-device) |
 | Dell iDRAC SNMP (Legacy) (SHA1/AES128) | Cohesity |
 | Agent Monitoring (SPACE) | Space Server |
 | SAP Agent+SNMP | SAP HANA |
@@ -258,7 +261,7 @@ Two iDRAC CGs by firmware tier — same `MONITORING-IDRAC` user, same passphrase
 
 ### ESXi Hypervisor → Dell iDRAC SNMP
 
-ESXi hosts get `role=ESXi Hypervisor` from netbox-sync. CG **Dell iDRAC SNMP** (SNMPv3 SHA384/AES128 @ oob_ip). Template: `Dell iDRAC (ESXi)` §6.3 → Dell iDRAC by SNMP.
+ESXi hosts get `role=ESXi Hypervisor` from netbox-sync. CG **Dell iDRAC SNMP** (SNMPv3 SHA384/AES256 @ oob_ip). Template: `Dell iDRAC (ESXi)` §6.3 → Dell iDRAC by SNMP.
 
 
 
@@ -283,7 +286,7 @@ Cohesity VMs (role=Cohesity Appliance) inherit **SNMP Monitoring**. Physical Coh
 ### Dell iDRAC and ESXi notes
 
 - **Template** via TemplateRules §6.3 (Manufacturer Dell ∧ role — never manufacturer-wide alone)
-- **Transport (ESXi)** via CG **Dell iDRAC SNMP** (SNMPv3 SHA384/AES128 @ oob_ip)
+- **Transport (ESXi)** via CG **Dell iDRAC SNMP** (SNMPv3 SHA384/AES256 @ oob_ip)
 - **Transport (Cohesity)** via CG **Dell iDRAC SNMP (Legacy)** (SNMPv3 SHA1/AES128 @ oob_ip)
 - **Transport (Server)** via Site Group **Agent Monitoring** @ primary (real agent)
 - **Credentials**: `MONITORING-IDRAC` user, passphrases from env `NBX_SNMP_AUTHPASS_IDRAC` / `NBX_SNMP_PRIVPASS_IDRAC`
@@ -615,6 +618,7 @@ Same `MONITORING-IDRAC` user, same passphrases on both CGs — only the protocol
 | CG | Auth Protocol | Priv Protocol | Roles |
 |---|---|---|---|
 | Dell iDRAC SNMP | SHA384 | AES256 | ESXi Hypervisor (iDRAC9 7.x / iDRAC10) |
+| Dell iDRAC SNMP (AES128) | SHA384 | AES128 | KR/CN ESXi exception hosts |
 | Dell iDRAC SNMP (Legacy) | SHA1 | AES128 | Cohesity (C6420 fw 6.10 max) |
 
 Passphrases from env `NBX_SNMP_AUTHPASS_IDRAC` / `NBX_SNMP_PRIVPASS_IDRAC`. The iDRAC SNMPv3 user must be configured on each iDRAC (via iDRAC UI or racadm).
@@ -712,7 +716,7 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Storage (Huawei) `HU-DEB-SAN01` | **SNMP Monitoring (Huawei)** on Device | Huawei OceanStor Dorado by SNMP (has `icmpping`; no extra ICMP rule); LogicMonitor on **CG HI** | SNMP `LogicMonitor` | Sites/…, Roles/Storage |
 | Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP (rule **Dell Storage (HTTP)**; legacy HPE MSA disabled); macros `{$HPE.MSA.API.HOST}` / `{$HPE.MSA.API.USERNAME}` / `{$HPE.MSA.API.PASSWORD}` (§11.4) | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Cohesity physical (oob only) | Dell iDRAC SNMP (Legacy) (SHA1/AES128) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC** on oob | Sites/CH/…, Roles/Cohesity |
-| ESXi hypervisor (Dell) | Dell iDRAC SNMP (SHA384/AES128) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC SHA384/AES128** on oob | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
+| ESXi hypervisor (Dell) | Dell iDRAC SNMP (SHA384/AES256) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC SHA384/AES128** on oob | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
 | vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (+ OS template if platform matches); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
 | Zabbix Proxy | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping + Remote Zabbix proxy health | Agent :10050 | Sites/…, Roles/Zabbix Proxy, OS/Linux |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
@@ -743,7 +747,7 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Sample Switch Hybrid (pre–stage 5) | Same platform template as peer EXOS/VOSS; IFALIAS macros still Access-like (`USW\|…` opt-in), not Core `.*` |
 | Sample Windows VM | Agent; Windows by agent; ICMP Ping when role matches Agent Host ICMP; OS/Windows; leaf under `Sites/CH/…` |
 | Sample SAP HANA / ME | CG **SAP Agent+SNMP**; Agent :10050 + SNMP `SAPUSER`; Linux + SAP `(stub)` + ICMP; **no** Site Group Agent CG |
-| Sample ESXi (Dell) | CG **Dell iDRAC SNMP** (SHA384/AES128, role=ESXi Hypervisor); SNMPv3 `MONITORING-IDRAC` @ oob_ip; Dell iDRAC by SNMP; OS/VMware; **no** VMware FQDN; **no** Agent IF |
+| Sample ESXi (Dell) | CG **Dell iDRAC SNMP** (SHA384/AES256, role=ESXi Hypervisor); SNMPv3 `MONITORING-IDRAC` @ oob_ip; Dell iDRAC by SNMP; OS/VMware; **no** VMware FQDN; **no** Agent IF |
 | Sample Pure array | Agent Monitoring; FlashArray HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` |
 | Sample Zabbix Proxy | Agent; Linux by agent + ICMP Ping + Remote Zabbix proxy health; Roles/Zabbix Proxy |
 | Sample vCenter | VMware FQDN + `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}`; hypervisors via LLD, not NetBox→VMware-template hosts |
