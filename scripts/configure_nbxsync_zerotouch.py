@@ -1116,9 +1116,10 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     for role_name in SNMP_ROLES:
         assign_role(snmp_group, role_name)
     for role_name in SERVER_BMC_ROLES:
-        # Cohesity goes to OOB SNMP Only (no primary_ip4 — only oob_ip)
+        # Cohesity physical nodes are Dell PowerEdge servers — they get the Dell
+        # iDRAC HTTP (Redfish) template via Manufacturer Dell TemplateRule (§6),
+        # same as ESXi. No OOB SNMP CG assignment needed.
         if role_name == 'Cohesity':
-            assign_role(oob_snmp_group, role_name)
             continue
         assign_role(server_oob_group, role_name)
 
@@ -1180,6 +1181,21 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         if old_assign:
             logger.info('  PRUNED: %s old %s assignment(s) from ESXi Hypervisor (moved to HTTP)',
                         old_assign, _cg.name)
+
+    # Prune old OOB SNMP Only assignment from Cohesity role (moved to Dell HTTP).
+    try:
+        cohesity_role = get_role('Cohesity')
+        if cohesity_role and oob_snmp_group:
+            old_coh_assign, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
+                zabbixconfigurationgroup=oob_snmp_group,
+                assigned_object_type=ct(DeviceRole),
+                assigned_object_id=cohesity_role.id,
+            ).delete()
+            if old_coh_assign:
+                logger.info('  PRUNED: %s old OOB SNMP Only assignment(s) from Cohesity (moved to HTTP)',
+                            old_coh_assign)
+    except DeviceRole.DoesNotExist:
+        pass
 
     # SNMP storage manufacturers
     # HU-DEB-SAN01 (Huawei storage): assign the Huawei-specific SNMP CG directly
@@ -1423,7 +1439,7 @@ def step6_template_rules(server, country_slugs=None):
         # Server role (physical Dell servers with oob_ip)
         defaults_server = {
             'pattern': '.*',
-            'role_pattern': '^Server$',
+            'role_pattern': '^(Server|Cohesity)$',
             'require_tags': '',
             'manufacturer': dell,
             'zabbixtemplate': tpl_dell_http,
