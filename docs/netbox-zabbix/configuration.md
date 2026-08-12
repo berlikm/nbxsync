@@ -114,7 +114,7 @@ Each group is one **transport + credential** profile. Why these groups exist and
 | Agent Monitoring | Agent :10050 | Default transport on country Site Groups |
 | Agent Monitoring (SPACE) | Agent :10060 | Space Server role (camLine occupies 10050) |
 | Server Agent+OOB | Agent :10050 + `MONITORING-DELL` SHA/AES @ oob | Dell iDRAC dual-plane servers |
-| OOB SNMP Only (ESXi) | SNMPv3 MONITORING MD5/DES @ oob | ESXi hypervisors (role=ESXi Hypervisor) |
+| OOB SNMP v2c (ESXi iDRAC) | SNMPv2c `public` @ oob | ESXi hypervisors (role=ESXi Hypervisor); migrate to v3 post-cutover |
 | OOB SNMP Only | `MONITORING` MD5/DES @ oob | Cohesity physical (no primary IP) |
 
 ---
@@ -177,7 +177,7 @@ Same shape as §5.1 with the **Linux** SNMPv3 profile. Transport-only — no tem
 
 Network SNMPv3 profile, Use OOB IP = **Yes**. Cohesity physical nodes.
 
-### 5.5b ESXi → OOB SNMP Only
+### 5.5b ESXi → OOB SNMP v2c (ESXi iDRAC)
 
 | Field | Value |
 |---|---|
@@ -186,9 +186,9 @@ Network SNMPv3 profile, Use OOB IP = **Yes**. Cohesity physical nodes.
 | Community | `public` (push community **True**) |
 | Use OOB IP | **Yes** |
 
-**No Agent interface.** Estate iDRACs are SNMPv2c `public`, not `MONITORING-DELL` SNMPv3.
+**No Agent interface.** Estate iDRACs are SNMPv2c `public`, not SNMPv3. Migration to SNMPv3 MONITORING is post-cutover (re-run zerotouch with `snmp_v2_if` replaced by `snmp_if` profile=`network`).
 
-**Why OOB SNMP Only:** ESXi hosts are not dual-plane servers. Hardware health is iDRAC on `oob_ip` via SNMPv3 MONITORING; hypervisor/VM/cluster metrics come from **vCenter** (VMware FQDN + LLD). ESXi Hypervisor role gets `OOB SNMP Only` CG (same as Cohesity physical).
+**Why a separate CG:** ESXi iDRACs use SNMPv2c `public` while Cohesity physical (also on `oob_ip`) uses SNMPv3 MONITORING MD5/DES. Different credentials require different CGs. Hypervisor/VM/cluster metrics come from **vCenter** (VMware FQDN + LLD), not from the ESXi host.
 
 ### 5.6 SAP Agent+SNMP (two interfaces)
 
@@ -715,7 +715,7 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP (rule **Dell Storage (HTTP)**; legacy HPE MSA disabled); macros `{$HPE.MSA.API.HOST}` / `{$HPE.MSA.API.USERNAME}` / `{$HPE.MSA.API.PASSWORD}` (§11.4) | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP `MONITORING` on oob | Sites/CH/…, Roles/Cohesity |
 | Cohesity Appliance (VM) | SNMP Monitoring (role) | Storage Generic | SNMP `MONITORING` on primary | Sites/…, Roles/Cohesity Appliance |
-| ESXi hypervisor (Dell) | OOB SNMP Only (role=ESXi Hypervisor) | Dell iDRAC by SNMP | SNMP **v3 MONITORING** on oob only | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
+| ESXi hypervisor (Dell) | OOB SNMP v2c (ESXi iDRAC) (role=ESXi Hypervisor) | Dell iDRAC by SNMP | SNMP **v2c public** on oob only | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
 | vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (+ OS template if platform matches); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
 | Zabbix Proxy | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping + Remote Zabbix proxy health | Agent :10050 | Sites/…, Roles/Zabbix Proxy, OS/Linux |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
@@ -747,7 +747,7 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Sample Switch Hybrid (pre–stage 5) | Same platform template as peer EXOS/VOSS; IFALIAS macros still Access-like (`USW\|…` opt-in), not Core `.*` |
 | Sample Windows VM | Agent; Windows by agent; ICMP Ping when role matches Agent Host ICMP; OS/Windows; leaf under `Sites/CH/…` |
 | Sample SAP HANA / ME | CG **SAP Agent+SNMP**; Agent :10050 + SNMP `SAPUSER`; Linux + SAP `(stub)` + ICMP; **no** Site Group Agent CG |
-| Sample ESXi (Dell) | Platform CG **ESXi OOB iDRAC** (role stays Server); SNMPv2c **`public` @ oob** (not MONITORING-DELL); Dell iDRAC; OS/VMware; **no** agent; **no** VMware FQDN |
+| Sample ESXi (Dell) | CG **OOB SNMP v2c (ESXi iDRAC)** (role=ESXi Hypervisor); SNMPv2c **`public` @ oob**; Dell iDRAC; OS/VMware; **no** agent; **no** VMware FQDN |
 | Sample Huawei `HU-DEB-SAN01` | CG **SNMP Monitoring (Huawei)** on device; LogicMonitor on **CG HI** (not per-device HI); OceanStor template; no manufacturer SNMP CG |
 | Sample Dell Storage | Agent Monitoring; **HPE MSA 2060 Storage by HTTP** via Dell Storage (HTTP); legacy HPE MSA rule disabled; macros `{$HPE.MSA.API.HOST/USERNAME/PASSWORD}` set (§11.4); API returns both controllers |
 | Sample Pure array | Agent Monitoring; FlashArray HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` |

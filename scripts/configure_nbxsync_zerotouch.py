@@ -18,7 +18,7 @@ Deltas vs the old checklist script:
   Δ5b  Pure Storage stays on SiteGroup Agent + HTTP template (ANY) — not SNMP CG
   Δ5b  Storage removed from SNMP CG (Cohesity → OOB SNMP Only)
   Δ5b  Server BMC = "Server Agent+OOB" with MONITORING-DELL SHA/AES on OOB SNMP
-  Δ5b  ESXi = OOB SNMP Only CG (SNMPv3 MONITORING @ oob_ip) on ESXi Hypervisor role;
+  Δ5b  ESXi = OOB SNMP v2c (ESXi iDRAC) CG (SNMPv2c public @ oob_ip) on ESXi Hypervisor role; migrate to v3 post-cutover
   Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,DELL,SAP}
   Δ5   "SNMP Monitoring (Linux)" CG on NetBox tag snmp (was SNMP by tag / VM by SNMP)
   Δ5   "Agent Monitoring (SPACE)" port 10060 on Space Server role
@@ -747,6 +747,11 @@ def step4_configgroups():
         name='OOB SNMP Only',
         defaults={'description': 'SNMP MONITORING MD5/DES @ oob_ip — Cohesity physical (no primary IP)'},
     )
+    esxi_oob_group, _ = get_or_create(
+        M.ZabbixConfigurationGroup,
+        name='OOB SNMP v2c (ESXi iDRAC)',
+        defaults={'description': 'SNMPv2c public @ oob_ip — ESXi iDRACs (migrate to v3 post-cutover)'},
+    )
     # NOTE: ESXi OOB iDRAC CG removed — ESXi uses OOB SNMP Only CG (same as Cohesity physical).
     # snmp_v2_if removed — ESXi iDRACs will use SNMPv3 MONITORING via OOB SNMP Only CG.
     sap_snmp_group = _rename_cg(
@@ -770,7 +775,7 @@ def step4_configgroups():
         'server_oob': server_oob_group,
         'linux_snmp': linux_snmp_group,
         'oob_snmp': oob_snmp_group,
-        'sap_snmp': sap_snmp_group,
+        'esxi_oob': esxi_oob_group,
         'space_agent': space_agent_group,
         'huawei_snmp': huawei_snmp_group,
     }
@@ -948,10 +953,10 @@ def step5_host_interfaces(server, groups: dict):
     snmp_if(groups['server_oob'], profile='dell', use_oob_ip=True)
     # 5.4 SNMP Monitoring (by tag) — MONITORING-LINUX SHA/AES
     snmp_if(groups['linux_snmp'], profile='linux')
-    # 5.5 OOB SNMP Only — Cohesity physical + ESXi (network MONITORING on oob_ip)
+    # 5.5 OOB SNMP Only — Cohesity physical (SNMPv3 MONITORING on oob_ip)
     snmp_if(groups['oob_snmp'], profile='network', use_oob_ip=True)
-    # 5.5b ESXi uses OOB SNMP Only CG (SNMPv3 MONITORING on oob_ip, same as Cohesity physical).
-    # No separate ESXi OOB iDRAC CG — ESXi Hypervisor role gets OOB SNMP Only in step 5b.
+    # 5.5b ESXi iDRACs use SNMPv2c public on oob_ip (migrate to v3 post-cutover).
+    snmp_v2_if(groups['esxi_oob'], community='public', use_oob_ip=True)
     # 5.6 SAP Agent+SNMP — dual-plane: Agent :10050 + SNMP SAPUSER (one CG, both interfaces)
     agent_if(groups['sap_snmp'], port=10050)
     snmp_if(groups['sap_snmp'], profile='sap')
@@ -1116,22 +1121,18 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); ESXi = OOB SNMP Only; Server OOB creds = MONITORING-DELL')
     # ESXi Hypervisor role → OOB SNMP Only CG (SNMPv3 MONITORING on oob_ip, no Agent).
     # Role set by netbox-sync (host_role_relation: (?i).*ESX.* = ESXi Hypervisor).
-    try:
-        esxi_role = get_role('ESXi Hypervisor')
-    except DeviceRole.DoesNotExist:
-        logger.warning("  Role 'ESXi Hypervisor' not found — skip ESXi OOB CG (run netbox-sync first)")
-        esxi_role = None
     if esxi_role:
+        esxi_oob_group = groups.get('esxi_oob') or oob_snmp_group
         get_or_create(
             M.ZabbixConfigurationGroupAssignment,
-            zabbixconfigurationgroup=oob_snmp_group,
+            zabbixconfigurationgroup=esxi_oob_group,
             assigned_object_type=ct(DeviceRole),
             assigned_object_id=esxi_role.id,
             defaults={},
         )
-        logger.info('  ESXi Hypervisor → OOB SNMP Only (SNMPv3 MONITORING on oob_ip)')
+        logger.info('  ESXi Hypervisor → %s (SNMPv2c public @ oob_ip)', esxi_oob_group.name)
 
-    # Prune stale ESXi OOB iDRAC CG entirely (removed — ESXi uses OOB SNMP Only now).
+    # Prune stale ESXi OOB iDRAC CG + old OOB SNMP Only assignment on ESXi role (moved to v2c CG).
     stale_esxi_cg = M.ZabbixConfigurationGroup.objects.filter(name='ESXi OOB iDRAC').first()
     if stale_esxi_cg is not None:
         stale_count, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
@@ -1140,6 +1141,14 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
         M.ZabbixHostInterface.objects.filter(zabbixconfigurationgroup=stale_esxi_cg).delete()
         stale_esxi_cg.delete()
         logger.info('  DELETED ESXi OOB iDRAC CG + %s assignment(s) + HostInterface(s)', stale_count)
+    if esxi_role is not None:
+        old_esxi_assign, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
+            zabbixconfigurationgroup=oob_snmp_group,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=esxi_role.id,
+        ).delete()
+        if old_esxi_assign:
+            logger.info('  PRUNED: %s old OOB SNMP Only assignment(s) from ESXi Hypervisor (moved to v2c)', old_esxi_assign)
 
     # SNMP storage manufacturers
     # HU-DEB-SAN01 (Huawei storage): assign the Huawei-specific SNMP CG directly
