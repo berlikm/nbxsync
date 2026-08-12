@@ -277,13 +277,13 @@ SNMP_PROFILES = {
         'auth_env': ('NBX_SNMP_AUTHPASS_SAP',),
         'priv_env': ('NBX_SNMP_PRIVPASS_SAP',),
     },
-    # Dell iDRAC SNMPv3 — same user/passphrases, two protocol tiers by firmware:
-    # iDRAC9 7.x / iDRAC10: SHA384/AES256 (ESXi hosts, R7715/R6615/R770).
-    # C6420 fw 6.10: SHA1/AES128 max (Cohesity nodes).
+    # Dell iDRAC SNMPv3 — same user/passphrases, two auth tiers:
+    # ESXi Hypervisor: SHA384/AES128 (iDRAC9 7.x / iDRAC10)
+    # C6420 fw 6.10: SHA1/AES128 (Cohesity nodes)
     'idrac': {
         'user': 'MONITORING-IDRAC',
         'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA384,
-        'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.AES256,
+        'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
         'auth_env': ('NBX_SNMP_AUTHPASS_IDRAC',),
         'priv_env': ('NBX_SNMP_PRIVPASS_IDRAC',),
     },
@@ -334,8 +334,8 @@ AGENT_DEFAULT_ROLES_DOC = [
 
 # Roles that get Redfish macros {$DELL.HTTP.API.*} (inheritance resolves role macros).
 DELL_IDRAC_HTTP_ROLES = ['Server', 'ESXi Hypervisor', 'Cohesity']
-# CG Dell iDRAC SNMP — ESXi (SHA384/AES256) + Cohesity (SHA1/AES128 legacy).
-DELL_IDRAC_OOB_CG_ROLES        = ['ESXi Hypervisor']   # SHA384/AES256 (iDRAC9 7.x / iDRAC10)
+# CG Dell iDRAC SNMP — ESXi (SHA384/AES128) + Cohesity (SHA1/AES128 legacy).
+DELL_IDRAC_OOB_CG_ROLES        = ['ESXi Hypervisor']   # SHA384/AES128 (iDRAC9 7.x / iDRAC10)
 DELL_IDRAC_LEGACY_CG_ROLES     = ['Cohesity']          # SHA1/AES128 (C6420 fw 6.10)
 
 # Roles that get Redfish macros {$DELL.HTTP.API.*} (inheritance resolves role macros).
@@ -763,14 +763,14 @@ def step4_configgroups():
         'SNMPv3 MONITORING-LINUX SHA/AES — zero-touch via NetBox tag snmp (Linux and Windows)',
     )
     # Dell iDRAC SNMPv3 — two tiers by firmware:
-    # ESXi Hypervisor: SHA384/AES256 (iDRAC9 7.x / iDRAC10)
+    # ESXi Hypervisor: SHA384/AES128 (iDRAC9 7.x / iDRAC10)
     # Cohesity: SHA1/AES128 (C6420 fw 6.10 max)
     dell_idrac_group, _ = ensure(
         M.ZabbixConfigurationGroup,
         name='Dell iDRAC SNMP',
         defaults={
             'description': (
-                'Dell PowerEdge iDRAC: SNMPv3 MONITORING-IDRAC SHA384/AES256 @ oob_ip. '
+                'Dell PowerEdge iDRAC: SNMPv3 MONITORING-IDRAC SHA384/AES128 @ oob_ip. '
                 'ESXi Hypervisor (iDRAC9 7.x / iDRAC10).'
             ),
         },
