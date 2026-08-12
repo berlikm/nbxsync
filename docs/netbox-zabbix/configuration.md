@@ -113,8 +113,9 @@ Each group is one **transport + credential** profile. Why these groups exist and
 | SAP Agent+SNMP | Agent :10050 + `SAPUSER` (confirm auth/priv) | SAP HANA / SAP ME dual-plane (one CG) |
 | Agent Monitoring | Agent :10050 | Default transport on country Site Groups |
 | Agent Monitoring (SPACE) | Agent :10060 | Space Server role (camLine occupies 10050) |
-| Dell iDRAC HTTP | Redfish API macros (no HostInterface) | Dell PowerEdge servers (ESXi/Server/Cohesity) — iDRAC monitoring via HTTP |
 | Server Agent+OOB | Agent :10050 + `MONITORING-DELL` SHA/AES @ oob | Dell physical servers (BACK01/02) — BMC SNMP dual-plane |
+
+Dell PowerEdge iDRAC monitoring is **not** a configuration group: TemplateRules (§6.3) + Redfish macros on roles (§11.4). A macros-only CG would steal the primary Agent interface.
 
 ---
 
@@ -132,11 +133,15 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 
 | Profile | CG | Security name | Auth | Priv |
 |---|---|---|---|---|
-| Network | SNMP Monitoring, Dell iDRAC HTTP | MONITORING / Redfish | MD5 / — | DES / — |
+| Network | SNMP Monitoring | MONITORING | MD5 | DES |
 | Linux | SNMP Monitoring (by tag) | MONITORING-LINUX | SHA1* | AES128 |
-| Dell iDRAC | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1 | AES128 |
+| Dell iDRAC (legacy SNMP) | Server Agent+OOB (SNMP side) | MONITORING-DELL | SHA1 | AES128 |
 | Huawei | SNMP Monitoring (Huawei) | LogicMonitor | SHA1* | AES128 |
 | SAP | SAP Agent+SNMP (SNMP side) | SAPUSER | *(confirm)* | *(confirm)* |
+
+\*SHA1 is what the stock Zabbix SNMPv3 security-level field offers for these profiles today.
+
+**Redfish (HTTP):** Dell PowerEdge iDRAC uses HTTPS API macros on Device Roles — not an SNMP profile (§5.5 / §11.4).
 
 
 ### 5.1 SNMP Monitoring (network)
@@ -172,21 +177,24 @@ If `oob_ip` is empty, the SNMP interface is skipped; the agent still syncs.
 
 Same shape as §5.1 with the **Linux** SNMPv3 profile. Transport-only — no templates on the CG. OS templates come from Template Rules (§6.2) when the host has tag `snmp`.
 
-### 5.5 Dell iDRAC HTTP (Redfish API)
+### 5.5 Dell iDRAC HTTP (Redfish API) — no CG
 
-**No HostInterface.** The Dell PowerEdge HTTP template uses Script items (type 21, `interfaceid=0`) — the Zabbix server/proxy makes HTTPS calls to the iDRAC Redfish API directly. No SNMP needed.
+**No HostInterface and no Configuration Group.** The Dell PowerEdge HTTP template uses Script items (type 21, `interfaceid=0`) — the Zabbix server/proxy calls the iDRAC Redfish API over HTTPS. Site Group **Agent Monitoring** stays the primary CG for agent-class hosts.
+
+| Piece | Where | Why |
+|---|---|---|
+| Template | TemplateRules §6.3 — Manufacturer **Dell** ∧ role Server / Cohesity / ESXi Hypervisor | Storage arrays stay on Dell ∧ Storage → HPE MSA HTTP |
+| Macros `{$DELL.HTTP.API.*}` | Device Roles **Server**, **ESXi Hypervisor**, **Cohesity** (§11.4) | Same role scope as the rules — **not** Manufacturer Dell (would hit storage), **not** a macros-only CG (would steal primary Agent IF) |
 
 | Macro | Value | Type |
 |---|---|---|
 | `{$DELL.HTTP.API.URL}` | `https://{{ object.oob_ip.address.ip }}` (Jinja — resolves per device) | Text |
-| `{$DELL.HTTP.API.USER}` | `CH-SVC-Netbox_Read@sensirion.lokal` (from `NBS_REDFISH_USERNAME`) | Text |
-| `{$DELL.HTTP.API.PASSWORD}` | (from `NBS_REDFISH_PASSWORD`) | Secret |
+| `{$DELL.HTTP.API.USER}` | from `NBS_REDFISH_USERNAME` | Text |
+| `{$DELL.HTTP.API.PASSWORD}` | from `NBS_REDFISH_PASSWORD` | Secret |
 
-**Assigned to:** ESXi Hypervisor + Server + Cohesity roles. One CG, three macros — scales to all Dell PowerEdge servers automatically.
+Legacy CGs `OOB SNMP Only`, `OOB SNMP v2c (ESXi iDRAC)`, and `Dell iDRAC HTTP` are pruned by zerotouch.
 
-The `OOB SNMP Only` and `OOB SNMP v2c (ESXi iDRAC)` CGs have been removed. Dell servers that previously used SNMP for iDRAC now use the Redfish HTTP API exclusively.
-
-**Note:** `Server Agent+OOB` (§5.3) is still used for the 2 physical Dell servers (BACK01/02) that have a Zabbix agent + iDRAC SNMP on `oob_ip`. If those migrate to Redfish HTTP later, `Server Agent+OOB` can be removed.
+**Note:** `Server Agent+OOB` (§5.3) remains for BACK01/02 (agent + iDRAC SNMP). If those migrate to Redfish only, that CG can be removed.
 
 ### 5.6 SAP Agent+SNMP (two interfaces)
 
@@ -257,19 +265,15 @@ Manufacturer CG wins over Site Group Agent. Pure Storage and Dell Storage stay A
 | Configuration group | Assigned to |
 |---|---|
 | Server Agent+OOB | Server (BACK01/02 — SNMP BMC dual-plane) |
-| Dell iDRAC HTTP | ESXi Hypervisor, Server, Cohesity (Redfish macros — no HostInterface) |
 | Agent Monitoring (SPACE) | Space Server |
 | SAP Agent+SNMP | SAP HANA |
 | SAP Agent+SNMP | SAP ME |
 
+Redfish iDRAC is **not** a CG assignment — see §5.5 / §11.4 (macros on roles) and §6.3 (TemplateRules).
 
-### ESXi Hypervisor → Dell iDRAC HTTP
+### ESXi Hypervisor → Redfish (no CG)
 
-| Configuration group | Assigned to |
-|---|---|
-| Dell iDRAC HTTP | Device Role **ESXi Hypervisor** (set by netbox-sync) |
-
-ESXi hosts get `role=ESXi Hypervisor` from netbox-sync (`host_role_relation: (?i).*ESX.* = ESXi Hypervisor`). The `Dell iDRAC HTTP` CG carries the Redfish API macros (URL/USER/PASSWORD) — no HostInterface. Dell iDRAC template comes from TemplateRule `Dell iDRAC (ESXi)` in §6.3 (role_pattern `^ESXi Hypervisor$` ∧ Manufacturer Dell → DELL PowerEdge R660 by HTTP).
+ESXi hosts get `role=ESXi Hypervisor` from netbox-sync (`host_role_relation: (?i).*ESX.* = ESXi Hypervisor`). Transport stays Site Group **Agent Monitoring** (or none if agent absent — template is HTTP ANY). Dell iDRAC template: TemplateRule `Dell iDRAC (ESXi)` in §6.3. Redfish macros: role **ESXi Hypervisor** (§11.4).
 
 
 
@@ -289,16 +293,16 @@ Overrides Site Group Agent. Credentials are on the CG Host Interface (§5.6b).
 
 ### Cohesity Appliance role → SNMP Monitoring
 
-Cohesity VMs (role=Cohesity Appliance, set by netbox-sync via `vm_role_relation`) inherit **SNMP Monitoring** CG (MONITORING MD5/DES on primary_ip). Physical Cohesity nodes (role=Cohesity) get the **Dell iDRAC HTTP** CG (Redfish API on oob_ip — no SNMP HostInterface).
+Cohesity VMs (role=Cohesity Appliance, set by netbox-sync via `vm_role_relation`) inherit **SNMP Monitoring** CG (MONITORING MD5/DES on primary_ip). Physical Cohesity nodes (role=Cohesity) get Redfish macros on that role (§11.4) + TemplateRule Dell ∧ Cohesity (§6.3) — no SNMP HostInterface for iDRAC.
 
 ### Dell iDRAC and ESXi notes
 
-- **Dell iDRAC template** is linked via TemplateRules in §6.3, not via manufacturer assignment:
-  - `Dell iDRAC (Server)`: Manufacturer Dell ∧ role `^(Server|Cohesity)$` → DELL PowerEdge R660 by HTTP
-  - `Dell iDRAC (ESXi)`: Manufacturer Dell ∧ role `^ESXi Hypervisor$` → DELL PowerEdge R660 by HTTP + OS/VMware hostgroup
-- **Dell iDRAC transport**: `Dell iDRAC HTTP` CG (Redfish API macros — no HostInterface) on ESXi Hypervisor + Server + Cohesity roles
+- **Template** via TemplateRules §6.3 (Manufacturer Dell ∧ role — never manufacturer-wide alone):
+  - `Dell iDRAC (Server)`: Dell ∧ `^(Server|Cohesity)$` → DELL PowerEdge R660 by HTTP
+  - `Dell iDRAC (ESXi)`: Dell ∧ `^ESXi Hypervisor$` → DELL PowerEdge R660 by HTTP + OS/VMware
+- **Macros** on Device Roles Server / ESXi Hypervisor / Cohesity (§11.4) — **not** Manufacturer Dell (Dell Storage would inherit), **not** a macros-only CG (primary Agent IF collision)
 - **Server BMC SNMP** (BACK01/02 only): `Server Agent+OOB` CG (Agent :10050 + SNMP `MONITORING-DELL` SHA/AES on oob_ip)
-- Do **not** assign Dell iDRAC on Manufacturer Dell — it would put iDRAC on every Dell device (including storage arrays).
+- Dell Storage stays Agent Monitoring + HPE MSA HTTP (Dell ∧ Storage) — no Redfish macros
 
 ---
 
@@ -329,7 +333,7 @@ First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and valu
 | FortiAnalyzer/Manager | `FortiAnalyzer\|FortiManager` | Network Generic Device by SNMP | OS/Network | — | 50 | Yes |
 | VMware Photon | `Photon` | Linux by Zabbix agent | OS/Linux | — | 50 | Yes |
 
-**VMware:** do **not** attach VMware FQDN via an ESXi platform rule (legacy rule `VMware ESXi` stays disabled). Hypervisor/VM/cluster discovery is vCenter LLD (§7). ESXi hardware = §5.5b + §6.3 Dell iDRAC (ESXi).
+**VMware:** do **not** attach VMware FQDN via an ESXi platform rule (legacy rule `VMware ESXi` stays disabled). Hypervisor/VM/cluster discovery is vCenter LLD (§7). ESXi hardware = §5.5 + §6.3 Dell iDRAC (ESXi) + role Redfish macros.
 
 **Extreme:** VOSS / IQ Engine rows above are created by zerotouch (soft-resolve until YAML import). **Extreme EXOS** TemplateRule is created/retargeted by `configure_nbxsync_network.py` (not zerotouch). Never Network Generic on Switch* (`icmpping` collision). Macro values, stages, LLD patches → [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md); labels → [`port-identity.md`](../../zabbix/port-identity.md); nbxSync macro assignment clicks → §11.1. Run network `--apply` after zerotouch (Appendix A).
 
@@ -347,12 +351,12 @@ Use together with configuration group **SNMP Monitoring (by tag)** (assigned on 
 
 ### 6.3 Manufacturer ∧ role rules
 
-Scoped here so Manufacturer Dell does not put iDRAC on every Dell device. Server BMC transport stays **Server Agent+OOB** (BACK01/02 SNMP); ESXi/Cohesity/Server iDRAC transport is **Dell iDRAC HTTP** (Redfish API, no HostInterface). Map matches production Zabbix hosts (STOD* / snas* / san* / ESXi).
+Scoped so Manufacturer Dell never puts iDRAC on every Dell device. **Template** = Dell ∧ role (Server/Cohesity/ESXi). **Macros** = same roles (§11.4), not Manufacturer. Dell Storage = separate HPE MSA HTTP rule. Map matches production (STOD* / snas* / san* / ESXi).
 
 | Name | Pattern | Role pattern | Manufacturer | Template | Hostgroup | Require tags | Priority | Enabled |
 |---|---|---|---|---|---|---|---|---|
-| Dell iDRAC (Server) | `.*` | `^Server$` | Dell | Dell iDRAC by SNMP | — | — | 80 | Yes |
-| Dell iDRAC (ESXi) | `ESXi\|VMware ESX` | — | Dell | Dell iDRAC by SNMP | OS/VMware | — | 80 | Yes |
+| Dell iDRAC (Server) | `.*` | `^(Server\|Cohesity)$` | Dell | DELL PowerEdge R660 by HTTP | — | — | 80 | Yes |
+| Dell iDRAC (ESXi) | `.*` | `^ESXi Hypervisor$` | Dell | DELL PowerEdge R660 by HTTP | OS/VMware | — | 80 | Yes |
 | Pure Storage (HTTP) | `.*` | — | Pure Storage | Pure Storage FlashArray v2 by HTTP | — | — | 80 | Yes |
 | Dell Storage (HTTP) | `.*` | `^Storage$` | Dell | HPE MSA 2060 Storage by HTTP | — | — | 80 | Yes |
 | Huawei OceanStor (SNMP) | `.*` | `^Storage$` | Huawei | Huawei OceanStor Dorado by SNMP | — | — | 80 | Yes |
@@ -618,17 +622,17 @@ Each Pure array has its own API token and base URL. Macro assignments are on eac
 
 Token format: UUID (generated on each array via `purearray connect --api-token`).
 
-#### Dell iDRAC Redfish API credentials (CG-level, shared)
+#### Dell iDRAC Redfish API credentials (role-level, shared)
 
-Dell PowerEdge servers (ESXi/Server/Cohesity) use the DELL PowerEdge R660 by HTTP template — Redfish REST API, not SNMP. All macros are on the **Dell iDRAC HTTP** Configuration Group (not per-device).
+Dell PowerEdge servers (ESXi / Server / Cohesity) use DELL PowerEdge R660 by HTTP — Redfish REST API, not SNMP. Shared macros live on those **Device Roles** (same scope as TemplateRules). Do **not** assign on Manufacturer Dell (Dell Storage would inherit) or on a macros-only CG (steals primary Agent interface).
 
-| Macro | Target | Type | Env var |
+| Macro | Target | Type | Env var / value |
 |---|---|---|---|
-| `{$DELL.HTTP.API.URL}` | CG: Dell iDRAC HTTP | Text | `https://{{ object.oob_ip.address.ip }}` (Jinja — resolves per device) |
-| `{$DELL.HTTP.API.USER}` | CG: Dell iDRAC HTTP | Text | `NBS_REDFISH_USERNAME` |
-| `{$DELL.HTTP.API.PASSWORD}` | CG: Dell iDRAC HTTP | Secret | `NBS_REDFISH_PASSWORD` |
+| `{$DELL.HTTP.API.URL}` | Role: Server, ESXi Hypervisor, Cohesity | Text | `https://{{ object.oob_ip.address.ip }}` (Jinja) |
+| `{$DELL.HTTP.API.USER}` | Role: Server, ESXi Hypervisor, Cohesity | Text | `NBS_REDFISH_USERNAME` |
+| `{$DELL.HTTP.API.PASSWORD}` | Role: Server, ESXi Hypervisor, Cohesity | Secret | `NBS_REDFISH_PASSWORD` |
 
-One CG, three macros — inherited by all Dell PowerEdge servers via role assignments (ESXi Hypervisor + Server + Cohesity).
+Template linkage still requires Manufacturer Dell ∧ role (§6.3) — non-Dell Server hosts may inherit unused macros; only Dell ∧ matching role get the HTTP template.
 
 #### HPE MSA API credentials (per-device)
 
@@ -723,9 +727,9 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Storage (Synology) | SNMP Monitoring → Manufacturer Synology | Synology DiskStation SNMPv3 + ICMP Ping | SNMP `MONITORING` | Sites/…, Roles/Storage |
 | Storage (Huawei) `HU-DEB-SAN01` | **SNMP Monitoring (Huawei)** on Device | Huawei OceanStor Dorado by SNMP (has `icmpping`; no extra ICMP rule); LogicMonitor on **CG HI** | SNMP `LogicMonitor` | Sites/…, Roles/Storage |
 | Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP (rule **Dell Storage (HTTP)**; legacy HPE MSA disabled); macros `{$HPE.MSA.API.HOST}` / `{$HPE.MSA.API.USERNAME}` / `{$HPE.MSA.API.PASSWORD}` (§11.4) | Agent / HTTP | Sites/CH/…, Roles/Storage |
-| Cohesity physical (oob only) | Dell iDRAC HTTP | DELL PowerEdge R660 by HTTP | Redfish API (no interface) | Sites/CH/…, Roles/Cohesity |
+| Cohesity physical (oob only) | Agent Monitoring (Site Group) if any; **no** Dell iDRAC CG | DELL PowerEdge R660 by HTTP; macros on role Cohesity | Redfish HTTPS (no SNMP IF) | Sites/CH/…, Roles/Cohesity |
 | Cohesity Appliance (VM) | SNMP Monitoring (role) | Storage Generic | SNMP `MONITORING` on primary | Sites/…, Roles/Cohesity Appliance |
-| ESXi hypervisor (Dell) | Dell iDRAC HTTP (role=ESXi Hypervisor) | DELL PowerEdge R660 by HTTP | Redfish API (no interface) | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
+| ESXi hypervisor (Dell) | Agent Monitoring (Site Group) if agent; **no** Dell iDRAC CG | DELL PowerEdge R660 by HTTP; macros on role ESXi Hypervisor | Redfish HTTPS (no SNMP IF) | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
 | vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (+ OS template if platform matches); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
 | Zabbix Proxy | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping + Remote Zabbix proxy health | Agent :10050 | Sites/…, Roles/Zabbix Proxy, OS/Linux |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
@@ -757,9 +761,9 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Sample Switch Hybrid (pre–stage 5) | Same platform template as peer EXOS/VOSS; IFALIAS macros still Access-like (`USW\|…` opt-in), not Core `.*` |
 | Sample Windows VM | Agent; Windows by agent; ICMP Ping when role matches Agent Host ICMP; OS/Windows; leaf under `Sites/CH/…` |
 | Sample SAP HANA / ME | CG **SAP Agent+SNMP**; Agent :10050 + SNMP `SAPUSER`; Linux + SAP `(stub)` + ICMP; **no** Site Group Agent CG |
-| Sample ESXi (Dell) | CG **Dell iDRAC HTTP** (role=ESXi Hypervisor); Redfish API via `{$DELL.HTTP.API.URL/USER/PASSWORD}`; DELL PowerEdge R660 by HTTP; OS/VMware; **no** SNMP; **no** VMware FQDN |
+| Sample ESXi (Dell) | Role **ESXi Hypervisor**; TemplateRule Dell iDRAC HTTP; Redfish macros on **role** (`{$DELL.HTTP.API.*}`); OS/VMware; **no** SNMP IF; **no** Manufacturer-wide Redfish; **no** VMware FQDN |
+| Sample Dell Storage | Agent Monitoring; **HPE MSA 2060 Storage by HTTP**; `{$HPE.MSA.API.*}` on device; **no** `{$DELL.HTTP.API.*}` (Redfish not on Manufacturer) |
 | Sample Huawei `HU-DEB-SAN01` | CG **SNMP Monitoring (Huawei)** on device; LogicMonitor on **CG HI** (not per-device HI); OceanStor template; no manufacturer SNMP CG |
-| Sample Dell Storage | Agent Monitoring; **HPE MSA 2060 Storage by HTTP** via Dell Storage (HTTP); legacy HPE MSA rule disabled; macros `{$HPE.MSA.API.HOST/USERNAME/PASSWORD}` set (§11.4); API returns both controllers |
 | Sample Pure array | Agent Monitoring; FlashArray HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` |
 | Sample Zabbix Proxy | Agent; Linux by agent + ICMP Ping + Remote Zabbix proxy health; Roles/Zabbix Proxy |
 | Sample vCenter | VMware FQDN + `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}`; hypervisors via LLD, not NetBox→VMware-template hosts |

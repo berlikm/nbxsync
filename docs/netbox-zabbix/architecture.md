@@ -38,13 +38,14 @@ Country Site Group     →  proxy + default Agent :10050
                        →  Sites/… and Roles/… hostgroup templates
                        →  environment tag + host inventory mapping
 
-Device Role            →  transport exceptions (SNMP / OOB / SPACE / SAP)
+Platform (Template Rule) → OS / Extreme / Forti / storage template
+                         → Dell ∧ Server|Cohesity|ESXi Hypervisor → PowerEdge HTTP + OS/VMware (ESXi)
+                         → OS/… hostgroup membership
+
+Device Role            →  transport exceptions (SNMP / SPACE / SAP)
+                       →  Redfish macros `{$DELL.HTTP.API.*}` on Server / ESXi Hypervisor / Cohesity
                        →  application templates (incl. VMware FQDN on vCenter only)
                        →  Extreme port-scoping macros (values in zabbix/01)
-
-Platform (Template Rule) → OS / Extreme / Forti / storage template
-                         → Dell ∧ ESXi platform → Dell iDRAC + OS/VMware (template only; transport is role CG below)
-                         → OS/… hostgroup membership
 
 NetBox tags            →  overlays (`critical`) + opt-ins (`snmp`, `oracle`) + exclude hold (`onboarding`)
 Zabbix tag assignment  →  `do_not_monitor` on role (permanent) or on NetBox Tag `onboarding` (waves)
@@ -59,13 +60,14 @@ Zabbix tag assignment  →  `do_not_monitor` on role (permanent) or on NetBox Ta
 | Network gear | CG **SNMP Monitoring** on Switch*/AP/Firewall/… | SNMPv3 `MONITORING` MD5/DES |
 | Linux/Windows SNMP opt-in | Tag `snmp` → CG **SNMP Monitoring (Linux)** | SNMPv3 `MONITORING-LINUX` SHA/AES |
 | SAP dual-plane | Roles **SAP HANA** / **SAP ME** → CG **SAP Agent+SNMP** | Agent :10050 + SNMPv3 `SAPUSER` (one CG) |
-| Dell server BMC | CG **Server Agent+OOB** on role Server | Agent :10050 + `MONITORING-DELL` on `oob_ip` |
-| ESXi hypervisor (Dell) | Role **ESXi Hypervisor** → CG **ESXi OOB iDRAC** | SNMPv2c `public` on `oob_ip` only (no agent, no VMware SDK) |
+| Dell server BMC (legacy SNMP) | CG **Server Agent+OOB** on role Server | Agent :10050 + `MONITORING-DELL` on `oob_ip` (BACK01/02) |
+| Dell PowerEdge iDRAC (Redfish) | TemplateRule Dell ∧ Server\|Cohesity\|ESXi Hypervisor + macros on those **roles** | HTTPS Redfish (`{$DELL.HTTP.API.*}`) — not Manufacturer, not a CG |
+| ESXi hypervisor (Dell) | Role **ESXi Hypervisor** + Redfish as above | PowerEdge HTTP + OS/VMware (no VMware SDK on ESXi) |
 | Huawei SAN | Device **`HU-DEB-SAN01`** → CG **SNMP Monitoring (Huawei)** | SNMPv3 `LogicMonitor` on CG HI |
 | Agent-class ICMP | TemplateRule **Agent Host ICMP** on agent-class roles | ICMP Ping |
 | Zabbix Proxy | Role **Zabbix Proxy** → ICMP + Remote Zabbix proxy health | Linux agent + proxy self-mon |
 | vCenter | Role **vCenter** → template **VMware FQDN** | SDK macros; LLD covers hypervisors/VMs/cluster |
-| Cohesity physical | CG **OOB SNMP Only** on role Cohesity | `MONITORING` on `oob_ip` only |
+| Cohesity physical | Role **Cohesity** + Redfish macros / Dell ∧ Cohesity rule | PowerEdge HTTP (no OOB SNMP CG) |
 | Space Server | CG **Agent Monitoring (SPACE)** on role | Agent **:10060** |
 | Criticality | Tag `critical` → hostgroup | `Priority/Critical` |
 
