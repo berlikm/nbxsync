@@ -1,0 +1,7 @@
+zabbix_utils
+pydantic<3,>=2.7
+
+[dev]
+ruff
+djlint
+mkdocs-material

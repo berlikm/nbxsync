@@ -15,9 +15,9 @@ class Migration(migrations.Migration):
                 default=False,
                 verbose_name='Use OOB IP',
                 help_text='When enabled and no static IP is set, resolve the interface IP '
-                          'from the device oob_ip field. If the device has no oob_ip, sync '
-                          'skips this interface and keeps any existing Zabbix interface '
-                          'unless inherited deletion is enabled.',
+                'from the device oob_ip field. If the device has no oob_ip, sync '
+                'skips this interface and keeps any existing Zabbix interface '
+                'unless inherited deletion is enabled.',
             ),
         ),
     ]

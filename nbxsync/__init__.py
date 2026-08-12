@@ -43,7 +43,7 @@ class nbxSync(PluginConfig):
     default_settings = {
         'sot': {
             'proxygroup': 'netbox',
-            'proxy': 'netbox',
+            'proxy': 'zabbix',
             'macro': 'netbox',
             'host': 'netbox',
             'hostmacro': 'netbox',
@@ -102,7 +102,7 @@ class nbxSync(PluginConfig):
         'backgroundsync': {
             'objects': {
                 'enabled': True,
-                'interval': 60,  # minutes
+                'interval': 360,  # 6 hours
             },
             'templates': {
                 'enabled': True,
