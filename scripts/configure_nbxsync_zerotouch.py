@@ -776,6 +776,7 @@ def step4_configgroups():
         'linux_snmp': linux_snmp_group,
         'oob_snmp': oob_snmp_group,
         'esxi_oob': esxi_oob_group,
+        'sap_snmp': sap_snmp_group,
         'space_agent': space_agent_group,
         'huawei_snmp': huawei_snmp_group,
     }
@@ -1142,6 +1143,11 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     logger.info('  NOTE: Dell iDRAC template = TemplateRule Dell∧Server (§6); ESXi = OOB SNMP Only; Server OOB creds = MONITORING-DELL')
     # ESXi Hypervisor role → OOB SNMP Only CG (SNMPv3 MONITORING on oob_ip, no Agent).
     # Role set by netbox-sync (host_role_relation: (?i).*ESX.* = ESXi Hypervisor).
+    try:
+        esxi_role = get_role('ESXi Hypervisor')
+    except DeviceRole.DoesNotExist:
+        logger.warning("  Role 'ESXi Hypervisor' not found — skip ESXi OOB CG (run netbox-sync first)")
+        esxi_role = None
     if esxi_role:
         esxi_oob_group = groups.get('esxi_oob') or oob_snmp_group
         get_or_create(
