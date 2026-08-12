@@ -294,9 +294,14 @@ Overrides Site Group Agent. Credentials are on the CG Host Interface (§5.6b). Z
 
 Cohesity VMs (role=Cohesity Appliance, set by netbox-sync via `vm_role_relation`) inherit **SNMP Monitoring** CG (MONITORING MD5/DES on primary_ip). Physical Cohesity nodes keep role=Cohesity → **OOB SNMP Only** (oob_ip only).
 
-### Manufacturer
+### Dell iDRAC and ESXi notes
 
-Do **not** assign Dell iDRAC on Manufacturer Dell. Use Template Rules §6.3 (Dell ∧ Server, and Dell ∧ ESXi Hypervisor). Server BMC credentials: **Server Agent+OOB** (`MONITORING-DELL`). ESXi BMC: **OOB SNMP Only** (`MONITORING` MD5/DES).
+- **Dell iDRAC template** is linked via TemplateRules in §6.3, not via manufacturer assignment:
+  - `Dell iDRAC (Server)`: Manufacturer Dell ∧ role `^Server$` → Dell iDRAC by SNMP
+  - `Dell iDRAC (ESXi)`: Manufacturer Dell ∧ role `^ESXi Hypervisor$` → Dell iDRAC by SNMP + OS/VMware hostgroup
+- **Server BMC transport**: `Server Agent+OOB` CG (Agent :10050 + SNMP `MONITORING-DELL` SHA/AES on oob_ip)
+- **ESXi BMC transport**: `OOB SNMP Only` CG (SNMP `MONITORING` MD5/DES on oob_ip) on `ESXi Hypervisor` role
+- Do **not** assign Dell iDRAC on Manufacturer Dell — it would put iDRAC on every Dell device (including storage arrays).
 
 ---
 
