@@ -622,7 +622,7 @@ Dell Storage arrays (HPE MSA 2060) use the HPE MSA HTTP template — REST API, n
 
 | Macro | Target | Type | Env var |
 |---|---|---|---|
-| `{$HPE.MSA.API.HOST}` | Device (per array) | Text | `NBX_MSA_API_HOST_<HOSTNAME>` (IP only; script prepends `https://`) |
+| `{$HPE.MSA.API.HOST}` | Device (per array) | Text | `NBX_MSA_API_HOST_<HOSTNAME>` (IP or hostname only; template prepends `https://` and appends `:443/` via `{$HPE.MSA.API.SCHEME}` and `{$HPE.MSA.API.PORT}`) |
 | `{$HPE.MSA.API.USERNAME}` | Device (per array) | Text | `NBX_MSA_API_USER_<HOSTNAME>` |
 | `{$HPE.MSA.API.PASSWORD}` | Device (per array) | Secret | `NBX_MSA_API_PASS_<HOSTNAME>` |
 

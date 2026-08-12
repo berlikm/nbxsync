@@ -2025,11 +2025,11 @@ def step11_macros(server):
     for dev in msa_arrays:
         env_suffix = dev.name.upper().replace('-', '_')
         msa_host = _env_first((f'NBX_MSA_API_HOST_{env_suffix}',))
-        msa_user = _env_first((f'NBX_MSA_API_USER_{env_suffix}',))
         msa_pass = _env_first((f'NBX_MSA_API_PASS_{env_suffix}',))
+        msa_user = _env_first((f'NBX_MSA_API_USER_{env_suffix}',))
         if msa_host:
             _ensure_macro_assignment(
-                server, '{$HPE.MSA.API.HOST}', f'https://{msa_host}', dev,
+                server, '{$HPE.MSA.API.HOST}', msa_host, dev,
                 mtype=ZabbixMacroTypeChoices.TEXT,
                 description=f'ztc:msa-host:{dev.name}')
         if msa_user:
