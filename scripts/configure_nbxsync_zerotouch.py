@@ -892,6 +892,115 @@ def step4_configgroups():
         logger.info('  PRUNED: %s tag-targeted HostInterface(s)', pruned_ifs)
 
 
+def step5_host_interfaces(server, groups: dict):
+    logger.info('=' * 60)
+    logger.info('Step 5: ZabbixHostInterface (per-credential CG profiles)')
+    logger.info('=' * 60)
+    ct_cfg = ct(M.ZabbixConfigurationGroup)
+
+    def ensure_if(**lookup_and_defaults):
+        defaults = lookup_and_defaults.pop('defaults')
+        ensure(M.ZabbixHostInterface, defaults=defaults, **lookup_and_defaults)
+
+    def snmp_if(group, *, profile: str, use_oob_ip: bool = False):
+        ensure_if(
+            zabbixserver=server,
+            assigned_object_type=ct_cfg,
+            assigned_object_id=group.id,
+            type=ZabbixHostInterfaceTypeChoices.SNMP,
+            use_oob_ip=use_oob_ip,
+            defaults={
+                'zabbixconfigurationgroup': group,
+                'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+                'port': 161,
+                'useip': ZabbixInterfaceUseChoices.IP,
+                'dns': '',
+                **_snmp_v3_fields(profile),
+            },
+        )
+
+    def agent_if(group, *, port: int = 10050):
+        ensure_if(
+            zabbixserver=server,
+            assigned_object_type=ct_cfg,
+            assigned_object_id=group.id,
+            type=ZabbixHostInterfaceTypeChoices.AGENT,
+            defaults={
+                'zabbixconfigurationgroup': group,
+                'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+                'port': port,
+                'useip': ZabbixInterfaceUseChoices.IP,
+                'tls_connect': ZabbixTLSChoices.NO_ENCRYPTION,
+                'dns': '',
+            },
+        )
+
+    # 5.1 Network SNMP — MONITORING MD5/DES
+    snmp_if(groups['snmp'], profile='network')
+    # 5.2 Default agent — 10050
+    agent_if(groups['agent'], port=10050)
+    # 5.3 Server Agent+OOB — agent + Dell iDRAC SNMP
+    agent_if(groups['server_oob'], port=10050)
+    snmp_if(groups['server_oob'], profile='dell', use_oob_ip=True)
+    # 5.4 SNMP Monitoring (by tag) — MONITORING-LINUX SHA/AES
+    snmp_if(groups['linux_snmp'], profile='linux')
+    # 5.5 OOB SNMP Only — Cohesity physical + ESXi (network MONITORING on oob_ip)
+    snmp_if(groups['oob_snmp'], profile='network', use_oob_ip=True)
+    # 5.5b ESXi uses OOB SNMP Only CG (SNMPv3 MONITORING on oob_ip, same as Cohesity physical).
+    # No separate ESXi OOB iDRAC CG — ESXi Hypervisor role gets OOB SNMP Only in step 5b.
+    # 5.6 SAP Agent+SNMP — dual-plane: Agent :10050 + SNMP SAPUSER (one CG, both interfaces)
+    agent_if(groups['sap_snmp'], port=10050)
+    snmp_if(groups['sap_snmp'], profile='sap')
+    # 5.6b Huawei SNMP — LogicMonitor SHA1/AES128 (non-fleet credential)
+    huawei = groups['huawei_snmp']
+    ensure_if(
+        zabbixserver=server,
+        assigned_object_type=ct(M.ZabbixConfigurationGroup),
+        assigned_object_id=huawei.id,
+        type=ZabbixHostInterfaceTypeChoices.SNMP,
+        use_oob_ip=False,
+        defaults={
+            'zabbixconfigurationgroup': huawei,
+            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+            'port': 161,
+            'useip': ZabbixInterfaceUseChoices.IP,
+            'dns': '',
+            'snmp_version': ZabbixHostInterfaceSNMPVersionChoices.SNMPV3,
+            'snmpv3_security_level': ZabbixInterfaceSNMPV3SecurityLevelChoices.AUTHPRIV,
+            'snmpv3_security_name': 'LogicMonitor',
+            'snmpv3_authentication_protocol': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1,
+            'snmpv3_privacy_protocol': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
+            'snmp_pushcommunity': True,
+        },
+    )
+    # Only set Huawei passphrases when env is non-empty (don't blank on re-run).
+    _huawei_auth = _env_first(('NBX_SNMP_AUTHPASS_HUAWEI',))
+    _huawei_priv = _env_first(('NBX_SNMP_PRIVPASS_HUAWEI',))
+    if _huawei_auth or _huawei_priv:
+        hi = M.ZabbixHostInterface.objects.filter(
+            zabbixserver=server,
+            zabbixconfigurationgroup=huawei,
+        ).first()
+        if hi:
+            if _huawei_auth:
+                hi.snmpv3_authentication_passphrase = _huawei_auth
+            if _huawei_priv:
+                hi.snmpv3_privacy_passphrase = _huawei_priv
+            hi.save(update_fields=['snmpv3_authentication_passphrase', 'snmpv3_privacy_passphrase'])
+    else:
+        logger.warning('  NBX_SNMP_AUTHPASS_HUAWEI / NBX_SNMP_PRIVPASS_HUAWEI not set — Huawei authPriv will fail')
+    # 5.7 SPACE agent — 10060
+    agent_if(groups['space_agent'], port=10060)
+
+    # HostInterface must not hang on tags (interface shape lives on the CG).
+    # CG→Tag assignment is the zero-touch transport selector (step 5b).
+    pruned_ifs, _ = M.ZabbixHostInterface.objects.filter(
+        zabbixserver=server,
+        assigned_object_type=ct(Tag),
+    ).delete()
+    if pruned_ifs:
+        logger.info('  PRUNED: %s tag-targeted HostInterface(s)', pruned_ifs)
+
 def step5b_configgroup_assignments(groups: dict, country_slugs=None):
     """SiteGroup Agent default; network SNMP roles; tag/role zero-touch overrides."""
     logger.info('=' * 60)
@@ -1285,9 +1394,8 @@ def step6_template_rules(server, country_slugs=None):
             'zabbixtemplate': tpl_idrac,
             'zabbixhostgroup': hg_os_vmware,
             'zabbixtag': None,
-            'enabled': True,
-            'priority': 80,
         }
+        ensure(M.ZabbixTemplateRule, name='Dell iDRAC (ESXi)', defaults=defaults_esxi, update_fields=list(defaults_esxi.keys()))
         logger.info('  Rule Dell iDRAC (ESXi) → %s + OS/VMware', tpl_idrac.name)
         # Prune legacy Manufacturer-wide iDRAC assignment if present.
         deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
