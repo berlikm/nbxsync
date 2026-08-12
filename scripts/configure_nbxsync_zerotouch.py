@@ -61,6 +61,10 @@ Usage::
   # export NBX_VMWARE_PASS_CH_STA_P_VCSA02=...
   # MSSQL service account (shared):
   # export NBX_MSSQL_USER=... NBX_MSSQL_PASS=...
+  # Per-device HPE MSA API credentials (Dell Storage arrays, one per device):
+  # export NBX_MSA_API_HOST_CN_SHA_P_STOD01=10.31.101.40
+  # export NBX_MSA_API_USER_CN_SHA_P_STOD01=MONITORING-WEB
+  # export NBX_MSA_API_PASS_CN_SHA_P_STOD01=...
   python scripts/configure_nbxsync_zerotouch.py
 
   # IMPORTANT: Run scripts/configure_nbxsync_network.py after zerotouch for
@@ -2009,6 +2013,38 @@ def step11_macros(server):
                 logger.warning('  Role MSSQL not found, skipping %s', macro_name)
         else:
             logger.warning('  Env var not set for %s — skipping', macro_name)
+
+    # ---- Secret macros: HPE MSA storage (per-device, API credentials) ----
+    # Template macros: {$HPE.MSA.API.HOST}, {$HPE.MSA.API.USERNAME}, {$HPE.MSA.API.PASSWORD}
+    # Env vars: NBX_MSA_API_HOST_<HOSTNAME>, NBX_MSA_API_USER_<HOSTNAME>,
+    #           NBX_MSA_API_PASS_<HOSTNAME>
+    msa_arrays = Device.objects.filter(
+        device_type__manufacturer__name__iexact='Dell',
+        role__name__iexact='Storage',
+    )
+    for dev in msa_arrays:
+        env_suffix = dev.name.upper().replace('-', '_')
+        msa_host = _env_first((f'NBX_MSA_API_HOST_{env_suffix}',))
+        msa_user = _env_first((f'NBX_MSA_API_USER_{env_suffix}',))
+        msa_pass = _env_first((f'NBX_MSA_API_PASS_{env_suffix}',))
+        if msa_host:
+            _ensure_macro_assignment(
+                server, '{$HPE.MSA.API.HOST}', f'https://{msa_host}', dev,
+                mtype=ZabbixMacroTypeChoices.TEXT,
+                description=f'ztc:msa-host:{dev.name}')
+        if msa_user:
+            _ensure_macro_assignment(
+                server, '{$HPE.MSA.API.USERNAME}', msa_user, dev,
+                mtype=ZabbixMacroTypeChoices.TEXT,
+                description=f'ztc:msa-user:{dev.name}')
+        if msa_pass:
+            _ensure_macro_assignment(
+                server, '{$HPE.MSA.API.PASSWORD}', msa_pass, dev,
+                description=f'ztc:secret:msa:{dev.name}')
+        if msa_host and msa_pass:
+            logger.info('  Macros {$HPE.MSA.API.*} on %s', dev.name)
+        elif not msa_host and not msa_pass:
+            logger.warning('  NBX_MSA_API_*_%s env vars not set — MSA API will fail on %s', env_suffix, dev.name)
 
     # ---- Prune stale ZabbixMacro objects with wrong assigned_object_type ----
     # Previous script versions created ZabbixMacro directly on DeviceRole/Device/VM

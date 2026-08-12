@@ -21,7 +21,7 @@ Top menu **Zabbix**: Servers, Proxies, Proxy Groups, Templates, Macros, Tags, Ho
 Only integration prerequisites (inventory is already in NetBox):
 
 - [ ] Required Zabbix templates exist (including **Extreme VOSS by SNMP** / **Extreme IQ Engine by SNMP** before enabling those Template Rules in §6 — see Extreme docs)
-- [ ] SNMP / VMware / Pure / MSSQL secrets available (§5, §11.4)
+- [ ] SNMP / VMware / Pure / MSSQL / HPE MSA secrets available (§5, §11.4)
 - [ ] Role / platform / tag names in NetBox match the strings this document uses (rename here if NetBox naming differs)
 
 ---
@@ -616,6 +616,22 @@ Each Pure array has its own API token and base URL. Macro assignments are on eac
 
 Token format: UUID (generated on each array via `purearray connect --api-token`).
 
+#### HPE MSA API credentials (per-device)
+
+Dell Storage arrays (HPE MSA 2060) use the HPE MSA HTTP template — REST API, not SNMP. Each array has its own API account. Macro assignments are on each **Device**.
+
+| Macro | Target | Type | Env var |
+|---|---|---|---|
+| `{$HPE.MSA.API.HOST}` | Device (per array) | Text | `NBX_MSA_API_HOST_<HOSTNAME>` (IP only; script prepends `https://`) |
+| `{$HPE.MSA.API.USERNAME}` | Device (per array) | Text | `NBX_MSA_API_USER_<HOSTNAME>` |
+| `{$HPE.MSA.API.PASSWORD}` | Device (per array) | Secret | `NBX_MSA_API_PASS_<HOSTNAME>` |
+
+| Array | Env var suffix |
+|---|---|
+| `CN-SHA-P-STOD01` | `NBX_MSA_API_*_CN_SHA_P_STOD01` |
+
+The template authenticates via `sha256(username_password)` to `api/login/`, then polls `api/show/controllers`, `disks`, `pools`, etc. Both controllers are returned by a single API call — no separate SNMP walk needed.
+
 #### VMware vCenter SSO credentials (per-VM)
 
 SSO domains differ per site. The macro assignment is on each **VM** (not the role). Zerotouch **prunes** the legacy name `{$VMWARE.USER}`.
@@ -692,7 +708,7 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Storage (Pure) | Agent Monitoring | Pure Storage FlashArray v2 by HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` | Agent / HTTP | Sites/…, Roles/Storage |
 | Storage (Synology) | SNMP Monitoring → Manufacturer Synology | Synology DiskStation SNMPv3 + ICMP Ping | SNMP `MONITORING` | Sites/…, Roles/Storage |
 | Storage (Huawei) `HU-DEB-SAN01` | **SNMP Monitoring (Huawei)** on Device | Huawei OceanStor Dorado by SNMP (has `icmpping`; no extra ICMP rule); LogicMonitor on **CG HI** | SNMP `LogicMonitor` | Sites/…, Roles/Storage |
-| Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP (rule **Dell Storage (HTTP)**; legacy HPE MSA disabled) | Agent / HTTP | Sites/CH/…, Roles/Storage |
+| Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP (rule **Dell Storage (HTTP)**; legacy HPE MSA disabled); macros `{$HPE.MSA.API.HOST}` / `{$HPE.MSA.API.USERNAME}` / `{$HPE.MSA.API.PASSWORD}` (§11.4) | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Cohesity physical (oob only) | OOB SNMP Only | Storage Generic | SNMP `MONITORING` on oob | Sites/CH/…, Roles/Cohesity |
 | Cohesity Appliance (VM) | SNMP Monitoring (role) | Storage Generic | SNMP `MONITORING` on primary | Sites/…, Roles/Cohesity Appliance |
 | ESXi hypervisor (Dell) | OOB SNMP Only (role=ESXi Hypervisor) | Dell iDRAC by SNMP | SNMP **v3 MONITORING** on oob only | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
@@ -729,7 +745,7 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Sample SAP HANA / ME | CG **SAP Agent+SNMP**; Agent :10050 + SNMP `SAPUSER`; Linux + SAP `(stub)` + ICMP; **no** Site Group Agent CG |
 | Sample ESXi (Dell) | Platform CG **ESXi OOB iDRAC** (role stays Server); SNMPv2c **`public` @ oob** (not MONITORING-DELL); Dell iDRAC; OS/VMware; **no** agent; **no** VMware FQDN |
 | Sample Huawei `HU-DEB-SAN01` | CG **SNMP Monitoring (Huawei)** on device; LogicMonitor on **CG HI** (not per-device HI); OceanStor template; no manufacturer SNMP CG |
-| Sample Dell Storage | Agent Monitoring; **HPE MSA 2060 Storage by HTTP** via Dell Storage (HTTP); legacy HPE MSA rule disabled |
+| Sample Dell Storage | Agent Monitoring; **HPE MSA 2060 Storage by HTTP** via Dell Storage (HTTP); legacy HPE MSA rule disabled; macros `{$HPE.MSA.API.HOST/USERNAME/PASSWORD}` set (§11.4); API returns both controllers |
 | Sample Pure array | Agent Monitoring; FlashArray HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` |
 | Sample Zabbix Proxy | Agent; Linux by agent + ICMP Ping + Remote Zabbix proxy health; Roles/Zabbix Proxy |
 | Sample vCenter | VMware FQDN + `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}`; hypervisors via LLD, not NetBox→VMware-template hosts |
