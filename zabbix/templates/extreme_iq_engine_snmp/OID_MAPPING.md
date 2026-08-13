@@ -18,7 +18,7 @@ Community shortlist reference: `reference_bgp4plus_Aerohive_AP.xml` ([bgp4plus](
 | Hardware | `ahHwVersion` | `26928.1.2.8.0` | |
 | Client count | `ahClientCount` | `26928.1.2.9.0` | 0..10000 |
 | Temperature | `ahEnvirmentTemp` | `26928.1.2.10.0` | MIB spelling |
-| Fan RPM | `ahEnvirmentFan` | `26928.1.2.11.0` | AP305C fanless → `0`; template marks ≤0 unsupported |
+| Fan RPM | `ahEnvirmentFan` | `26928.1.2.11.0` | AP305C fanless → `0`; template maps ≤0 to 0 rpm (stays supported) |
 | Firmware | `ahFirmwareVersion` | `26928.1.2.12.0` | Missing from bgp4plus template |
 
 ## Radio / interface (`AH-INTERFACE-MIB` → `ahAPInterface.1` = `26928.1.1.1.2.1`)
@@ -38,7 +38,15 @@ Radio LLD:
 - **Secondary (AP305C observed):** name `^(wifi|…)[0-9]+$` — drops VAP `wifi0.1` that still appear as physical in some walks
 - `ahRadioAttributeTable` is per radio; VAP ifIndexes have no channel/Tx/noise rows
 
-Thresholds (CPU/ICMP/etc.): **ops defaults** in template macros — not Extreme-published alert points (GTAC 000104240 = MIB pack only).
+## Canary checklist (before tightening)
+
+- [ ] `snmpget` all `ahSystem.*.0` **from the CH proxy**, not only a laptop
+- [ ] `snmpwalk` `ahIfName` + radio attribute table
+- [ ] Confirm wifi ifIndex set vs eth
+- [ ] Confirm SNMPv3 `MONITORING` after XIQ manage-SNMP push
+- [ ] After AP reboot: if Zabbix SNMP stays 0 while proxy CLI works → `zabbix_proxy -R snmp_cache_reload`
+
+Thresholds (CPU/ICMP/etc.): **ops defaults** in template macros — not Extreme-published alert points (GTAC 000104240 = MIB pack only). What actually pages: [02-extreme-access-points.md](../../02-extreme-access-points.md).
 
 ## Standard MIBs
 
@@ -51,10 +59,3 @@ Thresholds (CPU/ICMP/etc.): **ops defaults** in template macros — not Extreme-
 ## Traps (later)
 
 `AH_TRAP_MIB` under `ahAPTrap` (`26928.1.1.1.1`): failure, threshold, state change, PoE, channel/power, client info, interference.
-
-## Canary checklist (before YAML freeze)
-
-- [ ] `snmpget` all `ahSystem.*.0` on pilot
-- [ ] `snmpwalk` `ahIfName` + radio attribute table
-- [ ] Confirm wifi ifIndex set vs eth
-- [ ] Confirm SNMPv3 `MONITORING` after XIQ manage-SNMP push

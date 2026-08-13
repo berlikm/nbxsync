@@ -10,8 +10,10 @@ zabbix_export:
     description: |
       Extreme / Aerohive HiveOS (IQ Engine) access points via SNMP.
       MIBs: AH-SYSTEM-MIB + AH-INTERFACE-MIB (enterprises.26928).
-      Official pack: XIQ Auxiliary Files. Spec: zabbix/02-extreme-access-points.md.
+      Official pack: XIQ Auxiliary Files. Operator page: zabbix/02-extreme-access-points.md.
       Do not also link Network Generic (icmpping collision).
+      ICMP loss/RTT, CPU critical, and client-count triggers are present but DISABLED
+      (collect first). SNMP-dead is Average; AP eth down is Warning (plant page is switch UP-).
     groups:
     - name: Templates/Network devices
     items:
@@ -47,6 +49,7 @@ zabbix_export:
       - uuid: b5b87dd98d284b6abf11136bbf77cd99
         expression: min(/Extreme IQ Engine by SNMP/icmppingloss,5m)>{$ICMP_LOSS_WARN} and min(/Extreme IQ Engine by SNMP/icmppingloss,5m)<100
         name: 'Extreme IQ Engine: High ICMP ping loss'
+        status: DISABLED
         priority: WARNING
         dependencies:
         - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
@@ -67,6 +70,7 @@ zabbix_export:
       - uuid: bb24a2de88a3487596c55f052bb1ca84
         expression: avg(/Extreme IQ Engine by SNMP/icmppingsec,5m)>{$ICMP_RESPONSE_TIME_WARN}
         name: 'Extreme IQ Engine: High ICMP ping response time'
+        status: DISABLED
         priority: WARNING
         dependencies:
         - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
@@ -89,8 +93,10 @@ zabbix_export:
       - uuid: bd852a25cab44dcea3efc09624d5c284
         expression: max(/Extreme IQ Engine by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
         name: 'Extreme IQ Engine: No SNMP data collection'
-        priority: WARNING
-        description: Check XIQ manage-SNMP on eth0/eth1 and MONITORING SNMPv3 credentials.
+        priority: AVERAGE
+        description: |
+          Mgmt blind; Wi-Fi may still work. Ticket, not a 03:00 page.
+          XIQ manage-SNMP, MONITORING SNMPv3, or CH-proxy SNMPv3 cache after AP reboot.
         dependencies:
         - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
           expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
@@ -140,14 +146,20 @@ zabbix_export:
         name: 'Extreme IQ Engine: High CPU utilization'
         priority: WARNING
         description: 'Ops threshold {$CPU.UTIL.WARN}. Extreme: high CPU alone is not necessarily a fault (GTAC 000056717).'
+        dependencies:
+        - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+          expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        - name: 'Extreme IQ Engine: No SNMP data collection'
+          expression: max(/Extreme IQ Engine by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
         tags:
         - tag: scope
           value: performance
       - uuid: 5b1001e3e18f49f9b5341a9166dadf6e
         expression: min(/Extreme IQ Engine by SNMP/ah.system.cpu.util,5m)>{$CPU.UTIL.CRIT}
         name: 'Extreme IQ Engine: Critical CPU utilization'
+        status: DISABLED
         priority: AVERAGE
-        description: 'Ops threshold {$CPU.UTIL.CRIT}. Correlate with client/RF symptoms before paging.'
+        description: 'Collect first. GTAC 000056717: high CPU alone is not a fault. Enable after a quiet pilot.'
         dependencies:
         - name: 'Extreme IQ Engine: High CPU utilization'
           expression: min(/Extreme IQ Engine by SNMP/ah.system.cpu.util,5m)>{$CPU.UTIL.WARN}
@@ -172,6 +184,11 @@ zabbix_export:
         expression: min(/Extreme IQ Engine by SNMP/ah.system.memory.util,5m)>{$MEMORY.UTIL.MAX}
         name: 'Extreme IQ Engine: High memory utilization'
         priority: AVERAGE
+        dependencies:
+        - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+          expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        - name: 'Extreme IQ Engine: No SNMP data collection'
+          expression: max(/Extreme IQ Engine by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
         tags:
         - tag: scope
           value: performance
@@ -239,8 +256,9 @@ zabbix_export:
       - uuid: 8d552547c91b467b8dd41adee4a4978b
         expression: min(/Extreme IQ Engine by SNMP/ah.system.client.count,15m)>={$AP.CLIENT.WARN}
         name: 'Extreme IQ Engine: High client count'
+        status: DISABLED
         priority: WARNING
-        description: Soft capacity; default {$AP.CLIENT.WARN}=10000 disables.
+        description: Graph only until a pilot. {$AP.CLIENT.WARN}=10000 is a second safety mute.
         tags:
         - tag: scope
           value: capacity
@@ -261,15 +279,26 @@ zabbix_export:
       - uuid: 0fb10a8612de4709b4afc8bf662c83fe
         expression: avg(/Extreme IQ Engine by SNMP/ah.system.temp,5m)>{$TEMP_WARN} and avg(/Extreme IQ Engine by SNMP/ah.system.temp,5m)<{$TEMP_CRIT}
         name: 'Extreme IQ Engine: High temperature'
-        priority: WARNING
-        description: ahEnvirmentTemp — canary on modern APs; raise TEMP_WARN if unsupported.
+        priority: AVERAGE
+        description: ahEnvirmentTemp canary — many APs stub this OID. Not switch chassis 95/100.
+        dependencies:
+        - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+          expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        - name: 'Extreme IQ Engine: No SNMP data collection'
+          expression: max(/Extreme IQ Engine by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
         tags:
         - tag: scope
           value: capacity
       - uuid: 6f34d6a931cb4fcab4de914e06cc86f0
         expression: avg(/Extreme IQ Engine by SNMP/ah.system.temp,5m)>={$TEMP_CRIT}
         name: 'Extreme IQ Engine: Critical temperature'
-        priority: HIGH
+        priority: AVERAGE
+        description: Canary. Do not High-page an AP stub OID. Switch chassis High stays on EXOS/VOSS.
+        dependencies:
+        - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+          expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        - name: 'Extreme IQ Engine: No SNMP data collection'
+          expression: max(/Extreme IQ Engine by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
         tags:
         - tag: scope
           value: capacity
@@ -517,8 +546,13 @@ zabbix_export:
         - uuid: c42facaf18a24ad58717f579a10601b5
           expression: '{$IFCONTROL}=1 and last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2 and last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2)'
           name: 'Extreme IQ Engine: Interface {#IFNAME}: Link down'
-          priority: AVERAGE
-          description: Ethernet oper down transition. Prefer switch UP- for cable/PoE cuts when mapped.
+          priority: WARNING
+          description: AP eth oper-down. Cable/PoE pages on switch UP- High; this is next-day unless the AP is hung with eth still up.
+          dependencies:
+          - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+            expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+          - name: 'Extreme IQ Engine: No SNMP data collection'
+            expression: max(/Extreme IQ Engine by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
           tags:
           - tag: scope
             value: availability
@@ -615,7 +649,7 @@ zabbix_export:
       description: Silence zero/unsupported temp
     - macro: '{$AP.CLIENT.WARN}'
       value: '10000'
-      description: Soft client-count warn; 10000 disables
+      description: Safety mute if the DISABLED client-count trigger is ever enabled.
     - macro: '{$AP.RADIO.IFNAME.MATCHES}'
       value: '^(wifi|Wifi|WIFI|radio|Radio)[0-9]+$'
       description: 'Secondary LLD guard (AP305C wifi0/wifi1). Primary discriminator is ahIfType=0.'

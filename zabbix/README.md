@@ -26,7 +26,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/extreme_voss_snmp/` | Extreme VOSS by SNMP | imported; lab on virtual Fabric Engine |
 | `templates/extreme_port_speed_expect_snmp/` | Extreme Port Speed Expect by SNMP | imported; triggers off until labels |
 | `templates/extreme_routing_snmp/` | Extreme Routing by SNMP (OSPF) | imported; triggers off |
-| `templates/extreme_iq_engine_snmp/` | Extreme IQ Engine by SNMP | v1 YAML; pilot snmpwalk pending |
+| `templates/extreme_iq_engine_snmp/` | Extreme IQ Engine by SNMP | imported; severities per [02](02-extreme-access-points.md) |
 
 ## Related
 

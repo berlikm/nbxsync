@@ -16,7 +16,7 @@ The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everythi
 
 | # | Capability | Why it blocks |
 |---|---|---|
-| 1 | Every switch is a Zabbix host with the right platform template | a device nobody monitors is the only unrecoverable regression |
+| 1 | Every switch **and AP** is a Zabbix host with the right platform template | a device nobody monitors is the only unrecoverable regression |
 | 2 | Device reachable / not reachable (ICMP + SNMP availability) | the single most-used signal in any NMS |
 | 3 | Device health: CPU, memory, temperature, PSU, fan | LogicMonitor parity |
 | 4 | Link down on ports we care about | LogicMonitor parity |
@@ -73,7 +73,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 01b | VOSS | **built** — `templates/extreme_voss_snmp/` | yes | lab only (virtual) | no |
 | 01–ports | Port Speed Expect | **built** — `templates/extreme_port_speed_expect_snmp/` | yes | no | no |
 | 01c | OSPF routing (core/dist, both platforms) | **built** — `templates/extreme_routing_snmp/` | yes | no | no |
-| 02 | HiveOS / IQ Engine AP | **built** — `templates/extreme_iq_engine_snmp/` | yes | no | no |
+| 02 | HiveOS / IQ Engine AP | **built** — `templates/extreme_iq_engine_snmp/` | yes | ICMP/SNMP path in prod; RF canary open | partial |
 | 03 | FortiGate | ? | scaffold | no | no |
 | 03 | FortiManager | ? | scaffold | no | no |
 | 03 | FortiAnalyzer | ? | scaffold | no | no |

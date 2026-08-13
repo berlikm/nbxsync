@@ -2,45 +2,56 @@
 
 Zabbix **7.0** template for Extreme / Aerohive **HiveOS / IQ Engine** access points.
 
-**Status:** v1 YAML built. Pilot snmpwalk still required before enabling temp/radio alerts in production.
-
-Operator page: [`../../02-extreme-access-points.md`](../../02-extreme-access-points.md).
+Operator page (source of truth for what pages): [`../../02-extreme-access-points.md`](../../02-extreme-access-points.md).
 
 ## Import
 
-Zabbix → Templates → Import → `template_net_extreme_iq_engine_snmp.yaml`. Requires Zabbix **7.0+**. NetBox Template Rule: checklist §6.1.
+Zabbix → Templates → Import → `template_net_extreme_iq_engine_snmp.yaml`. Requires Zabbix **7.0+**.  
+Re-import after severity / DISABLED changes — NetBox macros do not rewrite trigger status.
+
+NetBox Template Rule: platform matches `IQ ENGINE` (case-insensitive substring). `HiveOS` alone does not match.
 
 ## Wiring
 
 | NetBox fact | Effect |
 |---|---|
-| Role **Access Point** | CG **SNMP Monitoring** (`MONITORING` MD5/DES) |
+| Role **Access Point** | CG **SNMP Monitoring** (`MONITORING` MD5/DES, GETBULK) |
 | Platform matches `IQ ENGINE` | TemplateRule → **Extreme IQ Engine by SNMP** + `OS/Network` |
 | Role template floor | **None** (Network Generic pruned) |
 
-## Coverage (v1)
+## What pages (live YAML)
+
+| Trigger | Sev | State |
+|---|---|---|
+| ICMP down | High | on |
+| No SNMP data collection | Average | on (depends on ICMP) |
+| Memory high | Average | on (depends on ICMP + SNMP) |
+| Temperature warn / crit | Average | on — canary 70/85, not switch 95/100 |
+| CPU warn (90%) | Warning | on |
+| AP eth link down | Warning | on — plant page is switch `UP-` High |
+| CPU critical, ICMP loss/RTT, client count | — | **DISABLED** |
+
+Radio items have **no** triggers (graphs only).
+
+## Coverage
 
 - ICMP + SNMP availability
 - AH-SYSTEM-MIB scalars (CPU/mem/temp/clients/serial/FW/…)
-- Radio LLD: **primary** `ahIfType=ahPHYSICAL(0)` (MIB); secondary name `wifiN`/`radioN` (AP305C VAPs)
+- Radio LLD: **primary** `ahIfType=ahPHYSICAL(0)`; secondary name `wifiN`/`radioN`
 - Noise floor: MIB −256; FLOAT + parse for OCTET STRING agents
-- Threshold macros are **ops defaults** (CPU 90/95, ICMP loss 10) — Extreme does not publish AP SNMP alert points
-- Graphs: host CPU + clients; radio RF (noise/Tx) + retries/drops; eth traffic prototypes
-- Eth IF-MIB LLD (eth/mgt only): oper status + bits in/out
+- Graphs: host CPU + clients; radio RF + retries/drops; eth traffic
+- Eth IF-MIB LLD (`eth`/`mgt` only)
 
-## Sources
+## Ops
 
-| Source | Role |
-|---|---|
-| [XIQ Auxiliary Files](https://documentation.extremenetworks.com/XIQ/Auxiliary_Files/Auxiliary%20Files.html) | Official MIBs → `zabbix/reference/aerohive-mibs/` |
-| [bgp4plus Aerohive AP](https://github.com/bgp4plus/Zabbix-Template) | OID shortlist only (`reference_bgp4plus_Aerohive_AP.xml`) |
-| Spec | `zabbix/02-extreme-access-points.md` |
+XIQ **manage SNMP** on AP eth, then Delta update.
 
-## Ops prerequisite
+NL/US/CH APs are polled by the **Swiss proxy group**. `snmpget` from a laptop is not the production path.
 
-XIQ must enable SNMP Get on AP eth (`manage SNMP` + Delta update). Without that, SNMP availability stays down while the switch `UP-` port is green.
+After AP reboot: if proxy CLI SNMPv3 works but Zabbix availability stays 0, reload proxy SNMP cache (`zabbix_proxy -R snmp_cache_reload`) — Zabbix/RFC 3414 engine-boots window, not a wrong OID.
 
 ## Do not
 
 - Also link **Network Generic** (icmpping collision).
-- Page both switch `UP-…` and AP ICMP-down for the same cable cut without a dependency plan.
+- High-page AP temperature (stub OID) or dump SNMP-dead on Warning.
+- Treat a working dev `snmpget` as proof the CH proxy can poll UDP/161.

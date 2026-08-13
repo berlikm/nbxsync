@@ -12,7 +12,7 @@ Labels: [port-identity.md](port-identity.md). Same page shape: [_template.md](_t
 |---|---|
 | Page **symptoms** | ICMP down, SNMP dead, link down, flaps, errors, discards, optic DOM **alarm**, PSU/fan, temp **critical** |
 | **Graph** causes | CPU, memory, traffic, util, inventory change |
-| One incident | host triggers depend on SNMP → ICMP; ICMP depends on **site** (proxy / core). AP cable cuts page on `UP-…`, not twice |
+| One incident | host triggers depend on SNMP → ICMP; ICMP depends on **site** (proxy / core). AP cable/PoE pages on Access `UP-` **High**. AP ICMP High is a duplicate until that dependency exists — do not drop it (hides a hung AP) |
 | Never silent | unsupported-item count, **zero** discovered interfaces, proxy last-seen |
 | Control plane | on-box `ifAlias` + role macros. Access collects **only** `USW`+`UP`; a mistyped uplink → no items |
 | Collect first | Speed Expect / Routing / USW util **linked or imported, triggers off** until labels and history exist |
