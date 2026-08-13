@@ -573,16 +573,9 @@ Class-wide thresholds and Extreme port filters sit on the role. Application secr
 
 **Path:** Zabbix → Macros → Add, then Macro Assignment on each Switch* Device Role (or Role → Zabbix tab).
 
-Set `{$NET.IF.IFALIAS.MATCHES}`, `{$NET.IF.IFALIAS.NOT_MATCHES}`, and `{$NET.IF.IFTYPE.MATCHES}` on every Switch* role.
+Set `{$NET.IF.IFALIAS.MATCHES}`, `{$NET.IF.IFALIAS.NOT_MATCHES}`, and `{$NET.IF.IFTYPE.MATCHES}` on Switch Core / Dist / Mgmt / Access. Values: [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md) §5 and §8.
 
-| What to create in nbxSync | Where values and meaning live |
-|---|---|
-| Role macros `{$NET.IF.IFALIAS.MATCHES}`, `{$NET.IF.IFALIAS.NOT_MATCHES}`, `{$NET.IF.IFTYPE.MATCHES}` on Switch Core / Dist / Mgmt / Access | [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md) §5 Role model and §8 Macro assignments |
-| Fleet / template destination macros (TEMP_*, optics, MLT, Speed Expect) | Same doc §8 |
-| On-box port label grammar | [`zabbix/port-identity.md`](../../zabbix/port-identity.md) |
-| Staged enablement | Extreme doc §7 |
-
-The Extreme doc is authoritative for values. This checklist only requires that the nbxSync macro assignments exist.
+Chassis temperature (`{$TEMP_WARN}` / `{$TEMP_CRIT}` / `{$TEMP_CRIT_LOW}`) is on the Extreme templates, not an nbxSync role macro.
 
 ### 11.2 Application / threshold macros (role)
 
