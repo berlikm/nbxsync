@@ -24,7 +24,7 @@ The bar for cutover is **"no worse than LogicMonitor"**, not "everything in the 
 
 | Capability | Why it can wait |
 |---|---|
-| **OSPF adjacency (§C)** | LogicMonitor almost certainly is not watching it — deferring is not a regression |
+| **OSPF adjacency** | LogicMonitor almost certainly is not watching it — deferring is not a regression |
 | Speed expectation | new capability, not parity. Needs labels first |
 | Capacity: discards + utilisation | new capability. Needs 4+ weeks of history to threshold honestly |
 | CRC / `dot3StatsFCSErrors` | new capability, and unconfirmed |
@@ -57,7 +57,7 @@ port-identity (foundation)
     ▼
 06  Network VMs
 
-post-cutover:  OSPF (01 §C) · speed expectation · capacity · CRC
+post-cutover:  OSPF · speed expectation · capacity · CRC
 ```
 
 Rationale: device health before ports, ports before overlay, overlay before circuits, circuits before SLA composition.

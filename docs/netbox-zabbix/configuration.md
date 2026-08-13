@@ -379,7 +379,7 @@ One-off templates on a single host (e.g. AS Java): assign on the Device, not the
 
 ### 7.1 Extreme capability templates
 
-Assigned on the **role**, not on the platform Template Rule. Enablement order: *[Extreme switching — Confluence TBD]*.
+Assigned on the **role**, not on the platform Template Rule. What we alert: [`../../zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md). OSPF stays disabled.
 
 | Template | Assigned to |
 |---|---|
@@ -547,7 +547,7 @@ Set all three on every Switch Core / Dist / Mgmt / Access role. Core / Dist / Mg
 | `{$NET.IF.IFALIAS.NOT_MATCHES}` | `CHANGE_IF_NEEDED` | Switch Access |
 | `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Switch Access |
 
-Port-label grammar and staged enablement: *[Extreme switching — Confluence TBD]*. Chassis temperature (`{$TEMP_WARN}` / `{$TEMP_CRIT}` / `{$TEMP_CRIT_LOW}`) is on the Extreme templates, not an nbxSync role macro.
+Port labels: [`../../zabbix/port-identity.md`](../../zabbix/port-identity.md). What we alert: [`../../zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md). Chassis temperature (`{$TEMP_WARN}` / `{$TEMP_CRIT}` / `{$TEMP_CRIT_LOW}`) is on the Extreme templates, not an nbxSync role macro.
 
 ### 11.2 Application / threshold macros (role)
 

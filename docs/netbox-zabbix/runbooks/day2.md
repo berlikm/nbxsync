@@ -23,15 +23,11 @@ After the first build. Inventory is already in NetBox. Policy and GUI clicks: [`
 
 Role / platform / site / primary IP in NetBox. Sync should match the switch row in configuration §13. If VOSS still gets Network Generic, the VOSS template is missing or the Template Rule is not pointing at it.
 
----
-
-## 3. Extreme staged enablement
-
-Stages: *[Extreme switching — Confluence TBD]*. nbxSync: configuration §7 (capability templates) and §11 (IFALIAS).
+On-box labels: [`../../zabbix/port-identity.md`](../../zabbix/port-identity.md). What we alert: [`../../zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md). IFALIAS macros: configuration §11.
 
 ---
 
-## 4. New Platform
+## 3. New Platform
 
 1. Does an existing Template Rule already match the real platform name? (§6)
 2. If not, add or extend a rule. Every matching rule contributes.
@@ -40,7 +36,7 @@ Stages: *[Extreme switching — Confluence TBD]*. nbxSync: configuration §7 (ca
 
 ---
 
-## 5. New application template
+## 4. New application template
 
 1. Import in Zabbix; create the nbxSync Template object.
 2. Set interface requirements (Agent / SNMP / ANY).
@@ -48,7 +44,7 @@ Stages: *[Extreme switching — Confluence TBD]*. nbxSync: configuration §7 (ca
 
 ---
 
-## 6. Host not monitored / wrong templates
+## 5. Host not monitored / wrong templates
 
 1. Excluded? NetBox tag `onboarding` and/or role-level `do_not_monitor` (§9).
 2. Site / Site Group? No site → not profiled.
@@ -62,12 +58,12 @@ Stages: *[Extreme switching — Confluence TBD]*. nbxSync: configuration §7 (ca
 
 ---
 
-## 7. Recurring checks
+## 6. Recurring checks
 
 | Task | When |
 |---|---|
 | Cohesity VMs with primary IP → SNMP Monitoring | New Cohesity Appliance VMs |
-| Extreme labels / stages | *[Extreme switching — Confluence TBD]* |
+| Extreme labels | [`../../zabbix/port-identity.md`](../../zabbix/port-identity.md) |
 | `environment=Unknown` on hosts that should have `-p-` | Naming drift (switches without `-p-` are expected Unknown) |
 | No manufacturer Huawei SNMP CG; no per-device HI on HU-DEB-SAN01; SAP uses role CG **SAP Agent+SNMP** | After CG / credential changes |
 | Tag `onboarding` still has Zabbix `do_not_monitor`; ready hosts have the NetBox tag removed | Cutover waves |
