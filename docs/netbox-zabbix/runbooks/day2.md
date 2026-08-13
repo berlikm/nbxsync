@@ -21,9 +21,7 @@ After the first build. Inventory is already in NetBox. Policy and GUI clicks: [`
 
 ## 2. New Extreme switch
 
-Role / platform / site / primary IP in NetBox. Sync should match the switch row in configuration §13. If VOSS still gets Network Generic, the VOSS template is missing or the Template Rule is not pointing at it.
-
-On-box labels: [`../../zabbix/port-identity.md`](../../zabbix/port-identity.md). What we alert: [`../../zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md). IFALIAS macros: configuration §11.
+Role / platform / site / primary IP in NetBox. Sync should match the switch row in configuration §13. If VOSS still gets Network Generic, the VOSS template is missing or the Template Rule is not pointing at it. IFALIAS macros: configuration §11.
 
 ---
 
@@ -63,7 +61,7 @@ On-box labels: [`../../zabbix/port-identity.md`](../../zabbix/port-identity.md).
 | Task | When |
 |---|---|
 | Cohesity VMs with primary IP → SNMP Monitoring | New Cohesity Appliance VMs |
-| Extreme labels | [`../../zabbix/port-identity.md`](../../zabbix/port-identity.md) |
+| Extreme labels | *[Extreme switching — Confluence TBD]* |
 | `environment=Unknown` on hosts that should have `-p-` | Naming drift (switches without `-p-` are expected Unknown) |
 | No manufacturer Huawei SNMP CG; no per-device HI on HU-DEB-SAN01; SAP uses role CG **SAP Agent+SNMP** | After CG / credential changes |
 | Tag `onboarding` still has Zabbix `do_not_monitor`; ready hosts have the NetBox tag removed | Cutover waves |
