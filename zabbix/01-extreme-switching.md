@@ -158,6 +158,8 @@ Same `{$TEMP_*}` on **this template**. Re-import after this revision (SNMP-dead 
 
 V-IST: host `{$VIST.CONTROL}=1` only on fabric pairs. Classic IST stays 0. Traps are in the template — collect; do not page duplicates of polled items until seen on hardware.
 
+Poll weight (same idea as APs, more SNMP budget on a chassis): inventory **1h**; IF counters **3m**; oper-status default **1m**; chassis temp **1m**; optic DOM **5m** (Average tickets, not 03:00). Duplex LLD **15m** / keep-lost **0**, same as `net.if.discovery`. Uptime **1m** (reboot Warning still sees `< 10m`). Do not 1-minute every optic on a Core.
+
 Fabric (ISIS / V-IST / card down) YAML includes **High** triggers. VIST/IST are gated by the macros above. ISIS/card High is live — retune **later** (more important than OSPF for this estate).
 
 ---
