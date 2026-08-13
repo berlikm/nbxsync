@@ -2,13 +2,13 @@
 
 During cutover many NetBox objects are **inventory-true but not monitorable yet** (Zabbix agent missing, wrong credentials, not reachable). Keep the estate quiet, then open hosts deliberately.
 
-**Folder map:** [`../configuration.md`](../configuration.md) (§9 exclude, §12 plugin) · Troubleshoot: [`day2.md`](day2.md)
+Policy: [`../configuration.md`](../configuration.md) (§9 exclude, §12 plugin). Troubleshoot: [`day2.md`](day2.md).
 
 ---
 
-## Mechanism (NetBox tag switch — no plugin change)
+## Mechanism (NetBox tag switch)
 
-Plugin setting `exclude_tag` = `do_not_monitor` — unchanged.
+Plugin setting `exclude_tag` = `do_not_monitor`.
 
 | Intent | How |
 |---|---|
@@ -25,7 +25,7 @@ Do **not** put `do_not_monitor` on a Site Group or on role **Server** for waves.
 
 ## One-time setup
 
-1. Plugin `exclude_tag` = `do_not_monitor` (already).
+1. Plugin `exclude_tag` = `do_not_monitor` (§12).
 2. Create NetBox tag **`onboarding`**.
 3. Organization → Tags → **onboarding** → Zabbix tab → Tags → assign **`do_not_monitor`**.
 4. Permanent roles keep role-level Zabbix `do_not_monitor` (Messpc, Sd Wan Socket, VDI).
@@ -86,7 +86,6 @@ No new configuration group or Template Rule is required for a normal agent host 
 | NetBox status `planned` / `staged` → Zabbix disabled | Host still created; meant for lifecycle status, not “agent not installed” |
 | Soft-state / `NO_ALERTING` | Host still polled; different problem |
 | Removing Agent CG from the country Site Group | Stops **everyone**; too coarse for one-by-one |
-| Plugin changes / second `exclude_*` setting | Not needed — Tag-targeted Zabbix assignments already inherit |
 
 ---
 

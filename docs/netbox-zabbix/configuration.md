@@ -77,7 +77,6 @@ Path: **Zabbix → Servers → Add**
 
 Path: **Zabbix → Proxies → Add**, **Zabbix → Proxy Groups → Add**
 
-
 ### 2.1 Proxy group
 
 | Name | Zabbix server | Description |
@@ -98,7 +97,7 @@ Path: **Zabbix → Proxies → Add**, **Zabbix → Proxy Groups → Add**
 
 ### 2.3 Proxy self-monitoring
 
-Proxy VMs get `role=Zabbix Proxy` via `netbox-sync` (`-ZABP\d+` pattern). Linux by agent comes from the platform Template Rule; ICMP Ping from the Agent Monitoring CG; **Remote Zabbix proxy health** from the role assignment (§7). Proxy VMs inherit the proxy assignment from their SiteGroup — the proxy monitors itself (no circular dependency: proxy polls its own localhost agent).
+Proxy VMs get `role=Zabbix Proxy` via `netbox-sync` (`-ZABP\d+` pattern). Linux by agent comes from the platform Template Rule; ICMP Ping from the Agent Monitoring CG; **Remote Zabbix proxy health** from the role assignment (§7). Proxy VMs inherit the proxy assignment from their SiteGroup and poll their own localhost agent.
 
 ---
 
@@ -146,7 +145,7 @@ Three SNMPv3 iDRAC CGs by firmware tier — same `MONITORING-IDRAC` user, same p
 
 Path: **Zabbix → Configuration groups → [group] → Host Interfaces → Add**
 
-**Why on the group, not on every device:** the interface *shape* (agent port, SNMPv3 credentials, OOB flag) is shared; only the IP is per device. Sync fills primary IP or out-of-band IP at runtime. Leave the IP field empty on the definition.
+Put the interface on the CG, not on every device: the shape (agent port, SNMPv3 credentials, OOB flag) is shared; only the IP is per device. Sync fills primary IP or out-of-band IP at runtime. Leave the IP field empty on the definition.
 
 **Type** selects Agent or SNMP. **Interface type** = Default for the primary interface of that kind.
 
@@ -162,7 +161,7 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 | Dell iDRAC | Dell iDRAC SNMP | MONITORING-IDRAC | **SHA384** | **AES256** |
 | Dell iDRAC (AES128) | Dell iDRAC SNMP (AES128) | MONITORING-IDRAC | **SHA384** | **AES128** |
 | Dell iDRAC (Legacy) | Dell iDRAC SNMP (Legacy) | MONITORING-IDRAC | SHA1 | AES128 |
-\*SHA1 is what the stock Zabbix SNMPv3 security-level field offers for these profiles today.
+\*SHA1 is what the SNMPv3 security-level field offers for these profiles.
 
 The three SNMPv3 iDRAC profiles share `MONITORING-IDRAC` — see §5.4.
 
@@ -209,7 +208,7 @@ AES128 hosts:
 
 ### 5.5 SAP Agent+SNMP (two interfaces)
 
-**Why both on one group:** SAP agent templates need Agent; hardware SNMP uses `SAPUSER`. Plugin rule: **one CG wins** — two separate CGs on the same role would not dual-plane.
+SAP agent templates need Agent; hardware SNMP uses `SAPUSER`. Plugin rule: **one CG wins** — two separate CGs on the same role would not dual-plane.
 
 | Interface | Type | Port / OOB | Credential |
 |---|---|---|---|
@@ -227,12 +226,6 @@ Huawei SNMPv3 profile (`LogicMonitor` SHA/AES). Passphrases live on that CG’s 
 | Type | Agent |
 | Port | **10060** |
 | TLS connect | No encryption |
-
-### One-off overrides
-
-| Case | How |
-|---|---|
-| `HU-DEB-SAN01` (Huawei, SNMPv3 user `LogicMonitor`) | Assign CG **SNMP Monitoring (Huawei)** on the **Device** (§5b). Credentials live on that CG’s Host Interface — not a per-device HI. TemplateRule §6.3 links Huawei OceanStor. |
 
 ---
 
@@ -392,7 +385,7 @@ A new Agent-class Device Role needs **no ICMP edit**. A new Switch* role uses SN
 Path: **Zabbix → Templates → [template] → Assigned objects → Add**  
 (or Device Role → Zabbix tab)
 
-Assignments **merge** with Template Rules from §6. Do **not** assign Network Generic on Switch* or Access Point (those already get Extreme/Forti from §6). Manufacturer-scoped storage / iDRAC rules are in §6.3 — not repeated below.
+Assignments **merge** with Template Rules from §6. Do **not** assign Network Generic on Switch* or Access Point (those already get Extreme/Forti from §6). Manufacturer-scoped storage / iDRAC rules are in §6.3.
 
 Set each template’s interface requirement (Agent / SNMP / ANY) to match the transport the host will have.
 
@@ -415,7 +408,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 
 Pure / Dell / Huawei / Synology storage and Dell iDRAC: §6.3 (and tag `oracle` → §6.2).  
 One-off templates on a single host (e.g. AS Java): assign on the Device, not the role.  
-**Print Spool** is not role-assigned (template may exist on the server without a role link).
+**Print Spool** is not role-assigned.
 
 ### 7.1 Extreme capability templates
 
@@ -438,7 +431,7 @@ Path: **Zabbix → Hostgroups → Add**, then assignments on each hostgroup or f
 |---|---|---|
 | Sites | `Sites/{{ object.site.group.get_ancestors(include_self=True) \| map(attribute="name") \| join("/") }}/{{ object.site.name }}` | Site Groups CH, HU, JP, KR, NL, US, CN |
 
-This is the configured Sites value. `get_ancestors(include_self=True)` walks the Site Group tree so the Zabbix path always includes the country:
+`get_ancestors(include_self=True)` walks the Site Group tree so the Zabbix path always includes the country:
 
 | NetBox layout | Rendered hostgroup | Parents created |
 |---|---|---|
@@ -461,7 +454,7 @@ Created in §6. Membership: platform Template Rules for OS/Windows, OS/Linux, OS
 
 ### 8.4 Priority / Critical
 
-**Why a tag → hostgroup:** criticality is an orthogonal overlay. Devices already tagged `critical` in NetBox sync into Zabbix hostgroup `Priority/Critical` — no per-device hostgroup rows.
+Devices tagged `critical` in NetBox sync into Zabbix hostgroup `Priority/Critical` — no per-device hostgroup rows.
 
 | Name | Value | Assign to |
 |---|---|---|
@@ -495,7 +488,7 @@ NetBox tags are **not** copied into Zabbix as host tags; they drive interfaces, 
 
 nbxSync owns the tag definition and Site Group assignment. At sync, Jinja renders a per-host value (e.g. `Production`) onto the Zabbix host.
 
-**Why Jinja from the hostname:** environment is already encoded in naming; no second taxonomy.
+Environment is encoded in the hostname; no second taxonomy.
 
 | Tag | Value | Assign to |
 |---|---|---|
@@ -548,7 +541,7 @@ Do **not** put Zabbix `do_not_monitor` on role Server (or a Site Group) for wave
 
 Path: Site Group → Zabbix tab → Host Inventory → Add
 
-**Why on every country Site Group:** same Jinja mapping everywhere; values come from the existing NetBox object. Same control plane as Sites, Roles, proxy, and Agent default.
+Same Jinja mapping on every country Site Group; values come from the NetBox object.
 
 | Field | Value |
 |---|---|
@@ -574,7 +567,7 @@ Fields such as `os` and `os_full` are filled by Zabbix templates when inventory 
 
 Path: **Zabbix → Macros → Add** (definition on Zabbix Server, then Macro Assignment on the role / or assign from the Role Zabbix tab)
 
-**Why on the role:** class-wide thresholds and (for switches) Extreme port filters. Application secrets (VMware, Pure Storage, MSSQL) are role-level secret macros — see §11.3. Extreme *values* → `zabbix/01-extreme-switching.md`.
+Class-wide thresholds and Extreme port filters sit on the role. Application secrets (VMware, Pure Storage, MSSQL): §11.3. Extreme *values* → `zabbix/01-extreme-switching.md`.
 
 ### 11.1 Extreme switch macros (nbxSync rows; values in Extreme docs)
 
@@ -589,7 +582,7 @@ Set `{$NET.IF.IFALIAS.MATCHES}`, `{$NET.IF.IFALIAS.NOT_MATCHES}`, and `{$NET.IF.
 | On-box port label grammar | [`zabbix/port-identity.md`](../../zabbix/port-identity.md) |
 | Hybrid flip Access→Core, stages 4–6 | Extreme doc §7 Staged rollout |
 
-Do **not** duplicate those tables here — the Extreme doc is authoritative for values. This checklist only requires that the nbxSync macro assignments exist. Fleet TEMP_*/optic/MLT globals are also in Extreme §8 (not repeated here).
+The Extreme doc is authoritative for values. This checklist only requires that the nbxSync macro assignments exist.
 
 ### 11.2 Application / threshold macros (role)
 
@@ -619,13 +612,7 @@ Arrays with their own token: `hu-deb-san11`, `kr-sel-san11`, `cn-sha-san11`, `ch
 
 #### Dell iDRAC SNMPv3 credentials (shared on CG)
 
-Same `MONITORING-IDRAC` user, same passphrases on all three CGs — only the protocol differs.
-
-| CG | Auth Protocol | Priv Protocol | Roles |
-|---|---|---|---|
-| Dell iDRAC SNMP | SHA384 | AES256 | ESXi Hypervisor (iDRAC9 7.x / iDRAC10) |
-| Dell iDRAC SNMP (AES128) | SHA384 | AES128 | KR/CN ESXi exception hosts |
-| Dell iDRAC SNMP (Legacy) | SHA1 | AES128 | Cohesity (C6420 fw 6.10 max) |
+Same `MONITORING-IDRAC` user, same passphrases on all three CGs — only the protocol differs. CG list and assignments: §5.4.
 
 Passphrases live on each iDRAC CG Host Interface. The iDRAC SNMPv3 user must be configured on each iDRAC (via iDRAC UI or racadm).
 
@@ -729,7 +716,13 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 
 This document stops at **NetBox → nbxSync → Zabbix host wiring** (interfaces, templates, hostgroups, macros, sync).
 
-What to poll, thresholds, and notifications live under [`zabbix/`](../../zabbix/README.md).  
+| Area | Where it lives |
+|---|---|
+| Objects with no NetBox device/VM (web scenarios, account-level APIs, …) | Configured in Zabbix / monitoring packs — [`zabbix/`](../../zabbix/README.md) |
+| Monitoring content (signals, thresholds, notifications) | [`zabbix/`](../../zabbix/README.md) |
+| SAP application template content | Assignment in §7; content owned outside this integration |
+| Configuration backup | cfgit — not Zabbix / not nbxSync |
+
 Day-2 operator procedures: [`runbooks/day2.md`](runbooks/day2.md).
 
 ---
@@ -758,16 +751,4 @@ After the initial build, and after major changes, confirm coverage against §13.
 | VM without site | No useful profile until site/scope is set |
 
 **Unprofiled / wrong template symptoms:** host missing in Zabbix, empty template list, or only partial stack vs §13. Use the [day-2 runbook §6](runbooks/day2.md#6-host-not-monitored--wrong-templates) ladder.
-
----
-
-## 16. Not driven by this integration
-
-| Area | Where it lives |
-|---|---|
-| Objects with no NetBox device/VM (web scenarios, account-level APIs, …) | Configured in Zabbix / monitoring packs — [`zabbix/`](../../zabbix/README.md) |
-| Monitoring content (signals, thresholds, notifications) | [`zabbix/`](../../zabbix/README.md) (§14) |
-| NetBox inventory population / LM migration | Outside this checklist (data assumed present) |
-| SAP application content / DNUS scripts | Placeholder assignment in §7; content owned outside this integration |
-| Configuration backup | cfgit — not Zabbix / not nbxSync |
 
