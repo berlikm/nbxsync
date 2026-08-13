@@ -530,15 +530,24 @@ Fields such as `os` and `os_full` are filled by Zabbix templates when inventory 
 
 Path: **Zabbix → Macros → Add** (definition on Zabbix Server, then Macro Assignment on the role / or assign from the Role Zabbix tab)
 
-Class-wide thresholds and Extreme port filters sit on the role. Application secrets (VMware, Pure Storage, MSSQL): §11.3. Extreme *values*: *[Extreme switching — Confluence TBD]*.
+Class-wide thresholds and Extreme port filters sit on the role. Application secrets (VMware, Pure Storage, MSSQL): §11.3.
 
-### 11.1 Extreme switch macros (nbxSync rows; values in Extreme switching)
+### 11.1 Extreme switch macros (role)
 
 **Path:** Zabbix → Macros → Add, then Macro Assignment on each Switch* Device Role (or Role → Zabbix tab).
 
-Set `{$NET.IF.IFALIAS.MATCHES}`, `{$NET.IF.IFALIAS.NOT_MATCHES}`, and `{$NET.IF.IFTYPE.MATCHES}` on Switch Core / Dist / Mgmt / Access. Values: *[Extreme switching — Confluence TBD]*.
+Set all three on every Switch Core / Dist / Mgmt / Access role. Core / Dist / Mgmt: all physical/LAG except `X…`. Access: labelled opt-in only (`USW` `US` `UP` `MON` `UW` `TMON`). `{$NET.IF.IFTYPE.MATCHES}` `^(6|161)$` is physical + LAG (drops EXOS VLAN ifaces).
 
-Chassis temperature (`{$TEMP_WARN}` / `{$TEMP_CRIT}` / `{$TEMP_CRIT_LOW}`) is on the Extreme templates, not an nbxSync role macro.
+| Macro | Value | Device Role |
+|---|---|---|
+| `{$NET.IF.IFALIAS.MATCHES}` | `.*` | Switch Core / Dist / Mgmt |
+| `{$NET.IF.IFALIAS.NOT_MATCHES}` | `^X(-\|$)` | Switch Core / Dist / Mgmt |
+| `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Switch Core / Dist / Mgmt |
+| `{$NET.IF.IFALIAS.MATCHES}` | `^(USW\|US\|UP\|MON\|UW\|TMON)(-\|$)` | Switch Access |
+| `{$NET.IF.IFALIAS.NOT_MATCHES}` | `CHANGE_IF_NEEDED` | Switch Access |
+| `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Switch Access |
+
+Port-label grammar and staged enablement: *[Extreme switching — Confluence TBD]*. Chassis temperature (`{$TEMP_WARN}` / `{$TEMP_CRIT}` / `{$TEMP_CRIT_LOW}`) is on the Extreme templates, not an nbxSync role macro.
 
 ### 11.2 Application / threshold macros (role)
 
