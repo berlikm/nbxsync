@@ -1334,11 +1334,12 @@ def step6_template_rules(server, country_slugs=None):
     tpl_voss = make_template(*_voss_tpl, req=[HostInterfaceRequirementChoices.SNMP])
     tpl_iq = make_template(*_iq_tpl, req=[HostInterfaceRequirementChoices.SNMP])
     # OS by platform only. `Windows` already matches "Windows Server *".
-    # Photon is in the Linux pattern (platform name has no "Linux" substring).
+    # Photon is in the Linux pattern (platform name has "Linux" substring).
     # Every matching rule MERGES — priority is not an override.
+    # vCenter (platform Photon OS/Linux) must NOT get Linux agent — only VMware FQDN.
     rules = [
         ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 100, ''),
-        ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100, ''),
+        ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100, '^(?!vCenter$).*'),
         ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100, ''),
         ('Extreme IQ Engine', r'IQ ENGINE', tpl_iq, hg_os_network, 100, ''),
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100, ''),
