@@ -375,8 +375,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 | Remote Zabbix proxy health | Device Role Zabbix Proxy | ICMP comes from the Agent Monitoring CG (§6.4) |
 
 Pure / Dell / Huawei / Synology storage and Dell iDRAC: §6.3 (and tag `oracle` → §6.2).  
-One-off templates on a single host (e.g. AS Java): assign on the Device, not the role.  
-**Print Spool** is not role-assigned.
+One-off templates on a single host (e.g. AS Java): assign on the Device, not the role.
 
 ### 7.1 Extreme capability templates
 
