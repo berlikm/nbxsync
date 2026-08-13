@@ -93,6 +93,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 7. Macro overrides, not cloned stock templates.
 8. Signal with no trigger and no dashboard → delete it.
 9. Next domain copies [_template.md](_template.md) — FortiGate and VMs are already stubbed that way.
+10. Use the full Zabbix scale. **Disaster** is site/service only (never on a switch/AP template). Do not park everything on Warning.
 
 ## Lab proof
 

@@ -22,12 +22,13 @@ If the VM is down, switch/AP monitoring is blind. That is a symptom for **this**
 
 | Thing | Alert | Sev |
 |---|---|---|
-| Host unreachable | yes | High |
-| Key service port down, host up | yes | High |
+| Host unreachable | yes | **High** |
+| Key service port down, host up | yes | **High** |
 | Disk | yes | Warning |
 | Cert expiring | yes | Warning — 30d |
-| App health endpoint | yes | — |
-| Backup / job freshness | later | silent failure today |
+| App health endpoint | yes | Average |
+| Zabbix / NetBox unreachable from **outside** | yes | **High** — we are blind. Not Disaster (that is a user site) |
+| Backup / job freshness | later | Average |
 
 Do **not** alert on: the general server estate.
 

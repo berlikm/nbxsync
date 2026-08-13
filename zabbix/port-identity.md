@@ -30,11 +30,11 @@ If the port runs at the class default, **omit SPEED**. Refuse labels over 20 —
 
 | CLASS | Meaning | Default speed | Speed-expect | Alerts |
 |---|---|---|---|---|
-| `USW` | Switch ↔ switch | 10G | yes | link / flap / errors + speed |
-| `US` | Endpoint, expect 10G | 10G | yes | same |
-| `UP` | Toward AP | 1G | yes | same |
-| `MON` | Endpoint, expect 1G | 1G | yes | same |
-| `UW` | WAN / ISP | — | later (circuit bw) | link / flap / errors |
+| `USW` | Switch ↔ switch | 10G | yes | **High** link / flap+errors Warning + speed |
+| `US` | Endpoint, expect 10G | 10G | yes | **High** link |
+| `UP` | Toward AP | 1G | yes | **High** link (AP ICMP depends) |
+| `MON` | Endpoint, expect 1G | 1G | yes | Warning link |
+| `UW` | WAN / ISP | — | later (circuit bw) | **High** link; all circuits at site = **Disaster** |
 | `TMON` | Temp watch | — | no | items; optional INFO link-down |
 | `X` / `X-<note>` | **Exclude** | — | — | none |
 | `N` / `N-<text>` | Note — monitoring-neutral | — | — | same as unlabelled |

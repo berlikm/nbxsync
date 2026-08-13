@@ -10,11 +10,11 @@ Depends on Extreme `UW-…` labels ([port-identity.md](port-identity.md)) and/or
 
 | Thing | Alert | Sev |
 |---|---|---|
-| `UW` port / Forti WAN down | yes | High — tagged as circuit, not fabric |
+| `UW` port / Forti WAN down | yes | **High** — tagged as circuit, not fabric |
 | Flapping | yes | Warning |
 | Errors | yes | Warning |
-| All circuits at a site down | yes | High — needs dual-circuit modelled |
-| Util vs commit bandwidth | later | needs NetBox circuit bandwidth |
+| All circuits at a site down | yes | **Disaster** — site-level, not on the switch template |
+| Util vs commit bandwidth | later | graph; Average only after Circuit bandwidth exists |
 | Speed ≠ label | **no** | handoff speed rarely equals commit |
 
 Do **not** alert on: fabric `USW` uplinks (01), Cato overlay (04).

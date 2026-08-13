@@ -16,8 +16,11 @@ Labels: [port-identity.md](port-identity.md). Same page shape: [_template.md](_t
 | Never silent | unsupported-item count, **zero** discovered interfaces, proxy last-seen |
 | Control plane | on-box `ifAlias` + role macros. Access typo → no items — only a NetBox vs live label diff catches it |
 | Collect first | Speed Expect / Routing / USW util **linked or imported, triggers off** until labels and history exist |
+| Severity | **Disaster** = site only. Device templates use High / Average / Warning / Info — do not dump everything on Warning |
 
 Do **not** stack Network Generic (`icmpping` collision). Mute a port with **`X`**, not `{$IFCONTROL:"{#IFNAME}"}`.
+
+Scale (Zabbix): Info → Warning → Average → High → Disaster. Disaster+High page 24/7; Average = ticket; Warning = next day; Info = log. Full table: [_template.md](_template.md).
 
 ---
 
@@ -25,31 +28,34 @@ Do **not** stack Network Generic (`icmpping` collision). Mute a port with **`X`*
 
 | Device | Alert | Sev |
 |---|---|---|
-| ICMP down | yes | High |
-| SNMP dead (ICMP still up) | yes | Warning |
+| ICMP down | yes | **High** |
+| SNMP dead (ICMP still up) | yes | **Average** — mgmt blind, forwarding may still work |
 | Unplanned reboot | yes | Warning |
-| Temperature **critical** / vendor alarm | yes | High |
+| Temperature **critical** / vendor alarm | yes | **High** |
 | PSU / fan failed | yes | Average |
-| CPU / memory high | yes | Warning / Average — baseline first |
-| Optic DOM **status** alarm (VOSS) | yes | Warning — prefer status, not raw dBm |
+| CPU high | yes | Warning — baseline first |
+| Memory high | yes | Average — baseline first |
+| Optic DOM **status** alarm (VOSS) | yes | Average — prefer status, not raw dBm |
 | Firmware / OS / serial change | yes | Info |
 | System name changed | **no** | disabled |
 | Temperature warning / too low | **no** | closets + stack 0 °C |
+| **Site** unreachable (all switches / last path) | yes | **Disaster** — site-level trigger, **not** on EXOS/VOSS templates |
 
 | Ports in scope | Alert | Sev |
 |---|---|---|
-| Link down (was up → down) | yes | Warning |
+| `USW` / `US` / `UP` link down | yes | **High** — fabric, server, AP plant. AP ICMP **depends on** `UP-` |
+| `MON` link down | yes | Warning — iDRAC / OOB |
+| `UW` link down | yes | **High** — all circuits at a site → **Disaster** (05) |
 | Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
-| Wrong speed vs label | later | physical ports; Speed Expect triggers off until labels are clean |
-| Half duplex | yes | Warning — same IFALIAS filter as traffic (EXOS needs the duplex LLD patch) |
+| Wrong speed vs label | later | Warning — Speed Expect triggers off until labels are clean |
+| Half duplex | yes | Warning |
 | Interface errors | yes | Warning |
-| Outbound discards (`USW`) | later | Warning — after history |
-| Sustained util | **no** | dashboard / report. Stock 15m util is off (`{$IF.UTIL.MAX}=101`) |
+| Outbound discards (`USW`) | later | Average — after history (user impact) |
+| Sustained util | **no** | dashboard. Stock 15m util off (`{$IF.UTIL.MAX}=101`) |
 | Traffic graphs | **no** | dashboards |
 | `X…` ports | **no** | not discovered |
-| Access / AP / endpoint util | **no** | |
 
-Do **not** alert on: laptop unplug (Access is opt-in), fifty hosts for one site down, “bandwidth high” on a backup window.
+Do **not** alert on: laptop unplug (Access opt-in; unlabelled is out), fifty **High**s for one site down (they depend on the site **Disaster**), “bandwidth high” on a backup window.
 
 ---
 
@@ -78,7 +84,7 @@ util / speed-expect  →  link down  →  no SNMP  →  ICMP down  →  site unr
 CPU / mem / temp     →  ICMP down
 ```
 
-A site WAN blip must not be one High per switch. Proxy (or core) per site is the last line.
+A site WAN blip must not be one High per switch. Those Highs **depend on** a site **Disaster** (proxy / core / synthetic).
 
 ---
 
@@ -161,6 +167,6 @@ Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`):
 
 ## Later
 
-OSPF count; USW util + discards; VOSS fabric adjacency; sFlow on a few Core `USW`; one synthetic ping per site (proxy → DC); NetBox vs live `ifAlias` compliance; syslog on the proxy; `walk[]` dependent items when we retune poll load.
+OSPF count; USW util + discards; VOSS fabric adjacency; sFlow on a few Core `USW`; one synthetic ping per site (proxy → DC) as the **Disaster** SLI; NetBox vs live `ifAlias` compliance; syslog on the proxy; `walk[]` dependent items when we retune poll load.
 
 FortiGate and network VMs reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md)) — different data path, same rules. Do not merge problem classes with Cato ([04](04-cato.md)).

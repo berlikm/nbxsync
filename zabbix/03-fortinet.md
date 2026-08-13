@@ -24,11 +24,11 @@ WAN on a FortiGate: [05-internet-circuits.md](05-internet-circuits.md). Overlay:
 
 | Thing | Alert | Sev |
 |---|---|---|
-| ICMP down | yes | High |
-| SNMP dead | yes | Warning |
-| Device health (CPU / mem / temp) | yes | after baseline |
-| HA peer lost | yes | High |
-| VPN / SD-WAN path | later | symptom — this is the Forti equivalent of OSPF/fabric |
+| ICMP down | yes | **High** |
+| SNMP dead | yes | Average |
+| Device health (CPU / mem / temp) | yes | Warning / Average after baseline |
+| HA peer lost | yes | **High** |
+| VPN / SD-WAN path | later | **High** — last path at a site → **Disaster** (site-level, not on the Forti template) |
 
 ### Scope
 

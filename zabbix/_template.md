@@ -23,6 +23,19 @@ Every domain uses the same bar. Only the signals change.
 | Never silent | Unsupported items, zero discovered objects, proxy last-seen. Blindness is worse than noise. |
 | Collect first | Link the template; leave noisy triggers off until a pilot is quiet. |
 | One `icmpping` | Never stack Network Generic on a template that already pings. |
+| Use the **full severity scale** | Zabbix: Info → Warning → Average → High → **Disaster**. Disaster is **site/service only**, never on a device template (Zabbix’s own rule). Warning is “next business day”, not the default dump. |
+
+### Severity (every domain)
+
+| Sev | Page? | Meaning | Examples |
+|---|---|---|---|
+| **Disaster** | 24/7 | Site or business service is down. Not a single box. | Site unreachable, both WAN circuits down, site→DC synthetic dead |
+| **High** | 24/7 if it affects production | Device or **key path** gone | Host ICMP down, Core/Dist `USW` down, closet uplink `USW` down, temp **critical** |
+| **Average** | Ticket / business hours | Partial failure; will become an outage | PSU/fan, optic DOM alarm, SNMP dead (forwarding may still work), memory |
+| **Warning** | Next business day | Could escalate; do not SMS | Errors, flaps, half duplex, CPU, endpoint `US`/`UP`/`MON` down, speed-expect |
+| **Info** | No | Notice | Firmware / serial change |
+
+Actions: Disaster+High → SMS/call. Average → ticket. Warning → queue/dashboard. Info → log. If everything is Warning, the scale is unused.
 
 Site / role hostgroups already exist from nbxSync — reuse them for correlation. Do not invent a second inventory.
 
@@ -35,7 +48,8 @@ Each row is something ops asks. Alert, graph-only, or **no**. Neither → delete
 | Thing | Alert | Sev |
 |---|---|---|
 | ICMP / reachability down | yes | High |
-| Management path dead | yes | Warning |
+| Management path dead | yes | Average |
+| Site / all paths down | yes | **Disaster** — not on the device template |
 | | | |
 
 Do **not** alert on:

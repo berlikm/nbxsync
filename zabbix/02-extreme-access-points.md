@@ -12,9 +12,10 @@ The switch port toward the AP is `UP-…`. OID map: `templates/extreme_iq_engine
 |---|---|
 | Page symptoms | ICMP down, SNMP dead, eth down (Warning), CPU/mem after canary |
 | Graph causes | Client count, radio noise/Tx, retries/drops, eth traffic |
-| One incident | Cable/PoE/port → page on switch `UP-…` (High). AP OS hung, eth still up → page on the AP. Until LLDP mapping exists: **different severities**, not two Highs |
+| One incident | Cable/PoE → switch `UP-` **High**; AP ICMP depends on it. AP hung, eth still up → AP **High**. Until mapping exists: AP ICMP **Average** if we cannot tell |
 | Never silent | Unsupported items; AP with zero radios discovered; SNMP down while `UP-` is up usually means XIQ **manage SNMP** was skipped |
 | Collect first | Radio retry alerts and client-count warn stay off until a pilot |
+| Severity | Same scale as [_template.md](_template.md). No Disaster on the AP template |
 
 Do **not** stack Network Generic.
 
@@ -24,12 +25,12 @@ Do **not** stack Network Generic.
 
 | Thing | Alert | Sev |
 |---|---|---|
-| ICMP down | yes | High — depends on switch `UP-` when we can |
-| SNMP dead (ICMP still up) | yes | High — XIQ SNMP not enabled, or AP hung |
-| CPU high | yes | Average — 90 / 95 ops default; high CPU alone is not a fault |
+| ICMP down | yes | **High** — depends on switch `UP-` when we can |
+| SNMP dead (ICMP still up) | yes | **Average** — usually XIQ SNMP not enabled |
+| CPU high | yes | Warning — 90 / 95 ops default; high CPU alone is not a fault |
 | Memory high | yes | Average |
 | Temperature | yes | Average — canary; many APs stub the OID |
-| Eth link down | yes | Warning — lower than switch `UP-` |
+| Eth link down | yes | Warning — the plant page is switch `UP-` **High** |
 | Client count | **no** | graph |
 | Radio channel / Tx / noise | **no** | RF graphs |
 | Radio retries / drops | **no** | graphs until baselined |
