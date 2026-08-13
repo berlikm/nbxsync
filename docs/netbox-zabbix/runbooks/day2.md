@@ -27,7 +27,7 @@ Role / platform / site / primary IP in NetBox. Sync should match the switch row 
 
 ## 3. Extreme staged enablement
 
-Stages: Extreme switching doc. nbxSync: configuration §7 (capability templates) and §11 (IFALIAS).
+Stages: *[Extreme switching — Confluence TBD]*. nbxSync: configuration §7 (capability templates) and §11 (IFALIAS).
 
 ---
 
@@ -67,7 +67,7 @@ Stages: Extreme switching doc. nbxSync: configuration §7 (capability templates)
 | Task | When |
 |---|---|
 | Cohesity VMs with primary IP → SNMP Monitoring | New Cohesity Appliance VMs |
-| Extreme labels / stages | Extreme switching doc |
+| Extreme labels / stages | *[Extreme switching — Confluence TBD]* |
 | `environment=Unknown` on hosts that should have `-p-` | Naming drift (switches without `-p-` are expected Unknown) |
 | No manufacturer Huawei SNMP CG; no per-device HI on HU-DEB-SAN01; SAP uses role CG **SAP Agent+SNMP** | After CG / credential changes |
 | Tag `onboarding` still has Zabbix `do_not_monitor`; ready hosts have the NetBox tag removed | Cutover waves |

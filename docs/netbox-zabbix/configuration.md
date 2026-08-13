@@ -379,7 +379,7 @@ One-off templates on a single host (e.g. AS Java): assign on the Device, not the
 
 ### 7.1 Extreme capability templates
 
-Assigned on the **role**, not on the platform Template Rule. Enablement order: [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md) §7.
+Assigned on the **role**, not on the platform Template Rule. Enablement order: *[Extreme switching — Confluence TBD]*.
 
 | Template | Assigned to |
 |---|---|
@@ -530,13 +530,13 @@ Fields such as `os` and `os_full` are filled by Zabbix templates when inventory 
 
 Path: **Zabbix → Macros → Add** (definition on Zabbix Server, then Macro Assignment on the role / or assign from the Role Zabbix tab)
 
-Class-wide thresholds and Extreme port filters sit on the role. Application secrets (VMware, Pure Storage, MSSQL): §11.3. Extreme *values* → `zabbix/01-extreme-switching.md`.
+Class-wide thresholds and Extreme port filters sit on the role. Application secrets (VMware, Pure Storage, MSSQL): §11.3. Extreme *values*: *[Extreme switching — Confluence TBD]*.
 
-### 11.1 Extreme switch macros (nbxSync rows; values in Extreme docs)
+### 11.1 Extreme switch macros (nbxSync rows; values in Extreme switching)
 
 **Path:** Zabbix → Macros → Add, then Macro Assignment on each Switch* Device Role (or Role → Zabbix tab).
 
-Set `{$NET.IF.IFALIAS.MATCHES}`, `{$NET.IF.IFALIAS.NOT_MATCHES}`, and `{$NET.IF.IFTYPE.MATCHES}` on Switch Core / Dist / Mgmt / Access. Values: [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md) §5 and §8.
+Set `{$NET.IF.IFALIAS.MATCHES}`, `{$NET.IF.IFALIAS.NOT_MATCHES}`, and `{$NET.IF.IFTYPE.MATCHES}` on Switch Core / Dist / Mgmt / Access. Values: *[Extreme switching — Confluence TBD]*.
 
 Chassis temperature (`{$TEMP_WARN}` / `{$TEMP_CRIT}` / `{$TEMP_CRIT_LOW}`) is on the Extreme templates, not an nbxSync role macro.
 
@@ -547,7 +547,6 @@ Chassis temperature (`{$TEMP_WARN}` / `{$TEMP_CRIT}` / `{$TEMP_CRIT_LOW}`) is on
 | `{$CPU.UTIL.CRIT}` | 90 | MSSQL |
 | `{$CPU.UTIL.CRIT}` | 80 | Server |
 | `{$MEM.UTIL.CRIT}` | 85 | VDI |
-| `{$MSSQL.DSN}` | nbxsync | MSSQL |
 | `{$VMWARE.URL}` | `https://{{ object.primary_ip4.address.ip }}/sdk` | vCenter |
 
 
@@ -665,45 +664,4 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 | Zabbix Proxy | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping + Remote Zabbix proxy health | Agent :10050 | Sites/…, Roles/Zabbix Proxy, OS/Linux |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
 | VM on a cluster with no site | none | — | — | Not profiled until the VM or cluster has a site |
-
----
-
-## 14. Out of scope for this document
-
-This document stops at **NetBox → nbxSync → Zabbix host wiring** (interfaces, templates, hostgroups, macros, sync).
-
-| Area | Where it lives |
-|---|---|
-| Objects with no NetBox device/VM (web scenarios, account-level APIs, …) | Configured in Zabbix / monitoring packs — [`zabbix/`](../../zabbix/README.md) |
-| Monitoring content (signals, thresholds, notifications) | [`zabbix/`](../../zabbix/README.md) |
-| SAP application template content | Assignment in §7; content owned outside this integration |
-| Configuration backup | cfgit — not Zabbix / not nbxSync |
-
-Day-2 operator procedures: [`runbooks/day2.md`](runbooks/day2.md).
-
----
-
-## 15. Verification
-
-After the initial build, and after major changes, confirm coverage against §13.
-
-**What “good” looks like (spot-check in GUI / Zabbix):**
-
-| Check | Expect |
-|---|---|
-| Sample Linux server | Site Group **Agent Monitoring**; Agent :10050 @ primary; **ICMP Ping**; OS/Linux; Roles/Server; leaf under `Sites/CH/…` |
-| Sample VOSS switch | SNMP Monitoring; **Extreme VOSS by SNMP**; same role IFALIAS as EXOS peer role; no Network Generic; single `icmpping` |
-| Sample Windows VM | Agent; Windows by agent; ICMP Ping (Agent CG); OS/Windows; leaf under `Sites/CH/…` |
-| Sample SAP HANA / ME | CG **SAP Agent+SNMP**; Agent :10050 + SNMP `SAPUSER`; Linux + SAP template from Sensirion + ICMP; **no** Site Group Agent CG |
-| Sample ESXi (Dell) | CG **Dell iDRAC SNMP** (SHA384/AES256, role=ESXi Hypervisor); SNMPv3 `MONITORING-IDRAC` @ oob_ip; Dell iDRAC by SNMP; OS/VMware; **no** VMware FQDN; **no** Agent IF |
-| Sample Pure array | Agent Monitoring; FlashArray HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` |
-| Sample Zabbix Proxy | Agent; Linux by agent + ICMP Ping + Remote Zabbix proxy health; Roles/Zabbix Proxy |
-| Sample vCenter | VMware FQDN + ICMP Ping (Agent CG); **no** Linux by agent; `{$VMWARE.URL}` (primary IP `/sdk`) + `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` |
-| Inventory `url_a` | Device → `/dcim/devices/<id>/`; VM → `/virtualization/virtual-machines/<id>/` |
-| Nested Sites path | Host is leaf under `Sites/CH/…`; parent groups exist without duplicating membership |
-| Host with `critical` | Also in hostgroup Priority/Critical |
-| Role not listed in §5b SNMP/OOB | Still has Agent via Site Group |
-| VM without site | No useful profile until site/scope is set |
-
-**Unprofiled / wrong template symptoms:** host missing in Zabbix, empty template list, or only partial stack vs §13. Use the [day-2 runbook §6](runbooks/day2.md#6-host-not-monitored--wrong-templates) ladder.
 
