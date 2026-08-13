@@ -173,8 +173,6 @@ AES128 hosts:
 
 **Server role** stays on Site Group **Agent Monitoring** @ primary (real Zabbix agent); iDRAC template via TemplateRule only.
 
-**iDRAC SNMPv3 user must be configured on each iDRAC** (via iDRAC UI or racadm) with the `MONITORING-IDRAC` user, SHA384 auth, AES256 priv (or AES128 for KR/CN exception hosts; SHA1/AES128 for Cohesity Legacy).
-
 ### 5.5 SAP Agent+SNMP (two interfaces)
 
 SAP agent templates need Agent; hardware SNMP uses `SAPUSER`. Plugin rule: **one CG wins** — two separate CGs on the same role would not dual-plane.
