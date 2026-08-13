@@ -1,21 +1,14 @@
 # Onboarding scripts (optional)
 
-**Day-to-day operations use the NetBox GUI or API.** These scripts only accelerate a **first build** (or a rare full re-apply). They are not a second control plane.
+**Day-to-day operations use the NetBox GUI or API.** These scripts accelerate a **first build** (or a rare full re-apply).
 
-Policy source of truth:
+Policy (what we set) lives under [`docs/netbox-zabbix/README.md`](../docs/netbox-zabbix/README.md) — one article per nbxSync object, same order as zerotouch.
 
-| Doc | Owns |
-|---|---|
-| [`docs/netbox-zabbix/README.md`](../docs/netbox-zabbix/README.md) | Integration map |
-| [`docs/netbox-zabbix/architecture.md`](../docs/netbox-zabbix/architecture.md) | Mental model |
-| [`docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) | nbxSync rows (GUI / API) |
-| [`zabbix/01-extreme-switching.md`](../zabbix/01-extreme-switching.md) | Extreme ports, stages, TEMP_*/optic macros |
-
-If a script and those docs disagree, **the docs win** — fix the script.
+If a script and those articles disagree, **fix the script or the article so they match**. The articles are what people read.
 
 | Order | Script | Applies |
 |---|---|---|
-| 1 | `configure_nbxsync_zerotouch.py` | Checklist §§1–12 fleet (server, proxies, CGs, Template Rules, hostgroups, tags, inventory, app secrets). Sets proxy `tls_accept=Certificate` only — **not** proxy PEM files / cloud portal TLS. |
+| 1 | `configure_nbxsync_zerotouch.py` | Objects 01–09 (server through macros). Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
 | 2 | `configure_nbxsync_network.py` | Extreme YAML import, Switch* IFALIAS, destination globals, stock EXOS LLD + TEMP_* patches |
 | — | `create_dashboards.py` | Zabbix dashboards from nested hostgroups |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
@@ -49,7 +42,7 @@ python scripts/configure_nbxsync_network.py --apply
 
 Always finish with the network script so VOSS / IQ Engine Template Rules are not left on Network Generic.
 
-Optional flags (onboarding only): `--verify` (census), `--link-speed-expect` (Extreme stage 4), `--cutover-silence` (temporary LM overlay — see Extreme §8).
+Optional: `--verify` (census), `--link-speed-expect` (Extreme stage 4), `--cutover-silence` (temporary LM overlay).
 
 ## Who writes which rows
 
@@ -57,8 +50,8 @@ Optional flags (onboarding only): `--verify` (census), `--link-speed-expect` (Ex
 |---|---|---|
 | Country SiteGroup Agent default | yes | assumes present |
 | SNMP Monitoring on Switch* (incl. Hybrid) | yes | assumes present |
-| Linux SNMP CG on tag `snmp`; SAP CG on SAP HANA / SAP ME roles | yes | — |
-| Dell iDRAC HTTP / SPACE :10060 | yes | — |
+| Linux SNMP CG on tag `snmp`; SAP CG on SAP HANA / SAP ME | yes | — |
+| Dell iDRAC SNMPv3 / SPACE :10060 | yes | — |
 | Extreme TemplateRules (EXOS/VOSS/IQ) | placeholder / ensure | import + retarget |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* | — | yes |

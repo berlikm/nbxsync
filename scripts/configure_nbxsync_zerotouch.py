@@ -2,8 +2,8 @@
 """
 nbxSync Zero-Touch Configuration Script
 
-Applies ``docs/netbox-zabbix/configuration.md`` for a first-build speed-run.
-Day-to-day ops use the NetBox GUI/API; see ``docs/netbox-zabbix/README.md``.
+Applies ``docs/netbox-zabbix/objects/`` (nbxSync object articles) for a first-build
+speed-run. Day-to-day ops use the NetBox GUI/API; see ``docs/netbox-zabbix/README.md``.
 
 Hostgroup-first ops model: Zabbix navigation hangs off
 ``Sites/*`` × ``Roles/*`` × ``OS/*`` (+ lean ``Priority/Critical`` via tag).

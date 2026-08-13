@@ -2,13 +2,13 @@
 
 During cutover many NetBox objects are **inventory-true but not monitorable yet** (Zabbix agent missing, wrong credentials, not reachable). Keep the estate quiet, then open hosts deliberately.
 
-**Folder map:** [`../README.md`](../README.md) · **Exclude mechanics:** [`../configuration.md`](../configuration.md) §9.3 / §12 · **Troubleshoot:** [`day2.md`](day2.md) §6
+**Folder map:** [`../README.md`](../README.md) · Exclude: [`../objects/07-tags.md`](../objects/07-tags.md) · Plugin: [`../objects/10-plugin-settings.md`](../objects/10-plugin-settings.md) · Troubleshoot: [`day2.md`](day2.md)
 
 ---
 
 ## Mechanism (NetBox tag switch — no plugin change)
 
-Plugin setting `exclude_tag` = `do_not_monitor` (configuration §12) — unchanged.
+Plugin setting `exclude_tag` = `do_not_monitor` — unchanged.
 
 | Intent | How |
 |---|---|
@@ -25,18 +25,16 @@ Do **not** put `do_not_monitor` on a Site Group or on role **Server** for waves.
 
 ## One-time setup
 
-1. Plugin `exclude_tag` = `do_not_monitor` (already — §12).
+1. Plugin `exclude_tag` = `do_not_monitor` (already).
 2. Create NetBox tag **`onboarding`** (zerotouch step 0).
 3. Organization → Tags → **onboarding** → Zabbix tab → Tags → assign **`do_not_monitor`** (zerotouch step 9).
 4. Permanent roles keep role-level Zabbix `do_not_monitor` (Messpc, Sd Wan Socket, VDI).
-
-Checklist detail: configuration §9.0 / §9.3.
 
 ---
 
 ## Recommended waves
 
-Policy (configuration §§1–13) can be fully built first. Hosts only appear in Zabbix when they are **not** excluded.
+Policy (Servers through Macros) can be fully built first. Hosts only appear in Zabbix when they are **not** excluded.
 
 | Wave | What | Why |
 |---|---|---|
@@ -73,7 +71,7 @@ When that object is ready to monitor:
    - Not on a permanently excluded role
 2. Open the Device/VM in NetBox → **remove tag `onboarding`**.
 3. Re-sync that host (or wait for the background cycle).
-4. Compare to configuration **§13** (expected CG / templates / interfaces). If wrong, use [`day2.md`](day2.md) §6.
+4. Compare to [`../objects/11-host-result.md`](../objects/11-host-result.md). If wrong, use [`day2.md`](day2.md) host-not-monitored.
 
 No new configuration group or Template Rule is required for a normal agent host — Site Group Agent default already covers it once exclusion is gone.
 
