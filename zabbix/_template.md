@@ -1,81 +1,69 @@
-# <Domain> — Zabbix monitoring
+# <Domain>
 
-Status: draft | building | live    Owner:    Depends on:
+One sentence: what this is, and whether platforms in this domain share the same alerts.
 
-## 1. Scope
+NetBox clicks (if any): [`../docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) §…. Extra grammar (if any): link it.
 
-In:
-Out:
+Filled example: [01-extreme-switching.md](01-extreme-switching.md).
 
-## 2. What we want to know
+Copy this file. Keep it one short page. OID walks, LLD keys, lab canaries, and “done when” lists go in `templates/<name>/` or `notes/` — not here.
 
-Plain language. Each line is a question ops actually asks. This is the requirement; the rest of the doc is just how we answer it.
-
-### <group the questions, e.g. "Is it alive?">
-
--
-
-### What we deliberately do NOT want
-
--
-
-## 3. Data path
-
-| Source | Protocol | Credential | Interval |
-|---|---|---|---|
-
-## 4. Signals
-
-| # | Question from §2 | Signal | Source (OID / API field) |
-|---|---|---|---|
-
-## 5. Discovery
-
-Rule:
-Filter:
-LLD settings:
-
-## 6. Triggers
-
-| Sev | Condition | Settle | Source |
-|---|---|---|---|
-
-### Dependencies
-
-### Known false positives
-
-### Known false negatives
-
-## 7. Staged rollout
-
-| Stage | Enable | Gate to next |
-|---|---|---|
-
-## 8. Template policy
-
-Stock:
-Build:
-Macros:
-
-## 9. Open questions
-
-- [ ]
-
-## 10. Done when
-
-- [ ]
+Omit **Scope**, **Ops**, or **Later** if the domain has nothing to say. Do not add staged rollout, open questions, or a requirements interview.
 
 ---
 
-## Requirements interview
+## What we alert
 
-Answer these before writing §2.
+Each row is something ops asks. Alert, graph-only, or **no**. Neither alert nor graph → delete it.
 
-1. What breaks, and how do we find out today?
-2. What is the data path, does it exist, who owns the credential?
-3. What is one host — a device, a cluster, a circuit? (decides LLD vs static items)
-4. For each signal: alert or graph? Neither → delete it.
-5. Who gets paged, and is this actionable at 03:00? Not actionable → INFO.
-6. What is the false-positive story? Reboots, maintenance, negotiation flaps.
-7. What is the false-**negative** story? What fails silently, and how would we ever notice?
-8. When one root cause hits many hosts, what suppresses the duplicates?
+| Thing | Alert | Sev |
+|---|---|---|
+| ICMP down | yes | High |
+| SNMP / API dead | yes | Warning |
+| | | |
+
+Do **not** alert on:
+
+-
+
+---
+
+## Scope
+
+Which objects are in (ports, radios, tunnels, sites). How we include / exclude them.
+
+| Role / class | In | Out |
+|---|---|---|
+| | | |
+
+---
+
+## Ops
+
+On-box labels, vendor prerequisites, mute rules. What someone needs at 03:00 — not how LLD is implemented.
+
+-
+
+---
+
+## Templates
+
+Do not clone stock templates to specialise them. Do **not** stack Network Generic on a template that already has `icmpping`.
+
+| Template | Where |
+|---|---|
+| | Platform / role / tag |
+
+Macros that matter (on the **template**, unless the checklist says the role):
+
+```
+{$…} =
+```
+
+---
+
+## Later
+
+Not now. One line each. Cutover does not wait on these.
+
+-

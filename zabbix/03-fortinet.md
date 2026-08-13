@@ -1,82 +1,83 @@
-# Fortinet — Zabbix monitoring
+# Fortinet
 
-Status: draft    Owner:    Depends on: —
+Three products, three short blocks. Do not merge them — different questions even when the credential is the same SNMP profile.
 
-Three separate data paths, three sections. Do not merge.
+NetBox: CG **SNMP Monitoring** on role Firewall; Template Rule FortiOS → **FortiGate by SNMP**. Checklist: [`docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) §5b / §6.1 / §7.
 
----
-
-# §A FortiGate
-
-## 1. Scope
-In:
-Out: WAN circuit monitoring (05), Cato overlay (04)
-
-## 2. Data path
-| Source | Protocol | Credential | Interval |
-|---|---|---|---|
-| FortiGate | SNMP / REST API | | |
-
-## 3. Signals
-| # | Signal | Source | Why |
-|---|---|---|---|
-
-## 4. Discovery
-## 5. Triggers
-## 6. Template
-Name: `Fortinet FortiGate by SNMP` (stock exists — review like we did for EXOS)
-
-## 7. Open questions
-- [ ] Inventory: which sites are Forti-terminated vs Extreme vs Cato-direct
-- [ ] SNMP or API for path/SD-WAN health
-- [ ] nbxsync assignment by role/platform — avoid manufacturer-wide accidents
-- [ ] Align severity language with Extreme
-
-## 8. Done when
+WAN circuits that happen to terminate on a FortiGate live in [05-internet-circuits.md](05-internet-circuits.md). Cato overlay: [04-cato.md](04-cato.md).
 
 ---
 
-# §B FortiManager
+## FortiGate
 
-## 1. Scope
-## 2. Data path
-## 3. Signals
-| # | Signal | Source | Why |
-|---|---|---|---|
-| | device sync status | | config drift / offline managed devices |
-| | appliance health | | |
+### What we alert
 
-## 5. Triggers
-## 6. Template
-## 7. Open questions
-- [ ] Is device-sync status an alert or a report?
-- [ ] Overlap with cfgit config drift detection?
+| Thing | Alert | Sev |
+|---|---|---|
+| ICMP down | yes | High |
+| SNMP dead | yes | Warning |
+| Device health (CPU / mem / temp) | yes | — fill from stock + baseline |
+| HA peer lost | yes | High |
+| VPN / SD-WAN path | later | — |
 
----
+Do **not** alert on: underlay switch ports (01), Cato overlay (04), ISP commit vs handoff speed (05).
 
-# §C FortiAnalyzer
+### Scope
 
-## 1. Scope
-## 2. Data path
-## 3. Signals
-| # | Signal | Source | Why |
-|---|---|---|---|
-| | disk / log storage | | log loss risk |
-| | log ingestion rate | | silent device stopped logging |
-| | appliance health | | |
+One Zabbix host per FortiGate. Do not assign the FortiGate template by manufacturer onto FortiManager / FortiAnalyzer.
 
-## 5. Triggers
-## 6. Template
-## 7. Open questions
-- [ ] Is "device stopped sending logs" a Zabbix alert or a FAZ-native one?
+### Templates
+
+| Template | Where |
+|---|---|
+| FortiGate by SNMP (stock — review like EXOS) | Platform FortiOS + role Firewall |
+
+Do **not** stack Network Generic.
+
+### Later
+
+SD-WAN / path health (SNMP vs API still open). Not a switch-cutover blocker.
 
 ---
 
-## Requirements interview (per section)
+## FortiManager
 
-1. What breaks, and how do we find out today?
-2. Data path, credential owner?
-3. What is one host?
-4. Alert or graph?
-5. Paged, actionable at 03:00?
-6. False-positive story?
+### What we alert
+
+| Thing | Alert | Sev |
+|---|---|---|
+| Appliance down | yes | High |
+| Managed device sync / offline | ? | Alert vs report — decide before enabling |
+| Config drift vs cfgit | **no** | cfgit’s job unless we explicitly take it |
+
+### Templates
+
+| Template | Where |
+|---|---|
+| *(stock or thin — pick one)* | Role / platform for FortiManager only |
+
+### Later
+
+Whether “device stopped syncing” is a page or a daily report.
+
+---
+
+## FortiAnalyzer
+
+### What we alert
+
+| Thing | Alert | Sev |
+|---|---|---|
+| Appliance down | yes | High |
+| Disk / log storage | yes | Warning — log loss risk |
+| Device stopped sending logs | ? | Zabbix vs FAZ-native — pick one |
+
+### Templates
+
+| Template | Where |
+|---|---|
+| *(stock or thin — pick one)* | Role / platform for FortiAnalyzer only |
+
+### Later
+
+Log-ingestion rate as a silent-failure detector, if FAZ does not already page it.

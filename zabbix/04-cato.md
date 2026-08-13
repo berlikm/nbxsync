@@ -1,57 +1,48 @@
-# Cato — Zabbix monitoring
+# Cato
 
-Status: draft    Owner:    Depends on: —
+Overlay. Keep it separate from Extreme / Fortinet underlay — same outage must not look like two unrelated pages.
 
-Overlay. Keep strictly separate from Extreme/Fortinet underlay — do not merge problem classes or dashboards will double-count a single outage.
+NetBox: Cato site ID on the Site (when we have it).
 
-## 1. Scope
+---
 
-In:  Cato sites, sockets, links as seen by the Cato API
-Out: underlay switch/firewall health (01, 03), ISP circuit inventory (05)
+## What we alert
 
-## 2. Data path
+| Thing | Alert | Sev |
+|---|---|---|
+| Site disconnected | yes | High |
+| Link down while site still up | yes | Warning — redundancy lost |
+| Socket health / version | yes | — |
+| Loss / latency / throughput | later | graphs first |
+| Collector / API failure | **no** as site outage | own signal, or we page false site-downs |
 
-| Source | Protocol | Credential | Interval |
-|---|---|---|---|
-| Cato API | HTTP agent (GraphQL) | API key | |
+Do **not** alert on: switch/firewall underlay (01, 03), ISP circuit inventory (05) as if they were Cato.
 
-## 3. Signals
+---
 
-| # | Signal | Source | Why |
-|---|---|---|---|
-| | site connected / disconnected | `accountSnapshot` | site down |
-| | link state per WAN interface | `accountSnapshot` | last-mile failure |
-| | socket version / health | | |
-| | throughput / loss / latency per link | `accountMetrics` | degradation |
+## Scope
 
-## 4. Discovery
+| Object | In | Out |
+|---|---|---|
+| Cato site | One host per site *(confirm)* | Whole account as one host *(unless we decide that)* |
+| WAN link per site | LLD under the site | Extreme `UW-` port (05) |
 
-Rule:   LLD over sites, then links per site
-Filter:
+---
 
-## 5. Triggers
+## Ops
 
-| Sev | Condition | Settle | Notes |
-|---|---|---|---|
-| | site disconnected | | |
-| | link down while site up | | redundancy loss |
-| | **collector failure ≠ site outage** | | must not alert as an outage |
+A collector or API-key failure is not a site down. Tag / name Cato alerts so they cannot be confused with underlay.
 
-## 6. Template
+---
 
-Name:   `Cato Networks by HTTP` — build
-Base:   HTTP agent + JS preprocessing
+## Templates
 
-## 7. Open questions
+| Template | Where |
+|---|---|
+| Cato Networks by HTTP (build) | Site / Cato object — HTTP agent + JS |
 
-- [ ] API version + exact field map
-- [ ] Rate limits / poll interval
-- [ ] What is one host — Cato account, or one host per site?
-- [ ] Cato site ID stored on the NetBox Site (Track B)
-- [ ] Correlation with Extreme underlay without double-counting
+---
 
-## 8. Done when
+## Later
 
-- [ ] Pilot sites visible
-- [ ] Collector health distinguishable from site outage
-- [ ] Cato alert and underlay alert for the same event are visibly related, not duplicated
+Exact GraphQL field map, poll interval vs rate limits, correlation with underlay without merging problem classes.

@@ -2,16 +2,15 @@
 
 Zabbix **7.0** template for Extreme / Aerohive **HiveOS / IQ Engine** access points.
 
-**Status:** v1 YAML built — import via zerotouch / network configure. Pilot snmpwalk still required before enabling temp/radio alerts in production.
+**Status:** v1 YAML built. Pilot snmpwalk still required before enabling temp/radio alerts in production.
+
+Operator page: [`../../02-extreme-access-points.md`](../../02-extreme-access-points.md).
 
 ## Import
 
-1. Automatic: `configure_nbxsync_zerotouch.py` (`ensure_extreme_iq_engine_template`) and `configure_nbxsync_network.py --apply`
-2. Manual: Zabbix → Templates → Import → `template_net_extreme_iq_engine_snmp.yaml`
+Zabbix → Templates → Import → `template_net_extreme_iq_engine_snmp.yaml`. Requires Zabbix **7.0+**. NetBox Template Rule: checklist §6.1.
 
-Requires Zabbix **7.0+**.
-
-## Wiring (Track B)
+## Wiring
 
 | NetBox fact | Effect |
 |---|---|

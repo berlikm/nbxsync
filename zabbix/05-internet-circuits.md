@@ -1,58 +1,49 @@
-# Internet circuits — Zabbix monitoring
+# Internet circuits
 
-Status: draft    Owner:    Depends on: 01, 03, 04
+ISP / WAN circuits. A circuit alert and a fabric uplink alert must never look the same.
 
-ISP / WAN circuits. Distinct from fabric uplinks — a circuit alert and an uplink alert must never look the same.
+Depends on Extreme `UW-…` labels ([port-identity.md](port-identity.md)) and/or Forti WAN.
 
-## 1. Scope
+---
 
-In:  documented ISP terminations, labelled `UW-…` on Extreme, or the equivalent Forti WAN interface
-Out: fabric uplinks (01), Cato overlay view (04), utilization % (later)
+## What we alert
 
-## 2. Data path
+| Thing | Alert | Sev |
+|---|---|---|
+| `UW` port / Forti WAN down | yes | High — tagged as circuit, not fabric |
+| Flapping | yes | Warning |
+| Errors | yes | Warning |
+| All circuits at a site down | yes | High — needs dual-circuit modelled |
+| Util vs commit bandwidth | later | needs NetBox circuit bandwidth |
+| Speed ≠ label | **no** | handoff speed rarely equals commit |
 
-| Source | Protocol | Credential | Interval |
-|---|---|---|---|
-| Extreme WAN port | SNMP | ro-community | 1m |
-| FortiGate WAN | SNMP / API | | |
+Do **not** alert on: fabric `USW` uplinks (01), Cato overlay (04).
 
-## 3. Signals
+---
 
-| # | Signal | Source | Why |
-|---|---|---|---|
-| | ifOperStatus on `UW` port | IF-MIB | circuit down |
-| | flap count | | unstable last mile |
-| | errors | IF-MIB | dirty handoff |
-| | (later) utilization vs commit bandwidth | NetBox circuit field | capacity |
+## Scope
 
-**No absolute speed trigger on `UW`** — handoff speed rarely equals commit rate.
+| Object | In | Out |
+|---|---|---|
+| Extreme WAN | `ifAlias` matching `^UW(-\|$)` | Fabric uplinks |
+| Forti WAN | Forti WAN interface for that circuit | Other Forti interfaces |
 
-## 4. Discovery
+---
 
-Rule:   LLD on `ifAlias` matching `^UW(-|$)`
-Filter: `{$NET.IF.IFALIAS.MATCHES}` = `^UW(-|$)` on a thin circuits template
+## Ops
 
-## 5. Triggers
+No absolute speed-expect on `UW`. Commit rate lives on the NetBox Circuit, not in the port label.
 
-| Sev | Condition | Settle | Notes |
-|---|---|---|---|
-| High | `UW` port down | 2m | separate severity/tag from fabric uplinks |
-| Warning | flapping | 15m | |
-| High | **all** circuits at a site down | | redundancy-loss logic, needs dual-circuit modelled |
+---
 
-## 6. Template
+## Templates
 
-Name:   `ISP WAN Ports by SNMP` — thin, build
-Base:   dependent items on the stock interface items where possible
+| Template | Where |
+|---|---|
+| ISP WAN Ports by SNMP (thin, build) | Circuit / `UW` — dependent items on stock interface items where possible |
 
-## 7. Open questions
+---
 
-- [ ] NetBox Providers + Circuits + terminations populated? (Track B)
-- [ ] Multi-homing modelled, or documented as residual risk?
-- [ ] Compliance: circuit termination exists but port not labelled `UW`, and the reverse
-- [ ] Correlation with Cato without merging problem classes
+## Later
 
-## 8. Done when
-
-- [ ] Pilot circuits: port ↔ ISP ↔ site visible in NetBox and Zabbix
-- [ ] ISP alerts visually and by tag separate from fabric uplink alerts
+NetBox Providers + Circuits populated; multi-homing modelled vs residual risk; compliance (termination without `UW`, and the reverse).

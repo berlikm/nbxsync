@@ -1,59 +1,51 @@
-# Network VMs — Zabbix monitoring
+# Network VMs
 
-Status: draft    Owner:    Depends on: —
+Infrastructure VMs the network depends on. If the VM is down, network ops are blind or broken.
 
-Infrastructure VMs that the network depends on. If the VM is down, network operations are blind or broken.
+OS templates and ICMP already come from the nbxSync checklist ([`docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md)). This page is only the extras.
 
-## 1. Scope
+---
 
-In:  network-related VMs — NetBox, Zabbix itself, XIQ-SE, RADIUS/NAC, DHCP/IPAM, jump hosts, collectors
-Out: general server estate, application monitoring
+## What we alert
 
-## 2. Data path
+| Thing | Alert | Sev |
+|---|---|---|
+| Host unreachable | yes | High — already on Agent CG / OS template |
+| Key service port down, host up | yes | High |
+| Disk | yes | Warning |
+| Cert expiring | yes | Warning — 30d |
+| App health endpoint | yes | — |
+| Backup / job freshness | later | silent failure |
 
-| Source | Protocol | Credential | Interval |
-|---|---|---|---|
-| VM | Zabbix agent | PSK/cert | 1m |
-| Service | HTTP / TCP check | | 1m |
+Do **not** alert on: the general server estate, application monitoring owned elsewhere.
 
-## 3. Signals
+---
 
-| # | Signal | Source | Why |
-|---|---|---|---|
-| | reachability | icmpping | |
-| | CPU / memory / disk | agent | |
-| | service port listening | net.tcp.service | app down with host up |
-| | app health endpoint | HTTP agent | |
-| | certificate expiry | | recurring outage cause |
-| | backup / job freshness | | silent failure |
+## Scope
 
-## 4. Discovery
+| In | Out |
+|---|---|
+| NetBox, Zabbix, XIQ-SE, RADIUS/NAC, DHCP/IPAM, jump hosts, collectors | General servers |
 
-Rule:   stock OS template LLD (filesystems, network interfaces)
+Needs an **explicit list**, not “all network VMs”.
 
-## 5. Triggers
+---
 
-| Sev | Condition | Settle | Notes |
-|---|---|---|---|
-| High | host unreachable | 3 polls | |
-| High | key service port down while host up | 5m | |
-| Warning | disk > threshold | | |
-| Warning | cert expiring | 30d | |
+## Ops
 
-## 6. Template
+Who watches Zabbix when Zabbix is down? Self-monitoring is not enough — name the external check.
 
-Name:   stock `Linux by Zabbix agent` / `Windows by Zabbix agent` + a thin per-service template
-Base:   stock
+---
 
-## 7. Open questions
+## Templates
 
-- [ ] Which VMs are in scope — needs an explicit list, not "all network VMs"
-- [ ] **Who monitors Zabbix?** Self-monitoring only catches so much
-- [ ] Agent vs agentless per VM
-- [ ] Overlap with an existing server monitoring owner?
+| Template | Where |
+|---|---|
+| Linux / Windows by Zabbix agent | Platform Template Rules (checklist §6) |
+| Thin per-service template | Role or device — port / HTTP / cert |
 
-## 8. Done when
+---
 
-- [ ] Explicit VM list agreed
-- [ ] Each has host + service level checks
-- [ ] Zabbix's own failure is detected externally
+## Later
+
+Agree the VM list. Agent vs agentless per VM. Overlap with whoever already owns server monitoring.

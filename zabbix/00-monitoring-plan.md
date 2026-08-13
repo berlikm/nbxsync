@@ -40,7 +40,7 @@ The bar for cutover is **"no worse than LogicMonitor"**, not "everything in the 
 port-identity (foundation)
     │
     ▼
-01  Extreme switching — EXOS then VOSS        ← now, cutover critical
+01  Extreme switching                         ← now, cutover critical
     │
     ▼
 02  Extreme access points (HiveOS / XIQ)
