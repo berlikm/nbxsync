@@ -611,14 +611,17 @@ SSO domains differ per site. The macro assignment is on each **VM** (not the rol
 
 Username format: `<SSO_DOMAIN>\LogicMonitor` (e.g. `VCENTER-SSO.SENSIRION\LogicMonitor`).
 
-#### MSSQL credentials (role-level, shared)
+#### MSSQL (DSN per Device; user/password on the role)
 
-Single service account across all MSSQL hosts. Assignment is on **DeviceRole = MSSQL**.
+`{$MSSQL.DSN}` is the ODBC Data Source Name on that Windows host — unique per database. Assign it on the **Device** (or VM), not the role. The service account is shared: `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}` on **DeviceRole = MSSQL**.
 
-| Macro | Target | Type |
-|---|---|---|
-| `{$MSSQL.USER}` | DeviceRole: MSSQL | Secret |
-| `{$MSSQL.PASSWORD}` | DeviceRole: MSSQL | Secret |
+| Macro | Target | Type | Value |
+|---|---|---|---|
+| `{$MSSQL.DSN}` | Device (per MSSQL host) | Text | ODBC DSN name on that host |
+| `{$MSSQL.USER}` | DeviceRole: MSSQL | Secret | Shared service account |
+| `{$MSSQL.PASSWORD}` | DeviceRole: MSSQL | Secret | Shared service account |
+
+Same DSN assignment on **MSSQL Query Server** hosts that use the template.
 
 #### Huawei SAN01 (CG Host Interface — not a macro)
 
