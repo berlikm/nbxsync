@@ -69,7 +69,7 @@ Stages and Hybrid flip: Extreme switching doc. nbxSync: configuration §7 (capab
 | Cohesity VMs with primary IP → SNMP Monitoring | New Cohesity Appliance VMs |
 | Extreme labels / Hybrid / stages | Extreme switching doc |
 | `environment=Unknown` on hosts that should have `-p-` | Naming drift (switches without `-p-` are expected Unknown) |
-| No manufacturer Huawei SNMP CG; no per-device HI on HU-DEB-SAN01; no leftover SAP SNMP tag | After CG / credential changes |
+| No manufacturer Huawei SNMP CG; no per-device HI on HU-DEB-SAN01; SAP uses role CG **SAP Agent+SNMP** (not a tag) | After CG / credential changes |
 | Tag `onboarding` still has Zabbix `do_not_monitor`; ready hosts have the NetBox tag removed | Cutover waves |
 | iDRAC: ESXi AES256 / KR-CN AES128 / Cohesity Legacy | After CG / credential changes |
 | ICMP Ping only on Agent / SPACE / SAP / SNMP-by-tag CGs — not on Site Groups, Roles, or Tags | After ICMP / CG edits |
