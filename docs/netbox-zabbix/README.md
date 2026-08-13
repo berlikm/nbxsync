@@ -2,7 +2,7 @@
 
 **Handover / source of truth:** [`configuration.md`](configuration.md)
 
-That page is what we configured. Walk it top to bottom. When a mapping changes, update that file and `scripts/configure_nbxsync_zerotouch.py` together.
+That page is what we configured. Walk it top to bottom. When a mapping changes, update that file.
 
 | Also | When |
 |---|---|

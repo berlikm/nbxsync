@@ -26,8 +26,8 @@ Do **not** put `do_not_monitor` on a Site Group or on role **Server** for waves.
 ## One-time setup
 
 1. Plugin `exclude_tag` = `do_not_monitor` (already).
-2. Create NetBox tag **`onboarding`** (zerotouch step 0).
-3. Organization → Tags → **onboarding** → Zabbix tab → Tags → assign **`do_not_monitor`** (zerotouch step 9).
+2. Create NetBox tag **`onboarding`**.
+3. Organization → Tags → **onboarding** → Zabbix tab → Tags → assign **`do_not_monitor`**.
 4. Permanent roles keep role-level Zabbix `do_not_monitor` (Messpc, Sd Wan Socket, VDI).
 
 ---

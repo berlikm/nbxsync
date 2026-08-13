@@ -2,13 +2,13 @@
 
 This is the handover document. If you take over NetBox → Zabbix, start here and stay here.
 
-**Everyone walks this page.** It is the map of what we actually configured (NetBox **Zabbix** menu: names, assignments, expected host). When you add a mapping — a new role, configuration group, Template Rule, template, or macro — update **this file and** `scripts/configure_nbxsync_zerotouch.py` in the same change. The script is the first-build apply (idempotent create/update + prune of retired objects). Day-to-day after go-live is the GUI; the script is how we reproduce the estate.
+**Everyone walks this page.** It is the map of what we actually configured (NetBox **Zabbix** menu: names, assignments, expected host). Day-to-day is the GUI. When you add a mapping — a new role, configuration group, Template Rule, template, or macro — update **this file** in the same change.
 
 **Assumption:** NetBox inventory (Site Groups, roles, platforms, IPs, tags) already exists. This page only configures nbxSync.
 
-Day-2 (new role, broken host): [`runbooks/day2.md`](runbooks/day2.md). Cutover waves: [`runbooks/onboarding.md`](runbooks/onboarding.md). Extreme port signals and IFALIAS **values**: [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md) — that is `configure_nbxsync_network.py`, not zerotouch.
+Day-2 (new role, broken host): [`runbooks/day2.md`](runbooks/day2.md). Cutover waves: [`runbooks/onboarding.md`](runbooks/onboarding.md). Extreme port signals and IFALIAS **values**: [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md).
 
-**Last verified against the script:** 2026-08-13.
+**Last verified:** 2026-08-13.
 
 *(Italic)* = fill in for your environment. Rows marked **placeholder** are intentional stubs — assign them now, refine template content closer to production.
 
@@ -26,13 +26,13 @@ Zabbix does not browse NetBox. The **nbxSync** plugin in NetBox pushes devices a
 
 **Jinja** in hostgroups, tags, inventory, and some macros is evaluated at sync (`object` = that NetBox row). Preview errors on a Site Group are cosmetic.
 
-**`use_oob_ip`** on a CG is honoured when the interface is expanded from the CG. If a **durable** Host Interface already exists on the device with `ip=primary`, changing the CG does nothing useful — delete that Host Interface and let it recreate. Zerotouch prunes leftover iDRAC Host Interfaces on the AES128 exception hosts for that reason.
+**`use_oob_ip`** on a CG is honoured when the interface is expanded from the CG. If a **durable** Host Interface already exists on the device with `ip=primary`, changing the CG does nothing useful — delete that Host Interface (nbxSync object) and let sync recreate it from the CG.
 
 **Two TLS paths (do not mix them):** proxy ↔ Zabbix Cloud is certificate on the **proxy object** (PEMs are not in nbxSync). Agent ↔ proxy is the host Encryption tab / CG `tls_connect` — currently **no encryption**. SNMP crypto is the CG SNMPv3 profile, not TLS.
 
-**Plugin Settings (§12)** are not written by the script. Set them once in the plugin config.
+**Plugin Settings (§12)** are set once in the plugin config (not on a Device or Role).
 
-**Keeping this document true:** new Device Role → decide transport (§5b) and whether Agent Host ICMP must grow (§6.3), then the same rows in the script. New SNMPv3 crypto → new CG, not a macro. New Zabbix template → Template Rule if role/manufacturer/platform/tag can express it (§6), else a role assignment (§7). Then apply, sync one object, check §13.
+**Keeping this document true:** new Device Role → decide transport (§5b) and whether Agent Host ICMP must grow (§6.3). New SNMPv3 crypto → new CG, not a macro. New Zabbix template → Template Rule if role/manufacturer/platform/tag can express it (§6), else a role assignment (§7). Then sync one object and check §13.
 
 ### GUI map
 
@@ -94,7 +94,7 @@ Path: **Zabbix → Proxies → Add**, **Zabbix → Proxy Groups → Add**
 | kr-sel-p-zabp01 | Active | — | Certificate | — | — |
 | cn-sha-p-zabp01 | Active | — | Certificate | — | — |
 
-`local_address` is required by nbxSync **only when the proxy is in a group**. CH pair: `10.0.104.235` / `10.0.105.235`. Script also knows HU `10.40.100.235`, KR `10.30.100.235`, CN `10.31.100.235` if those proxies later join a group. Japan devices use `kr-sel-p-zabp01` (no JP proxy).
+`local_address` is required by nbxSync **only when the proxy is in a group** (CH pair above). Japan devices use `kr-sel-p-zabp01` (no JP proxy).
 
 ### 2.3 Proxy self-monitoring
 
@@ -143,7 +143,7 @@ Each group is one **transport + credential** profile. Why these groups exist and
 | Dell iDRAC SNMP (AES128) | `MONITORING-IDRAC` SHA384/AES128 @ oob | KR/CN ESXi exception hosts (iDRAC AES only) |
 | Dell iDRAC SNMP (Legacy) | `MONITORING-IDRAC` SHA1/AES128 @ oob | Cohesity (C6420 fw 6.10 max) |
 
-Three SNMPv3 iDRAC CGs by firmware tier — same `MONITORING-IDRAC` user, same passphrases, different protocols. **Server** stays on Site Group Agent Monitoring @ primary (real agent). Legacy **Server Agent+OOB** / **Dell iDRAC HTTP** are deleted by zerotouch. iDRAC SNMPv3 user must be configured on each iDRAC (via iDRAC UI or racadm).
+Three SNMPv3 iDRAC CGs by firmware tier — same `MONITORING-IDRAC` user, same passphrases, different protocols. **Server** stays on Site Group Agent Monitoring @ primary (real agent). Do **not** recreate retired CGs **Server Agent+OOB** or **Dell iDRAC HTTP**. iDRAC SNMPv3 user must be configured on each iDRAC (via iDRAC UI or racadm).
 
 ---
 
@@ -201,11 +201,11 @@ Same shape as §5.1 with the **Linux** SNMPv3 profile. Transport-only — no tem
 | SNMPv3 :161, **Use OOB IP = Yes** | CG **Dell iDRAC SNMP (Legacy)** (SHA1/AES128) on role **Cohesity** | C6420 fw 6.10 tops out at SHA1/AES128 |
 | Template | TemplateRules §6.3 — Manufacturer **Dell**∧ Server/ESXi/Cohesity → Dell iDRAC by SNMP | Storage stays on HPE MSA HTTP |
 
-**Same `MONITORING-IDRAC` user, same passphrases** — only the protocol differs. Env vars `NBX_SNMP_AUTHPASS_IDRAC` / `NBX_SNMP_PRIVPASS_IDRAC`.
+**Same `MONITORING-IDRAC` user, same passphrases** — only the protocol differs. Passphrases live on each iDRAC CG Host Interface.
 
-**AES128 exceptions:** assign the AES128 CG on the **Device** so it wins over the role AES256 CG (plugin: one CG expands HostInterfaces). Do **not** leave durable per-device HostInterfaces — CG propagate stamps `ip=primary`, which beats `use_oob_ip` at sync. Zerotouch prunes those device HIs after assigning the exception CG.
+**AES128 exceptions:** assign the AES128 CG on the **Device** so it wins over the role AES256 CG (plugin: one CG expands HostInterfaces). Do **not** leave durable per-device HostInterfaces — CG propagate stamps `ip=primary`, which beats `use_oob_ip` at sync. If an AES128 host still has a device-level Host Interface, delete it so sync expands from the CG (`use_oob_ip`).
 
-Hosts in `_IDRAC_AES128_HOSTS` (script constant — add here when the list changes):
+AES128 hosts (add here when the list changes):
 
 `cn-sha-p-esx11.sensirion.lokal`, `cn-sha-p-esx12.sensirion.lokal`, `cn-sha-p-esx13.sensirion.lokal`, `kr-sel-p-esx11.sensirion.lokal`, `kr-sel-p-esx12.sensirion.lokal`, `kr-sel-p-esx13.sensirion.lokal`
 
@@ -215,7 +215,7 @@ If this list grows, prefer a NetBox tag (e.g. `idrac-aes128`) instead of hostnam
 
 **iDRAC SNMPv3 user must be configured on each iDRAC** (via iDRAC UI or racadm) with the `MONITORING-IDRAC` user, SHA384 auth, AES256 priv (or AES128 for KR/CN exception hosts; SHA1/AES128 for Cohesity Legacy).
 
-**Retired:** CG **Server Agent+OOB** (Agent + SNMP `MONITORING-DELL` @ oob) — deleted by zerotouch. CG **Dell iDRAC HTTP** (Redfish API) — superseded by SNMPv3.
+**Retired — do not recreate:** CG **Server Agent+OOB** (Agent + SNMP `MONITORING-DELL` @ oob). CG **Dell iDRAC HTTP** (Redfish API) — superseded by SNMPv3.
 
 ### 5.6 SAP Agent+SNMP (two interfaces)
 
@@ -228,7 +228,7 @@ If this list grows, prefer a NetBox tag (e.g. `idrac-aes128`) instead of hostnam
 
 ### 5.6b SNMP Monitoring (Huawei)
 
-Huawei SNMPv3 profile (`LogicMonitor` SHA/AES). Passphrases from env `NBX_SNMP_AUTHPASS_HUAWEI` / `NBX_SNMP_PRIVPASS_HUAWEI` (only written when set — re-run does not blank secrets).
+Huawei SNMPv3 profile (`LogicMonitor` SHA/AES). Passphrases live on that CG’s Host Interface.
 
 ### 5.7 Agent Monitoring (SPACE)
 
@@ -324,7 +324,7 @@ Cohesity VMs (role=Cohesity Appliance) inherit **SNMP Monitoring**. Physical Coh
 - **Transport (ESXi)** via CG **Dell iDRAC SNMP** (SNMPv3 SHA384/AES256 @ oob_ip)
 - **Transport (Cohesity)** via CG **Dell iDRAC SNMP (Legacy)** (SNMPv3 SHA1/AES128 @ oob_ip)
 - **Transport (Server)** via Site Group **Agent Monitoring** @ primary (real agent)
-- **Credentials**: `MONITORING-IDRAC` user, passphrases from env `NBX_SNMP_AUTHPASS_IDRAC` / `NBX_SNMP_PRIVPASS_IDRAC`
+- **Credentials**: `MONITORING-IDRAC` user, passphrases on each iDRAC CG Host Interface
 - Dell Storage: Agent Monitoring + HPE MSA HTTP
 - Retired CGs: `Server Agent+OOB`, `ESXi OOB iDRAC`, `OOB SNMP Only`, `OOB SNMP v2c`, `Dell iDRAC HTTP`
 
@@ -360,9 +360,9 @@ First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and valu
 
 **Role pattern:** Linux and VMware Photon use `role_pattern` `^(?!vCenter$).*` so a vCenter appliance with a Linux/Photon platform does not also pick up the Linux agent template. Windows Server matches device role **Windows Server** (platform pattern `Windows Server`).
 
-**VMware:** do **not** attach VMware FQDN via an ESXi platform rule. Zerotouch **deletes** the legacy rule `VMware ESXi`. Guests and hypervisors come from NetBox. On the VMware FQDN template, zerotouch **disables LLD** `vmware.vm.discovery` and `vmware.hv.discovery` (datastore / cluster / alarm discovery stay). ESXi hardware = §5.5 + §6.3 Dell iDRAC (ESXi) SNMPv3.
+**VMware:** do **not** attach VMware FQDN via an ESXi platform rule. Do **not** recreate the legacy rule `VMware ESXi`. Guests and hypervisors come from NetBox. On the VMware FQDN template, **disable LLD** `vmware.vm.discovery` and `vmware.hv.discovery` (datastore / cluster / alarm discovery stay). ESXi hardware = §5.5 + §6.3 Dell iDRAC (ESXi) SNMPv3.
 
-**Extreme:** VOSS / IQ Engine rows above are created by zerotouch (soft-resolve until YAML import). **Extreme EXOS** TemplateRule is created/retargeted by `configure_nbxsync_network.py` (not zerotouch). Never Network Generic on Switch* (`icmpping` collision). Macro values, stages, LLD patches → [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md); labels → [`port-identity.md`](../../zabbix/port-identity.md); nbxSync macro assignment clicks → §11.1. Run network `--apply` after zerotouch (Appendix A).
+**Extreme:** VOSS / IQ Engine rows above must exist (import YAML if the template is missing; otherwise the host falls back to Network Generic). Never Network Generic on Switch* (`icmpping` collision). Macro values, stages, LLD patches → [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md); labels → [`port-identity.md`](../../zabbix/port-identity.md); nbxSync macro assignment clicks → §11.1.
 
 ### 6.2 SNMP OS rules (NetBox tag `snmp`)
 
@@ -419,16 +419,16 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if no platform rule matches |
 | Network Generic Device by SNMP | Device Role Network Device | Fallback only |
 | FortiGate by SNMP | Device Role Firewall | Also via FortiOS platform rule |
-| Tableau Bridge by Zabbix agent `(stub)` | Device Role Tableau | Soft-resolve; skipped if template absent |
-| CellMap by Zabbix agent `(stub)` | Device Role CellMap | Soft-resolve |
-| Oracle by Zabbix agent 2 | Device Role Database | Soft-resolve; also tag rule §6.2 |
-| SAP template from Sensirion | Device Role SAP ME, SAP HANA | Soft-resolve — exact name on the Zabbix server |
-| Acronis Cyber Protect Cloud by HTTP | Device Role Acronis Management | Soft-resolve |
-| SCCM by Zabbix agent `(stub)` | Device Role SCCM | Soft-resolve |
+| Tableau Bridge by Zabbix agent `(stub)` | Device Role Tableau | Assign if the template exists on the Zabbix server |
+| CellMap by Zabbix agent `(stub)` | Device Role CellMap | Assign if the template exists |
+| Oracle by Zabbix agent 2 | Device Role Database | Also tag rule §6.2 |
+| SAP template from Sensirion | Device Role SAP ME, SAP HANA | Exact name on the Zabbix server |
+| Acronis Cyber Protect Cloud by HTTP | Device Role Acronis Management | Assign if the template exists |
+| SCCM by Zabbix agent `(stub)` | Device Role SCCM | Assign if the template exists |
 
 Pure / Dell / Huawei / Synology storage and Dell iDRAC: §6.3 (and tag `oracle` → §6.2).  
 One-off templates on a single host (e.g. AS Java): assign on the Device, not the role.  
-**Print Spool** is not role-assigned by zerotouch today (template may exist as soft-resolve only).
+**Print Spool** is not role-assigned (template may exist on the server without a role link).
 
 ### 7.1 Extreme capability templates
 
@@ -497,7 +497,7 @@ Two tag systems:
 
 ### 9.0 NetBox tags (inputs)
 
-Zerotouch step 0 creates `critical`, `snmp`, and `onboarding` if missing. `oracle` is operator-created when needed.
+Create NetBox tags `critical`, `snmp`, and `onboarding` if they are missing. `oracle` is operator-created when needed.
 
 | NetBox tag | Effect during sync | Typical scope |
 |---|---|---|
@@ -553,13 +553,13 @@ Plugin `exclude_tag` = `do_not_monitor` (§12) — one setting. Same nbxSync **Z
 | do_not_monitor | *(empty)* | **Device Role** — Messpc, Sd Wan Socket, VDI | Permanent — leave on the role |
 | do_not_monitor | *(empty)* | **NetBox Tag `onboarding`** (Organization → Tags → **onboarding** → Zabbix tab → Tags) | Temporary waves — tag/untag Devices/VMs with NetBox **`onboarding`** |
 
-nbxSync resolves assignments on a NetBox Tag onto every Device/VM that carries that tag. Zerotouch: step 0 creates NetBox tag `onboarding`; step 9 assigns Zabbix `do_not_monitor` on it (and on the permanent roles).
+nbxSync resolves assignments on a NetBox Tag onto every Device/VM that carries that tag. Assign Zabbix `do_not_monitor` on NetBox tag `onboarding` and on the permanent roles (Messpc, Sd Wan Socket, VDI).
 
 **Wave enable:** remove NetBox tag **`onboarding`** from the Device/VM → next sync starts monitoring. No per-host Zabbix-tab exclude row needed.
 
 Sync **skips** excluded objects (no host/interfaces/templates). An existing Zabbix host from a prior sync is **deleted**.
 
-**Name collision:** zerotouch may also create a NetBox inventory tag named `do_not_monitor` (used with `--mutate-netbox` on some roles). That inventory tag is **not** the wave switch and does not exclude by itself. Waves use NetBox tag **`onboarding`** only. Plugin exclude matches the **Zabbix** tag name `do_not_monitor`.
+**Name collision:** a NetBox inventory tag named `do_not_monitor` may exist on some devices (Cato / Messpc). That inventory tag is **not** the wave switch and does not exclude by itself. Waves use NetBox tag **`onboarding`** only. Plugin exclude matches the **Zabbix** tag name `do_not_monitor`.
 
 Do **not** put Zabbix `do_not_monitor` on role Server (or a Site Group) for waves — you cannot open a single child while the parent excludes.
 
@@ -629,28 +629,20 @@ Each macro is defined as a server-level **ZabbixMacro** (on ZabbixServer) with a
 
 #### Pure Storage API token + URL (per-device)
 
-Each Pure array has its own API token and base URL. Macro assignments are on each **Device** (not the manufacturer). Zerotouch **prunes** the legacy name `{$PURESTORAGE.TOKEN}`.
+Each Pure array has its own API token and base URL. Macro assignments are on each **Device** (not the manufacturer). Do **not** recreate the legacy name `{$PURESTORAGE.TOKEN}`.
 
-| Macro | Target | Type | Env var / value |
+| Macro | Target | Type | Value |
 |---|---|---|---|
-| `{$PURE.FLASHARRAY.API.TOKEN}` | Device (per array) | Secret | `NBX_PURE_TOKEN_<HOSTNAME>` |
+| `{$PURE.FLASHARRAY.API.TOKEN}` | Device (per array) | Secret | API token from the array |
 | `{$PURE.FLASHARRAY.API.URL}` | Device (per array) | Text | `https://<primary_ip>/` (from device IP) |
 
-| Array | Env var |
-|---|---|
-| `hu-deb-san11` | `NBX_PURE_TOKEN_HU_DEB_SAN11` |
-| `kr-sel-san11` | `NBX_PURE_TOKEN_KR_SEL_SAN11` |
-| `cn-sha-san11` | `NBX_PURE_TOKEN_CN_SHA_SAN11` |
-| `ch-zrh-zh4-san01` | `NBX_PURE_TOKEN_CH_ZRH_ZH4_SAN01` |
-| `ch-zrh-zh4-san02` | `NBX_PURE_TOKEN_CH_ZRH_ZH4_SAN02` |
-| `ch-zrh-zh5-san01` | `NBX_PURE_TOKEN_CH_ZRH_ZH5_SAN01` |
-| `ch-zrh-zh5-san02` | `NBX_PURE_TOKEN_CH_ZRH_ZH5_SAN02` |
+Arrays with their own token: `hu-deb-san11`, `kr-sel-san11`, `cn-sha-san11`, `ch-zrh-zh4-san01`, `ch-zrh-zh4-san02`, `ch-zrh-zh5-san01`, `ch-zrh-zh5-san02`.
 
 Token format: UUID (generated on each array via `purearray connect --api-token`).
 
 #### Dell iDRAC SNMPv3 credentials (shared on CG)
 
-Same `MONITORING-IDRAC` user, same passphrases on both CGs — only the protocol differs.
+Same `MONITORING-IDRAC` user, same passphrases on all three CGs — only the protocol differs.
 
 | CG | Auth Protocol | Priv Protocol | Roles |
 |---|---|---|---|
@@ -658,39 +650,37 @@ Same `MONITORING-IDRAC` user, same passphrases on both CGs — only the protocol
 | Dell iDRAC SNMP (AES128) | SHA384 | AES128 | KR/CN ESXi exception hosts |
 | Dell iDRAC SNMP (Legacy) | SHA1 | AES128 | Cohesity (C6420 fw 6.10 max) |
 
-Passphrases from env `NBX_SNMP_AUTHPASS_IDRAC` / `NBX_SNMP_PRIVPASS_IDRAC`. The iDRAC SNMPv3 user must be configured on each iDRAC (via iDRAC UI or racadm).
+Passphrases live on each iDRAC CG Host Interface. The iDRAC SNMPv3 user must be configured on each iDRAC (via iDRAC UI or racadm).
 #### HPE MSA API credentials (per-device)
 
 Dell Storage arrays (HPE MSA 2060) use the HPE MSA HTTP template — REST API, not SNMP. Each array has its own API account. Macro assignments are on each **Device**.
 
-| Macro | Target | Type | Env var |
+| Macro | Target | Type | Value |
 |---|---|---|---|
-| `{$HPE.MSA.API.HOST}` | Device (per array) | Text | `NBX_MSA_API_HOST_<HOSTNAME>` (IP or hostname only; template prepends `https://` and appends `:443/` via `{$HPE.MSA.API.SCHEME}` and `{$HPE.MSA.API.PORT}`) |
-| `{$HPE.MSA.API.USERNAME}` | Device (per array) | Text | `NBX_MSA_API_USER_<HOSTNAME>` |
-| `{$HPE.MSA.API.PASSWORD}` | Device (per array) | Secret | `NBX_MSA_API_PASS_<HOSTNAME>` |
+| `{$HPE.MSA.API.HOST}` | Device (per array) | Text | IP or hostname only; template prepends `https://` and appends `:443/` via `{$HPE.MSA.API.SCHEME}` and `{$HPE.MSA.API.PORT}` |
+| `{$HPE.MSA.API.USERNAME}` | Device (per array) | Text | API user |
+| `{$HPE.MSA.API.PASSWORD}` | Device (per array) | Secret | API password |
 
-| Array | Env var suffix |
-|---|---|
-| `CN-SHA-P-STOD01` | `NBX_MSA_API_*_CN_SHA_P_STOD01` |
+Array: `CN-SHA-P-STOD01`.
 
 The template authenticates via `sha256(username_password)` to `api/login/`, then polls `api/show/controllers`, `disks`, `pools`, etc. Both controllers are returned by a single API call — no separate SNMP walk needed.
 
 #### VMware vCenter SSO credentials (per-VM)
 
-SSO domains differ per site. The macro assignment is on each **VM** (not the role). Zerotouch **prunes** the legacy name `{$VMWARE.USER}`.
+SSO domains differ per site. The macro assignment is on each **VM** (not the role). Do **not** recreate the legacy name `{$VMWARE.USER}`.
 
-| Macro | Target | Type | Env var |
-|---|---|---|---|
-| `{$VMWARE.USERNAME}` | VM (per vCenter) | Secret | `NBX_VMWARE_USER_<HOSTNAME>` |
-| `{$VMWARE.PASSWORD}` | VM (per vCenter) | Secret | `NBX_VMWARE_PASS_<HOSTNAME>` |
-
-| vCenter | SSO domain | Env var prefix |
+| Macro | Target | Type |
 |---|---|---|
-| `ch-sta-p-vcsa02` | `VCENTER-SSO.SENSIRION` | `NBX_VMWARE_USER/PASS_CH_STA_P_VCSA02` |
-| `ch-sta-p-vcsa10` | `VCENTER-SSO.SENSIRION` | `NBX_VMWARE_USER/PASS_CH_STA_P_VCSA10` |
-| `hu-deb-p-vcsa01` | `HU.VSPHERE.LOCAL` | `NBX_VMWARE_USER/PASS_HU_DEB_P_VCSA01` |
-| `kr-sel-p-vcsa01` | `KR.VSPHERE.LOCAL` | `NBX_VMWARE_USER/PASS_KR_SEL_P_VCSA01` |
-| `cn-sha-p-vcsa01` | `cn.vsphere.lokal` | `NBX_VMWARE_USER/PASS_CN_SHA_P_VCSA01` |
+| `{$VMWARE.USERNAME}` | VM (per vCenter) | Secret |
+| `{$VMWARE.PASSWORD}` | VM (per vCenter) | Secret |
+
+| vCenter | SSO domain |
+|---|---|
+| `ch-sta-p-vcsa02` | `VCENTER-SSO.SENSIRION` |
+| `ch-sta-p-vcsa10` | `VCENTER-SSO.SENSIRION` |
+| `hu-deb-p-vcsa01` | `HU.VSPHERE.LOCAL` |
+| `kr-sel-p-vcsa01` | `KR.VSPHERE.LOCAL` |
+| `cn-sha-p-vcsa01` | `cn.vsphere.lokal` |
 
 Username format: `<SSO_DOMAIN>\LogicMonitor` (e.g. `VCENTER-SSO.SENSIRION\LogicMonitor`).
 
@@ -698,16 +688,16 @@ Username format: `<SSO_DOMAIN>\LogicMonitor` (e.g. `VCENTER-SSO.SENSIRION\LogicM
 
 Single service account across all MSSQL hosts. Assignment is on **DeviceRole = MSSQL**.
 
-| Macro | Target | Type | Env var |
-|---|---|---|---|
-| `{$MSSQL.USER}` | DeviceRole: MSSQL | Secret | `NBX_MSSQL_USER` |
-| `{$MSSQL.PASSWORD}` | DeviceRole: MSSQL | Secret | `NBX_MSSQL_PASS` |
+| Macro | Target | Type |
+|---|---|---|
+| `{$MSSQL.USER}` | DeviceRole: MSSQL | Secret |
+| `{$MSSQL.PASSWORD}` | DeviceRole: MSSQL | Secret |
 
 #### Huawei SAN01 (CG Host Interface — not a macro)
 
-`HU-DEB-SAN01` uses non-fleet SNMPv3 (`LogicMonitor` SHA/AES). Credentials live on the **SNMP Monitoring (Huawei)** configuration-group Host Interface (§5.6b), with the CG assigned on the **Device** (§5b). Passphrases from env `NBX_SNMP_AUTHPASS_HUAWEI` / `NBX_SNMP_PRIVPASS_HUAWEI` (only written when set). Zerotouch **prunes** per-device Host Interfaces and manufacturer/fleet SNMP CG on that device — do not recreate a device-level HI for Huawei.
+`HU-DEB-SAN01` uses non-fleet SNMPv3 (`LogicMonitor` SHA/AES). Credentials live on the **SNMP Monitoring (Huawei)** configuration-group Host Interface (§5.6b), with the CG assigned on the **Device** (§5b). Do **not** put a per-device Host Interface or fleet SNMP Monitoring on that device.
 
-If passphrases are unset, the OceanStor template will show "no data" until the env vars are provided and zerotouch re-run.
+If passphrases are unset, the OceanStor template will show "no data" until they are set on the CG Host Interface.
 
 SNMPv3 auth/priv passphrases for other profiles are **not** global or role macros: they live on the SNMP Host Interface (§5) and are pushed as secret **host** macros when SNMP push community is True.
 
@@ -715,7 +705,7 @@ SNMPv3 auth/priv passphrases for other profiles are **not** global or role macro
 
 ## 12. Plugin settings
 
-Ask the NetBox administrator to set the following under the nbxsync plugin configuration (adjust intervals if your environment differs). **Zerotouch does not write these** — GUI once.
+Ask the NetBox administrator to set the following under the nbxsync plugin configuration (adjust intervals if your environment differs).
 
 | Setting | Intended value |
 |---|---|
@@ -796,8 +786,6 @@ After the initial build, and after major changes, confirm coverage against §13.
 
 **Unprofiled / wrong template symptoms:** host missing in Zabbix, empty template list, or only partial stack vs §13. Use the [day-2 runbook §6](runbooks/day2.md#6-host-not-monitored--wrong-templates) ladder.
 
-**Optional onboarding census:** see [`scripts/README.md`](../../scripts/README.md) (`--verify`). Map gaps to that runbook.
-
 ---
 
 ## 16. Not driven by this integration
@@ -809,13 +797,4 @@ After the initial build, and after major changes, confirm coverage against §13.
 | NetBox inventory population / LM migration | Outside this checklist (data assumed present) |
 | SAP application content / DNUS scripts | Placeholder assignment in §7; content owned outside this integration |
 | Configuration backup | cfgit — not Zabbix / not nbxSync |
-
----
-
-## Appendix A — Optional onboarding scripts
-
-First-build helpers only — not day-2. Commands, env vars, flags, and run order: [`scripts/README.md`](../../scripts/README.md).  
-This checklist remains authoritative for the objects those scripts create.
-
-**Order:** `configure_nbxsync_zerotouch.py --apply` first, then `configure_nbxsync_network.py --apply`. The network script owns Extreme EXOS TemplateRule create/retarget, VOSS/IQ retarget off Network Generic, Switch* IFALIAS/IFTYPE MacroAssignments, destination globals / optional `--cutover-silence` / `--link-speed-expect`, stock EXOS EtherLike IFALIAS + `net.if.discovery` 15m, and Extreme TEMP_* template macro overrides.
 

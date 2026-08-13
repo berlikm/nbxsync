@@ -21,7 +21,7 @@ After the first build. Inventory is already in NetBox. Policy and GUI clicks: [`
 
 ## 2. New Extreme switch
 
-Role / platform / site / primary IP in NetBox. Sync should match the switch row in configuration §13. If VOSS still gets Network Generic, YAML is missing or the network script was not run after zerotouch.
+Role / platform / site / primary IP in NetBox. Sync should match the switch row in configuration §13. If VOSS still gets Network Generic, the VOSS template is missing or the Template Rule is not pointing at it.
 
 ---
 
@@ -68,6 +68,6 @@ Stages and Hybrid flip: Extreme switching doc. nbxSync: configuration §7 (capab
 | Cohesity VMs with primary IP → SNMP Monitoring | New Cohesity Appliance VMs |
 | Extreme labels / Hybrid / stages | Extreme switching doc |
 | `environment=Unknown` on hosts that should have `-p-` | Naming drift (switches without `-p-` are expected Unknown) |
-| No manufacturer Huawei SNMP CG; no per-device HI on HU-DEB-SAN01; no leftover SAP SNMP tag | After zerotouch |
+| No manufacturer Huawei SNMP CG; no per-device HI on HU-DEB-SAN01; no leftover SAP SNMP tag | After CG / credential changes |
 | Tag `onboarding` still has Zabbix `do_not_monitor`; ready hosts have the NetBox tag removed | Cutover waves |
 | iDRAC: ESXi AES256 / KR-CN AES128 / Cohesity Legacy | After CG / credential changes |
