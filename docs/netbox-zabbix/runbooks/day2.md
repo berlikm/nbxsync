@@ -7,7 +7,7 @@ After the first build. Inventory is already in NetBox. Policy and GUI clicks: [`
 ## 1. New Device Role
 
 1. Transport exception?
-   - Agent-class → nothing (Site Group Agent default). ICMP Ping comes with that CG.
+   - Agent-class → nothing (Site Group Agent default). ICMP Ping comes with that CG. Do not also assign ICMP Ping on the Site Group, role, or a tag.
    - Network SNMP → CG **SNMP Monitoring** (§5b). Do not add ICMP Ping (templates already have `icmpping`).
    - SPACE → **Agent Monitoring (SPACE)** (ICMP included on that CG)
    - SAP → **SAP Agent+SNMP** (one CG, both interfaces; ICMP included)
@@ -55,9 +55,10 @@ Stages and Hybrid flip: Extreme switching doc. nbxSync: configuration §7 (capab
 3. Winning configuration group (Device Zabbix tab). Wrong CG → wrong interfaces.
 4. Interfaces: Agent and/or SNMP as expected. iDRAC needs `oob_ip`. AES128 exceptions: device CG, no durable per-device HostInterface.
 5. Template needs Agent but host is SNMP-only → silent drop.
-6. Template Rules: platform vs regex; `require_tags`; enabled. All matching rules apply.
+6. Template Rules: platform vs regex; `require_tags`; enabled. All matching rules apply. vCenter + Linux by agent → Linux rule is missing the vCenter role exclusion (§6.1).
 7. Status mapping (§12) may disable or delete the host.
-8. Re-sync and compare to §13.
+8. Host rejected for duplicate `icmpping` → ICMP Ping is on a Site Group, Role, or Tag as well as an SNMP template. Keep ICMP only on the CGs in §6.4.
+9. Re-sync and compare to §13.
 
 ---
 
@@ -71,3 +72,4 @@ Stages and Hybrid flip: Extreme switching doc. nbxSync: configuration §7 (capab
 | No manufacturer Huawei SNMP CG; no per-device HI on HU-DEB-SAN01; no leftover SAP SNMP tag | After CG / credential changes |
 | Tag `onboarding` still has Zabbix `do_not_monitor`; ready hosts have the NetBox tag removed | Cutover waves |
 | iDRAC: ESXi AES256 / KR-CN AES128 / Cohesity Legacy | After CG / credential changes |
+| ICMP Ping only on Agent / SPACE / SAP / SNMP-by-tag CGs — not on Site Groups, Roles, or Tags | After ICMP / CG edits |

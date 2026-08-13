@@ -347,19 +347,19 @@ First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and valu
 
 ### 6.1 Platform → OS / network OS
 
-| Name | Pattern | Template | Hostgroup | Enabled |
-|---|---|---|---|---|
-| Windows catch-all | `Windows` | Windows by Zabbix agent | OS/Windows | Yes |
-| Linux | `Ubuntu\|Debian\|Linux\|Red Hat\|CentOS\|Alma\|SUSE\|Arch\|Photon\|Other.*Linux` | Linux by Zabbix agent | OS/Linux | Yes |
-| Extreme EXOS | `EXOS` | Extreme EXOS by SNMP | OS/Network | Yes |
-| Extreme VOSS | `VOSS` | Extreme VOSS by SNMP | OS/Network | Yes |
-| Extreme IQ Engine | `IQ ENGINE` | Extreme IQ Engine by SNMP | OS/Network | Yes |
-| FortiOS | `FORTIOS\|FortiOS` | FortiGate by SNMP | OS/Network | Yes |
-| FortiAnalyzer/Manager | `FortiAnalyzer\|FortiManager` | Network Generic Device by SNMP | OS/Network | Yes |
+| Name | Pattern | Role pattern | Template | Hostgroup | Enabled |
+|---|---|---|---|---|---|
+| Windows catch-all | `Windows` | — | Windows by Zabbix agent | OS/Windows | Yes |
+| Linux | `Ubuntu\|Debian\|Linux\|Red Hat\|CentOS\|Alma\|SUSE\|Arch\|Photon\|Other.*Linux` | `^(?!vCenter$).*` | Linux by Zabbix agent | OS/Linux | Yes |
+| Extreme EXOS | `EXOS` | — | Extreme EXOS by SNMP | OS/Network | Yes |
+| Extreme VOSS | `VOSS` | — | Extreme VOSS by SNMP | OS/Network | Yes |
+| Extreme IQ Engine | `IQ ENGINE` | — | Extreme IQ Engine by SNMP | OS/Network | Yes |
+| FortiOS | `FORTIOS\|FortiOS` | — | FortiGate by SNMP | OS/Network | Yes |
+| FortiAnalyzer/Manager | `FortiAnalyzer\|FortiManager` | — | Network Generic Device by SNMP | OS/Network | Yes |
 
-`Windows` already matches `Windows Server 2022`. Photon OS has no “Linux” in the platform name, so it is listed in the Linux pattern (there is no separate Photon rule).
+`Windows` already matches `Windows Server 2022`. `Photon` stays in the Linux pattern for platform names that only say Photon; names like `VMware Photon OS/Linux` already match `Linux`.
 
-A vCenter appliance with a Photon platform **also** gets Linux by agent (OS) plus VMware FQDN from the vCenter role (§7). That is intentional.
+**vCenter** appliances sit on that Photon/Linux platform. The Linux rule’s role pattern excludes role `vCenter`, so the appliance does **not** get Linux by agent (it would merge with VMware FQDN and is the wrong template). vCenter gets VMware FQDN from the role (§7) and ICMP Ping from the Agent CG (§6.4).
 
 **Do not recreate** the legacy rule `VMware ESXi`. Guests and hypervisors come from NetBox. On the VMware FQDN template, **disable LLD** `vmware.vm.discovery` and `vmware.hv.discovery`.
 
@@ -409,7 +409,7 @@ ICMP Ping is therefore assigned on the **configuration group** that already mean
 | SAP Agent+SNMP | SAP HANA / SAP ME |
 | SNMP Monitoring (by tag) | Hosts tagged `snmp` (Linux/Windows by SNMP have no icmpping) |
 
-Do **not** put ICMP Ping on fleet **SNMP Monitoring** or on iDRAC CGs.
+Do **not** put ICMP Ping on fleet **SNMP Monitoring**, on iDRAC CGs, or on **Site Groups / Device Roles / Tags**. A Site Group assignment is inherited by every switch and collides with Extreme / Forti / Huawei `icmpping` (Zabbix rejects the host). Only the four CGs in the table above.
 
 A new Agent-class Device Role needs **no ICMP edit**. A new Switch* role uses SNMP Monitoring and must **not** get this template.
 
@@ -759,7 +759,7 @@ Authoritative expected-state matrix (architecture links here; do not copy this t
 | Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP + ICMP Ping (rule **Dell Storage (HTTP)**; legacy HPE MSA disabled); macros `{$HPE.MSA.API.HOST}` / `{$HPE.MSA.API.USERNAME}` / `{$HPE.MSA.API.PASSWORD}` (§11.4) | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Cohesity physical (oob only) | Dell iDRAC SNMP (Legacy) (SHA1/AES128) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC** on oob | Sites/CH/…, Roles/Cohesity |
 | ESXi hypervisor (Dell) | Dell iDRAC SNMP (SHA384/AES256) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC SHA384/AES256** on oob | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
-| vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (+ OS template if platform matches); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
+| vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (**no** Linux by agent); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
 | Zabbix Proxy | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping + Remote Zabbix proxy health | Agent :10050 | Sites/…, Roles/Zabbix Proxy, OS/Linux |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
 | Brand-new role tomorrow | Agent Monitoring (from Site Group) unless listed in §5b | OS Template Rule if platform set; ICMP Ping from the Agent CG | Agent | Roles/\<new name\> appears automatically |
@@ -792,7 +792,7 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Sample ESXi (Dell) | CG **Dell iDRAC SNMP** (SHA384/AES256, role=ESXi Hypervisor); SNMPv3 `MONITORING-IDRAC` @ oob_ip; Dell iDRAC by SNMP; OS/VMware; **no** VMware FQDN; **no** Agent IF |
 | Sample Pure array | Agent Monitoring; FlashArray HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` |
 | Sample Zabbix Proxy | Agent; Linux by agent + ICMP Ping + Remote Zabbix proxy health; Roles/Zabbix Proxy |
-| Sample vCenter | VMware FQDN + `{$VMWARE.URL}` (primary IP `/sdk`) + `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}`; VM/HV LLD **disabled** — guests and hypervisors from NetBox |
+| Sample vCenter | VMware FQDN + ICMP Ping (Agent CG); **no** Linux by agent; `{$VMWARE.URL}` (primary IP `/sdk`) + `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}`; VM/HV LLD **disabled** — guests and hypervisors from NetBox |
 | Inventory `url_a` | Device → `/dcim/devices/<id>/`; VM → `/virtualization/virtual-machines/<id>/` |
 | Nested Sites path | Host is leaf under `Sites/CH/…`; parent groups exist without duplicating membership |
 | Host with `critical` | Also in hostgroup Priority/Critical |
