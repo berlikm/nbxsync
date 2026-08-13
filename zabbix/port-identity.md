@@ -41,7 +41,7 @@ If the port runs at the class default, **omit SPEED**. Refuse labels over 20 —
 
 **`X` excludes. `N` does not.** On Core/Dist/Mgmt, `N` / empty / unparseable labels are monitored (all admin-up except `X`). On **Access**, only **`USW` (to Dist) and `UP` (to AP)** are collected — no desk, laptop, `US`, `MON`, `UW`, `TMON`, or unlabelled. A laptop unplug cannot alert: there are no items.
 
-A mistyped Access `USW`/`UP` means **no items** for that uplink. The detector is a NetBox vs live `ifAlias` diff (later).
+Live stock **link-down is Average** for every discovered port. Class **High** for `USW`/`UP` is later — [01](01-extreme-switching.md).
 
 ---
 

@@ -121,7 +121,7 @@ CG **SNMP Monitoring** on role Access Point. No role-level template floor.
 {$IFCONTROL}         = 1
 ```
 
-Radio + eth LLD: **1h**, keep-lost **0**. Re-import the YAML after this revision (severities and DISABLED flags live in the template, not in NetBox macros).
+Radio + eth LLD: **1h**, keep-lost **0**. Inventory (name/serial/fw/hw) **1h**. Health (CPU/mem/temp/clients) **1m**. Radio items **5m**. Re-import the YAML after this revision (poll delays and DISABLED flags live in the template).
 
 ---
 

@@ -13,7 +13,7 @@ zabbix_export:
       Scalar full-neighbour count alerts; per-neighbour LLD is diagnosis only.
 
 
-      See docs/extreme-switching-zabbix.md ┬ºC.
+      See zabbix/01-extreme-switching.md (Routing — not linked until OSPF canary).
 
       '
     groups:

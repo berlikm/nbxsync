@@ -110,8 +110,12 @@ zabbix_export:
       key: ah.system.name
       value_type: CHAR
       trends: '0'
-      delay: 1m
+      delay: 1h
       history: 7d
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 6h
       tags:
       - tag: component
         value: system
@@ -122,8 +126,12 @@ zabbix_export:
       key: ah.system.description
       value_type: CHAR
       trends: '0'
-      delay: 1m
+      delay: 1h
       history: 7d
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 6h
       tags:
       - tag: component
         value: system
@@ -199,8 +207,12 @@ zabbix_export:
       key: ah.system.serial
       value_type: CHAR
       trends: '0'
-      delay: 1m
+      delay: 1h
       history: 7d
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 6h
       tags:
       - tag: component
         value: system
@@ -211,8 +223,12 @@ zabbix_export:
       key: ah.system.device.mode
       value_type: CHAR
       trends: '0'
-      delay: 1m
+      delay: 1h
       history: 7d
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 6h
       tags:
       - tag: component
         value: system
@@ -223,8 +239,12 @@ zabbix_export:
       key: ah.system.uptime
       value_type: CHAR
       trends: '0'
-      delay: 1m
+      delay: 1h
       history: 7d
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 6h
       tags:
       - tag: component
         value: system
@@ -235,8 +255,12 @@ zabbix_export:
       key: ah.system.hw.version
       value_type: CHAR
       trends: '0'
-      delay: 1m
+      delay: 1h
       history: 7d
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 6h
       tags:
       - tag: component
         value: system
@@ -309,7 +333,7 @@ zabbix_export:
       key: ah.system.fan.rpm
       value_type: FLOAT
       trends: 365d
-      delay: 1m
+      delay: 1h
       history: 7d
       units: rpm
       description: |
@@ -334,8 +358,12 @@ zabbix_export:
       key: ah.system.firmware
       value_type: CHAR
       trends: '0'
-      delay: 1m
+      delay: 1h
       history: 7d
+      preprocessing:
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 6h
       tags:
       - tag: component
         value: system
