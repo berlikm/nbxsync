@@ -42,6 +42,39 @@ python scripts/configure_nbxsync_network.py --apply
 
 Always finish with the network script so VOSS / IQ Engine Template Rules are not left on Network Generic.
 
+
+## Re-syncing a single host (testing)
+
+To test a configuration change on **one host** without wiping all Zabbix Cloud hosts:
+
+1. Re-run zerotouch (idempotent — updates NetBox plugin objects only):
+   ```bash
+   export NBX_ZABBIX_TOKEN=... (and all env vars)
+   python scripts/configure_nbxsync_zerotouch.py
+   ```
+
+2. Force a re-sync of the specific host from NetBox → Zabbix Cloud:
+   ```bash
+   cd /opt/netbox/netbox
+   sudo bash -c 'set -a; source /etc/netbox.env; set +a; \
+     PYTHONPATH=. DJANGO_SETTINGS_MODULE=netbox.settings \
+     /opt/netbox/venv/bin/python3 -c "
+       import django; django.setup()
+       from dcim.models import Device
+       from nbxsync.jobs.synchost import SyncHostJob
+       dev = Device.objects.filter(name__iexact=\"HOSTNAME\").first()
+       SyncHostJob(instance=dev).run()
+       print(\"Synced %s\" % dev.name)
+     "'
+   ```
+
+The sync **overwrites** the existing Zabbix host in place — templates, interfaces,
+macros, and tags are re-applied from the current NetBox configuration. No need to
+delete and re-create the host. Use this for testing template/CG changes on one host.
+
+**Do NOT delete all hosts from Zabbix Cloud for testing.** Only delete + re-sync
+the specific host you are changing.
+
 Optional: `--verify` (census), `--link-speed-expect` (Extreme stage 4), `--cutover-silence` (temporary LM overlay).
 
 ## Who writes which rows
