@@ -291,12 +291,6 @@ First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and valu
 | FortiOS | `FORTIOS\|FortiOS` | — | FortiGate by SNMP | OS/Network | Yes |
 | FortiAnalyzer/Manager | `FortiAnalyzer\|FortiManager` | — | Network Generic Device by SNMP | OS/Network | Yes |
 
-`Windows` already matches `Windows Server 2022`. `Linux` already matches names that contain Linux (including Red Hat Enterprise Linux). Ubuntu / Debian / CentOS / Alma / SUSE / Arch are listed because those platform names often do not contain `Linux`.
-
-**vCenter:** VMware FQDN on the role (§7) + ICMP Ping from the Agent CG (§6.4). Linux by agent only if the vCenter VM’s platform matches the Linux rule.
-
-**Extreme:** VOSS and IQ Engine templates must exist in Zabbix before those Template Rules (otherwise the host has no vendor template). Never Network Generic on Switch* (`icmpping` collision). Values → [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md); labels → [`port-identity.md`](../../zabbix/port-identity.md); nbxSync clicks → §11.1.
-
 ### 6.2 Tag overlays
 
 Use together with the matching configuration group for transport.
@@ -307,7 +301,9 @@ Use together with the matching configuration group for transport.
 | SNMP Windows (tag) | `Windows` | Windows by SNMP | OS/Windows | `snmp` |
 | Oracle (tag) | `.*` | Oracle by Zabbix agent 2 | — | `oracle` |
 
-Tag `snmp` also selects CG **SNMP Monitoring (by tag)** (§5b). The agent OS rule still matches; HostSync **drops** the agent template because the host has only an SNMP interface. Tag `oracle` merges with the OS template.
+Tag `snmp` also selects CG **SNMP Monitoring (by tag)** (§5b). The agent OS rule still matches; HostSync **drops** the agent template because the host has only an SNMP interface.
+
+Tag `oracle` does **not** change transport. Pattern `.*` + require tag `oracle` → **Oracle by Zabbix agent 2** on that Device/VM, merged with whatever OS template the platform rule already attached. Windows with Oracle: tag the host `oracle` (keeps Windows by agent). Space Server with Oracle: same — tag the Device/VM; it stays on **Agent Monitoring (SPACE)** (:10060). The Oracle template needs an **Agent** interface (SPACE has one). SNMP-only hosts drop it. Dedicated DB servers also get Oracle from role **Database** (§7) — the tag is the overlay for any other role.
 
 ### 6.3 Manufacturer ∧ role (vendor products)
 
@@ -444,7 +440,7 @@ Create NetBox tags `critical`, `snmp`, and `onboarding` if they are missing. `or
 |---|---|---|
 | `critical` | Hostgroup `Priority/Critical` (§8.4) | Device/VM |
 | `snmp` | Transport → **SNMP Monitoring (by tag)** + Linux/Windows by SNMP templates | Device/VM |
-| `oracle` | Links **Oracle by Zabbix agent 2** (merges with OS template) | Device/VM |
+| `oracle` | **Oracle by Zabbix agent 2** on that Device/VM (merges with OS template; any role, including Space Server / Windows) | Device/VM |
 | `onboarding` | Sync hold — inherits Zabbix exclude via Tag assignment (§9.3). **Remove this NetBox tag to start monitoring.** | Device/VM |
 
 Permanent never-monitor: Zabbix tag `do_not_monitor` on the Device Role — §9.3. Phased cutover: [`runbooks/onboarding.md`](runbooks/onboarding.md).
