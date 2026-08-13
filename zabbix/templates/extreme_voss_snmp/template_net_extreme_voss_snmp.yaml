@@ -2287,7 +2287,7 @@ zabbix_export:
       value: '3'
       description: VOSS rcVossSystemTemperatureStatus highCritial(3)
     - macro: '{$TEMP_WARN}'
-      value: '90'
+      value: '95'
       description: 'Chassis °C warning (destination). Prefer vendor status for hard alarm.'
     - macro: '{$VIST.CONTROL}'
       value: '0'

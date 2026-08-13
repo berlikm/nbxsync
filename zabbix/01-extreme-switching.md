@@ -449,11 +449,6 @@ One template set for every role — never a per-role copy of the template. Two c
 
 ```
 {$IF.UTIL.MAX}                = 101          # stock util% off until stage 6 context macros
-{$TEMP_WARN}                  = 90           # EXOS G2+ / VOSS — NOT stock 55
-{$TEMP_CRIT}                  = 100          # NOT stock 65 (GTAC 000088439: Normal often to 100)
-# extremeCurrentTemperature is an *internal* sensor, not ambient.
-# Prefer vendor overTemp *status* as the hard alarm.
-{$TEMP_CRIT_LOW}              = -273         # silence stack-returns-0 false positive
 {$OPTIC.TEMP.CRIT}            = 70           # optic °C value trigger; prefer DOM *Status
 {$OPTIC.TEMP.MAX}             = 150          # drop garbage DOM readings
 {$OPTIC.RX.DBM.MIN}           = -100         # RX dBm value trigger removed; DOM status only
@@ -468,7 +463,15 @@ One template set for every role — never a per-role copy of the template. Two c
 {$PORTID.LLD.IFTYPE.MATCHES}  = ^6$
 ```
 
-Stock **Extreme EXOS by SNMP** also defines template-level `{$TEMP_WARN}=55` / `{$TEMP_CRIT}=65`, which **override** globals. `configure_nbxsync_network.py` patches those (and VOSS) to the destination values above — globals alone are not enough. IQ Engine keeps AP-specific 70/85.
+**Extreme EXOS / VOSS templates only** (not global — a global would hit servers, storage, APs). Stock EXOS ships `{$TEMP_WARN}=55` / `{$TEMP_CRIT}=65`. Destination:
+
+```
+{$TEMP_WARN}                  = 95           # G2+ / VOSS internal sensor — not stock 55
+{$TEMP_CRIT}                  = 100          # not stock 65 (GTAC 000088439: Normal often to 100)
+{$TEMP_CRIT_LOW}              = -273         # silence stack-returns-0 false positive
+```
+
+`extremeCurrentTemperature` is an *internal* sensor, not ambient. Prefer vendor overTemp *status* as the hard alarm. IQ Engine keeps AP-specific 70/85.
 
 **Temporary cutover silence** (optional overlay during LogicMonitor migration noise only — not the target architecture). Re-apply destination values as soon as first-light noise is understood:
 

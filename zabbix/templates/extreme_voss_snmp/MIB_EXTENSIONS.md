@@ -43,7 +43,7 @@ OID base: `1.3.6.1.4.1.2272.1` unless noted.
 | `{$OPTIC.RX.DBM.FLOOR}` | `-39` | Legacy |
 | `{$OPTIC.DOM.ALARM_HIGH}` / `LOW` | `3` / `5` | Vendor DOM highAlarm / lowAlarm |
 | `{$MLT.CONTROL}` | `1` | Gate MLT agg-down; trigger also requires `.diff()` |
-| `{$TEMP_WARN}` / `{$TEMP_CRIT}` | `90` / `100` | Chassis °C destination |
+| `{$TEMP_WARN}` / `{$TEMP_CRIT}` | `95` / `100` | Chassis °C destination |
 | `{$IF.FLAP.WARN}` | `0` | Flap change threshold (context) |
 
 Temporary LM silence (`TEMP`/`OPTIC` = 999, `MLT.CONTROL` = 0) is an optional script overlay (`--cutover-silence`), not the template default.

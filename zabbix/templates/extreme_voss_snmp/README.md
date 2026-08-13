@@ -36,7 +36,7 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 | `{$TEMP_CRIT_STATUS}` | `3` | `rcVossSystemTemperatureStatus` highCritial |
 | `{$CPU.UTIL.CRIT}` | (from EXOS base) | Slot CPU util % |
 | `{$MEMORY.UTIL.MAX}` | (from EXOS base) | Slot memory util % |
-| `{$TEMP_WARN}` / `{$TEMP_CRIT}` | **90** / **100** | Chassis °C destination (not stock 55/65) |
+| `{$TEMP_WARN}` / `{$TEMP_CRIT}` | **95** / **100** | Chassis °C destination (not stock 55/65) |
 | `{$TEMP_CRIT_LOW}` | **-273** | Silence stack/VM 0 °C false positive |
 | `{$OPTIC.TEMP.CRIT}` / `{$OPTIC.TEMP.MAX}` | **70** / 150 | °C value trigger; clamp garbage |
 | `{$OPTIC.RX.DBM.MIN}` / `FLOOR` | −100 / −39 | Legacy; RX alerts are DOM status only |
