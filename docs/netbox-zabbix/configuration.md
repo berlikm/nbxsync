@@ -124,7 +124,7 @@ Create one assignment per country Site Group. Set a **proxy or a proxy group** �
 
 Path: **Zabbix → Configuration groups → Add**
 
-Each group is one **transport + credential** profile. Why these groups exist and which NetBox facts select them: [`architecture.md`](architecture.md). Different SNMPv3 users stay on separate groups.
+Each group is one **transport + credential** profile. Different SNMPv3 users stay on separate groups. Which objects use which group: §5b.
 
 | Name | Credential / port | Purpose |
 |---|---|---|
@@ -432,8 +432,6 @@ Assigned on the **role**, not on the platform Template Rule. Enablement order: [
 
 Path: **Zabbix → Hostgroups → Add**, then assignments on each hostgroup or from the Site Group / tag Zabbix tab.
 
-Axes (Sites / Roles / OS / Priority): [`architecture.md`](architecture.md). Below are the Jinja values and assignment clicks only.
-
 ### 8.1 Sites
 
 | Name | Value | Assign to |
@@ -702,8 +700,6 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 ---
 
 ## 13. What a typical host should look like
-
-Authoritative expected-state matrix (architecture links here; do not copy this table elsewhere).
 
 | Object | Configuration group | Typical templates | Interfaces | Hostgroups |
 |---|---|---|---|---|
