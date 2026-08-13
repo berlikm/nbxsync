@@ -84,9 +84,9 @@ Roadmap / known debt:
   - Cohesity VM selector: step5b queries VMs by role='Cohesity' + primary_ip4.
     Future: use a tag or cluster type instead of inventory scrape so new VMs
     don't require a re-run.
-  - Stage 6 capacity macros: zerotouch stops at destination globals ($IF.UTIL.MAX=101,
-    raised TEMP_*, optic floors). Context macros like {$IF.UTIL.MAX:"USW"} are
-    post-cutover (Extreme doc §7 stage 6).
+  - Stage 6 capacity macros: Extreme destination globals ($IF.UTIL.MAX=101,
+    optic floors) are applied by the network script. TEMP_* live on EXOS/VOSS
+    templates only. Context macros like {$IF.UTIL.MAX:"USW"} are post-cutover.
 
   # Read-only census (coverage gaps)
   python scripts/configure_nbxsync_zerotouch.py --verify
@@ -256,7 +256,6 @@ SNMP_ROLES = [
     'Switch Dist',
     'Switch Access',
     'Switch Mgmt',
-    'Switch Hybrid',
     'Access Point',
     'Firewall',
     'Network Device',
@@ -1709,8 +1708,9 @@ def step7_template_assignments(server):
                 logger.info('  PRUNED: %s Storage Generic assignment(s) from Storage role (manufacturer rules cover it)', deleted)
 
     # Prune legacy Switch*/AP → Network Generic floors (icmpping collision with EXOS/etc.).
+    # Include Switch Hybrid so a leftover role from older applies is cleaned, not recreated.
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    for role_name in ('Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Access Point'):
+    for role_name in ('Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Switch Hybrid', 'Access Point'):
         try:
             role = get_role(role_name)
         except DeviceRole.DoesNotExist:
@@ -2768,7 +2768,7 @@ def run_simulate() -> int:
         netgeneric_tpl = M.ZabbixTemplate.objects.filter(zabbixserver=server, name__icontains='Network Generic Device by SNMP').first()
         switch_floor_left = 0
         if netgeneric_tpl is not None:
-            for role_name in ('Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Access Point'):
+            for role_name in ('Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt', 'Switch Hybrid', 'Access Point'):
                 try:
                     role = get_role(role_name)
                 except DeviceRole.DoesNotExist:

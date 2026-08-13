@@ -82,7 +82,7 @@ Optional: `--verify` (census), `--link-speed-expect` (Extreme stage 4), `--cutov
 | Concern | Zerotouch | Network |
 |---|---|---|
 | Country SiteGroup Agent default | yes | assumes present |
-| SNMP Monitoring on Switch* (incl. Hybrid) | yes | assumes present |
+| SNMP Monitoring on Switch Core/Dist/Access/Mgmt + AP | yes | assumes present |
 | Linux SNMP CG on tag `snmp`; SAP CG on SAP HANA / SAP ME | yes | — |
 | Dell iDRAC SNMPv3 / SPACE :10060 | yes | — |
 | Extreme TemplateRules (EXOS/VOSS/IQ) | placeholder / ensure | import + retarget |

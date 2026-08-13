@@ -32,12 +32,9 @@ TEMPLATES = {
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
 }
 
-# Design §A.8 — destination globals + speed-expect LLD filters
+# Destination globals + speed-expect LLD filters (TEMP_* are template-only).
 GLOBAL_MACROS = {
     '{$IF.UTIL.MAX}': '101',
-    '{$TEMP_WARN}': '90',
-    '{$TEMP_CRIT}': '100',
-    '{$TEMP_CRIT_LOW}': '-273',
     '{$OPTIC.TEMP.CRIT}': '70',
     '{$OPTIC.TEMP.MAX}': '150',
     '{$OPTIC.RX.DBM.MIN}': '-100',
@@ -60,9 +57,10 @@ ROLE_MACROS = {
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
     },
     'access': {
-        '{$NET.IF.IFALIAS.MATCHES}': '^(USW|US|UP|MON|UW|TMON)(-|$)',
+        '{$NET.IF.IFALIAS.MATCHES}': '^(USW|UP)(-|$)',
         '{$NET.IF.IFALIAS.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
+        '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|UP)(-|$)',
     },
 }
 
@@ -218,7 +216,7 @@ def verify_template_macros(api: ZabbixAPI, templateid: str) -> None:
     macros = {m['macro']: m['value'] for m in api.call('usermacro.get', {'hostids': templateid, 'output': 'extend'})}
     checks = {
         '{$IF.UTIL.MAX}': '101',
-        '{$TEMP_WARN}': '90',
+        '{$TEMP_WARN}': '95',
         '{$TEMP_CRIT}': '100',
         '{$TEMP_CRIT_LOW}': '-273',
         '{$OPTIC.TEMP.CRIT}': '70',
@@ -403,7 +401,7 @@ def main() -> int:
     )
     record(
         'access opt-in classes',
-        'USW' in ROLE_MACROS['access']['{$NET.IF.IFALIAS.MATCHES}'],
+        ROLE_MACROS['access']['{$NET.IF.IFALIAS.MATCHES}'] == '^(USW|UP)(-|$)',
         ROLE_MACROS['access']['{$NET.IF.IFALIAS.MATCHES}'],
         group='semantics',
     )

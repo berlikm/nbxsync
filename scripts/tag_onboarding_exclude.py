@@ -6,7 +6,7 @@ Run AFTER configure_nbxsync_zerotouch.py has created the onboarding tag
 and the do_not_monitor → onboarding Tag→exclude assignment.
 
 Only infrastructure roles are left untagged (they go to Zabbix immediately):
-  - Switches (Core/Dist/Access/Mgmt/Hybrid)
+  - Switches (Core/Dist/Access/Mgmt)
   - Access Points
   - Network Device
   - Virtual Appliance
@@ -46,7 +46,6 @@ INFRASTRUCTURE_ROLES = [
     'Switch Dist',
     'Switch Access',
     'Switch Mgmt',
-    'Switch Hybrid',
     'Access Point',
     'Network Device',
     'Virtual Appliance',

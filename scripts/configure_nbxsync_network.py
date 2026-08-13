@@ -25,7 +25,7 @@ Stage matrix (what each flag enables):
   ``--apply``                     = stages 0–3: template imports + EXOS/VOSS/IQ rules + IFALIAS + destination globals + TEMP patches
   ``--apply --link-speed-expect`` = stage 4: + Speed Expect template assignments on Switch roles
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
-  Routing / Hybrid flip / Stage 6 context macros = manual (Extreme doc §7)
+  Routing / Stage 6 context macros = manual (Extreme switching page)
 
 Import policy:
   YAML imports use deleteMissing=False (safe — retired items linger but templates don't lose content).
@@ -122,8 +122,10 @@ TEMPLATE_FILES = {
     / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
 }
 
-# Role → port-scoping macros (01 §A.5 / §A.8). Hybrid starts access/opt-in.
-# Core / Dist / Mgmt = all ethernet/LAG except X*. Access / Hybrid = labelled opt-in.
+# Role → port-scoping macros (zabbix/01-extreme-switching.md).
+# Core / Dist / Mgmt = every admin-up ethernet/LAG except X*.
+# Access = USW (to Dist) and UP (to AP) only — no desk/laptop/US/MON/UW/TMON.
+# There is no Switch Hybrid role.
 ROLE_MACROS = {
     'Switch Core': {
         '{$NET.IF.IFALIAS.MATCHES}': '.*',
@@ -141,14 +143,11 @@ ROLE_MACROS = {
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
     },
     'Switch Access': {
-        '{$NET.IF.IFALIAS.MATCHES}': '^(USW|US|UP|MON|UW|TMON)(-|$)',
+        '{$NET.IF.IFALIAS.MATCHES}': '^(USW|UP)(-|$)',
         '{$NET.IF.IFALIAS.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
-    },
-    'Switch Hybrid': {
-        '{$NET.IF.IFALIAS.MATCHES}': '^(USW|US|UP|MON|UW|TMON)(-|$)',
-        '{$NET.IF.IFALIAS.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
-        '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
+        # Speed Expect uses PORTID.* not NET.IF.* — override or US/MON leak in.
+        '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|UP)(-|$)',
     },
 }
 
@@ -750,7 +749,7 @@ def step_speed_expect_assignment(server, tpl: dict[str, M.ZabbixTemplate], *, li
         logger.info('  Speed Expect: not linked (pass --link-speed-expect for stage 4)')
         return
     t = tpl['Extreme Port Speed Expect by SNMP']
-    for role_name in ('Switch Core', 'Switch Dist', 'Switch Mgmt', 'Switch Access', 'Switch Hybrid'):
+    for role_name in ('Switch Core', 'Switch Dist', 'Switch Mgmt', 'Switch Access'):
         try:
             role = get_role(role_name)
         except DeviceRole.DoesNotExist:
@@ -1013,7 +1012,6 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             ('voss_dist', 'Switch Dist', plat_voss),
             ('voss_access', 'Switch Access', plat_voss),
             ('exos_core', 'Switch Core', plat_exos),
-            ('voss_hybrid', 'Switch Hybrid', plat_voss),
         ]:
             d = Device.objects.create(
                 name=f'{PREFIX}{key}',
@@ -1068,8 +1066,18 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             group='resolve',
         )
         m_acc = macro_map(objects['voss_access'])
-        record('access_ifalias_opt_in', 'USW' in (m_acc.get('{$NET.IF.IFALIAS.MATCHES}') or ''), str(m_acc), group='resolve')
-        record('hybrid_opt_in_like_access', 'USW' in (macro_map(objects['voss_hybrid']).get('{$NET.IF.IFALIAS.MATCHES}') or ''), str(macro_map(objects['voss_hybrid'])), group='resolve')
+        record(
+            'access_ifalias_usw_and_up_only',
+            m_acc.get('{$NET.IF.IFALIAS.MATCHES}') == '^(USW|UP)(-|$)',
+            str(m_acc),
+            group='resolve',
+        )
+        record(
+            'access_portid_usw_and_up_only',
+            m_acc.get('{$PORTID.LLD.IFALIAS.MATCHES}') == '^(USW|UP)(-|$)',
+            str(m_acc),
+            group='resolve',
+        )
         record(
             'voss_rule_not_netgeneric',
             M.ZabbixTemplateRule.objects.filter(name='Extreme VOSS').exclude(zabbixtemplate__name__icontains='Network Generic').exists(),
@@ -1131,7 +1139,18 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             h_a = host(objects['voss_access'].name)
             if h_a:
                 macros = {m['macro']: m.get('value', '') for m in (h_a.get('macros') or []) if isinstance(m, dict) and 'macro' in m}
-                record('zbx_access_opt_in', 'USW' in (macros.get('{$NET.IF.IFALIAS.MATCHES}') or ''), str(macros), group='zabbix')
+                record(
+                    'zbx_access_ifalias_usw_and_up',
+                    macros.get('{$NET.IF.IFALIAS.MATCHES}') == '^(USW|UP)(-|$)',
+                    str(macros),
+                    group='zabbix',
+                )
+                record(
+                    'zbx_access_portid_usw_and_up',
+                    macros.get('{$PORTID.LLD.IFALIAS.MATCHES}') == '^(USW|UP)(-|$)',
+                    str(macros),
+                    group='zabbix',
+                )
 
             h_e = host(objects['exos_core'].name)
             if h_e:
@@ -1139,17 +1158,10 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 record('zbx_exos_template', any('EXOS' in (n or '') for n in tpls), str(tpls), group='zabbix')
 
             gmacros = {m['macro']: m.get('value', '') for m in (api.usermacro.get(globalmacro=True, output='extend') or []) if isinstance(m, dict) and 'macro' in m}
-            expect_temp = GLOBAL_MACROS['{$TEMP_WARN}']
             expect_mlt = GLOBAL_MACROS['{$MLT.CONTROL}']
             record('zbx_global_util_off', gmacros.get('{$IF.UTIL.MAX}') == '101', gmacros.get('{$IF.UTIL.MAX}'), group='zabbix')
-            record('zbx_global_temp_warn', gmacros.get('{$TEMP_WARN}') == expect_temp, gmacros.get('{$TEMP_WARN}'), group='zabbix')
             record('zbx_global_mlt_control', gmacros.get('{$MLT.CONTROL}') == expect_mlt, gmacros.get('{$MLT.CONTROL}'), group='zabbix')
-            record(
-                'zbx_global_destination_temp_crit',
-                gmacros.get('{$TEMP_CRIT}') == GLOBAL_MACROS['{$TEMP_CRIT}'],
-                gmacros.get('{$TEMP_CRIT}'),
-                group='zabbix',
-            )
+            # TEMP_* are template-only (EXOS/VOSS). Asserted earlier as template_temp_assert_*.
 
         passed = sum(1 for r in RESULTS if r['ok'])
         total = len(RESULTS)
