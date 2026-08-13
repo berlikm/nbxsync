@@ -421,7 +421,7 @@ Created in §6. Membership: platform Template Rules for OS/Windows, OS/Linux, OS
 
 ### 8.4 Priority / Critical
 
-Devices tagged `critical` in NetBox sync into Zabbix hostgroup `Priority/Critical` — no per-device hostgroup rows.
+**NetBox tag** `critical` on the Device/VM. The hostgroup assignment sits on that tag (not on each device). Sync puts those hosts in Zabbix hostgroup `Priority/Critical`.
 
 | Name | Value | Assign to |
 |---|---|---|
