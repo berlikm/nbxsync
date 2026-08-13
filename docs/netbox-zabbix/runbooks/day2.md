@@ -36,7 +36,7 @@ Stages and Hybrid flip: Extreme switching doc. nbxSync: configuration §7 (capab
 1. Does an existing Template Rule already match the real platform name? (§6)
 2. If not, add or extend a rule. Every matching rule contributes.
 3. Template interface requirements must match the host transport.
-4. ESXi: role **ESXi Hypervisor**, CG Dell iDRAC SNMP @ oob_ip. Do not recreate a VMware ESXi platform rule. VMware FQDN stays on role **vCenter**. OS/VMware is on the ESXi role.
+4. ESXi: role **ESXi Hypervisor**, CG Dell iDRAC SNMP @ oob_ip. No VMware ESXi platform Template Rule. VMware FQDN stays on role **vCenter**. OS/VMware is on the ESXi role.
 
 ---
 
