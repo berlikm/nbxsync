@@ -1741,6 +1741,17 @@ def step7_template_assignments(server):
             )
             logger.info('  ICMP Ping → CG %s', cg.name)
 
+        # Prune ICMP Ping from SiteGroups, DeviceRoles, Tags — only CGs (above)
+        # carry it. SiteGroup-level ICMP collides with icmpping in SNMP templates
+        # (Extreme EXOS, FortiGate, Huawei) that all devices inherit.
+        _prune_cts = [ct(SiteGroup), ct(DeviceRole), ct(Tag)]
+        _stale_icmp, _ = M.ZabbixTemplateAssignment.objects.filter(
+            zabbixtemplate=tpl_icmp,
+            assigned_object_type__in=_prune_cts,
+        ).delete()
+        if _stale_icmp:
+            logger.info('  PRUNED: %s stale ICMP Ping assignment(s) from SiteGroups/Roles/Tags', _stale_icmp)
+
     # Transport-only CGs except ICMP on the agent-plane set above.
     # Linux/Windows by SNMP come from tag TemplateRules, not from the CG.
     icmp_keep_ids = set()
