@@ -248,7 +248,7 @@ Without these assignments, the group’s interfaces are not applied during sync.
 
 | Configuration group | Assigned to |
 |---|---|
-| SNMP Monitoring | Switch Core / Dist / Access / Mgmt / **Hybrid** |
+| SNMP Monitoring | Switch Core / Dist / Access / Mgmt |
 | SNMP Monitoring | Access Point |
 | SNMP Monitoring | Firewall |
 | SNMP Monitoring | Network Device |
@@ -416,7 +416,7 @@ Assigned on the **role**, not on the platform Template Rule. Enablement order: [
 
 | Template | Assigned to |
 |---|---|
-| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt / Hybrid |
+| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt |
 | Extreme Routing by SNMP | Switch Core, Switch Dist |
 
 ---
@@ -577,10 +577,10 @@ Set `{$NET.IF.IFALIAS.MATCHES}`, `{$NET.IF.IFALIAS.NOT_MATCHES}`, and `{$NET.IF.
 
 | What to create in nbxSync | Where values and meaning live |
 |---|---|
-| Role macros `{$NET.IF.IFALIAS.MATCHES}`, `{$NET.IF.IFALIAS.NOT_MATCHES}`, `{$NET.IF.IFTYPE.MATCHES}` on Switch Core / Dist / Mgmt / Access / Hybrid | [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md) §5 Role model and §8 Macro assignments |
+| Role macros `{$NET.IF.IFALIAS.MATCHES}`, `{$NET.IF.IFALIAS.NOT_MATCHES}`, `{$NET.IF.IFTYPE.MATCHES}` on Switch Core / Dist / Mgmt / Access | [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md) §5 Role model and §8 Macro assignments |
 | Fleet / template destination macros (TEMP_*, optics, MLT, Speed Expect) | Same doc §8 |
 | On-box port label grammar | [`zabbix/port-identity.md`](../../zabbix/port-identity.md) |
-| Hybrid flip Access→Core, stages 4–6 | Extreme doc §7 Staged rollout |
+| Staged enablement | Extreme doc §7 |
 
 The Extreme doc is authoritative for values. This checklist only requires that the nbxSync macro assignments exist.
 
@@ -695,7 +695,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 | SAP HANA / SAP ME | **SAP Agent+SNMP** | Linux by agent + **SAP template from Sensirion** + ICMP Ping | Agent :10050 + SNMP `SAPUSER` | Sites/…, Roles/SAP HANA or SAP ME, OS/Linux |
 | Host with tag `snmp` only | SNMP Monitoring (by tag) via tag | Linux or Windows by SNMP + ICMP Ping | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
 | EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP (+ role IFALIAS macros) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
-| VOSS Switch Core/Access/Hybrid | SNMP Monitoring | Extreme VOSS by SNMP (**not** Network Generic) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
+| VOSS Switch Core/Access | SNMP Monitoring | Extreme VOSS by SNMP (**not** Network Generic) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
 | Access Point | SNMP Monitoring | Extreme IQ Engine / platform template (**not** Network Generic) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Access Point, OS/Network |
 | Firewall | SNMP Monitoring | Platform/role template (FortiGate, …) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/…, OS/Network |
 | Space Server | Agent Monitoring (SPACE) | OS by agent + ICMP Ping | Agent **:10060** | Sites/CH/…, Roles/Space Server, OS/… |
@@ -737,7 +737,6 @@ After the initial build, and after major changes, confirm coverage against §13.
 |---|---|
 | Sample Linux server | Site Group **Agent Monitoring**; Agent :10050 @ primary; **ICMP Ping**; OS/Linux; Roles/Server; leaf under `Sites/CH/…` |
 | Sample VOSS switch | SNMP Monitoring; **Extreme VOSS by SNMP**; same role IFALIAS as EXOS peer role; no Network Generic; single `icmpping` |
-| Sample Switch Hybrid | SNMP Monitoring; platform template (EXOS/VOSS); IFALIAS as on the Hybrid role (Extreme doc) |
 | Sample Windows VM | Agent; Windows by agent; ICMP Ping (Agent CG); OS/Windows; leaf under `Sites/CH/…` |
 | Sample SAP HANA / ME | CG **SAP Agent+SNMP**; Agent :10050 + SNMP `SAPUSER`; Linux + SAP template from Sensirion + ICMP; **no** Site Group Agent CG |
 | Sample ESXi (Dell) | CG **Dell iDRAC SNMP** (SHA384/AES256, role=ESXi Hypervisor); SNMPv3 `MONITORING-IDRAC` @ oob_ip; Dell iDRAC by SNMP; OS/VMware; **no** VMware FQDN; **no** Agent IF |
