@@ -2,24 +2,40 @@
 
 One sentence: what this is, and whether platforms in this domain share the same alerts.
 
-NetBox clicks (if any): [`../docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) §…. Extra grammar (if any): link it.
+Filled example (now): [01-extreme-switching.md](01-extreme-switching.md), [02-extreme-access-points.md](02-extreme-access-points.md).  
+Prepared the same way: [03-fortinet.md](03-fortinet.md), [06-network-vms.md](06-network-vms.md).
 
-Filled example: [01-extreme-switching.md](01-extreme-switching.md).
+Copy this file. Keep it one short page. OID walks and lab notes go in `templates/<name>/` or `notes/`.
 
-Copy this file. Keep it one short page. OID walks, LLD keys, lab canaries, and “done when” lists go in `templates/<name>/` or `notes/` — not here.
+Omit a section if the domain has nothing to say. Do not add staged rollout, open questions, or a requirements interview.
 
-Omit **Scope**, **Ops**, or **Later** if the domain has nothing to say. Do not add staged rollout, open questions, or a requirements interview.
+---
+
+## Observability
+
+Every domain uses the same bar. Only the signals change.
+
+| Rule | Meaning |
+|---|---|
+| Page **symptoms** | Something a human must act on at 03:00. User impact, or the box is unreachable. |
+| **Graph** causes | CPU, util, inventory, “busy but fine”. Warning that never pages trains people to ignore Warnings — don’t. |
+| One incident | Trigger dependencies up the stack (item → SNMP → ICMP → **site**). Do not merge underlay with overlay (Cato) or with a different vendor (Forti vs Extreme). |
+| Never silent | Unsupported items, zero discovered objects, proxy last-seen. Blindness is worse than noise. |
+| Collect first | Link the template; leave noisy triggers off until a pilot is quiet. |
+| One `icmpping` | Never stack Network Generic on a template that already pings. |
+
+Site / role hostgroups already exist from nbxSync — reuse them for correlation. Do not invent a second inventory.
 
 ---
 
 ## What we alert
 
-Each row is something ops asks. Alert, graph-only, or **no**. Neither alert nor graph → delete it.
+Each row is something ops asks. Alert, graph-only, or **no**. Neither → delete it.
 
 | Thing | Alert | Sev |
 |---|---|---|
-| ICMP down | yes | High |
-| SNMP / API dead | yes | Warning |
+| ICMP / reachability down | yes | High |
+| Management path dead | yes | Warning |
 | | | |
 
 Do **not** alert on:
@@ -30,7 +46,7 @@ Do **not** alert on:
 
 ## Scope
 
-Which objects are in (ports, radios, tunnels, sites). How we include / exclude them.
+Which objects are in. How we include / exclude them.
 
 | Role / class | In | Out |
 |---|---|---|
@@ -40,21 +56,41 @@ Which objects are in (ports, radios, tunnels, sites). How we include / exclude t
 
 ## Ops
 
-On-box labels, vendor prerequisites, mute rules. What someone needs at 03:00 — not how LLD is implemented.
+On-box labels, vendor prerequisites, mute rules. 03:00, not LLD internals.
 
 -
 
 ---
 
+## Dependencies
+
+What suppresses duplicates when one root cause hits many hosts.
+
+```
+… → no SNMP / no agent → ICMP down → site unreachable
+```
+
+---
+
+## Watch the watcher
+
+| Check | Why |
+|---|---|
+| Unsupported items | Collection stopped |
+| Zero discovered objects | Filter / credential / template wrong |
+| Proxy last-seen | Unknown ≠ down |
+
+---
+
 ## Templates
 
-Do not clone stock templates to specialise them. Do **not** stack Network Generic on a template that already has `icmpping`.
+Do not clone stock templates to specialise them.
 
 | Template | Where |
 |---|---|
 | | Platform / role / tag |
 
-Macros that matter (on the **template**, unless the checklist says the role):
+Macros on the **template**, unless the nbxSync checklist already assigns them on the role:
 
 ```
 {$…} =
@@ -64,6 +100,6 @@ Macros that matter (on the **template**, unless the checklist says the role):
 
 ## Later
 
-Not now. One line each. Cutover does not wait on these.
+Not now. One line each. Cutover does not wait. Leave hooks so FortiGate / VMs / Cato can attach without rewriting this domain.
 
 -

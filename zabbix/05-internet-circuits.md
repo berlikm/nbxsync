@@ -1,6 +1,6 @@
 # Internet circuits
 
-ISP / WAN circuits. A circuit alert and a fabric uplink alert must never look the same.
+Prepared later. Same bar as [01](01-extreme-switching.md): a circuit High is not a fabric `USW` High. Tag them so Forti WAN and Extreme `UW-` can share the class later.
 
 Depends on Extreme `UW-…` labels ([port-identity.md](port-identity.md)) and/or Forti WAN.
 

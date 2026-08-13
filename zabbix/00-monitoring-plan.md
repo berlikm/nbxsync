@@ -6,7 +6,11 @@ Status: active
 
 **Hard deadline: LogicMonitor → Zabbix cutover.** That reframes everything below.
 
-The bar for cutover is **"no worse than LogicMonitor"**, not "everything in the design docs". Anything LogicMonitor does not watch today cannot be a regression, so it cannot be a blocker.
+**In scope now:** Extreme switches (01) and access points (02).  
+**Prepared, not blocking cutover:** FortiGate (03), network VMs (06). Same page shape and observability bar.  
+**Later still:** Cato (04), circuits (05).
+
+The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everything in the design docs". Anything LM does not watch today cannot be a regression.
 
 ### Cutover minimum — must be live
 
@@ -30,7 +34,7 @@ The bar for cutover is **"no worse than LogicMonitor"**, not "everything in the 
 | CRC / `dot3StatsFCSErrors` | new capability, and unconfirmed |
 | Full port-label rollout | parity only needs *link down*, which works on unlabelled ports under the core role |
 | Access-switch opt-in scoping | can start permissive and tighten after cutover |
-| APs, Fortinet, Cato, circuits, VMs (02–06) | separate domains, separate timelines |
+| Fortinet, Cato, circuits, VMs (03–06) | prepared page + same bar; do not block switch/AP cutover |
 
 **Rule for the migration window:** if a request is not in the "cutover minimum" table, it goes on the post-cutover list. Scope creep is the main risk to the date, not technical difficulty.
 
@@ -40,24 +44,24 @@ The bar for cutover is **"no worse than LogicMonitor"**, not "everything in the 
 port-identity (foundation)
     │
     ▼
-01  Extreme switching                         ← now, cutover critical
+01  Extreme switching                         ← now
     │
     ▼
-02  Extreme access points (HiveOS / XIQ)
+02  Extreme access points                     ← now
     │
     ▼
-03  Fortinet (FortiGate, FortiManager, FortiAnalyzer)
+03  Fortinet                                  ← prepared
     │
     ▼
 04  Cato
     │
     ▼
-05  Internet circuits (UW + NetBox Circuits)
+05  Internet circuits
     │
     ▼
-06  Network VMs
+06  Network VMs                               ← prepared
 
-post-cutover:  OSPF · speed expectation · capacity · CRC
+post-cutover:  OSPF · VOSS fabric · speed-expect triggers · USW discards/util · label compliance · site synthetic
 ```
 
 Rationale: device health before ports, ports before overlay, overlay before circuits, circuits before SLA composition.
@@ -70,7 +74,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 01b | VOSS | **built** — `templates/extreme_voss_snmp/` | yes | lab only (virtual) | no |
 | 01–ports | Port Speed Expect | **built** — `templates/extreme_port_speed_expect_snmp/` | yes | no | no |
 | 01c | OSPF routing (core/dist, both platforms) | **built** — `templates/extreme_routing_snmp/` | yes | no | no |
-| 02 | HiveOS / IQ Engine AP | **built** — `templates/extreme_iq_engine_snmp/` | analysis (`02`) | no | no |
+| 02 | HiveOS / IQ Engine AP | **built** — `templates/extreme_iq_engine_snmp/` | yes | no | no |
 | 03 | FortiGate | ? | scaffold | no | no |
 | 03 | FortiManager | ? | scaffold | no | no |
 | 03 | FortiAnalyzer | ? | scaffold | no | no |
@@ -80,16 +84,18 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 
 ## Principles
 
-1. Health before ports, ports before circuits.
-2. Scope by device role + port label, never "monitor everything".
-3. One source of icmpping per host — no stacking Network Generic under a platform template.
-4. Underlay (Extreme / Fortinet) and overlay (Cato) stay separate problem classes.
-5. Prefer macro overrides over cloning stock templates — keeps the upgrade path.
-6. Signals with no trigger and no dashboard get deleted.
+1. Page **symptoms**, graph **causes**. A Warning that never pages should not be a Warning.
+2. Scope by role + label (or equivalent). Never monitor every IF-MIB / radio / tunnel row.
+3. One `icmpping` per host — no Network Generic under a platform template.
+4. One incident per root cause (dependencies up to **site**). Underlay ≠ overlay ≠ firewall.
+5. Never fail silent: unsupported items, zero discovered objects, proxy last-seen.
+6. Collect first; enable noisy triggers after a quiet pilot.
+7. Macro overrides, not cloned stock templates.
+8. Signal with no trigger and no dashboard → delete it.
+9. Next domain copies [_template.md](_template.md) — FortiGate and VMs are already stubbed that way.
 
 ## Lab proof
 
-Optional first-build scripts and commands: [`../scripts/README.md`](../scripts/README.md).  
 NetBox ↔ Zabbix integration: [`../docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md).
 
 ## Out of scope until listed

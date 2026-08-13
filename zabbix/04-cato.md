@@ -1,6 +1,6 @@
 # Cato
 
-Overlay. Keep it separate from Extreme / Fortinet underlay — same outage must not look like two unrelated pages.
+Overlay. Prepared later. Same observability bar as [01-extreme-switching.md](01-extreme-switching.md): a collector failure is **not** a site down; a Cato site down is **not** an Extreme `USW` down.
 
 NetBox: Cato site ID on the Site (when we have it).
 

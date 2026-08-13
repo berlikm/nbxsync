@@ -1,10 +1,20 @@
 # Fortinet
 
-Three products, three short blocks. Do not merge them — different questions even when the credential is the same SNMP profile.
+Prepared — same observability bar as [01-extreme-switching.md](01-extreme-switching.md). Do not block Extreme/AP cutover. Three products, three blocks; do not merge.
 
-NetBox: CG **SNMP Monitoring** on role Firewall; Template Rule FortiOS → **FortiGate by SNMP**. Checklist: [`docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) §5b / §6.1 / §7.
+WAN on a FortiGate: [05-internet-circuits.md](05-internet-circuits.md). Overlay: [04-cato.md](04-cato.md). Do not page the same outage as an Extreme `USW` and as a Forti WAN and as Cato.
 
-WAN circuits that happen to terminate on a FortiGate live in [05-internet-circuits.md](05-internet-circuits.md). Cato overlay: [04-cato.md](04-cato.md).
+---
+
+## Observability
+
+| Rule | Here |
+|---|---|
+| Page symptoms | Forti unreachable, HA peer lost, VPN/SD-WAN **path down** (when we enable it) |
+| Graph causes | CPU, sessions, tunnel bytes |
+| One incident | Forti down depends on ICMP → site. Do **not** also High-page every `UW` / Cato site for the same WAN cut until we have a rule |
+| Never silent | Unsupported items; HA cluster with one member missing from Zabbix |
+| Collect first | Stock FortiGate template like EXOS: link, baseline, then enable |
 
 ---
 
@@ -16,15 +26,23 @@ WAN circuits that happen to terminate on a FortiGate live in [05-internet-circui
 |---|---|---|
 | ICMP down | yes | High |
 | SNMP dead | yes | Warning |
-| Device health (CPU / mem / temp) | yes | — fill from stock + baseline |
+| Device health (CPU / mem / temp) | yes | after baseline |
 | HA peer lost | yes | High |
-| VPN / SD-WAN path | later | — |
-
-Do **not** alert on: underlay switch ports (01), Cato overlay (04), ISP commit vs handoff speed (05).
+| VPN / SD-WAN path | later | symptom — this is the Forti equivalent of OSPF/fabric |
 
 ### Scope
 
-One Zabbix host per FortiGate. Do not assign the FortiGate template by manufacturer onto FortiManager / FortiAnalyzer.
+One host per FortiGate. Never assign the FortiGate template by manufacturer onto Manager / Analyzer.
+
+### Dependencies
+
+```
+path / HA  →  no SNMP  →  ICMP  →  site
+```
+
+### Watch the watcher
+
+Unsupported items; zero VPN tunnels if we expected some; proxy last-seen.
 
 ### Templates
 
@@ -36,7 +54,7 @@ Do **not** stack Network Generic.
 
 ### Later
 
-SD-WAN / path health (SNMP vs API still open). Not a switch-cutover blocker.
+SD-WAN / path (SNMP vs API). Site synthetic still lives in 01, not here.
 
 ---
 
@@ -47,18 +65,12 @@ SD-WAN / path health (SNMP vs API still open). Not a switch-cutover blocker.
 | Thing | Alert | Sev |
 |---|---|---|
 | Appliance down | yes | High |
-| Managed device sync / offline | ? | Alert vs report — decide before enabling |
-| Config drift vs cfgit | **no** | cfgit’s job unless we explicitly take it |
+| Managed device sync / offline | ? | page vs daily report — decide before enabling |
+| Config drift vs cfgit | **no** | cfgit’s job |
 
 ### Templates
 
-| Template | Where |
-|---|---|
-| *(stock or thin — pick one)* | Role / platform for FortiManager only |
-
-### Later
-
-Whether “device stopped syncing” is a page or a daily report.
+Role / platform for FortiManager only.
 
 ---
 
@@ -69,15 +81,9 @@ Whether “device stopped syncing” is a page or a daily report.
 | Thing | Alert | Sev |
 |---|---|---|
 | Appliance down | yes | High |
-| Disk / log storage | yes | Warning — log loss risk |
-| Device stopped sending logs | ? | Zabbix vs FAZ-native — pick one |
+| Disk / log storage | yes | Warning — log loss |
+| Device stopped sending logs | ? | Zabbix vs FAZ-native — pick **one** (never silent) |
 
 ### Templates
 
-| Template | Where |
-|---|---|
-| *(stock or thin — pick one)* | Role / platform for FortiAnalyzer only |
-
-### Later
-
-Log-ingestion rate as a silent-failure detector, if FAZ does not already page it.
+Role / platform for FortiAnalyzer only.

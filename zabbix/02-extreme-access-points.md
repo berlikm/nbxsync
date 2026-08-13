@@ -1,8 +1,22 @@
 # Extreme access points
 
-HiveOS / IQ Engine APs. One Zabbix host per AP (NetBox Device), not per XIQ tenant. The switch port toward the AP is `UP-…` in [01-extreme-switching.md](01-extreme-switching.md) — a cable cut pages on the switch, not twice.
+HiveOS / IQ Engine APs. One Zabbix host per AP, not per XIQ tenant. Same observability bar as [01-extreme-switching.md](01-extreme-switching.md): page symptoms, never fail silent, **one** page per cable cut.
 
-OID map: `templates/extreme_iq_engine_snmp/`.
+The switch port toward the AP is `UP-…`. OID map: `templates/extreme_iq_engine_snmp/`.
+
+---
+
+## Observability
+
+| Rule | Here |
+|---|---|
+| Page symptoms | ICMP down, SNMP dead, eth down (Warning), CPU/mem after canary |
+| Graph causes | Client count, radio noise/Tx, retries/drops, eth traffic |
+| One incident | Cable/PoE/port → page on switch `UP-…` (High). AP OS hung, eth still up → page on the AP. Until LLDP mapping exists: **different severities**, not two Highs |
+| Never silent | Unsupported items; AP with zero radios discovered; SNMP down while `UP-` is up usually means XIQ **manage SNMP** was skipped |
+| Collect first | Radio retry alerts and client-count warn stay off until a pilot |
+
+Do **not** stack Network Generic.
 
 ---
 
@@ -10,19 +24,17 @@ OID map: `templates/extreme_iq_engine_snmp/`.
 
 | Thing | Alert | Sev |
 |---|---|---|
-| ICMP down | yes | High |
-| SNMP dead (ICMP still up) | yes | High — usually means XIQ has not enabled SNMP on eth |
-| CPU high | yes | Average — ops default 90 / 95; high CPU alone is not a fault |
+| ICMP down | yes | High — depends on switch `UP-` when we can |
+| SNMP dead (ICMP still up) | yes | High — XIQ SNMP not enabled, or AP hung |
+| CPU high | yes | Average — 90 / 95 ops default; high CPU alone is not a fault |
 | Memory high | yes | Average |
-| Temperature | yes | Average — canary first; many APs stub the OID |
-| Eth link down | yes | Warning — lower than switch `UP-` for the same cable |
-| Client count | **no** | graph; optional soft warn later |
+| Temperature | yes | Average — canary; many APs stub the OID |
+| Eth link down | yes | Warning — lower than switch `UP-` |
+| Client count | **no** | graph |
 | Radio channel / Tx / noise | **no** | RF graphs |
 | Radio retries / drops | **no** | graphs until baselined |
 | Per-client association | **no** | later |
 | Firmware / serial | **no** | inventory |
-
-Do **not** alert on: two High pages for one cable cut (switch `UP-` + AP ICMP), mesh/MRP, XIQ cloud API, per-client RSSI, Network Generic (`icmpping` collision).
 
 ---
 
@@ -33,15 +45,25 @@ Do **not** alert on: two High pages for one cable cut (switch `UP-` + AP ICMP), 
 | AP chassis | Every Access Point device | XIQ tenant as a host |
 | Radios | Physical wifi (`ahIfType=0`; AP305C `wifi0` / `wifi1`) | VAP / SSID virtual ifaces |
 | Ethernet | Physical eth / mgt | wifi IF-MIB rows |
-| Clients | Scalar count only | Association table (later) |
+| Clients | Scalar count only | Association table |
 
 ---
 
 ## Ops
 
-SNMP answers only if XIQ has **manage SNMP** on the AP wired interface (eth0, and eth1 if used), then a Delta update. Without that, the AP is up on the switch `UP-` port and Zabbix shows SNMP unavailable.
+XIQ must **manage SNMP** on eth0 (and eth1 if used), then Delta update. Without that, the AP is green on the switch and red in Zabbix.
 
-Prefer: AP unavailable **depends on** the matching switch port not down, once NetBox/LLDP mapping is reliable. Until then, different severities — not two High pages.
+AP `{$TEMP_*}` is **this** template, not the switch 95/100 internals.
+
+---
+
+## Watch the watcher
+
+| Check | Why |
+|---|---|
+| Unsupported items | OID missing on this AP class |
+| Zero radio LLD | filter too tight or SNMP empty |
+| SNMP down + `UP-` up | XIQ prerequisite, not a cable |
 
 ---
 
@@ -51,22 +73,18 @@ Prefer: AP unavailable **depends on** the matching switch port not down, once Ne
 |---|---|
 | Extreme IQ Engine by SNMP | Platform matching `IQ ENGINE` |
 
-CG **SNMP Monitoring** on role Access Point. Do **not** stack Network Generic. No role-level template floor on Access Point.
-
-On **this template** (not global, not the role). Extreme does not publish AP SNMP alert points — these are estate ops defaults:
+CG **SNMP Monitoring** on role Access Point. No role-level template floor.
 
 ```
 {$CPU.UTIL.WARN}     = 90
 {$CPU.UTIL.CRIT}     = 95
 {$ICMP_LOSS_WARN}    = 10
-{$TEMP_WARN}         = (canary first)
-{$TEMP_CRIT}         = (canary first)
+{$TEMP_WARN}         = canary first
+{$TEMP_CRIT}         = canary first
 ```
-
-Chassis `{$TEMP_*}` stays on this template, not on the Extreme EXOS/VOSS values (those are switch internals).
 
 ---
 
 ## Later
 
-Per-client LLD, HiveOS traps, XIQ REST, mesh/MRP, trigger dependency to switch `UP-`.
+Trigger dependency to switch `UP-` via NetBox/LLDP; per-client LLD; traps; XIQ REST; mesh. FortiGate / VMs: same bar, different doc.

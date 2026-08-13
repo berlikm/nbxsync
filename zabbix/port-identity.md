@@ -41,6 +41,8 @@ If the port runs at the class default, **omit SPEED**. Refuse labels over 20 —
 
 **`X` excludes. `N` does not.** On Core/Dist/Mgmt, `N` / empty / unparseable labels are monitored. On Access, only the include-classes are. Stack / ISC / MLAG peer / SPAN need **`X`**. Unused ports → **admin-down**.
 
+A mistyped Access label means **no items at all**. The detector is a NetBox vs live `ifAlias` diff (later) — Zabbix will not tell you.
+
 ---
 
 ## Speed tokens
