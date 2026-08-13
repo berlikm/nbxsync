@@ -1,19 +1,3 @@
-# Configuration
-
-This is the handover document. If you take over NetBox → Zabbix, start here and stay here.
-
-**Everyone walks this page.** It is the map of what we actually configured (NetBox **Zabbix** menu: names, assignments, expected host). Day-to-day is the GUI. When you add a mapping — a new role, configuration group, Template Rule, template, or macro — update **this file** in the same change.
-
-**Assumption:** NetBox inventory (Site Groups, roles, platforms, IPs, tags) already exists. This page only configures nbxSync.
-
-Day-2 (new role, broken host): [`runbooks/day2.md`](runbooks/day2.md). Cutover waves: [`runbooks/onboarding.md`](runbooks/onboarding.md). Extreme port signals and IFALIAS **values**: [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md).
-
-**Last verified:** 2026-08-13.
-
-*(Italic)* = fill in for your environment. Rows marked **placeholder** are intentional stubs — assign them now, refine template content closer to production.
-
----
-
 ## How this works (read once)
 
 Zabbix does not browse NetBox. The **nbxSync** plugin in NetBox pushes devices and VMs. Three layers decide what the host looks like:
@@ -40,21 +24,6 @@ Top menu **Zabbix**: Servers, Proxies, Proxy Groups, Templates, Macros, Tags, Ho
 
 ---
 
-## Before you start
-
-Only integration prerequisites (inventory is already in NetBox):
-
-- [ ] Required Zabbix templates exist (including **Extreme VOSS by SNMP** / **Extreme IQ Engine by SNMP** before enabling those Template Rules in §6 — see Extreme docs)
-- [ ] SNMP / VMware / Pure / MSSQL / HPE MSA secrets available (§5, §11.3)
-- [ ] Role / platform / tag names in NetBox match the strings this document uses (rename here if NetBox naming differs)
-
----
-
-## Initial build
-
-Work top to bottom. After §12, jump to §13 and §15 (verification) before declaring the estate ready.
-
----
 
 ## 1. Zabbix Server
 
