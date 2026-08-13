@@ -165,12 +165,10 @@ ROLE_NAME_ALIASES = {
 
 # Production end-state (default). Stock EXOS 55/65 is wrong for G2+ internal sensors
 # (GTAC 000088439: Normal often 10–100, Max 110). Prefer vendor overTemp *status*
-# as the hard alarm; value macros warn 90 / crit 100.
+# as the hard alarm; value macros warn 95 / crit 100 on Extreme templates only.
+# TEMP_* are NOT global — they would affect servers/storage/APs too.
 DESTINATION_GLOBAL_MACROS = {
     '{$IF.UTIL.MAX}': '101',  # stock util% off until stage-6 context macros
-    '{$TEMP_WARN}': '95',
-    '{$TEMP_CRIT}': '100',
-    '{$TEMP_CRIT_LOW}': '-273',
     '{$OPTIC.TEMP.CRIT}': '70',
     '{$OPTIC.TEMP.MAX}': '150',
     '{$OPTIC.RX.DBM.MIN}': '-100',  # RX dBm value trigger removed; -100 quiets leftovers
@@ -183,6 +181,14 @@ DESTINATION_GLOBAL_MACROS = {
     '{$SNMP.TIMEOUT}': '5m',
     '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|US|UP|MON)(-|$)',
     '{$PORTID.LLD.IFTYPE.MATCHES}': '^6$',
+}
+
+# Extreme EXOS/VOSS template-only macros (NOT global — scoped to switch templates).
+# Stock EXOS ships {$TEMP_WARN}=55 / {$TEMP_CRIT}=65 — way too low for G2+.
+EXTREME_TEMPLATE_TEMP_MACROS = {
+    '{$TEMP_WARN}': '95',
+    '{$TEMP_CRIT}': '100',
+    '{$TEMP_CRIT_LOW}': '-273',
 }
 
 # Temporary LM-migration overlay only — never the long-term target.
@@ -480,8 +486,11 @@ def _template_macro_map(macros: list) -> dict[str, str]:
 
 
 def _wanted_temp_template_macros() -> dict[str, str]:
-    """TEMP_* values from GLOBAL_MACROS (destination or cutover-silence overlay)."""
-    return {k: GLOBAL_MACROS[k] for k in _TEMP_TEMPLATE_MACRO_KEYS if k in GLOBAL_MACROS}
+    """TEMP_* values for Extreme templates. Uses EXTREME_TEMPLATE_TEMP_MACROS
+    unless cutover-silence overlay is active (then GLOBAL_MACROS has 999s)."""
+    if any(k in GLOBAL_MACROS for k in _TEMP_TEMPLATE_MACRO_KEYS):
+        return {k: GLOBAL_MACROS[k] for k in _TEMP_TEMPLATE_MACRO_KEYS if k in GLOBAL_MACROS}
+    return dict(EXTREME_TEMPLATE_TEMP_MACROS)
 
 
 def patch_extreme_template_temp_macros(api, template_names: tuple[str, ...] | None = None) -> dict[str, str]:
