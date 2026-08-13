@@ -168,7 +168,7 @@ ROLE_NAME_ALIASES = {
 # as the hard alarm; value macros warn 90 / crit 100.
 DESTINATION_GLOBAL_MACROS = {
     '{$IF.UTIL.MAX}': '101',  # stock util% off until stage-6 context macros
-    '{$TEMP_WARN}': '90',
+    '{$TEMP_WARN}': '95',
     '{$TEMP_CRIT}': '100',
     '{$TEMP_CRIT_LOW}': '-273',
     '{$OPTIC.TEMP.CRIT}': '70',
