@@ -2,7 +2,7 @@
 
 HiveOS / IQ Engine APs. One Zabbix host per AP (NetBox Device), not per XIQ tenant. The switch port toward the AP is `UP-…` in [01-extreme-switching.md](01-extreme-switching.md) — a cable cut pages on the switch, not twice.
 
-NetBox: CG **SNMP Monitoring** on role Access Point; Template Rule `IQ ENGINE` → **Extreme IQ Engine by SNMP**. Checklist: [`docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) §5b / §6.1. OID map: `templates/extreme_iq_engine_snmp/`.
+OID map: `templates/extreme_iq_engine_snmp/`.
 
 ---
 
@@ -51,9 +51,19 @@ Prefer: AP unavailable **depends on** the matching switch port not down, once Ne
 |---|---|
 | Extreme IQ Engine by SNMP | Platform matching `IQ ENGINE` |
 
-Do **not** stack Network Generic. No role-level template floor on Access Point.
+CG **SNMP Monitoring** on role Access Point. Do **not** stack Network Generic. No role-level template floor on Access Point.
 
-CPU / ICMP-loss macros are estate ops defaults (Extreme does not publish AP SNMP alert points). Chassis `{$TEMP_*}` on this template, not global.
+On **this template** (not global, not the role). Extreme does not publish AP SNMP alert points — these are estate ops defaults:
+
+```
+{$CPU.UTIL.WARN}     = 90
+{$CPU.UTIL.CRIT}     = 95
+{$ICMP_LOSS_WARN}    = 10
+{$TEMP_WARN}         = (canary first)
+{$TEMP_CRIT}         = (canary first)
+```
+
+Chassis `{$TEMP_*}` stays on this template, not on the Extreme EXOS/VOSS values (those are switch internals).
 
 ---
 

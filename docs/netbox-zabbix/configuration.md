@@ -379,7 +379,7 @@ One-off templates on a single host (e.g. AS Java): assign on the Device, not the
 
 ### 7.1 Extreme capability templates
 
-Assigned on the **role**, not on the platform Template Rule.
+Assigned on the **role**, not on the platform Template Rule. Enablement order: *[Extreme switching — Confluence TBD]*.
 
 | Template | Assigned to |
 |---|---|
@@ -547,6 +547,8 @@ Set all three on every Switch Core / Dist / Mgmt / Access role. Core / Dist / Mg
 | `{$NET.IF.IFALIAS.NOT_MATCHES}` | `CHANGE_IF_NEEDED` | Switch Access |
 | `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Switch Access |
 
+Port-label grammar and staged enablement: *[Extreme switching — Confluence TBD]*. Chassis temperature (`{$TEMP_WARN}` / `{$TEMP_CRIT}` / `{$TEMP_CRIT_LOW}`) is on the Extreme templates, not an nbxSync role macro.
+
 ### 11.2 Application / threshold macros (role)
 
 | Macro | Value | Device Role |
@@ -659,8 +661,8 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 | Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) + ICMP Ping | Agent :10050 | Sites/CH/…, Roles/…, OS/… |
 | SAP HANA / SAP ME | **SAP Agent+SNMP** | Linux by agent + **SAP template from Sensirion** + ICMP Ping | Agent :10050 + SNMP `SAPUSER` | Sites/…, Roles/SAP HANA or SAP ME, OS/Linux |
 | Host with tag `snmp` only | SNMP Monitoring (by tag) via tag | Linux or Windows by SNMP + ICMP Ping | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
-| EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP + Port Speed Expect (+ Routing on Core/Dist) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
-| VOSS Switch Core/Access | SNMP Monitoring | Extreme VOSS by SNMP (**not** Network Generic) + Port Speed Expect (+ Routing on Core/Dist) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
+| EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP (+ role IFALIAS macros) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
+| VOSS Switch Core/Access | SNMP Monitoring | Extreme VOSS by SNMP (**not** Network Generic) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
 | Access Point | SNMP Monitoring | Extreme IQ Engine / platform template (**not** Network Generic) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Access Point, OS/Network |
 | Firewall | SNMP Monitoring | Platform/role template (FortiGate, …) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/…, OS/Network |
 | Space Server | Agent Monitoring (SPACE) | OS by agent + ICMP Ping | Agent **:10060** | Sites/CH/…, Roles/Space Server, OS/… |
