@@ -7,12 +7,12 @@ After the first build. Inventory is already in NetBox. Policy and GUI clicks: [`
 ## 1. New Device Role
 
 1. Transport exception?
-   - Agent-class → nothing (Site Group Agent default). If ICMP should apply, extend Template Rule **Agent Host ICMP** `role_pattern` (configuration §6).
-   - Network SNMP → CG **SNMP Monitoring** (§5b)
-   - SPACE → **Agent Monitoring (SPACE)**
-   - SAP → **SAP Agent+SNMP** (one CG, both interfaces)
+   - Agent-class → nothing (Site Group Agent default). ICMP Ping comes with that CG.
+   - Network SNMP → CG **SNMP Monitoring** (§5b). Do not add ICMP Ping (templates already have `icmpping`).
+   - SPACE → **Agent Monitoring (SPACE)** (ICMP included on that CG)
+   - SAP → **SAP Agent+SNMP** (one CG, both interfaces; ICMP included)
    - iDRAC → **Dell iDRAC SNMP** on ESXi Hypervisor; **Legacy** on Cohesity; AES128 on listed KR/CN devices. Server stays Site Group Agent.
-   - Linux SNMP opt-in → tag `snmp`
+   - Linux SNMP opt-in → tag `snmp` (ICMP included on that CG)
 2. Application template? Assign on the role (§7).
 3. New Switch* role? Copy IFALIAS macros from the closest peer (§11). Platform Template Rules already cover EXOS/VOSS.
 4. Hostgroup `Roles/<name>` appears from Sites/Roles Jinja — do not create a per-role hostgroup assignment.
@@ -36,7 +36,7 @@ Stages and Hybrid flip: Extreme switching doc. nbxSync: configuration §7 (capab
 1. Does an existing Template Rule already match the real platform name? (§6)
 2. If not, add or extend a rule. Every matching rule contributes.
 3. Template interface requirements must match the host transport.
-4. ESXi: role **ESXi Hypervisor**, CG Dell iDRAC SNMP @ oob_ip. Do not re-enable VMware ESXi platform rule. VMware FQDN stays on role **vCenter**.
+4. ESXi: role **ESXi Hypervisor**, CG Dell iDRAC SNMP @ oob_ip. Do not recreate a VMware ESXi platform rule. VMware FQDN stays on role **vCenter**. OS/VMware is on the ESXi role.
 
 ---
 

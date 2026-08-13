@@ -36,7 +36,8 @@ Deltas vs the old checklist script:
   Δ0   NetBox inventory mutations OFF by default (--mutate-netbox to restore)
   ΔP0  Templates/proxies by Zabbix name; ensure() updates; prune shadow macros;
        --verify census (unprofiled / no-template / SNMP-role-on-Agent / …)
-  ΔICMP Do NOT assign ICMP Ping at SiteGroup — collides with icmpping* in SNMP templates
+  ΔICMP ICMP Ping on agent-plane CGs (Agent / SPACE / SAP / SNMP-by-tag), never SiteGroup
+       or fleet SNMP Monitoring (icmpping collision with Extreme/Forti/Huawei)
 
 Template vs hostgroup visibility (plugin model, not a script bug):
   * ZabbixTemplateAssignment hangs off NetBox objects (Role / SiteGroup / Device / …)
@@ -238,6 +239,16 @@ PROXY_LOCAL_ADDRESS = {
 # Extra proxies that join the CH proxy group (high availability).
 CH_PROXY_GROUP_EXTRA = ['ch2']
 CH_PROXY_GROUP_NAME = 'Swiss proxy group'
+
+# ICMP Ping follows these CGs — not a role allowlist Template Rule.
+# Agent templates have no icmpping; Extreme/Forti/Huawei SNMP templates do
+# (never put ICMP on fleet SNMP Monitoring — duplicate item keys).
+ICMP_PING_CG_NAMES = (
+    'Agent Monitoring',
+    'Agent Monitoring (SPACE)',
+    'SAP Agent+SNMP',
+    'SNMP Monitoring (by tag)',
+)
 
 # Network SNMP only — Storage is HTTP/TBD (not MONITORING MD5/DES).
 SNMP_ROLES = [
@@ -1322,17 +1333,16 @@ def step6_template_rules(server, country_slugs=None):
     _iq_tpl = TPL.get('extreme_iq_engine_snmp') or TPL['network_generic_snmp']
     tpl_voss = make_template(*_voss_tpl, req=[HostInterfaceRequirementChoices.SNMP])
     tpl_iq = make_template(*_iq_tpl, req=[HostInterfaceRequirementChoices.SNMP])
+    # OS by platform only. `Windows` already matches "Windows Server *".
+    # Photon is in the Linux pattern (platform name has no "Linux" substring).
+    # Every matching rule MERGES — priority is not an override.
     rules = [
-        ('Windows Server', r'Windows Server', tpl_windows, hg_os_windows, 50, ''),
-        ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 200, ''),
-        ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100, '^(?!vCenter$).*'),
+        ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 100, ''),
+        ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100, ''),
         ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100, ''),
         ('Extreme IQ Engine', r'IQ ENGINE', tpl_iq, hg_os_network, 100, ''),
-
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100, ''),
         ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50, ''),
-        # Photon guests / appliances — Linux agent (not ESXi hypervisors, not vCenter).
-        ('VMware Photon', r'Photon', tpl_linux, hg_os_linux, 50, '^(?!vCenter$).*'),
     ]
     for name, pattern, template, hostgroup, priority, role_pattern in rules:
         defaults = {
@@ -1348,11 +1358,21 @@ def step6_template_rules(server, country_slugs=None):
         }
         ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
 
-    # Delete legacy: VMware FQDN on ESXi platform — hypervisors are discovered from vCenter only.
-    legacy_vmware_esxi = M.ZabbixTemplateRule.objects.filter(name='VMware ESXi').first()
-    if legacy_vmware_esxi is not None:
-        legacy_vmware_esxi.delete()
-        logger.info('  DELETED legacy TemplateRule %r (VMware FQDN is vCenter-only)', 'VMware ESXi')
+    def delete_rule(name: str, reason: str) -> None:
+        stale = M.ZabbixTemplateRule.objects.filter(name=name).first()
+        if stale is not None:
+            stale.delete()
+            logger.info('  DELETED TemplateRule %r (%s)', name, reason)
+
+    # OS: one Windows / one Linux rule. Photon is in the Linux pattern.
+    delete_rule('Windows Server', 'redundant with Windows catch-all (re.search)')
+    delete_rule('VMware Photon', 'redundant with Linux pattern including Photon')
+    # ICMP / proxy health moved off Template Rules (CG + role assignment).
+    delete_rule('Agent Host ICMP', 'ICMP follows agent-plane CGs, not a role allowlist')
+    delete_rule('Zabbix Proxy ICMP', 'proxy VMs inherit ICMP from Agent Monitoring CG')
+    delete_rule('Zabbix Proxy Health', 'moved to Device Role Zabbix Proxy assignment')
+    # VMware FQDN is vCenter-role only — hypervisors come from NetBox.
+    delete_rule('VMware ESXi', 'VMware FQDN is vCenter-only')
 
     # Δ6b: NetBox tag snmp → OS-correct SNMP templates.
     # Pair with "SNMP Monitoring (Linux)" CG (assigned on the same tag) for the interface.
@@ -1398,17 +1418,21 @@ def step6_template_rules(server, country_slugs=None):
     else:
         logger.warning('  Oracle template not resolved — skip Oracle (tag) TemplateRule')
 
-    # Dell iDRAC by SNMP: Manufacturer Dell ∧ role Server/ESXi Hypervisor/Cohesity.
+    # Dell iDRAC by SNMP: one rule — Manufacturer Dell ∧ BMC roles.
+    # OS/VMware is a role hostgroup (all ESXi hypervisors), not a second Template Rule.
     # Transport is SNMPv3 on the matching Dell iDRAC SNMP CG (AES256 / AES128 / Legacy).
-    # Per-DeviceType model mapping; R660 is the fallback for models without a specific template.
     dell = Manufacturer.objects.filter(name='Dell').first() or Manufacturer.objects.filter(slug='dell').first()
     if dell is not None:
         tpl_dell_snmp = make_template(*TPL['dell_idrac_snmp'],
                                       req=[HostInterfaceRequirementChoices.SNMP])
-        # Server role (physical Dell servers with oob_ip)
-        defaults_server = {
+        renamed = M.ZabbixTemplateRule.objects.filter(name='Dell iDRAC (Server)').first()
+        if renamed is not None and not M.ZabbixTemplateRule.objects.filter(name='Dell iDRAC').exists():
+            renamed.name = 'Dell iDRAC'
+            renamed.save(update_fields=['name'])
+            logger.info('  Renamed TemplateRule Dell iDRAC (Server) → Dell iDRAC')
+        defaults_idrac = {
             'pattern': '.*',
-            'role_pattern': '^(Server|Cohesity)$',
+            'role_pattern': '^(Server|Cohesity|ESXi Hypervisor)$',
             'require_tags': '',
             'manufacturer': dell,
             'zabbixtemplate': tpl_dell_snmp,
@@ -1417,19 +1441,24 @@ def step6_template_rules(server, country_slugs=None):
             'enabled': True,
             'priority': 80,
         }
-        ensure(M.ZabbixTemplateRule, name='Dell iDRAC (Server)', defaults=defaults_server, update_fields=list(defaults_server.keys()))
-        # ESXi hypervisors: iDRAC SNMP + OS/VMware hostgroup (no VMware FQDN template).
-        defaults_esxi = {
-            'pattern': '.*',
-            'role_pattern': '^ESXi Hypervisor$',
-            'require_tags': '',
-            'manufacturer': dell,
-            'zabbixtemplate': tpl_dell_snmp,
-            'zabbixhostgroup': hg_os_vmware,
-            'zabbixtag': None,
-        }
-        ensure(M.ZabbixTemplateRule, name='Dell iDRAC (ESXi)', defaults=defaults_esxi, update_fields=list(defaults_esxi.keys()))
-        logger.info('  Rule Dell iDRAC (Server+ESXi) → %s (SNMPv3 @ oob)', tpl_dell_snmp.name)
+        ensure(M.ZabbixTemplateRule, name='Dell iDRAC', defaults=defaults_idrac, update_fields=list(defaults_idrac.keys()))
+        delete_rule('Dell iDRAC (ESXi)', 'merged into Dell iDRAC; OS/VMware is on the ESXi role')
+        delete_rule('Dell iDRAC (Server)', 'renamed to Dell iDRAC')
+        logger.info('  Rule Dell iDRAC → %s (Dell ∧ Server|Cohesity|ESXi Hypervisor)', tpl_dell_snmp.name)
+        try:
+            esxi_role = get_role('ESXi Hypervisor')
+        except DeviceRole.DoesNotExist:
+            esxi_role = None
+            logger.warning("  Role 'ESXi Hypervisor' not found — skip OS/VMware hostgroup assignment")
+        if esxi_role is not None:
+            get_or_create(
+                M.ZabbixHostgroupAssignment,
+                zabbixhostgroup=hg_os_vmware,
+                assigned_object_type=ct(DeviceRole),
+                assigned_object_id=esxi_role.id,
+                defaults={},
+            )
+            logger.info('  OS/VMware → Device Role ESXi Hypervisor')
         # Prune legacy Manufacturer-wide iDRAC SNMP assignment if present.
         tpl_idrac_snmp = M.ZabbixTemplate.objects.filter(name='Dell iDRAC by SNMP', zabbixserver=server).first()
         if tpl_idrac_snmp:
@@ -1531,77 +1560,11 @@ def step6_template_rules(server, country_slugs=None):
     else:
         logger.warning('  Template Synology DiskStation SNMPv3 not resolved — skip TemplateRule')
 
-    # Prune legacy Huawei Storage ICMP rule — Huawei OceanStor Dorado template
-    # already defines icmpping items; adding ICMP Ping causes duplicate key collision.
-    legacy_huawei_icmp = M.ZabbixTemplateRule.objects.filter(name='Huawei Storage ICMP').first()
-    if legacy_huawei_icmp is not None:
-        legacy_huawei_icmp.delete()
-        logger.info('  DELETED legacy TemplateRule %r (Huawei template already has icmpping)', 'Huawei Storage ICMP')
+    # Huawei OceanStor already defines icmpping — never add ICMP Ping (duplicate keys).
+    delete_rule('Huawei Storage ICMP', 'Huawei template already has icmpping')
 
-    # Zabbix Proxy role: proxy VMs (role=Zabbix Proxy via netbox-sync -ZABP\d+ pattern).
-    # Platform rule already gives them Linux by Zabbix agent (Ubuntu). These two
-    # add-on templates provide ICMP reachability + Zabbix's stock proxy-health metrics
-    # (last access, version mismatch, config sync latency, performance counters).
-    if 'icmp_ping' in TPL:
-        tpl_icmp_proxy = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
-        ensure(
-            M.ZabbixTemplateRule,
-            name='Zabbix Proxy ICMP',
-            defaults={
-                'pattern': '.*',
-                'role_pattern': '^Zabbix Proxy$',
-                'require_tags': '',
-                'manufacturer': None,
-                'zabbixtemplate': tpl_icmp_proxy,
-                'zabbixhostgroup': None,
-                'zabbixtag': None,
-                'enabled': True,
-                'priority': 90,
-            },
-            update_fields=['pattern', 'role_pattern', 'require_tags', 'manufacturer', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'enabled', 'priority'],
-        )
-        logger.info('  Rule Zabbix Proxy ICMP → %s', tpl_icmp_proxy.name)
-    if 'proxy_health' in TPL:
-        tpl_health = make_template(*TPL['proxy_health'], req=[HostInterfaceRequirementChoices.ANY])
-        ensure(
-            M.ZabbixTemplateRule,
-            name='Zabbix Proxy Health',
-            defaults={
-                'pattern': '.*',
-                'role_pattern': '^Zabbix Proxy$',
-                'require_tags': '',
-                'manufacturer': None,
-                'zabbixtemplate': tpl_health,
-                'zabbixhostgroup': None,
-                'zabbixtag': None,
-                'enabled': True,
-                'priority': 90,
-            },
-            update_fields=['pattern', 'role_pattern', 'require_tags', 'manufacturer', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'enabled', 'priority'],
-        )
-        logger.info('  Rule Zabbix Proxy Health → %s', tpl_health.name)
-
-    # ICMP Ping for agent-monitored hosts — distinguishes "host down" from "agent down".
-    # SNMP templates usually embed icmpping, but Linux/Windows agent templates do not.
-    if 'icmp_ping' in TPL:
-        tpl_icmp_agent = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
-        ensure(
-            M.ZabbixTemplateRule,
-            name='Agent Host ICMP',
-            defaults={
-                'pattern': '.*',
-                'role_pattern': '^(Server|Domain Controller|Fileserver|MSSQL|MSSQL Query Server|Tableau|GitLab|GitHub Runner|TeamCity|HLK|SCCM|PKI|NAC|Acronis Management|VDI|Session Host|Connection Broker|Azure Data Factory|FiveTran|CellMap|Production Backup|Solidworks PDM|Subversion|vCenter|SAP HANA|SAP ME|Space Server)$',
-                'require_tags': '',
-                'manufacturer': None,
-                'zabbixtemplate': tpl_icmp_agent,
-                'zabbixhostgroup': None,
-                'zabbixtag': None,
-                'enabled': True,
-                'priority': 95,
-            },
-            update_fields=['pattern', 'role_pattern', 'require_tags', 'manufacturer', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'enabled', 'priority'],
-        )
-        logger.info('  Rule Agent Host ICMP → %s', tpl_icmp_agent.name)
+    # ICMP Ping is assigned on agent-plane CGs in step 7 (new roles inherit it).
+    # Synology DiskStation has no icmpping — keep the manufacturer-scoped ICMP rule above.
 
     # Rename leftovers from placeholder template names.
     for old_name in ('Huawei Storage (SNMP)', 'Synology NAS (SNMP)'):
@@ -1671,6 +1634,10 @@ def step7_template_assignments(server):
             assignments.append(
                 (make_template(*TPL[tpl_key], req=[HostInterfaceRequirementChoices.AGENT]), role_name)
             )
+    if 'proxy_health' in TPL:
+        assignments.append(
+            (make_template(*TPL['proxy_health'], req=[HostInterfaceRequirementChoices.ANY]), 'Zabbix Proxy')
+        )
     for template, role_name in assignments:
         try:
             role = get_role(role_name)
@@ -1755,18 +1722,43 @@ def step7_template_assignments(server):
         if deleted:
             logger.info('  PRUNED: %s Network Generic assignment(s) from role %s', deleted, role_name)
 
-    # Dell iDRAC is scoped via TemplateRule (step 6: Dell ∧ Server), not Manufacturer.
+    # Dell iDRAC is scoped via TemplateRule (step 6: Dell ∧ BMC roles), not Manufacturer.
 
-    # Transport-only CGs — prune leftover CG→template links
-    # (Linux/Windows by SNMP come from tag compound TemplateRules in step 6).
-    for cg_name_suffix in ('VM by SNMP', 'SNMP by tag', 'SNMP Monitoring (by tag)', 'SAP Agent+SNMP'):
-        for cg in M.ZabbixConfigurationGroup.objects.filter(name__endswith=cg_name_suffix):
-            deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+    # ICMP Ping on agent-plane CGs (and Linux/Windows SNMP opt-in).
+    # New Agent-class roles inherit it with no regex edit. Do not put ICMP on
+    # fleet SNMP Monitoring (Extreme/Forti/Huawei already define icmpping).
+    if 'icmp_ping' in TPL:
+        tpl_icmp = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
+        icmp_names = set(ICMP_PING_CG_NAMES) | {f'{PREFIX}{n}' for n in ICMP_PING_CG_NAMES}
+        for cg in M.ZabbixConfigurationGroup.objects.filter(name__in=icmp_names):
+            ensure(
+                M.ZabbixTemplateAssignment,
+                zabbixtemplate=tpl_icmp,
                 assigned_object_type=ct(M.ZabbixConfigurationGroup),
                 assigned_object_id=cg.id,
-            ).delete()
+                defaults={},
+            )
+            logger.info('  ICMP Ping → CG %s', cg.name)
+
+    # Transport-only CGs except ICMP on the agent-plane set above.
+    # Linux/Windows by SNMP come from tag TemplateRules, not from the CG.
+    icmp_keep_ids = set()
+    if 'icmp_ping' in TPL:
+        icmp_tpl = M.ZabbixTemplate.objects.filter(name=TPL['icmp_ping'][1], zabbixserver=server).first()
+        if icmp_tpl:
+            icmp_keep_ids.add(icmp_tpl.pk)
+    icmp_names = set(ICMP_PING_CG_NAMES) | {f'{PREFIX}{n}' for n in ICMP_PING_CG_NAMES}
+    for cg_name_suffix in ('VM by SNMP', 'SNMP by tag', 'SNMP Monitoring (by tag)', 'SAP Agent+SNMP'):
+        for cg in M.ZabbixConfigurationGroup.objects.filter(name__endswith=cg_name_suffix):
+            qs = M.ZabbixTemplateAssignment.objects.filter(
+                assigned_object_type=ct(M.ZabbixConfigurationGroup),
+                assigned_object_id=cg.id,
+            )
+            if cg.name in icmp_names and icmp_keep_ids:
+                qs = qs.exclude(zabbixtemplate_id__in=icmp_keep_ids)
+            deleted, _ = qs.delete()
             if deleted:
-                logger.info('  PRUNED: %s template assignment(s) from %s (transport-only)', deleted, cg.name)
+                logger.info('  PRUNED: %s leftover template assignment(s) from %s', deleted, cg.name)
 
 
 def step8_hostgroups(server, country_slugs=None):
@@ -2839,26 +2831,37 @@ def run_simulate() -> int:
                 str(list(M.ZabbixTemplateRule.objects.filter(name__startswith='SNMP ').values_list('name', flat=True))),
                 group='hygiene',
             )
-            idrac_rule = M.ZabbixTemplateRule.objects.filter(name='Dell iDRAC (Server)', enabled=True).select_related('manufacturer').first()
+            idrac_rule = M.ZabbixTemplateRule.objects.filter(name='Dell iDRAC', enabled=True).select_related('manufacturer').first()
             record(
-                'dell_idrac_server_rule',
-                bool(idrac_rule and idrac_rule.manufacturer_id and idrac_rule.role_pattern == '^Server$'),
-                str(idrac_rule and (idrac_rule.manufacturer, idrac_rule.role_pattern, idrac_rule.pattern)),
-                group='hygiene',
-            )
-            idrac_esxi = M.ZabbixTemplateRule.objects.filter(name='Dell iDRAC (ESXi)', enabled=True).select_related('manufacturer', 'zabbixhostgroup').first()
-            record(
-                'dell_idrac_esxi_rule',
+                'dell_idrac_rule',
                 bool(
-                    idrac_esxi
-                    and idrac_esxi.manufacturer_id
-                    and idrac_esxi.zabbixhostgroup
-                    and 'VMware' in (idrac_esxi.zabbixhostgroup.name or '')
-                    and 'ESXi' in (idrac_esxi.pattern or '')
+                    idrac_rule
+                    and idrac_rule.manufacturer_id
+                    and idrac_rule.role_pattern == '^(Server|Cohesity|ESXi Hypervisor)$'
+                    and idrac_rule.zabbixhostgroup_id is None
                 ),
-                str(idrac_esxi and (idrac_esxi.pattern, getattr(idrac_esxi.zabbixhostgroup, 'name', None))),
+                str(idrac_rule and (idrac_rule.manufacturer, idrac_rule.role_pattern, idrac_rule.zabbixhostgroup_id)),
                 group='hygiene',
             )
+            record(
+                'dell_idrac_split_rules_gone',
+                M.ZabbixTemplateRule.objects.filter(name__in=['Dell iDRAC (Server)', 'Dell iDRAC (ESXi)']).count() == 0,
+                str(list(M.ZabbixTemplateRule.objects.filter(name__startswith='Dell iDRAC').values_list('name', flat=True))),
+                group='hygiene',
+            )
+            esxi_role = DeviceRole.objects.filter(name__iexact='ESXi Hypervisor').first()
+            os_vmware = M.ZabbixHostgroup.objects.filter(name__iendswith='OS/VMware').first()
+            if esxi_role is None:
+                esxi_hg_ok = True  # role created by netbox-sync; lab may not have it
+            elif os_vmware is None:
+                esxi_hg_ok = False
+            else:
+                esxi_hg_ok = M.ZabbixHostgroupAssignment.objects.filter(
+                    zabbixhostgroup=os_vmware,
+                    assigned_object_type=ct(DeviceRole),
+                    assigned_object_id=esxi_role.id,
+                ).exists()
+            record('os_vmware_on_esxi_role', esxi_hg_ok, str((esxi_role, os_vmware)), group='hygiene')
             legacy_vmware_esxi = M.ZabbixTemplateRule.objects.filter(name='VMware ESXi').first()
             record(
                 'vmware_esxi_platform_rule_disabled',
@@ -2866,7 +2869,25 @@ def run_simulate() -> int:
                 str(legacy_vmware_esxi and legacy_vmware_esxi.enabled),
                 group='hygiene',
             )
-            record('vm_snmp_cg_transport_only', M.ZabbixTemplateAssignment.objects.filter(assigned_object_type=ct(M.ZabbixConfigurationGroup), assigned_object_id=vm_snmp_group.id).count() == 0, 'ok', group='hygiene')
+            icmp_on_snmp_tag = M.ZabbixTemplateAssignment.objects.filter(
+                assigned_object_type=ct(M.ZabbixConfigurationGroup),
+                assigned_object_id=vm_snmp_group.id,
+            )
+            icmp_tpl = M.ZabbixTemplate.objects.filter(zabbixserver=server, name__icontains='ICMP Ping').first()
+            record(
+                'vm_snmp_cg_icmp_only',
+                bool(icmp_tpl)
+                and icmp_on_snmp_tag.count() == 1
+                and icmp_on_snmp_tag.filter(zabbixtemplate=icmp_tpl).exists(),
+                str(list(icmp_on_snmp_tag.values_list('zabbixtemplate__name', flat=True))),
+                group='hygiene',
+            )
+            record(
+                'agent_host_icmp_rule_gone',
+                not M.ZabbixTemplateRule.objects.filter(name='Agent Host ICMP').exists(),
+                'ok',
+                group='hygiene',
+            )
 
             def _snmp_if(group):
                 return M.ZabbixHostInterface.objects.filter(
