@@ -284,16 +284,16 @@ First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and valu
 | Name | Pattern | Role pattern | Template | Hostgroup | Enabled |
 |---|---|---|---|---|---|
 | Windows catch-all | `Windows` | — | Windows by Zabbix agent | OS/Windows | Yes |
-| Linux | `Ubuntu\|Debian\|Linux\|Red Hat\|CentOS\|Alma\|SUSE\|Arch\|Photon\|Other.*Linux` | `^(?!vCenter$).*` | Linux by Zabbix agent | OS/Linux | Yes |
+| Linux | `Linux\|Ubuntu\|Debian\|CentOS\|Alma\|SUSE\|Arch` | — | Linux by Zabbix agent | OS/Linux | Yes |
 | Extreme EXOS | `EXOS` | — | Extreme EXOS by SNMP | OS/Network | Yes |
 | Extreme VOSS | `VOSS` | — | Extreme VOSS by SNMP | OS/Network | Yes |
 | Extreme IQ Engine | `IQ ENGINE` | — | Extreme IQ Engine by SNMP | OS/Network | Yes |
 | FortiOS | `FORTIOS\|FortiOS` | — | FortiGate by SNMP | OS/Network | Yes |
 | FortiAnalyzer/Manager | `FortiAnalyzer\|FortiManager` | — | Network Generic Device by SNMP | OS/Network | Yes |
 
-`Windows` already matches `Windows Server 2022`. Photon names that do not contain `Linux` still match via `Photon` in the pattern.
+`Windows` already matches `Windows Server 2022`. `Linux` already matches names that contain Linux (including Red Hat Enterprise Linux). Ubuntu / Debian / CentOS / Alma / SUSE / Arch are listed because those platform names often do not contain `Linux`.
 
-**vCenter** (Photon/Linux platform, role vCenter): Linux rule does **not** apply (`role_pattern` above). Templates are VMware FQDN (§7) + ICMP Ping from the Agent CG (§6.4). VMware FQDN is only on role vCenter.
+**vCenter:** VMware FQDN on the role (§7) + ICMP Ping from the Agent CG (§6.4). Linux by agent only if the vCenter VM’s platform matches the Linux rule.
 
 **Extreme:** VOSS and IQ Engine templates must exist in Zabbix before those Template Rules (otherwise the host has no vendor template). Never Network Generic on Switch* (`icmpping` collision). Values → [`zabbix/01-extreme-switching.md`](../../zabbix/01-extreme-switching.md); labels → [`port-identity.md`](../../zabbix/port-identity.md); nbxSync clicks → §11.1.
 
@@ -665,7 +665,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 | Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP + ICMP Ping (rule **Dell Storage (HTTP)**); macros `{$HPE.MSA.API.HOST}` / `{$HPE.MSA.API.USERNAME}` / `{$HPE.MSA.API.PASSWORD}` (§11.3) | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Cohesity physical (oob only) | Dell iDRAC SNMP (Legacy) (SHA1/AES128) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC** on oob | Sites/CH/…, Roles/Cohesity |
 | ESXi hypervisor (Dell) | Dell iDRAC SNMP (SHA384/AES256) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC SHA384/AES256** on oob | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
-| vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (**no** Linux by agent); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
+| vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping; macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |
 | Zabbix Proxy | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping + Remote Zabbix proxy health | Agent :10050 | Sites/…, Roles/Zabbix Proxy, OS/Linux |
 | Any of the above + tag `critical` | unchanged | unchanged | unchanged | + Priority/Critical |
 | VM on a cluster with no site | none | — | — | Not profiled until the VM or cluster has a site |
@@ -702,7 +702,7 @@ After the initial build, and after major changes, confirm coverage against §13.
 | Sample ESXi (Dell) | CG **Dell iDRAC SNMP** (SHA384/AES256, role=ESXi Hypervisor); SNMPv3 `MONITORING-IDRAC` @ oob_ip; Dell iDRAC by SNMP; OS/VMware; **no** VMware FQDN; **no** Agent IF |
 | Sample Pure array | Agent Monitoring; FlashArray HTTP; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` |
 | Sample Zabbix Proxy | Agent; Linux by agent + ICMP Ping + Remote Zabbix proxy health; Roles/Zabbix Proxy |
-| Sample vCenter | VMware FQDN + ICMP Ping (Agent CG); **no** Linux by agent; `{$VMWARE.URL}` (primary IP `/sdk`) + `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` |
+| Sample vCenter | VMware FQDN + ICMP Ping (Agent CG); `{$VMWARE.URL}` (primary IP `/sdk`) + `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` |
 | Inventory `url_a` | Device → `/dcim/devices/<id>/`; VM → `/virtualization/virtual-machines/<id>/` |
 | Nested Sites path | Host is leaf under `Sites/CH/…`; parent groups exist without duplicating membership |
 | Host with `critical` | Also in hostgroup Priority/Critical |
