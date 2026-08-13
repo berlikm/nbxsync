@@ -447,7 +447,7 @@ Create NetBox tags `critical`, `snmp`, and `onboarding` if they are missing. `or
 | `oracle` | **Oracle by Zabbix agent 2** on that Device/VM (merges with OS template; any role, including Space Server / Windows) | Device/VM |
 | `onboarding` | Sync hold — inherits Zabbix exclude via Tag assignment (§9.3). **Remove this NetBox tag to start monitoring.** | Device/VM |
 
-Permanent never-monitor: Zabbix tag `do_not_monitor` on the Device Role — §9.3. Phased cutover: [`runbooks/onboarding.md`](runbooks/onboarding.md).
+Permanent never-monitor: Zabbix tag `do_not_monitor` on the Device Role.
 
 NetBox tags are **not** copied into Zabbix as host tags; they drive interfaces, templates, hostgroups, and (for `onboarding`) exclusion. Zabbix tags are separate (§9.1–§9.2).
 
@@ -472,8 +472,6 @@ Environment is encoded in the hostname; no second taxonomy.
 {%- else -%}Unknown
 {%- endif -%}
 ```
-
-Renders against the device or VM at sync. **Name-pattern only** — no custom-field or role fallback. Preview on a Site Group may show an error — cosmetic.
 
 **Failure mode:** names that do not match the `-p-` / `-d-` / … conventions resolve to **`Unknown`**. That is silent. **Extreme switches** (`CH-STA-…-CORE01`, `…-MGMT01`, `…-ACCE01`, …) normally have no `-p-` token — `environment=Unknown` on them is expected, not a sync bug.
 
@@ -501,8 +499,6 @@ Sync **skips** excluded objects (no host/interfaces/templates). An existing Zabb
 **Name collision:** a NetBox inventory tag named `do_not_monitor` may exist on some devices (Cato / Messpc). That inventory tag is **not** the wave switch and does not exclude by itself. Waves use NetBox tag **`onboarding`** only. Plugin exclude matches the **Zabbix** tag name `do_not_monitor`.
 
 Do **not** put Zabbix `do_not_monitor` on role Server (or a Site Group) for waves — you cannot open a single child while the parent excludes.
-
-**Phased cutover:** [`runbooks/onboarding.md`](runbooks/onboarding.md).
 
 ## 10. Host inventory
 
