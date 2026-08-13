@@ -32,8 +32,7 @@ The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everythi
 | Speed expectation | new capability, not parity. Needs labels first |
 | Capacity: discards + utilisation | new capability. Needs 4+ weeks of history to threshold honestly |
 | CRC / `dot3StatsFCSErrors` | new capability, and unconfirmed |
-| Full port-label rollout | parity only needs *link down*, which works on unlabelled ports under the core role |
-| Access-switch opt-in scoping | can start permissive and tighten after cutover |
+| Full port-label rollout | parity only needs *link down* on Core/Dist/Mgmt; Access is `USW`+`UP` only |
 | Fortinet, Cato, circuits, VMs (03–06) | prepared page + same bar; do not block switch/AP cutover |
 
 **Rule for the migration window:** if a request is not in the "cutover minimum" table, it goes on the post-cutover list. Scope creep is the main risk to the date, not technical difficulty.

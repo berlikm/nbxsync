@@ -31,17 +31,17 @@ If the port runs at the class default, **omit SPEED**. Refuse labels over 20 —
 | CLASS | Meaning | Default speed | Speed-expect | Alerts |
 |---|---|---|---|---|
 | `USW` | Switch ↔ switch | 10G | yes | **High** link / flap+errors Warning + speed |
-| `US` | Endpoint, expect 10G | 10G | yes | **High** link |
-| `UP` | Toward AP | 1G | yes | **High** link (AP ICMP depends) |
-| `MON` | Endpoint, expect 1G | 1G | yes | Warning link |
+| `US` | Endpoint, expect 10G | 10G | yes | **High** link — **Core/Dist/Mgmt only** (not collected on Access) |
+| `UP` | Toward AP | 1G | yes | **High** link (collected on Access; AP ICMP depends) |
+| `MON` | Endpoint, expect 1G | 1G | yes | Warning link — **Core/Dist/Mgmt only** |
 | `UW` | WAN / ISP | — | later (circuit bw) | **High** link; all circuits at site = **Disaster** |
 | `TMON` | Temp watch | — | no | items; optional INFO link-down |
 | `X` / `X-<note>` | **Exclude** | — | — | none |
 | `N` / `N-<text>` | Note — monitoring-neutral | — | — | same as unlabelled |
 
-**`X` excludes. `N` does not.** On Core/Dist/Mgmt, `N` / empty / unparseable labels are monitored. On Access, only the include-classes are. Stack / ISC / MLAG peer / SPAN need **`X`**. Unused ports → **admin-down**.
+**`X` excludes. `N` does not.** On Core/Dist/Mgmt, `N` / empty / unparseable labels are monitored (all admin-up except `X`). On **Access**, only **`USW` (to Dist) and `UP` (to AP)** are collected — no desk, laptop, `US`, `MON`, `UW`, `TMON`, or unlabelled. A laptop unplug cannot alert: there are no items.
 
-A mistyped Access label means **no items at all**. The detector is a NetBox vs live `ifAlias` diff (later) — Zabbix will not tell you.
+A mistyped Access `USW`/`UP` means **no items** for that uplink. The detector is a NetBox vs live `ifAlias` diff (later).
 
 ---
 

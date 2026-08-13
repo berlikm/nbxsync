@@ -14,7 +14,7 @@ Labels: [port-identity.md](port-identity.md). Same page shape: [_template.md](_t
 | **Graph** causes | CPU, memory, traffic, util, inventory change |
 | One incident | host triggers depend on SNMP → ICMP; ICMP depends on **site** (proxy / core). AP cable cuts page on `UP-…`, not twice |
 | Never silent | unsupported-item count, **zero** discovered interfaces, proxy last-seen |
-| Control plane | on-box `ifAlias` + role macros. Access typo → no items — only a NetBox vs live label diff catches it |
+| Control plane | on-box `ifAlias` + role macros. Access collects **only** `USW`+`UP`; a mistyped uplink → no items |
 | Collect first | Speed Expect / Routing / USW util **linked or imported, triggers off** until labels and history exist |
 | Severity | **Disaster** = site only. Device templates use High / Average / Warning / Info — do not dump everything on Warning |
 
@@ -43,9 +43,9 @@ Scale (Zabbix): Info → Warning → Average → High → Disaster. Disaster+Hig
 
 | Ports in scope | Alert | Sev |
 |---|---|---|
-| `USW` / `US` / `UP` link down | yes | **High** — fabric, server, AP plant. AP ICMP **depends on** `UP-` |
-| `MON` link down | yes | Warning — iDRAC / OOB |
-| `UW` link down | yes | **High** — all circuits at a site → **Disaster** (05) |
+| `USW` / `US` / `UP` link down | yes | **High** — on **Access**, only `USW` and `UP` exist as items |
+| `MON` link down | yes | Warning — iDRAC / OOB. **Core/Dist/Mgmt only** (not collected on Access) |
+| `UW` link down | yes | **High** — Core/Dist/Mgmt (or 05). All circuits at a site → **Disaster** |
 | Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
 | Wrong speed vs label | later | Warning — Speed Expect triggers off until labels are clean |
 | Half duplex | yes | Warning |
@@ -55,25 +55,35 @@ Scale (Zabbix): Info → Warning → Average → High → Disaster. Disaster+Hig
 | Traffic graphs | **no** | dashboards |
 | `X…` ports | **no** | not discovered |
 
-Do **not** alert on: laptop unplug (Access opt-in; unlabelled is out), fifty **High**s for one site down (they depend on the site **Disaster**), “bandwidth high” on a backup window.
+Do **not** alert on: a laptop unplugging (Access **does not collect** desk ports at all), fifty **High**s for one site down (they depend on the site **Disaster**), “bandwidth high” on a backup window.
 
 ---
 
 ## Scope
 
-| Role | In | Out |
+| Role | Collect (admin-up physical/LAG) | Do not collect |
 |---|---|---|
-| Switch Core / Dist / Mgmt | All admin-up physical/LAG **except** `X…` | `X…`; admin-down is not discovered |
-| Switch Access | Only `USW` `US` `UP` `MON` `UW` `TMON` | Unlabelled, `N…`, `X…` |
+| Switch Core / Dist / Mgmt | **Every** admin-up port except `X…` | `X…`; **admin-down** is not discovered |
+| Switch Access | **Only** `USW` (to Dist) and `UP` (to AP) | Desk / laptop / `US` / `MON` / `UW` / `TMON` / unlabelled / `N…` / `X…` |
 
-**`X` excludes. `N` does not.** On Core, `N` / empty / leftover labels still get link-down if the port was up. Stack / ISC / MLAG peer / SPAN need **`X`**. Unused: **admin-down**.
+Access is not “opt-in a long class list”. It is **two labels**, full stop. Unlabelled Access ports produce **no items** — a laptop unplug cannot alert because there is nothing to alert on.
+
+Dist / Core / Mgmt will alert if an admin-up port goes down, labelled or not (except `X`). Do not leave a desk port admin-up on Dist.
+
+**`X` excludes. `N` does not** (Core/Dist/Mgmt). Stack / ISC / MLAG peer / SPAN need **`X`**. Unused: **admin-down**.
 
 | Role | `{$NET.IF.IFALIAS.MATCHES}` | `{$NET.IF.IFALIAS.NOT_MATCHES}` | `{$NET.IF.IFTYPE.MATCHES}` |
 |---|---|---|---|
 | Core / Dist / Mgmt | `.*` | `^X(-\|$)` | `^(6\|161)$` |
-| Access | `^(USW\|US\|UP\|MON\|UW\|TMON)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` |
+| Access | `^(USW\|UP)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` |
+
+Access must also override Speed Expect’s filter or `US`/`MON` on an Access box would still be discovered:
+
+`{$PORTID.LLD.IFALIAS.MATCHES}` on Access = `^(USW|UP)(-|$)`
 
 There is no Switch Hybrid role. `^(6|161)$` drops EXOS VLAN ifaces.
+
+NetBox: put those Access macros on role Switch Access. The locked checklist §11.1 still has the wider `USW|US|UP|MON|UW|TMON` pattern — **the live role value is this tighter regex.**
 
 ---
 
@@ -154,12 +164,14 @@ Fabric (ISIS / V-IST) is the VOSS equivalent of OSPF — **later**, more importa
 | Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt | **off** until labels are clean |
 | Extreme Routing by SNMP (OSPF) | Switch Core / Dist | **off** |
 
-Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`):
+Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Default (Core/Dist/Mgmt):
 
 ```
 {$PORTID.LLD.IFALIAS.MATCHES} = ^(USW|US|UP|MON)(-|$)
 {$PORTID.LLD.IFTYPE.MATCHES}  = ^6$
 ```
+
+On **Access**, override MATCHES to `^(USW|UP)(-|$)` so desk `US`/`MON` labels cannot leak into Speed Expect.
 
 `{$IF.UTIL.MAX:"USW"}=80` is **not** current. Keep global 101 until there is history. Discards after that.
 
