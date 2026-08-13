@@ -52,5 +52,5 @@ Pulled from `berlikm/nbxsync` branch `cursor/extreme-voss-snmp-template-e7f8` (P
 
 | Concern | Doc |
 |---|---|
-| nbxSync objects (what is set in NetBox) | [`../docs/netbox-zabbix/README.md`](../docs/netbox-zabbix/README.md) |
+| nbxSync GUI setup (what is set in NetBox) | [`../docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) |
 | First-build scripts (optional) | [`../scripts/README.md`](../scripts/README.md) |

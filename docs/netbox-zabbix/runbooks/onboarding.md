@@ -2,7 +2,7 @@
 
 During cutover many NetBox objects are **inventory-true but not monitorable yet** (Zabbix agent missing, wrong credentials, not reachable). Keep the estate quiet, then open hosts deliberately.
 
-**Folder map:** [`../README.md`](../README.md) · Exclude: [`../objects/07-tags.md`](../objects/07-tags.md) · Plugin: [`../objects/10-plugin-settings.md`](../objects/10-plugin-settings.md) · Troubleshoot: [`day2.md`](day2.md)
+**Folder map:** [`../configuration.md`](../configuration.md) (§9 exclude, §12 plugin) · Troubleshoot: [`day2.md`](day2.md)
 
 ---
 
@@ -71,7 +71,7 @@ When that object is ready to monitor:
    - Not on a permanently excluded role
 2. Open the Device/VM in NetBox → **remove tag `onboarding`**.
 3. Re-sync that host (or wait for the background cycle).
-4. Compare to [`../objects/11-host-result.md`](../objects/11-host-result.md). If wrong, use [`day2.md`](day2.md) host-not-monitored.
+4. Compare to configuration **§13**. If wrong, use [`day2.md`](day2.md) host-not-monitored.
 
 No new configuration group or Template Rule is required for a normal agent host — Site Group Agent default already covers it once exclusion is gone.
 
