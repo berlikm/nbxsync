@@ -2,13 +2,13 @@
 
 **Day-to-day operations use the NetBox GUI or API.** These scripts accelerate a **first build** (or a rare full re-apply).
 
-Policy (what we set) lives under [`docs/netbox-zabbix/README.md`](../docs/netbox-zabbix/README.md) — one article per nbxSync object, same order as zerotouch.
+Policy (what we set) lives in [`docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) — one document, GUI click order.
 
-If a script and those articles disagree, **fix the script or the article so they match**. The articles are what people read.
+If a script and that document disagree, **fix the script or the document so they match**.
 
 | Order | Script | Applies |
 |---|---|---|
-| 1 | `configure_nbxsync_zerotouch.py` | Objects 01–09 (server through macros). Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
+| 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
 | 2 | `configure_nbxsync_network.py` | Extreme YAML import, Switch* IFALIAS, destination globals, stock EXOS LLD + TEMP_* patches |
 | — | `create_dashboards.py` | Zabbix dashboards from nested hostgroups |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |

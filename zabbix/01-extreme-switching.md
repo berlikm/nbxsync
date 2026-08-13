@@ -2,7 +2,7 @@
 
 Status: building    Owner:    Depends on: [port-identity.md](port-identity.md)
 
-**Read this first.** Detail (LLD, macros, stages, EXOS vs VOSS) is below. Integration wiring (nbxSync): [`../docs/netbox-zabbix/`](../docs/netbox-zabbix/README.md).
+**Read this first.** Detail (LLD, macros, stages, EXOS vs VOSS) is below. Integration wiring (nbxSync): [`../docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md).
 
 ---
 
@@ -479,7 +479,7 @@ Stock **Extreme EXOS by SNMP** also defines template-level `{$TEMP_WARN}=55` / `
 | `{$OPTIC.RX.DBM.MIN}` | `-100` |
 | `{$MLT.CONTROL}` | `0` |
 
-nbxSync Switch* rows (CG, Template Rules, IFALIAS assignments): [`docs/netbox-zabbix/README.md`](../docs/netbox-zabbix/README.md) — configuration groups, template rules, templates, macros.
+nbxSync Switch* rows (CG, Template Rules, IFALIAS): [`docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md) §§4–7 and §11.
 
 **Device role** — port scoping. Set **both** IFALIAS macros on every role:
 

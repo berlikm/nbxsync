@@ -90,7 +90,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 ## Lab proof
 
 Optional first-build scripts and commands: [`../scripts/README.md`](../scripts/README.md).  
-NetBox ↔ Zabbix integration: [`../docs/netbox-zabbix/README.md`](../docs/netbox-zabbix/README.md).
+NetBox ↔ Zabbix integration: [`../docs/netbox-zabbix/configuration.md`](../docs/netbox-zabbix/configuration.md).
 
 ## Out of scope until listed
 
