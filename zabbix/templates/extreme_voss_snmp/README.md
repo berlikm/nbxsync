@@ -46,7 +46,7 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 | `{$IF.UTIL.MAX}` | **101** | Stock bandwidth trigger off until stage 6 |
 | `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Physical + LAG only |
 
-Role IFALIAS macros (`.*` + `^X(-|$)` for core, opt-in for access) are assigned via **nbxsync**, not baked into this template. Fleet globals are also pushed by `configure_nbxsync_network.py` (destination by default; `--cutover-silence` optional).
+Role IFALIAS macros (`.*` + `^X(-|$)` for Core/Dist/Mgmt; Access `^(USW|UP)(-|$)`) are assigned on the Switch* role in NetBox, not baked into this template. Operator page: [`../../01-extreme-switching.md`](../../01-extreme-switching.md).
 
 ## Coverage
 
@@ -64,7 +64,7 @@ Role IFALIAS macros (`.*` + `^X(-|$)` for core, opt-in for access) are assigned 
 
 CLI `name` populates SNMP **`ifAlias`** (lab canary PASS on VOSS 9.3.1.0). Prefer `ifAlias` for the shared `CLASS[-SPEED]-ID` grammar (fleet budget **20** chars). Do not rely on `rcPortName` (empty in canary).
 
-See `docs/port-identity-foundation.md` and `docs/extreme-switching-zabbix.md` ┬ºB.
+See [port-identity.md](../../port-identity.md) and [01-extreme-switching.md](../../01-extreme-switching.md).
 
 ## Compatibility notes (Zabbix 7.0)
 

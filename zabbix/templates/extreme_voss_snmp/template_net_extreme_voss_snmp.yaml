@@ -470,8 +470,8 @@ zabbix_export:
         expression: max(/Extreme VOSS by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
         name: 'Extreme VOSS: No SNMP data collection'
         opdata: 'Current state: {ITEM.LASTVALUE1}'
-        priority: WARNING
-        description: SNMP is not available for polling. Please check device connectivity and SNMP settings.
+        priority: AVERAGE
+        description: 'Mgmt blind; forwarding may still work. Ticket, not a 03:00 page. Check SNMPv3 MONITORING and CH-proxy cache after reboot.'
         dependencies:
         - name: 'Extreme VOSS: Unavailable by ICMP ping'
           expression: max(/Extreme VOSS by SNMP/icmpping,#3)=0

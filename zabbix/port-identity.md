@@ -32,7 +32,7 @@ If the port runs at the class default, **omit SPEED**. Refuse labels over 20 —
 |---|---|---|---|---|
 | `USW` | Switch ↔ switch | 10G | yes | **High** link / flap+errors Warning + speed |
 | `US` | Endpoint, expect 10G | 10G | yes | **High** link — **Core/Dist/Mgmt only** (not collected on Access) |
-| `UP` | Toward AP | 1G | yes | **High** link (collected on Access; AP ICMP depends) |
+| `UP` | Toward AP | 1G | yes | **High** link on the switch (Access collects it). AP ICMP **should** depend; until mapped, both High — see [02](02-extreme-access-points.md) |
 | `MON` | Endpoint, expect 1G | 1G | yes | Warning link — **Core/Dist/Mgmt only** |
 | `UW` | WAN / ISP | — | later (circuit bw) | **High** link; all circuits at site = **Disaster** |
 | `TMON` | Temp watch | — | no | items; optional INFO link-down |

@@ -23,9 +23,9 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 
 | Folder | Template | Status |
 |---|---|---|
-| `templates/extreme_voss_snmp/` | Extreme VOSS by SNMP | imported; lab on virtual Fabric Engine |
-| `templates/extreme_port_speed_expect_snmp/` | Extreme Port Speed Expect by SNMP | imported; triggers off until labels |
-| `templates/extreme_routing_snmp/` | Extreme Routing by SNMP (OSPF) | imported; triggers off |
+| `templates/extreme_voss_snmp/` | Extreme VOSS by SNMP | imported; SNMP-dead **Average** per [01](01-extreme-switching.md) |
+| `templates/extreme_port_speed_expect_snmp/` | Extreme Port Speed Expect by SNMP | imported; YAML triggers **on** — do not link until labels |
+| `templates/extreme_routing_snmp/` | Extreme Routing by SNMP (OSPF) | imported; not linked (YAML High if linked) |
 | `templates/extreme_iq_engine_snmp/` | Extreme IQ Engine by SNMP | imported; severities per [02](02-extreme-access-points.md) |
 
 ## Related

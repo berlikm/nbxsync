@@ -29,7 +29,7 @@ The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everythi
 | Capability | Why it can wait |
 |---|---|
 | **OSPF adjacency** | LogicMonitor almost certainly is not watching it — deferring is not a regression |
-| Speed expectation | new capability, not parity. Needs labels first |
+| Speed expectation | new capability, not parity. Needs labels first. YAML triggers are **on** — do not link until then |
 | Capacity: discards + utilisation | new capability. Needs 4+ weeks of history to threshold honestly |
 | CRC / `dot3StatsFCSErrors` | new capability, and unconfirmed |
 | Full port-label rollout | parity only needs *link down* on Core/Dist/Mgmt; Access is `USW`+`UP` only |

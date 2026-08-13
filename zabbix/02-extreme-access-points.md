@@ -2,7 +2,7 @@
 
 HiveOS / IQ Engine APs. One Zabbix host per AP, not per XIQ tenant. Same bar as [01-extreme-switching.md](01-extreme-switching.md): **page what users feel, never fail silent, one incident per cable cut**.
 
-The switch port toward the AP is `UP-…`. OID map: `templates/extreme_iq_engine_snmp/`.
+The switch port toward the AP is `UP-…` (Access collects **only** `USW`+`UP` — [01](01-extreme-switching.md)). OID map: `templates/extreme_iq_engine_snmp/`.
 
 ---
 

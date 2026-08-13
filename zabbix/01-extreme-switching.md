@@ -2,7 +2,7 @@
 
 EXOS and VOSS share alerts and the port-label grammar; they do not share MIBs. SNMP is the data path (these platforms do not stream gNMI). World-class here means: **page what users feel, never fail silent, one incident per root cause** — not a second poller.
 
-Labels: [port-identity.md](port-identity.md). Same page shape: [_template.md](_template.md).
+Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md](02-extreme-access-points.md). Scale: [_template.md](_template.md).
 
 ---
 
@@ -10,52 +10,57 @@ Labels: [port-identity.md](port-identity.md). Same page shape: [_template.md](_t
 
 | Rule | Here |
 |---|---|
-| Page **symptoms** | ICMP down, SNMP dead, link down, flaps, errors, discards, optic DOM **alarm**, PSU/fan, temp **critical** |
-| **Graph** causes | CPU, memory, traffic, util, inventory change |
-| One incident | host triggers depend on SNMP → ICMP; ICMP depends on **site** (proxy / core). AP cable/PoE pages on Access `UP-` **High**. AP ICMP High is a duplicate until that dependency exists — do not drop it (hides a hung AP) |
+| Page **symptoms** | ICMP down, SNMP dead, in-scope link down, flaps, errors, optic DOM **alarm**, PSU/fan, temp **critical** |
+| **Graph** causes | CPU, memory, traffic, util, inventory, ICMP loss/RTT |
+| One incident | host triggers depend on SNMP → ICMP; ICMP depends on **site**. AP cable/PoE pages on Access `UP-` **High**. AP ICMP High is a duplicate until that dependency exists — do not drop it (hides a hung AP) |
 | Never silent | unsupported-item count, **zero** discovered interfaces, proxy last-seen |
 | Control plane | on-box `ifAlias` + role macros. Access collects **only** `USW`+`UP`; a mistyped uplink → no items |
-| Collect first | Speed Expect / Routing / USW util **linked or imported, triggers off** until labels and history exist |
-| Severity | **Disaster** = site only. Device templates use High / Average / Warning / Info — do not dump everything on Warning |
+| Collect first | Speed Expect / Routing **imported, not linked**. USW util off (`{$IF.UTIL.MAX}=101`). YAML triggers on those templates are **on** — linking them pages |
+| Severity | **Disaster** = site only. Do not dump everything on Warning |
 
 Do **not** stack Network Generic (`icmpping` collision). Mute a port with **`X`**, not `{$IFCONTROL:"{#IFNAME}"}`.
 
-Scale (Zabbix): Info → Warning → Average → High → Disaster. Disaster+High page 24/7; Average = ticket; Warning = next day; Info = log. Full table: [_template.md](_template.md).
+Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24/7; Average = ticket; Warning = next day; Info = log.
 
 ---
 
 ## What we alert
+
+Intended contract. Where the live YAML differs, **Templates** says so.
 
 | Device | Alert | Sev |
 |---|---|---|
 | ICMP down | yes | **High** |
 | SNMP dead (ICMP still up) | yes | **Average** — mgmt blind, forwarding may still work |
 | Unplanned reboot | yes | Warning |
-| Temperature **critical** / vendor alarm | yes | **High** |
+| Temperature **critical** (100 °C) / vendor alarm | yes | **High** |
+| Temperature warning (95 °C) | yes | Warning — next day; not stock 55 |
+| Temperature too low | **no** | `{$TEMP_CRIT_LOW}=-273` silences stack/VM 0 °C |
 | PSU / fan failed | yes | Average |
 | CPU high | yes | Warning — baseline first |
 | Memory high | yes | Average — baseline first |
 | Optic DOM **status** alarm (VOSS) | yes | Average — prefer status, not raw dBm |
 | Firmware / OS / serial change | yes | Info |
-| System name changed | **no** | disabled |
-| Temperature warning / too low | **no** | closets + stack 0 °C |
-| **Site** unreachable (all switches / last path) | yes | **Disaster** — site-level trigger, **not** on EXOS/VOSS templates |
+| System name changed | stock **Info** | disable in Zabbix if it chatters |
+| ICMP loss / RTT | stock Warning | WAN-poller noise; disable per host if CN/US false |
+| **Site** unreachable | yes | **Disaster** — site-level, **not** on EXOS/VOSS |
 
-| Ports in scope | Alert | Sev |
-|---|---|---|
-| `USW` / `US` / `UP` link down | yes | **High** — on **Access**, only `USW` and `UP` exist as items |
-| `MON` link down | yes | Warning — iDRAC / OOB. **Core/Dist/Mgmt only** (not collected on Access) |
-| `UW` link down | yes | **High** — Core/Dist/Mgmt (or 05). All circuits at a site → **Disaster** |
-| Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
-| Wrong speed vs label | later | Warning — Speed Expect triggers off until labels are clean |
-| Half duplex | yes | Warning |
-| Interface errors | yes | Warning |
-| Outbound discards (`USW`) | later | Average — after history (user impact) |
-| Sustained util | **no** | dashboard. Stock 15m util off (`{$IF.UTIL.MAX}=101`) |
-| Traffic graphs | **no** | dashboards |
-| `X…` ports | **no** | not discovered |
+| Ports in scope | Alert | Intended | Live YAML |
+|---|---|---|---|
+| `USW` / `US` / `UP` link down | yes | **High** | **Average** (one stock trigger for every discovered port) |
+| `MON` link down | yes | Warning | Average — Core/Dist/Mgmt only (not collected on Access) |
+| `UW` link down | yes | **High** | Average — Core/Dist/Mgmt. All circuits at a site → **Disaster** (site-level) |
+| Link flapping | yes | Warning | Warning — VOSS has a counter; EXOS stock does not |
+| Wrong speed vs label | later | Warning | Speed Expect YAML triggers are **on**; do **not** link until labels are clean |
+| Half duplex | yes | Warning | Warning |
+| Interface errors | yes | Warning | Warning |
+| Outbound discards (`USW`) | later | Average | Speed Expect, not linked |
+| Sustained util | **no** | dashboard | stock 15m util off (`{$IF.UTIL.MAX}=101`) |
+| `X…` ports | **no** | — | not discovered |
 
-Do **not** alert on: a laptop unplugging (Access **does not collect** desk ports at all), fifty **High**s for one site down (they depend on the site **Disaster**), “bandwidth high” on a backup window.
+Do **not** alert on: a laptop unplugging (Access **does not collect** desk ports), fifty **High**s for one site down, “bandwidth high” on a backup window.
+
+Class-scoped High for `USW`/`UP` is **later** (context macros or a thin trigger). Until then, in-scope link-down is an Average ticket. Access still cannot page a desk port — those items do not exist.
 
 ---
 
@@ -66,9 +71,7 @@ Do **not** alert on: a laptop unplugging (Access **does not collect** desk ports
 | Switch Core / Dist / Mgmt | **Every** admin-up port except `X…` | `X…`; **admin-down** is not discovered |
 | Switch Access | **Only** `USW` (to Dist) and `UP` (to AP) | Desk / laptop / `US` / `MON` / `UW` / `TMON` / unlabelled / `N…` / `X…` |
 
-Access is not “opt-in a long class list”. It is **two labels**, full stop. Unlabelled Access ports produce **no items** — a laptop unplug cannot alert because there is nothing to alert on.
-
-Dist / Core / Mgmt will alert if an admin-up port goes down, labelled or not (except `X`). Do not leave a desk port admin-up on Dist.
+Access is two labels, full stop. Unlabelled Access ports produce **no items**. Dist / Core / Mgmt alert if an admin-up port goes down, labelled or not (except `X`). Do not leave a desk port admin-up on Dist.
 
 **`X` excludes. `N` does not** (Core/Dist/Mgmt). Stack / ISC / MLAG peer / SPAN need **`X`**. Unused: **admin-down**.
 
@@ -77,13 +80,23 @@ Dist / Core / Mgmt will alert if an admin-up port goes down, labelled or not (ex
 | Core / Dist / Mgmt | `.*` | `^X(-\|$)` | `^(6\|161)$` |
 | Access | `^(USW\|UP)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` |
 
-Access must also override Speed Expect’s filter or `US`/`MON` on an Access box would still be discovered:
-
-`{$PORTID.LLD.IFALIAS.MATCHES}` on Access = `^(USW|UP)(-|$)`
+Access must also override Speed Expect or `US`/`MON` leak in: `{$PORTID.LLD.IFALIAS.MATCHES}` = `^(USW|UP)(-|$)`.
 
 There is no Switch Hybrid role. `^(6|161)$` drops EXOS VLAN ifaces.
 
-NetBox: put those Access macros on role Switch Access. The locked checklist §11.1 still has the wider `USW|US|UP|MON|UW|TMON` pattern — **the live role value is this tighter regex.**
+NetBox: those Access macros on role Switch Access. Locked checklist §11.1 still has the wider `USW|US|UP|MON|UW|TMON` pattern — **the live role value is the tighter regex.**
+
+---
+
+## Ops
+
+Production poller for NL/US/CH is the **Swiss proxy group**, SNMPv3 `MONITORING` **MD5/DES**, GETBULK. A laptop `snmpget` does not prove that path. ICMP Up only proves ping.
+
+After a **reboot**, if CLI SNMPv3 from the proxy works but Zabbix stays SNMP=0: RFC 3414 engine boots. Reload `zabbix_proxy -R snmp_cache_reload` or re-sync the host. If CLI from the proxy times out: UDP 161 / allow-list, not the template.
+
+Platform names must match Template Rules: **EXOS**, **VOSS** (case-insensitive substring).
+
+Grammar: EXOS `display-string` (max 20), leave `description-string` empty. VOSS interface `name` → `ifAlias`. Do not use `rcPortName`.
 
 ---
 
@@ -92,6 +105,7 @@ NetBox: put those Access macros on role Switch Access. The locked checklist §11
 ```
 util / speed-expect  →  link down  →  no SNMP  →  ICMP down  →  site unreachable
 CPU / mem / temp     →  ICMP down
+AP ICMP              →  Access UP-   (later — see 02)
 ```
 
 A site WAN blip must not be one High per switch. Those Highs **depend on** a site **Disaster** (proxy / core / synthetic).
@@ -104,39 +118,30 @@ A site WAN blip must not be one High per switch. Those Highs **depend on** a sit
 |---|---|
 | Unsupported item count | SNMP walk died; looks like health |
 | Switch with **zero** discovered interfaces | IFALIAS regex or LLD broken |
+| SNMP = 0, ICMP = 1 | credentials / proxy cache / UDP 161 — not a forwarding outage |
 | Proxy last-seen | hosts go *unknown*, not *down* |
 
 ---
 
 ## EXOS
 
-Grammar in **`display-string`**, max **20** characters. Leave **`description-string` empty** (it wins `ifAlias`).
-
 | Template | Where |
 |---|---|
-| Extreme EXOS by SNMP | Platform EXOS |
+| Extreme EXOS by SNMP (stock) | Platform EXOS |
 
-On **this template**:
+We do **not** fork the stock template. Apply: `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273` on **this template** (not globals). Patch EtherLike duplex LLD to the same IFALIAS filters as `net.if.discovery`. Interface LLD: **15m**, keep-lost **0**.
 
-```
-{$TEMP_WARN}     = 95
-{$TEMP_CRIT}     = 100
-{$TEMP_CRIT_LOW} = -273
-```
-
-Stock duplex LLD does **not** honour IFALIAS — it must use the same MATCHES / NOT_MATCHES as `net.if.discovery` or Access alerts on unlabelled ports. Interface LLD: **15m**, keep-lost **0** (relabel to `X` must stop the same day, not in a week).
+Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on stock is typically Warning until we match VOSS (Average).
 
 ---
 
 ## VOSS
 
-Grammar in interface **`name`** → `ifAlias`. Do not use `rcPortName`. Same 20-character budget.
-
 | Template | Where |
 |---|---|
 | Extreme VOSS by SNMP | Platform VOSS |
 
-Same `{$TEMP_*}` on **this template**. Also (template / fleet macros, not the Switch* role):
+Same `{$TEMP_*}` on **this template**. Re-import after this revision (SNMP-dead is **Average**). Fleet macros (template / globals, not Switch* role):
 
 ```
 {$OPTIC.TEMP.CRIT}     = 70
@@ -151,9 +156,9 @@ Same `{$TEMP_*}` on **this template**. Also (template / fleet macros, not the Sw
 {$IF.UTIL.MAX}         = 101
 ```
 
-V-IST: set host `{$VIST.CONTROL}=1` only on fabric pairs. Classic IST stays 0. Traps (fan/PSU/overheat/ISIS/LAG) are in the template — collect; do not page duplicates of the polled items until we have seen them on hardware.
+V-IST: host `{$VIST.CONTROL}=1` only on fabric pairs. Classic IST stays 0. Traps are in the template — collect; do not page duplicates of polled items until seen on hardware.
 
-Fabric (ISIS / V-IST) is the VOSS equivalent of OSPF — **later**, more important than OSPF for this estate.
+Fabric (ISIS / V-IST / card down) YAML includes **High** triggers. VIST/IST are gated by the macros above. ISIS/card High is live — retune **later** (more important than OSPF for this estate).
 
 ---
 
@@ -161,8 +166,8 @@ Fabric (ISIS / V-IST) is the VOSS equivalent of OSPF — **later**, more importa
 
 | Template | Where | Triggers |
 |---|---|---|
-| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt | **off** until labels are clean |
-| Extreme Routing by SNMP (OSPF) | Switch Core / Dist | **off** |
+| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt | YAML **on**. **Do not assign** on Switch roles until labels are clean |
+| Extreme Routing by SNMP (OSPF) | Switch Core / Dist | YAML **on** (OSPF High). **Not linked** |
 
 Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Default (Core/Dist/Mgmt):
 
@@ -171,14 +176,14 @@ Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Default (Core/Dist
 {$PORTID.LLD.IFTYPE.MATCHES}  = ^6$
 ```
 
-On **Access**, override MATCHES to `^(USW|UP)(-|$)` so desk `US`/`MON` labels cannot leak into Speed Expect.
+On **Access**, override MATCHES to `^(USW|UP)(-|$)`.
 
-`{$IF.UTIL.MAX:"USW"}=80` is **not** current. Keep global 101 until there is history. Discards after that.
+`{$IF.UTIL.MAX:"USW"}=80` is **not** current. Keep global 101 until there is history.
 
 ---
 
 ## Later
 
-OSPF count; USW util + discards; VOSS fabric adjacency; sFlow on a few Core `USW`; one synthetic ping per site (proxy → DC) as the **Disaster** SLI; NetBox vs live `ifAlias` compliance; syslog on the proxy; `walk[]` dependent items when we retune poll load.
+Class-scoped link-down High (`USW`/`UP`); OSPF count; USW util + discards; VOSS fabric adjacency retune; sFlow on a few Core `USW`; one synthetic ping per site as the **Disaster** SLI; NetBox vs live `ifAlias`; AP ICMP → `UP-`; syslog on the proxy; `walk[]` when we retune poll load.
 
-FortiGate and network VMs reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md)) — different data path, same rules. Do not merge problem classes with Cato ([04](04-cato.md)).
+FortiGate and network VMs reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md)). Do not merge with Cato ([04](04-cato.md)).

@@ -2,7 +2,7 @@
 
 Thin Zabbix **7.0** template: absolute speed expectation, sustained utilisation, and outbound discards for ports labelled `USW` / `US` / `UP` / `MON`.
 
-Design: `docs/extreme-switching-zabbix.md` ┬ºA.5 / ┬ºA.6.4.
+Design: [01-extreme-switching.md](../../01-extreme-switching.md) (Speed Expect). Own LLD macros (`{$PORTID.LLD.*}`) — do not reuse `{$NET.IF.IFALIAS.*}`.
 
 ## Link with
 
@@ -42,4 +42,4 @@ Design prefers **dependent items** on platform-template masters (`net.if.speed[�
 
 ## Rollout
 
-Enable triggers at **stage 4** (speed-expect) and **stage 6** (discards, then util). Keep `{$IF.UTIL.MAX}=101` until thresholds are baselined.
+Do **not** link this template until labels are clean. YAML trigger prototypes are **enabled** (speed mismatch, util, discards, link-down). Linking it pages. Keep `{$IF.UTIL.MAX}=101` until util is baselined. Access must override `{$PORTID.LLD.IFALIAS.MATCHES}` to `^(USW|UP)(-|$)`.
