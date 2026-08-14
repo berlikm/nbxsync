@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from dcim.models import Device
 from utilities.testing import create_test_device
+
 from nbxsync.models import ZabbixServer, ZabbixServerAssignment
 
 
