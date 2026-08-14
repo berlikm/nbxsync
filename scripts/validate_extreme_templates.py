@@ -10,6 +10,7 @@ the lab API to prove idempotency and that existing hosts are not deleted.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -36,7 +37,26 @@ def record(name: str, ok: bool, detail: str = '') -> None:
     print(f"[{'PASS' if ok else 'FAIL'}] {name}: {detail}")
 
 
+def _uuid_is_v4(value: str) -> bool:
+    hex32 = value.replace('-', '').lower()
+    if len(hex32) != 32 or any(c not in '0123456789abcdef' for c in hex32):
+        return False
+    return hex32[12] == '4' and hex32[16] in '89ab'
+
+
+def validate_uuids(name: str, text: str) -> None:
+    bad = []
+    for m in re.finditer(r'uuid:\s*([0-9a-fA-F-]{32,36})', text):
+        u = m.group(1)
+        if not _uuid_is_v4(u):
+            line = text[: m.start()].count('\n') + 1
+            bad.append(f'L{line}:{u}')
+    record(f'{name} UUIDv4', not bad, ', '.join(bad[:8]))
+
+
 def load_yaml(path: Path) -> dict:
+    # Quoted 'y' keys stay strings; YAML 1.1 would otherwise coerce y → True.
+    return yaml.safe_load(path.read_text())
     # Quoted 'y' keys stay strings; YAML 1.1 would otherwise coerce y → True.
     return yaml.safe_load(path.read_text())
 
@@ -205,6 +225,7 @@ def validate_yaml() -> None:
         record(f'file {name}', path.exists(), str(path.relative_to(ROOT)))
         if not path.exists():
             continue
+        validate_uuids(name, path.read_text())
         try:
             doc = load_yaml(path)
             record(f'parse {name}', True, f'version={(doc.get("zabbix_export") or {}).get("version")}')

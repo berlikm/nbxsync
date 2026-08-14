@@ -86,6 +86,11 @@ def _macro_map(api: Any, hostid: str) -> dict[str, str]:
     return {m['macro']: m.get('value', '') for m in rows if isinstance(m, dict) and m.get('macro')}
 
 
+def _trigger_name(trig: dict) -> str:
+    """Zabbix API stores the visible trigger name in ``description`` (YAML uses ``name``)."""
+    return str(trig.get('description') or trig.get('name') or '')
+
+
 def patch_disable_wan_icmp_noise(
     api: Any,
     template_names: tuple[str, ...] | None = None,
@@ -93,6 +98,7 @@ def patch_disable_wan_icmp_noise(
     """Disable ICMP loss/RTT triggers. Items stay for the Health dashboard.
 
     CH proxy RTT/loss is a WAN signal, not chassis health. Idempotent.
+    Matches on the API ``description`` field only — never bulk-disable.
     """
     logger.info('Network: disable WAN ICMP loss/RTT triggers')
     names = template_names or tuple(ICMP_NOISE_TRIGGER_NAMES)
@@ -107,24 +113,12 @@ def patch_disable_wan_icmp_noise(
         if not wanted:
             results[name] = 'no-names'
             continue
-        triggers = api_call(
+        all_tr = api_call(
             api,
             'trigger.get',
-            {
-                'hostids': tid,
-                'output': ['triggerid', 'description', 'status', 'name'],
-                'filter': {'name': list(wanted)},
-            },
+            {'hostids': tid, 'output': ['triggerid', 'status', 'description']},
         ) or []
-        # Some APIs ignore filter on name; fall back to scan.
-        if len(triggers) < len(wanted):
-            all_tr = api_call(
-                api,
-                'trigger.get',
-                {'hostids': tid, 'output': ['triggerid', 'status', 'name']},
-            ) or []
-            by_name = {t.get('name'): t for t in all_tr}
-            triggers = [by_name[n] for n in wanted if n in by_name]
+        triggers = [t for t in all_tr if _trigger_name(t) in wanted]
         if not triggers:
             results[name] = 'no-triggers'
             logger.info('  %s: ICMP loss/RTT triggers absent — skip', name)
@@ -149,8 +143,8 @@ def assert_wan_icmp_noise_disabled(api: Any, template_name: str) -> tuple[bool, 
     wanted = ICMP_NOISE_TRIGGER_NAMES.get(template_name, ())
     if not wanted:
         return True, 'no-names'
-    all_tr = api_call(api, 'trigger.get', {'hostids': tid, 'output': ['triggerid', 'status', 'name']}) or []
-    by_name = {t.get('name'): t for t in all_tr}
+    all_tr = api_call(api, 'trigger.get', {'hostids': tid, 'output': ['triggerid', 'status', 'description']}) or []
+    by_name = {_trigger_name(t): t for t in all_tr}
     missing = [n for n in wanted if n not in by_name]
     if missing:
         # Stock stub / YAML not yet imported

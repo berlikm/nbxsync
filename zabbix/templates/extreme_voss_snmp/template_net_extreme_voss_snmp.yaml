@@ -490,7 +490,7 @@ zabbix_export:
       - tag: component
         value: health
       triggers:
-      - uuid: b2d5f9c3e4a1527b0c8d6e5f4a3b2c1d
+      - uuid: 5b984e6731df4a75ad47e13674c98301
         expression: min(/Extreme VOSS by SNMP/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.MAX}
         name: 'Extreme VOSS: Too many unsupported items'
         priority: AVERAGE

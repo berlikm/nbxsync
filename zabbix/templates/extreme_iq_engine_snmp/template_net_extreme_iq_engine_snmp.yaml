@@ -103,7 +103,7 @@ zabbix_export:
         tags:
         - tag: scope
           value: availability
-    - uuid: c3e6a0d4f5b2638c1d9e7f6a5b4c3d2e
+    - uuid: ca50adcf53ad4986ab9c37f6a7fa1e0f
       name: Unsupported item count
       type: INTERNAL
       key: 'zabbix[host,,items_unsupported]'
@@ -113,7 +113,7 @@ zabbix_export:
       - tag: component
         value: health
       triggers:
-      - uuid: d4f7b1e5a6c3749d2e0f8a7b6c5d4e3f
+      - uuid: bd8d9a6f1fbd48a68f6e8da8d2e21455
         expression: min(/Extreme IQ Engine by SNMP/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.MAX}
         name: 'Extreme IQ Engine: Too many unsupported items'
         priority: AVERAGE
@@ -718,7 +718,7 @@ zabbix_export:
       value: '5'
       description: Average ticket when unsupported items stay above this for 30m.
     dashboards:
-    - uuid: e5a8c2f6b7d4850e3f1a9b8c7d6e5f4a
+    - uuid: c87fdffc6e3c4a7a9de4e1dc42275c6c
       name: Health
       pages:
       - name: Health
