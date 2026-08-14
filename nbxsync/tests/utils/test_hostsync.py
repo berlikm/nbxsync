@@ -688,3 +688,42 @@ class HostSyncTestCase(TestCase):
         self.sync.check_default_hostinterface()
         self.assertEqual(HI.objects.count(), before)
         self.assertEqual(clone.interfaceid, 555)
+
+    def test_check_default_reuses_compatible_linked_interface(self):
+        """A transient inherited default adopts the existing linked interface."""
+        from nbxsync.models import ZabbixHostInterface as HI
+
+        self.obj.hostid = '12345'
+        clone = HI(
+            zabbixserver=self.zabbixserver,
+            type=ZabbixHostInterfaceTypeChoices.SNMP,
+            interface_type=ZabbixInterfaceTypeChoices.DEFAULT,
+            useip=ZabbixInterfaceUseChoices.IP,
+            port=161,
+            ip=self.ip,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.id,
+        )
+        clone.pk = None
+        clone._is_inherited_copy = True
+        self.sync.context['all_objects']['hostinterfaces'] = [clone]
+        remote = {
+            'interfaceid': '999',
+            'type': str(int(ZabbixHostInterfaceTypeChoices.SNMP)),
+            'main': str(int(ZabbixInterfaceTypeChoices.DEFAULT)),
+            'useip': str(int(ZabbixInterfaceUseChoices.IP)),
+            'port': '161',
+            'ip': '192.0.2.1',
+            'dns': '',
+        }
+        self.sync.api.hostinterface.get = lambda **kwargs: [remote]
+        created = []
+        updated = []
+        self.sync.api.hostinterface.create = lambda **params: created.append(params)
+        self.sync.api.host.update = lambda **params: updated.append(params)
+
+        self.sync.check_default_hostinterface()
+
+        self.assertEqual(clone.interfaceid, 999)
+        self.assertEqual(created, [])
+        self.assertEqual(updated, [])

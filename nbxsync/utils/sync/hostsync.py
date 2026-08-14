@@ -711,9 +711,22 @@ class HostSync(ZabbixSyncBase):
                     continue
 
                 instance = self.context.get('all_objects', {}).get('_instance')
+                # Inherited/ConfigurationGroup interfaces are transient copies,
+                # so they have no persisted interfaceid on every run. Reuse a
+                # compatible remote default before creating a replacement: the
+                # existing interface may be linked to items and cannot be
+                # removed by host.update.
+                syncer = HostInterfaceSync(self.api, nb_default_hostinterface_obj, hostid=hostid, _instance=instance)
+                if not nb_default_hostinterface_id:
+                    matching = syncer.find_by_name()
+                    if len(matching) == 1:
+                        nb_default_hostinterface_id = str(int(matching[0]['interfaceid']))
+                        nb_default_hostinterface_obj.interfaceid = int(nb_default_hostinterface_id)
+                if nb_default_hostinterface_id == zbx_default_hostinterfaceid:
+                    continue
+
                 # If NB default interface doesn't exist yet in Zabbix, create it as non-default first
                 if not nb_default_hostinterface_id:
-                    syncer = HostInterfaceSync(self.api, nb_default_hostinterface_obj, hostid=hostid, _instance=instance)
                     params = syncer.get_create_params()
                     if not params:
                         continue
@@ -734,7 +747,6 @@ class HostSync(ZabbixSyncBase):
 
                     # update local variable so the compare is correct for the flip step
                     nb_default_hostinterface_id = str(int(hostinterface_id))
-
                 # Some very 'complicated' logic to flip the main
                 # As Zabbix can have only 1 default/main interface at the time, we must update all interfaces at once
                 # As such, we loop through all hostinterfaces, and use the HostInterfaceSync module to get the create params
