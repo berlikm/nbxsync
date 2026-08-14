@@ -98,7 +98,9 @@ def patch_disable_wan_icmp_noise(
     """Disable ICMP loss/RTT triggers. Items stay for the Health dashboard.
 
     CH proxy RTT/loss is a WAN signal, not chassis health. Idempotent.
-    Matches on the API ``description`` field only — never bulk-disable.
+    Matches on the API ``description`` field only (that is the visible name;
+    YAML ``name``). Never bulk-disable: ``trigger.get`` ``filter.name`` is not
+    reliable and would mute ICMP-down / temp / SNMP-dead on stock EXOS.
     """
     logger.info('Network: disable WAN ICMP loss/RTT triggers')
     names = template_names or tuple(ICMP_NOISE_TRIGGER_NAMES)
