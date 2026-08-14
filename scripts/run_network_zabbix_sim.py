@@ -18,6 +18,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from zabbix_api import ZabbixAPI  # noqa: E402
+from extreme_health_zabbix import (  # noqa: E402
+    IQ_HEALTH_MACROS,
+    SPEED_EXPECT_HEALTH_MACROS,
+    VOSS_HEALTH_MACROS,
+    apply_extreme_health_patches,
+    assert_template_dashboard,
+    assert_template_macros,
+    assert_wan_icmp_noise_disabled,
+)
 
 PREFIX = 'nw-'
 HOST_CORE = f'{PREFIX}voss-core-pilot'
@@ -30,6 +39,8 @@ TEMPLATES = {
     'Extreme Port Speed Expect by SNMP': ROOT
     / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
+    'Extreme IQ Engine by SNMP': ROOT
+    / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
 }
 
 # Destination globals + speed-expect LLD filters (TEMP_* are template-only).
@@ -229,6 +240,9 @@ def verify_template_macros(api: ZabbixAPI, templateid: str) -> None:
     for macro, expected in checks.items():
         got = macros.get(macro)
         record(f'tmpl {macro}', got == expected, f'got {got!r} want {expected!r}', group='voss-defaults')
+    for macro, expected in VOSS_HEALTH_MACROS.items():
+        got = macros.get(macro)
+        record(f'tmpl {macro}', got == expected, f'got {got!r} want {expected!r}', group='voss-defaults')
 
 
 def verify_lld(api: ZabbixAPI, templateid: str) -> None:
@@ -343,6 +357,31 @@ def main() -> int:
 
     import_templates(api)
     tmpl_ids = verify_templates(api)
+
+    patch = apply_extreme_health_patches(api)
+    record('health patches', True, str(patch), group='import')
+    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Health', 'Path'))
+    record('VOSS Health dashboard', ok, detail, group='health')
+    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Health', 'RF'))
+    record('IQ Health dashboard', ok, detail, group='health')
+    ok, detail = assert_template_macros(api, 'Extreme Port Speed Expect by SNMP', SPEED_EXPECT_HEALTH_MACROS)
+    record('Speed Expect util off', ok, detail, group='health')
+    ok, detail = assert_template_macros(api, 'Extreme IQ Engine by SNMP', IQ_HEALTH_MACROS)
+    record('IQ unsupported max', ok, detail, group='health')
+    for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
+        ok, detail = assert_wan_icmp_noise_disabled(api, tname)
+        record(f'ICMP noise off {tname}', ok, detail, group='health')
+
+    # Second import — must not delete hosts; YAML deleteMissing is false.
+    hosts_before = {h['hostid'] for h in api.call('host.get', {'output': ['hostid']}) or []}
+    import_templates(api)
+    hosts_after = {h['hostid'] for h in api.call('host.get', {'output': ['hostid']}) or []}
+    record(
+        're-import does not delete hosts',
+        hosts_before <= hosts_after,
+        f'before={len(hosts_before)} after={len(hosts_after)} deleted={sorted(hosts_before - hosts_after)[:6]}',
+        group='idempotent',
+    )
 
     if 'Extreme VOSS by SNMP' in tmpl_ids:
         verify_template_macros(api, tmpl_ids['Extreme VOSS by SNMP'])

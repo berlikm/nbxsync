@@ -43,10 +43,12 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 | `{$OPTIC.DOM.ALARM_*}` | 3 / 5 | Vendor DOM highAlarm / lowAlarm (primary) |
 | `{$MLT.CONTROL}` | **1** | Agg-down on transition (`.diff()`); temporary silence = 0 |
 | `{$VIST.CONTROL}` / `{$IST.CONTROL}` | **0** / **0** | Host `VIST=1` on fabric pairs; classic IST unused |
+| `{$ISIS.CONTROL}` / `{$CARD.CONTROL}` | **0** / **0** | Fabric High gated until a canary |
+| `{$UNSUPPORTED.MAX}` | **5** | Average ticket if unsupported items stay above this for 30m |
 | `{$IF.UTIL.MAX}` | **101** | Stock bandwidth trigger off until stage 6 |
 | `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Physical + LAG only |
 
-Role IFALIAS macros (`.*` + `^X(-|$)` for Core/Dist/Mgmt; Access `^(USW|UP)(-|$)`) are assigned on the Switch* role in NetBox, not baked into this template. Operator page: [`../../01-extreme-switching.md`](../../01-extreme-switching.md).
+Role IFALIAS macros (`.*` + `^X(-|$)` for Core/Dist/Mgmt; Access `^(USW|UP)(-|$)`) are assigned on the Switch* role in NetBox, not baked into this template. Operator page: [`../../01-extreme-switching.md`](../../01-extreme-switching.md). Host dashboard **Health** (pages Health + Path) ships in this YAML — re-import updates in place (same dashboard uuid).
 
 ## Coverage
 

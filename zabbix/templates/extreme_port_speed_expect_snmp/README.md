@@ -19,7 +19,7 @@ Assigned on **both platforms** (not per role). Role scoping for the *stock* inte
 {$PORTID.LLD.IFALIAS.MATCHES} = ^(USW|US|UP|MON)(-|$)
 {$PORTID.LLD.IFTYPE.MATCHES}  = ^6$
 {$IF.UTIL.MAX}                = 101          # off until stage 6
-{$IF.UTIL.MAX:"USW"}          = 80           # enable when history exists
+{$IF.UTIL.MAX:"USW"}          = 101          # off until stage 6; set 80 after history
 {$IF.DISCARDS.WARN}           = 1
 ```
 
@@ -42,4 +42,4 @@ Design prefers **dependent items** on platform-template masters (`net.if.speed[Î
 
 ## Rollout
 
-Do **not** link this template until labels are clean. YAML trigger prototypes are **enabled** (speed mismatch, util, discards, link-down). Linking it pages. Keep `{$IF.UTIL.MAX}=101` until util is baselined. Access must override `{$PORTID.LLD.IFALIAS.MATCHES}` to `^(USW|UP)(-|$)`.
+Do **not** link this template until labels are clean. YAML trigger prototypes are **enabled** (speed mismatch, util, discards, link-down). Linking it pages. Keep `{$IF.UTIL.MAX}=101` **and** `{$IF.UTIL.MAX:"USW"}=101` until util is baselined. Access must override `{$PORTID.LLD.IFALIAS.MATCHES}` to `^(USW|UP)(-|$)`.

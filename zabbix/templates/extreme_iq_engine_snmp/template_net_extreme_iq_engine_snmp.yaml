@@ -103,6 +103,27 @@ zabbix_export:
         tags:
         - tag: scope
           value: availability
+    - uuid: c3e6a0d4f5b2638c1d9e7f6a5b4c3d2e
+      name: Unsupported item count
+      type: INTERNAL
+      key: 'zabbix[host,,items_unsupported]'
+      delay: 15m
+      description: 'Watch the watcher — wrong OIDs on this AP class look like green health.'
+      tags:
+      - tag: component
+        value: health
+      triggers:
+      - uuid: d4f7b1e5a6c3749d2e0f8a7b6c5d4e3f
+        expression: min(/Extreme IQ Engine by SNMP/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.MAX}
+        name: 'Extreme IQ Engine: Too many unsupported items'
+        priority: AVERAGE
+        description: 'SNMP=1 but items unsupported — OID/class mismatch, not a cable.'
+        dependencies:
+        - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+          expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        tags:
+        - tag: scope
+          value: availability
     - uuid: 5d01caae9d6643edae92ea3240bedbee
       name: System name
       type: SNMP_AGENT
@@ -693,6 +714,212 @@ zabbix_export:
     - macro: '{$IFCONTROL}'
       value: '1'
       description: 1=alert eth link-down
+    - macro: '{$UNSUPPORTED.MAX}'
+      value: '5'
+      description: Average ticket when unsupported items stay above this for 30m.
+    dashboards:
+    - uuid: e5a8c2f6b7d4850e3f1a9b8c7d6e5f4a
+      name: Health
+      pages:
+      - name: Health
+        widgets:
+        - type: item
+          name: ICMP
+          width: '14'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: icmpping
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '4'
+          - type: STRING
+            name: reference
+            value: AICMP
+        - type: item
+          name: SNMP
+          x: '14'
+          'y': '0'
+          width: '14'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: 'zabbix[host,snmp,available]'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '4'
+          - type: STRING
+            name: reference
+            value: ASNMP
+        - type: item
+          name: CPU
+          x: '28'
+          'y': '0'
+          width: '14'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: ah.system.cpu.util
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '4'
+          - type: STRING
+            name: reference
+            value: ACPU0
+        - type: item
+          name: Clients
+          x: '42'
+          'y': '0'
+          width: '15'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: ah.system.client.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '4'
+          - type: STRING
+            name: reference
+            value: ACLNT
+        - type: item
+          name: Temp
+          x: '57'
+          'y': '0'
+          width: '15'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: ah.system.temp
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '4'
+          - type: STRING
+            name: reference
+            value: ATEMP
+        - type: graph
+          name: CPU
+          'y': '4'
+          width: '36'
+          height: '5'
+          fields:
+          - type: GRAPH
+            name: graphid
+            value:
+              host: Extreme IQ Engine by SNMP
+              name: 'Extreme IQ Engine: CPU utilization'
+          - type: STRING
+            name: reference
+            value: ACPUG
+        - type: graph
+          name: Clients
+          x: '36'
+          'y': '4'
+          width: '36'
+          height: '5'
+          fields:
+          - type: GRAPH
+            name: graphid
+            value:
+              host: Extreme IQ Engine by SNMP
+              name: 'Extreme IQ Engine: Clients'
+          - type: STRING
+            name: reference
+            value: ACLNG
+      - name: RF
+        widgets:
+        - type: graphprototype
+          width: '36'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '2'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              name: 'Radio {#AHIFNAME}: RF (noise / Tx power)'
+          - type: STRING
+            name: reference
+            value: ARFRF
+        - type: graphprototype
+          x: '36'
+          'y': '0'
+          width: '36'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '2'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              name: 'Radio {#AHIFNAME}: Retries / drops'
+          - type: STRING
+            name: reference
+            value: ARFRT
+        - type: graphprototype
+          'y': '5'
+          width: '72'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '2'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              name: 'Interface {#IFNAME}: Network traffic'
+          - type: STRING
+            name: reference
+            value: AIFTR
     valuemaps:
     - uuid: 0578598545f34ad59851927e5d2c419d
       name: Service state

@@ -11,10 +11,12 @@ Sibling of ``configure_nbxsync_zerotouch.py``. Same runtime shape:
 
 Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md``):
 
-  * Import Extreme VOSS / Port Speed Expect / Routing templates into Zabbix
+  * Import Extreme VOSS / IQ Engine / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
   * Patch stock EXOS ``net.if.discovery`` rollout settings (15m / lifetime 0) — stock is 1h / long keep-lost
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
+  * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
+  * Upsert stock EXOS host dashboard **Health** via API (does not fork stock YAML; never fails ``--apply``)
   * Platform TemplateRules: EXOS / VOSS / IQ Engine → Extreme * by SNMP (not Network Generic)
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
   * Global **destination** macros on the Zabbix server object (production end-state)
@@ -22,14 +24,22 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Optional Speed Expect template link (stage 4); Routing stays unlinked until OSPF canary
 
 Stage matrix (what each flag enables):
-  ``--apply``                     = stages 0–3: template imports + EXOS/VOSS/IQ rules + IFALIAS + destination globals + TEMP patches
+  ``--apply``                     = stages 0–3: template imports + EXOS/VOSS/IQ rules + IFALIAS + destination globals + TEMP/ICMP/Health patches
   ``--apply --link-speed-expect`` = stage 4: + Speed Expect template assignments on Switch roles
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
 
+Re-apply safety (estate already has switches/APs in Zabbix):
+  * Does **not** delete hosts, interfaces, history, or hostids
+  * Does **not** mass-sync every device (template updates inherit in Zabbix)
+  * Does **not** run ``create_dashboards.py`` (those are country/role boards, not Health)
+  * YAML ``deleteMissing: false`` — retired items linger; LLD is not wiped
+  * ``--apply`` without ``--link-speed-expect`` does **not** unlink Speed Expect if it was linked earlier
+  * Empty SNMP secrets are zerotouch's job and must not blank existing CG passphrases
+
 Import policy:
   YAML imports use deleteMissing=False (safe — retired items linger but templates don't lose content).
-  Re-run ``--apply`` after Extreme template upgrades to re-assert TEMP/EtherLike patches (maintenance contract).
+  Re-run ``--apply`` after Extreme template upgrades to re-assert TEMP/EtherLike/ICMP/Health patches.
   Speed Expect: re-running ``--apply`` without ``--link-speed-expect`` does NOT unlink existing assignments (future: add ``--unlink-speed-expect``).
 
 Does **not** re-implement SiteGroup Agent / hostgroup-first / Server OOB — call
@@ -95,6 +105,16 @@ from nbxsync.choices import (
 from nbxsync.jobs.synchost import SyncHostJob
 from nbxsync.utils import get_assigned_zabbixobjects
 from nbxsync.utils.zabbixconnection import ZabbixConnection
+
+from extreme_health_zabbix import (
+    IQ_HEALTH_MACROS,
+    SPEED_EXPECT_HEALTH_MACROS,
+    VOSS_HEALTH_MACROS,
+    apply_extreme_health_patches,
+    assert_template_dashboard,
+    assert_template_macros,
+    assert_wan_icmp_noise_disabled,
+)
 
 # Reuse zerotouch helpers when present (same ensure/ct/slugify contract).
 try:
@@ -561,6 +581,16 @@ def assert_extreme_template_temp_macros(api, template_name: str) -> tuple[bool, 
     return ok, str(detail)
 
 
+def step_health_patches(api) -> dict:
+    """ICMP noise off + EXOS Health dashboard. Never raises."""
+    logger.info('Network: Health / ICMP-noise patches')
+    try:
+        return apply_extreme_health_patches(api)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('  Health patches failed (non-fatal): %s', exc)
+        return {'icmp_noise': {'error': str(exc)}, 'exos_health': f'error:{exc}'}
+
+
 def ensure_nbx_template(server, templateid: int, name: str) -> M.ZabbixTemplate:
     obj, _ = ensure(
         M.ZabbixTemplate,
@@ -744,9 +774,15 @@ def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
 
 
 def step_speed_expect_assignment(server, tpl: dict[str, M.ZabbixTemplate], *, link: bool) -> None:
-    """Stage 4 — optional. Assign Speed Expect on Switch Core/Dist platforms via role? No — both platforms."""
+    """Stage 4 — optional. Assign Speed Expect on Switch roles.
+
+    ``link=False`` is a no-op: existing assignments stay. Never unlink here.
+    """
     if not link or 'Extreme Port Speed Expect by SNMP' not in tpl:
-        logger.info('  Speed Expect: not linked (pass --link-speed-expect for stage 4)')
+        logger.info(
+            '  Speed Expect: not linking (pass --link-speed-expect for stage 4). '
+            'Existing assignments are left in place.'
+        )
         return
     t = tpl['Extreme Port Speed Expect by SNMP']
     for role_name in ('Switch Core', 'Switch Dist', 'Switch Mgmt', 'Switch Access'):
@@ -838,6 +874,10 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             slug=slugify(name),
             defaults={'name': f'{PREFIX}{name}', 'color': '4caf50', 'vm_role': False},
         )
+    roles['Access Point'], _ = DeviceRole.objects.get_or_create(
+        slug=slugify('Access Point'),
+        defaults={'name': f'{PREFIX}Access Point', 'color': '2196f3', 'vm_role': False},
+    )
 
     # Monkey-patch get_role for prefixed lab (same trick as zerotouch)
     orig_get_role = globals()['get_role']
@@ -899,6 +939,13 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             update_fields=['interface_type', 'useip', 'port', 'snmp_version', 'snmp_community', 'dns'],
         )
         step_snmp_cg_on_switch_roles(snmp_group)
+        ensure(
+            M.ZabbixConfigurationGroupAssignment,
+            zabbixconfigurationgroup=snmp_group,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=roles['Access Point'].id,
+            defaults={},
+        )
 
         with ZabbixConnection(server) as api:
             # Clean previous nwn- hosts
@@ -951,6 +998,43 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 ok, detail = assert_extreme_template_temp_macros(api, tname)
                 record(f'template_temp_assert_{tname}', ok, detail, group='import')
 
+            health = step_health_patches(api)
+            icmp_statuses = health.get('icmp_noise') or {}
+            for tname, status in icmp_statuses.items():
+                record(
+                    f'icmp_noise_{tname}',
+                    status in ('ok', 'patched', 'missing', 'no-triggers', 'no-names'),
+                    status,
+                    group='import',
+                )
+            record(
+                'exos_health_dashboard',
+                str(health.get('exos_health')) in ('ok', 'created', 'missing', 'no-items'),
+                str(health.get('exos_health')),
+                group='import',
+            )
+            for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
+                ok, detail = assert_wan_icmp_noise_disabled(api, tname)
+                record(f'icmp_noise_assert_{tname}', ok, detail, group='import')
+            ok, detail = assert_template_macros(api, 'Extreme VOSS by SNMP', VOSS_HEALTH_MACROS)
+            record('voss_health_macros', ok, detail, group='import')
+            ok, detail = assert_template_macros(api, 'Extreme Port Speed Expect by SNMP', SPEED_EXPECT_HEALTH_MACROS)
+            record('speed_expect_usw_util_off', ok, detail, group='import')
+            ok, detail = assert_template_macros(api, 'Extreme IQ Engine by SNMP', IQ_HEALTH_MACROS)
+            record('iq_health_macros', ok, detail, group='import')
+            ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Health', 'Path'))
+            record('voss_health_dashboard', ok, detail, group='import')
+            ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Health', 'RF'))
+            record('iq_health_dashboard', ok, detail, group='import')
+            ok, detail = assert_template_dashboard(api, 'Extreme EXOS by SNMP', 'Health', ('Health',))
+            # Lab stub EXOS has no Health items — n/a is ok
+            record(
+                'exos_health_dashboard_assert',
+                ok or 'n/a' in detail or 'no-items' in str(health.get('exos_health')),
+                detail,
+                group='import',
+            )
+
         tpl_models: dict[str, M.ZabbixTemplate] = {}
         for name, (tid, _) in imported.items():
             tpl_models[name] = ensure_nbx_template(server, tid, name)
@@ -993,6 +1077,10 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
         dtype, _ = DeviceType.objects.get_or_create(slug=slugify('5520'), defaults={'manufacturer': mfr, 'model': f'{PREFIX}5520'})
         plat_voss, _ = Platform.objects.get_or_create(slug=slugify('voss'), defaults={'name': f'{PREFIX}Extreme VOSS 9.3'})
         plat_exos, _ = Platform.objects.get_or_create(slug=slugify('exos'), defaults={'name': f'{PREFIX}Extreme EXOS 32.1'})
+        plat_iq, _ = Platform.objects.get_or_create(
+            slug=slugify('iq-engine'),
+            defaults={'name': f'{PREFIX}Extreme IQ ENGINE 10.6'},
+        )
 
         octet = [50]
 
@@ -1012,6 +1100,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             ('voss_dist', 'Switch Dist', plat_voss),
             ('voss_access', 'Switch Access', plat_voss),
             ('exos_core', 'Switch Core', plat_exos),
+            ('ap_access', 'Access Point', plat_iq),
         ]:
             d = Device.objects.create(
                 name=f'{PREFIX}{key}',
@@ -1090,6 +1179,19 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             str(list(M.ZabbixTemplateRule.objects.filter(name='Extreme IQ Engine').values_list('zabbixtemplate__name', flat=True))),
             group='resolve',
         )
+        record(
+            'ap_template_iq_engine',
+            any('IQ Engine' in n for n in tpl_names(objects['ap_access']))
+            and not any('Network Generic' in n for n in tpl_names(objects['ap_access'])),
+            str(tpl_names(objects['ap_access'])),
+            group='resolve',
+        )
+        record(
+            'exos_rule_exists',
+            M.ZabbixTemplateRule.objects.filter(name='Extreme EXOS').exclude(zabbixtemplate__name__icontains='Network Generic').exists(),
+            str(list(M.ZabbixTemplateRule.objects.filter(name='Extreme EXOS').values_list('zabbixtemplate__name', flat=True))),
+            group='resolve',
+        )
 
         # --- Sync + Zabbix asserts ---
         with ZabbixConnection(server) as api:
@@ -1157,6 +1259,17 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 tpls = [t.get('name') for t in h_e.get('parentTemplates', [])]
                 record('zbx_exos_template', any('EXOS' in (n or '') for n in tpls), str(tpls), group='zabbix')
 
+            h_ap = host(objects['ap_access'].name)
+            record('zbx_ap_exists', bool(h_ap), objects['ap_access'].name, group='zabbix')
+            if h_ap:
+                tpls = [t.get('name') for t in h_ap.get('parentTemplates', [])]
+                record(
+                    'zbx_ap_iq_template',
+                    any('IQ Engine' in (n or '') for n in tpls) and not any('Network Generic' in (n or '') for n in tpls),
+                    str(tpls),
+                    group='zabbix',
+                )
+
             gmacros = {m['macro']: m.get('value', '') for m in (api.usermacro.get(globalmacro=True, output='extend') or []) if isinstance(m, dict) and 'macro' in m}
             expect_mlt = GLOBAL_MACROS['{$MLT.CONTROL}']
             record('zbx_global_util_off', gmacros.get('{$IF.UTIL.MAX}') == '101', gmacros.get('{$IF.UTIL.MAX}'), group='zabbix')
@@ -1217,6 +1330,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         patch_etherlike_ifalias_filters(api)
         patch_exos_interface_lld_rollout(api)
         patch_extreme_template_temp_macros(api)
+        step_health_patches(api)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
     step_server_macros(server)
     step_role_macros()

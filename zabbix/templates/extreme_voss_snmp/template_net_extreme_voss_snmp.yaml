@@ -77,9 +77,10 @@ zabbix_export:
       - uuid: b521f1e72b984d35ab89e169bc86df9b
         expression: min(/Extreme VOSS by SNMP/icmppingloss,5m)>{$ICMP_LOSS_WARN} and min(/Extreme VOSS by SNMP/icmppingloss,5m)<100
         name: 'Extreme VOSS: High ICMP ping loss'
+        status: DISABLED
         opdata: 'Loss: {ITEM.LASTVALUE1}'
         priority: WARNING
-        description: ICMP packets loss detected.
+        description: 'Items stay for Health. Trigger off — CH proxy RTT/loss is a WAN signal, not chassis health.'
         dependencies:
         - name: 'Extreme VOSS: Unavailable by ICMP ping'
           expression: max(/Extreme VOSS by SNMP/icmpping,#3)=0
@@ -104,9 +105,10 @@ zabbix_export:
       - uuid: a5bbb869aedb4bd8b543c7fdbb42f0e4
         expression: avg(/Extreme VOSS by SNMP/icmppingsec,5m)>{$ICMP_RESPONSE_TIME_WARN}
         name: 'Extreme VOSS: High ICMP ping response time'
+        status: DISABLED
         opdata: 'Value: {ITEM.LASTVALUE1}'
         priority: WARNING
-        description: Average ICMP response time is too high.
+        description: 'Items stay for Health. Trigger off — CH proxy RTT is a WAN signal.'
         dependencies:
         - name: 'Extreme VOSS: High ICMP ping loss'
           expression: min(/Extreme VOSS by SNMP/icmppingloss,5m)>{$ICMP_LOSS_WARN} and min(/Extreme VOSS by SNMP/icmppingloss,5m)<100
@@ -472,6 +474,27 @@ zabbix_export:
         opdata: 'Current state: {ITEM.LASTVALUE1}'
         priority: AVERAGE
         description: 'Mgmt blind; forwarding may still work. Ticket, not a 03:00 page. Check SNMPv3 MONITORING and CH-proxy cache after reboot.'
+        dependencies:
+        - name: 'Extreme VOSS: Unavailable by ICMP ping'
+          expression: max(/Extreme VOSS by SNMP/icmpping,#3)=0
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: a1c4e8b2d3f0416a9b7c5d4e3f2a1b0c
+      name: Unsupported item count
+      type: INTERNAL
+      key: 'zabbix[host,,items_unsupported]'
+      delay: 15m
+      description: 'Watch the watcher — SNMP walk/OID gaps look like green health. Ticket, not a page.'
+      tags:
+      - tag: component
+        value: health
+      triggers:
+      - uuid: b2d5f9c3e4a1527b0c8d6e5f4a3b2c1d
+        expression: min(/Extreme VOSS by SNMP/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.MAX}
+        name: 'Extreme VOSS: Too many unsupported items'
+        priority: AVERAGE
+        description: 'Collection is lying. Check credentials, MIB/OID, or LLD filters.'
         dependencies:
         - name: 'Extreme VOSS: Unavailable by ICMP ping'
           expression: max(/Extreme VOSS by SNMP/icmpping,#3)=0
@@ -2042,9 +2065,10 @@ zabbix_export:
           value: system
         trigger_prototypes:
         - uuid: 2075fc327371407ca7a3ecad0594a1ac
-          expression: last(/Extreme VOSS by SNMP/system.hw.card.status[rcCardOperStatus.{#SNMPINDEX}])={$CARD.DOWN_STATUS}
+          expression: '{$CARD.CONTROL}=1 and last(/Extreme VOSS by SNMP/system.hw.card.status[rcCardOperStatus.{#SNMPINDEX}])={$CARD.DOWN_STATUS}'
           name: 'Extreme VOSS: Card {#SNMPINDEX}: Card is down'
           priority: HIGH
+          description: 'Gated. Default {$CARD.CONTROL}=0 (collect first). Set 1 on a fabric canary after a quiet pilot.'
           tags:
           - tag: scope
             value: availability
@@ -2070,9 +2094,10 @@ zabbix_export:
           value: fabric
         trigger_prototypes:
         - uuid: 58b582cb293b4fc58fbf8cb46548474b
-          expression: last(/Extreme VOSS by SNMP/fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}])={$ISIS.CIRCUIT.DOWN_STATUS}
+          expression: '{$ISIS.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}])={$ISIS.CIRCUIT.DOWN_STATUS}'
           name: 'Extreme VOSS: ISIS circuit {#SNMPINDEX}: Circuit is down'
           priority: HIGH
+          description: 'Gated. Default {$ISIS.CONTROL}=0 so unused SPBM circuits do not page. Set 1 on a canary after a quiet pilot.'
           tags:
           - tag: scope
             value: availability
@@ -2306,9 +2331,18 @@ zabbix_export:
     - macro: '{$CARD.DOWN_STATUS}'
       value: '2'
       description: rcCardOperStatus down(2)
+    - macro: '{$CARD.CONTROL}'
+      value: '0'
+      description: '0=collect only (default). Host/template 1 enables card-down High after a fabric pilot.'
     - macro: '{$ISIS.CIRCUIT.DOWN_STATUS}'
       value: '2'
       description: rcIsisCircuitOperState down(2)
+    - macro: '{$ISIS.CONTROL}'
+      value: '0'
+      description: '0=collect only (default). Host/template 1 enables ISIS-circuit High after a fabric pilot.'
+    - macro: '{$UNSUPPORTED.MAX}'
+      value: '5'
+      description: Average ticket when unsupported items stay above this for 30m.
     - macro: '{$MLT.CONTROL}'
       value: '1'
       description: '1=destination (agg-down on transition via .diff()). 0=temporary cutover silence.'
@@ -2338,16 +2372,145 @@ zabbix_export:
       description: 'Link-flap warning — fire when rcPortNumStateTransition change exceeds this (context-capable).'
     dashboards:
     - uuid: 6c3fa785af5d4bd38c94805bd0ccbecb
-      name: Network interfaces
+      name: Health
       pages:
-      - widgets:
+      - name: Health
+        widgets:
+        - type: item
+          name: ICMP
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme VOSS by SNMP
+              key: icmpping
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '4'
+          - type: STRING
+            name: reference
+            value: VICMP
+        - type: item
+          name: SNMP
+          x: '18'
+          'y': '0'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme VOSS by SNMP
+              key: 'zabbix[host,snmp,available]'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '4'
+          - type: STRING
+            name: reference
+            value: VSNMP
+        - type: item
+          name: CPU
+          x: '36'
+          'y': '0'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme VOSS by SNMP
+              key: system.cpu.util[rcKhiSlotCpuCurrentUtil.1]
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '4'
+          - type: STRING
+            name: reference
+            value: VCPU0
+        - type: item
+          name: Unsupported
+          x: '54'
+          'y': '0'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme VOSS by SNMP
+              key: 'zabbix[host,,items_unsupported]'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '4'
+          - type: STRING
+            name: reference
+            value: VUNSP
+        - type: graph
+          name: CPU
+          'y': '4'
+          width: '36'
+          height: '5'
+          fields:
+          - type: GRAPH
+            name: graphid
+            value:
+              host: Extreme VOSS by SNMP
+              name: 'Extreme VOSS: CPU utilization'
+          - type: STRING
+            name: reference
+            value: VCPUG
+        - type: graphprototype
+          name: Memory
+          x: '36'
+          'y': '4'
+          width: '36'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '1'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: Extreme VOSS by SNMP
+              name: 'Slot {#SNMPINDEX}: Memory utilization'
+          - type: STRING
+            name: reference
+            value: VMEMG
+      - name: Path
+        widgets:
         - type: graphprototype
           width: '72'
           height: '5'
           fields:
           - type: INTEGER
             name: columns
-            value: '1'
+            value: '2'
           - type: GRAPH_PROTOTYPE
             name: graphid.0
             value:
