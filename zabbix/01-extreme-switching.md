@@ -188,4 +188,4 @@ On **Access**, override MATCHES to `^(USW|UP)(-|$)`.
 
 Class-scoped link-down High (`USW`/`UP`); OSPF count; USW util + discards; VOSS fabric adjacency retune; sFlow on a few Core `USW`; one synthetic ping per site as the **Disaster** SLI; NetBox vs live `ifAlias`; AP ICMP → `UP-`; syslog on the proxy; `walk[]` when we retune poll load.
 
-FortiGate and network VMs reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md)). Do not merge with Cato ([04](04-cato.md)).
+FortiGate (API) and network VMs reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md)). Do not merge with Cato ([04](04-cato.md)).

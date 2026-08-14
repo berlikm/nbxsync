@@ -7,7 +7,7 @@ Status: active
 **Hard deadline: LogicMonitor → Zabbix cutover.** That reframes everything below.
 
 **In scope now:** Extreme switches (01) and access points (02).  
-**Prepared, not blocking cutover:** FortiGate (03), network VMs (06). Same page shape and observability bar.  
+**Prepared, not blocking cutover:** FortiGate over **API** (03), network VMs (06). Same page shape and observability bar. Live FortiOS still SNMP until tokens exist.  
 **Later still:** Cato (04), circuits (05).
 
 The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everything in the design docs". Anything LM does not watch today cannot be a regression.
@@ -33,7 +33,7 @@ The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everythi
 | Capacity: discards + utilisation | new capability. Needs 4+ weeks of history to threshold honestly |
 | CRC / `dot3StatsFCSErrors` | new capability, and unconfirmed |
 | Full port-label rollout | parity only needs *link down* on Core/Dist/Mgmt; Access is `USW`+`UP` only |
-| Fortinet, Cato, circuits, VMs (03–06) | prepared page + same bar; do not block switch/AP cutover |
+| Fortinet, Cato, circuits, VMs (03–06) | FortiGate API spec is written; live FortiOS stays SNMP. Do not block switch/AP cutover |
 
 **Rule for the migration window:** if a request is not in the "cutover minimum" table, it goes on the post-cutover list. Scope creep is the main risk to the date, not technical difficulty.
 
@@ -49,7 +49,7 @@ port-identity (foundation)
 02  Extreme access points                     ← now
     │
     ▼
-03  Fortinet                                  ← prepared
+03  Fortinet (FortiGate by HTTP)              ← spec written; not live
     │
     ▼
 04  Cato
@@ -74,9 +74,9 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 01–ports | Port Speed Expect | **built** — `templates/extreme_port_speed_expect_snmp/` | yes | no | no |
 | 01c | OSPF routing (core/dist, both platforms) | **built** — `templates/extreme_routing_snmp/` | yes | no | no |
 | 02 | HiveOS / IQ Engine AP | **built** — `templates/extreme_iq_engine_snmp/` | yes | ICMP/SNMP path in prod; RF canary open | partial |
-| 03 | FortiGate | ? | scaffold | no | no |
-| 03 | FortiManager | ? | scaffold | no | no |
-| 03 | FortiAnalyzer | ? | scaffold | no | no |
+| 03 | FortiGate | stock **FortiGate by HTTP** (7.0) + ICMP Ping | yes — [03](03-fortinet.md) | no | no (live nbxSync still **SNMP**) |
+| 03 | FortiManager | none official (Network Generic) | yes — short block in 03 | no | no |
+| 03 | FortiAnalyzer | none official (Network Generic) | yes — short block in 03 | no | no |
 | 04 | Cato | none (HTTP agent) | scaffold | no | no |
 | 05 | Circuits | n/a | scaffold | no | no |
 | 06 | Network VMs | stock OS templates | scaffold | no | no |
@@ -90,8 +90,8 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 5. Never fail silent: unsupported items, zero discovered objects, proxy last-seen.
 6. Collect first; enable noisy triggers after a quiet pilot.
 7. Macro overrides, not cloned stock templates.
-8. Signal with no trigger and no dashboard → delete it.
-9. Next domain copies [_template.md](_template.md) — FortiGate and VMs are already stubbed that way.
+8. Signal with no trigger and no dashboard → delete it. Device **Health** is a **template** (host) dashboard, not a country/role board.
+9. Next domain copies [_template.md](_template.md) — FortiGate (03) is written in that shape; VMs stay stubbed.
 10. Use the full Zabbix scale. **Disaster** is site/service only (never on a switch/AP template). Do not park everything on Warning.
 
 ## Lab proof

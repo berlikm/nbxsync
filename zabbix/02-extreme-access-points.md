@@ -127,4 +127,4 @@ Radio + eth LLD: **1h**, keep-lost **0**. Inventory (name/serial/fw/hw) **1h**. 
 
 ## Later
 
-AP ICMP → switch `UP-` dependency via NetBox/LLDP; trigger on SNMP=1 and zero radios; per-client LLD; traps; XIQ REST; mesh; split GETBULK off APs only if HiveOS cannot take combined requests. FortiGate / VMs: same bar, different doc. Do not merge with Cato.
+AP ICMP → switch `UP-` dependency via NetBox/LLDP; trigger on SNMP=1 and zero radios; per-client LLD; traps; XIQ REST; mesh; split GETBULK off APs only if HiveOS cannot take combined requests. FortiGate (API) / VMs: same bar, different doc ([03](03-fortinet.md)). Do not merge with Cato.
