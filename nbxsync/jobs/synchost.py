@@ -10,6 +10,7 @@ from nbxsync.utils.host_binding import HostBindingDeleteProxy, iter_host_binding
 from nbxsync.utils.sync import HostGroupSync, HostInterfaceSync, HostSync, ProxyGroupSync, ProxySync, run_zabbix_operation
 from nbxsync.utils.sync.safe_delete import safe_delete
 from nbxsync.utils.sync.safe_sync import safe_sync
+from nbxsync.utils.trigger_dependency_sync import sync_device_trigger_dependencies
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,13 @@ class SyncHostJob:
         # Retire any durable bindings whose server assignment has disappeared.
         # (This covers loss of all assignments, including inherited ones.)
         self._retire_unassigned_bindings(assigned_server_ids)
+
+        trigger_config = getattr(pluginsettings, 'trigger_dependencies', None)
+        if object_type == 'device' and zabbix_status != ZabbixHostStatus.DELETED and trigger_config is not None and trigger_config.enabled:
+            try:
+                sync_device_trigger_dependencies(self.instance)
+            except Exception:
+                logger.exception('Trigger dependency sync failed for %s; continuing.', self.instance)
 
         self._raise_on_partial_failure()
 

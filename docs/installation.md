@@ -33,7 +33,7 @@ If you want to change the default configuration, can add the following configura
 ```python title="netbox/configuration.py"
 PLUGINS = ['nbxsync']
 PLUGINS_CONFIG = {
-    "nbxsync": {
+    'nbxsync': {
         'sot': {
             'proxygroup': 'netbox',
             'proxy': 'netbox',
@@ -98,15 +98,15 @@ PLUGINS_CONFIG = {
             },
             'templates': {
                 'enabled': True,
-                'interval': 1440, # 24 hours
+                'interval': 1440,  # 24 hours
             },
             'proxies': {
                 'enabled': True,
-                'interval': 1440, # 24 hours
+                'interval': 1440,  # 24 hours
             },
             'maintenance': {
                 'enabled': True,
-                'interval': 15, # 15 minutes
+                'interval': 15,  # 15 minutes
             },
         },
         'no_alerting_tag': 'NO_ALERTING',
@@ -115,8 +115,11 @@ PLUGINS_CONFIG = {
         'attach_objtag': True,
         'objtag_type': 'nb_type',
         'objtag_id': 'nb_id',
-        'custom_field_hostname':'',
-        'custom_field_display_name':'',
+        'custom_field_hostname': '',
+        'custom_field_display_name': '',
+        'trigger_dependencies': {
+            'enabled': False,
+        },
         'exclude_tag': '',
         'allow_inherited_deletion': False,
         'adopt_existing_hosts': False,

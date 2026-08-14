@@ -9,7 +9,7 @@ PATH_LABELS = {
     ('cluster', '_site'): 'Site',
     ('device_type',): 'Device Type',
     ('device_type', 'manufacturer'): 'Manufacturer',
-    ('zabbixconfigurationgroup'): 'Zabbix Configuration Group',
+    ('zabbixconfigurationgroup',): 'Zabbix Configuration Group',
     ('platform',): 'Platform',
     ('role',): 'Role',
     ('cluster',): 'Cluster',

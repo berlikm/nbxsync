@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
-from nbxsync.constants import OBJECT_TYPE_MODEL_MAP
+from nbxsync.constants.assignment_type_to_field import OBJECT_TYPE_MODEL_MAP
 
 
 class ZabbixSyncViewSet(ViewSet):

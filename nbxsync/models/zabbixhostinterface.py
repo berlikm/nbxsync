@@ -25,10 +25,8 @@ from nbxsync.choices import (
     ZabbixInterfaceUseChoices,
     ZabbixTLSChoices,
 )
-from nbxsync.constants import CONFIGGROUP_OBJECTS, DEVICE_OR_VM_ASSIGNMENT_MODELS, TAG_OBJECTS
+from nbxsync.constants import CONFIGGROUP_OBJECTS, DEVICE_OR_VM_ASSIGNMENT_MODELS, TAG_OBJECTS, TEMPLATE_PATTERN
 from nbxsync.models import SyncInfoModel, ZabbixConfigurationGroup
-
-TEMPLATE_PATTERN = re.compile(r'({{.*?}}|{%-?\s*.*?\s*-?%}|{#.*?#})')
 
 
 def default_tls_accept():
@@ -220,7 +218,7 @@ class ZabbixHostInterface(SyncInfoModel, NetBoxModel):
     def get_tls_accept_display(self):
         return [ZabbixTLSChoices(value).label for value in self.tls_accept if value in ZabbixTLSChoices.values]
 
-    def get_ipmi_privlege_display(self):
+    def get_ipmi_privilege_display(self):
         return IPMIPrivilegeChoices(self.ipmi_privilege).label
 
     def get_ipmi_authtype_display(self):
@@ -235,5 +233,5 @@ class ZabbixHostInterface(SyncInfoModel, NetBoxModel):
     def get_snmpv3_authentication_protocol_display(self):
         return ZabbixInterfaceSNMPV3AuthProtoChoices(self.snmpv3_authentication_protocol).label
 
-    def get_snmpv3_snmpv3_privacy_protocol_display(self):
+    def get_snmpv3_privacy_protocol_display(self):
         return ZabbixInterfaceSNMPV3PrivProtoChoices(self.snmpv3_privacy_protocol).label
