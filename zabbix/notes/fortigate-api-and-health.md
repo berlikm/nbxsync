@@ -70,7 +70,7 @@ A FortiGate is not a switch. Users feel **paths** (SD-WAN / IPsec / last circuit
 | Path | SD-WAN member/health **down** after WAN filters = Average; **last path at site = Disaster on the site**, not this template | loss / latency / jitter | every physical iface |
 | License | unsuccessful = Average | expiry Warning (7d) | `no_support` / `no_license` rows (already NOT_MATCHES) |
 | Policy | — | named canaries only | discover-all policies |
-| HA / IPsec | later | later | do not pretend HTTP has them |
+| HA / IPsec | later (peer/sync); ICMP High per member now | later | do not pretend HTTP has HA LLD; do not hide members behind a VIP |
 | Firmware | Info or off | inventory | Info forever if FortiGuard always offers an image |
 
 One incident: **API → ICMP → site**. Do not also High Extreme `UW`, Forti WAN iface, and Cato for the same ISP cut ([05](../05-internet-circuits.md), [04](../04-cato.md)). Forti WAN ≠ fabric `USW`.
@@ -101,11 +101,45 @@ FortiGate `port1` is **not** a WAN class. On 40F/60F/100F it is usually inside L
 
 ## HA
 
-One Zabbix **host per cluster**. Poll the **cluster VIP / primary**. One REST API admin + token on that VIP.
+**Default: one Zabbix host per physical FortiGate.** Poll that unit’s **reserved HA management IP** (`ha-mgmt` / in-band `management-ip`), not a floating WAN VIP.
 
-- Backup member API may 401, fail trusted-hosts, or show stale.
-- HTTP has **no** HA member/sync LLD. A silent split-brain is a real gap until thin HTTP items exist.
-- Do not create two Zabbix hosts (both members) unless each has its own token **and** you accept duplicate SD-WAN/iface LLD.
+Fortinet documents reserved HA management specifically so SNMP and other NMS tools can monitor **each cluster unit** on its own address. Those IPs are **not** config-synced. NetBox already models two devices; zero-touch will create two hosts.
+
+### Why VIP-only is the wrong default
+
+Stock **FortiGate by HTTP has no HA member/sync LLD**. If Zabbix only talks to a floating address:
+
+- Primary dies, VIP/GUI fails over, ICMP + API stay green.
+- The dead chassis never pages.
+- Split-brain / checksum mismatch is invisible.
+
+That is fail-silent on the exact failure HA exists to survive.
+
+A WAN/SD-WAN **data-plane VIP is never** `{$FGATE.API.FQDN}` — HTTPS GUI is not that address, and it is a **path** signal ([05](../05-internet-circuits.md)), not a poller target.
+
+### Why not “only primary” either
+
+Polling only the current primary (shared DNS that always follows master) has the same blind spot as a VIP: the backup is unmonitored until it becomes master. Use it only when the secondary has **no** unique mgmt IP.
+
+### Duplicate path tickets (the real VIP argument)
+
+Config **is** synced. HTTP LLD of SD-WAN / wan1 / policies on **both** members will double every WAN-down Average. That is the only good argument for a single logical host — and it is solved by **gating path triggers**, not by deleting the second device.
+
+| Signal | Both members | Primary only (until `ha.role` exists) |
+|---|---|---|
+| ICMP, API, CPU, memory | **yes** | — |
+| SD-WAN / WAN iface tickets | — | **yes** (empty LLD macros on secondary) |
+| Licenses / firmware Info | — | **yes** (same SKU twice is noise) |
+
+After failover, path LLD stays on whoever still has MATCHES set. Later thin item (`/api/v2/monitor/system/ha/peer` or equivalent) + trigger `and last(ha.role)=primary` removes the manual flip.
+
+### Token / trusted hosts
+
+REST API **admin** usually syncs; one token often works when you hit each member’s mgmt IP. **Trusted hosts** are per ha-mgmt instance — allow the Swiss proxy on **both**. Canary the secondary; 401 there is not “the template is wrong”.
+
+### Fallback
+
+VIP- or primary-DNS-only when the backup is unreachable. Record it as a watcher gap (HA pair with one Zabbix host).
 
 ---
 

@@ -17,8 +17,8 @@ This page is the **target contract**. Live nbxSync still links **FortiGate by SN
 | Page **symptoms** | ICMP down (**High**). Last SD-WAN / IPsec path at a site is **Disaster** on the **site**, not this template |
 | **Ticket** (Average) | API / HTTPS port dead while ICMP is up. Memory high. License unsuccessful. In-scope SD-WAN member or health-check **down** |
 | **Graph** / next day | CPU, SD-WAN loss/latency/jitter, iface errors, license expiry, firmware available |
-| One incident | API → ICMP → **site**. Do **not** also High Extreme `UW`, Forti WAN, and Cato for the same ISP cut |
-| Never silent | unsupported items; API `*.data_errors`; SD-WAN site with **zero** members/health-checks; **zero** interfaces |
+| One incident | API → ICMP → **site**. Two HA **members** can both High (two chassis). The same WAN must not ticket on both members **and** Extreme `UW` **and** Cato |
+| Never silent | unsupported items; API `*.data_errors`; SD-WAN site with **zero** members/health-checks; **zero** interfaces; HA pair with only one member in Zabbix |
 | Control plane | REST token + FQDN macros on the **device** (Pure pattern). Scope ifaces with LLD macros, not a second inventory |
 | Collect first | Policy LLD, util 95%, CPU/mem/disk **High**, firmware Info, ICMP loss/RTT |
 | Host dashboard | Template dashboard **Health** (not country/role boards). Traffic is page **Path** (WAN/SD-WAN, not 40 policies) |
@@ -36,7 +36,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 | Device | Alert | Sev | Live stock HTTP |
 |---|---|---|---|
-| ICMP down | yes | **High** | **missing** — HTTP has no `icmpping`. Add **ICMP Ping**. SNMP Forti (today) already Highs this |
+| ICMP down | yes | **High** — per **member**, not a VIP. Cluster may still forward | **missing** on HTTP — add **ICMP Ping**. SNMP Forti (today) already Highs this |
 | HTTPS API port down (`net.tcp.service`) | yes | Average | Average — depends under Unexpected API |
 | Unexpected response from API (`fgate.api.status`) | yes | Average | Average — mgmt blind; forwarding may still work |
 | Per-endpoint API item errors | yes | Warning | Warning — depends on Unexpected API |
@@ -58,8 +58,8 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 | Paths / ifaces in scope | Alert | Intended | Stock HTTP |
 |---|---|---|---|
-| SD-WAN member link down (WAN members only) | yes | Average | Average, **`.diff()` + manual close** — ACK will **not** re-fire until another up→down |
-| SD-WAN health-check down / error | yes | Average | Average, same `.diff()` trap. **Prefer this** as the WAN symptom |
+| SD-WAN member link down (WAN members only) | yes | Average — **primary only** until HA role exists | Average, **`.diff()` + manual close** — ACK will **not** re-fire until another up→down |
+| SD-WAN health-check down / error | yes | Average — **primary only** | Average, same `.diff()` trap. **Prefer this** as the WAN symptom |
 | SD-WAN health-check loss | yes | Warning | Warning at `{$SDWAN.HEALTH.IF.LOSS.WARN}`=20 |
 | SD-WAN latency / jitter | **no** | dashboard **Path** | items only |
 | WAN / HA / mgmt iface link down | yes | Average | Average on **every** discovered iface if CONTROL=1 |
@@ -69,7 +69,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | Firewall policy hits / sessions | **no** | named canaries later | **no triggers**, but default LLD is every policy × ~8 items |
 | `X…` / admin-down | **no** | not discovered | — |
 
-Do **not** alert on: every policy, every VLAN, FortiGuard “firmware exists”, CPU as High, the same ISP cut as Extreme `UW` **and** Cato, FMG/FAZ as if they were FortiGates.
+Do **not** alert on: every policy, every VLAN, FortiGuard “firmware exists”, CPU as High, the same ISP cut as Extreme `UW` **and** Cato, **the same WAN down on both HA members**, FMG/FAZ as if they were FortiGates.
 
 ---
 
@@ -90,7 +90,8 @@ Stock HTTP has **no** host Health board. Upsert on this template via API (same p
 
 | Object | In | Out |
 |---|---|---|
-| FortiGate / HA cluster | **One** Zabbix host per cluster. Poll **VIP / primary** | Two hosts for two members unless each token is required; backup API is not the poll target |
+| FortiGate | **One Zabbix host per physical unit** (NetBox Device). Poll that unit’s **HA management IP** | A floating **WAN/data-plane VIP** as the API target. A single VIP host that hides the backup |
+| HA pair | Both members. Health (ICMP/API/CPU/mem) on **each** | Path/SD-WAN/license **tickets** on both members for the same cut |
 | Interfaces | WAN, SD-WAN members, HA, mgmt — admin-up | VLAN, VPN, loopback, unused, `ssl.root`, every `npu`/`fortilink` unless it **is** the WAN |
 | SD-WAN | Members + health-checks that are real underlay paths | Health-checks with “all members” if LLD is empty ([ZBX-26072](https://support.zabbix.com/browse/ZBX-26072)) — census, don’t assume WAN is fine |
 | Licenses | Production FortiGuard SKUs | `no_support` / `no_license` (stock NOT_MATCHES already) |
@@ -113,6 +114,26 @@ If aliases follow the port-identity grammar, prefer `{$NET.IF.IFALIAS.MATCHES}` 
 
 ---
 
+## HA
+
+**Per member, not a VIP.** Fortinet reserved HA management (`ha-mgmt` or in-band `management-ip`) exists so SNMP/API can reach **each** unit on its own address. Config on those IPs is **not** synced. NetBox already has two devices; nbxSync will create two Zabbix hosts — do not fight that.
+
+VIP-only polling hides a dead chassis: the floating address fails over, ICMP/API stay green, and stock HTTP has **no** HA member/sync LLD to tell you the peer is gone. That is a silent split-brain / silent RMA.
+
+| Poll this | As `{$FGATE.API.FQDN}` / ICMP |
+|---|---|
+| Each unit’s **ha-mgmt** / dedicated mgmt IP | **yes** — default |
+| Shared GUI name that resolves to the **primary only** | only if the backup has no unique mgmt IP (inventory/reachability gap) |
+| WAN / SD-WAN / data-plane VIP | **never** — that is a path, not the API |
+
+Health alerts (ICMP **High**, API Average, CPU/mem) stay on **both** members. A backup chassis down is still a dead box, not “redundancy Warning”. Path/SD-WAN/license **tickets** must not double: until a thin `ha.role` item exists, empty path LLD on the current secondary (`{$NET.IF.IFNAME.MATCHES}` / `{$SDWAN.*.NAME.MATCHES}` = `^$`, `{$SERVICE.LICENSE.CONTROL}=0`). After failover, flip those macros or accept a quiet path until the new primary is marked — do not leave path triggers on both.
+
+REST API admin usually **syncs**; one token often works on both mgmt IPs. Trusted hosts do **not** — allow the Swiss proxy on **each** unit. Verify on a canary; do not assume the secondary 200s.
+
+VIP-only is a **fallback** when the secondary is unreachable (no ha-mgmt). Call that out as a watcher gap, not the design.
+
+---
+
 ## Zero-touch (nbxSync)
 
 **Live today** (do not change in this docs pass):
@@ -131,7 +152,7 @@ Locked GUI checklist still lists FortiGate by SNMP — that file is not updated 
 |---|---|
 | Platform FortiOS | **FortiGate by HTTP** + `OS/Network`. Interface requirement **ANY**, not SNMP |
 | Role Firewall | HTTP template floor **or** platform rule only — not both SNMP and HTTP |
-| Secrets | Per-device `{$FGATE.API.TOKEN}` + `{$FGATE.API.FQDN}` (ZabbixMacroAssignment on the Device, like Pure) |
+| Secrets | Per-device `{$FGATE.API.TOKEN}` + `{$FGATE.API.FQDN}` = **that unit’s HA mgmt IP** (not a WAN VIP) |
 | ICMP | **ICMP Ping** on a CG/path SNMP Fortis **never** inherit during the mixed window |
 | SNMP Monitoring | **off** the HTTP Forti (HTTP does not use UDP 161) |
 | Health | already on the HTTP template after upsert — no dashboard script |
@@ -139,7 +160,7 @@ Locked GUI checklist still lists FortiGate by SNMP — that file is not updated 
 Cutover sequence:
 
 1. Import **latest 7.0** FortiGate by HTTP (Bearer header, [ZBX-27082](https://support.zabbix.com/browse/ZBX-27082) request-per-call). Lab is 7.0.29 — still re-import; do not assume the image template is current.
-2. On-box: read-only admin profile (Zabbix: enable **all Read**) → REST API Admin → token **once**. Trusted hosts = **Swiss proxy** (and server if it polls), not a laptop.
+2. On-box: read-only admin profile (Zabbix: enable **all Read**) → REST API Admin → token **once** (usually syncs). Trusted hosts = **Swiss proxy on each member’s ha-mgmt**, not a laptop.
 3. Host macros: FQDN, token, and if not set on the template **https** / **443**.
 4. Canaries: link HTTP + ICMP Ping **without** unlinking the fleet SNMP rule.
 5. Only then retarget FortiOS / prune the SNMP floor.
@@ -156,8 +177,8 @@ Production poller for NL/US/CH is the **Swiss proxy group**. HTTP items run **fr
 |---|---|---|
 | `{$FGATE.SCHEME}` | `http` | **https** |
 | `{$FGATE.API.PORT}` | `80` | **443** |
-| `{$FGATE.API.FQDN}` | empty | GUI FQDN or cluster VIP |
-| `{$FGATE.API.TOKEN}` | empty | secret, per cluster |
+| `{$FGATE.API.FQDN}` | empty | **that unit’s** HA mgmt IP / GUI FQDN — not the WAN VIP |
+| `{$FGATE.API.TOKEN}` | empty | secret; often one synced token, **per-device** assignment (Pure pattern) |
 | `{$FGATE.DATA.TIMEOUT}` | `15s` | keep unless slow VDOMs |
 | `{$FGATE.HTTP.PROXY}` | empty | leave empty — the Zabbix proxy **is** the poller, not an HTTP forward proxy unless required |
 
@@ -167,7 +188,7 @@ TLS: verify the GUI cert from the proxy. Wrong name / private CA looks like API 
 
 VDOM: the REST admin must see the VDOM(s) you monitor. HTTP exposes **current VDOM** only — not VDOM LLD.
 
-HA: one token on the **VIP**. After failover, API should follow the primary; if it 401s, trusted-hosts / VIP vs member IP, not the template.
+HA: poll **each member’s mgmt IP**. After failover, health items follow that chassis; path tickets stay on whoever still has path LLD enabled. If API 401s on the secondary: trusted-hosts / ha-mgmt, not the template. See [HA](#ha).
 
 After a **reboot**: HTTPS/API comes up after forwarding. ICMP High then API Average is expected. Token is not SNMPv3 engine-boots — do not `snmp_cache_reload` for HTTP.
 
@@ -199,6 +220,8 @@ A site WAN blip must not be Forti Average **plus** Extreme `UW` High **plus** Ca
 | Zero interfaces | IFNAME regex or `netif` API fail | Health census |
 | SD-WAN site, zero members | [ZBX-26072](https://support.zabbix.com/browse/ZBX-26072) “all members” health-check, or not SD-WAN | Health / Path census |
 | Duplicate Authorization 401 | old HTTP template ([ZBX-27082](https://support.zabbix.com/browse/ZBX-27082)) | re-import latest 7.0 |
+| HA pair, only one host in Zabbix | backup never polled — VIP-only or missing NetBox device | census; add the member |
+| Secondary API 401, ICMP up | trusted-hosts on **that** unit’s ha-mgmt; token not valid there | Average Unexpected API |
 | Proxy last-seen | hosts go *unknown*, not *down* | later |
 
 ---
@@ -264,6 +287,6 @@ Same: no official template. Log disk **is** the product — disk High may be jus
 
 ## Later
 
-Thin HTTP items for HA peer/sync and IPsec/SSL-VPN (or a documented SNMP exception on clusters that need it — still not dual-link). Global session table. Sensors. VDOM LLD. Named policy canaries. Class-scoped WAN High. Site Disaster parent. Unsupported-item Average trigger. Health upsert. FortiOS Template Rule retarget **after** tokens. FMG device-sync. FAZ log ingest vs native.
+Thin HTTP items for **HA role / peer / sync** (so path tickets follow the primary after failover without flipping macros) and IPsec/SSL-VPN. Global session table. Sensors. VDOM LLD. Named policy canaries. Class-scoped WAN High. Site Disaster parent. Unsupported-item Average trigger. Health upsert. FortiOS Template Rule retarget **after** tokens. FMG device-sync. FAZ log ingest vs native.
 
 Do not block Extreme/AP cutover on this page.
