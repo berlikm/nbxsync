@@ -46,6 +46,14 @@ def get_zabbixassignments_for_request(instance, request):
     }
 
 
+def _merge_direct_and_inherited(direct_list, inherited_map, key):
+    """Direct assignments win; inherited rows with the same key are skipped."""
+    inherited_map = inherited_map or {}
+    direct_ids = {getattr(obj, key) for obj in direct_list}
+    inherited_filtered = [obj for obj in inherited_map.values() if getattr(obj, key) not in direct_ids]
+    return list(direct_list) + inherited_filtered
+
+
 def _hostinterface_identity(interface):
     """Identity of a host interface as Zabbix sees it.
 
@@ -109,17 +117,12 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
 
     configurationgroup = direct_configurationgroup or next(iter(inherited.get('configurationgroups', {}).values()), None)
 
-    def merge(direct, inherited_map, key):
-        direct_ids = {getattr(obj, key) for obj in direct}
-        inherited_filtered = [obj for obj in inherited_map.values() if getattr(obj, key) not in direct_ids]
-        return direct + inherited_filtered
-
     # Merge direct + inherited (direct takes priority).
     # Hierarchy HostInterfaces (Site/Role/…) must be detached copies: writing
     # interfaceid back onto the Site row would make every device share one
     # remote interface. Same pattern as ConfigGroup expansion below.
     hostinterfaces = []
-    for hi in merge(direct_hostinterfaces, inherited.get('hostinterfaces', {}), 'id'):
+    for hi in _merge_direct_and_inherited(direct_hostinterfaces, inherited.get('hostinterfaces', {}), 'id'):
         is_direct = hi.assigned_object_type_id == content_type.id and hi.assigned_object_id == instance.id
         if is_direct:
             hostinterfaces.append(hi)
@@ -183,11 +186,11 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
 
     # Resolve regex-based template rules (matched against platform name)
     # These are applied after direct + inherited, so explicit assignments always win
-    merged_templates = merge(direct_templates, inherited['templates'], 'zabbixtemplate_id')
+    merged_templates = _merge_direct_and_inherited(direct_templates, inherited['templates'], 'zabbixtemplate_id')
     resolved_template_ids = {getattr(obj, 'zabbixtemplate_id') for obj in merged_templates}
-    merged_hostgroups = merge(direct_hostgroups, inherited['hostgroups'], 'zabbixhostgroup_id')
+    merged_hostgroups = _merge_direct_and_inherited(direct_hostgroups, inherited['hostgroups'], 'zabbixhostgroup_id')
     resolved_hostgroup_ids = {getattr(obj, 'zabbixhostgroup_id') for obj in merged_hostgroups}
-    merged_tags = merge(direct_tags, inherited['tags'], 'id')
+    merged_tags = _merge_direct_and_inherited(direct_tags, inherited['tags'], 'id')
     resolved_tag_ids = {obj.zabbixtag_id for obj in merged_tags}
 
     # ConfigGroup members are also expanded at resolve time so host sync does
@@ -272,13 +275,13 @@ def get_assigned_zabbixobjects(instance, zabbixserver=None):
 
     return {
         'templates': merged_templates,
-        'macros': merge(direct_macros, inherited['macros'], 'zabbixmacro_id'),
+        'macros': _merge_direct_and_inherited(direct_macros, inherited['macros'], 'zabbixmacro_id'),
         'tags': merged_tags,
         'hostgroups': merged_hostgroups,
         'hostinterfaces': hostinterfaces,
         'hostinventory': hostinventory,
         'configurationgroup': configurationgroup,
-        'server_assignments': merge(direct_server_assignments, inherited.get('server_assignments', {}), 'zabbixserver_id'),
+        'server_assignments': _merge_direct_and_inherited(direct_server_assignments, inherited.get('server_assignments', {}), 'zabbixserver_id'),
     }
 
 
