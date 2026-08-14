@@ -2,8 +2,9 @@ import logging
 
 from ipam.models import IPAddress
 
+from nbxsync.utils.host_binding import get_managed_host_id
+
 from .syncbase import ZabbixSyncBase
-from nbxsync.models import ZabbixServerAssignment
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,14 @@ class HostInterfaceSync(ZabbixSyncBase):
     def get_name_value(self):
         return self.obj.assigned_object.name
 
+    def _resolve_hostid(self):
+        """Hostid from sync context, else the durable binding / leftover direct assignment."""
+        hostid = self.context.get('hostid', None)
+        if hostid:
+            return hostid
+        instance = self.context.get('_instance') or getattr(self.obj, 'assigned_object', None)
+        return get_managed_host_id(instance, getattr(self.obj, 'zabbixserver', None))
+
     def find_by_name(self):
         """Locate the remote interface that matches this NetBox interface.
 
@@ -30,7 +39,7 @@ class HostInterfaceSync(ZabbixSyncBase):
         deterministically instead of letting the generic 'not exactly one'
         fallback create yet another copy: see _canonical_interface().
         """
-        hostid = self.context.get('hostid', None)
+        hostid = self._resolve_hostid()
         if not hostid:
             return []
         candidates = self.api_object().get(hostids=[hostid], filter={'type': str(self.obj.type)}) or []
@@ -87,18 +96,9 @@ class HostInterfaceSync(ZabbixSyncBase):
         return chosen
 
     def get_create_params(self):
-        hostid = self.context.get('hostid', None)
-        zbxserverassignment = None
-
+        hostid = self._resolve_hostid()
         if not hostid:
-            # No HostID, get it from the assignment
-            zbxserverassignment = ZabbixServerAssignment.objects.filter(assigned_object_type=self.obj.assigned_object_type, assigned_object_id=self.obj.assigned_object.id).first()
-            # If the assignment isnt found... Return
-            if not zbxserverassignment:
-                return {}
-
-            # Update the hostid field :)
-            hostid = zbxserverassignment.hostid
+            return {}
 
         ipaddr = ''
         if self.obj.ip_id:
