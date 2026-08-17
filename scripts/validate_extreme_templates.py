@@ -180,7 +180,9 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
         histories = [w for w in (overview.get('widgets') or []) if w.get('type') == 'svggraph']
         record(
             f'{name} Overview 4-tile row',
-            len(tiles) == 4 and all(str(w.get('width')) == '18' for w in tiles),
+            len(tiles) == 4
+            and all(str(w.get('width')) == '18' for w in tiles)
+            and [w.get('name') for w in tiles[:3]] == ['ICMP', 'SNMP', 'CPU'],
             f'tiles={[(w.get("name"), w.get("width")) for w in tiles]}',
         )
         record(
@@ -203,7 +205,13 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
         for gauge in gauges:
             gfields = {f.get('name'): f.get('value') for f in (gauge.get('fields') or [])}
             shows = {str(f.get('value')) for f in (gauge.get('fields') or []) if str(f.get('name')).startswith('show.')}
-            ok = shows == {'2', '5'} and str(gfields.get('th_show_labels')) == '0' and str(gfields.get('angle')) == '270'
+            ok = (
+                shows == {'2', '5'}
+                and str(gfields.get('th_show_labels')) == '0'
+                and str(gfields.get('angle')) == '270'
+                and str(gfields.get('value_size')) == '25'
+                and str(gfields.get('value_bold')) == '1'
+            )
             chrome_ok = chrome_ok and ok
             chrome.append((gauge.get('name'), sorted(shows), gfields.get('th_show_labels')))
         record(f'{name} Overview gauge chrome', chrome_ok, f'{chrome}')
@@ -222,7 +230,11 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             if 'regsub(' in label:
                 match = re.search(r',"(\\+)1"\)', label)
                 capture_ok = bool(match) and len(match.group(1)) == 1
-            secondary_ok = str(hfields.get('secondary_label_type')) in {'0', '1'}
+            secondary_ok = (
+                str(hfields.get('secondary_label_type')) in {'0', '1'}
+                and str(hfields.get('primary_label_bold')) == '1'
+                and str(hfields.get('secondary_label_bold')) == '0'
+            )
             honey_ok = honey_ok and capture_ok and secondary_ok
             honey_detail.append((widget.get('name'), capture_ok, secondary_ok))
     if honey_seen:
@@ -350,9 +362,11 @@ def validate_interface_dashboard(name: str, tpl: dict) -> None:
         and str(map_fields.get('secondary_label_type')) == '0'
         and map_fields.get('secondary_label') == '{ITEM.LASTVALUE}'
     )
+    names_ok = map_widget.get('name') == 'Interfaces' and grid_widget.get('name') == 'Traffic'
     record(f'{name} unified interface graph grid', unified, f'graph={graph_ref}')
     record(f'{name} interface map is scan-only', extra == [], f'extra={extra}')
     record(f'{name} interface map labels', labels_ok, f'label={label}')
+    record(f'{name} interface wording', names_ok, f'map={map_widget.get("name")} grid={grid_widget.get("name")}')
 
 
 def validate_voss(doc: dict) -> None:

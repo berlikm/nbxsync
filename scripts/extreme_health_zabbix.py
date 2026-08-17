@@ -253,7 +253,7 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
     desired_widgets = [
         {
             'type': 'honeycomb',
-            'name': 'Interface map',
+            'name': 'Interfaces',
             'x': '0',
             'y': '0',
             'width': '72',
@@ -261,13 +261,13 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
             'view_mode': '0',
             'fields': [
                 {'type': '1', 'name': 'items.0', 'value': 'Interface *: Operational status'},
-                {
-                    'type': '1',
-                    'name': 'primary_label',
-                    'value': '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\\1")}',
-                },
+                {'type': '1', 'name': 'primary_label', 'value': '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\\1")}'},
+                {'type': '0', 'name': 'primary_label_bold', 'value': '1'},
                 {'type': '0', 'name': 'secondary_label_type', 'value': '0'},
                 {'type': '1', 'name': 'secondary_label', 'value': '{ITEM.LASTVALUE}'},
+                {'type': '0', 'name': 'secondary_label_bold', 'value': '0'},
+                {'type': '0', 'name': 'secondary_label_size', 'value': '12'},
+                {'type': '0', 'name': 'secondary_label_size_type', 'value': '1'},
                 {'type': '1', 'name': 'reference', 'value': 'EIMAP'},
                 {'type': '1', 'name': 'thresholds.0.color', 'value': '878787'},
                 {'type': '1', 'name': 'thresholds.0.threshold', 'value': '0'},
@@ -279,7 +279,7 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
         },
         {
             'type': 'graphprototype',
-            'name': 'Interface traffic and errors',
+            'name': 'Traffic',
             'x': '0',
             'y': '4',
             'width': '72',
