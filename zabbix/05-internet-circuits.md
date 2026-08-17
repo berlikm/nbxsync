@@ -2,7 +2,7 @@
 
 Prepared later. Same bar as [01](01-extreme-switching.md): a circuit High is not a fabric `USW` High. Tag them so Forti WAN and Extreme `UW-` can share the class later.
 
-Depends on Extreme `UW-…` labels ([port-identity.md](port-identity.md)) and/or Forti WAN.
+Depends on Extreme `UW-…` labels ([port-identity.md](port-identity.md)) and/or Forti WAN / SD-WAN health-checks ([03-fortinet.md](03-fortinet.md) — API, not SNMP). Do not page the same ISP cut as Extreme `UW`, Forti path, and Cato.
 
 ---
 
@@ -26,7 +26,7 @@ Do **not** alert on: fabric `USW` uplinks (01), Cato overlay (04).
 | Object | In | Out |
 |---|---|---|
 | Extreme WAN | `ifAlias` matching `^UW(-\|$)` | Fabric uplinks |
-| Forti WAN | Forti WAN interface for that circuit | Other Forti interfaces |
+| Forti WAN | Forti WAN iface **or** SD-WAN health-check for that circuit (HTTP) | Other Forti interfaces / policies |
 
 ---
 
@@ -40,7 +40,8 @@ No absolute speed-expect on `UW`. Commit rate lives on the NetBox Circuit, not i
 
 | Template | Where |
 |---|---|
-| ISP WAN Ports by SNMP (thin, build) | Circuit / `UW` — dependent items on stock interface items where possible |
+| ISP WAN Ports by SNMP (thin, build) | Extreme `UW` — dependent items on stock interface items where possible |
+| FortiGate by HTTP (SD-WAN / WAN LLD) | [03](03-fortinet.md) — not this SNMP template |
 
 ---
 

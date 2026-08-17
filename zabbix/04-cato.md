@@ -16,7 +16,7 @@ NetBox: Cato site ID on the Site (when we have it).
 | Loss / latency / throughput | later | graphs first |
 | Collector / API failure | **no** as site outage | own signal, or we page false site-downs |
 
-Do **not** alert on: switch/firewall underlay (01, 03), ISP circuit inventory (05) as if they were Cato.
+Do **not** alert on: switch/firewall underlay (01, 03), ISP circuit inventory (05) as if they were Cato. A Forti SD-WAN health-check down is not a Cato site down.
 
 ---
 

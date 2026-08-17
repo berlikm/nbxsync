@@ -232,4 +232,4 @@ Intended speed = token or class default (`USW` 10G, `UP` 1G). Live `ifHighSpeed`
 
 Class-scoped link-down High (`USW`/`UP`); OSPF count; USW util + discards after history; `{$ISIS.CONTROL}=1` / `{$CARD.CONTROL}=1` on fabric canaries; sFlow on a few Core `USW`; one synthetic ping per site as the **Disaster** SLI; NetBox vs live `ifAlias`; AP ICMP → `UP-`; syslog on the proxy; `walk[]` when we retune poll load; EXOS SNMP-dead → Average without forking stock.
 
-FortiGate and network VMs reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md)). Do not merge with Cato ([04](04-cato.md)).
+FortiGate (API) and network VMs reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md)). Do not merge with Cato ([04](04-cato.md)).
