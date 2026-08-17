@@ -86,7 +86,7 @@ Two host-level dashboards: **Health** for the box and **Network interfaces** for
 | Where is heat / draw? | Hardware (VOSS chassis) | Temp °C + Power W honeycombs | Values, named sensors. Not SNMP indexes 1–5. |
 | Per-slot memory on a chassis | Hardware (VOSS) | Graph prototype on **this** template | Same-template graph refs import cleanly. |
 | Are radios noisy? | RF (IQ) | Noise honeycomb + 2-col graphs | Two radios, gallery is enough. |
-| Which port is down? | Network interfaces | Honeycomb of **IFNAME** (`1:1`, `1/21`) | Colour without an ID is a Christmas tree. Auto type + short ID; alias is hover. Custom 20% truncated IDs on dense maps. |
+| Which port is down? | Network interfaces | Honeycomb of **IFNAME** (`1:1`, `1/21`) | Colour without an ID is a Christmas tree. Auto type + short ID; alias is hover. Height 6 so cells stay above Zabbix's 32px floor — height 3 on a dense VOSS map hides names when the window is small. Custom 20% truncated IDs on dense maps. |
 | How much traffic? | Network interfaces | 3×2 native graphs | Demand. Errors/discards on the VOSS/EXOS secondary axis. |
 | Why is *this* port sick? | Network interfaces → Port | Navigator of faults, not bits | Does not repeat Overview traffic. |
 
@@ -96,7 +96,7 @@ Do **not** bind an svggraph **item pattern** on the EXOS companion (`ds.dataset_
 
 All platforms expose **Network interfaces → Overview** with the same map + 3×2 grid. Switches add **Port**. IQ has no Port page. YAML import does not delete leftover Diagnostics pages (`deleteMissing: false`); `--apply` drops them. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet.
 
-Overview tiles are short labels. Gauges show a bold value and colour arc only. FRU honeycombs keep **Custom 20%** (two fans must not explode). Interface honeycombs use **Auto** on the short port ID. VOSS Temp binds `Temperature sensor *` (°C, `{#SENSOR_DESCR}`). Power is `PSU *: Output watts`. `rcSysTotalPower` is capacity, not load.
+Overview tiles are short labels. Gauges show a bold value and colour arc only. FRU honeycombs keep **Custom 20%** (two fans must not explode) at height 3. Interface honeycombs use **Auto** on the short port ID at **height 6** (not bold): Auto still truncates once cells hit the 32px floor, which a height-3 VOSS Core/Dist map does in a modest window. VOSS Temp binds `Temperature sensor *` (°C, `{#SENSOR_DESCR}`). Power is `PSU *: Output watts`. `rcSysTotalPower` is capacity, not load.
 
 Honeycomb thresholds are `>=`. VOSS fan `notpresent(4)` paints like `down(3)` (red). Empty PSU `empty(2)` stays grey (green starts at 3). EXOS PSU `notPresent(1)` stays grey (green starts at 2).
 

@@ -2908,7 +2908,7 @@ zabbix_export:
         - type: honeycomb
           name: Interfaces
           width: '72'
-          height: '3'
+          height: '6'
           fields:
           - type: STRING
             name: items.0
@@ -2919,9 +2919,6 @@ zabbix_export:
           - type: INTEGER
             name: interpolation
             value: '0'
-          - type: INTEGER
-            name: primary_label_bold
-            value: '1'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -2948,9 +2945,9 @@ zabbix_export:
             value: '2'
         - type: graphprototype
           name: Traffic
-          'y': '3'
+          'y': '6'
           width: '72'
-          height: '11'
+          height: '8'
           fields:
           - type: INTEGER
             name: columns

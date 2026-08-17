@@ -329,10 +329,10 @@ def validate_interface_dashboard(name: str, tpl: dict, *, port_page: bool = Fals
     extra = [w.get('type') for w in widgets if w.get('type') not in ('honeycomb', 'graphprototype')]
     unified = (
         map_widget.get('width') == '72'
-        and         map_widget.get('height') == '3'
+        and map_widget.get('height') == '6'
         and grid_widget.get('width') == '72'
-        and grid_widget.get('height') == '11'
-        and grid_widget.get('y') == '3'
+        and grid_widget.get('height') == '8'
+        and grid_widget.get('y') == '6'
         and grid_fields.get('columns') == '3'
         and grid_fields.get('rows') == '2'
         and isinstance(graph_ref, dict)
@@ -345,7 +345,7 @@ def validate_interface_dashboard(name: str, tpl: dict, *, port_page: bool = Fals
         and len(match.group(1)) == 1
         and str(map_fields.get('show.0')) == '1'
         and map_fields.get('show.1') is None
-        and str(map_fields.get('primary_label_bold')) == '1'
+        and map_fields.get('primary_label_bold') is None
         and str(map_fields.get('primary_label_size_type') or '0') == '0'
         and '(?:' in label
     )

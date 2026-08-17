@@ -209,13 +209,12 @@ def _exos_overview_widgets(graphid: str) -> list[dict]:
             'x': '0',
             'y': '0',
             'width': '72',
-            'height': '3',
+            'height': '6',
             'view_mode': '0',
             'fields': [
                 {'type': '1', 'name': 'items.0', 'value': 'Interface *: Operational status'},
                 {'type': '1', 'name': 'primary_label', 'value': '{{ITEM.NAME}.regsub("^Interface (.*)(?:\\(|: Operational status).*","\\1")}'},
                 {'type': '0', 'name': 'interpolation', 'value': '0'},
-                {'type': '0', 'name': 'primary_label_bold', 'value': '1'},
                 {'type': '0', 'name': 'show.0', 'value': '1'},
                 {'type': '1', 'name': 'reference', 'value': 'EIMAP'},
                 {'type': '1', 'name': 'thresholds.0.color', 'value': '878787'},
@@ -230,9 +229,9 @@ def _exos_overview_widgets(graphid: str) -> list[dict]:
             'type': 'graphprototype',
             'name': 'Traffic',
             'x': '0',
-            'y': '3',
+            'y': '6',
             'width': '72',
-            'height': '11',
+            'height': '8',
             'view_mode': '0',
             'fields': [
                 {'type': '0', 'name': 'columns', 'value': '3'},
@@ -381,14 +380,14 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
     overview_ok = (
         overview.get('name') == 'Overview'
         and map_widget.get('width') == '72'
-        and map_widget.get('height') == '3'
+        and map_widget.get('height') == '6'
         and map_fields.get('show.0') == '1'
-        and map_fields.get('primary_label_bold') == '1'
+        and map_fields.get('primary_label_bold') is None
         and str(map_fields.get('primary_label_size_type') or '0') == '0'
         and '(?:' in str(map_fields.get('primary_label') or '')
         and grid_widget.get('width') == '72'
-        and grid_widget.get('height') == '11'
-        and grid_widget.get('y') == '3'
+        and grid_widget.get('height') == '8'
+        and grid_widget.get('y') == '6'
         and grid_fields.get('columns') == '3'
         and grid_fields.get('rows') == '2'
         and grid_fields.get('graphid.0') == graphid
