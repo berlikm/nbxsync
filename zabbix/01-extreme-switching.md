@@ -113,7 +113,7 @@ NetBox: those Access macros on role Switch Access. Locked checklist §11.1 still
 
 New switch: NetBox **platform** contains `EXOS` or `VOSS`, **role** is Switch Core/Dist/Access/Mgmt, site in a country SiteGroup. First HostSync:
 
-1. Template Rule → `Extreme EXOS Observability` (nests stock EXOS) or `Extreme VOSS by SNMP` + `OS/Network` hostgroup  
+1. Template Rule → `Extreme EXOS Observability` (nests stock **Extreme EXOS by SNMP**) or `Extreme VOSS by SNMP` + `OS/Network` hostgroup. Zabbix host view shows `Extreme EXOS Observability (Extreme EXOS by SNMP)` — that is the companion, not a second poller.  
 2. Role MacroAssignment → IFALIAS / IFTYPE (Access also `PORTID.*`)  
 3. Configuration Group **SNMP Monitoring** → SNMPv3 interface  
 4. Template **Health** dashboard is already on the template — no extra dashboard script  

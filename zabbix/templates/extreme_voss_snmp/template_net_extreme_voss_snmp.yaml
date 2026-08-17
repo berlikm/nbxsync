@@ -1278,6 +1278,10 @@ zabbix_export:
         tags:
         - tag: component
           value: network
+        - tag: description
+          value: '{#IFALIAS}'
+        - tag: interface
+          value: '{#IFNAME}'
         trigger_prototypes:
         - uuid: e833cd51334b46fbb4d7e501ff25b0ab
           expression: change(/Extreme VOSS by SNMP/net.if.flaps[rcPortNumStateTransition.{#SNMPINDEX}])>{$IF.FLAP.WARN:"{#IFNAME}"}
@@ -1298,6 +1302,10 @@ zabbix_export:
         tags:
         - tag: component
           value: network
+        - tag: description
+          value: '{#IFALIAS}'
+        - tag: interface
+          value: '{#IFNAME}'
       trigger_prototypes:
       - uuid: 2a8e4279183249c7b6e069b716c79331
         expression: 'change(/Extreme VOSS by SNMP/net.if.speed[ifHighSpeed.{#SNMPINDEX}])<0 and last(/Extreme VOSS by SNMP/net.if.speed[ifHighSpeed.{#SNMPINDEX}])>0

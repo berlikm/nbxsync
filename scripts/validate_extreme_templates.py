@@ -337,6 +337,17 @@ def validate_voss(doc: dict) -> None:
     )
     keys = _walk_item_keys(tpl)
     record('VOSS unsupported item', 'zabbix[host,,items_unsupported]' in keys, '')
+    flap_ok = shutdown_ok = False
+    for rule in tpl.get('discovery_rules') or []:
+        for it in rule.get('item_prototypes') or []:
+            name = it.get('name') or ''
+            tags = {t.get('tag'): t.get('value') for t in (it.get('tags') or [])}
+            if 'State transitions' in name:
+                flap_ok = tags.get('interface') == '{#IFNAME}'
+            if 'Shutdown reason' in name:
+                shutdown_ok = tags.get('interface') == '{#IFNAME}'
+    record('VOSS flap items tagged interface (Diagnostics grouping)', flap_ok, '')
+    record('VOSS shutdown items tagged interface', shutdown_ok, '')
     validate_health_dashboard('VOSS', doc, tpl, pages=('Overview', 'Hardware', 'Diagnostics'))
     validate_interface_dashboard('VOSS', tpl)
     # Re-import identity — same uuid as the old traffic-only board

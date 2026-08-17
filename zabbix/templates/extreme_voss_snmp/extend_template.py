@@ -1019,7 +1019,7 @@ def inject_if_prototypes(text: str) -> str:
                 f"{OID['portFlaps']}.{{#SNMPINDEX}}",
                 delay="5m",
                 description="MIB: rcPortNumStateTransition ΓÇö link state change count.",
-                tags=[("component", "network")],
+                tags=[("component", "network"), ("description", "'{#IFALIAS}'"), ("interface", "'{#IFNAME}'")],
                 trigger_prototypes=[
                     {
                         "expression": 'change(/Extreme VOSS by SNMP/net.if.flaps[rcPortNumStateTransition.{#SNMPINDEX}])>{$IF.FLAP.WARN:"{#IFNAME}"}',
@@ -1036,7 +1036,7 @@ def inject_if_prototypes(text: str) -> str:
                 delay="5m",
                 description="MIB: rcPortShutdownReason.",
                 valuemap="RAPID-CITY::rcPortShutdownReason",
-                tags=[("component", "network")],
+                tags=[("component", "network"), ("description", "'{#IFALIAS}'"), ("interface", "'{#IFNAME}'")],
             ),
         ]
     )

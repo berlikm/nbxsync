@@ -13,7 +13,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 
   * Import Extreme VOSS / IQ Engine / EXOS Observability / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
-  * Patch stock EXOS ``net.if.discovery`` rollout settings (15m / lifetime 0) — stock is 1h / long keep-lost
+  * Patch stock EXOS ``net.if.discovery`` rollout (15m / lifetime 0 / SNMP timeout 30s) — stock is 1h / 3s; VLAN-heavy EXOS walks miss traffic while EtherLike duplex still works
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` only patches the stock EXOS **Network interfaces** layout.
@@ -146,22 +146,15 @@ TEMPLATE_FILES = {
 # Core / Dist / Mgmt = every admin-up ethernet/LAG except X*.
 # Access = USW (to Dist) and UP (to AP) only — no desk/laptop/US/MON/UW/TMON.
 # There is no Switch Hybrid role.
+CORE_LIKE_IF_MACROS = {
+    '{$NET.IF.IFALIAS.MATCHES}': '.*',
+    '{$NET.IF.IFALIAS.NOT_MATCHES}': '^X(-|$)',
+    '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
+}
 ROLE_MACROS = {
-    'Switch Core': {
-        '{$NET.IF.IFALIAS.MATCHES}': '.*',
-        '{$NET.IF.IFALIAS.NOT_MATCHES}': '^X(-|$)',
-        '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
-    },
-    'Switch Dist': {
-        '{$NET.IF.IFALIAS.MATCHES}': '.*',
-        '{$NET.IF.IFALIAS.NOT_MATCHES}': '^X(-|$)',
-        '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
-    },
-    'Switch Mgmt': {
-        '{$NET.IF.IFALIAS.MATCHES}': '.*',
-        '{$NET.IF.IFALIAS.NOT_MATCHES}': '^X(-|$)',
-        '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
-    },
+    'Switch Core': dict(CORE_LIKE_IF_MACROS),
+    'Switch Dist': dict(CORE_LIKE_IF_MACROS),
+    'Switch Mgmt': dict(CORE_LIKE_IF_MACROS),
     'Switch Access': {
         '{$NET.IF.IFALIAS.MATCHES}': '^(USW|UP)(-|$)',
         '{$NET.IF.IFALIAS.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
@@ -429,16 +422,18 @@ def assert_etherlike_ifalias_filters(api, template_name: str) -> tuple[bool, str
 _IF_DISCOVERY_KEY = 'net.if.discovery'
 _IF_LLD_ROLLOUT_DELAY = '15m'
 _IF_LLD_ROLLOUT_LIFETIME = '0'
+_IF_LLD_ROLLOUT_TIMEOUT = '30s'
 
 
 def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by SNMP') -> str:
-    """Align stock EXOS net.if.discovery with VOSS rollout settings (15m, keep-lost 0).
+    """Align stock EXOS net.if.discovery with VOSS rollout settings.
 
-    Stock Extreme EXOS ships delay=1h and a long lost-resources period — hosts can sit
-    with 0 interface items for an hour after link, and ``X`` relabels linger. Idempotent
-    API patch; does not fork the stock YAML.
+    Stock Extreme EXOS ships delay=1h, a long lost-resources period, and the
+    default SNMP timeout. Dist/Access EXOS boxes with many VLAN ifaces then
+    show EtherLike duplex (small table) and **zero** ``net.if.*`` traffic
+    items (full IF-MIB walk). Idempotent API patch; does not fork the stock YAML.
     """
-    logger.info('Network: EXOS net.if.discovery rollout (delay/lifetime)')
+    logger.info('Network: EXOS net.if.discovery rollout (delay/lifetime/timeout)')
     tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
     if not tpls:
         logger.warning('  %s: template not found — skip IF LLD rollout patch', template_name)
@@ -447,7 +442,7 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
     rules = api.discoveryrule.get(
         hostids=tid,
         filter={'key_': _IF_DISCOVERY_KEY},
-        output=['itemid', 'key_', 'delay', 'lifetime', 'enabled_lifetime'],
+        output=['itemid', 'key_', 'delay', 'lifetime', 'enabled_lifetime', 'timeout'],
     )
     if not rules:
         logger.warning('  %s: no %s — skip', template_name, _IF_DISCOVERY_KEY)
@@ -456,22 +451,54 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
     delay = str(rule.get('delay') or '')
     lifetime = str(rule.get('lifetime') or '')
     enabled = str(rule.get('enabled_lifetime') or '')
-    if delay == _IF_LLD_ROLLOUT_DELAY and lifetime in (_IF_LLD_ROLLOUT_LIFETIME, '0s', '0d') and enabled in (_IF_LLD_ROLLOUT_LIFETIME, '0s', '0d', ''):
-        logger.info('  %s: IF LLD rollout already set (delay=%s lifetime=%s)', template_name, delay, lifetime)
-        return 'ok'
-    api.discoveryrule.update(
-        itemid=rule['itemid'],
-        delay=_IF_LLD_ROLLOUT_DELAY,
-        lifetime=_IF_LLD_ROLLOUT_LIFETIME,
-        enabled_lifetime=_IF_LLD_ROLLOUT_LIFETIME,
+    timeout = str(rule.get('timeout') or '')
+    delay_ok = delay == _IF_LLD_ROLLOUT_DELAY and lifetime in (_IF_LLD_ROLLOUT_LIFETIME, '0s', '0d') and enabled in (
+        _IF_LLD_ROLLOUT_LIFETIME,
+        '0s',
+        '0d',
+        '',
     )
+    if delay_ok and timeout == _IF_LLD_ROLLOUT_TIMEOUT:
+        logger.info(
+            '  %s: IF LLD rollout already set (delay=%s lifetime=%s timeout=%s)',
+            template_name,
+            delay,
+            lifetime,
+            timeout,
+        )
+        return 'ok'
+    payload = {
+        'itemid': rule['itemid'],
+        'delay': _IF_LLD_ROLLOUT_DELAY,
+        'lifetime': _IF_LLD_ROLLOUT_LIFETIME,
+        'enabled_lifetime': _IF_LLD_ROLLOUT_LIFETIME,
+        'timeout': _IF_LLD_ROLLOUT_TIMEOUT,
+    }
+    try:
+        api.discoveryrule.update(**payload)
+    except Exception as exc:
+        logger.warning(
+            '  %s: IF LLD timeout=%s rejected (%s) — patching delay/lifetime only',
+            template_name,
+            _IF_LLD_ROLLOUT_TIMEOUT,
+            exc,
+        )
+        api.discoveryrule.update(
+            itemid=rule['itemid'],
+            delay=_IF_LLD_ROLLOUT_DELAY,
+            lifetime=_IF_LLD_ROLLOUT_LIFETIME,
+            enabled_lifetime=_IF_LLD_ROLLOUT_LIFETIME,
+        )
+        return 'patched-no-timeout'
     logger.info(
-        '  %s: patched IF LLD delay=%s lifetime=%s (was delay=%s lifetime=%s)',
+        '  %s: patched IF LLD delay=%s lifetime=%s timeout=%s (was delay=%s lifetime=%s timeout=%s)',
         template_name,
         _IF_LLD_ROLLOUT_DELAY,
         _IF_LLD_ROLLOUT_LIFETIME,
+        _IF_LLD_ROLLOUT_TIMEOUT,
         delay,
         lifetime,
+        timeout,
     )
     return 'patched'
 
@@ -483,12 +510,12 @@ def assert_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by
     rules = api.discoveryrule.get(
         hostids=tpls[0]['templateid'],
         filter={'key_': _IF_DISCOVERY_KEY},
-        output=['delay', 'lifetime', 'enabled_lifetime'],
+        output=['delay', 'lifetime', 'enabled_lifetime', 'timeout'],
     )
     if not rules:
         return True, 'no IF LLD — n/a'
     r = rules[0]
-    detail = f"delay={r.get('delay')} lifetime={r.get('lifetime')} enabled_lifetime={r.get('enabled_lifetime')}"
+    detail = f"delay={r.get('delay')} lifetime={r.get('lifetime')} enabled_lifetime={r.get('enabled_lifetime')} timeout={r.get('timeout')}"
     ok = str(r.get('delay')) == _IF_LLD_ROLLOUT_DELAY and str(r.get('lifetime')) in (
         _IF_LLD_ROLLOUT_LIFETIME,
         '0s',
@@ -643,23 +670,41 @@ def step_server_macros(server) -> None:
         )
 
 
+def resolve_roles_for_macros(canonical_name: str) -> list:
+    """All NetBox DeviceRoles that should receive ROLE_MACROS[canonical_name]."""
+    found: list = []
+    seen: set = set()
+    candidates = [canonical_name, *ROLE_NAME_ALIASES.get(canonical_name, ())]
+    for name in dict.fromkeys(candidates):
+        role = None
+        try:
+            role = get_role(name)
+        except DeviceRole.DoesNotExist:
+            role = (
+                DeviceRole.objects.filter(name=name).first()
+                or DeviceRole.objects.filter(name__iexact=name).first()
+                or DeviceRole.objects.filter(slug=slugify(name)).first()
+            )
+        if role is None or role.pk in seen:
+            continue
+        seen.add(role.pk)
+        found.append(role)
+    if not found and canonical_name == 'Switch Dist':
+        for role in DeviceRole.objects.filter(name__icontains='Dist').exclude(name__icontains='Access'):
+            if role.pk not in seen:
+                seen.add(role.pk)
+                found.append(role)
+        for role in DeviceRole.objects.filter(name__icontains='Distribution'):
+            if role.pk not in seen:
+                seen.add(role.pk)
+                found.append(role)
+    return found
+
+
 def resolve_role_for_macros(canonical_name: str) -> DeviceRole | None:
     """Resolve NetBox DeviceRole for a ROLE_MACROS key, including Dist aliases."""
-    candidates = list(ROLE_NAME_ALIASES.get(canonical_name, (canonical_name,)))
-    if canonical_name not in candidates:
-        candidates.insert(0, canonical_name)
-    for name in candidates:
-        try:
-            return get_role(name)
-        except DeviceRole.DoesNotExist:
-            pass
-        role = DeviceRole.objects.filter(name=name).first() or DeviceRole.objects.filter(name__iexact=name).first() or DeviceRole.objects.filter(slug=slugify(name)).first()
-        if role is not None:
-            return role
-    # Last resort: name contains Dist/Distribution for the Dist key only
-    if canonical_name == 'Switch Dist':
-        return DeviceRole.objects.filter(name__icontains='Dist').exclude(name__icontains='Access').first() or DeviceRole.objects.filter(name__icontains='Distribution').first()
-    return DeviceRole.objects.filter(name__iendswith=canonical_name.replace('Switch ', '')).first()
+    roles = resolve_roles_for_macros(canonical_name)
+    return roles[0] if roles else None
 
 
 def step_role_macros() -> None:
@@ -673,46 +718,47 @@ def step_role_macros() -> None:
         raise SystemExit('No ZabbixServer — run with --simulate or create a server first')
 
     for role_name, macros in ROLE_MACROS.items():
-        role = resolve_role_for_macros(role_name)
-        if role is None:
+        roles = resolve_roles_for_macros(role_name)
+        if not roles:
             logger.warning('  Role not found: %s — skipping', role_name)
             continue
-        if role.name != role_name:
-            logger.info('  Resolved %s → NetBox role %r', role_name, role.name)
-        for macro_name, value in macros.items():
-            zmacro, _ = ensure(
-                M.ZabbixMacro,
-                macro=macro_name,
-                assigned_object_type=ct(M.ZabbixServer),
-                assigned_object_id=server.id,
-                defaults={
-                    'value': value,  # default; assignment overrides per role
-                    'type': ZabbixMacroTypeChoices.TEXT,
-                    'description': f'nwn:{macro_name}',
-                },
-                update_fields=['type', 'description'],
-            )
-            # UniqueConstraint includes value — update-in-place by macro+role+context.
-            ma = M.ZabbixMacroAssignment.objects.filter(
-                zabbixmacro=zmacro,
-                assigned_object_type=ct(DeviceRole),
-                assigned_object_id=role.id,
-                context='',
-                is_regex=False,
-            ).first()
-            if ma is None:
-                M.ZabbixMacroAssignment.objects.create(
+        for role in roles:
+            if role.name != role_name:
+                logger.info('  Resolved %s → NetBox role %r', role_name, role.name)
+            for macro_name, value in macros.items():
+                zmacro, _ = ensure(
+                    M.ZabbixMacro,
+                    macro=macro_name,
+                    assigned_object_type=ct(M.ZabbixServer),
+                    assigned_object_id=server.id,
+                    defaults={
+                        'value': value,  # default; assignment overrides per role
+                        'type': ZabbixMacroTypeChoices.TEXT,
+                        'description': f'nwn:{macro_name}',
+                    },
+                    update_fields=['type', 'description'],
+                )
+                # UniqueConstraint includes value — update-in-place by macro+role+context.
+                ma = M.ZabbixMacroAssignment.objects.filter(
                     zabbixmacro=zmacro,
                     assigned_object_type=ct(DeviceRole),
                     assigned_object_id=role.id,
-                    value=value,
                     context='',
                     is_regex=False,
-                )
-            elif ma.value != value:
-                ma.value = value
-                ma.save(update_fields=['value'])
-            logger.info('  %s %s = %s', role.name, macro_name, value)
+                ).first()
+                if ma is None:
+                    M.ZabbixMacroAssignment.objects.create(
+                        zabbixmacro=zmacro,
+                        assigned_object_type=ct(DeviceRole),
+                        assigned_object_id=role.id,
+                        value=value,
+                        context='',
+                        is_regex=False,
+                    )
+                elif ma.value != value:
+                    ma.value = value
+                    ma.save(update_fields=['value'])
+                logger.info('  %s %s = %s', role.name, macro_name, value)
 
 
 def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
@@ -975,7 +1021,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             if_lld_status = patch_exos_interface_lld_rollout(api)
             record(
                 'exos_if_lld_rollout',
-                if_lld_status in ('ok', 'patched', 'missing', 'no-if-lld'),
+                if_lld_status in ('ok', 'patched', 'patched-no-timeout', 'missing', 'no-if-lld'),
                 if_lld_status,
                 group='import',
             )
@@ -1105,6 +1151,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             ('voss_dist', 'Switch Dist', plat_voss),
             ('voss_access', 'Switch Access', plat_voss),
             ('exos_core', 'Switch Core', plat_exos),
+            ('exos_dist', 'Switch Dist', plat_exos),
             ('ap_access', 'Access Point', plat_iq),
         ]:
             d = Device.objects.create(
@@ -1147,6 +1194,12 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             'exos_core_template',
             any('EXOS' in n for n in tpl_names(objects['exos_core'])) and not any('Network Generic' in n for n in tpl_names(objects['exos_core'])),
             str(tpl_names(objects['exos_core'])),
+            group='resolve',
+        )
+        record(
+            'dist_macros_equal_core',
+            ROLE_MACROS['Switch Dist'] == CORE_LIKE_IF_MACROS and ROLE_MACROS['Switch Mgmt'] == CORE_LIKE_IF_MACROS,
+            str(ROLE_MACROS['Switch Dist']),
             group='resolve',
         )
         m_core = macro_map(objects['voss_core'])
@@ -1242,6 +1295,17 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 record('zbx_snmp_if', bool(ifs), str(h.get('interfaces')), group='zabbix')
                 ping = api.item.get(hostids=h['hostid'], filter={'key_': 'icmpping'}, output=['key_'])
                 record('zbx_single_icmpping', len(ping) <= 1, f'count={len(ping)}', group='zabbix')
+
+            for dist_key in ('voss_dist', 'exos_dist'):
+                h_d = host(objects[dist_key].name)
+                if h_d:
+                    macros = {m['macro']: m.get('value', '') for m in (h_d.get('macros') or []) if isinstance(m, dict) and 'macro' in m}
+                    record(
+                        f'zbx_{dist_key}_ifalias_like_core',
+                        macros.get('{$NET.IF.IFALIAS.MATCHES}') == '.*' and macros.get('{$NET.IF.IFALIAS.NOT_MATCHES}') == '^X(-|$)',
+                        str(macros),
+                        group='zabbix',
+                    )
 
             h_a = host(objects['voss_access'].name)
             if h_a:
