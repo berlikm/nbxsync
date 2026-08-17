@@ -77,7 +77,7 @@ Not a country/role board. After the platform template is linked, **Monitoring �
 |---|---|
 | **Overview** | ICMP / SNMP / CPU / 4th tile (EXOS temp · VOSS uptime · AP clients). Full-width problems. Two history panes. |
 | **Hardware / RF** | VOSS/EXOS fan/PSU honeycombs + memory graphs; IQ radios (noise map, Tx, retries/drops side-by-side). |
-| **Diagnostics** | Switches: one interface → status/speed/duplex/traffic/errors/discards (VOSS also flaps). APs: one radio → noise/Tx/retries/drops/RX/channel. Eth for APs lives on **Network interfaces**. |
+| **Diagnostics** | Switches: pick an interface, graph its status/speed/duplex/traffic/errors/discards (VOSS also flaps). APs: pick a radio. Eth for APs lives on **Network interfaces**. |
 
 **Network interfaces → Overview** is the same compact status map + 3×2 native graph grid on all three. The map is for scanning red/green; Zabbix 7 cannot open that port’s traffic graph from a hex. Per-port bits/errors/discards is **Health → Diagnostics**. VOSS/IQ ship this in YAML; `--apply` patches stock EXOS layout only (does not fork the graph prototype). VOSS/EXOS graphs keep RX/TX on one axis and errors/discards on the other; IQ shows RX/TX. Ethernet is full duplex: do **not** sum RX+TX for congestion.
 

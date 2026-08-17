@@ -82,7 +82,7 @@ Two host-level dashboards: **Health** for chassis/diagnostics and **Network inte
 
 All platforms expose **Network interfaces → Overview** with the same compact status map and 3×2 graph grid. The map is scan-only (red/green). Zabbix 7 cannot open that port’s Network traffic graph from a hex; use **Health → Diagnostics** for bits/errors/discards of one interface. VOSS/IQ ship it in YAML; `--apply` applies the layout to the existing stock EXOS dashboard. VOSS/EXOS graphs combine RX/TX with errors/discards on a secondary axis; IQ Engine shows RX/TX only. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet.
 
-Overview tiles are short labels (ICMP, SNMP, CPU, Temp/Uptime/Clients). Gauges show a bold value and colour arc only. Honeycomb cells use a bold index and a quiet mapped state. Graph legends are off when the widget title is enough.
+Overview tiles are short labels (ICMP, SNMP, CPU, Temp/Uptime/Clients). Gauges show a bold value and colour arc only. Honeycombs are compact heatmaps: identity on the cell, colour for health (no “up” on every hex). Diagnostics is navigator + graph; there is no giant last-value tile. Graph legends are off when the widget title is enough.
 
 Honeycomb thresholds are `>=`. VOSS fan `notpresent(4)` therefore paints like `down(3)` (red). Empty PSU `empty(2)` stays grey (green starts at 3). EXOS PSU `notPresent(1)` stays grey (green starts at 2). Do not “fix” that with inverted colours; filter LLD later if empty fans noise the map.
 

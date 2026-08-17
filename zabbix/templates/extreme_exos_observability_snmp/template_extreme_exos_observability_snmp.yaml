@@ -402,7 +402,7 @@ zabbix_export:
         - type: honeycomb
           name: Fans
           width: '24'
-          height: '5'
+          height: '3'
           fields:
           - type: STRING
             name: items.0
@@ -411,28 +411,13 @@ zabbix_export:
             name: primary_label
             value: '{{ITEM.NAME}.regsub("^Fan (.*): Fan status$","\1")}'
           - type: INTEGER
-            name: secondary_label_type
+            name: interpolation
             value: '0'
-          - type: STRING
-            name: secondary_label
-            value: '{ITEM.LASTVALUE}'
           - type: INTEGER
             name: primary_label_bold
             value: '1'
           - type: INTEGER
-            name: primary_label_size
-            value: '20'
-          - type: INTEGER
-            name: primary_label_size_type
-            value: '1'
-          - type: INTEGER
-            name: secondary_label_bold
-            value: '0'
-          - type: INTEGER
-            name: secondary_label_size
-            value: '12'
-          - type: INTEGER
-            name: secondary_label_size_type
+            name: show.0
             value: '1'
           - type: STRING
             name: reference
@@ -459,7 +444,7 @@ zabbix_export:
           name: PSU
           x: '24'
           width: '24'
-          height: '5'
+          height: '3'
           fields:
           - type: STRING
             name: items.0
@@ -468,28 +453,13 @@ zabbix_export:
             name: primary_label
             value: '{{ITEM.NAME}.regsub("^PSU (.*): Power supply status$","\1")}'
           - type: INTEGER
-            name: secondary_label_type
+            name: interpolation
             value: '0'
-          - type: STRING
-            name: secondary_label
-            value: '{ITEM.LASTVALUE}'
           - type: INTEGER
             name: primary_label_bold
             value: '1'
           - type: INTEGER
-            name: primary_label_size
-            value: '20'
-          - type: INTEGER
-            name: primary_label_size_type
-            value: '1'
-          - type: INTEGER
-            name: secondary_label_bold
-            value: '0'
-          - type: INTEGER
-            name: secondary_label_size
-            value: '12'
-          - type: INTEGER
-            name: secondary_label_size_type
+            name: show.0
             value: '1'
           - type: STRING
             name: reference
@@ -516,7 +486,7 @@ zabbix_export:
           name: Memory
           x: '48'
           width: '24'
-          height: '5'
+          height: '3'
           fields:
           - type: STRING
             name: items.0
@@ -525,29 +495,20 @@ zabbix_export:
             name: primary_label
             value: '{{ITEM.NAME}.regsub("^#(.*): Memory utilization$","\1")}'
           - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
             name: secondary_label_decimal_places
             value: '0'
           - type: INTEGER
             name: secondary_label_type
             value: '1'
           - type: INTEGER
-            name: primary_label_bold
+            name: show.0
             value: '1'
           - type: INTEGER
-            name: primary_label_size
-            value: '20'
-          - type: INTEGER
-            name: primary_label_size_type
-            value: '1'
-          - type: INTEGER
-            name: secondary_label_bold
-            value: '0'
-          - type: INTEGER
-            name: secondary_label_size
-            value: '12'
-          - type: INTEGER
-            name: secondary_label_size_type
-            value: '1'
+            name: show.1
+            value: '2'
           - type: STRING
             name: reference
             value: EMEMR
@@ -571,9 +532,9 @@ zabbix_export:
             value: '90'
         - type: graphprototype
           name: Memory
-          'y': '5'
+          'y': '3'
           width: '72'
-          height: '5'
+          height: '7'
           fields:
           - type: INTEGER
             name: columns
@@ -629,30 +590,11 @@ zabbix_export:
           - type: STRING
             name: reference
             value: EINAV
-        - type: item
-          name: Value
-          x: '28'
-          width: '44'
-          height: '2'
-          fields:
-          - type: STRING
-            name: itemid._reference
-            value: EINAV._itemid
-          - type: INTEGER
-            name: show.0
-            value: '2'
-          - type: INTEGER
-            name: value_bold
-            value: '1'
-          - type: INTEGER
-            name: value_size
-            value: '22'
         - type: svggraph
           name: History
           x: '28'
-          'y': '2'
           width: '44'
-          height: '9'
+          height: '11'
           fields:
           - type: STRING
             name: ds.0.color.0

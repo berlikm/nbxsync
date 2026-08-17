@@ -230,13 +230,16 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             if 'regsub(' in label:
                 match = re.search(r',"(\\+)1"\)', label)
                 capture_ok = bool(match) and len(match.group(1)) == 1
-            secondary_ok = (
-                str(hfields.get('secondary_label_type')) in {'0', '1'}
-                and str(hfields.get('primary_label_bold')) == '1'
-                and str(hfields.get('secondary_label_bold')) == '0'
-            )
-            honey_ok = honey_ok and capture_ok and secondary_ok
-            honey_detail.append((widget.get('name'), capture_ok, secondary_ok))
+            shows = {str(f.get('value')) for f in (widget.get('fields') or []) if str(f.get('name')).startswith('show.')}
+            identity_only = shows == {'1'}
+            value_ok = shows == {'1', '2'}
+            status_names = {'Fans', 'PSU', 'Temp', 'Interfaces'}
+            metric_names = {'Radios', 'Memory'}
+            wname = widget.get('name')
+            show_ok = (wname in status_names and identity_only) or (wname in metric_names and value_ok) or identity_only
+            size_ok = str(widget.get('height')) == '3' and str(hfields.get('primary_label_bold')) == '1'
+            honey_ok = honey_ok and capture_ok and show_ok and size_ok
+            honey_detail.append((wname, capture_ok, show_ok, size_ok))
     if honey_seen:
         record(f'{name} honeycomb labels', honey_ok, f'{honey_detail}')
 
@@ -257,20 +260,18 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
     if diagnostics is not None:
         widgets = diagnostics.get('widgets') or []
         widget_types = {w.get('type') for w in widgets}
-        required = {'item', 'itemnavigator', 'svggraph'}
+        required = {'itemnavigator', 'svggraph'}
         record(
             f'{name} interface Diagnostics widgets',
-            required <= widget_types,
+            required <= widget_types and 'item' not in widget_types,
             f'got={sorted(str(t) for t in widget_types)}',
         )
         nav_widget = next((w for w in widgets if w.get('type') == 'itemnavigator'), {})
-        item_widget = next((w for w in widgets if w.get('type') == 'item'), {})
         graph_widget = next((w for w in widgets if w.get('type') == 'svggraph'), {})
         nav_fields = fields(nav_widget)
-        item_fields = fields(item_widget)
         graph_fields = fields(graph_widget)
         nav_ref = nav_fields.get('reference')
-        wired = bool(nav_ref) and item_fields.get('itemid._reference') == f'{nav_ref}._itemid' and graph_fields.get('ds.0.itemids.0._reference') == f'{nav_ref}._itemid'
+        wired = bool(nav_ref) and graph_fields.get('ds.0.itemids.0._reference') == f'{nav_ref}._itemid' and str(graph_widget.get('height')) == '11'
         record(f'{name} Diagnostics wiring', wired, f'navigator={nav_ref}')
         patterns = {str(v) for key, v in nav_fields.items() if str(key).startswith('items.')}
         if name == 'IQ':
@@ -317,8 +318,6 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
                     'Interface *: State transitions' not in patterns,
                     f'got={sorted(patterns)}',
                 )
-        compact = item_widget.get('height') == '2' and item_fields.get('show.0') == '2'
-        record(f'{name} compact Diagnostics value', compact, f'height={item_widget.get("height")}')
 
 
 def validate_interface_dashboard(name: str, tpl: dict) -> None:
@@ -345,10 +344,10 @@ def validate_interface_dashboard(name: str, tpl: dict) -> None:
     extra = [w.get('type') for w in widgets if w.get('type') not in ('honeycomb', 'graphprototype')]
     unified = (
         map_widget.get('width') == '72'
-        and map_widget.get('height') == '4'
+        and         map_widget.get('height') == '3'
         and grid_widget.get('width') == '72'
         and grid_widget.get('height') == '11'
-        and grid_widget.get('y') == '4'
+        and grid_widget.get('y') == '3'
         and grid_fields.get('columns') == '3'
         and grid_fields.get('rows') == '2'
         and isinstance(graph_ref, dict)
@@ -359,8 +358,9 @@ def validate_interface_dashboard(name: str, tpl: dict) -> None:
     labels_ok = (
         bool(match)
         and len(match.group(1)) == 1
-        and str(map_fields.get('secondary_label_type')) == '0'
-        and map_fields.get('secondary_label') == '{ITEM.LASTVALUE}'
+        and str(map_fields.get('show.0')) == '1'
+        and map_fields.get('show.1') is None
+        and str(map_fields.get('primary_label_bold')) == '1'
     )
     names_ok = map_widget.get('name') == 'Interfaces' and grid_widget.get('name') == 'Traffic'
     record(f'{name} unified interface graph grid', unified, f'graph={graph_ref}')

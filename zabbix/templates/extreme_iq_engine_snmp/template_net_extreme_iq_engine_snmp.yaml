@@ -1018,7 +1018,7 @@ zabbix_export:
         - type: honeycomb
           name: Radios
           width: '72'
-          height: '5'
+          height: '3'
           fields:
           - type: STRING
             name: items.0
@@ -1027,29 +1027,20 @@ zabbix_export:
             name: primary_label
             value: '{{ITEM.NAME}.regsub("^Radio (.*): Noise floor$","\1")}'
           - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
             name: secondary_label_decimal_places
             value: '0'
           - type: INTEGER
             name: secondary_label_type
             value: '1'
           - type: INTEGER
-            name: primary_label_bold
+            name: show.0
             value: '1'
           - type: INTEGER
-            name: primary_label_size
-            value: '20'
-          - type: INTEGER
-            name: primary_label_size_type
-            value: '1'
-          - type: INTEGER
-            name: secondary_label_bold
-            value: '0'
-          - type: INTEGER
-            name: secondary_label_size
-            value: '12'
-          - type: INTEGER
-            name: secondary_label_size_type
-            value: '1'
+            name: show.1
+            value: '2'
           - type: STRING
             name: reference
             value: XNOIS
@@ -1073,7 +1064,7 @@ zabbix_export:
             value: '-65'
         - type: graphprototype
           name: RF
-          'y': '5'
+          'y': '3'
           width: '72'
           height: '5'
           fields:
@@ -1090,7 +1081,7 @@ zabbix_export:
             value: XRADG
         - type: graphprototype
           name: Retries / drops
-          'y': '10'
+          'y': '8'
           width: '72'
           height: '5'
           fields:
@@ -1139,30 +1130,11 @@ zabbix_export:
           - type: STRING
             name: reference
             value: XINAV
-        - type: item
-          name: Value
-          x: '28'
-          width: '44'
-          height: '2'
-          fields:
-          - type: STRING
-            name: itemid._reference
-            value: XINAV._itemid
-          - type: INTEGER
-            name: show.0
-            value: '2'
-          - type: INTEGER
-            name: value_bold
-            value: '1'
-          - type: INTEGER
-            name: value_size
-            value: '22'
         - type: svggraph
           name: History
           x: '28'
-          'y': '2'
           width: '44'
-          height: '9'
+          height: '11'
           fields:
           - type: STRING
             name: ds.0.color.0
@@ -1190,7 +1162,7 @@ zabbix_export:
         - type: honeycomb
           name: Interfaces
           width: '72'
-          height: '4'
+          height: '3'
           fields:
           - type: STRING
             name: items.0
@@ -1199,22 +1171,13 @@ zabbix_export:
             name: primary_label
             value: '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\1")}'
           - type: INTEGER
-            name: secondary_label_type
+            name: interpolation
             value: '0'
-          - type: STRING
-            name: secondary_label
-            value: '{ITEM.LASTVALUE}'
           - type: INTEGER
             name: primary_label_bold
             value: '1'
           - type: INTEGER
-            name: secondary_label_bold
-            value: '0'
-          - type: INTEGER
-            name: secondary_label_size
-            value: '12'
-          - type: INTEGER
-            name: secondary_label_size_type
+            name: show.0
             value: '1'
           - type: STRING
             name: reference
@@ -1239,7 +1202,7 @@ zabbix_export:
             value: '2'
         - type: graphprototype
           name: Traffic
-          'y': '4'
+          'y': '3'
           width: '72'
           height: '11'
           fields:
