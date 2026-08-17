@@ -11,13 +11,13 @@ Sibling of ``configure_nbxsync_zerotouch.py``. Same runtime shape:
 
 Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md``):
 
-  * Import Extreme VOSS / IQ Engine / Port Speed Expect / Routing templates into Zabbix
+  * Import Extreme VOSS / IQ Engine / EXOS Observability / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
   * Patch stock EXOS ``net.if.discovery`` rollout settings (15m / lifetime 0) — stock is 1h / long keep-lost
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
-  * Upsert stock EXOS host dashboard **Health** via API (does not fork stock YAML; never fails ``--apply``)
-  * Platform TemplateRules: EXOS / VOSS / IQ Engine → Extreme * by SNMP (not Network Generic)
+  * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` only patches the stock EXOS **Network interfaces** layout.
+  * Platform TemplateRules: EXOS → Observability companion (nests stock); VOSS / IQ Engine → Extreme * by SNMP
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
   * Global **destination** macros on the Zabbix server object (production end-state)
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only

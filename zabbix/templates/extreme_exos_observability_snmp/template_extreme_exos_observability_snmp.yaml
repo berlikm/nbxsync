@@ -45,6 +45,30 @@ zabbix_export:
       tags:
       - tag: component
         value: system
+    - uuid: a7c14e82b6d94f0e9c3a1d5e8f2b4c60
+      name: 'Observability: ICMP ping'
+      type: CALCULATED
+      key: exos.observability.icmp
+      delay: 1m
+      value_type: FLOAT
+      params: last(//icmpping)
+      valuemap:
+        name: Service state
+      tags:
+      - tag: component
+        value: health
+    - uuid: 43c8b50fcd09497a8fc58127e99fb115
+      name: 'Observability: SNMP availability'
+      type: CALCULATED
+      key: exos.observability.snmp
+      delay: 1m
+      value_type: FLOAT
+      params: 'last(//zabbix[host,snmp,available])'
+      valuemap:
+        name: zabbix.host.available
+      tags:
+      - tag: component
+        value: health
     tags:
     - tag: class
       value: network
@@ -57,7 +81,83 @@ zabbix_export:
       - name: Overview
         widgets:
         - type: gauge
+          name: ICMP
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.icmp
+          - type: STRING
+            name: max
+            value: '1'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+        - type: gauge
+          name: SNMP
+          x: '18'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.snmp
+          - type: STRING
+            name: max
+            value: '1'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+        - type: gauge
           name: CPU utilization
+          x: '36'
           width: '18'
           height: '4'
           fields:
@@ -98,7 +198,7 @@ zabbix_export:
             value: '%'
         - type: gauge
           name: Temperature
-          x: '18'
+          x: '54'
           width: '18'
           height: '4'
           fields:
@@ -137,27 +237,10 @@ zabbix_export:
           - type: STRING
             name: units
             value: °C
-        - type: item
-          name: Uptime
-          x: '36'
-          width: '18'
-          height: '4'
-          fields:
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Extreme EXOS Observability
-              key: exos.observability.uptime
-          - type: INTEGER
-            name: show.0
-            value: '1'
-          - type: INTEGER
-            name: show.1
-            value: '2'
         - type: problems
-          x: '54'
-          width: '18'
-          height: '4'
+          'y': '4'
+          width: '72'
+          height: '3'
           fields:
           - type: STRING
             name: reference
@@ -170,7 +253,7 @@ zabbix_export:
             value: '2'
         - type: svggraph
           name: CPU history
-          'y': '4'
+          'y': '7'
           width: '36'
           height: '6'
           fields:
@@ -200,7 +283,7 @@ zabbix_export:
         - type: svggraph
           name: Temperature history
           x: '36'
-          'y': '4'
+          'y': '7'
           width: '36'
           height: '6'
           fields:
@@ -233,7 +316,7 @@ zabbix_export:
             value: 'Fan *: Fan status'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}}'
+            value: '{{ITEM.NAME}.regsub("^Fan (.*): Fan status$","\\1")}'
           - type: STRING
             name: reference
             value: EFANS
@@ -266,7 +349,7 @@ zabbix_export:
             value: 'PSU *: Power supply status'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}}'
+            value: '{{ITEM.NAME}.regsub("^PSU (.*): Power supply status$","\\1")}'
           - type: STRING
             name: reference
             value: EPSUS
@@ -404,3 +487,20 @@ zabbix_export:
           - type: INTEGER
             name: righty
             value: '0'
+    valuemaps:
+    - uuid: c4e06a81d8fb4b2a9e7c5d3f1a0b8c92
+      name: Service state
+      mappings:
+      - value: '0'
+        newvalue: Down
+      - value: '1'
+        newvalue: Up
+    - uuid: 9f374304fdc74da69e014ff6964cc40a
+      name: zabbix.host.available
+      mappings:
+      - value: '0'
+        newvalue: not available
+      - value: '1'
+        newvalue: available
+      - value: '2'
+        newvalue: unknown

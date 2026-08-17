@@ -76,8 +76,10 @@ Two host-level dashboards: **Health** for chassis/diagnostics and **Network inte
 
 | Page | Question | Widgets (Zabbix 7 template-safe) |
 |---|---|---|
-| Overview | Is this box OK? | Gauges/items, problems and SVG history. |
-| Hardware / RF | Are components or radios unhealthy? | Honeycombs and memory/RF graph prototypes. |
-| Diagnostics | What is the exact state or history of one metric? | Interface-grouped state, speed, duplex, traffic, error, discard and flap metrics with one compact value and history graph. |
+| Overview | Is this box reachable and healthy? | ICMP + SNMP gauges first, then CPU and the platform 4th tile (temp / uptime / clients). Problems. History graphs. |
+| Hardware / RF | Are FRUs or radios unhealthy? | Honeycombs. IQ: noise/Tx **and** retries/drops graph prototypes. |
+| Diagnostics | What is the exact state of one object? | Switches: interface-tagged navigator. APs: **radio**-tagged navigator (do not copy switch duplex/flaps — those items do not exist on IQ). |
 
-All platforms expose **Network interfaces → Overview** with the same compact status map and 3×2 graph grid. VOSS/IQ ship it in YAML; `--apply` applies the layout to the existing stock EXOS dashboard. VOSS/EXOS graphs combine RX/TX with errors/discards on a secondary axis; IQ Engine shows available RX/TX. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet; assess each direction against line rate.
+All platforms expose **Network interfaces → Overview** with the same compact status map and 3×2 graph grid. VOSS/IQ ship it in YAML; `--apply` applies the layout to the existing stock EXOS dashboard. VOSS/EXOS graphs combine RX/TX with errors/discards on a secondary axis; IQ Engine shows RX/TX only. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet.
+
+Honeycomb thresholds are `>=`. VOSS fan `notpresent(4)` therefore paints like `down(3)` (red). Empty PSU `empty(2)` stays grey (green starts at 3). Do not “fix” that with inverted colours; filter LLD later if empty fans noise the map.

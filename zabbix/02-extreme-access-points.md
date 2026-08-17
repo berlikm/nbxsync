@@ -56,8 +56,11 @@ Do **not** alert on: XIQ tenant as a host, VAP/SSID ifaces, a laptop on a switch
 
 | Page | 5-second read |
 |---|---|
-| **Health** | ICMP / SNMP / CPU / clients / temp tiles. CPU + clients graphs. |
-| **RF** | Radio noise/Tx and retries/drops prototypes. Eth traffic. Empty radio prototypes = zero-radios census. |
+| **Overview** | ICMP / SNMP / CPU / clients. Mem + temp. Problems. CPU/mem and client history. |
+| **RF** | Radio noise honeycomb. Noise/Tx and retries/drops graph prototypes. Empty radios = census. |
+| **Diagnostics** | Radio navigator (noise, Tx, retries, drops, channel) plus eth oper/bits — **not** switch duplex/flaps. |
+
+**Network interfaces → Overview** is the same map + 3×2 grid as switches, scoped to AP eth (`ifType=6`). RF does not live there.
 
 ---
 

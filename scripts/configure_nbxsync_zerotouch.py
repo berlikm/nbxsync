@@ -173,6 +173,7 @@ TPL_NAMES = {
     'linux_snmp': 'Linux by SNMP',
     'windows_snmp': 'Windows by SNMP',
     'extreme_exos_snmp': 'Extreme EXOS by SNMP',
+    'extreme_exos_observability': 'Extreme EXOS Observability',
     # Optional — resolved by name if the template exists in Zabbix (imported by
     # configure_nbxsync_network.py or manually). When unresolved, leave the
     # existing Extreme VOSS / IQ Engine TemplateRule untouched — never retarget
@@ -445,6 +446,7 @@ OPTIONAL_TPL_KEYS = frozenset({
     'proxy_health',
     'extreme_voss_snmp',
     'extreme_iq_engine_snmp',
+    'extreme_exos_observability',
     # Placeholder app templates — soft-resolve (may not exist in Zabbix yet).
     'as_java_agent',
     'tableau_bridge_agent',
@@ -1355,7 +1357,16 @@ def step6_template_rules(server, country_slugs=None):
     tpl_linux = make_template(*TPL['linux_agent'], req=[HostInterfaceRequirementChoices.AGENT])
     tpl_linux_snmp = make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_windows_snmp = make_template(*TPL['windows_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-    tpl_exos = make_template(*TPL['extreme_exos_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+    tpl_exos_stock = make_template(*TPL['extreme_exos_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+    if 'extreme_exos_observability' in TPL:
+        tpl_exos = make_template(*TPL['extreme_exos_observability'], req=[HostInterfaceRequirementChoices.SNMP])
+        logger.info('  Extreme EXOS TemplateRule → Observability companion (stock nested)')
+    else:
+        tpl_exos = tpl_exos_stock
+        logger.warning(
+            '  Extreme EXOS Observability not resolved — Extreme EXOS rule stays on stock '
+            '(run configure_nbxsync_network.py --apply to import + retarget)'
+        )
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_fortigate = make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     # VMware FQDN is vCenter-role only (step 7) — not linked via ESXi platform rules.

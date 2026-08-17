@@ -75,11 +75,11 @@ Not a country/role board. After the platform template is linked, **Monitoring �
 
 | Page | What you see in 5 seconds |
 |---|---|
-| **Overview** | Gauges, current health, problems and SVG history. |
-| **Hardware / RF** | VOSS/EXOS hardware honeycombs; IQ Engine radio health and RF graphs. |
-| **Diagnostics** | Interface-grouped state, speed, duplex, traffic, errors, discards and flaps with a compact selected value and single-metric history. |
+| **Overview** | ICMP / SNMP / CPU / (EXOS temp · VOSS uptime · AP clients). Problems. CPU history. |
+| **Hardware / RF** | VOSS/EXOS fan/PSU/temp honeycombs; IQ radios (noise, Tx, retries/drops). |
+| **Diagnostics** | Switches: one interface → status/speed/duplex/traffic/errors/discards/flaps. APs: one radio → noise/Tx/retries/drops (eth bits still listed). |
 
-All platforms expose **Network interfaces → Overview** with the same compact status map and 3×2 native graph grid. VOSS/IQ ship that dashboard in YAML; `--apply` applies the same layout to the existing stock EXOS dashboard without forking its graph prototype. Each VOSS/EXOS graph keeps RX/TX on the traffic axis and errors/discards on the secondary axis; IQ Engine shows its available RX/TX series. Open a graph tile for full history. RX and TX are deliberately not summed for saturation: Ethernet is full duplex, so each direction has its own line-rate budget; use the larger directional utilization, not RX+TX, to judge congestion.
+**Network interfaces → Overview** is the same compact status map + 3×2 native graph grid on all three. VOSS/IQ ship it in YAML; `--apply` patches stock EXOS layout only (does not fork the graph prototype). VOSS/EXOS graphs keep RX/TX on one axis and errors/discards on the other; IQ shows RX/TX. Open a tile for history. Ethernet is full duplex: do **not** sum RX+TX for congestion.
 
 Util and intended-speed comparison stay graphs until Speed Expect is linked.
 
@@ -113,7 +113,7 @@ NetBox: those Access macros on role Switch Access. Locked checklist §11.1 still
 
 New switch: NetBox **platform** contains `EXOS` or `VOSS`, **role** is Switch Core/Dist/Access/Mgmt, site in a country SiteGroup. First HostSync:
 
-1. Template Rule → `Extreme EXOS by SNMP` or `Extreme VOSS by SNMP` + `OS/Network` hostgroup  
+1. Template Rule → `Extreme EXOS Observability` (nests stock EXOS) or `Extreme VOSS by SNMP` + `OS/Network` hostgroup  
 2. Role MacroAssignment → IFALIAS / IFTYPE (Access also `PORTID.*`)  
 3. Configuration Group **SNMP Monitoring** → SNMPv3 interface  
 4. Template **Health** dashboard is already on the template — no extra dashboard script  

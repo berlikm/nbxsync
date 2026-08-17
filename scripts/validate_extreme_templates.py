@@ -131,10 +131,10 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
                 fname = f.get('name', '')
                 if not isinstance(val, dict):
                     continue
-                if wtype == 'item' and fname.startswith('itemid'):
+                if wtype in ('item', 'gauge') and fname.startswith('itemid') and 'key' in val:
                     key = val.get('key')
                     ok = key in keys
-                    record(f'{name} widget item {key}', ok, f'host={val.get("host")}')
+                    record(f'{name} widget item {key}', ok, f'host={val.get("host")} type={wtype}')
                     refs.append(str(key))
                 if wtype in ('graph', 'graphprototype') and fname.startswith('graphid'):
                     gname = val.get('name')
@@ -150,6 +150,17 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
                 record(f'{name} widget y coerced', False, f'widget={w.get("name")} has YAML bool y')
     record(f'{name} Health has widgets', bool(refs), f'refs={len(refs)}')
     pages_by_name = {p.get('name'): p for p in (dash.get('pages') or [])}
+    overview = pages_by_name.get('Overview')
+    if overview is not None:
+        ov_keys: list[str] = []
+        for w in overview.get('widgets') or []:
+            for f in w.get('fields') or []:
+                val = f.get('value')
+                if isinstance(val, dict) and val.get('key'):
+                    ov_keys.append(str(val.get('key')))
+        has_icmp = any('icmp' in k for k in ov_keys)
+        has_snmp = any('snmp' in k.lower() or 'available' in k for k in ov_keys)
+        record(f'{name} Overview ICMP+SNMP', has_icmp and has_snmp, f'keys={ov_keys}')
 
     def fields(widget: dict) -> dict[str, object]:
         return {f.get('name'): f.get('value') for f in (widget.get('fields') or [])}
@@ -174,21 +185,42 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
         wired = bool(nav_ref) and item_fields.get('itemid._reference') == f'{nav_ref}._itemid' and graph_fields.get('ds.0.itemids.0._reference') == f'{nav_ref}._itemid'
         record(f'{name} Diagnostics wiring', wired, f'navigator={nav_ref}')
         patterns = {str(v) for key, v in nav_fields.items() if str(key).startswith('items.')}
-        expected_patterns = {
-            'Interface *: Operational status',
-            'Interface *: Speed',
-            'Interface *: Bits received',
-            'Interface *: Bits sent',
-            'Interface *: Inbound packets with errors',
-            'Interface *: Outbound packets with errors',
-            'Interface *: Inbound packets discarded',
-            'Interface *: Outbound packets discarded',
-        }
-        record(
-            f'{name} consolidated interface diagnostics',
-            expected_patterns <= patterns,
-            f'missing={sorted(expected_patterns - patterns)}',
-        )
+        if name == 'IQ':
+            expected_patterns = {
+                'Radio *: Noise floor',
+                'Radio *: Tx power',
+                'Radio *: TX total retries',
+                'Radio *: TX frames dropped',
+                'Interface *: Operational status',
+                'Interface *: Bits received',
+                'Interface *: Bits sent',
+            }
+            forbidden = {
+                'Interface *: Speed',
+                'Interface *: Duplex status',
+                'Interface *: State transitions',
+            }
+            record(
+                f'{name} radio Diagnostics (not switch-port copy)',
+                expected_patterns <= patterns and not (forbidden & patterns),
+                f'got={sorted(patterns)}',
+            )
+        else:
+            expected_patterns = {
+                'Interface *: Operational status',
+                'Interface *: Speed',
+                'Interface *: Bits received',
+                'Interface *: Bits sent',
+                'Interface *: Inbound packets with errors',
+                'Interface *: Outbound packets with errors',
+                'Interface *: Inbound packets discarded',
+                'Interface *: Outbound packets discarded',
+            }
+            record(
+                f'{name} consolidated interface diagnostics',
+                expected_patterns <= patterns,
+                f'missing={sorted(expected_patterns - patterns)}',
+            )
         compact = item_widget.get('height') == '2' and item_fields.get('show.0') == '2'
         record(f'{name} compact Diagnostics value', compact, f'height={item_widget.get("height")}')
 
@@ -288,6 +320,8 @@ def validate_exos_observability(doc: dict) -> None:
         'exos.observability.cpu.util',
         'exos.observability.temperature',
         'exos.observability.uptime',
+        'exos.observability.icmp',
+        'exos.observability.snmp',
     }
     record('EXOS companion calculated mirrors', expected <= keys, str(sorted(expected - keys)))
     validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware', 'Diagnostics'))

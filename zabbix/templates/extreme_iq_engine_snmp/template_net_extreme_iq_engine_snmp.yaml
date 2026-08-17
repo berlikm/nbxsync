@@ -724,7 +724,83 @@ zabbix_export:
       - name: Overview
         widgets:
         - type: gauge
+          name: ICMP
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: icmpping
+          - type: STRING
+            name: max
+            value: '1'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+        - type: gauge
+          name: SNMP
+          x: '18'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: 'zabbix[host,snmp,available]'
+          - type: STRING
+            name: max
+            value: '1'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+        - type: gauge
           name: CPU utilization
+          x: '36'
           width: '18'
           height: '4'
           fields:
@@ -765,7 +841,7 @@ zabbix_export:
             value: '%'
         - type: gauge
           name: Memory utilization
-          x: '18'
+          'y': '4'
           width: '18'
           height: '4'
           fields:
@@ -806,7 +882,8 @@ zabbix_export:
             value: '%'
         - type: gauge
           name: Temperature
-          x: '36'
+          x: '18'
+          'y': '4'
           width: '18'
           height: '4'
           fields:
@@ -864,7 +941,7 @@ zabbix_export:
             value: '2'
         - type: svggraph
           name: CPU and memory history
-          'y': '4'
+          'y': '8'
           width: '36'
           height: '6'
           fields:
@@ -902,7 +979,7 @@ zabbix_export:
         - type: svggraph
           name: Client history
           x: '36'
-          'y': '4'
+          'y': '8'
           width: '36'
           height: '6'
           fields:
@@ -924,9 +1001,10 @@ zabbix_export:
             name: show_problems
             value: '1'
         - type: problems
-          'y': '10'
-          width: '72'
-          height: '5'
+          x: '36'
+          'y': '4'
+          width: '36'
+          height: '4'
           fields:
           - type: STRING
             name: reference
@@ -949,7 +1027,7 @@ zabbix_export:
             value: 'Radio *: Noise floor'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}}'
+            value: '{{ITEM.NAME}.regsub("^Radio (.*): Noise floor$","\\1")}'
           - type: STRING
             name: reference
             value: XNOIS
@@ -988,10 +1066,27 @@ zabbix_export:
           - type: STRING
             name: reference
             value: XRADG
+        - type: graphprototype
+          name: RF retries and drops
+          'y': '10'
+          width: '72'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '1'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              name: 'Radio {#AHIFNAME}: Retries / drops'
+          - type: STRING
+            name: reference
+            value: XRTDG
       - name: Diagnostics
         widgets:
         - type: itemnavigator
-          name: Interface diagnostics
+          name: Radio diagnostics
           width: '28'
           height: '11'
           fields:
@@ -1000,37 +1095,31 @@ zabbix_export:
             value: '3'
           - type: STRING
             name: group_by.0.tag_name
-            value: interface
+            value: radio
           - type: STRING
             name: items.0
-            value: 'Interface *: Operational status'
+            value: 'Radio *: Noise floor'
           - type: STRING
             name: items.1
-            value: 'Interface *: Speed'
+            value: 'Radio *: Tx power'
           - type: STRING
             name: items.2
-            value: 'Interface *: Duplex status'
+            value: 'Radio *: TX total retries'
           - type: STRING
             name: items.3
-            value: 'Interface *: Bits received'
+            value: 'Radio *: TX frames dropped'
           - type: STRING
             name: items.4
-            value: 'Interface *: Bits sent'
+            value: 'Radio *: Channel'
           - type: STRING
             name: items.5
-            value: 'Interface *: Inbound packets with errors'
+            value: 'Interface *: Operational status'
           - type: STRING
             name: items.6
-            value: 'Interface *: Outbound packets with errors'
+            value: 'Interface *: Bits received'
           - type: STRING
             name: items.7
-            value: 'Interface *: Inbound packets discarded'
-          - type: STRING
-            name: items.8
-            value: 'Interface *: Outbound packets discarded'
-          - type: STRING
-            name: items.9
-            value: 'Interface *: State transitions'
+            value: 'Interface *: Bits sent'
           - type: STRING
             name: reference
             value: XINAV
@@ -1109,7 +1198,7 @@ zabbix_export:
             name: thresholds.2.threshold
             value: '2'
         - type: graphprototype
-          name: Interface traffic and errors
+          name: Interface traffic
           'y': '4'
           width: '72'
           height: '11'
