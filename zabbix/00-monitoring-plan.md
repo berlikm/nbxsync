@@ -29,7 +29,7 @@ The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everythi
 | Capability | Why it can wait |
 |---|---|
 | **OSPF adjacency** | LogicMonitor almost certainly is not watching it — deferring is not a regression |
-| Speed expectation | new capability, not parity. Needs labels first. YAML triggers are **on** — do not link until then |
+| Speed expectation | new capability, not parity. Needs labels first. YAML triggers are **on**; `{$IF.UTIL.MAX:"USW"}=101` — do not link until then |
 | Capacity: discards + utilisation | new capability. Needs 4+ weeks of history to threshold honestly |
 | CRC / `dot3StatsFCSErrors` | new capability, and unconfirmed |
 | Full port-label rollout | parity only needs *link down* on Core/Dist/Mgmt; Access is `USW`+`UP` only |
@@ -90,7 +90,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 5. Never fail silent: unsupported items, zero discovered objects, proxy last-seen.
 6. Collect first; enable noisy triggers after a quiet pilot.
 7. Macro overrides, not cloned stock templates.
-8. Signal with no trigger and no dashboard → delete it.
+8. Signal with no trigger and no dashboard → delete it. Device **Health** is a **template** (host) dashboard, not a country/role board.
 9. Next domain copies [_template.md](_template.md) — FortiGate and VMs are already stubbed that way.
 10. Use the full Zabbix scale. **Disaster** is site/service only (never on a switch/AP template). Do not park everything on Warning.
 

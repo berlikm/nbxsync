@@ -2,7 +2,7 @@
 
 EXOS and VOSS share alerts and the port-label grammar; they do not share MIBs. SNMP is the data path (these platforms do not stream gNMI). World-class here means: **page what users feel, never fail silent, one incident per root cause** — not a second poller.
 
-Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md](02-extreme-access-points.md). Scale: [_template.md](_template.md).
+Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md](02-extreme-access-points.md). Scale: [_template.md](_template.md). Analysis: [notes/alerting-and-health.md](notes/alerting-and-health.md).
 
 ---
 
@@ -10,13 +10,15 @@ Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md]
 
 | Rule | Here |
 |---|---|
-| Page **symptoms** | ICMP down, SNMP dead, in-scope link down, flaps, errors, optic DOM **alarm**, PSU/fan, temp **critical** |
-| **Graph** causes | CPU, memory, traffic, util, inventory, ICMP loss/RTT |
-| One incident | host triggers depend on SNMP → ICMP; ICMP depends on **site**. AP cable/PoE pages on Access `UP-` **High**. AP ICMP High is a duplicate until that dependency exists — do not drop it (hides a hung AP) |
-| Never silent | unsupported-item count, **zero** discovered interfaces, proxy last-seen |
+| Page **symptoms** | ICMP down (**High**). Temp **critical**. Site unreachable is **Disaster** (not on this template). |
+| **Ticket** (Average) | SNMP dead, PSU/fan, optic DOM **alarm**, memory, unsupported-item count, in-scope **link down** (live stock trigger) |
+| **Graph** / next day | CPU, traffic, util, ICMP loss/RTT (items on, triggers **off**), flaps, errors, duplex |
+| One incident | host triggers depend on SNMP → ICMP; ICMP depends on **site** (later). AP cable/PoE pages on Access `UP-` — see [02](02-extreme-access-points.md) |
+| Never silent | unsupported-item **Average** trigger; zero discovered interfaces = Health honeycomb/census; proxy last-seen |
 | Control plane | on-box `ifAlias` + role macros. Access collects **only** `USW`+`UP`; a mistyped uplink → no items |
-| Collect first | Speed Expect / Routing **imported, not linked**. USW util off (`{$IF.UTIL.MAX}=101`). YAML triggers on those templates are **on** — linking them pages |
-| Severity | **Disaster** = site only. Do not dump everything on Warning |
+| Collect first | Speed Expect / Routing **imported, not linked**. Util off (`{$IF.UTIL.MAX}=101` and Speed Expect `{$IF.UTIL.MAX:"USW"}=101`). ISIS/card High **gated off** |
+| Host dashboard | Template dashboard **Health** (not country/role boards). Traffic is page **Path** |
+| Severity | **Disaster** = site only. Warning = next day, not a dump bucket |
 
 Do **not** stack Network Generic (`icmpping` collision). Mute a port with **`X`**, not `{$IFCONTROL:"{#IFNAME}"}`.
 
@@ -26,12 +28,12 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 ## What we alert
 
-Intended contract. Where the live YAML differs, **Templates** says so.
+**This table is the live cutover contract** (YAML + stock EXOS after `--apply`). Class-scoped High and Speed Expect stay in [Later](#later).
 
 | Device | Alert | Sev |
 |---|---|---|
 | ICMP down | yes | **High** |
-| SNMP dead (ICMP still up) | yes | **Average** — mgmt blind, forwarding may still work |
+| SNMP dead (ICMP still up) | yes | **Average** on VOSS. Stock EXOS stays **Warning** (do not fork) |
 | Unplanned reboot | yes | Warning |
 | Temperature **critical** (100 °C) / vendor alarm | yes | **High** |
 | Temperature warning (95 °C) | yes | Warning — next day; not stock 55 |
@@ -40,27 +42,45 @@ Intended contract. Where the live YAML differs, **Templates** says so.
 | CPU high | yes | Warning — baseline first |
 | Memory high | yes | Average — baseline first |
 | Optic DOM **status** alarm (VOSS) | yes | Average — prefer status, not raw dBm |
+| Unsupported item count | yes | Average — `{$UNSUPPORTED.MAX}` (default 5), 30m |
 | Firmware / OS / serial change | yes | Info |
 | System name changed | stock **Info** | disable in Zabbix if it chatters |
-| ICMP loss / RTT | stock Warning | WAN-poller noise; disable per host if CN/US false |
-| **Site** unreachable | yes | **Disaster** — site-level, **not** on EXOS/VOSS |
+| ICMP loss / RTT | **no** | items on; triggers **DISABLED** (CH proxy RTT is WAN) |
+| ISIS circuit / card down | collect | High **gated** (`{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0`) until a fabric pilot |
+| V-IST / IST | collect | High gated (`{$VIST.CONTROL}=0`, `{$IST.CONTROL}=0`) |
+| **Site** unreachable | yes | **Disaster** — site-level, **not** on EXOS/VOSS (later) |
 
-| Ports in scope | Alert | Intended | Live YAML |
+| Ports in scope | Alert | Live (cutover) | Later |
 |---|---|---|---|
-| `USW` / `US` / `UP` link down | yes | **High** | **Average** (one stock trigger for every discovered port) |
-| `MON` link down | yes | Warning | Average — Core/Dist/Mgmt only (not collected on Access) |
-| `UW` link down | yes | **High** | Average — Core/Dist/Mgmt. All circuits at a site → **Disaster** (site-level) |
-| Link flapping | yes | Warning | Warning — VOSS has a counter; EXOS stock does not |
-| Wrong speed vs label | later | Warning | Speed Expect YAML triggers are **on**; do **not** link until labels are clean |
-| Half duplex | yes | Warning | Warning |
-| Interface errors | yes | Warning | Warning |
-| Outbound discards (`USW`) | later | Average | Speed Expect, not linked |
-| Sustained util | **no** | dashboard | stock 15m util off (`{$IF.UTIL.MAX}=101`) |
-| `X…` ports | **no** | — | not discovered |
+| `USW` / `US` / `UP` link down | yes | **Average** (one stock trigger for every discovered port) | class-scoped **High** for `USW`/`UP` |
+| `MON` link down | yes | Average — Core/Dist/Mgmt only | Warning |
+| `UW` link down | yes | Average — Core/Dist/Mgmt | **High**; all circuits at a site → **Disaster** |
+| Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not | — |
+| Wrong speed vs **intended** label | later | Speed Expect YAML triggers **on** — **do not link** | Warning |
+| Half duplex | yes | Warning | — |
+| Interface errors | yes | Warning | — |
+| Outbound discards (`USW`) | later | Speed Expect, not linked; util context **101** | Average (user impact) |
+| Sustained util vs **intended** speed | **no** | stock 15m off (`{$IF.UTIL.MAX}=101`); Speed Expect `USW` also **101** | Warning, 1h avg, stage 6 |
+| `X…` ports | **no** | not discovered | — |
 
 Do **not** alert on: a laptop unplugging (Access **does not collect** desk ports), fifty **High**s for one site down, “bandwidth high” on a backup window.
 
-Class-scoped High for `USW`/`UP` is **later** (context macros or a thin trigger). Until then, in-scope link-down is an Average ticket. Access still cannot page a desk port — those items do not exist.
+Until class-scoped High exists, a Core `USW` down is a **ticket**. ICMP High still catches a dead box. Access still cannot page a desk port — those items do not exist.
+
+---
+
+## Health dashboard (host, from the template)
+
+Not a country/role board. After the platform template is linked, **Monitoring → Hosts → host → Dashboards → Health**.
+
+| Page | What you see in 5 seconds |
+|---|---|
+| **Health** | ICMP / SNMP / CPU tiles. CPU graph. VOSS slot memory prototype. |
+| **Path** | In-scope IF traffic graph prototypes (2 columns) — status/capacity, not a 40-graph wall |
+
+Stock EXOS keeps upstream **Network interfaces**; `--apply` upserts **Health** on that template via API (no stock fork). VOSS ships Health in YAML (same dashboard uuid as the old traffic-only board — re-import **updates in place**).
+
+Util and intended-speed comparison stay graphs until Speed Expect is linked.
 
 ---
 
@@ -88,6 +108,29 @@ NetBox: those Access macros on role Switch Access. Locked checklist §11.1 still
 
 ---
 
+## Zero-touch (nbxSync)
+
+New switch: NetBox **platform** contains `EXOS` or `VOSS`, **role** is Switch Core/Dist/Access/Mgmt, site in a country SiteGroup. First HostSync:
+
+1. Template Rule → `Extreme EXOS by SNMP` or `Extreme VOSS by SNMP` + `OS/Network` hostgroup  
+2. Role MacroAssignment → IFALIAS / IFTYPE (Access also `PORTID.*`)  
+3. Configuration Group **SNMP Monitoring** → SNMPv3 interface  
+4. Template **Health** dashboard is already on the template — no extra dashboard script  
+
+Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --apply` on an estate that **already has** switches in Zabbix:
+
+- Does **not** delete hosts, interfaces, history, or hostids  
+- YAML `deleteMissing: false` — retired items linger; we do not wipe LLD  
+- Does **not** mass-sync every device (template updates inherit in Zabbix)  
+- Does **not** unlink Speed Expect if it was linked earlier (no `--link-speed-expect` ≠ unlink)  
+- Does **not** run `create_dashboards.py`  
+- Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
+- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m/keep-lost 0, EXOS ICMP loss/RTT disable, EXOS **Health** dashboard upsert  
+
+Per-host sync only when **that** device’s NetBox role/platform/macros changed.
+
+---
+
 ## Ops
 
 Production poller for NL/US/CH is the **Swiss proxy group**, SNMPv3 `MONITORING` **MD5/DES**, GETBULK. A laptop `snmpget` does not prove that path. ICMP Up only proves ping.
@@ -108,18 +151,18 @@ CPU / mem / temp     →  ICMP down
 AP ICMP              →  Access UP-   (later — see 02)
 ```
 
-A site WAN blip must not be one High per switch. Those Highs **depend on** a site **Disaster** (proxy / core / synthetic).
+A site WAN blip must not be one High per switch. Those Highs **depend on** a site **Disaster** (proxy / core / synthetic) — **later**. Until then, expect N ICMP Highs for a WAN cut.
 
 ---
 
 ## Watch the watcher
 
-| Check | Why |
-|---|---|
-| Unsupported item count | SNMP walk died; looks like health |
-| Switch with **zero** discovered interfaces | IFALIAS regex or LLD broken |
-| SNMP = 0, ICMP = 1 | credentials / proxy cache / UDP 161 — not a forwarding outage |
-| Proxy last-seen | hosts go *unknown*, not *down* |
+| Check | Why | Live |
+|---|---|---|
+| Unsupported item count | SNMP walk died; looks like health | Average trigger `{$UNSUPPORTED.MAX}` |
+| Switch with **zero** discovered interfaces | IFALIAS regex or LLD broken | Health / census (no trigger yet) |
+| SNMP = 0, ICMP = 1 | credentials / proxy cache / UDP 161 — not a forwarding outage | SNMP Average |
+| Proxy last-seen | hosts go *unknown*, not *down* | Zabbix internal / later |
 
 ---
 
@@ -129,9 +172,9 @@ A site WAN blip must not be one High per switch. Those Highs **depend on** a sit
 |---|---|
 | Extreme EXOS by SNMP (stock) | Platform EXOS |
 
-We do **not** fork the stock template. Apply: `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273` on **this template** (not globals). Patch EtherLike duplex LLD to the same IFALIAS filters as `net.if.discovery`. Interface LLD: **15m**, keep-lost **0**.
+We do **not** fork the stock template. `--apply` (idempotent): `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273` on **this template**; EtherLike duplex LLD same IFALIAS filters as `net.if.discovery`; interface LLD **15m**, keep-lost **0**; ICMP loss/RTT triggers **disabled**; upsert host dashboard **Health**.
 
-Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on stock is typically Warning until we match VOSS (Average).
+Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on stock is typically Warning until we match VOSS (Average) without a fork.
 
 ---
 
@@ -141,7 +184,7 @@ Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on s
 |---|---|
 | Extreme VOSS by SNMP | Platform VOSS |
 
-Same `{$TEMP_*}` on **this template**. Re-import after this revision (SNMP-dead is **Average**). Fleet macros (template / globals, not Switch* role):
+Same `{$TEMP_*}` on **this template**. Re-import after this revision. Fleet macros (template / globals, not Switch* role):
 
 ```
 {$OPTIC.TEMP.CRIT}     = 70
@@ -152,15 +195,16 @@ Same `{$TEMP_*}` on **this template**. Re-import after this revision (SNMP-dead 
 {$MLT.CONTROL}         = 1
 {$VIST.CONTROL}        = 0
 {$IST.CONTROL}         = 0
+{$ISIS.CONTROL}        = 0
+{$CARD.CONTROL}        = 0
+{$UNSUPPORTED.MAX}     = 5
 {$SNMP.TIMEOUT}        = 5m
 {$IF.UTIL.MAX}         = 101
 ```
 
-V-IST: host `{$VIST.CONTROL}=1` only on fabric pairs. Classic IST stays 0. Traps are in the template — collect; do not page duplicates of polled items until seen on hardware.
+V-IST: host `{$VIST.CONTROL}=1` only on fabric pairs. Classic IST stays 0. Fabric High (ISIS/card) stays collected; set the CONTROL macro to `1` on a canary **after** a quiet pilot — not on `--apply`. Traps: collect; do not page duplicates of polled items until seen on hardware.
 
 Poll weight (same idea as APs, more SNMP budget on a chassis): inventory **1h**; IF counters **3m**; oper-status default **1m**; chassis temp **1m**; optic DOM **5m** (Average tickets, not 03:00). Duplex LLD **15m** / keep-lost **0**, same as `net.if.discovery`. Uptime **1m** (reboot Warning still sees `< 10m`). Do not 1-minute every optic on a Core.
-
-Fabric (ISIS / V-IST / card down) YAML includes **High** triggers. VIST/IST are gated by the macros above. ISIS/card High is live — retune **later** (more important than OSPF for this estate).
 
 ---
 
@@ -168,7 +212,7 @@ Fabric (ISIS / V-IST / card down) YAML includes **High** triggers. VIST/IST are 
 
 | Template | Where | Triggers |
 |---|---|---|
-| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt | YAML **on**. **Do not assign** on Switch roles until labels are clean |
+| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt | YAML **on**. **Do not assign** on Switch roles until labels are clean. `{$IF.UTIL.MAX:"USW"}=101` (off) |
 | Extreme Routing by SNMP (OSPF) | Switch Core / Dist | YAML **on** (OSPF High). **Not linked** |
 
 Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Default (Core/Dist/Mgmt):
@@ -180,12 +224,12 @@ Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Default (Core/Dist
 
 On **Access**, override MATCHES to `^(USW|UP)(-|$)`.
 
-`{$IF.UTIL.MAX:"USW"}=80` is **not** current. Keep global 101 until there is history.
+Intended speed = token or class default (`USW` 10G, `UP` 1G). Live `ifHighSpeed` is compared in **Mbps**. Util (when enabled) is `% of intended`, 1h — not live speed.
 
 ---
 
 ## Later
 
-Class-scoped link-down High (`USW`/`UP`); OSPF count; USW util + discards; VOSS fabric adjacency retune; sFlow on a few Core `USW`; one synthetic ping per site as the **Disaster** SLI; NetBox vs live `ifAlias`; AP ICMP → `UP-`; syslog on the proxy; `walk[]` when we retune poll load.
+Class-scoped link-down High (`USW`/`UP`); OSPF count; USW util + discards after history; `{$ISIS.CONTROL}=1` / `{$CARD.CONTROL}=1` on fabric canaries; sFlow on a few Core `USW`; one synthetic ping per site as the **Disaster** SLI; NetBox vs live `ifAlias`; AP ICMP → `UP-`; syslog on the proxy; `walk[]` when we retune poll load; EXOS SNMP-dead → Average without forking stock.
 
 FortiGate and network VMs reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md)). Do not merge with Cato ([04](04-cato.md)).

@@ -187,9 +187,9 @@ zabbix_export:
           name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Sustained high utilisation'
           event_name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Sustained util >{$IF.UTIL.MAX:"{#IF.CLASS}"}% of intended {#IF.SPEED.EXPECTED} Mbps (1h)'
           priority: WARNING
-          description: 'Capacity ΓÇö 1h average vs intended speed from label. Global
-            {$IF.UTIL.MAX}=101 keeps this off until stage 6; set {$IF.UTIL.MAX:"USW"}=80
-            to opt in.
+          description: 'Capacity — 1h average vs intended speed from label. Global
+            {$IF.UTIL.MAX}=101 keeps this off until stage 6; {$IF.UTIL.MAX:"USW"}=101
+            (off). Stage 6 may set 80 after labels + history.
 
             '
           tags:
@@ -277,8 +277,8 @@ zabbix_export:
       value: '101'
       description: Global util threshold; 101 = off. Class context macros opt in.
     - macro: '{$IF.UTIL.MAX:"USW"}'
-      value: '80'
-      description: SwitchΓåöswitch sustained util % of intended speed (stage 6).
+      value: '101'
+      description: 'Off until stage 6. Set 80 after labels + 4 weeks of history. Linking this template with 80 would page USW util immediately.'
     - macro: '{$PORTID.LLD.IFALIAS.MATCHES}'
       value: '^(USW|US|UP|MON)(-|$)'
       description: Speed-expect / capacity LLD ΓÇö monitored classes only.

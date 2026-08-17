@@ -9,10 +9,11 @@ If a script and that document disagree, **fix the script or the document so they
 | Order | Script | Applies |
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
-| 2 | `configure_nbxsync_network.py` | Extreme YAML import, Switch* IFALIAS, destination globals, stock EXOS LLD + TEMP_* patches |
-| — | `create_dashboards.py` | Zabbix dashboards from nested hostgroups |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, Switch* IFALIAS, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + Health dashboard |
+| — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** ships on the platform template |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
+| — | `validate_extreme_templates.py` | YAML contract + optional `--zabbix` double-import |
 | — | `zabbix_api.py` | Shared JSON-RPC helper |
 
 ## Lab first build
@@ -40,7 +41,11 @@ python scripts/configure_nbxsync_zerotouch.py
 python scripts/configure_nbxsync_network.py --apply
 ```
 
-Always finish with the network script so VOSS / IQ Engine Template Rules are not left on Network Generic.
+Always finish with the network script so VOSS / IQ Engine Template Rules are not left unresolved. Re-running both scripts on an estate that **already has** switches and APs in Zabbix is the maintenance path: YAML `deleteMissing: false`, no host delete, no mass `SyncHostJob`, no `create_dashboards.py`. Template Health dashboards and trigger status inherit in Zabbix without touching hostids.
+
+```bash
+python3 scripts/validate_extreme_templates.py --zabbix   # lab: YAML contract + double import
+```
 
 
 ## Re-syncing a single host (testing)
@@ -85,7 +90,7 @@ Optional: `--verify` (census), `--link-speed-expect` (Extreme stage 4), `--cutov
 | SNMP Monitoring on Switch Core/Dist/Access/Mgmt + AP | yes | assumes present |
 | Linux SNMP CG on tag `snmp`; SAP CG on SAP HANA / SAP ME | yes | — |
 | Dell iDRAC SNMPv3 / SPACE :10060 | yes | — |
-| Extreme TemplateRules (EXOS/VOSS/IQ) | placeholder / ensure | import + retarget |
+| Extreme TemplateRules (EXOS/VOSS/IQ) | ensure when template exists; **never** fall back to Network Generic | import + retarget if a rule still points at Network Generic |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
-| Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* | — | yes |
+| Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + Health dashboard | — | yes |
 | Extreme destination globals | — | yes |

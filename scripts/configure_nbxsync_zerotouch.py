@@ -167,6 +167,7 @@ COUNTRY_SLUGS = ['ch', 'hu', 'jp', 'kr', 'nl', 'us', 'cn']
 # Canonical Zabbix template *names*. IDs are resolved at apply time via the API
 # (see resolve_templates). The optional ints below are documentation only for a
 # typical 7.0 install — never used as the source of truth.
+TPL: dict = {}
 TPL_NAMES = {
     'windows_agent': 'Windows by Zabbix agent',
     'linux_agent': 'Linux by Zabbix agent',
@@ -174,8 +175,9 @@ TPL_NAMES = {
     'windows_snmp': 'Windows by SNMP',
     'extreme_exos_snmp': 'Extreme EXOS by SNMP',
     # Optional — resolved by name if the template exists in Zabbix (imported by
-    # configure_nbxsync_network.py or manually). When unresolved, the platform
-    # TemplateRule falls back to Network Generic (see step6_template_rules).
+    # configure_nbxsync_network.py or manually). When unresolved, leave the
+    # existing Extreme VOSS / IQ Engine TemplateRule untouched — never retarget
+    # a live rule at Network Generic (that would break HostSync on re-apply).
     'extreme_voss_snmp': 'Extreme VOSS by SNMP',
     'extreme_iq_engine_snmp': 'Extreme IQ Engine by SNMP',
     'network_generic_snmp': 'Network Generic Device by SNMP',
@@ -1327,11 +1329,6 @@ def step6_template_rules(server, country_slugs=None):
     tpl_netgeneric = make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     tpl_fortigate = make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
     # VMware FQDN is vCenter-role only (step 7) — not linked via ESXi platform rules.
-    # Extreme VOSS / IQ Engine: optional templates, fall back to Network Generic when missing.
-    _voss_tpl = TPL.get('extreme_voss_snmp') or TPL['network_generic_snmp']
-    _iq_tpl = TPL.get('extreme_iq_engine_snmp') or TPL['network_generic_snmp']
-    tpl_voss = make_template(*_voss_tpl, req=[HostInterfaceRequirementChoices.SNMP])
-    tpl_iq = make_template(*_iq_tpl, req=[HostInterfaceRequirementChoices.SNMP])
     # OS by platform only. `Windows` already matches "Windows Server *".
     # Photon is in the Linux pattern (platform name has "Linux" substring).
     # Every matching rule MERGES — priority is not an override.
@@ -1339,11 +1336,30 @@ def step6_template_rules(server, country_slugs=None):
     rules = [
         ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 100, ''),
         ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100, '^(?!vCenter$).*'),
-        ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100, ''),
-        ('Extreme IQ Engine', r'IQ ENGINE', tpl_iq, hg_os_network, 100, ''),
+        ('Extreme EXOS', r'EXOS', tpl_exos, hg_os_network, 100, ''),
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100, ''),
         ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50, ''),
     ]
+    # VOSS / IQ Engine: only write the rule when the real template is in Zabbix.
+    # Falling back to Network Generic on re-apply would retarget a live estate.
+    if 'extreme_voss_snmp' in TPL:
+        tpl_voss = make_template(*TPL['extreme_voss_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+        rules.insert(3, ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100, ''))
+    else:
+        logger.warning(
+            '  Extreme VOSS by SNMP not resolved — leaving Extreme VOSS TemplateRule untouched '
+            '(run configure_nbxsync_network.py --apply to import + retarget)'
+        )
+    if 'extreme_iq_engine_snmp' in TPL:
+        tpl_iq = make_template(*TPL['extreme_iq_engine_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
+        # After possible VOSS insert, append before FortiOS (index of Extreme EXOS + 1 or + 2)
+        insert_at = next(i for i, r in enumerate(rules) if r[0] == 'FortiOS')
+        rules.insert(insert_at, ('Extreme IQ Engine', r'IQ ENGINE', tpl_iq, hg_os_network, 100, ''))
+    else:
+        logger.warning(
+            '  Extreme IQ Engine by SNMP not resolved — leaving Extreme IQ Engine TemplateRule untouched '
+            '(HiveOS alone never matches; platform name must contain IQ ENGINE)'
+        )
     for name, pattern, template, hostgroup, priority, role_pattern in rules:
         defaults = {
             'pattern': pattern,
@@ -2177,7 +2193,8 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
         'NBX_SNMP_AUTHPASS_SAP', 'NBX_SNMP_PRIVPASS_SAP',
     ) if not os.environ.get(name)]
     if missing_snmp:
-        logger.warning('MISSING SNMP env vars: %s — SNMP interfaces will have empty passphrases', ', '.join(missing_snmp))
+        logger.warning('MISSING SNMP env vars: %s — new CG interfaces will lack passphrases', ', '.join(missing_snmp))
+        logger.warning('Existing CG passphrases are left untouched on re-run (empty env does not blank them).')
         logger.warning('Set these before first apply: export %s=... etc.', ' '.join(missing_snmp))
     missing_idrac = [name for name in (
         'NBX_SNMP_AUTHPASS_IDRAC', 'NBX_SNMP_PRIVPASS_IDRAC',
@@ -2186,7 +2203,7 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
         logger.warning('MISSING iDRAC SNMP env vars: %s — iDRAC interfaces will have empty passphrases', ', '.join(missing_idrac))
 
     # Network script reminder.
-    logger.info('NOTE: Run scripts/configure_nbxsync_network.py after this for EXOS/VOSS/IQ Engine template imports and Extreme macros.')
+    logger.info('NOTE: Run scripts/configure_nbxsync_network.py after this for Extreme YAML import, Health patches, and Switch* IFALIAS. This script does not mass-sync hosts and does not delete Zabbix hosts.')
     step0_cleanup(mutate_netbox=mutate_netbox)
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
     ensure_storage_generic_template(server)

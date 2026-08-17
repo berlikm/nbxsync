@@ -28,20 +28,20 @@ If the port runs at the class default, **omit SPEED**. Refuse labels over 20 —
 
 ## Classes
 
-| CLASS | Meaning | Default speed | Speed-expect | Alerts |
+| CLASS | Meaning | Default speed | Speed-expect | Alerts (live cutover) |
 |---|---|---|---|---|
-| `USW` | Switch ↔ switch | 10G | yes | **High** link / flap+errors Warning + speed |
-| `US` | Endpoint, expect 10G | 10G | yes | **High** link — **Core/Dist/Mgmt only** (not collected on Access) |
-| `UP` | Toward AP | 1G | yes | **High** link on the switch (Access collects it). AP ICMP **should** depend; until mapped, both High — see [02](02-extreme-access-points.md) |
-| `MON` | Endpoint, expect 1G | 1G | yes | Warning link — **Core/Dist/Mgmt only** |
-| `UW` | WAN / ISP | — | later (circuit bw) | **High** link; all circuits at site = **Disaster** |
+| `USW` | Switch ↔ switch | 10G | later (do not link yet) | **Average** link (stock). Class **High** later. Flap/errors Warning |
+| `US` | Endpoint, expect 10G | 10G | later | **Average** link — **Core/Dist/Mgmt only** (not collected on Access) |
+| `UP` | Toward AP | 1G | later | **Average** link on the switch (Access collects it). AP ICMP **High** until `UP-` dependency exists — see [02](02-extreme-access-points.md) |
+| `MON` | Endpoint, expect 1G | 1G | later | Average link — **Core/Dist/Mgmt only** (intended Warning) |
+| `UW` | WAN / ISP | — | later (circuit bw) | Average link; intended **High**; all circuits at site = **Disaster** |
 | `TMON` | Temp watch | — | no | items; optional INFO link-down |
 | `X` / `X-<note>` | **Exclude** | — | — | none |
 | `N` / `N-<text>` | Note — monitoring-neutral | — | — | same as unlabelled |
 
 **`X` excludes. `N` does not.** On Core/Dist/Mgmt, `N` / empty / unparseable labels are monitored (all admin-up except `X`). On **Access**, only **`USW` (to Dist) and `UP` (to AP)** are collected — no desk, laptop, `US`, `MON`, `UW`, `TMON`, or unlabelled. A laptop unplug cannot alert: there are no items.
 
-Live stock **link-down is Average** for every discovered port. Class **High** for `USW`/`UP` is later — [01](01-extreme-switching.md).
+Live stock **link-down is Average** for every discovered port. That **is** the cutover contract. Class **High** for `USW`/`UP` is later — [01](01-extreme-switching.md).
 
 ---
 
