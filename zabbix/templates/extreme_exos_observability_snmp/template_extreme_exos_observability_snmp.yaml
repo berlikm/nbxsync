@@ -59,6 +59,20 @@ zabbix_export:
       tags:
       - tag: component
         value: health
+    - uuid: 10fecf8a149240708e79c83134c87539
+      name: Memory
+      type: CALCULATED
+      key: exos.observability.memory.util
+      delay: 1m
+      value_type: FLOAT
+      units: '%'
+      params: 'last(//vm.memory.util[1])'
+      description: 'Slot 1 system memory (Access and stack master). Stock LLD still
+        tickets other slots. Headline metric, not a honeycomb — one cell would fill
+        the widget.'
+      tags:
+      - tag: component
+        value: memory
     tags:
     - tag: class
       value: network
@@ -339,7 +353,7 @@ zabbix_export:
             name: show_opdata
             value: '2'
         - type: svggraph
-          name: CPU
+          name: CPU / memory
           'y': '7'
           width: '36'
           height: '6'
@@ -347,6 +361,9 @@ zabbix_export:
           - type: STRING
             name: ds.0.color.0
             value: 199C0D
+          - type: STRING
+            name: ds.0.color.1
+            value: 2774A4
           - type: INTEGER
             name: ds.0.dataset_type
             value: '0'
@@ -355,6 +372,11 @@ zabbix_export:
             value:
               host: Extreme EXOS Observability
               key: exos.observability.cpu.util
+          - type: ITEM
+            name: ds.0.itemids.1
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.memory.util
           - type: STRING
             name: lefty_max
             value: '100'
@@ -369,7 +391,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: legend
-            value: '0'
+            value: '1'
         - type: svggraph
           name: Temp
           x: '36'
@@ -401,7 +423,7 @@ zabbix_export:
         widgets:
         - type: honeycomb
           name: Fans
-          width: '24'
+          width: '36'
           height: '3'
           fields:
           - type: STRING
@@ -448,8 +470,8 @@ zabbix_export:
             value: '2'
         - type: honeycomb
           name: PSU
-          x: '24'
-          width: '24'
+          x: '36'
+          width: '36'
           height: '3'
           fields:
           - type: STRING
@@ -494,96 +516,6 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '3'
-        - type: honeycomb
-          name: Memory
-          x: '48'
-          width: '24'
-          height: '3'
-          fields:
-          - type: STRING
-            name: items.0
-            value: '#*: Memory utilization'
-          - type: STRING
-            name: primary_label
-            value: '{{ITEM.NAME}.regsub("^#(.*): Memory utilization$","\1")}'
-          - type: INTEGER
-            name: primary_label_bold
-            value: '1'
-          - type: INTEGER
-            name: primary_label_size_type
-            value: '1'
-          - type: INTEGER
-            name: primary_label_size
-            value: '20'
-          - type: INTEGER
-            name: secondary_label_decimal_places
-            value: '0'
-          - type: INTEGER
-            name: secondary_label_size_type
-            value: '1'
-          - type: INTEGER
-            name: secondary_label_size
-            value: '22'
-          - type: INTEGER
-            name: secondary_label_type
-            value: '1'
-          - type: INTEGER
-            name: show.0
-            value: '1'
-          - type: INTEGER
-            name: show.1
-            value: '2'
-          - type: STRING
-            name: reference
-            value: EMEMR
-          - type: STRING
-            name: thresholds.0.color
-            value: 0EC9AC
-          - type: STRING
-            name: thresholds.0.threshold
-            value: '0'
-          - type: STRING
-            name: thresholds.1.color
-            value: FFD54F
-          - type: STRING
-            name: thresholds.1.threshold
-            value: '80'
-          - type: STRING
-            name: thresholds.2.color
-            value: FF465C
-          - type: STRING
-            name: thresholds.2.threshold
-            value: '90'
-        - type: svggraph
-          name: Memory
-          'y': '3'
-          width: '72'
-          height: '7'
-          fields:
-          - type: STRING
-            name: ds.0.color.0
-            value: 2774A4
-          - type: INTEGER
-            name: ds.0.dataset_type
-            value: '1'
-          - type: STRING
-            name: ds.0.items.0
-            value: '#*: Memory utilization'
-          - type: STRING
-            name: lefty_max
-            value: '100'
-          - type: STRING
-            name: lefty_min
-            value: '0'
-          - type: STRING
-            name: reference
-            value: EMEMG
-          - type: INTEGER
-            name: show_problems
-            value: '1'
-          - type: INTEGER
-            name: legend
-            value: '1'
     valuemaps:
     - uuid: c4e06a81d8fb4b2a9e7c5d3f1a0b8c92
       name: Service state

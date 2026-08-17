@@ -2915,19 +2915,13 @@ zabbix_export:
             value: 'Interface *: Operational status'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\1")}'
+            value: '{{ITEM.NAME}.regsub("^Interface (.*)(?:\(|: Operational status).*","\1")}'
           - type: INTEGER
             name: interpolation
             value: '0'
           - type: INTEGER
             name: primary_label_bold
             value: '1'
-          - type: INTEGER
-            name: primary_label_size_type
-            value: '1'
-          - type: INTEGER
-            name: primary_label_size
-            value: '20'
           - type: INTEGER
             name: show.0
             value: '1'

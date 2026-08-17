@@ -228,7 +228,7 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             identity_only = shows == {'1'}
             value_ok = shows == {'1', '2'}
             status_names = {'Fans', 'PSU', 'Interfaces'}
-            metric_names = {'Radios', 'Memory', 'Temp', 'Power'}
+            metric_names = {'Radios', 'Temp', 'Power'}
             wname = widget.get('name')
             show_ok = (wname in status_names and identity_only) or (wname in metric_names and value_ok) or identity_only
             size_ok = (
@@ -279,15 +279,13 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
                 f'items={fields(power_w).get("items.0")}',
             )
         if name == 'EXOS companion':
-            mem_svg = next((w for w in hw_svg if w.get('name') == 'Memory'), {})
-            mem_fields = fields(mem_svg)
             record(
-                f'{name} Hardware memory is svggraph item pattern',
-                mem_svg.get('type') == 'svggraph'
-                and str(mem_fields.get('ds.0.dataset_type')) == '1'
-                and str(mem_fields.get('ds.0.items.0')) == '#*: Memory utilization'
-                and not hw_graphs,
-                f'type={mem_svg.get("type")} items={mem_fields.get("ds.0.items.0")} graphs={len(hw_graphs)}',
+                f'{name} Hardware is FRU maps only',
+                [w.get('name') for w in hw_honey] == ['Fans', 'PSU']
+                and all(str(w.get('width')) == '36' for w in hw_honey)
+                and not hw_graphs
+                and not hw_svg,
+                f'honey={[(w.get("name"), w.get("width")) for w in hw_honey]} graphs={len(hw_graphs)} svg={len(hw_svg)}',
             )
 
     rf = pages_by_name.get('RF')
@@ -348,8 +346,8 @@ def validate_interface_dashboard(name: str, tpl: dict, *, port_page: bool = Fals
         and str(map_fields.get('show.0')) == '1'
         and map_fields.get('show.1') is None
         and str(map_fields.get('primary_label_bold')) == '1'
-        and str(map_fields.get('primary_label_size_type')) == '1'
-        and str(map_fields.get('primary_label_size')) == '20'
+        and str(map_fields.get('primary_label_size_type') or '0') == '0'
+        and '(?:' in label
     )
     names_ok = map_widget.get('name') == 'Interfaces' and grid_widget.get('name') == 'Traffic'
     record(f'{name} unified interface graph grid', unified, f'graph={graph_ref}')
@@ -491,6 +489,7 @@ def validate_exos_observability(doc: dict) -> None:
     keys = _walk_item_keys(tpl)
     expected = {
         'exos.observability.cpu.util',
+        'exos.observability.memory.util',
         'exos.observability.temperature',
         'exos.observability.icmp',
         'exos.observability.snmp',

@@ -73,12 +73,14 @@ Until class-scoped High exists, a Core `USW` down is a **ticket**. ICMP High sti
 
 Not a country/role board. After the platform template is linked, **Monitoring → Hosts → host → Dashboards → Health**.
 
+Widget type follows the object count and the question. Honeycomb is only for **many similar things** (ports, fans, sensors). A gauge is for **one headline number** (ICMP, SNMP, CPU, Temp). A graph is for **trend**. Do not put a single memory pool in a honeycomb: on Access EXOS that becomes one giant hex titled Memory.
+
 | Page | What you see in 5 seconds |
 |---|---|
-| **Overview** | ICMP / SNMP / CPU / 4th tile (EXOS temp · VOSS uptime · AP clients). Full-width problems. Two history panes. |
-| **Hardware / RF** | Status colour (fans/PSU) then named metrics (VOSS °C + PSU watts) then a memory trend. IQ: radio noise map, Tx, retries/drops side-by-side. |
+| **Overview** | ICMP / SNMP / CPU / 4th tile (EXOS temp · VOSS uptime · AP clients). Problems. Compute trend (CPU+memory on EXOS/IQ; CPU on VOSS) plus the 4th-tile history. |
+| **Hardware / RF** | FRUs only on switches (fan/PSU colour; VOSS also named °C and PSU watts, then per-slot memory graph). IQ: radio noise map + Tx / retries grids. |
 
-**Network interfaces → Overview** is the compact status map + 3×2 native graph grid. The map is for scanning red/green; traffic (and on VOSS/EXOS, errors/discards on the secondary axis) is the grid. Hex labels use a fixed Custom size so `mgmt()` is not huge next to aliased ports. **Port** (VOSS YAML / EXOS `--apply`) is the one-port fault picker: status, speed, duplex, errors, discards, VOSS flaps — not bits in/out (those are Overview). IQ has no Port page: AP eth only has status + RX/TX, already on Overview. Zabbix 7 cannot open a hex into that port’s graph. VOSS/IQ ship Overview in YAML; `--apply` patches stock EXOS layout only (does not fork the graph prototype). Ethernet is full duplex: do **not** sum RX+TX for congestion.
+**Network interfaces → Overview** is the status map + 3×2 traffic grid. Each hex is the **port ID** (`1:1`, `1/21`, `eth0`) — not the IFALIAS paragraph — with Auto type so the ID stays readable. Colour is oper-status; hover still shows the full item. **Port** (VOSS YAML / EXOS `--apply`) is the one-port fault picker (status/speed/duplex/errors/discards, VOSS flaps) — not bits. IQ has no Port page. Zabbix 7 cannot open a hex into a graph. Ethernet is full duplex: do **not** sum RX+TX for congestion.
 
 Util and intended-speed comparison stay graphs until Speed Expect is linked.
 
@@ -173,7 +175,7 @@ A site WAN blip must not be one High per switch. Those Highs **depend on** a sit
 | Extreme EXOS Observability | Platform EXOS Template Rule; links the stock template and owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; owns the native **Network interfaces** graph prototype/dashboard |
 
-We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health gauges/SVG history and owns **Health** (Overview / Hardware). Hardware memory is an svggraph item pattern (`#*: Memory utilization`) so nested stock items resolve; a graph-prototype pointer at stock EXOS is dropped on import.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health gauges/SVG history (including slot-1 memory) and owns **Health** (Overview / Hardware). Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
 
 Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on stock is typically Warning until we match VOSS (Average) without a fork.
 
