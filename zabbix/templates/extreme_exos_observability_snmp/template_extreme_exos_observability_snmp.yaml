@@ -321,43 +321,10 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '90'
-      - name: Traffic
+      - name: Diagnostics
         widgets:
-        - type: honeycomb
-          name: Interface map
-          width: '72'
-          height: '4'
-          fields:
-          - type: STRING
-            name: items.0
-            value: 'Interface *: Operational status'
-          - type: STRING
-            name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\1")}'
-          - type: STRING
-            name: reference
-            value: EIMAP
-          - type: STRING
-            name: thresholds.0.color
-            value: '878787'
-          - type: STRING
-            name: thresholds.0.threshold
-            value: '0'
-          - type: STRING
-            name: thresholds.1.color
-            value: 0EC9AC
-          - type: STRING
-            name: thresholds.1.threshold
-            value: '1'
-          - type: STRING
-            name: thresholds.2.color
-            value: FF465C
-          - type: STRING
-            name: thresholds.2.threshold
-            value: '2'
         - type: itemnavigator
-          name: Interface details
-          'y': '4'
+          name: Interface diagnostics
           width: '28'
           height: '11'
           fields:
@@ -401,26 +368,9 @@ zabbix_export:
             name: reference
             value: EINAV
         - type: item
-          name: Interface state
-          x: '28'
-          'y': '4'
-          width: '22'
-          height: '2'
-          fields:
-          - type: STRING
-            name: itemid._reference
-            value: EIMAP._itemid
-          - type: INTEGER
-            name: show.0
-            value: '2'
-          - type: INTEGER
-            name: value_size
-            value: '25'
-        - type: item
           name: Selected metric
-          x: '50'
-          'y': '4'
-          width: '22'
+          x: '28'
+          width: '44'
           height: '2'
           fields:
           - type: STRING
@@ -433,9 +383,9 @@ zabbix_export:
             name: value_size
             value: '25'
         - type: svggraph
-          name: Selected interface history
+          name: Selected metric history
           x: '28'
-          'y': '6'
+          'y': '2'
           width: '44'
           height: '9'
           fields:

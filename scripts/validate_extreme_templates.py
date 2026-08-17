@@ -7,6 +7,7 @@ the lab API to prove idempotency and that existing hosts are not deleted.
   python3 scripts/validate_extreme_templates.py
   python3 scripts/validate_extreme_templates.py --zabbix
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,12 +23,9 @@ sys.path.insert(0, str(SCRIPTS))
 
 TEMPLATES = {
     'Extreme VOSS by SNMP': ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
-    'Extreme IQ Engine by SNMP': ROOT
-    / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
-    'Extreme EXOS Observability': ROOT
-    / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
-    'Extreme Port Speed Expect by SNMP': ROOT
-    / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
+    'Extreme IQ Engine by SNMP': ROOT / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
+    'Extreme EXOS Observability': ROOT / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
+    'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
 }
 
@@ -140,45 +138,41 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
                     refs.append(str(key))
                 if wtype in ('graph', 'graphprototype') and fname.startswith('graphid'):
                     gname = val.get('name')
-                    ok = gname in graphs
-                    record(f'{name} widget graph {gname}', ok, f'type={wtype}')
+                    external = (val.get('host'), gname) == (
+                        'Extreme EXOS by SNMP',
+                        'Interface {#IFNAME}({#IFALIAS}): Network traffic',
+                    )
+                    ok = gname in graphs or external
+                    record(f'{name} widget graph {gname}', ok, f'type={wtype} host={val.get("host")}')
                     refs.append(str(gname))
             # YAML 1.1: unquoted y becomes True — widget row must be quoted in source
             if True in w and 'y' not in w:
                 record(f'{name} widget y coerced', False, f'widget={w.get("name")} has YAML bool y')
     record(f'{name} Health has widgets', bool(refs), f'refs={len(refs)}')
-    traffic = next((p for p in (dash.get('pages') or []) if p.get('name') == 'Traffic'), None)
-    if traffic is not None:
-        widgets = traffic.get('widgets') or []
+    pages_by_name = {p.get('name'): p for p in (dash.get('pages') or [])}
+
+    def fields(widget: dict) -> dict[str, object]:
+        return {f.get('name'): f.get('value') for f in (widget.get('fields') or [])}
+
+    diagnostics = pages_by_name.get('Diagnostics')
+    if diagnostics is not None:
+        widgets = diagnostics.get('widgets') or []
         widget_types = {w.get('type') for w in widgets}
-        required = {'honeycomb', 'item', 'itemnavigator', 'svggraph'}
+        required = {'item', 'itemnavigator', 'svggraph'}
         record(
-            f'{name} interactive Traffic widgets',
+            f'{name} interface Diagnostics widgets',
             required <= widget_types,
             f'got={sorted(str(t) for t in widget_types)}',
         )
-
-        def fields(widget: dict) -> dict[str, object]:
-            return {f.get('name'): f.get('value') for f in (widget.get('fields') or [])}
-
-        map_widget = next((w for w in widgets if w.get('type') == 'honeycomb'), {})
         nav_widget = next((w for w in widgets if w.get('type') == 'itemnavigator'), {})
+        item_widget = next((w for w in widgets if w.get('type') == 'item'), {})
         graph_widget = next((w for w in widgets if w.get('type') == 'svggraph'), {})
-        item_widgets = [w for w in widgets if w.get('type') == 'item']
-        map_fields = fields(map_widget)
         nav_fields = fields(nav_widget)
+        item_fields = fields(item_widget)
         graph_fields = fields(graph_widget)
-        item_fields = [fields(w) for w in item_widgets]
-        map_ref = map_fields.get('reference')
         nav_ref = nav_fields.get('reference')
-        wired = (
-            bool(map_ref)
-            and any(f.get('itemid._reference') == f'{map_ref}._itemid' for f in item_fields)
-            and bool(nav_ref)
-            and any(f.get('itemid._reference') == f'{nav_ref}._itemid' for f in item_fields)
-            and graph_fields.get('ds.0.itemids.0._reference') == f'{nav_ref}._itemid'
-        )
-        record(f'{name} interactive Traffic wiring', wired, f'map={map_ref} navigator={nav_ref}')
+        wired = bool(nav_ref) and item_fields.get('itemid._reference') == f'{nav_ref}._itemid' and graph_fields.get('ds.0.itemids.0._reference') == f'{nav_ref}._itemid'
+        record(f'{name} Diagnostics wiring', wired, f'navigator={nav_ref}')
         patterns = {str(v) for key, v in nav_fields.items() if str(key).startswith('items.')}
         expected_patterns = {
             'Interface *: Operational status',
@@ -191,18 +185,36 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             'Interface *: Outbound packets discarded',
         }
         record(
-            f'{name} consolidated interface metrics',
+            f'{name} consolidated interface diagnostics',
             expected_patterns <= patterns,
             f'missing={sorted(expected_patterns - patterns)}',
         )
-        compact = (
-            map_widget.get('width') == '72'
-            and map_widget.get('height') == '4'
-            and len(item_widgets) == 2
-            and all(w.get('height') == '2' for w in item_widgets)
-            and all(f.get('show.0') == '2' and 'show.1' not in f for f in item_fields)
-        )
-        record(f'{name} compact interface layout', compact, f'item_cards={len(item_widgets)}')
+        compact = item_widget.get('height') == '2' and item_fields.get('show.0') == '2'
+        record(f'{name} compact Diagnostics value', compact, f'height={item_widget.get("height")}')
+
+
+def validate_interface_dashboard(name: str, tpl: dict) -> None:
+    dashboards = tpl.get('dashboards') or []
+    matches = [d for d in dashboards if d.get('name') == 'Network interfaces']
+    record(
+        f'{name} Network interfaces dashboard',
+        len(matches) == 1,
+        f'count={len(matches)} names={[d.get("name") for d in dashboards]}',
+    )
+    if not matches:
+        return
+    pages = matches[0].get('pages') or []
+    overview = next((p for p in pages if p.get('name') == 'Overview'), None)
+    record(f'{name} Network interfaces Overview', bool(overview), f'pages={[p.get("name") for p in pages]}')
+    if not overview:
+        return
+    widgets = overview.get('widgets') or []
+    map_widget = next((w for w in widgets if w.get('type') == 'honeycomb'), {})
+    grid_widget = next((w for w in widgets if w.get('type') == 'graphprototype'), {})
+    grid_fields = {f.get('name'): f.get('value') for f in (grid_widget.get('fields') or [])}
+    graph_ref = grid_fields.get('graphid.0')
+    unified = map_widget.get('width') == '72' and map_widget.get('height') == '4' and grid_widget.get('width') == '72' and grid_widget.get('height') == '11' and grid_fields.get('columns') == '3' and grid_fields.get('rows') == '2' and isinstance(graph_ref, dict) and 'Network traffic' in str(graph_ref.get('name'))
+    record(f'{name} unified interface graph grid', unified, f'graph={graph_ref}')
 
 
 def validate_voss(doc: dict) -> None:
@@ -239,7 +251,8 @@ def validate_voss(doc: dict) -> None:
     )
     keys = _walk_item_keys(tpl)
     record('VOSS unsupported item', 'zabbix[host,,items_unsupported]' in keys, '')
-    validate_health_dashboard('VOSS', doc, tpl, pages=('Overview', 'Hardware', 'Traffic'))
+    validate_health_dashboard('VOSS', doc, tpl, pages=('Overview', 'Hardware', 'Diagnostics'))
+    validate_interface_dashboard('VOSS', tpl)
     # Re-import identity — same uuid as the old traffic-only board
     health = [d for d in (tpl.get('dashboards') or []) if d.get('name') == 'Health']
     if health:
@@ -261,7 +274,8 @@ def validate_iq(doc: dict) -> None:
         t = by_name.get(n)
         record(f'IQ {n} DISABLED', bool(t) and t.get('status') == 'DISABLED', str((t or {}).get('status')))
     record('IQ unsupported trigger', 'Extreme IQ Engine: Too many unsupported items' in by_name, '')
-    validate_health_dashboard('IQ', doc, tpl, pages=('Overview', 'RF', 'Traffic'))
+    validate_health_dashboard('IQ', doc, tpl, pages=('Overview', 'RF', 'Diagnostics'))
+    validate_interface_dashboard('IQ', tpl)
 
 
 def validate_exos_observability(doc: dict) -> None:
@@ -276,7 +290,7 @@ def validate_exos_observability(doc: dict) -> None:
         'exos.observability.uptime',
     }
     record('EXOS companion calculated mirrors', expected <= keys, str(sorted(expected - keys)))
-    validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware', 'Traffic'))
+    validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware', 'Diagnostics'))
 
 
 def validate_speed_expect(doc: dict) -> None:
@@ -337,6 +351,7 @@ def validate_zabbix() -> None:
         VOSS_HEALTH_MACROS,
         apply_extreme_health_patches,
         assert_template_dashboard,
+        assert_exos_stock_interface_grid,
         assert_template_macros,
         assert_wan_icmp_noise_disabled,
     )
@@ -369,6 +384,8 @@ def validate_zabbix() -> None:
         dash_status == 'companion-yaml',
         dash_status,
     )
+    grid_status = str(patch.get('exos_stock_grid'))
+    record('patch exos_stock_grid', grid_status in ('ok', 'patched', 'missing-template'), grid_status)
 
     ok, detail = assert_template_macros(api, 'Extreme VOSS by SNMP', VOSS_HEALTH_MACROS)
     record('zbx VOSS macros', ok, detail)
@@ -376,14 +393,17 @@ def validate_zabbix() -> None:
     record('zbx SpeedExpect macros', ok, detail)
     ok, detail = assert_template_macros(api, 'Extreme IQ Engine by SNMP', IQ_HEALTH_MACROS)
     record('zbx IQ macros', ok, detail)
-    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Traffic'))
+    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
     record('zbx VOSS Health', ok, detail)
-    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Traffic'))
+    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Diagnostics'))
     record('zbx IQ Health', ok, detail)
-    ok, detail = assert_template_dashboard(
-        api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware', 'Traffic')
-    )
+    ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
     record('zbx EXOS companion Health', ok, detail)
+    for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
+        ok, detail = assert_template_dashboard(api, tname, 'Network interfaces', ('Overview',))
+        record(f'zbx interface dashboard {tname}', ok, detail)
+    ok, detail = assert_exos_stock_interface_grid(api)
+    record('zbx EXOS stock interface grid', ok, detail)
     for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
         ok, detail = assert_wan_icmp_noise_disabled(api, tname)
         record(f'zbx ICMP noise off {tname}', ok, detail)

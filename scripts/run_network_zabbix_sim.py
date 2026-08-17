@@ -7,6 +7,7 @@ verifies the monitoring minimum from 00-monitoring-plan.md.
 
 Does not require NetBox/Django — pure Zabbix API.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,6 +25,7 @@ from extreme_health_zabbix import (  # noqa: E402
     VOSS_HEALTH_MACROS,
     apply_extreme_health_patches,
     assert_template_dashboard,
+    assert_exos_stock_interface_grid,
     assert_template_macros,
     assert_wan_icmp_noise_disabled,
 )
@@ -36,13 +38,10 @@ REPORT_MD = Path('/opt/cursor/artifacts/NETWORK_ZABBIX_SIM_REPORT.md')
 
 TEMPLATES = {
     'Extreme VOSS by SNMP': ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
-    'Extreme EXOS Observability': ROOT
-    / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
-    'Extreme Port Speed Expect by SNMP': ROOT
-    / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
+    'Extreme EXOS Observability': ROOT / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
+    'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
-    'Extreme IQ Engine by SNMP': ROOT
-    / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
+    'Extreme IQ Engine by SNMP': ROOT / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
 }
 
 # Destination globals + speed-expect LLD filters (TEMP_* are template-only).
@@ -363,12 +362,17 @@ def main() -> int:
 
     patch = apply_extreme_health_patches(api)
     record('health patches', True, str(patch), group='import')
-    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Traffic'))
+    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
     record('VOSS Health dashboard', ok, detail, group='health')
-    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Traffic'))
+    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Diagnostics'))
     record('IQ Health dashboard', ok, detail, group='health')
-    ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware'))
+    ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
     record('EXOS companion Health dashboard', ok, detail, group='health')
+    for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
+        ok, detail = assert_template_dashboard(api, tname, 'Network interfaces', ('Overview',))
+        record(f'{tname} interface dashboard', ok, detail, group='health')
+    ok, detail = assert_exos_stock_interface_grid(api)
+    record('EXOS stock interface grid', ok, detail, group='health')
     ok, detail = assert_template_macros(api, 'Extreme Port Speed Expect by SNMP', SPEED_EXPECT_HEALTH_MACROS)
     record('Speed Expect util off', ok, detail, group='health')
     ok, detail = assert_template_macros(api, 'Extreme IQ Engine by SNMP', IQ_HEALTH_MACROS)

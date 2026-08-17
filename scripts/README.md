@@ -9,8 +9,8 @@ If a script and that document disagree, **fix the script or the document so they
 | Order | Script | Applies |
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
-| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise |
-| — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** ships in platform/companion YAML |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid |
+| — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** and **Network interfaces** ship from platform templates/runtime patch |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
 | — | `validate_extreme_templates.py` | YAML contract + optional `--zabbix` double-import |
@@ -92,5 +92,5 @@ Optional: `--verify` (census), `--link-speed-expect` (Extreme stage 4), `--cutov
 | Dell iDRAC SNMPv3 / SPACE :10060 | yes | — |
 | Extreme TemplateRules (EXOS/VOSS/IQ) | ensure when template exists; **never** fall back to Network Generic | import + retarget if a rule still points at Network Generic |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
-| Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off; companion owns Health | — | yes |
+| Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |

@@ -2,9 +2,10 @@
 """Idempotent Extreme Health / alerting patches for a live Zabbix 7 API.
 
 Used by ``configure_nbxsync_network.py`` and lab smokes. No Django. Never
-deletes hosts or mutates the stock EXOS dashboard; EXOS Health ships on the
-``Extreme EXOS Observability`` companion template.
+deletes hosts. EXOS Health ships on the ``Extreme EXOS Observability``
+companion; the stock interface dashboard receives a layout-only grid patch.
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,7 +47,9 @@ SPEED_EXPECT_HEALTH_MACROS = {
 IQ_HEALTH_MACROS = {
     '{$UNSUPPORTED.MAX}': '5',
 }
-
+EXOS_STOCK_TEMPLATE = 'Extreme EXOS by SNMP'
+EXOS_INTERFACE_DASHBOARD = 'Network interfaces'
+EXOS_TRAFFIC_GRAPH = 'Interface {#IFNAME}({#IFALIAS}): Network traffic'
 
 
 def api_call(api: Any, method: str, params: dict | None = None) -> Any:
@@ -100,11 +103,14 @@ def patch_disable_wan_icmp_noise(
         if not wanted:
             results[name] = 'no-names'
             continue
-        all_tr = api_call(
-            api,
-            'trigger.get',
-            {'hostids': tid, 'output': ['triggerid', 'status', 'description']},
-        ) or []
+        all_tr = (
+            api_call(
+                api,
+                'trigger.get',
+                {'hostids': tid, 'output': ['triggerid', 'status', 'description']},
+            )
+            or []
+        )
         triggers = [t for t in all_tr if _trigger_name(t) in wanted]
         if not triggers:
             results[name] = 'no-triggers'
@@ -159,15 +165,18 @@ def assert_template_dashboard(
     tid = _template_id(api, template_name)
     if not tid:
         return True, 'template absent — n/a'
-    dashes = api_call(
-        api,
-        'templatedashboard.get',
-        {
-            'templateids': tid,
-            'output': ['dashboardid', 'name'],
-            'selectPages': ['name'],
-        },
-    ) or []
+    dashes = (
+        api_call(
+            api,
+            'templatedashboard.get',
+            {
+                'templateids': tid,
+                'output': ['dashboardid', 'name'],
+                'selectPages': ['name'],
+            },
+        )
+        or []
+    )
     match = [d for d in dashes if d.get('name') == dash_name]
     if not match:
         return False, f'no {dash_name!r} dashboard; have={[d.get("name") for d in dashes]}'
@@ -177,13 +186,128 @@ def assert_template_dashboard(
     return ok, f'pages={got_pages}'
 
 
+def patch_exos_stock_interface_dashboard(api: Any) -> str:
+    """Make the stock EXOS interface dashboard match the VOSS/IQ small-multiple layout."""
+    tid = _template_id(api, EXOS_STOCK_TEMPLATE)
+    if not tid:
+        return 'missing-template'
+    dashboards = (
+        api_call(
+            api,
+            'templatedashboard.get',
+            {
+                'templateids': tid,
+                'output': ['dashboardid', 'name'],
+                'selectPages': 'extend',
+            },
+        )
+        or []
+    )
+    dashboard = next((d for d in dashboards if d.get('name') == EXOS_INTERFACE_DASHBOARD), None)
+    if not dashboard:
+        return 'missing-dashboard'
+    pages = dashboard.get('pages') or []
+    if not pages:
+        return 'missing-page'
+    graphs = (
+        api_call(
+            api,
+            'graphprototype.get',
+            {
+                'templateids': tid,
+                'output': ['graphid', 'name'],
+                'filter': {'name': [EXOS_TRAFFIC_GRAPH]},
+            },
+        )
+        or []
+    )
+    if not graphs:
+        return 'missing-graph'
+    graphid = str(graphs[0]['graphid'])
+    page = pages[0]
+    widgets = page.get('widgets') or []
+
+    def field_map(widget: dict) -> dict[str, str]:
+        return {str(f.get('name')): str(f.get('value')) for f in (widget.get('fields') or [])}
+
+    map_widget = next((w for w in widgets if w.get('type') == 'honeycomb'), {})
+    grid_widget = next((w for w in widgets if w.get('type') == 'graphprototype'), {})
+    grid_fields = field_map(grid_widget)
+    already = page.get('name') == 'Overview' and map_widget.get('width') == '72' and map_widget.get('height') == '4' and grid_widget.get('width') == '72' and grid_widget.get('height') == '11' and grid_fields.get('columns') == '3' and grid_fields.get('rows') == '2' and grid_fields.get('graphid.0') == graphid
+    if already:
+        return 'ok'
+
+    desired_widgets = [
+        {
+            'type': 'honeycomb',
+            'name': 'Interface map',
+            'x': '0',
+            'y': '0',
+            'width': '72',
+            'height': '4',
+            'view_mode': '0',
+            'fields': [
+                {'type': '1', 'name': 'items.0', 'value': 'Interface *: Operational status'},
+                {
+                    'type': '1',
+                    'name': 'primary_label',
+                    'value': '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\\1")}',
+                },
+                {'type': '1', 'name': 'reference', 'value': 'EIMAP'},
+                {'type': '1', 'name': 'thresholds.0.color', 'value': '878787'},
+                {'type': '1', 'name': 'thresholds.0.threshold', 'value': '0'},
+                {'type': '1', 'name': 'thresholds.1.color', 'value': '0EC9AC'},
+                {'type': '1', 'name': 'thresholds.1.threshold', 'value': '1'},
+                {'type': '1', 'name': 'thresholds.2.color', 'value': 'FF465C'},
+                {'type': '1', 'name': 'thresholds.2.threshold', 'value': '2'},
+            ],
+        },
+        {
+            'type': 'graphprototype',
+            'name': 'Interface traffic and errors',
+            'x': '0',
+            'y': '4',
+            'width': '72',
+            'height': '11',
+            'view_mode': '0',
+            'fields': [
+                {'type': '0', 'name': 'columns', 'value': '3'},
+                {'type': '7', 'name': 'graphid.0', 'value': graphid},
+                {'type': '1', 'name': 'reference', 'value': 'ETGRD'},
+                {'type': '0', 'name': 'rows', 'value': '2'},
+            ],
+        },
+    ]
+    api_call(
+        api,
+        'templatedashboard.update',
+        {
+            'dashboardid': dashboard['dashboardid'],
+            'pages': [
+                {
+                    'dashboard_pageid': page['dashboard_pageid'],
+                    'name': 'Overview',
+                    'display_period': page.get('display_period', '0'),
+                    'widgets': desired_widgets,
+                }
+            ],
+        },
+    )
+    logger.info('  %s: interface dashboard updated to a 3x2 graph grid', EXOS_STOCK_TEMPLATE)
+    return 'patched'
+
+
+def assert_exos_stock_interface_grid(api: Any) -> tuple[bool, str]:
+    status = patch_exos_stock_interface_dashboard(api)
+    return status in ('ok', 'patched', 'missing-template'), status
 
 
 def apply_extreme_health_patches(api: Any) -> dict[str, Any]:
-    """Apply runtime-only Health patches.
-
-    EXOS Health ships on the ``Extreme EXOS Observability`` companion YAML;
-    never mutate the stock EXOS template here.
-    """
+    """Apply idempotent Health and stock EXOS interface-layout patches."""
     icmp = patch_disable_wan_icmp_noise(api)
-    return {'icmp_noise': icmp, 'exos_health': 'companion-yaml'}
+    exos_grid = patch_exos_stock_interface_dashboard(api)
+    return {
+        'icmp_noise': icmp,
+        'exos_health': 'companion-yaml',
+        'exos_stock_grid': exos_grid,
+    }

@@ -62,6 +62,7 @@ Usage::
   # Zabbix API only (no NetBox) — thin smoke, not the real path
   python scripts/configure_nbxsync_network.py --zabbix-only
 """
+
 from __future__ import annotations
 
 import argparse
@@ -111,6 +112,7 @@ from extreme_health_zabbix import (
     VOSS_HEALTH_MACROS,
     apply_extreme_health_patches,
     assert_template_dashboard,
+    assert_exos_stock_interface_grid,
     assert_template_macros,
     assert_wan_icmp_noise_disabled,
 )
@@ -134,13 +136,10 @@ RESULTS: list[dict] = []
 
 TEMPLATE_FILES = {
     'Extreme VOSS by SNMP': ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
-    'Extreme EXOS Observability': ROOT
-    / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
-    'Extreme Port Speed Expect by SNMP': ROOT
-    / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
+    'Extreme EXOS Observability': ROOT / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
+    'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
-    'Extreme IQ Engine by SNMP': ROOT
-    / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
+    'Extreme IQ Engine by SNMP': ROOT / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
 }
 
 # Role → port-scoping macros (zabbix/01-extreme-switching.md).
@@ -331,7 +330,6 @@ def import_extreme_templates(api) -> dict[str, tuple[int, str]]:
     return out
 
 
-
 # Zabbix LLD filter operators (API)
 _LLD_MATCHES_REGEX = 8
 _LLD_NOT_MATCHES_REGEX = 9
@@ -458,11 +456,7 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
     delay = str(rule.get('delay') or '')
     lifetime = str(rule.get('lifetime') or '')
     enabled = str(rule.get('enabled_lifetime') or '')
-    if (
-        delay == _IF_LLD_ROLLOUT_DELAY
-        and lifetime in (_IF_LLD_ROLLOUT_LIFETIME, '0s', '0d')
-        and enabled in (_IF_LLD_ROLLOUT_LIFETIME, '0s', '0d', '')
-    ):
+    if delay == _IF_LLD_ROLLOUT_DELAY and lifetime in (_IF_LLD_ROLLOUT_LIFETIME, '0s', '0d') and enabled in (_IF_LLD_ROLLOUT_LIFETIME, '0s', '0d', ''):
         logger.info('  %s: IF LLD rollout already set (delay=%s lifetime=%s)', template_name, delay, lifetime)
         return 'ok'
     api.discoveryrule.update(
@@ -659,19 +653,12 @@ def resolve_role_for_macros(canonical_name: str) -> DeviceRole | None:
             return get_role(name)
         except DeviceRole.DoesNotExist:
             pass
-        role = (
-            DeviceRole.objects.filter(name=name).first()
-            or DeviceRole.objects.filter(name__iexact=name).first()
-            or DeviceRole.objects.filter(slug=slugify(name)).first()
-        )
+        role = DeviceRole.objects.filter(name=name).first() or DeviceRole.objects.filter(name__iexact=name).first() or DeviceRole.objects.filter(slug=slugify(name)).first()
         if role is not None:
             return role
     # Last resort: name contains Dist/Distribution for the Dist key only
     if canonical_name == 'Switch Dist':
-        return (
-            DeviceRole.objects.filter(name__icontains='Dist').exclude(name__icontains='Access').first()
-            or DeviceRole.objects.filter(name__icontains='Distribution').first()
-        )
+        return DeviceRole.objects.filter(name__icontains='Dist').exclude(name__icontains='Access').first() or DeviceRole.objects.filter(name__icontains='Distribution').first()
     return DeviceRole.objects.filter(name__iendswith=canonical_name.replace('Switch ', '')).first()
 
 
@@ -792,10 +779,7 @@ def step_speed_expect_assignment(server, tpl: dict[str, M.ZabbixTemplate], *, li
     ``link=False`` is a no-op: existing assignments stay. Never unlink here.
     """
     if not link or 'Extreme Port Speed Expect by SNMP' not in tpl:
-        logger.info(
-            '  Speed Expect: not linking (pass --link-speed-expect for stage 4). '
-            'Existing assignments are left in place.'
-        )
+        logger.info('  Speed Expect: not linking (pass --link-speed-expect for stage 4). ' 'Existing assignments are left in place.')
         return
     t = tpl['Extreme Port Speed Expect by SNMP']
     for role_name in ('Switch Core', 'Switch Dist', 'Switch Mgmt', 'Switch Access'):
@@ -1026,6 +1010,12 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 str(health.get('exos_health')),
                 group='import',
             )
+            record(
+                'exos_stock_interface_grid',
+                str(health.get('exos_stock_grid')) in ('ok', 'patched', 'missing-template'),
+                str(health.get('exos_stock_grid')),
+                group='import',
+            )
             for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
                 ok, detail = assert_wan_icmp_noise_disabled(api, tname)
                 record(f'icmp_noise_assert_{tname}', ok, detail, group='import')
@@ -1035,11 +1025,11 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             record('speed_expect_usw_util_off', ok, detail, group='import')
             ok, detail = assert_template_macros(api, 'Extreme IQ Engine by SNMP', IQ_HEALTH_MACROS)
             record('iq_health_macros', ok, detail, group='import')
-            ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Traffic'))
+            ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
             record('voss_health_dashboard', ok, detail, group='import')
-            ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Traffic'))
+            ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Diagnostics'))
             record('iq_health_dashboard', ok, detail, group='import')
-            ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware'))
+            ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
             # The companion may be absent in a deliberately minimal lab stub.
             record(
                 'exos_health_dashboard_assert',
@@ -1047,6 +1037,11 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 detail,
                 group='import',
             )
+            for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
+                ok, detail = assert_template_dashboard(api, tname, 'Network interfaces', ('Overview',))
+                record(f'interface_dashboard_{tname}', ok, detail, group='import')
+            ok, detail = assert_exos_stock_interface_grid(api)
+            record('exos_stock_interface_grid_assert', ok, detail, group='import')
 
         tpl_models: dict[str, M.ZabbixTemplate] = {}
         for name, (tid, _) in imported.items():
@@ -1065,10 +1060,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             zabbixserver=server,
             name=f'{PREFIX}Sites',
             defaults={
-                'value': (
-                    'Sites/{{ object.site.group.get_ancestors(include_self=True) '
-                    '| map(attribute="name") | join("/") }}/{{ object.site.name }}'
-                ),
+                'value': ('Sites/{{ object.site.group.get_ancestors(include_self=True) ' '| map(attribute="name") | join("/") }}/{{ object.site.name }}'),
             },
             update_fields=['value'],
         )
@@ -1194,8 +1186,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
         )
         record(
             'ap_template_iq_engine',
-            any('IQ Engine' in n for n in tpl_names(objects['ap_access']))
-            and not any('Network Generic' in n for n in tpl_names(objects['ap_access'])),
+            any('IQ Engine' in n for n in tpl_names(objects['ap_access'])) and not any('Network Generic' in n for n in tpl_names(objects['ap_access'])),
             str(tpl_names(objects['ap_access'])),
             group='resolve',
         )
@@ -1235,6 +1226,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                     str(tpls),
                     group='zabbix',
                 )
+
                 def host_macros(host_obj):
                     # Secret macros omit value in API responses — never use m['value'].
                     out = {}
@@ -1321,6 +1313,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     else:
         # Warn if cutover-silence macros are still in place from a previous run
         from nbxsync.models import ZabbixMacro
+
         stuck = ZabbixMacro.objects.filter(macro='{$TEMP_WARN}', value='999').count()
         if stuck:
             logger.warning('CUTOVER-SILENCE STILL ACTIVE: %s macro(s) with TEMP_WARN=999 found. Re-run with --cutover-silence then without to clear, or manually verify.', stuck)

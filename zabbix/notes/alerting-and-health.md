@@ -40,7 +40,7 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 | Switch ICMP loss/RTT Warning | CH proxy RTT is WAN, not box health | **DISABLED** (items stay; same as APs) |
 | EXOS SNMP-dead | Stock Warning | Still stock (do not fork); VOSS/IQ are Average |
 | “Never silent” | Census only | Average trigger on unsupported-item count |
-| Host dashboards | Traffic gallery only | Template dashboard **Health** (host-level) |
+| Host dashboards | Traffic gallery only | **Health** for chassis/diagnostics plus unified **Network interfaces** status map and graph grid |
 
 ## Zero-touch / re-apply (do not break existing hosts)
 
@@ -50,7 +50,7 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 | Role IFALIAS / IFTYPE / Access `PORTID.*` | nbxSync MacroAssignment | Inherited on sync | Updates assignment **values**; next sync of a host pushes macros. `--apply` does **not** mass-sync |
 | SNMP Monitoring CG on Switch* / AP | zerotouch | Inherited interface + SNMPv3 | Empty env **must not** wipe existing secrets (zerotouch already leaves them) |
 | YAML import `updateExisting` + `deleteMissing: false` | network `--apply` | n/a | Updates items/triggers/dashboards on the **template**; every already-linked host inherits. Does **not** delete hosts, interfaces, or history |
-| Stock EXOS patches (TEMP_*, EtherLike IFALIAS, IF LLD 15m/0, ICMP loss disable) + Observability companion | network `--apply` | n/a | Stock stays dashboard-clean; companion YAML links stock and owns Health |
+| Stock EXOS patches (TEMP_*, EtherLike IFALIAS, IF LLD 15m/0, ICMP loss disable, interface grid) + Observability companion | network `--apply` | n/a | Companion YAML owns Health; stock keeps its graph prototype while its existing dashboard is normalized to the shared map + 3×2 grid |
 | Speed Expect / OSPF | imported, **not** assigned | Stays off | `--apply` without `--link-speed-expect` **does not unlink** if someone linked it earlier |
 | Global `create_dashboards.py` | not part of apply | — | Do not run on re-apply (hostgroup boards, not Health) |
 | VOSS/IQ TemplateRule when YAML is not in Zabbix yet | zerotouch | skip writing the rule | **Does not** retarget an existing Extreme rule at Network Generic |
@@ -72,12 +72,12 @@ Mass `SyncHostJob` is **not** required for template dashboard / trigger-status c
 
 ## Health dashboard (host, from template)
 
-One dashboard named **Health** on the platform template. Open **Monitoring → Hosts → host → Dashboards**. No hostgroup widgets, no Host Navigator.
+Two host-level dashboards: **Health** for chassis/diagnostics and **Network interfaces** for the status map and combined discovered graphs. Open **Monitoring → Hosts → host → Dashboards**. No hostgroup widgets, no Host Navigator.
 
 | Page | Question | Widgets (Zabbix 7 template-safe) |
 |---|---|---|
 | Overview | Is this box OK? | Gauges/items, problems and SVG history. |
 | Hardware / RF | Are components or radios unhealthy? | Honeycombs and memory/RF graph prototypes. |
-| Traffic | Which in-scope links are busy or unhealthy? | Compact status map; interface-grouped state, speed, duplex, traffic, error, discard and flap metrics; two small current-value cards; selected-metric history. |
+| Diagnostics | What is the exact state or history of one metric? | Interface-grouped state, speed, duplex, traffic, error, discard and flap metrics with one compact value and history graph. |
 
-VOSS/IQ ship Health in YAML. `Extreme EXOS Observability` gives EXOS the same Overview/Hardware/Traffic model while linking the unchanged stock template and its interface items; the upstream **Network interfaces** dashboard remains available. `create_dashboards.py` is not involved.
+All platforms expose **Network interfaces → Overview** with the same compact status map and 3×2 graph grid. VOSS/IQ ship it in YAML; `--apply` applies the layout to the existing stock EXOS dashboard. VOSS/EXOS graphs combine RX/TX with errors/discards on a secondary axis; IQ Engine shows available RX/TX. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet; assess each direction against line rate.
