@@ -1077,8 +1077,8 @@ zabbix_export:
         widgets:
         - type: honeycomb
           name: Interface map
-          width: '72'
-          height: '4'
+          width: '36'
+          height: '8'
           fields:
           - type: STRING
             name: items.0
@@ -1107,9 +1107,49 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '2'
+        - type: item
+          name: Selected interface
+          x: '36'
+          width: '36'
+          height: '2'
+          fields:
+          - type: STRING
+            name: itemid._reference
+            value: XIMAP._itemid
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+        - type: svggraph
+          name: Selected interface history
+          x: '36'
+          'y': '2'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: 42A5F5
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: STRING
+            name: ds.0.itemids.0._reference
+            value: XIMAP._itemid
+          - type: STRING
+            name: reference
+            value: XIHST
+          - type: INTEGER
+            name: righty
+            value: '0'
         - type: graphprototype
           name: Interface traffic
-          'y': '4'
+          'y': '8'
           width: '72'
           height: '11'
           fields:

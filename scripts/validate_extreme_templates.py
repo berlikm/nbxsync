@@ -296,11 +296,36 @@ def validate_interface_dashboard(name: str, tpl: dict) -> None:
         return
     widgets = overview.get('widgets') or []
     map_widget = next((w for w in widgets if w.get('type') == 'honeycomb'), {})
+    item_widget = next((w for w in widgets if w.get('type') == 'item'), {})
+    svg_widget = next((w for w in widgets if w.get('type') == 'svggraph'), {})
     grid_widget = next((w for w in widgets if w.get('type') == 'graphprototype'), {})
+    map_fields = {f.get('name'): f.get('value') for f in (map_widget.get('fields') or [])}
+    item_fields = {f.get('name'): f.get('value') for f in (item_widget.get('fields') or [])}
+    svg_fields = {f.get('name'): f.get('value') for f in (svg_widget.get('fields') or [])}
     grid_fields = {f.get('name'): f.get('value') for f in (grid_widget.get('fields') or [])}
     graph_ref = grid_fields.get('graphid.0')
-    unified = map_widget.get('width') == '72' and map_widget.get('height') == '4' and grid_widget.get('width') == '72' and grid_widget.get('height') == '11' and grid_fields.get('columns') == '3' and grid_fields.get('rows') == '2' and isinstance(graph_ref, dict) and 'Network traffic' in str(graph_ref.get('name'))
+    map_ref = map_fields.get('reference')
+    unified = (
+        map_widget.get('width') == '36'
+        and map_widget.get('height') == '8'
+        and grid_widget.get('width') == '72'
+        and grid_widget.get('height') == '11'
+        and grid_widget.get('y') == '8'
+        and grid_fields.get('columns') == '3'
+        and grid_fields.get('rows') == '2'
+        and isinstance(graph_ref, dict)
+        and 'Network traffic' in str(graph_ref.get('name'))
+    )
+    click_ok = (
+        bool(map_ref)
+        and item_fields.get('itemid._reference') == f'{map_ref}._itemid'
+        and svg_fields.get('ds.0.itemids.0._reference') == f'{map_ref}._itemid'
+        and item_widget.get('width') == '36'
+        and svg_widget.get('width') == '36'
+        and svg_widget.get('height') == '6'
+    )
     record(f'{name} unified interface graph grid', unified, f'graph={graph_ref}')
+    record(f'{name} honeycomb click loads selected history', click_ok, f'ref={map_ref}')
 
 
 def validate_voss(doc: dict) -> None:
