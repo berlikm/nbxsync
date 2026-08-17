@@ -62,6 +62,7 @@ Walk: `1.3.6.1.4.1.2272.1.4.8.1.1.1` (or status column used by template)
 | Prototype key | OID | Observed | Notes |
 |---|---|---|---|
 | `sensor.psu.status[rcChasPowerSupplyOperStatus.{i}]` | `...8.1.1.2.{i}` | | crit = 4; empty(2) ok |
+| `sensor.psu.watts[rcChasPowerSupplyDetailOutputWatts.{i}]` | `...8.2.1.10.{i}` | | Health Power honeycomb |
 
 ## LLD: Temperature (`temp.discovery`)
 
@@ -69,8 +70,8 @@ Walk description + value + status under `rcVossSystemTemperatureTable`
 
 | Prototype key | OID | Observed |
 |---|---|---|
-| `sensor.temp.value[rcVossSystemTemperatureTemperature.{i}]` | `2272.1.101.1.1.2.1.3.{i}` | |
-| `sensor.temp.status[rcVossSystemTemperatureStatus.{i}]` | `2272.1.101.1.1.2.1.6.{i}` | 1/2/3 |
+| `sensor.temp.value[rcVossSystemTemperatureTemperature.{i}]` | `2272.1.101.1.1.2.1.3.{i}` | name = `{#SENSOR_DESCR}` (not index) |
+| `sensor.temp.status[rcVossSystemTemperatureStatus.{i}]` | `2272.1.101.1.1.2.1.6.{i}` | 1/2/3 — **not** the Health honeycomb |
 
 ## LLD: Interfaces
 

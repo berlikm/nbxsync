@@ -138,17 +138,10 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
                     refs.append(str(key))
                 if wtype in ('graph', 'graphprototype') and fname.startswith('graphid'):
                     gname = val.get('name')
-                    external = (val.get('host'), gname) in {
-                        (
-                            'Extreme EXOS by SNMP',
-                            'Interface {#IFNAME}({#IFALIAS}): Network traffic',
-                        ),
-                        (
-                            'Extreme EXOS by SNMP',
-                            '#{#SNMPVALUE}: Memory utilization',
-                        ),
-                    }
-                    ok = gname in graphs or external
+                    # Template dashboards cannot reference graph prototypes on a nested
+                    # template (Zabbix drops the widget on import). Keep Health graphs
+                    # on this template, or use svggraph item patterns for nested items.
+                    ok = gname in graphs
                     record(f'{name} widget graph {gname}', ok, f'type={wtype} host={val.get("host")}')
                     refs.append(str(gname))
             # YAML 1.1: unquoted y becomes True — widget row must be quoted in source
@@ -233,18 +226,68 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             shows = {str(f.get('value')) for f in (widget.get('fields') or []) if str(f.get('name')).startswith('show.')}
             identity_only = shows == {'1'}
             value_ok = shows == {'1', '2'}
-            status_names = {'Fans', 'PSU', 'Temp', 'Interfaces'}
-            metric_names = {'Radios', 'Memory'}
+            status_names = {'Fans', 'PSU', 'Interfaces'}
+            metric_names = {'Radios', 'Memory', 'Temp', 'Power'}
             wname = widget.get('name')
             show_ok = (wname in status_names and identity_only) or (wname in metric_names and value_ok) or identity_only
-            size_ok = str(widget.get('height')) == '3' and str(hfields.get('primary_label_bold')) == '1'
-            honey_ok = honey_ok and capture_ok and show_ok and size_ok
-            honey_detail.append((wname, capture_ok, show_ok, size_ok))
+            size_ok = (
+                str(widget.get('height')) == '3'
+                and str(hfields.get('primary_label_bold')) == '1'
+                and str(hfields.get('primary_label_size_type')) == '1'
+                and str(hfields.get('primary_label_size')) == '20'
+            )
+            secondary_ok = True
+            if wname in metric_names:
+                secondary_ok = (
+                    str(hfields.get('secondary_label_size_type')) == '1'
+                    and str(hfields.get('secondary_label_size')) == '22'
+                )
+            honey_ok = honey_ok and capture_ok and show_ok and size_ok and secondary_ok
+            honey_detail.append((wname, capture_ok, show_ok, size_ok, secondary_ok))
     if honey_seen:
         record(f'{name} honeycomb labels', honey_ok, f'{honey_detail}')
 
     def fields(widget: dict) -> dict[str, object]:
         return {f.get('name'): f.get('value') for f in (widget.get('fields') or [])}
+
+    hardware = pages_by_name.get('Hardware')
+    if hardware is not None:
+        hw_widgets = hardware.get('widgets') or []
+        hw_honey = [w for w in hw_widgets if w.get('type') == 'honeycomb']
+        hw_graphs = [w for w in hw_widgets if w.get('type') in ('graph', 'graphprototype')]
+        hw_svg = [w for w in hw_widgets if w.get('type') == 'svggraph']
+        if name == 'VOSS':
+            temp_w = next((w for w in hw_honey if w.get('name') == 'Temp'), {})
+            power_w = next((w for w in hw_honey if w.get('name') == 'Power'), {})
+            record(
+                f'{name} Hardware FRU row',
+                [w.get('name') for w in hw_honey] == ['Fans', 'PSU', 'Temp', 'Power']
+                and all(str(w.get('width')) == '18' for w in hw_honey),
+                f'honey={[(w.get("name"), w.get("width")) for w in hw_honey]}',
+            )
+            record(
+                f'{name} Hardware Temp is °C not status enum',
+                str(fields(temp_w).get('items.0')) == 'Temperature sensor *'
+                and str(fields(temp_w).get('interpolation')) == '1',
+                f'items={fields(temp_w).get("items.0")}',
+            )
+            record(
+                f'{name} Hardware Power is PSU output watts',
+                str(fields(power_w).get('items.0')) == 'PSU *: Output watts'
+                and str(fields(power_w).get('interpolation')) == '1',
+                f'items={fields(power_w).get("items.0")}',
+            )
+        if name == 'EXOS companion':
+            mem_svg = next((w for w in hw_svg if w.get('name') == 'Memory'), {})
+            mem_fields = fields(mem_svg)
+            record(
+                f'{name} Hardware memory is svggraph item pattern',
+                mem_svg.get('type') == 'svggraph'
+                and str(mem_fields.get('ds.0.dataset_type')) == '1'
+                and str(mem_fields.get('ds.0.items.0')) == '#*: Memory utilization'
+                and not hw_graphs,
+                f'type={mem_svg.get("type")} items={mem_fields.get("ds.0.items.0")} graphs={len(hw_graphs)}',
+            )
 
     rf = pages_by_name.get('RF')
     if rf is not None:
@@ -361,6 +404,8 @@ def validate_interface_dashboard(name: str, tpl: dict) -> None:
         and str(map_fields.get('show.0')) == '1'
         and map_fields.get('show.1') is None
         and str(map_fields.get('primary_label_bold')) == '1'
+        and str(map_fields.get('primary_label_size_type')) == '1'
+        and str(map_fields.get('primary_label_size')) == '20'
     )
     names_ok = map_widget.get('name') == 'Interfaces' and grid_widget.get('name') == 'Traffic'
     record(f'{name} unified interface graph grid', unified, f'graph={graph_ref}')
@@ -414,6 +459,18 @@ def validate_voss(doc: dict) -> None:
                 shutdown_ok = tags.get('interface') == '{#IFNAME}'
     record('VOSS flap items tagged interface (Diagnostics grouping)', flap_ok, '')
     record('VOSS shutdown items tagged interface', shutdown_ok, '')
+    temp_value_named = temp_status_index = False
+    for rule in tpl.get('discovery_rules') or []:
+        if rule.get('key') != 'temperature.discovery':
+            continue
+        for it in rule.get('item_prototypes') or []:
+            iname = it.get('name') or ''
+            if it.get('key', '').startswith('sensor.temp.value'):
+                temp_value_named = '{#SENSOR_DESCR}' in iname
+            if it.get('key', '').startswith('sensor.temp.status'):
+                temp_status_index = '{#SNMPINDEX}' in iname
+    record('VOSS temp value items named by SENSOR_DESCR', temp_value_named, '')
+    record('VOSS temp status items keep SNMPINDEX', temp_status_index, '')
     validate_health_dashboard('VOSS', doc, tpl, pages=('Overview', 'Hardware', 'Diagnostics'))
     validate_interface_dashboard('VOSS', tpl)
     # Re-import identity — same uuid as the old traffic-only board

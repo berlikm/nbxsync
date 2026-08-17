@@ -240,6 +240,8 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
         and map_widget.get('height') == '3'
         and map_fields.get('show.0') == '1'
         and map_fields.get('primary_label_bold') == '1'
+        and map_fields.get('primary_label_size_type') == '1'
+        and map_fields.get('primary_label_size') == '20'
         and grid_widget.get('width') == '72'
         and grid_widget.get('height') == '11'
         and grid_widget.get('y') == '3'
@@ -265,6 +267,8 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
                 {'type': '1', 'name': 'primary_label', 'value': '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\\1")}'},
                 {'type': '0', 'name': 'interpolation', 'value': '0'},
                 {'type': '0', 'name': 'primary_label_bold', 'value': '1'},
+                {'type': '0', 'name': 'primary_label_size_type', 'value': '1'},
+                {'type': '0', 'name': 'primary_label_size', 'value': '20'},
                 {'type': '0', 'name': 'show.0', 'value': '1'},
                 {'type': '1', 'name': 'reference', 'value': 'EIMAP'},
                 {'type': '1', 'name': 'thresholds.0.color', 'value': '878787'},
