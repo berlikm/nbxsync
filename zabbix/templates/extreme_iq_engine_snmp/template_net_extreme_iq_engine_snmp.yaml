@@ -721,59 +721,11 @@ zabbix_export:
     - uuid: c87fdffc6e3c4a7a9de4e1dc42275c6c
       name: Health
       pages:
-      - name: Health
+      - name: Overview
         widgets:
-        - type: item
-          name: ICMP
-          width: '14'
-          height: '4'
-          fields:
-          - type: INTEGER
-            name: decimal_places
-            value: '0'
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Extreme IQ Engine by SNMP
-              key: icmpping
-          - type: INTEGER
-            name: show.0
-            value: '2'
-          - type: INTEGER
-            name: show.1
-            value: '4'
-          - type: STRING
-            name: reference
-            value: AICMP
-        - type: item
-          name: SNMP
-          x: '14'
-          'y': '0'
-          width: '14'
-          height: '4'
-          fields:
-          - type: INTEGER
-            name: decimal_places
-            value: '0'
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Extreme IQ Engine by SNMP
-              key: 'zabbix[host,snmp,available]'
-          - type: INTEGER
-            name: show.0
-            value: '2'
-          - type: INTEGER
-            name: show.1
-            value: '4'
-          - type: STRING
-            name: reference
-            value: ASNMP
-        - type: item
-          name: CPU
-          x: '28'
-          'y': '0'
-          width: '14'
+        - type: gauge
+          name: CPU utilization
+          width: '18'
           height: '4'
           fields:
           - type: INTEGER
@@ -784,20 +736,37 @@ zabbix_export:
             value:
               host: Extreme IQ Engine by SNMP
               key: ah.system.cpu.util
-          - type: INTEGER
-            name: show.0
-            value: '2'
-          - type: INTEGER
-            name: show.1
-            value: '4'
           - type: STRING
-            name: reference
-            value: ACPU0
-        - type: item
-          name: Clients
-          x: '42'
-          'y': '0'
-          width: '15'
+            name: thresholds.0.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: FFD54F
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '90'
+          - type: STRING
+            name: thresholds.2.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '95'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '1'
+          - type: STRING
+            name: units
+            value: '%'
+        - type: gauge
+          name: Memory utilization
+          x: '18'
+          width: '18'
           height: '4'
           fields:
           - type: INTEGER
@@ -807,21 +776,38 @@ zabbix_export:
             name: itemid.0
             value:
               host: Extreme IQ Engine by SNMP
-              key: ah.system.client.count
-          - type: INTEGER
-            name: show.0
-            value: '2'
-          - type: INTEGER
-            name: show.1
-            value: '4'
+              key: ah.system.memory.util
           - type: STRING
-            name: reference
-            value: ACLNT
-        - type: item
-          name: Temp
-          x: '57'
-          'y': '0'
-          width: '15'
+            name: thresholds.0.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: FFD54F
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '80'
+          - type: STRING
+            name: thresholds.2.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '90'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '1'
+          - type: STRING
+            name: units
+            value: '%'
+        - type: gauge
+          name: Temperature
+          x: '36'
+          width: '18'
           height: '4'
           fields:
           - type: INTEGER
@@ -832,53 +818,168 @@ zabbix_export:
             value:
               host: Extreme IQ Engine by SNMP
               key: ah.system.temp
-          - type: INTEGER
-            name: show.0
-            value: '2'
-          - type: INTEGER
-            name: show.1
-            value: '4'
           - type: STRING
-            name: reference
-            value: ATEMP
-        - type: graph
-          name: CPU
-          'y': '4'
-          width: '36'
-          height: '5'
+            name: thresholds.0.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: FFD54F
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '70'
+          - type: STRING
+            name: thresholds.2.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '85'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '1'
+          - type: STRING
+            name: units
+            value: °C
+        - type: item
+          name: Clients
+          x: '54'
+          width: '18'
+          height: '4'
           fields:
-          - type: GRAPH
-            name: graphid
+          - type: ITEM
+            name: itemid.0
             value:
               host: Extreme IQ Engine by SNMP
-              name: 'Extreme IQ Engine: CPU utilization'
+              key: ah.system.client.count
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+        - type: svggraph
+          name: CPU and memory history
+          'y': '4'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: 199C0D
+          - type: STRING
+            name: ds.0.color.1
+            value: 2774A4
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: ah.system.cpu.util
+          - type: ITEM
+            name: ds.0.itemids.1
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: ah.system.memory.util
+          - type: STRING
+            name: lefty_max
+            value: '100'
+          - type: STRING
+            name: lefty_min
+            value: '0'
           - type: STRING
             name: reference
-            value: ACPUG
-        - type: graph
-          name: Clients
+            value: XPERF
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+        - type: svggraph
+          name: Client history
           x: '36'
           'y': '4'
           width: '36'
-          height: '5'
+          height: '6'
           fields:
-          - type: GRAPH
-            name: graphid
+          - type: STRING
+            name: ds.0.color.0
+            value: 2774A4
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
             value:
               host: Extreme IQ Engine by SNMP
-              name: 'Extreme IQ Engine: Clients'
+              key: ah.system.client.count
           - type: STRING
             name: reference
-            value: ACLNG
+            value: XCLNT
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+        - type: problems
+          'y': '10'
+          width: '72'
+          height: '5'
+          fields:
+          - type: STRING
+            name: reference
+            value: XPROB
+          - type: INTEGER
+            name: show
+            value: '3'
+          - type: INTEGER
+            name: show_opdata
+            value: '2'
       - name: RF
         widgets:
+        - type: honeycomb
+          name: Radio noise floor
+          width: '72'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Radio *: Noise floor'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}}'
+          - type: STRING
+            name: reference
+            value: XNOIS
+          - type: STRING
+            name: thresholds.0.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '-120'
+          - type: STRING
+            name: thresholds.1.color
+            value: FFD54F
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '-80'
+          - type: STRING
+            name: thresholds.2.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '-65'
         - type: graphprototype
-          width: '36'
+          name: RF noise and transmit power
+          'y': '5'
+          width: '72'
           height: '5'
           fields:
           - type: INTEGER
             name: columns
-            value: '2'
+            value: '1'
           - type: GRAPH_PROTOTYPE
             name: graphid.0
             value:
@@ -886,32 +987,16 @@ zabbix_export:
               name: 'Radio {#AHIFNAME}: RF (noise / Tx power)'
           - type: STRING
             name: reference
-            value: ARFRF
+            value: XRADG
+      - name: Traffic
+        widgets:
         - type: graphprototype
-          x: '36'
-          'y': '0'
-          width: '36'
-          height: '5'
-          fields:
-          - type: INTEGER
-            name: columns
-            value: '2'
-          - type: GRAPH_PROTOTYPE
-            name: graphid.0
-            value:
-              host: Extreme IQ Engine by SNMP
-              name: 'Radio {#AHIFNAME}: Retries / drops'
-          - type: STRING
-            name: reference
-            value: ARFRT
-        - type: graphprototype
-          'y': '5'
           width: '72'
           height: '5'
           fields:
           - type: INTEGER
             name: columns
-            value: '2'
+            value: '1'
           - type: GRAPH_PROTOTYPE
             name: graphid.0
             value:
@@ -919,7 +1004,7 @@ zabbix_export:
               name: 'Interface {#IFNAME}: Network traffic'
           - type: STRING
             name: reference
-            value: AIFTR
+            value: XTRAF
     valuemaps:
     - uuid: 0578598545f34ad59851927e5d2c419d
       name: Service state

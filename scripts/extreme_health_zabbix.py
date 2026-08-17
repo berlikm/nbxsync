@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Idempotent Extreme Health / alerting patches for a live Zabbix 7 API.
 
-Used by ``configure_nbxsync_network.py`` (pyzabbix) and lab smokes
-(``zabbix_api.ZabbixAPI.call``). No Django. Never deletes hosts.
-
-Stock Extreme EXOS is not forked: ICMP loss/RTT triggers are disabled via
-``trigger.update``, and host dashboard **Health** is upserted beside the
-upstream **Network interfaces** board.
+Used by ``configure_nbxsync_network.py`` and lab smokes. No Django. Never
+deletes hosts or mutates the stock EXOS dashboard; EXOS Health ships on the
+``Extreme EXOS Observability`` companion template.
 """
 from __future__ import annotations
 
@@ -15,12 +12,6 @@ from typing import Any
 
 logger = logging.getLogger('extreme_health_zabbix')
 
-# Zabbix 7.0 dashboard widget field types (include/classes/widgets).
-_FIELD_INT32 = 0
-_FIELD_STR = 1
-_FIELD_ITEM = 4
-_FIELD_GRAPH = 6
-_FIELD_GRAPH_PROTOTYPE = 7
 
 _TRIGGER_DISABLED = 1
 
@@ -56,12 +47,6 @@ IQ_HEALTH_MACROS = {
     '{$UNSUPPORTED.MAX}': '5',
 }
 
-EXOS_CPU_KEY = 'system.cpu.util[extremeCpuMonitorTotalUtilization.0]'
-EXOS_SNMP_KEY = 'zabbix[host,snmp,available]'
-EXOS_ICMP_KEY = 'icmpping'
-EXOS_CPU_GRAPH = 'Extreme EXOS: CPU utilization'
-EXOS_MEM_GRAPH_PROTO = '#{#SNMPVALUE}: Memory utilization'
-EXOS_IF_GRAPH_PROTO = 'Interface {#IFNAME}({#IFALIAS}): Network traffic'
 
 
 def api_call(api: Any, method: str, params: dict | None = None) -> Any:
@@ -192,196 +177,13 @@ def assert_template_dashboard(
     return ok, f'pages={got_pages}'
 
 
-def _item_id(api: Any, templateid: str, key: str) -> str | None:
-    rows = api_call(
-        api,
-        'item.get',
-        {'hostids': templateid, 'filter': {'key_': key}, 'output': ['itemid', 'key_']},
-    ) or []
-    return str(rows[0]['itemid']) if rows else None
-
-
-def _graph_id(api: Any, templateid: str, name: str) -> str | None:
-    rows = api_call(
-        api,
-        'graph.get',
-        {'hostids': templateid, 'filter': {'name': name}, 'output': ['graphid', 'name']},
-    ) or []
-    return str(rows[0]['graphid']) if rows else None
-
-
-def _graphproto_id(api: Any, templateid: str, name: str) -> str | None:
-    rows = api_call(
-        api,
-        'graphprototype.get',
-        {'hostids': templateid, 'filter': {'name': name}, 'output': ['graphid', 'name']},
-    ) or []
-    return str(rows[0]['graphid']) if rows else None
-
-
-def _field(ftype: int, name: str, value: Any) -> dict:
-    return {'type': ftype, 'name': name, 'value': str(value)}
-
-
-def _exos_health_pages(ids: dict[str, str]) -> list[dict]:
-    health_widgets = [
-        {
-            'type': 'item',
-            'name': 'ICMP',
-            'x': 0,
-            'y': 0,
-            'width': 18,
-            'height': 4,
-            'fields': [
-                _field(_FIELD_INT32, 'decimal_places', 0),
-                _field(_FIELD_ITEM, 'itemid.0', ids['icmp']),
-                _field(_FIELD_INT32, 'show.0', 2),
-                _field(_FIELD_INT32, 'show.1', 4),
-                _field(_FIELD_STR, 'reference', 'EICMP'),
-            ],
-        },
-        {
-            'type': 'item',
-            'name': 'SNMP',
-            'x': 18,
-            'y': 0,
-            'width': 18,
-            'height': 4,
-            'fields': [
-                _field(_FIELD_INT32, 'decimal_places', 0),
-                _field(_FIELD_ITEM, 'itemid.0', ids['snmp']),
-                _field(_FIELD_INT32, 'show.0', 2),
-                _field(_FIELD_INT32, 'show.1', 4),
-                _field(_FIELD_STR, 'reference', 'ESNMP'),
-            ],
-        },
-        {
-            'type': 'item',
-            'name': 'CPU',
-            'x': 36,
-            'y': 0,
-            'width': 18,
-            'height': 4,
-            'fields': [
-                _field(_FIELD_INT32, 'decimal_places', 0),
-                _field(_FIELD_ITEM, 'itemid.0', ids['cpu']),
-                _field(_FIELD_INT32, 'show.0', 2),
-                _field(_FIELD_INT32, 'show.1', 4),
-                _field(_FIELD_STR, 'reference', 'ECPU0'),
-            ],
-        },
-        {
-            'type': 'graph',
-            'name': 'CPU',
-            'x': 0,
-            'y': 4,
-            'width': 36,
-            'height': 5,
-            'fields': [
-                _field(_FIELD_GRAPH, 'graphid', ids['cpu_graph']),
-                _field(_FIELD_STR, 'reference', 'ECPUG'),
-            ],
-        },
-    ]
-    if ids.get('mem_gp'):
-        health_widgets.append(
-            {
-                'type': 'graphprototype',
-                'name': 'Memory',
-                'x': 36,
-                'y': 4,
-                'width': 36,
-                'height': 5,
-                'fields': [
-                    _field(_FIELD_INT32, 'columns', 1),
-                    _field(_FIELD_GRAPH_PROTOTYPE, 'graphid.0', ids['mem_gp']),
-                    _field(_FIELD_STR, 'reference', 'EMEMG'),
-                ],
-            }
-        )
-    pages = [{'name': 'Health', 'widgets': health_widgets}]
-    if ids.get('if_gp'):
-        pages.append(
-            {
-                'name': 'Path',
-                'widgets': [
-                    {
-                        'type': 'graphprototype',
-                        'x': 0,
-                        'y': 0,
-                        'width': 72,
-                        'height': 5,
-                        'fields': [
-                            _field(_FIELD_INT32, 'columns', 2),
-                            _field(_FIELD_GRAPH_PROTOTYPE, 'graphid.0', ids['if_gp']),
-                            _field(_FIELD_STR, 'reference', 'EIFTR'),
-                        ],
-                    }
-                ],
-            }
-        )
-    return pages
-
-
-def upsert_exos_health_dashboard(api: Any, template_name: str = 'Extreme EXOS by SNMP') -> str:
-    """Create or update host dashboard Health on stock EXOS. Never fails the caller.
-
-    Keeps upstream **Network interfaces**. Returns a status token; logs errors.
-    """
-    logger.info('Network: upsert EXOS Health dashboard')
-    try:
-        tid = _template_id(api, template_name)
-        if not tid:
-            logger.warning('  %s: template not found — skip Health dashboard', template_name)
-            return 'missing'
-        ids = {
-            'icmp': _item_id(api, tid, EXOS_ICMP_KEY),
-            'snmp': _item_id(api, tid, EXOS_SNMP_KEY),
-            'cpu': _item_id(api, tid, EXOS_CPU_KEY),
-            'cpu_graph': _graph_id(api, tid, EXOS_CPU_GRAPH),
-            'mem_gp': _graphproto_id(api, tid, EXOS_MEM_GRAPH_PROTO),
-            'if_gp': _graphproto_id(api, tid, EXOS_IF_GRAPH_PROTO),
-        }
-        required = ('icmp', 'snmp', 'cpu', 'cpu_graph')
-        missing = [k for k in required if not ids.get(k)]
-        if missing:
-            logger.info('  %s: Health skip — missing %s (lab stub?)', template_name, missing)
-            return 'no-items'
-        pages = _exos_health_pages({k: v for k, v in ids.items() if v})
-        existing = api_call(
-            api,
-            'templatedashboard.get',
-            {
-                'templateids': tid,
-                'filter': {'name': 'Health'},
-                'output': ['dashboardid', 'name'],
-                'selectPages': ['name'],
-            },
-        ) or []
-        payload_pages = pages
-        if existing:
-            dashid = existing[0]['dashboardid']
-            api_call(
-                api,
-                'templatedashboard.update',
-                {'dashboardid': dashid, 'name': 'Health', 'pages': payload_pages},
-            )
-            logger.info('  %s: updated Health dashboard id=%s', template_name, dashid)
-            return 'ok'
-        api_call(
-            api,
-            'templatedashboard.create',
-            {'templateid': tid, 'name': 'Health', 'pages': payload_pages},
-        )
-        logger.info('  %s: created Health dashboard', template_name)
-        return 'created'
-    except Exception as exc:  # noqa: BLE001 — apply must not fail on dashboard UX
-        logger.warning('  EXOS Health dashboard upsert failed (non-fatal): %s', exc)
-        return f'error:{exc}'
 
 
 def apply_extreme_health_patches(api: Any) -> dict[str, Any]:
-    """Run the Health/alerting API patches used by ``--apply`` / lab import."""
+    """Apply runtime-only Health patches.
+
+    EXOS Health ships on the ``Extreme EXOS Observability`` companion YAML;
+    never mutate the stock EXOS template here.
+    """
     icmp = patch_disable_wan_icmp_noise(api)
-    dash = upsert_exos_health_dashboard(api)
-    return {'icmp_noise': icmp, 'exos_health': dash}
+    return {'icmp_noise': icmp, 'exos_health': 'companion-yaml'}

@@ -1,0 +1,323 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: 36bff6c29af64692839d077febfc7079
+    name: Templates/Network devices
+  templates:
+  - uuid: 31bd30f93a974ab98b3a5742085d1346
+    template: Extreme EXOS Observability
+    name: Extreme EXOS Observability
+    description: Health dashboard companion for the stock Extreme EXOS by SNMP template.
+    groups:
+    - name: Templates/Network devices
+    templates:
+    - name: Extreme EXOS by SNMP
+    items:
+    - uuid: f4033ae72ce44151b548b1c442f3c68a
+      name: 'Observability: CPU utilization'
+      type: CALCULATED
+      key: exos.observability.cpu.util
+      delay: 1m
+      value_type: FLOAT
+      units: '%'
+      params: 'last(//system.cpu.util[extremeCpuMonitorTotalUtilization.0])'
+      tags:
+      - tag: component
+        value: cpu
+    - uuid: 766fe42cf6d943a0b573205bf50babdf
+      name: 'Observability: Temperature'
+      type: CALCULATED
+      key: exos.observability.temperature
+      delay: 1m
+      value_type: FLOAT
+      units: °C
+      params: 'last(//sensor.temp.value[extremeCurrentTemperature.0])'
+      tags:
+      - tag: component
+        value: temperature
+    - uuid: 9fb6337537c64bcdbe226e1ea67ae5f4
+      name: 'Observability: Uptime'
+      type: CALCULATED
+      key: exos.observability.uptime
+      delay: 1m
+      units: uptime
+      params: 'last(//system.net.uptime[sysUpTime.0])'
+      tags:
+      - tag: component
+        value: system
+    tags:
+    - tag: class
+      value: network
+    - tag: target
+      value: exos-observability
+    dashboards:
+    - uuid: 87c5121b3ad94f7cb30119e08130d095
+      name: Health
+      pages:
+      - name: Overview
+        widgets:
+        - type: gauge
+          name: CPU utilization
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.cpu.util
+          - type: STRING
+            name: thresholds.0.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: FFD54F
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '80'
+          - type: STRING
+            name: thresholds.2.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '90'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '1'
+          - type: STRING
+            name: units
+            value: '%'
+        - type: gauge
+          name: Temperature
+          x: '18'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.temperature
+          - type: STRING
+            name: thresholds.0.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: FFD54F
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '95'
+          - type: STRING
+            name: thresholds.2.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '100'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '1'
+          - type: STRING
+            name: units
+            value: °C
+        - type: item
+          name: Uptime
+          x: '36'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.uptime
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+        - type: problems
+          x: '54'
+          width: '18'
+          height: '4'
+          fields:
+          - type: STRING
+            name: reference
+            value: EPROB
+          - type: INTEGER
+            name: show
+            value: '3'
+          - type: INTEGER
+            name: show_opdata
+            value: '2'
+        - type: svggraph
+          name: CPU history
+          'y': '4'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: 199C0D
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.cpu.util
+          - type: STRING
+            name: lefty_max
+            value: '100'
+          - type: STRING
+            name: lefty_min
+            value: '0'
+          - type: STRING
+            name: reference
+            value: ECPUH
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+        - type: svggraph
+          name: Temperature history
+          x: '36'
+          'y': '4'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: FF9800
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.temperature
+          - type: STRING
+            name: reference
+            value: ETMPH
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+      - name: Hardware
+        widgets:
+        - type: honeycomb
+          name: Fans
+          width: '24'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Fan *: Fan status'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}}'
+          - type: STRING
+            name: reference
+            value: EFANS
+          - type: STRING
+            name: thresholds.0.color
+            value: '878787'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: STRING
+            name: thresholds.2.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '2'
+        - type: honeycomb
+          name: Power supplies
+          x: '24'
+          width: '24'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'PSU *: Power supply status'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}}'
+          - type: STRING
+            name: reference
+            value: EPSUS
+          - type: STRING
+            name: thresholds.0.color
+            value: '878787'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '2'
+          - type: STRING
+            name: thresholds.2.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '3'
+        - type: honeycomb
+          name: Memory utilization
+          x: '48'
+          width: '24'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: '#*: Memory utilization'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}}'
+          - type: STRING
+            name: reference
+            value: EMEMR
+          - type: STRING
+            name: thresholds.0.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: FFD54F
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '80'
+          - type: STRING
+            name: thresholds.2.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '90'

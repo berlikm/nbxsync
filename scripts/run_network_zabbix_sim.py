@@ -36,6 +36,8 @@ REPORT_MD = Path('/opt/cursor/artifacts/NETWORK_ZABBIX_SIM_REPORT.md')
 
 TEMPLATES = {
     'Extreme VOSS by SNMP': ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
+    'Extreme EXOS Observability': ROOT
+    / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
     'Extreme Port Speed Expect by SNMP': ROOT
     / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
@@ -87,6 +89,7 @@ def import_rules() -> dict:
     return {
         'templates': {'createMissing': True, 'updateExisting': True},
         'template_groups': {'createMissing': True, 'updateExisting': True},
+        'templateLinkage': {'createMissing': True, 'deleteMissing': False},
         'valueMaps': {'createMissing': True, 'updateExisting': True},
         'items': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
         'discoveryRules': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
@@ -360,10 +363,12 @@ def main() -> int:
 
     patch = apply_extreme_health_patches(api)
     record('health patches', True, str(patch), group='import')
-    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Health', 'Path'))
+    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Traffic'))
     record('VOSS Health dashboard', ok, detail, group='health')
-    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Health', 'RF'))
+    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Traffic'))
     record('IQ Health dashboard', ok, detail, group='health')
+    ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware'))
+    record('EXOS companion Health dashboard', ok, detail, group='health')
     ok, detail = assert_template_macros(api, 'Extreme Port Speed Expect by SNMP', SPEED_EXPECT_HEALTH_MACROS)
     record('Speed Expect util off', ok, detail, group='health')
     ok, detail = assert_template_macros(api, 'Extreme IQ Engine by SNMP', IQ_HEALTH_MACROS)

@@ -73,7 +73,6 @@ import traceback
 from pathlib import Path
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'netbox.settings')
-os.environ.setdefault('NETBOX_CONFIGURATION', os.environ.get('NETBOX_CONFIGURATION', 'netbox.configuration_nbxsync'))
 
 _NETBOX = Path('/workspace/.deps/netbox/netbox')
 if _NETBOX.exists() and str(_NETBOX) not in sys.path:
@@ -135,6 +134,8 @@ RESULTS: list[dict] = []
 
 TEMPLATE_FILES = {
     'Extreme VOSS by SNMP': ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
+    'Extreme EXOS Observability': ROOT
+    / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
     'Extreme Port Speed Expect by SNMP': ROOT
     / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
@@ -280,6 +281,7 @@ def import_rules() -> dict:
     return {
         'templates': {'createMissing': True, 'updateExisting': True},
         'template_groups': {'createMissing': True, 'updateExisting': True},
+        'templateLinkage': {'createMissing': True, 'deleteMissing': False},
         'valueMaps': {'createMissing': True, 'updateExisting': True},
         'items': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
         'discoveryRules': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
@@ -297,11 +299,16 @@ def import_extreme_templates(api) -> dict[str, tuple[int, str]]:
         if not path.exists():
             logger.error('Missing template file: %s', path)
             continue
-        api.configuration.import_(
-            format='yaml',
-            rules=import_rules(),
-            source=path.read_text(),
-        )
+        import_error = None
+        try:
+            api.configuration.import_(
+                format='yaml',
+                rules=import_rules(),
+                source=path.read_text(),
+            )
+        except Exception as exc:
+            import_error = exc
+            logger.warning('  Import failed for %s; checking for an existing exact template: %s', name, exc)
         found = api.template.get(filter={'name': [name]}, output=['templateid', 'host', 'name'])
         if not found:
             # stock EXOS may already exist under another host key
@@ -309,7 +316,12 @@ def import_extreme_templates(api) -> dict[str, tuple[int, str]]:
             found = [t for t in (found or []) if t.get('name') == name]
         if found:
             out[name] = (int(found[0]['templateid']), name)
-            logger.info('  Imported/found %s (id=%s)', name, found[0]['templateid'])
+            if import_error is not None:
+                logger.warning('  Reusing existing %s (id=%s) after import failure', name, found[0]['templateid'])
+            else:
+                logger.info('  Imported/found %s (id=%s)', name, found[0]['templateid'])
+        elif import_error is not None:
+            raise RuntimeError(f'Import failed and template is unavailable: {name}') from import_error
         else:
             logger.error('  Template missing after import: %s', name)
     # Stock EXOS if present
@@ -317,6 +329,7 @@ def import_extreme_templates(api) -> dict[str, tuple[int, str]]:
     if exos:
         out['Extreme EXOS by SNMP'] = (int(exos[0]['templateid']), 'Extreme EXOS by SNMP')
     return out
+
 
 
 # Zabbix LLD filter operators (API)
@@ -729,7 +742,7 @@ def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
     )
 
     rule_specs = (
-        ('Extreme EXOS', 'EXOS', 'Extreme EXOS by SNMP'),
+        ('Extreme EXOS', 'EXOS', 'Extreme EXOS Observability'),
         ('Extreme VOSS', 'VOSS', 'Extreme VOSS by SNMP'),
         ('Extreme IQ Engine', 'IQ ENGINE', 'Extreme IQ Engine by SNMP'),
     )
@@ -1009,7 +1022,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 )
             record(
                 'exos_health_dashboard',
-                str(health.get('exos_health')) in ('ok', 'created', 'missing', 'no-items'),
+                str(health.get('exos_health')) == 'companion-yaml',
                 str(health.get('exos_health')),
                 group='import',
             )
@@ -1022,15 +1035,15 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             record('speed_expect_usw_util_off', ok, detail, group='import')
             ok, detail = assert_template_macros(api, 'Extreme IQ Engine by SNMP', IQ_HEALTH_MACROS)
             record('iq_health_macros', ok, detail, group='import')
-            ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Health', 'Path'))
+            ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Traffic'))
             record('voss_health_dashboard', ok, detail, group='import')
-            ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Health', 'RF'))
+            ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Traffic'))
             record('iq_health_dashboard', ok, detail, group='import')
-            ok, detail = assert_template_dashboard(api, 'Extreme EXOS by SNMP', 'Health', ('Health',))
-            # Lab stub EXOS has no Health items — n/a is ok
+            ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware'))
+            # The companion may be absent in a deliberately minimal lab stub.
             record(
                 'exos_health_dashboard_assert',
-                ok or 'n/a' in detail or 'no-items' in str(health.get('exos_health')),
+                ok or 'n/a' in detail,
                 detail,
                 group='import',
             )

@@ -108,7 +108,6 @@ import traceback
 from pathlib import Path
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'netbox.settings')
-os.environ.setdefault('NETBOX_CONFIGURATION', os.environ.get('NETBOX_CONFIGURATION', 'netbox.configuration_nbxsync'))
 
 # Prefer installed NetBox when present (lab / cloud agent layout).
 _NETBOX = Path('/workspace/.deps/netbox/netbox')
@@ -651,20 +650,32 @@ def step1_zabbix_server(*, url: str | None = None, token: str | None = None, lab
     logger.info('=' * 60)
     url = url or ZABBIX_URL
     token = token or _read_token()
-    server, _ = ensure(
+    defaults = {
+        'name': 'Zabbix Production',
+        'url': url,
+        'token': token,
+        'validate_certs': not lab_http,
+        'sync_enabled': True,
+        'skip_version_check': False,
+        'description': 'Zabbix (configured by zero-touch script)',
+    }
+    server = (
+        M.ZabbixServer.objects.filter(name='Zabbix Production').first()
+        or M.ZabbixServer.objects.filter(url=url).first()
+    )
+    if server is not None:
+        return ensure(
+            M.ZabbixServer,
+            pk=server.pk,
+            defaults=defaults,
+            update_fields=list(defaults),
+        )[0]
+    return ensure(
         M.ZabbixServer,
         name='Zabbix Production',
-        defaults={
-            'url': url,
-            'token': token,
-            'validate_certs': not lab_http,
-            'sync_enabled': True,
-            'skip_version_check': False,
-            'description': 'Zabbix (configured by zero-touch script)',
-        },
-        update_fields=['url', 'token', 'validate_certs', 'sync_enabled', 'skip_version_check', 'description'],
-    )
-    return server
+        defaults={key: value for key, value in defaults.items() if key != 'name'},
+    )[0]
+
 
 
 def step2_proxies(server):
@@ -673,14 +684,33 @@ def step2_proxies(server):
     logger.info('=' * 60)
     proxies = resolve_proxies(server)
 
+    ch_proxyids = [proxy.proxyid for key, proxy in proxies.items() if key in ('ch', *CH_PROXY_GROUP_EXTRA)]
+    with ZabbixConnection(server) as api:
+        remote_ch_proxies = api.proxy.get(
+            proxyids=ch_proxyids,
+            output=['proxyid', 'name', 'proxy_groupid'],
+        ) or []
+    remote_groupids = {
+        int(proxy['proxy_groupid'])
+        for proxy in remote_ch_proxies
+        if int(proxy.get('proxy_groupid') or 0) > 0
+    }
+    if len(remote_groupids) != 1:
+        raise SystemExit(
+            'CH proxies must belong to exactly one Zabbix proxy group; found '
+            f'{sorted(remote_groupids)} for {[proxy["name"] for proxy in remote_ch_proxies]}'
+        )
+    remote_groupid = remote_groupids.pop()
+
     ch_proxy_group, _ = ensure(
         M.ZabbixProxyGroup,
         name=CH_PROXY_GROUP_NAME,
         defaults={
             'zabbixserver': server,
+            'proxy_groupid': remote_groupid,
             'description': 'CH proxy pair (NL and US route through CH)',
         },
-        update_fields=['zabbixserver', 'description'],
+        update_fields=['zabbixserver', 'proxy_groupid', 'description'],
     )
     for key in ('ch', *CH_PROXY_GROUP_EXTRA):
         proxy = proxies.get(key)

@@ -50,7 +50,7 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 | Role IFALIAS / IFTYPE / Access `PORTID.*` | nbxSync MacroAssignment | Inherited on sync | Updates assignment **values**; next sync of a host pushes macros. `--apply` does **not** mass-sync |
 | SNMP Monitoring CG on Switch* / AP | zerotouch | Inherited interface + SNMPv3 | Empty env **must not** wipe existing secrets (zerotouch already leaves them) |
 | YAML import `updateExisting` + `deleteMissing: false` | network `--apply` | n/a | Updates items/triggers/dashboards on the **template**; every already-linked host inherits. Does **not** delete hosts, interfaces, or history |
-| Stock EXOS patches (TEMP_*, EtherLike IFALIAS, IF LLD 15m/0, ICMP loss disable, Health dashboard) | network `--apply` | n/a | Idempotent API merge; re-assert after an official EXOS re-import |
+| Stock EXOS patches (TEMP_*, EtherLike IFALIAS, IF LLD 15m/0, ICMP loss disable) + Observability companion | network `--apply` | n/a | Stock stays dashboard-clean; companion YAML links stock and owns Health |
 | Speed Expect / OSPF | imported, **not** assigned | Stays off | `--apply` without `--link-speed-expect` **does not unlink** if someone linked it earlier |
 | Global `create_dashboards.py` | not part of apply | — | Do not run on re-apply (hostgroup boards, not Health) |
 | VOSS/IQ TemplateRule when YAML is not in Zabbix yet | zerotouch | skip writing the rule | **Does not** retarget an existing Extreme rule at Network Generic |
@@ -76,7 +76,8 @@ One dashboard named **Health** on the platform template. Open **Monitoring → H
 
 | Page | Question | Widgets (Zabbix 7 template-safe) |
 |---|---|---|
-| Health | Is this box OK? | Item tiles: ICMP, SNMP, CPU (and AP: clients/temp). Graph: CPU. Graph prototype: memory (VOSS) or clients (AP). |
-| Path / RF | Errors and status, not a traffic farm | IF traffic prototype (2×3). AP: radio RF + retries. |
+| Overview | Is this box OK? | Gauges/items, problems and SVG history. |
+| Hardware / RF | Are components or radios unhealthy? | Honeycombs and memory/RF graph prototypes. |
+| Traffic | Which in-scope links are busy? | Thin interface traffic graph prototype. |
 
-Stock EXOS keeps upstream **Network interfaces**; `--apply` upserts **Health** via API so we do not fork stock YAML. VOSS/IQ ship Health in YAML (same uuid on VOSS so re-import **renames** the old traffic-only board in place).
+VOSS/IQ ship Health in YAML. Stock EXOS retains upstream **Network interfaces**; `Extreme EXOS Observability` links stock, supplies calculated dashboard mirrors and owns **Health**. `create_dashboards.py` is not involved.

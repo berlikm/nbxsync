@@ -24,6 +24,8 @@ TEMPLATES = {
     'Extreme VOSS by SNMP': ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
     'Extreme IQ Engine by SNMP': ROOT
     / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
+    'Extreme EXOS Observability': ROOT
+    / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
     'Extreme Port Speed Expect by SNMP': ROOT
     / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
@@ -181,7 +183,7 @@ def validate_voss(doc: dict) -> None:
     )
     keys = _walk_item_keys(tpl)
     record('VOSS unsupported item', 'zabbix[host,,items_unsupported]' in keys, '')
-    validate_health_dashboard('VOSS', doc, tpl, pages=('Health', 'Path'))
+    validate_health_dashboard('VOSS', doc, tpl, pages=('Overview', 'Hardware', 'Traffic'))
     # Re-import identity — same uuid as the old traffic-only board
     health = [d for d in (tpl.get('dashboards') or []) if d.get('name') == 'Health']
     if health:
@@ -203,7 +205,22 @@ def validate_iq(doc: dict) -> None:
         t = by_name.get(n)
         record(f'IQ {n} DISABLED', bool(t) and t.get('status') == 'DISABLED', str((t or {}).get('status')))
     record('IQ unsupported trigger', 'Extreme IQ Engine: Too many unsupported items' in by_name, '')
-    validate_health_dashboard('IQ', doc, tpl, pages=('Health', 'RF'))
+    validate_health_dashboard('IQ', doc, tpl, pages=('Overview', 'RF', 'Traffic'))
+
+
+def validate_exos_observability(doc: dict) -> None:
+    tpl = _tpl(doc)
+    record('EXOS companion name', tpl.get('name') == 'Extreme EXOS Observability', str(tpl.get('name')))
+    linked = {row.get('name') for row in (tpl.get('templates') or [])}
+    record('EXOS companion links stock', 'Extreme EXOS by SNMP' in linked, str(sorted(linked)))
+    keys = _walk_item_keys(tpl)
+    expected = {
+        'exos.observability.cpu.util',
+        'exos.observability.temperature',
+        'exos.observability.uptime',
+    }
+    record('EXOS companion calculated mirrors', expected <= keys, str(sorted(expected - keys)))
+    validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware'))
 
 
 def validate_speed_expect(doc: dict) -> None:
@@ -236,6 +253,8 @@ def validate_yaml() -> None:
             validate_voss(doc)
         elif name == 'Extreme IQ Engine by SNMP':
             validate_iq(doc)
+        elif name == 'Extreme EXOS Observability':
+            validate_exos_observability(doc)
         elif name == 'Extreme Port Speed Expect by SNMP':
             validate_speed_expect(doc)
 
@@ -244,6 +263,7 @@ def import_rules() -> dict:
     return {
         'templates': {'createMissing': True, 'updateExisting': True},
         'template_groups': {'createMissing': True, 'updateExisting': True},
+        'templateLinkage': {'createMissing': True, 'deleteMissing': False},
         'valueMaps': {'createMissing': True, 'updateExisting': True},
         'items': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
         'discoveryRules': {'createMissing': True, 'updateExisting': True, 'deleteMissing': False},
@@ -290,7 +310,7 @@ def validate_zabbix() -> None:
     dash_status = str(patch.get('exos_health'))
     record(
         'patch exos_health',
-        dash_status in ('ok', 'created', 'missing', 'no-items'),
+        dash_status == 'companion-yaml',
         dash_status,
     )
 
@@ -300,10 +320,12 @@ def validate_zabbix() -> None:
     record('zbx SpeedExpect macros', ok, detail)
     ok, detail = assert_template_macros(api, 'Extreme IQ Engine by SNMP', IQ_HEALTH_MACROS)
     record('zbx IQ macros', ok, detail)
-    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Health', 'Path'))
+    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Traffic'))
     record('zbx VOSS Health', ok, detail)
-    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Health', 'RF'))
+    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Traffic'))
     record('zbx IQ Health', ok, detail)
+    ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware'))
+    record('zbx EXOS companion Health', ok, detail)
     for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
         ok, detail = assert_wan_icmp_noise_disabled(api, tname)
         record(f'zbx ICMP noise off {tname}', ok, detail)

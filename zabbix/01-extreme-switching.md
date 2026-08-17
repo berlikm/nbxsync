@@ -75,10 +75,11 @@ Not a country/role board. After the platform template is linked, **Monitoring �
 
 | Page | What you see in 5 seconds |
 |---|---|
-| **Health** | ICMP / SNMP / CPU tiles. CPU graph. VOSS slot memory prototype. |
-| **Path** | In-scope IF traffic graph prototypes (2 columns) — status/capacity, not a 40-graph wall |
+| **Overview** | Gauges, current health, problems and SVG history. |
+| **Hardware / RF** | VOSS/EXOS hardware honeycombs; IQ Engine radio health and RF graphs. |
+| **Traffic** | Thin in-scope interface graph prototypes. |
 
-Stock EXOS keeps upstream **Network interfaces**; `--apply` upserts **Health** on that template via API (no stock fork). VOSS ships Health in YAML (same dashboard uuid as the old traffic-only board — re-import **updates in place**).
+VOSS and IQ Engine ship **Health** in their YAML. Stock EXOS keeps upstream **Network interfaces** unchanged; the linked `Extreme EXOS Observability` companion owns **Health**.
 
 Util and intended-speed comparison stay graphs until Speed Expect is linked.
 
@@ -125,7 +126,7 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - Does **not** unlink Speed Expect if it was linked earlier (no `--link-speed-expect` ≠ unlink)  
 - Does **not** run `create_dashboards.py`  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
-- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m/keep-lost 0, EXOS ICMP loss/RTT disable, EXOS **Health** dashboard upsert  
+- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m/keep-lost 0 and EXOS ICMP loss/RTT disable; Health comes from YAML/companion
 
 Per-host sync only when **that** device’s NetBox role/platform/macros changed.
 
@@ -170,9 +171,10 @@ A site WAN blip must not be one High per switch. Those Highs **depend on** a sit
 
 | Template | Where |
 |---|---|
-| Extreme EXOS by SNMP (stock) | Platform EXOS |
+| Extreme EXOS Observability | Platform EXOS Template Rule; links the stock template and owns **Health** |
+| Extreme EXOS by SNMP (stock) | Parent of the companion; upstream **Network interfaces** remains unchanged |
 
-We do **not** fork the stock template. `--apply` (idempotent): `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273` on **this template**; EtherLike duplex LLD same IFALIAS filters as `net.if.discovery`; interface LLD **15m**, keep-lost **0**; ICMP loss/RTT triggers **disabled**; upsert host dashboard **Health**.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, and disables ICMP loss/RTT noise. The companion carries calculated mirrors for dashboard gauges/SVG history and links the stock SNMP items.
 
 Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on stock is typically Warning until we match VOSS (Average) without a fork.
 
