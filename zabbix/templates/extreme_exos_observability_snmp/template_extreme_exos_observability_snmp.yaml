@@ -325,15 +325,15 @@ zabbix_export:
         widgets:
         - type: honeycomb
           name: Interface map
-          width: '54'
-          height: '6'
+          width: '72'
+          height: '4'
           fields:
           - type: STRING
             name: items.0
             value: 'Interface *: Operational status'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}}'
+            value: '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\1")}'
           - type: STRING
             name: reference
             value: EIMAP
@@ -355,26 +355,11 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '2'
-        - type: item
-          name: Selected interface status
-          x: '54'
-          width: '18'
-          height: '6'
-          fields:
-          - type: STRING
-            name: itemid._reference
-            value: EIMAP._itemid
-          - type: INTEGER
-            name: show.0
-            value: '1'
-          - type: INTEGER
-            name: show.1
-            value: '2'
         - type: itemnavigator
-          name: Interface metrics
-          'y': '6'
-          width: '24'
-          height: '9'
+          name: Interface details
+          'y': '4'
+          width: '28'
+          height: '11'
           fields:
           - type: INTEGER
             name: group_by.0.attribute
@@ -384,18 +369,74 @@ zabbix_export:
             value: interface
           - type: STRING
             name: items.0
-            value: 'Interface *: Bits received'
+            value: 'Interface *: Operational status'
           - type: STRING
             name: items.1
+            value: 'Interface *: Speed'
+          - type: STRING
+            name: items.2
+            value: 'Interface *: Duplex status'
+          - type: STRING
+            name: items.3
+            value: 'Interface *: Bits received'
+          - type: STRING
+            name: items.4
             value: 'Interface *: Bits sent'
+          - type: STRING
+            name: items.5
+            value: 'Interface *: Inbound packets with errors'
+          - type: STRING
+            name: items.6
+            value: 'Interface *: Outbound packets with errors'
+          - type: STRING
+            name: items.7
+            value: 'Interface *: Inbound packets discarded'
+          - type: STRING
+            name: items.8
+            value: 'Interface *: Outbound packets discarded'
+          - type: STRING
+            name: items.9
+            value: 'Interface *: State transitions'
           - type: STRING
             name: reference
             value: EINAV
+        - type: item
+          name: Interface state
+          x: '28'
+          'y': '4'
+          width: '22'
+          height: '2'
+          fields:
+          - type: STRING
+            name: itemid._reference
+            value: EIMAP._itemid
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+        - type: item
+          name: Selected metric
+          x: '50'
+          'y': '4'
+          width: '22'
+          height: '2'
+          fields:
+          - type: STRING
+            name: itemid._reference
+            value: EINAV._itemid
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_size
+            value: '25'
         - type: svggraph
-          name: Selected interface metric
-          x: '24'
+          name: Selected interface history
+          x: '28'
           'y': '6'
-          width: '48'
+          width: '44'
           height: '9'
           fields:
           - type: STRING

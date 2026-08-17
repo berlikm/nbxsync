@@ -158,23 +158,51 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             f'got={sorted(str(t) for t in widget_types)}',
         )
 
-        def fields(widget_type: str) -> dict[str, object]:
-            widget = next((w for w in widgets if w.get('type') == widget_type), {})
+        def fields(widget: dict) -> dict[str, object]:
             return {f.get('name'): f.get('value') for f in (widget.get('fields') or [])}
 
-        map_fields = fields('honeycomb')
-        item_fields = fields('item')
-        nav_fields = fields('itemnavigator')
-        graph_fields = fields('svggraph')
+        map_widget = next((w for w in widgets if w.get('type') == 'honeycomb'), {})
+        nav_widget = next((w for w in widgets if w.get('type') == 'itemnavigator'), {})
+        graph_widget = next((w for w in widgets if w.get('type') == 'svggraph'), {})
+        item_widgets = [w for w in widgets if w.get('type') == 'item']
+        map_fields = fields(map_widget)
+        nav_fields = fields(nav_widget)
+        graph_fields = fields(graph_widget)
+        item_fields = [fields(w) for w in item_widgets]
         map_ref = map_fields.get('reference')
         nav_ref = nav_fields.get('reference')
         wired = (
             bool(map_ref)
-            and item_fields.get('itemid._reference') == f'{map_ref}._itemid'
+            and any(f.get('itemid._reference') == f'{map_ref}._itemid' for f in item_fields)
             and bool(nav_ref)
+            and any(f.get('itemid._reference') == f'{nav_ref}._itemid' for f in item_fields)
             and graph_fields.get('ds.0.itemids.0._reference') == f'{nav_ref}._itemid'
         )
         record(f'{name} interactive Traffic wiring', wired, f'map={map_ref} navigator={nav_ref}')
+        patterns = {str(v) for key, v in nav_fields.items() if str(key).startswith('items.')}
+        expected_patterns = {
+            'Interface *: Operational status',
+            'Interface *: Speed',
+            'Interface *: Bits received',
+            'Interface *: Bits sent',
+            'Interface *: Inbound packets with errors',
+            'Interface *: Outbound packets with errors',
+            'Interface *: Inbound packets discarded',
+            'Interface *: Outbound packets discarded',
+        }
+        record(
+            f'{name} consolidated interface metrics',
+            expected_patterns <= patterns,
+            f'missing={sorted(expected_patterns - patterns)}',
+        )
+        compact = (
+            map_widget.get('width') == '72'
+            and map_widget.get('height') == '4'
+            and len(item_widgets) == 2
+            and all(w.get('height') == '2' for w in item_widgets)
+            and all(f.get('show.0') == '2' and 'show.1' not in f for f in item_fields)
+        )
+        record(f'{name} compact interface layout', compact, f'item_cards={len(item_widgets)}')
 
 
 def validate_voss(doc: dict) -> None:

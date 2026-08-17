@@ -78,6 +78,6 @@ One dashboard named **Health** on the platform template. Open **Monitoring → H
 |---|---|---|
 | Overview | Is this box OK? | Gauges/items, problems and SVG history. |
 | Hardware / RF | Are components or radios unhealthy? | Honeycombs and memory/RF graph prototypes. |
-| Traffic | Which in-scope links are busy or down? | Clickable status honeycomb, interface/tag navigator and a selected-metric SVG graph. |
+| Traffic | Which in-scope links are busy or unhealthy? | Compact status map; interface-grouped state, speed, duplex, traffic, error, discard and flap metrics; two small current-value cards; selected-metric history. |
 
 VOSS/IQ ship Health in YAML. `Extreme EXOS Observability` gives EXOS the same Overview/Hardware/Traffic model while linking the unchanged stock template and its interface items; the upstream **Network interfaces** dashboard remains available. `create_dashboards.py` is not involved.

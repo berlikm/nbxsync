@@ -77,7 +77,7 @@ Not a country/role board. After the platform template is linked, **Monitoring â†
 |---|---|
 | **Overview** | Gauges, current health, problems and SVG history. |
 | **Hardware / RF** | VOSS/EXOS hardware honeycombs; IQ Engine radio health and RF graphs. |
-| **Traffic** | Interface status honeycomb; click a cell for status details, then select an interface/metric to update the traffic graph. |
+| **Traffic** | Compact status map plus per-interface drill-down for state, speed, duplex, traffic, errors, discards and flaps; the selected metric drives a current-value card and history graph. |
 
 VOSS and IQ Engine ship **Health** in their YAML. The linked `Extreme EXOS Observability` companion gives EXOS the same **Overview / Hardware / Traffic** page model while stock EXOS keeps its upstream **Network interfaces** dashboard unchanged.
 
