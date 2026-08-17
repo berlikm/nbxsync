@@ -76,10 +76,12 @@ Two host-level dashboards: **Health** for chassis/diagnostics and **Network inte
 
 | Page | Question | Widgets (Zabbix 7 template-safe) |
 |---|---|---|
-| Overview | Is this box reachable and healthy? | ICMP + SNMP gauges first, then CPU and the platform 4th tile (temp / uptime / clients). Problems. History graphs. |
-| Hardware / RF | Are FRUs or radios unhealthy? | Honeycombs. IQ: noise/Tx **and** retries/drops graph prototypes. |
-| Diagnostics | What is the exact state of one object? | Switches: interface-tagged navigator. APs: **radio**-tagged navigator (do not copy switch duplex/flaps — those items do not exist on IQ). |
+| Overview | Is this box reachable and healthy? | ICMP + SNMP + CPU + platform 4th tile (EXOS temp / VOSS uptime / AP clients). Problems full width. Two history panes. |
+| Hardware / RF | Are FRUs or radios unhealthy? | Honeycombs. Switches: memory graph under the map. IQ: noise/Tx **and** retries/drops in a 2-column radio grid. |
+| Diagnostics | What is the exact state of one object? | Switches: interface-tagged navigator (EXOS has no flap counter in stock). APs: **radio**-tagged navigator only — eth lives on **Network interfaces**. |
 
 All platforms expose **Network interfaces → Overview** with the same compact status map and 3×2 graph grid. VOSS/IQ ship it in YAML; `--apply` applies the layout to the existing stock EXOS dashboard. VOSS/EXOS graphs combine RX/TX with errors/discards on a secondary axis; IQ Engine shows RX/TX only. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet.
 
-Honeycomb thresholds are `>=`. VOSS fan `notpresent(4)` therefore paints like `down(3)` (red). Empty PSU `empty(2)` stays grey (green starts at 3). Do not “fix” that with inverted colours; filter LLD later if empty fans noise the map.
+Honeycomb thresholds are `>=`. VOSS fan `notpresent(4)` therefore paints like `down(3)` (red). Empty PSU `empty(2)` stays grey (green starts at 3). EXOS PSU `notPresent(1)` stays grey (green starts at 2). Do not “fix” that with inverted colours; filter LLD later if empty fans noise the map.
+
+AP Overview omits a temperature gauge: HiveOS often stubs `ahEnvirmentTemp` at 0 °C. A green gauge would look healthy. The Average temp ticket still lands on the problems strip. Memory is on the CPU+mem history pane, not a fifth Overview tile.

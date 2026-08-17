@@ -56,9 +56,9 @@ Do **not** alert on: XIQ tenant as a host, VAP/SSID ifaces, a laptop on a switch
 
 | Page | 5-second read |
 |---|---|
-| **Overview** | ICMP / SNMP / CPU / clients. Mem + temp. Problems. CPU/mem and client history. |
-| **RF** | Radio noise honeycomb. Noise/Tx and retries/drops graph prototypes. Empty radios = census. |
-| **Diagnostics** | Radio navigator (noise, Tx, retries, drops, channel) plus eth oper/bits — **not** switch duplex/flaps. |
+| **Overview** | ICMP / SNMP / CPU / clients. Problems. CPU+mem and client history. Same 4-tile + strip + two panes as switches. |
+| **RF** | Radio noise honeycomb. Noise/Tx and retries/drops as a 2-column grid (wifi0 \| wifi1). Empty radios = census. |
+| **Diagnostics** | Radio navigator only (noise, Tx, retries, drops, RX, channel). AP eth is **Network interfaces**, not this page. |
 
 **Network interfaces → Overview** is the same map + 3×2 grid as switches, scoped to AP eth (`ifType=6`). RF does not live there.
 
@@ -95,7 +95,7 @@ After an AP **reboot**, if CLI SNMPv3 from the CH proxy works but Zabbix stays `
 
 Wrong OIDs look like SNMP availability **1** and items **unsupported**. Empty SNMP items + availability **0** is transport.
 
-AP `{$TEMP_*}` is **this** template (70 / 85 / −273), not EXOS/VOSS 95/100.
+AP `{$TEMP_*}` is **this** template (70 / 85 / −273), not EXOS/VOSS 95/100. Many APs stub `ahEnvirmentTemp` at 0 — Health Overview does **not** show a temp gauge (green 0 °C would lie). Temperature still tickets Average and appears on the problems strip.
 
 ---
 

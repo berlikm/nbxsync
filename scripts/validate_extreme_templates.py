@@ -138,10 +138,16 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
                     refs.append(str(key))
                 if wtype in ('graph', 'graphprototype') and fname.startswith('graphid'):
                     gname = val.get('name')
-                    external = (val.get('host'), gname) == (
-                        'Extreme EXOS by SNMP',
-                        'Interface {#IFNAME}({#IFALIAS}): Network traffic',
-                    )
+                    external = (val.get('host'), gname) in {
+                        (
+                            'Extreme EXOS by SNMP',
+                            'Interface {#IFNAME}({#IFALIAS}): Network traffic',
+                        ),
+                        (
+                            'Extreme EXOS by SNMP',
+                            '#{#SNMPVALUE}: Memory utilization',
+                        ),
+                    }
                     ok = gname in graphs or external
                     record(f'{name} widget graph {gname}', ok, f'type={wtype} host={val.get("host")}')
                     refs.append(str(gname))
@@ -162,8 +168,48 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
         has_snmp = any('snmp' in k.lower() or 'available' in k for k in ov_keys)
         record(f'{name} Overview ICMP+SNMP', has_icmp and has_snmp, f'keys={ov_keys}')
 
+        def _wy(widget: dict) -> str:
+            if 'y' in widget:
+                return str(widget.get('y'))
+            if True in widget:
+                return str(widget.get(True))
+            return '0'
+
+        tiles = [w for w in (overview.get('widgets') or []) if _wy(w) == '0']
+        problems = [w for w in (overview.get('widgets') or []) if w.get('type') == 'problems']
+        histories = [w for w in (overview.get('widgets') or []) if w.get('type') == 'svggraph']
+        record(
+            f'{name} Overview 4-tile row',
+            len(tiles) == 4 and all(str(w.get('width')) == '18' for w in tiles),
+            f'tiles={[(w.get("name"), w.get("width")) for w in tiles]}',
+        )
+        record(
+            f'{name} Overview problems strip',
+            len(problems) == 1
+            and str(problems[0].get('width')) == '72'
+            and str(problems[0].get('height')) == '3'
+            and _wy(problems[0]) == '4',
+            f'problems={[(w.get("width"), w.get("height"), _wy(w)) for w in problems]}',
+        )
+        record(
+            f'{name} Overview two-pane history',
+            len(histories) == 2
+            and all(str(w.get('width')) == '36' and str(w.get('height')) == '6' and _wy(w) == '7' for w in histories),
+            f'histories={[(w.get("name"), w.get("width"), _wy(w)) for w in histories]}',
+        )
+
     def fields(widget: dict) -> dict[str, object]:
         return {f.get('name'): f.get('value') for f in (widget.get('fields') or [])}
+
+    rf = pages_by_name.get('RF')
+    if rf is not None:
+        rf_graphs = [w for w in (rf.get('widgets') or []) if w.get('type') == 'graphprototype']
+        cols = [fields(w).get('columns') for w in rf_graphs]
+        record(
+            f'{name} RF radio graphs 2-column',
+            bool(rf_graphs) and all(str(c) == '2' for c in cols),
+            f'columns={cols}',
+        )
 
     diagnostics = pages_by_name.get('Diagnostics')
     if diagnostics is not None:
@@ -191,11 +237,13 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
                 'Radio *: Tx power',
                 'Radio *: TX total retries',
                 'Radio *: TX frames dropped',
+                'Radio *: RX data frames',
+                'Radio *: Channel',
+            }
+            forbidden = {
                 'Interface *: Operational status',
                 'Interface *: Bits received',
                 'Interface *: Bits sent',
-            }
-            forbidden = {
                 'Interface *: Speed',
                 'Interface *: Duplex status',
                 'Interface *: State transitions',
@@ -221,6 +269,12 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
                 expected_patterns <= patterns,
                 f'missing={sorted(expected_patterns - patterns)}',
             )
+            if name == 'EXOS companion':
+                record(
+                    f'{name} Diagnostics has no flaps (stock EXOS has none)',
+                    'Interface *: State transitions' not in patterns,
+                    f'got={sorted(patterns)}',
+                )
         compact = item_widget.get('height') == '2' and item_fields.get('show.0') == '2'
         record(f'{name} compact Diagnostics value', compact, f'height={item_widget.get("height")}')
 
@@ -319,7 +373,6 @@ def validate_exos_observability(doc: dict) -> None:
     expected = {
         'exos.observability.cpu.util',
         'exos.observability.temperature',
-        'exos.observability.uptime',
         'exos.observability.icmp',
         'exos.observability.snmp',
     }

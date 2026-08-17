@@ -839,89 +839,6 @@ zabbix_export:
           - type: STRING
             name: units
             value: '%'
-        - type: gauge
-          name: Memory utilization
-          'y': '4'
-          width: '18'
-          height: '4'
-          fields:
-          - type: INTEGER
-            name: decimal_places
-            value: '0'
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Extreme IQ Engine by SNMP
-              key: ah.system.memory.util
-          - type: STRING
-            name: thresholds.0.color
-            value: 0EC9AC
-          - type: STRING
-            name: thresholds.0.threshold
-            value: '0'
-          - type: STRING
-            name: thresholds.1.color
-            value: FFD54F
-          - type: STRING
-            name: thresholds.1.threshold
-            value: '80'
-          - type: STRING
-            name: thresholds.2.color
-            value: FF465C
-          - type: STRING
-            name: thresholds.2.threshold
-            value: '90'
-          - type: INTEGER
-            name: th_show_arc
-            value: '1'
-          - type: INTEGER
-            name: th_show_labels
-            value: '1'
-          - type: STRING
-            name: units
-            value: '%'
-        - type: gauge
-          name: Temperature
-          x: '18'
-          'y': '4'
-          width: '18'
-          height: '4'
-          fields:
-          - type: INTEGER
-            name: decimal_places
-            value: '0'
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Extreme IQ Engine by SNMP
-              key: ah.system.temp
-          - type: STRING
-            name: thresholds.0.color
-            value: 0EC9AC
-          - type: STRING
-            name: thresholds.0.threshold
-            value: '0'
-          - type: STRING
-            name: thresholds.1.color
-            value: FFD54F
-          - type: STRING
-            name: thresholds.1.threshold
-            value: '70'
-          - type: STRING
-            name: thresholds.2.color
-            value: FF465C
-          - type: STRING
-            name: thresholds.2.threshold
-            value: '85'
-          - type: INTEGER
-            name: th_show_arc
-            value: '1'
-          - type: INTEGER
-            name: th_show_labels
-            value: '1'
-          - type: STRING
-            name: units
-            value: °C
         - type: item
           name: Clients
           x: '54'
@@ -941,7 +858,7 @@ zabbix_export:
             value: '2'
         - type: svggraph
           name: CPU and memory history
-          'y': '8'
+          'y': '7'
           width: '36'
           height: '6'
           fields:
@@ -979,7 +896,7 @@ zabbix_export:
         - type: svggraph
           name: Client history
           x: '36'
-          'y': '8'
+          'y': '7'
           width: '36'
           height: '6'
           fields:
@@ -1001,10 +918,9 @@ zabbix_export:
             name: show_problems
             value: '1'
         - type: problems
-          x: '36'
           'y': '4'
-          width: '36'
-          height: '4'
+          width: '72'
+          height: '3'
           fields:
           - type: STRING
             name: reference
@@ -1057,7 +973,7 @@ zabbix_export:
           fields:
           - type: INTEGER
             name: columns
-            value: '1'
+            value: '2'
           - type: GRAPH_PROTOTYPE
             name: graphid.0
             value:
@@ -1074,7 +990,7 @@ zabbix_export:
           fields:
           - type: INTEGER
             name: columns
-            value: '1'
+            value: '2'
           - type: GRAPH_PROTOTYPE
             name: graphid.0
             value:
@@ -1110,16 +1026,10 @@ zabbix_export:
             value: 'Radio *: TX frames dropped'
           - type: STRING
             name: items.4
-            value: 'Radio *: Channel'
+            value: 'Radio *: RX data frames'
           - type: STRING
             name: items.5
-            value: 'Interface *: Operational status'
-          - type: STRING
-            name: items.6
-            value: 'Interface *: Bits received'
-          - type: STRING
-            name: items.7
-            value: 'Interface *: Bits sent'
+            value: 'Radio *: Channel'
           - type: STRING
             name: reference
             value: XINAV

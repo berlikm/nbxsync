@@ -2526,7 +2526,7 @@ zabbix_export:
         - type: svggraph
           name: CPU history
           'y': '7'
-          width: '72'
+          width: '36'
           height: '6'
           fields:
           - type: STRING
@@ -2549,6 +2549,30 @@ zabbix_export:
           - type: STRING
             name: reference
             value: VCPUH
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+        - type: svggraph
+          name: Uptime history
+          x: '36'
+          'y': '7'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: 2774A4
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: Extreme VOSS by SNMP
+              key: system.net.uptime[sysUpTime.0]
+          - type: STRING
+            name: reference
+            value: VUPTH
           - type: INTEGER
             name: show_problems
             value: '1'

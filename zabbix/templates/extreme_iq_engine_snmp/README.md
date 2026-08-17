@@ -10,7 +10,7 @@ Zabbix → Templates → Import → `template_net_extreme_iq_engine_snmp.yaml` (
 
 Template Rule: platform name contains `IQ ENGINE` (case-insensitive). `HiveOS` alone does not match.
 
-Host dashboard **Health** (pages Health + RF) ships in this YAML.
+Host dashboard **Health** (pages Overview / RF / Diagnostics) plus **Network interfaces** ships in this YAML.
 
 | NetBox | Effect |
 |---|---|

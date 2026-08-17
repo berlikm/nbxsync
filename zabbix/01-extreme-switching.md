@@ -75,9 +75,9 @@ Not a country/role board. After the platform template is linked, **Monitoring �
 
 | Page | What you see in 5 seconds |
 |---|---|
-| **Overview** | ICMP / SNMP / CPU / (EXOS temp · VOSS uptime · AP clients). Problems. CPU history. |
-| **Hardware / RF** | VOSS/EXOS fan/PSU/temp honeycombs; IQ radios (noise, Tx, retries/drops). |
-| **Diagnostics** | Switches: one interface → status/speed/duplex/traffic/errors/discards/flaps. APs: one radio → noise/Tx/retries/drops (eth bits still listed). |
+| **Overview** | ICMP / SNMP / CPU / 4th tile (EXOS temp · VOSS uptime · AP clients). Full-width problems. Two history panes. |
+| **Hardware / RF** | VOSS/EXOS fan/PSU honeycombs + memory graphs; IQ radios (noise map, Tx, retries/drops side-by-side). |
+| **Diagnostics** | Switches: one interface → status/speed/duplex/traffic/errors/discards (VOSS also flaps). APs: one radio → noise/Tx/retries/drops/RX/channel. Eth for APs lives on **Network interfaces**. |
 
 **Network interfaces → Overview** is the same compact status map + 3×2 native graph grid on all three. VOSS/IQ ship it in YAML; `--apply` patches stock EXOS layout only (does not fork the graph prototype). VOSS/EXOS graphs keep RX/TX on one axis and errors/discards on the other; IQ shows RX/TX. Open a tile for history. Ethernet is full duplex: do **not** sum RX+TX for congestion.
 
@@ -174,7 +174,7 @@ A site WAN blip must not be one High per switch. Those Highs **depend on** a sit
 | Extreme EXOS Observability | Platform EXOS Template Rule; links the stock template and owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; owns the native **Network interfaces** graph prototype/dashboard |
 
-We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid. The companion carries calculated mirrors for Health gauges/SVG history and owns **Diagnostics**.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid. The companion carries calculated mirrors for Health gauges/SVG history and owns **Health** (Overview / Hardware / Diagnostics). Hardware memory graphs bind to the stock `#{#SNMPVALUE}: Memory utilization` prototype.
 
 Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on stock is typically Warning until we match VOSS (Average) without a fork.
 

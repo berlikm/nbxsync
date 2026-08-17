@@ -35,16 +35,6 @@ zabbix_export:
       tags:
       - tag: component
         value: temperature
-    - uuid: 9fb6337537c64bcdbe226e1ea67ae5f4
-      name: 'Observability: Uptime'
-      type: CALCULATED
-      key: exos.observability.uptime
-      delay: 1m
-      units: uptime
-      params: 'last(//system.net.uptime[sysUpTime.0])'
-      tags:
-      - tag: component
-        value: system
     - uuid: a7c14e82b6d94f0e9c3a1d5e8f2b4c60
       name: 'Observability: ICMP ping'
       type: CALCULATED
@@ -382,7 +372,7 @@ zabbix_export:
             value: '#*: Memory utilization'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}}'
+            value: '{{ITEM.NAME}.regsub("^#(.*): Memory utilization$","\\1")}'
           - type: STRING
             name: reference
             value: EMEMR
@@ -404,6 +394,23 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '90'
+        - type: graphprototype
+          name: Memory utilization
+          'y': '5'
+          width: '72'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '1'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: Extreme EXOS by SNMP
+              name: '#{#SNMPVALUE}: Memory utilization'
+          - type: STRING
+            name: reference
+            value: EMEMG
       - name: Diagnostics
         widgets:
         - type: itemnavigator
@@ -444,9 +451,6 @@ zabbix_export:
           - type: STRING
             name: items.8
             value: 'Interface *: Outbound packets discarded'
-          - type: STRING
-            name: items.9
-            value: 'Interface *: State transitions'
           - type: STRING
             name: reference
             value: EINAV
