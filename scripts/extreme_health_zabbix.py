@@ -187,7 +187,7 @@ def assert_template_dashboard(
 
 
 def patch_exos_stock_interface_dashboard(api: Any) -> str:
-    """Make the stock EXOS interface dashboard match the VOSS/IQ map + click-history + grid."""
+    """Make the stock EXOS interface dashboard match the VOSS/IQ map + 3x2 grid."""
     tid = _template_id(api, EXOS_STOCK_TEMPLATE)
     if not tid:
         return 'missing-template'
@@ -231,24 +231,21 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
         return {str(f.get('name')): str(f.get('value')) for f in (widget.get('fields') or [])}
 
     map_widget = next((w for w in widgets if w.get('type') == 'honeycomb'), {})
-    item_widget = next((w for w in widgets if w.get('type') == 'item'), {})
-    svg_widget = next((w for w in widgets if w.get('type') == 'svggraph'), {})
     grid_widget = next((w for w in widgets if w.get('type') == 'graphprototype'), {})
     grid_fields = field_map(grid_widget)
-    item_fields = field_map(item_widget)
-    svg_fields = field_map(svg_widget)
+    map_fields = field_map(map_widget)
     already = (
         page.get('name') == 'Overview'
-        and map_widget.get('width') == '36'
-        and map_widget.get('height') == '8'
-        and item_fields.get('itemid._reference') == 'EIMAP._itemid'
-        and svg_fields.get('ds.0.itemids.0._reference') == 'EIMAP._itemid'
+        and map_widget.get('width') == '72'
+        and map_widget.get('height') == '4'
+        and map_fields.get('secondary_label') == '{ITEM.LASTVALUE}'
         and grid_widget.get('width') == '72'
         and grid_widget.get('height') == '11'
-        and grid_widget.get('y') == '8'
+        and grid_widget.get('y') == '4'
         and grid_fields.get('columns') == '3'
         and grid_fields.get('rows') == '2'
         and grid_fields.get('graphid.0') == graphid
+        and not any(w.get('type') in ('item', 'svggraph') for w in widgets)
     )
     if already:
         return 'ok'
@@ -259,8 +256,8 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
             'name': 'Interface map',
             'x': '0',
             'y': '0',
-            'width': '36',
-            'height': '8',
+            'width': '72',
+            'height': '4',
             'view_mode': '0',
             'fields': [
                 {'type': '1', 'name': 'items.0', 'value': 'Interface *: Operational status'},
@@ -269,6 +266,8 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
                     'name': 'primary_label',
                     'value': '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\\1")}',
                 },
+                {'type': '0', 'name': 'secondary_label_type', 'value': '0'},
+                {'type': '1', 'name': 'secondary_label', 'value': '{ITEM.LASTVALUE}'},
                 {'type': '1', 'name': 'reference', 'value': 'EIMAP'},
                 {'type': '1', 'name': 'thresholds.0.color', 'value': '878787'},
                 {'type': '1', 'name': 'thresholds.0.threshold', 'value': '0'},
@@ -279,41 +278,10 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
             ],
         },
         {
-            'type': 'item',
-            'name': 'Selected interface',
-            'x': '36',
-            'y': '0',
-            'width': '36',
-            'height': '2',
-            'view_mode': '0',
-            'fields': [
-                {'type': '1', 'name': 'itemid._reference', 'value': 'EIMAP._itemid'},
-                {'type': '0', 'name': 'show.0', 'value': '1'},
-                {'type': '0', 'name': 'show.1', 'value': '2'},
-                {'type': '0', 'name': 'value_size', 'value': '25'},
-            ],
-        },
-        {
-            'type': 'svggraph',
-            'name': 'Selected interface history',
-            'x': '36',
-            'y': '2',
-            'width': '36',
-            'height': '6',
-            'view_mode': '0',
-            'fields': [
-                {'type': '1', 'name': 'ds.0.color.0', 'value': '42A5F5'},
-                {'type': '0', 'name': 'ds.0.dataset_type', 'value': '0'},
-                {'type': '1', 'name': 'ds.0.itemids.0._reference', 'value': 'EIMAP._itemid'},
-                {'type': '1', 'name': 'reference', 'value': 'EIHST'},
-                {'type': '0', 'name': 'righty', 'value': '0'},
-            ],
-        },
-        {
             'type': 'graphprototype',
             'name': 'Interface traffic and errors',
             'x': '0',
-            'y': '8',
+            'y': '4',
             'width': '72',
             'height': '11',
             'view_mode': '0',
@@ -340,7 +308,7 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
             ],
         },
     )
-    logger.info('  %s: interface dashboard updated to map + click-history + 3x2 grid', EXOS_STOCK_TEMPLATE)
+    logger.info('  %s: interface dashboard updated to map + 3x2 graph grid', EXOS_STOCK_TEMPLATE)
     return 'patched'
 
 

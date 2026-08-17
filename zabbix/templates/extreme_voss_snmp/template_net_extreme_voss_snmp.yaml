@@ -2390,8 +2390,20 @@ zabbix_export:
           height: '4'
           fields:
           - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
             name: decimal_places
             value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: value_size
+            value: '32'
           - type: ITEM
             name: itemid.0
             value:
@@ -2428,8 +2440,20 @@ zabbix_export:
           height: '4'
           fields:
           - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
             name: decimal_places
             value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: value_size
+            value: '32'
           - type: ITEM
             name: itemid.0
             value:
@@ -2466,8 +2490,20 @@ zabbix_export:
           height: '4'
           fields:
           - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
             name: decimal_places
             value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: value_size
+            value: '32'
           - type: ITEM
             name: itemid.0
             value:
@@ -2496,7 +2532,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: th_show_labels
-            value: '1'
+            value: '0'
           - type: STRING
             name: units
             value: '%'
@@ -2513,10 +2549,10 @@ zabbix_export:
               key: system.net.uptime[sysUpTime.0]
           - type: INTEGER
             name: show.0
-            value: '1'
-          - type: INTEGER
-            name: show.1
             value: '2'
+          - type: INTEGER
+            name: value_size
+            value: '32'
         - type: problems
           'y': '4'
           width: '72'
@@ -2596,7 +2632,13 @@ zabbix_export:
             value: 'Fan *: Fan status'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Fan (.*): Fan status$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Fan (.*): Fan status$","\1")}'
+          - type: INTEGER
+            name: secondary_label_type
+            value: '0'
+          - type: STRING
+            name: secondary_label
+            value: '{ITEM.LASTVALUE}'
           - type: STRING
             name: reference
             value: VFANS
@@ -2629,7 +2671,13 @@ zabbix_export:
             value: 'PSU *: Power supply status'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^PSU (.*): Power supply status$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^PSU (.*): Power supply status$","\1")}'
+          - type: INTEGER
+            name: secondary_label_type
+            value: '0'
+          - type: STRING
+            name: secondary_label
+            value: '{ITEM.LASTVALUE}'
           - type: STRING
             name: reference
             value: VPSUS
@@ -2662,7 +2710,13 @@ zabbix_export:
             value: 'Temperature status sensor *'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Temperature status sensor (.*)$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Temperature status sensor (.*)$","\1")}'
+          - type: INTEGER
+            name: secondary_label_type
+            value: '0'
+          - type: STRING
+            name: secondary_label
+            value: '{ITEM.LASTVALUE}'
           - type: STRING
             name: reference
             value: VTEMP
@@ -2797,8 +2851,8 @@ zabbix_export:
         widgets:
         - type: honeycomb
           name: Interface map
-          width: '36'
-          height: '8'
+          width: '72'
+          height: '4'
           fields:
           - type: STRING
             name: items.0
@@ -2806,6 +2860,12 @@ zabbix_export:
           - type: STRING
             name: primary_label
             value: '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\1")}'
+          - type: INTEGER
+            name: secondary_label_type
+            value: '0'
+          - type: STRING
+            name: secondary_label
+            value: '{ITEM.LASTVALUE}'
           - type: STRING
             name: reference
             value: VIMAP
@@ -2827,49 +2887,9 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '2'
-        - type: item
-          name: Selected interface
-          x: '36'
-          width: '36'
-          height: '2'
-          fields:
-          - type: STRING
-            name: itemid._reference
-            value: VIMAP._itemid
-          - type: INTEGER
-            name: show.0
-            value: '1'
-          - type: INTEGER
-            name: show.1
-            value: '2'
-          - type: INTEGER
-            name: value_size
-            value: '25'
-        - type: svggraph
-          name: Selected interface history
-          x: '36'
-          'y': '2'
-          width: '36'
-          height: '6'
-          fields:
-          - type: STRING
-            name: ds.0.color.0
-            value: 42A5F5
-          - type: INTEGER
-            name: ds.0.dataset_type
-            value: '0'
-          - type: STRING
-            name: ds.0.itemids.0._reference
-            value: VIMAP._itemid
-          - type: STRING
-            name: reference
-            value: VIHST
-          - type: INTEGER
-            name: righty
-            value: '0'
         - type: graphprototype
           name: Interface traffic and errors
-          'y': '8'
+          'y': '4'
           width: '72'
           height: '11'
           fields:

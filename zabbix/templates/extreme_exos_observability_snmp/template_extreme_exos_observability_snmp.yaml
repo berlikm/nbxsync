@@ -76,8 +76,20 @@ zabbix_export:
           height: '4'
           fields:
           - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
             name: decimal_places
             value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: value_size
+            value: '32'
           - type: ITEM
             name: itemid.0
             value:
@@ -114,8 +126,20 @@ zabbix_export:
           height: '4'
           fields:
           - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
             name: decimal_places
             value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: value_size
+            value: '32'
           - type: ITEM
             name: itemid.0
             value:
@@ -152,8 +176,20 @@ zabbix_export:
           height: '4'
           fields:
           - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
             name: decimal_places
             value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: value_size
+            value: '32'
           - type: ITEM
             name: itemid.0
             value:
@@ -182,7 +218,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: th_show_labels
-            value: '1'
+            value: '0'
           - type: STRING
             name: units
             value: '%'
@@ -193,8 +229,20 @@ zabbix_export:
           height: '4'
           fields:
           - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
             name: decimal_places
             value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: value_size
+            value: '32'
           - type: ITEM
             name: itemid.0
             value:
@@ -223,7 +271,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: th_show_labels
-            value: '1'
+            value: '0'
           - type: STRING
             name: units
             value: °C
@@ -306,7 +354,13 @@ zabbix_export:
             value: 'Fan *: Fan status'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Fan (.*): Fan status$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Fan (.*): Fan status$","\1")}'
+          - type: INTEGER
+            name: secondary_label_type
+            value: '0'
+          - type: STRING
+            name: secondary_label
+            value: '{ITEM.LASTVALUE}'
           - type: STRING
             name: reference
             value: EFANS
@@ -339,7 +393,13 @@ zabbix_export:
             value: 'PSU *: Power supply status'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^PSU (.*): Power supply status$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^PSU (.*): Power supply status$","\1")}'
+          - type: INTEGER
+            name: secondary_label_type
+            value: '0'
+          - type: STRING
+            name: secondary_label
+            value: '{ITEM.LASTVALUE}'
           - type: STRING
             name: reference
             value: EPSUS
@@ -372,7 +432,13 @@ zabbix_export:
             value: '#*: Memory utilization'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^#(.*): Memory utilization$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^#(.*): Memory utilization$","\1")}'
+          - type: INTEGER
+            name: secondary_label_decimal_places
+            value: '0'
+          - type: INTEGER
+            name: secondary_label_type
+            value: '1'
           - type: STRING
             name: reference
             value: EMEMR

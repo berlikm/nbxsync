@@ -40,7 +40,7 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 | Switch ICMP loss/RTT Warning | CH proxy RTT is WAN, not box health | **DISABLED** (items stay; same as APs) |
 | EXOS SNMP-dead | Stock Warning | Still stock (do not fork); VOSS/IQ are Average |
 | “Never silent” | Census only | Average trigger on unsupported-item count |
-| Host dashboards | Traffic gallery only | **Health** for chassis/diagnostics plus unified **Network interfaces** status map, click-selected history, and graph grid |
+| Host dashboards | Traffic gallery only | **Health** for chassis/diagnostics plus unified **Network interfaces** status map and graph grid |
 
 ## Zero-touch / re-apply (do not break existing hosts)
 
@@ -50,7 +50,7 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 | Role IFALIAS / IFTYPE / Access `PORTID.*` | nbxSync MacroAssignment | Inherited on sync | Updates assignment **values**; next sync of a host pushes macros. `--apply` does **not** mass-sync |
 | SNMP Monitoring CG on Switch* / AP | zerotouch | Inherited interface + SNMPv3 | Empty env **must not** wipe existing secrets (zerotouch already leaves them) |
 | YAML import `updateExisting` + `deleteMissing: false` | network `--apply` | n/a | Updates items/triggers/dashboards on the **template**; every already-linked host inherits. Does **not** delete hosts, interfaces, or history |
-| Stock EXOS patches (TEMP_*, EtherLike IFALIAS, IF LLD 15m/0, ICMP loss disable, interface grid) + Observability companion | network `--apply` | n/a | Companion YAML owns Health; stock keeps its graph prototype while its existing dashboard is normalized to the shared map + click-selected history + 3×2 grid |
+| Stock EXOS patches (TEMP_*, EtherLike IFALIAS, IF LLD 15m/0, ICMP loss disable, interface grid) + Observability companion | network `--apply` | n/a | Companion YAML owns Health; stock keeps its graph prototype while its existing dashboard is normalized to the shared map + 3×2 grid |
 | Speed Expect / OSPF | imported, **not** assigned | Stays off | `--apply` without `--link-speed-expect` **does not unlink** if someone linked it earlier |
 | Global `create_dashboards.py` | not part of apply | — | Do not run on re-apply (hostgroup boards, not Health) |
 | VOSS/IQ TemplateRule when YAML is not in Zabbix yet | zerotouch | skip writing the rule | **Does not** retarget an existing Extreme rule at Network Generic |
@@ -72,7 +72,7 @@ Mass `SyncHostJob` is **not** required for template dashboard / trigger-status c
 
 ## Health dashboard (host, from template)
 
-Two host-level dashboards: **Health** for chassis/diagnostics and **Network interfaces** for the status map, click-selected history, and combined discovered graphs. Open **Monitoring → Hosts → host → Dashboards**. No hostgroup widgets, no Host Navigator.
+Two host-level dashboards: **Health** for chassis/diagnostics and **Network interfaces** for the status map and combined discovered graphs. Open **Monitoring → Hosts → host → Dashboards**. No hostgroup widgets, no Host Navigator.
 
 | Page | Question | Widgets (Zabbix 7 template-safe) |
 |---|---|---|
@@ -80,7 +80,9 @@ Two host-level dashboards: **Health** for chassis/diagnostics and **Network inte
 | Hardware / RF | Are FRUs or radios unhealthy? | Honeycombs. Switches: memory graph under the map. IQ: noise/Tx **and** retries/drops in a 2-column radio grid. |
 | Diagnostics | What is the exact state of one object? | Switches: interface-tagged navigator (EXOS has no flap counter in stock). APs: **radio**-tagged navigator only — eth lives on **Network interfaces**. |
 
-All platforms expose **Network interfaces → Overview** with the same status map, click-selected status history, and 3×2 graph grid. Click a hex to load that port’s operational-status item and SVG history (honeycomb `_itemid` broadcast). Zabbix 7 cannot open that port’s Network traffic graph prototype from the map; use **Health → Diagnostics** for bits/errors/discards of one interface. VOSS/IQ ship it in YAML; `--apply` applies the layout to the existing stock EXOS dashboard. VOSS/EXOS graphs combine RX/TX with errors/discards on a secondary axis; IQ Engine shows RX/TX only. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet.
+All platforms expose **Network interfaces → Overview** with the same compact status map and 3×2 graph grid. The map is scan-only (red/green). Zabbix 7 cannot open that port’s Network traffic graph from a hex; use **Health → Diagnostics** for bits/errors/discards of one interface. VOSS/IQ ship it in YAML; `--apply` applies the layout to the existing stock EXOS dashboard. VOSS/EXOS graphs combine RX/TX with errors/discards on a secondary axis; IQ Engine shows RX/TX only. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet.
+
+Overview gauges show the value and colour arc only (no item-name caption, no 0/1 scale labels). Honeycomb cells show the extracted index/name plus the mapped state (`up`), not `\\1` or `up (3.00)`.
 
 Honeycomb thresholds are `>=`. VOSS fan `notpresent(4)` therefore paints like `down(3)` (red). Empty PSU `empty(2)` stays grey (green starts at 3). EXOS PSU `notPresent(1)` stays grey (green starts at 2). Do not “fix” that with inverted colours; filter LLD later if empty fans noise the map.
 

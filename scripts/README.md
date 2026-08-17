@@ -92,5 +92,5 @@ Optional: `--verify` (census), `--link-speed-expect` (Extreme stage 4), `--cutov
 | Dell iDRAC SNMPv3 / SPACE :10060 | yes | — |
 | Extreme TemplateRules (EXOS/VOSS/IQ) | ensure when template exists; **never** fall back to Network Generic | import + retarget if a rule still points at Network Generic |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
-| Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + map/click-history/3×2 interface grid; companion owns Health | — | yes |
+| Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |

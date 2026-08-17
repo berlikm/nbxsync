@@ -197,6 +197,36 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             and all(str(w.get('width')) == '36' and str(w.get('height')) == '6' and _wy(w) == '7' for w in histories),
             f'histories={[(w.get("name"), w.get("width"), _wy(w)) for w in histories]}',
         )
+        gauges = [w for w in (overview.get('widgets') or []) if w.get('type') == 'gauge']
+        chrome = []
+        chrome_ok = bool(gauges)
+        for gauge in gauges:
+            gfields = {f.get('name'): f.get('value') for f in (gauge.get('fields') or [])}
+            shows = {str(f.get('value')) for f in (gauge.get('fields') or []) if str(f.get('name')).startswith('show.')}
+            ok = shows == {'2', '5'} and str(gfields.get('th_show_labels')) == '0' and str(gfields.get('angle')) == '270'
+            chrome_ok = chrome_ok and ok
+            chrome.append((gauge.get('name'), sorted(shows), gfields.get('th_show_labels')))
+        record(f'{name} Overview gauge chrome', chrome_ok, f'{chrome}')
+
+    honey_ok = True
+    honey_seen = False
+    honey_detail = []
+    for page in dash.get('pages') or []:
+        for widget in page.get('widgets') or []:
+            if widget.get('type') != 'honeycomb':
+                continue
+            honey_seen = True
+            hfields = {f.get('name'): f.get('value') for f in (widget.get('fields') or [])}
+            label = str(hfields.get('primary_label') or '')
+            capture_ok = True
+            if 'regsub(' in label:
+                match = re.search(r',"(\\+)1"\)', label)
+                capture_ok = bool(match) and len(match.group(1)) == 1
+            secondary_ok = str(hfields.get('secondary_label_type')) in {'0', '1'}
+            honey_ok = honey_ok and capture_ok and secondary_ok
+            honey_detail.append((widget.get('name'), capture_ok, secondary_ok))
+    if honey_seen:
+        record(f'{name} honeycomb labels', honey_ok, f'{honey_detail}')
 
     def fields(widget: dict) -> dict[str, object]:
         return {f.get('name'): f.get('value') for f in (widget.get('fields') or [])}
@@ -296,36 +326,33 @@ def validate_interface_dashboard(name: str, tpl: dict) -> None:
         return
     widgets = overview.get('widgets') or []
     map_widget = next((w for w in widgets if w.get('type') == 'honeycomb'), {})
-    item_widget = next((w for w in widgets if w.get('type') == 'item'), {})
-    svg_widget = next((w for w in widgets if w.get('type') == 'svggraph'), {})
     grid_widget = next((w for w in widgets if w.get('type') == 'graphprototype'), {})
     map_fields = {f.get('name'): f.get('value') for f in (map_widget.get('fields') or [])}
-    item_fields = {f.get('name'): f.get('value') for f in (item_widget.get('fields') or [])}
-    svg_fields = {f.get('name'): f.get('value') for f in (svg_widget.get('fields') or [])}
     grid_fields = {f.get('name'): f.get('value') for f in (grid_widget.get('fields') or [])}
     graph_ref = grid_fields.get('graphid.0')
-    map_ref = map_fields.get('reference')
+    extra = [w.get('type') for w in widgets if w.get('type') not in ('honeycomb', 'graphprototype')]
     unified = (
-        map_widget.get('width') == '36'
-        and map_widget.get('height') == '8'
+        map_widget.get('width') == '72'
+        and map_widget.get('height') == '4'
         and grid_widget.get('width') == '72'
         and grid_widget.get('height') == '11'
-        and grid_widget.get('y') == '8'
+        and grid_widget.get('y') == '4'
         and grid_fields.get('columns') == '3'
         and grid_fields.get('rows') == '2'
         and isinstance(graph_ref, dict)
         and 'Network traffic' in str(graph_ref.get('name'))
     )
-    click_ok = (
-        bool(map_ref)
-        and item_fields.get('itemid._reference') == f'{map_ref}._itemid'
-        and svg_fields.get('ds.0.itemids.0._reference') == f'{map_ref}._itemid'
-        and item_widget.get('width') == '36'
-        and svg_widget.get('width') == '36'
-        and svg_widget.get('height') == '6'
+    label = str(map_fields.get('primary_label') or '')
+    match = re.search(r',"(\\+)1"\)', label)
+    labels_ok = (
+        bool(match)
+        and len(match.group(1)) == 1
+        and str(map_fields.get('secondary_label_type')) == '0'
+        and map_fields.get('secondary_label') == '{ITEM.LASTVALUE}'
     )
     record(f'{name} unified interface graph grid', unified, f'graph={graph_ref}')
-    record(f'{name} honeycomb click loads selected history', click_ok, f'ref={map_ref}')
+    record(f'{name} interface map is scan-only', extra == [], f'extra={extra}')
+    record(f'{name} interface map labels', labels_ok, f'label={label}')
 
 
 def validate_voss(doc: dict) -> None:

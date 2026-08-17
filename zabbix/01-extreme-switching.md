@@ -17,7 +17,7 @@ Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md]
 | Never silent | unsupported-item **Average** trigger; zero discovered interfaces = Health honeycomb/census; proxy last-seen |
 | Control plane | on-box `ifAlias` + role macros. Access collects **only** `USW`+`UP`; a mistyped uplink → no items |
 | Collect first | Speed Expect / Routing **imported, not linked**. Util off (`{$IF.UTIL.MAX}=101` and Speed Expect `{$IF.UTIL.MAX:"USW"}=101`). ISIS/card High **gated off** |
-| Host dashboards | **Health** for chassis/diagnostics; **Network interfaces** for the status map, click-selected history, and combined interface graph grid. |
+| Host dashboards | **Health** for chassis/diagnostics; **Network interfaces** for the status map and combined interface graph grid. |
 | Severity | **Disaster** = site only. Warning = next day, not a dump bucket |
 
 Do **not** stack Network Generic (`icmpping` collision). Mute a port with **`X`**, not `{$IFCONTROL:"{#IFNAME}"}`.
@@ -79,7 +79,7 @@ Not a country/role board. After the platform template is linked, **Monitoring �
 | **Hardware / RF** | VOSS/EXOS fan/PSU honeycombs + memory graphs; IQ radios (noise map, Tx, retries/drops side-by-side). |
 | **Diagnostics** | Switches: one interface → status/speed/duplex/traffic/errors/discards (VOSS also flaps). APs: one radio → noise/Tx/retries/drops/RX/channel. Eth for APs lives on **Network interfaces**. |
 
-**Network interfaces → Overview** is the same layout on all three: status honeycomb on the left, click-selected port on the right, 3×2 native graph grid underneath. Click a hex to load that port’s operational status and status history. Zabbix 7 can broadcast the honeycomb **item**, not jump to that port’s Network traffic graph — the 3×2 grid stays every discovered port; per-port bits/errors/discards is **Health → Diagnostics**. VOSS/IQ ship this in YAML; `--apply` patches stock EXOS layout only (does not fork the graph prototype). VOSS/EXOS graphs keep RX/TX on one axis and errors/discards on the other; IQ shows RX/TX. Ethernet is full duplex: do **not** sum RX+TX for congestion.
+**Network interfaces → Overview** is the same compact status map + 3×2 native graph grid on all three. The map is for scanning red/green; Zabbix 7 cannot open that port’s traffic graph from a hex. Per-port bits/errors/discards is **Health → Diagnostics**. VOSS/IQ ship this in YAML; `--apply` patches stock EXOS layout only (does not fork the graph prototype). VOSS/EXOS graphs keep RX/TX on one axis and errors/discards on the other; IQ shows RX/TX. Ethernet is full duplex: do **not** sum RX+TX for congestion.
 
 Util and intended-speed comparison stay graphs until Speed Expect is linked.
 
@@ -126,7 +126,7 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - Does **not** unlink Speed Expect if it was linked earlier (no `--link-speed-expect` ≠ unlink)  
 - Does **not** run `create_dashboards.py`  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
-- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m/keep-lost 0, EXOS ICMP loss/RTT disable and stock **Network interfaces** map + click-selected history + 3×2 layout; Health comes from YAML/companion
+- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m/keep-lost 0, EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion
 
 Per-host sync only when **that** device’s NetBox role/platform/macros changed.
 
@@ -174,7 +174,7 @@ A site WAN blip must not be one High per switch. Those Highs **depend on** a sit
 | Extreme EXOS Observability | Platform EXOS Template Rule; links the stock template and owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; owns the native **Network interfaces** graph prototype/dashboard |
 
-We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + click-selected history + 3×2 grid. The companion carries calculated mirrors for Health gauges/SVG history and owns **Health** (Overview / Hardware / Diagnostics). Hardware memory graphs bind to the stock `#{#SNMPVALUE}: Memory utilization` prototype.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid. The companion carries calculated mirrors for Health gauges/SVG history and owns **Health** (Overview / Hardware / Diagnostics). Hardware memory graphs bind to the stock `#{#SNMPVALUE}: Memory utilization` prototype.
 
 Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on stock is typically Warning until we match VOSS (Average) without a fork.
 
