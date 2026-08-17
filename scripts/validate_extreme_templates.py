@@ -305,7 +305,14 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
         )
 
 
-def validate_interface_dashboard(name: str, tpl: dict, *, port_page: bool = False, flaps: bool = False) -> None:
+def validate_interface_dashboard(
+    name: str,
+    tpl: dict,
+    *,
+    port_page: bool = False,
+    flaps: bool = False,
+    compact_map: bool = False,
+) -> None:
     dashboards = tpl.get('dashboards') or []
     matches = [d for d in dashboards if d.get('name') == 'Network interfaces']
     record(
@@ -327,12 +334,19 @@ def validate_interface_dashboard(name: str, tpl: dict, *, port_page: bool = Fals
     grid_fields = {f.get('name'): f.get('value') for f in (grid_widget.get('fields') or [])}
     graph_ref = grid_fields.get('graphid.0')
     extra = [w.get('type') for w in widgets if w.get('type') not in ('honeycomb', 'graphprototype')]
+    # Zabbix honeycomb has a 32px floor and no max cell size: cells fill the
+    # widget. Switches (many ports) need 72×6 so names survive a modest window.
+    # IQ APs have ~2 eth — the same box paints giant hexes. Cap that map.
+    if compact_map:
+        map_ok = map_widget.get('width') == '12' and map_widget.get('height') == '3'
+        grid_ok = grid_widget.get('height') == '11' and grid_widget.get('y') == '3'
+    else:
+        map_ok = map_widget.get('width') == '72' and map_widget.get('height') == '6'
+        grid_ok = grid_widget.get('height') == '8' and grid_widget.get('y') == '6'
     unified = (
-        map_widget.get('width') == '72'
-        and map_widget.get('height') == '6'
+        map_ok
+        and grid_ok
         and grid_widget.get('width') == '72'
-        and grid_widget.get('height') == '8'
-        and grid_widget.get('y') == '6'
         and grid_fields.get('columns') == '3'
         and grid_fields.get('rows') == '2'
         and isinstance(graph_ref, dict)
@@ -478,7 +492,7 @@ def validate_iq(doc: dict) -> None:
         record(f'IQ {n} DISABLED', bool(t) and t.get('status') == 'DISABLED', str((t or {}).get('status')))
     record('IQ unsupported trigger', 'Extreme IQ Engine: Too many unsupported items' in by_name, '')
     validate_health_dashboard('IQ', doc, tpl, pages=('Overview', 'RF'))
-    validate_interface_dashboard('IQ', tpl)
+    validate_interface_dashboard('IQ', tpl, compact_map=True)
 
 
 def validate_exos_observability(doc: dict) -> None:

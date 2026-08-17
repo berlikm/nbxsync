@@ -1115,8 +1115,8 @@ zabbix_export:
         widgets:
         - type: honeycomb
           name: Interfaces
-          width: '72'
-          height: '6'
+          width: '12'
+          height: '3'
           fields:
           - type: STRING
             name: items.0
@@ -1153,9 +1153,9 @@ zabbix_export:
             value: '2'
         - type: graphprototype
           name: Traffic
-          'y': '6'
+          'y': '3'
           width: '72'
-          height: '8'
+          height: '11'
           fields:
           - type: INTEGER
             name: columns

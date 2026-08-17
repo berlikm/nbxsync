@@ -59,7 +59,7 @@ Do **not** alert on: XIQ tenant as a host, VAP/SSID ifaces, a laptop on a switch
 | **Overview** | ICMP / SNMP / CPU / clients. Problems. CPU+mem and client history. Same 4-tile + strip + two panes as switches. |
 | **RF** | Radio noise honeycomb. Noise/Tx and retries/drops as a 2-column grid (wifi0 \| wifi1). Empty radios = census. |
 
-**Network interfaces → Overview** is the same map + 3×2 grid as switches (map height 6 so hex labels survive a modest window), scoped to AP eth (`ifType=6`). RF does not live there. There is no Health Diagnostics page and no Port page — AP eth has only status + RX/TX.
+**Network interfaces → Overview** is the same map + 3×2 grid as switches (same IFNAME labels and oper-status colours), scoped to AP eth (`ifType=6`). The map is **12×3**, not 72×6: Zabbix honeycomb has no max cell size, and an AP has ~2 eth, so a switch-sized widget paints two giant hexes. Traffic stays full width underneath. RF does not live there. There is no Health Diagnostics page and no Port page — AP eth has only status + RX/TX.
 
 ---
 
