@@ -17,7 +17,7 @@ Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md]
 | Never silent | unsupported-item **Average** trigger; zero discovered interfaces = Health honeycomb/census; proxy last-seen |
 | Control plane | on-box `ifAlias` + role macros. Access collects **only** `USW`+`UP`; a mistyped uplink â†’ no items |
 | Collect first | Speed Expect / Routing **imported, not linked**. Util off (`{$IF.UTIL.MAX}=101` and Speed Expect `{$IF.UTIL.MAX:"USW"}=101`). ISIS/card High **gated off** |
-| Host dashboard | Template dashboard **Health** (not country/role boards). Traffic is page **Path** |
+| Host dashboard | Template dashboard **Health** (not country/role boards). **Traffic** is an interactive interface map and metric drill-down. |
 | Severity | **Disaster** = site only. Warning = next day, not a dump bucket |
 
 Do **not** stack Network Generic (`icmpping` collision). Mute a port with **`X`**, not `{$IFCONTROL:"{#IFNAME}"}`.
@@ -77,9 +77,9 @@ Not a country/role board. After the platform template is linked, **Monitoring â†
 |---|---|
 | **Overview** | Gauges, current health, problems and SVG history. |
 | **Hardware / RF** | VOSS/EXOS hardware honeycombs; IQ Engine radio health and RF graphs. |
-| **Traffic** | Thin in-scope interface graph prototypes. |
+| **Traffic** | Interface status honeycomb; click a cell for status details, then select an interface/metric to update the traffic graph. |
 
-VOSS and IQ Engine ship **Health** in their YAML. Stock EXOS keeps upstream **Network interfaces** unchanged; the linked `Extreme EXOS Observability` companion owns **Health**.
+VOSS and IQ Engine ship **Health** in their YAML. The linked `Extreme EXOS Observability` companion gives EXOS the same **Overview / Hardware / Traffic** page model while stock EXOS keeps its upstream **Network interfaces** dashboard unchanged.
 
 Util and intended-speed comparison stay graphs until Speed Expect is linked.
 
@@ -174,7 +174,7 @@ A site WAN blip must not be one High per switch. Those Highs **depend on** a sit
 | Extreme EXOS Observability | Platform EXOS Template Rule; links the stock template and owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; upstream **Network interfaces** remains unchanged |
 
-We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, and disables ICMP loss/RTT noise. The companion carries calculated mirrors for dashboard gauges/SVG history and links the stock SNMP items.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, and disables ICMP loss/RTT noise. The companion carries calculated mirrors for dashboard gauges/SVG history; its Traffic page selects the linked stock interface items by pattern and tag.
 
 Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on stock is typically Warning until we match VOSS (Average) without a fork.
 

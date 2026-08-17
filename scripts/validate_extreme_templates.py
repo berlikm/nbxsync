@@ -147,6 +147,34 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             if True in w and 'y' not in w:
                 record(f'{name} widget y coerced', False, f'widget={w.get("name")} has YAML bool y')
     record(f'{name} Health has widgets', bool(refs), f'refs={len(refs)}')
+    traffic = next((p for p in (dash.get('pages') or []) if p.get('name') == 'Traffic'), None)
+    if traffic is not None:
+        widgets = traffic.get('widgets') or []
+        widget_types = {w.get('type') for w in widgets}
+        required = {'honeycomb', 'item', 'itemnavigator', 'svggraph'}
+        record(
+            f'{name} interactive Traffic widgets',
+            required <= widget_types,
+            f'got={sorted(str(t) for t in widget_types)}',
+        )
+
+        def fields(widget_type: str) -> dict[str, object]:
+            widget = next((w for w in widgets if w.get('type') == widget_type), {})
+            return {f.get('name'): f.get('value') for f in (widget.get('fields') or [])}
+
+        map_fields = fields('honeycomb')
+        item_fields = fields('item')
+        nav_fields = fields('itemnavigator')
+        graph_fields = fields('svggraph')
+        map_ref = map_fields.get('reference')
+        nav_ref = nav_fields.get('reference')
+        wired = (
+            bool(map_ref)
+            and item_fields.get('itemid._reference') == f'{map_ref}._itemid'
+            and bool(nav_ref)
+            and graph_fields.get('ds.0.itemids.0._reference') == f'{nav_ref}._itemid'
+        )
+        record(f'{name} interactive Traffic wiring', wired, f'map={map_ref} navigator={nav_ref}')
 
 
 def validate_voss(doc: dict) -> None:
@@ -220,7 +248,7 @@ def validate_exos_observability(doc: dict) -> None:
         'exos.observability.uptime',
     }
     record('EXOS companion calculated mirrors', expected <= keys, str(sorted(expected - keys)))
-    validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware'))
+    validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware', 'Traffic'))
 
 
 def validate_speed_expect(doc: dict) -> None:
@@ -324,7 +352,9 @@ def validate_zabbix() -> None:
     record('zbx VOSS Health', ok, detail)
     ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Traffic'))
     record('zbx IQ Health', ok, detail)
-    ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware'))
+    ok, detail = assert_template_dashboard(
+        api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware', 'Traffic')
+    )
     record('zbx EXOS companion Health', ok, detail)
     for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
         ok, detail = assert_wan_icmp_noise_disabled(api, tname)
