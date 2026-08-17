@@ -362,14 +362,18 @@ def main() -> int:
 
     patch = apply_extreme_health_patches(api)
     record('health patches', True, str(patch), group='import')
-    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
+    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware'))
     record('VOSS Health dashboard', ok, detail, group='health')
-    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Diagnostics'))
+    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF'))
     record('IQ Health dashboard', ok, detail, group='health')
-    ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
+    ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware'))
     record('EXOS companion Health dashboard', ok, detail, group='health')
-    for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
-        ok, detail = assert_template_dashboard(api, tname, 'Network interfaces', ('Overview',))
+    for tname, pages in (
+        ('Extreme VOSS by SNMP', ('Overview', 'Port')),
+        ('Extreme IQ Engine by SNMP', ('Overview',)),
+        ('Extreme EXOS by SNMP', ('Overview', 'Port')),
+    ):
+        ok, detail = assert_template_dashboard(api, tname, 'Network interfaces', pages)
         record(f'{tname} interface dashboard', ok, detail, group='health')
     ok, detail = assert_exos_stock_interface_grid(api)
     record('EXOS stock interface grid', ok, detail, group='health')

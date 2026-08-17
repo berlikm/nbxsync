@@ -3,7 +3,8 @@
 
 Used by ``configure_nbxsync_network.py`` and lab smokes. No Django. Never
 deletes hosts. EXOS Health ships on the ``Extreme EXOS Observability``
-companion; the stock interface dashboard receives a layout-only grid patch.
+companion; the stock interface dashboard receives a layout-only Overview + Port
+patch. Leftover Health Diagnostics pages are dropped on ``--apply``.
 """
 
 from __future__ import annotations
@@ -50,6 +51,20 @@ IQ_HEALTH_MACROS = {
 EXOS_STOCK_TEMPLATE = 'Extreme EXOS by SNMP'
 EXOS_INTERFACE_DASHBOARD = 'Network interfaces'
 EXOS_TRAFFIC_GRAPH = 'Interface {#IFNAME}({#IFALIAS}): Network traffic'
+EXOS_PORT_COUNTERS = (
+    'Interface *: Operational status',
+    'Interface *: Speed',
+    'Interface *: Duplex status',
+    'Interface *: Inbound packets with errors',
+    'Interface *: Outbound packets with errors',
+    'Interface *: Inbound packets discarded',
+    'Interface *: Outbound packets discarded',
+)
+HEALTH_TEMPLATES = (
+    'Extreme VOSS by SNMP',
+    'Extreme IQ Engine by SNMP',
+    'Extreme EXOS Observability',
+)
 
 
 def api_call(api: Any, method: str, params: dict | None = None) -> Any:
@@ -186,74 +201,8 @@ def assert_template_dashboard(
     return ok, f'pages={got_pages}'
 
 
-def patch_exos_stock_interface_dashboard(api: Any) -> str:
-    """Make the stock EXOS interface dashboard match the VOSS/IQ map + 3x2 grid."""
-    tid = _template_id(api, EXOS_STOCK_TEMPLATE)
-    if not tid:
-        return 'missing-template'
-    dashboards = (
-        api_call(
-            api,
-            'templatedashboard.get',
-            {
-                'templateids': tid,
-                'output': ['dashboardid', 'name'],
-                'selectPages': 'extend',
-            },
-        )
-        or []
-    )
-    dashboard = next((d for d in dashboards if d.get('name') == EXOS_INTERFACE_DASHBOARD), None)
-    if not dashboard:
-        return 'missing-dashboard'
-    pages = dashboard.get('pages') or []
-    if not pages:
-        return 'missing-page'
-    graphs = (
-        api_call(
-            api,
-            'graphprototype.get',
-            {
-                'templateids': tid,
-                'output': ['graphid', 'name'],
-                'filter': {'name': [EXOS_TRAFFIC_GRAPH]},
-            },
-        )
-        or []
-    )
-    if not graphs:
-        return 'missing-graph'
-    graphid = str(graphs[0]['graphid'])
-    page = pages[0]
-    widgets = page.get('widgets') or []
-
-    def field_map(widget: dict) -> dict[str, str]:
-        return {str(f.get('name')): str(f.get('value')) for f in (widget.get('fields') or [])}
-
-    map_widget = next((w for w in widgets if w.get('type') == 'honeycomb'), {})
-    grid_widget = next((w for w in widgets if w.get('type') == 'graphprototype'), {})
-    grid_fields = field_map(grid_widget)
-    map_fields = field_map(map_widget)
-    already = (
-        page.get('name') == 'Overview'
-        and map_widget.get('width') == '72'
-        and map_widget.get('height') == '3'
-        and map_fields.get('show.0') == '1'
-        and map_fields.get('primary_label_bold') == '1'
-        and map_fields.get('primary_label_size_type') == '1'
-        and map_fields.get('primary_label_size') == '20'
-        and grid_widget.get('width') == '72'
-        and grid_widget.get('height') == '11'
-        and grid_widget.get('y') == '3'
-        and grid_fields.get('columns') == '3'
-        and grid_fields.get('rows') == '2'
-        and grid_fields.get('graphid.0') == graphid
-        and not any(w.get('type') in ('item', 'svggraph') for w in widgets)
-    )
-    if already:
-        return 'ok'
-
-    desired_widgets = [
+def _exos_overview_widgets(graphid: str) -> list[dict]:
+    return [
         {
             'type': 'honeycomb',
             'name': 'Interfaces',
@@ -295,6 +244,73 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
             ],
         },
     ]
+
+
+def _exos_port_widgets() -> list[dict]:
+    fields = [
+        {'type': '0', 'name': 'group_by.0.attribute', 'value': '3'},
+        {'type': '1', 'name': 'group_by.0.tag_name', 'value': 'interface'},
+    ]
+    for index, pattern in enumerate(EXOS_PORT_COUNTERS):
+        fields.append({'type': '1', 'name': f'items.{index}', 'value': pattern})
+    fields.append({'type': '1', 'name': 'reference', 'value': 'EINAV'})
+    return [
+        {
+            'type': 'itemnavigator',
+            'name': 'Counters',
+            'x': '0',
+            'y': '0',
+            'width': '28',
+            'height': '11',
+            'view_mode': '0',
+            'fields': fields,
+        },
+        {
+            'type': 'svggraph',
+            'name': 'History',
+            'x': '28',
+            'y': '0',
+            'width': '44',
+            'height': '11',
+            'view_mode': '0',
+            'fields': [
+                {'type': '1', 'name': 'ds.0.color.0', 'value': '42A5F5'},
+                {'type': '0', 'name': 'ds.0.dataset_type', 'value': '0'},
+                {'type': '1', 'name': 'ds.0.itemids.0._reference', 'value': 'EINAV._itemid'},
+                {'type': '1', 'name': 'reference', 'value': 'EIGRF'},
+                {'type': '0', 'name': 'legend', 'value': '0'},
+                {'type': '0', 'name': 'righty', 'value': '0'},
+            ],
+        },
+    ]
+
+
+def drop_health_diagnostics_page(api: Any, template_name: str) -> str:
+    """Remove a leftover Health Diagnostics page (YAML import does not delete pages)."""
+    tid = _template_id(api, template_name)
+    if not tid:
+        return 'missing-template'
+    dashboards = (
+        api_call(
+            api,
+            'templatedashboard.get',
+            {
+                'templateids': tid,
+                'output': ['dashboardid', 'name'],
+                'selectPages': 'extend',
+            },
+        )
+        or []
+    )
+    dashboard = next((d for d in dashboards if d.get('name') == 'Health'), None)
+    if not dashboard:
+        return 'missing-dashboard'
+    pages = dashboard.get('pages') or []
+    keep = [p for p in pages if p.get('name') != 'Diagnostics']
+    if len(keep) == len(pages):
+        return 'ok'
+    if not keep:
+        return 'refused-empty'
     api_call(
         api,
         'templatedashboard.update',
@@ -302,15 +318,123 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
             'dashboardid': dashboard['dashboardid'],
             'pages': [
                 {
-                    'dashboard_pageid': page['dashboard_pageid'],
-                    'name': 'Overview',
-                    'display_period': page.get('display_period', '0'),
-                    'widgets': desired_widgets,
+                    'dashboard_pageid': p['dashboard_pageid'],
+                    'name': p.get('name') or '',
+                    'display_period': p.get('display_period', '0'),
+                    'widgets': p.get('widgets') or [],
                 }
+                for p in keep
             ],
         },
     )
-    logger.info('  %s: interface dashboard updated to map + 3x2 graph grid', EXOS_STOCK_TEMPLATE)
+    logger.info('  %s: dropped leftover Health Diagnostics page', template_name)
+    return 'dropped'
+
+
+def patch_exos_stock_interface_dashboard(api: Any) -> str:
+    """Make the stock EXOS interface dashboard match VOSS: map + 3x2 grid + Port page."""
+    tid = _template_id(api, EXOS_STOCK_TEMPLATE)
+    if not tid:
+        return 'missing-template'
+    dashboards = (
+        api_call(
+            api,
+            'templatedashboard.get',
+            {
+                'templateids': tid,
+                'output': ['dashboardid', 'name'],
+                'selectPages': 'extend',
+            },
+        )
+        or []
+    )
+    dashboard = next((d for d in dashboards if d.get('name') == EXOS_INTERFACE_DASHBOARD), None)
+    if not dashboard:
+        return 'missing-dashboard'
+    pages = dashboard.get('pages') or []
+    if not pages:
+        return 'missing-page'
+    graphs = (
+        api_call(
+            api,
+            'graphprototype.get',
+            {
+                'templateids': tid,
+                'output': ['graphid', 'name'],
+                'filter': {'name': [EXOS_TRAFFIC_GRAPH]},
+            },
+        )
+        or []
+    )
+    if not graphs:
+        return 'missing-graph'
+    graphid = str(graphs[0]['graphid'])
+    overview = pages[0]
+    widgets = overview.get('widgets') or []
+    port_page = next((p for p in pages if p.get('name') == 'Port'), None)
+
+    def field_map(widget: dict) -> dict[str, str]:
+        return {str(f.get('name')): str(f.get('value')) for f in (widget.get('fields') or [])}
+
+    map_widget = next((w for w in widgets if w.get('type') == 'honeycomb'), {})
+    grid_widget = next((w for w in widgets if w.get('type') == 'graphprototype'), {})
+    grid_fields = field_map(grid_widget)
+    map_fields = field_map(map_widget)
+    overview_ok = (
+        overview.get('name') == 'Overview'
+        and map_widget.get('width') == '72'
+        and map_widget.get('height') == '3'
+        and map_fields.get('show.0') == '1'
+        and map_fields.get('primary_label_bold') == '1'
+        and map_fields.get('primary_label_size_type') == '1'
+        and map_fields.get('primary_label_size') == '20'
+        and grid_widget.get('width') == '72'
+        and grid_widget.get('height') == '11'
+        and grid_widget.get('y') == '3'
+        and grid_fields.get('columns') == '3'
+        and grid_fields.get('rows') == '2'
+        and grid_fields.get('graphid.0') == graphid
+        and not any(w.get('type') in ('item', 'svggraph') for w in widgets)
+    )
+    port_ok = False
+    if port_page:
+        pwidgets = port_page.get('widgets') or []
+        nav = next((w for w in pwidgets if w.get('type') == 'itemnavigator'), {})
+        nav_fields = field_map(nav)
+        patterns = {nav_fields[k] for k in nav_fields if k.startswith('items.')}
+        port_ok = (
+            nav.get('name') == 'Counters'
+            and 'Interface *: Operational status' in patterns
+            and 'Interface *: Bits received' not in patterns
+            and any(w.get('type') == 'svggraph' for w in pwidgets)
+        )
+    if overview_ok and port_ok:
+        return 'ok'
+
+    pages_payload: list[dict] = [
+        {
+            'dashboard_pageid': overview['dashboard_pageid'],
+            'name': 'Overview',
+            'display_period': overview.get('display_period', '0'),
+            'widgets': _exos_overview_widgets(graphid),
+        },
+        {
+            'name': 'Port',
+            'display_period': '0',
+            'widgets': _exos_port_widgets(),
+        },
+    ]
+    if port_page and port_page.get('dashboard_pageid'):
+        pages_payload[1]['dashboard_pageid'] = port_page['dashboard_pageid']
+    api_call(
+        api,
+        'templatedashboard.update',
+        {
+            'dashboardid': dashboard['dashboardid'],
+            'pages': pages_payload,
+        },
+    )
+    logger.info('  %s: interface dashboard updated to map + 3x2 grid + Port', EXOS_STOCK_TEMPLATE)
     return 'patched'
 
 
@@ -323,8 +447,10 @@ def apply_extreme_health_patches(api: Any) -> dict[str, Any]:
     """Apply idempotent Health and stock EXOS interface-layout patches."""
     icmp = patch_disable_wan_icmp_noise(api)
     exos_grid = patch_exos_stock_interface_dashboard(api)
+    diagnostics = {name: drop_health_diagnostics_page(api, name) for name in HEALTH_TEMPLATES}
     return {
         'icmp_noise': icmp,
         'exos_health': 'companion-yaml',
         'exos_stock_grid': exos_grid,
+        'health_diagnostics': diagnostics,
     }

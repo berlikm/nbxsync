@@ -72,17 +72,18 @@ Mass `SyncHostJob` is **not** required for template dashboard / trigger-status c
 
 ## Health dashboard (host, from template)
 
-Two host-level dashboards: **Health** for chassis/diagnostics and **Network interfaces** for the status map and combined discovered graphs. Open **Monitoring → Hosts → host → Dashboards**. No hostgroup widgets, no Host Navigator.
+Two host-level dashboards: **Health** for the box and **Network interfaces** for ports. Open **Monitoring → Hosts → host → Dashboards**. No hostgroup widgets, no Host Navigator.
 
 | Page | Question | Widgets (Zabbix 7 template-safe) |
 |---|---|---|
 | Overview | Is this box reachable and healthy? | ICMP + SNMP + CPU + platform 4th tile (EXOS temp / VOSS uptime / AP clients). Problems full width. Two history panes. |
 | Hardware / RF | Are FRUs or radios unhealthy? | USE split: fan/PSU colour (errors), VOSS Temp °C + Power W (utilisation), memory trend. IQ: noise map + radio graphs. |
-| Diagnostics | What is the exact state of one object? | Switches: interface-tagged navigator (EXOS has no flap counter in stock). APs: **radio**-tagged navigator only — eth lives on **Network interfaces**. |
 
-All platforms expose **Network interfaces → Overview** with the same compact status map and 3×2 graph grid. The map is scan-only (red/green). Zabbix 7 cannot open that port’s Network traffic graph from a hex; use **Health → Diagnostics** for bits/errors/discards of one interface. VOSS/IQ ship it in YAML; `--apply` applies the layout to the existing stock EXOS dashboard. VOSS/EXOS graphs combine RX/TX with errors/discards on a secondary axis; IQ Engine shows RX/TX only. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet.
+There is no Health **Diagnostics** page. That was a second interface browser and overlapped **Network interfaces**.
 
-Overview tiles are short labels (ICMP, SNMP, CPU, Temp/Uptime/Clients). Gauges show a bold value and colour arc only. Honeycombs are compact heatmaps: identity on the cell, colour for health (no “up” on every hex). Label size is **Custom 20%**, not Auto — Auto inflates `mgmt()` while long IFALIAS stays readable. Diagnostics is navigator + graph; there is no giant last-value tile. Graph legends are off when the widget title is enough, except EXOS Hardware memory (several slots).
+All platforms expose **Network interfaces → Overview** with the same compact status map and 3×2 graph grid. The map is scan-only (red/green). Traffic lives on the grid (VOSS/EXOS also plot errors/discards on a secondary axis; IQ is RX/TX only). Switches add **Port**: pick one interface’s status/speed/duplex/errors/discards (VOSS flaps). It does not list bits in/out. IQ has no Port page — AP eth has nothing beyond Overview. YAML import does not delete leftover Diagnostics pages (`deleteMissing: false`); `--apply` drops them. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet.
+
+Overview tiles are short labels (ICMP, SNMP, CPU, Temp/Uptime/Clients). Gauges show a bold value and colour arc only. Honeycombs are compact heatmaps: identity on the cell, colour for health (no “up” on every hex). Label size is **Custom 20%**, not Auto — Auto inflates `mgmt()` while long IFALIAS stays readable. Graph legends are off when the widget title is enough, except EXOS Hardware memory (several slots).
 
 VOSS Temp binds `Temperature sensor *` (°C, `{#SENSOR_DESCR}` in the item name) with warn/crit colours at 95/100. Do not bind `Temperature status sensor *` — that is an enum 1–5 and tells the NOC nothing. Power is `PSU *: Output watts` (draw per supply). `rcSysTotalPower` is **capacity**, not consumption; do not graph it as load.
 

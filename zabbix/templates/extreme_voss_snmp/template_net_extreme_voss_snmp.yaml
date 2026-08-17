@@ -2900,76 +2900,6 @@ zabbix_export:
           - type: STRING
             name: reference
             value: VMEMG
-      - name: Diagnostics
-        widgets:
-        - type: itemnavigator
-          name: Interfaces
-          width: '28'
-          height: '11'
-          fields:
-          - type: INTEGER
-            name: group_by.0.attribute
-            value: '3'
-          - type: STRING
-            name: group_by.0.tag_name
-            value: interface
-          - type: STRING
-            name: items.0
-            value: 'Interface *: Operational status'
-          - type: STRING
-            name: items.1
-            value: 'Interface *: Speed'
-          - type: STRING
-            name: items.2
-            value: 'Interface *: Duplex status'
-          - type: STRING
-            name: items.3
-            value: 'Interface *: Bits received'
-          - type: STRING
-            name: items.4
-            value: 'Interface *: Bits sent'
-          - type: STRING
-            name: items.5
-            value: 'Interface *: Inbound packets with errors'
-          - type: STRING
-            name: items.6
-            value: 'Interface *: Outbound packets with errors'
-          - type: STRING
-            name: items.7
-            value: 'Interface *: Inbound packets discarded'
-          - type: STRING
-            name: items.8
-            value: 'Interface *: Outbound packets discarded'
-          - type: STRING
-            name: items.9
-            value: 'Interface *: State transitions'
-          - type: STRING
-            name: reference
-            value: VINAV
-        - type: svggraph
-          name: History
-          x: '28'
-          width: '44'
-          height: '11'
-          fields:
-          - type: STRING
-            name: ds.0.color.0
-            value: 42A5F5
-          - type: INTEGER
-            name: ds.0.dataset_type
-            value: '0'
-          - type: STRING
-            name: ds.0.itemids.0._reference
-            value: VINAV._itemid
-          - type: STRING
-            name: reference
-            value: VIGRF
-          - type: INTEGER
-            name: legend
-            value: '0'
-          - type: INTEGER
-            name: righty
-            value: '0'
     - uuid: 13f929b2b01b48f6a6812e7d7786b9fe
       name: Network interfaces
       pages:
@@ -3042,6 +2972,70 @@ zabbix_export:
           - type: INTEGER
             name: rows
             value: '2'
+      - name: Port
+        widgets:
+        - type: itemnavigator
+          name: Counters
+          width: '28'
+          height: '11'
+          fields:
+          - type: INTEGER
+            name: group_by.0.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.0.tag_name
+            value: interface
+          - type: STRING
+            name: items.0
+            value: 'Interface *: Operational status'
+          - type: STRING
+            name: items.1
+            value: 'Interface *: Speed'
+          - type: STRING
+            name: items.2
+            value: 'Interface *: Duplex status'
+          - type: STRING
+            name: items.3
+            value: 'Interface *: Inbound packets with errors'
+          - type: STRING
+            name: items.4
+            value: 'Interface *: Outbound packets with errors'
+          - type: STRING
+            name: items.5
+            value: 'Interface *: Inbound packets discarded'
+          - type: STRING
+            name: items.6
+            value: 'Interface *: Outbound packets discarded'
+          - type: STRING
+            name: items.7
+            value: 'Interface *: State transitions'
+          - type: STRING
+            name: reference
+            value: VINAV
+        - type: svggraph
+          name: History
+          x: '28'
+          width: '44'
+          height: '11'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: 42A5F5
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: STRING
+            name: ds.0.itemids.0._reference
+            value: VINAV._itemid
+          - type: STRING
+            name: reference
+            value: VIGRF
+          - type: INTEGER
+            name: legend
+            value: '0'
+          - type: INTEGER
+            name: righty
+            value: '0'
     valuemaps:
     - uuid: 2127626b3717454c8a4e0ae66f620772
       name: EtherLike-MIB::dot3StatsDuplexStatus

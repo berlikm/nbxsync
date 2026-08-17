@@ -16,7 +16,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Patch stock EXOS ``net.if.discovery`` rollout (15m / lifetime 0 / SNMP timeout 30s) — stock is 1h / 3s; VLAN-heavy EXOS walks miss traffic while EtherLike duplex still works
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
-  * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` only patches the stock EXOS **Network interfaces** layout.
+  * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
   * Platform TemplateRules: EXOS → Observability companion (nests stock); VOSS / IQ Engine → Extreme * by SNMP
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
   * Global **destination** macros on the Zabbix server object (production end-state)
@@ -1071,11 +1071,11 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             record('speed_expect_usw_util_off', ok, detail, group='import')
             ok, detail = assert_template_macros(api, 'Extreme IQ Engine by SNMP', IQ_HEALTH_MACROS)
             record('iq_health_macros', ok, detail, group='import')
-            ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
+            ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware'))
             record('voss_health_dashboard', ok, detail, group='import')
-            ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Diagnostics'))
+            ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF'))
             record('iq_health_dashboard', ok, detail, group='import')
-            ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
+            ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware'))
             # The companion may be absent in a deliberately minimal lab stub.
             record(
                 'exos_health_dashboard_assert',
@@ -1083,8 +1083,12 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 detail,
                 group='import',
             )
-            for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
-                ok, detail = assert_template_dashboard(api, tname, 'Network interfaces', ('Overview',))
+            for tname, pages in (
+                ('Extreme VOSS by SNMP', ('Overview', 'Port')),
+                ('Extreme IQ Engine by SNMP', ('Overview',)),
+                ('Extreme EXOS by SNMP', ('Overview', 'Port')),
+            ):
+                ok, detail = assert_template_dashboard(api, tname, 'Network interfaces', pages)
                 record(f'interface_dashboard_{tname}', ok, detail, group='import')
             ok, detail = assert_exos_stock_interface_grid(api)
             record('exos_stock_interface_grid_assert', ok, detail, group='import')

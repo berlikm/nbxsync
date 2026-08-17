@@ -120,6 +120,7 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
     dash = health[0]
     got_pages = [p.get('name') for p in (dash.get('pages') or [])]
     record(f'{name} Health pages', all(p in got_pages for p in pages), f'got={got_pages} want={list(pages)}')
+    record(f'{name} Health has no Diagnostics', 'Diagnostics' not in got_pages, f'got={got_pages}')
     graphs = _walk_graphs(doc, tpl)
     keys = _walk_item_keys(tpl)
     refs: list[str] = []
@@ -298,72 +299,15 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             bool(rf_graphs) and all(str(c) == '2' for c in cols),
             f'columns={cols}',
         )
-
-    diagnostics = pages_by_name.get('Diagnostics')
-    if diagnostics is not None:
-        widgets = diagnostics.get('widgets') or []
-        widget_types = {w.get('type') for w in widgets}
-        required = {'itemnavigator', 'svggraph'}
+        rf_types = {w.get('type') for w in (rf.get('widgets') or [])}
         record(
-            f'{name} interface Diagnostics widgets',
-            required <= widget_types and 'item' not in widget_types,
-            f'got={sorted(str(t) for t in widget_types)}',
+            f'{name} RF has no item navigator',
+            'itemnavigator' not in rf_types,
+            f'got={sorted(str(t) for t in rf_types)}',
         )
-        nav_widget = next((w for w in widgets if w.get('type') == 'itemnavigator'), {})
-        graph_widget = next((w for w in widgets if w.get('type') == 'svggraph'), {})
-        nav_fields = fields(nav_widget)
-        graph_fields = fields(graph_widget)
-        nav_ref = nav_fields.get('reference')
-        wired = bool(nav_ref) and graph_fields.get('ds.0.itemids.0._reference') == f'{nav_ref}._itemid' and str(graph_widget.get('height')) == '11'
-        record(f'{name} Diagnostics wiring', wired, f'navigator={nav_ref}')
-        patterns = {str(v) for key, v in nav_fields.items() if str(key).startswith('items.')}
-        if name == 'IQ':
-            expected_patterns = {
-                'Radio *: Noise floor',
-                'Radio *: Tx power',
-                'Radio *: TX total retries',
-                'Radio *: TX frames dropped',
-                'Radio *: RX data frames',
-                'Radio *: Channel',
-            }
-            forbidden = {
-                'Interface *: Operational status',
-                'Interface *: Bits received',
-                'Interface *: Bits sent',
-                'Interface *: Speed',
-                'Interface *: Duplex status',
-                'Interface *: State transitions',
-            }
-            record(
-                f'{name} radio Diagnostics (not switch-port copy)',
-                expected_patterns <= patterns and not (forbidden & patterns),
-                f'got={sorted(patterns)}',
-            )
-        else:
-            expected_patterns = {
-                'Interface *: Operational status',
-                'Interface *: Speed',
-                'Interface *: Bits received',
-                'Interface *: Bits sent',
-                'Interface *: Inbound packets with errors',
-                'Interface *: Outbound packets with errors',
-                'Interface *: Inbound packets discarded',
-                'Interface *: Outbound packets discarded',
-            }
-            record(
-                f'{name} consolidated interface diagnostics',
-                expected_patterns <= patterns,
-                f'missing={sorted(expected_patterns - patterns)}',
-            )
-            if name == 'EXOS companion':
-                record(
-                    f'{name} Diagnostics has no flaps (stock EXOS has none)',
-                    'Interface *: State transitions' not in patterns,
-                    f'got={sorted(patterns)}',
-                )
 
 
-def validate_interface_dashboard(name: str, tpl: dict) -> None:
+def validate_interface_dashboard(name: str, tpl: dict, *, port_page: bool = False, flaps: bool = False) -> None:
     dashboards = tpl.get('dashboards') or []
     matches = [d for d in dashboards if d.get('name') == 'Network interfaces']
     record(
@@ -412,6 +356,47 @@ def validate_interface_dashboard(name: str, tpl: dict) -> None:
     record(f'{name} interface map is scan-only', extra == [], f'extra={extra}')
     record(f'{name} interface map labels', labels_ok, f'label={label}')
     record(f'{name} interface wording', names_ok, f'map={map_widget.get("name")} grid={grid_widget.get("name")}')
+    port = next((p for p in pages if p.get('name') == 'Port'), None)
+    if not port_page:
+        record(f'{name} Network interfaces has no Port page', port is None, f'pages={[p.get("name") for p in pages]}')
+        return
+    record(f'{name} Network interfaces Port page', bool(port), f'pages={[p.get("name") for p in pages]}')
+    if not port:
+        return
+    pwidgets = port.get('widgets') or []
+    ptypes = {w.get('type') for w in pwidgets}
+    nav_widget = next((w for w in pwidgets if w.get('type') == 'itemnavigator'), {})
+    graph_widget = next((w for w in pwidgets if w.get('type') == 'svggraph'), {})
+    nav_fields = {f.get('name'): f.get('value') for f in (nav_widget.get('fields') or [])}
+    graph_fields = {f.get('name'): f.get('value') for f in (graph_widget.get('fields') or [])}
+    nav_ref = nav_fields.get('reference')
+    patterns = {str(v) for key, v in nav_fields.items() if str(key).startswith('items.')}
+    traffic = {'Interface *: Bits received', 'Interface *: Bits sent'}
+    expected = {
+        'Interface *: Operational status',
+        'Interface *: Speed',
+        'Interface *: Duplex status',
+        'Interface *: Inbound packets with errors',
+        'Interface *: Outbound packets with errors',
+        'Interface *: Inbound packets discarded',
+        'Interface *: Outbound packets discarded',
+    }
+    record(
+        f'{name} Port is fault counters not traffic',
+        ptypes == {'itemnavigator', 'svggraph'}
+        and expected <= patterns
+        and not (traffic & patterns)
+        and (flaps == ('Interface *: State transitions' in patterns)),
+        f'got={sorted(patterns)}',
+    )
+    record(
+        f'{name} Port wiring',
+        bool(nav_ref)
+        and graph_fields.get('ds.0.itemids.0._reference') == f'{nav_ref}._itemid'
+        and str(graph_widget.get('height')) == '11'
+        and nav_widget.get('name') == 'Counters',
+        f'navigator={nav_ref} name={nav_widget.get("name")}',
+    )
 
 
 def validate_voss(doc: dict) -> None:
@@ -457,7 +442,7 @@ def validate_voss(doc: dict) -> None:
                 flap_ok = tags.get('interface') == '{#IFNAME}'
             if 'Shutdown reason' in name:
                 shutdown_ok = tags.get('interface') == '{#IFNAME}'
-    record('VOSS flap items tagged interface (Diagnostics grouping)', flap_ok, '')
+    record('VOSS flap items tagged interface', flap_ok, '')
     record('VOSS shutdown items tagged interface', shutdown_ok, '')
     temp_value_named = temp_status_index = False
     for rule in tpl.get('discovery_rules') or []:
@@ -471,8 +456,8 @@ def validate_voss(doc: dict) -> None:
                 temp_status_index = '{#SNMPINDEX}' in iname
     record('VOSS temp value items named by SENSOR_DESCR', temp_value_named, '')
     record('VOSS temp status items keep SNMPINDEX', temp_status_index, '')
-    validate_health_dashboard('VOSS', doc, tpl, pages=('Overview', 'Hardware', 'Diagnostics'))
-    validate_interface_dashboard('VOSS', tpl)
+    validate_health_dashboard('VOSS', doc, tpl, pages=('Overview', 'Hardware'))
+    validate_interface_dashboard('VOSS', tpl, port_page=True, flaps=True)
     # Re-import identity — same uuid as the old traffic-only board
     health = [d for d in (tpl.get('dashboards') or []) if d.get('name') == 'Health']
     if health:
@@ -494,7 +479,7 @@ def validate_iq(doc: dict) -> None:
         t = by_name.get(n)
         record(f'IQ {n} DISABLED', bool(t) and t.get('status') == 'DISABLED', str((t or {}).get('status')))
     record('IQ unsupported trigger', 'Extreme IQ Engine: Too many unsupported items' in by_name, '')
-    validate_health_dashboard('IQ', doc, tpl, pages=('Overview', 'RF', 'Diagnostics'))
+    validate_health_dashboard('IQ', doc, tpl, pages=('Overview', 'RF'))
     validate_interface_dashboard('IQ', tpl)
 
 
@@ -511,7 +496,7 @@ def validate_exos_observability(doc: dict) -> None:
         'exos.observability.snmp',
     }
     record('EXOS companion calculated mirrors', expected <= keys, str(sorted(expected - keys)))
-    validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware', 'Diagnostics'))
+    validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware'))
 
 
 def validate_speed_expect(doc: dict) -> None:
@@ -614,15 +599,18 @@ def validate_zabbix() -> None:
     record('zbx SpeedExpect macros', ok, detail)
     ok, detail = assert_template_macros(api, 'Extreme IQ Engine by SNMP', IQ_HEALTH_MACROS)
     record('zbx IQ macros', ok, detail)
-    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
+    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Health', ('Overview', 'Hardware'))
     record('zbx VOSS Health', ok, detail)
-    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF', 'Diagnostics'))
+    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Health', ('Overview', 'RF'))
     record('zbx IQ Health', ok, detail)
-    ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware', 'Diagnostics'))
+    ok, detail = assert_template_dashboard(api, 'Extreme EXOS Observability', 'Health', ('Overview', 'Hardware'))
     record('zbx EXOS companion Health', ok, detail)
-    for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
-        ok, detail = assert_template_dashboard(api, tname, 'Network interfaces', ('Overview',))
-        record(f'zbx interface dashboard {tname}', ok, detail)
+    ok, detail = assert_template_dashboard(api, 'Extreme VOSS by SNMP', 'Network interfaces', ('Overview', 'Port'))
+    record('zbx interface dashboard Extreme VOSS by SNMP', ok, detail)
+    ok, detail = assert_template_dashboard(api, 'Extreme IQ Engine by SNMP', 'Network interfaces', ('Overview',))
+    record('zbx interface dashboard Extreme IQ Engine by SNMP', ok, detail)
+    ok, detail = assert_template_dashboard(api, 'Extreme EXOS by SNMP', 'Network interfaces', ('Overview', 'Port'))
+    record('zbx interface dashboard Extreme EXOS by SNMP', ok, detail)
     ok, detail = assert_exos_stock_interface_grid(api)
     record('zbx EXOS stock interface grid', ok, detail)
     for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
