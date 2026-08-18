@@ -44,8 +44,7 @@ Same environment variables as the runner — **no secrets in code**:
 Unit tests (pure helpers only, no NetBox required):
 
 ```bash
-cd "netbox-scripts and network-scripts"
-python -m pytest tests/ -q          # 62 passed
+python3 zabbix/notes/test_extreme_port_labels.py
 ```
 
 ---
@@ -64,12 +63,12 @@ python -m pytest tests/ -q          # 62 passed
 | **Also clear EXOS description-string** | off by default (may hold human text) |
 | **Fail the job on blocking diffs** | for scheduled compliance runs |
 
-**Scope rule:** only interfaces that have a **cable in NetBox** are evaluated.
-A port with no cable has no derivable far end, so it is skipped entirely — it is
-not reported, not counted, and never remediated. Cable the port in NetBox first.
+**Scope rule:** cabled ports are evaluated from NetBox topology. A port with **no complete cable path** (nothing, or a patch panel with no far device) cannot derive a far end — it is not remediated. If the box still has a live label, it is reported as `orphan` (inventory drift). Cable the port in NetBox (or admin-down / `X`) before expecting a grammar label.
+
+SSH uses **`oob_ip` first**, then `primary_ip`. Site groups include **nested children**.
 
 Per-port statuses: `ok` · `diff` · `missing` · `too_long` · `forbidden` ·
-`description_string_set` · `unreachable` · `applied`.
+`description_string_set` · `orphan` · `unreachable` · `applied`.
 
 ---
 
@@ -126,43 +125,59 @@ port number is noise.
 
 ### 3.3 Fitting into 20 characters
 
-Worst-case prefix is `USW-100M-` (9), leaving 11. The abbreviator walks a fixed
-ladder and takes the **first form that fits**, so the result is deterministic
-and the same input always produces the same label:
+A SPEED token is reserved **only when it will be emitted**. At the class default
+(most fabric ports) the prefix is `USW-` / `US-` (3–4 chars) and the ID can use
+the rest. Reserving 5 characters on every port “in case it is later re-optic’d”
+dropped building/site scope, so two `DIST01` uplinks on port 29 became the same
+label.
+
+The abbreviator walks a fixed ladder and takes the **first form that fits**:
 
 | # | Form | Example |
 |---|---|---|
-| 1 | `SCOPE-CODE NN-STACK _pPORT` | `L42-CORE01-2_p2.14` |
-| 2 | …with the code compressed to 2 letters | `L42-CO01-2_p2.14` ✅ |
-| 3 | drop the far port | `L42-CORE01-2` |
-| 4 | short code, no port | `L42-CO01-2` |
-| 5–8 | drop the scope, repeat | `CO01-2` |
+| 1 | `SCOPE-CODE NN-STACK _pPORT` | `B01-DI01_P29` |
+| 2 | drop the scope | `DI01_P29` |
+| 3 | drop the far port | `B01-DI01` |
+| 4 | code + stack only | `DI01` |
 
-Code compression map: `CORE→CO` `DIST→DI` `ACCE→AC` `ACPO→AP` `MGMT→MG`
-`FWGW→FW` `FWZONE→FZ` `CATO→CT` `BACK→BK` `SNAS→NS` `STOD→SD`; anything else
-falls back to its first two letters. This is the same shorthand already on the
-boxes.
+Code is always the 2-letter form (`CORE→CO` `DIST→DI` `ACCE→AC` `ACPO→AP`
+`MGMT→MG` `FWGW/FWZONE→FW` …). Scope (building or far-site tail) is kept
+whenever it fits — that is what tells `B01-DIST01` from `L01-DIST01`.
 
 If **no** form fits, the script **refuses** and reports the shortest form it
 tried — it never emits a string EXOS would silently truncate.
 
 ### 3.4 CLASS and SPEED derivation
 
-CLASS comes from the far-end NetBox **device role**:
+CLASS comes from the far-end NetBox **device role** (identity, not speed):
 
 | Far-end role | CLASS |
 |---|---|
 | `Switch *` (Core / Dist / Access / Mgmt) | `USW` |
+| `Firewall` | `USW` |
 | `Access Point` | `UP` |
-| `Sd Wan Socket` | `UW` |
-| anything else at ≥ 10G (Server, Storage, Cohesity, Firewall) | `US` |
+| `Sd Wan Socket` or a **circuit termination** | `UW` |
+| `Server` / `Storage` / `Cohesity` data NIC | `US` |
+| same roles, lights-out port (`mgmt_only`, `oob_ip` on that iface, or `idrac`/`ilo`/`bmc`) | `MON` |
+| anything else at ≥ 10G | `US` |
 | anything else below 10G | `MON` |
 | interface carries a configured *structural* tag | `X` |
 
 Link speed = `min(local interface type, far interface type)` from the NetBox
 interface types. The SPEED token is emitted **only** when that differs from the
-class default (`USW`/`US` → 10G, `UP`/`MON` → 1G), so a 1G server NIC is
-`MON-SRV12`, never `US-1G-SRV12`.
+class default (`USW`/`US` → 10G, `UP`/`MON` → 1G). A 1G **server** NIC is
+`US-1G-…`, not `MON-…`. A 1G **firewall** is `USW-1G-…`. `UW` never gets a PHY
+token.
+
+Do **not** treat “device has no primary_ip in NetBox” as management — Pure/SAN
+often only have `oob_ip` recorded while the cable is a production data port.
+
+`X` is **policy, not inference.** Stack / ISC / MLAG peer-link / SPAN ports must
+never alert, but NetBox models them as ordinary switch-to-switch cables — see
+the ISC ports in the sample below, which the script correctly reports as `USW`
+because nothing in NetBox says otherwise. Tag those interfaces and select the
+tag in **Structural (never-alert) interface tags**. Auto-`X` without a policy is
+an explicit non-goal.
 
 `X` is **policy, not inference.** Stack / ISC / MLAG peer-link / SPAN ports must
 never alert, but NetBox models them as ordinary switch-to-switch cables — see
@@ -298,8 +313,8 @@ Reading it:
   would be truncated to 20 on EXOS. The generated form is exactly 20.
 - `1/20` / `1/21` are **swapped** between the on-box labels and the NetBox
   cabling — precisely the class of error this script exists to surface.
-- `1/4` is the firewall HA link at 1G, so it correctly becomes `MON-…` and not
-  `US-1G-…`.
+- `1/4` is the firewall HA link at 1G, so the current generator emits `USW-1G-…`
+  (firewall is `USW`; token because the class default is 10G), not `MON-…`.
 - Longest generated label across both devices is **20** — at budget, never over.
 
 ### 5.3 What the sample proves
@@ -308,6 +323,10 @@ Reading it:
 - The cross-site uplink `1/22` needed tier 2 of the ladder
   (`USW-L42-CORE01-2_p2.14` = 22 → `USW-L42-CO01-2_p2.14` = 20).
 - Nothing longer than 20 was ever emitted.
+
+The **Expected** column in the tables above was produced by an earlier generator
+that reserved a SPEED slot on every port and classified firewalls as `US`. Do
+not treat those strings as the current golden output — re-run compliance.
 
 ---
 
@@ -335,9 +354,11 @@ Safety properties:
 
 - refuses any label > 20 characters or containing a forbidden character,
   immediately before the write, not only at generation time;
-- treats the EXOS truncation warning and the usual CLI error strings as a
-  rejection and aborts that device before `save`, so a half-applied device is
-  never written to flash;
+- treats the EXOS truncation warning **and VOSS CLI errors** as a rejection and
+  aborts that device before `save`, so a half-applied device is never written to
+  flash;
+- does **not** clear EXOS `description-string` unless that box is ticked;
+- prefers `oob_ip` for SSH;
 - idempotent — a port already at the expected label produces no command;
 - the canary allowlist restricts the push to named `device::ifname` pairs.
 

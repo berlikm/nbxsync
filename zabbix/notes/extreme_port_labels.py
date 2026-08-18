@@ -76,7 +76,7 @@ FORBIDDEN_CHARS = frozenset(': "<>&?')
 CLASSES = ("USW", "US", "UP", "MON", "UW", "TMON", "X", "N")
 
 #: Classes that never carry a SPEED token.
-NO_SPEED_CLASSES = frozenset({"X", "N"})
+NO_SPEED_CLASSES = frozenset({"X", "N", "UW", "TMON"})
 
 SPEED_TOKEN_MBPS = {
     "100M": 100,
@@ -337,12 +337,20 @@ def build_label_for_far_end(
     parts: DeviceNameParts,
     port_name: str = "",
 ) -> str:
-    """Pick the longest ID form that fits, always reserving the SPEED slot.
+    """Pick the longest ID form that fits.
 
-    The ID is sized against ``CLASS-ID`` without a token, so the label still
-    fits once any token is inserted later.
+    Reserve the SPEED slot only when a token will actually be emitted.
+    Reserving 5 characters on every default-speed USW/US/UP/MON port was
+    dropping building/site scope, so two DIST01 uplinks on port 29 became
+    the same label.
     """
-    reserve = 0 if cls in NO_SPEED_CLASSES else SPEED_SLOT_LEN
+    token_needed = (
+        cls not in NO_SPEED_CLASSES
+        and bool(link_mbps)
+        and link_mbps != CLASS_DEFAULT_MBPS.get(cls)
+        and link_mbps in MBPS_SPEED_TOKEN
+    )
+    reserve = SPEED_SLOT_LEN if token_needed else 0
     budget = MAX_LABEL_LEN - reserve
     tried = ""
     for ident in id_candidates(parts, port_name):
@@ -434,12 +442,95 @@ def _unquote(value: str) -> str:
     return value
 
 
+def expand_exos_port_list(spec: str) -> list[str]:
+    """Expand ``1:1-1:4`` / ``1:1,1:3`` / ``1-4`` to individual port names."""
+    spec = (spec or "").strip()
+    if not spec:
+        return []
+    out: list[str] = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" not in part:
+            out.append(part)
+            continue
+        start, end = part.split("-", 1)
+        expanded = _expand_exos_range(start.strip(), end.strip())
+        out.extend(expanded if expanded else [part])
+    return out
+
+
+def _expand_exos_range(start: str, end: str) -> list[str] | None:
+    sep = ":" if ":" in start else ("/" if "/" in start else None)
+    if sep:
+        s_slot, s_port = start.split(sep, 1)
+        if sep not in end:
+            # ``1:1-4`` — same slot
+            e_slot, e_port = s_slot, end
+        else:
+            e_slot, e_port = end.split(sep, 1)
+        if s_slot != e_slot:
+            return None
+        try:
+            a, b = int(s_port), int(e_port)
+        except ValueError:
+            return None
+        if a > b or b - a > 128:
+            return None
+        return [f"{s_slot}{sep}{n}" for n in range(a, b + 1)]
+    try:
+        a, b = int(start), int(end)
+    except ValueError:
+        return None
+    if a > b or b - a > 128:
+        return None
+    return [str(n) for n in range(a, b + 1)]
+
+
+def port_key_aliases(ifname: str) -> set[str]:
+    """NetBox ``1:24`` vs EXOS ``1:24`` vs VOSS ``1/24`` vs ``1.24``."""
+    raw = (ifname or "").strip()
+    if not raw:
+        return set()
+    upper = raw.upper()
+    if upper.startswith("PORT") and len(raw) > 4 and raw[4].isdigit():
+        raw = raw[4:]
+    keys = {raw, raw.replace(":", "/"), raw.replace(":", "."),
+            raw.replace("/", ":"), raw.replace("/", "."),
+            raw.replace(".", ":"), raw.replace(".", "/")}
+    return {k for k in keys if k}
+
+
+def lookup_live_label(labels: dict[str, str], ifname: str) -> str:
+    """Find a live label despite ``:`` vs ``/`` vs ``.`` in the port name."""
+    if not labels:
+        return ""
+    if ifname in labels:
+        return labels[ifname]
+    wanted = port_key_aliases(ifname)
+    for key, value in labels.items():
+        if key in wanted or (port_key_aliases(key) & wanted):
+            return value
+    return ""
+
+
 def parse_exos_labels(config_text: str) -> tuple[dict[str, str], dict[str, str]]:
-    """Extract ``{port: display-string}`` and ``{port: description-string}``."""
-    display = {m.group("port"): _unquote(m.group("value"))
-               for m in _RE_EXOS_DISPLAY.finditer(config_text or "")}
-    description = {m.group("port"): _unquote(m.group("value"))
-                   for m in _RE_EXOS_DESCRIPTION.finditer(config_text or "")}
+    """Extract ``{port: display-string}`` and ``{port: description-string}``.
+
+    EXOS may emit a port *list* (``1:1-1:4`` or ``1:1,1:3``). Expand those so
+    lookup by a single NetBox ifName still hits.
+    """
+    display: dict[str, str] = {}
+    for m in _RE_EXOS_DISPLAY.finditer(config_text or ""):
+        value = _unquote(m.group("value"))
+        for port in expand_exos_port_list(m.group("port")):
+            display[port] = value
+    description: dict[str, str] = {}
+    for m in _RE_EXOS_DESCRIPTION.finditer(config_text or ""):
+        value = _unquote(m.group("value"))
+        for port in expand_exos_port_list(m.group("port")):
+            description[port] = value
     return display, description
 
 
@@ -620,6 +711,19 @@ def _platform_kind(platform_name: str | None) -> str | None:
     return None
 
 
+def _ip_from(addr) -> str | None:
+    if addr is None:
+        return None
+    raw = str(getattr(addr, "address", addr) or "")
+    host = raw.split("/")[0].strip()
+    return host or None
+
+
+def _device_ssh_ip(device) -> str | None:
+    """Prefer out-of-band IP; fall back to primary. Never invent an address."""
+    return _ip_from(getattr(device, "oob_ip", None)) or _ip_from(getattr(device, "primary_ip", None))
+
+
 def _is_physical(iface) -> bool:
     if iface.type in _NON_PHYSICAL_TYPES:
         return False
@@ -629,7 +733,12 @@ def _is_physical(iface) -> bool:
 
 
 def _far_endpoint(iface):
-    """First connected far-end interface, or ``None``."""
+    """Far-end Interface or CircuitTermination on a *complete* cable path.
+
+    ``connected_endpoints`` already walks patch-panel Front/Rear ports. A cable
+    that dies on a rear port is incomplete — we return None (no derivable ID).
+    A circuit handoff is a CircuitTermination, not an Interface.
+    """
     try:
         endpoints = iface.connected_endpoints or []
     except Exception:  # noqa: BLE001 — unterminated/split cable paths raise
@@ -637,22 +746,24 @@ def _far_endpoint(iface):
     for endpoint in endpoints:
         if isinstance(endpoint, Interface):
             return endpoint
+        if type(endpoint).__name__ == "CircuitTermination":
+            return endpoint
     return None
 
 
 def _is_management_interface(iface) -> bool:
-    """True when the far end is a lights-out / controller management port."""
+    """True when the far end is a lights-out / controller management port.
+
+    Do **not** treat "device has no primary_ip" as management — Pure/SAN/Cohesity
+    often only have oob_ip in NetBox while the cable is a production data NIC.
+    Those must stay ``US``, not ``MON``.
+    """
     if getattr(iface, "mgmt_only", False):
         return True
-    device = iface.device
-    oob = getattr(device, "oob_ip", None)
-    if oob is None:
-        return False
-    if getattr(oob, "assigned_object", None) == iface:
+    oob = getattr(getattr(iface, "device", None), "oob_ip", None)
+    if oob is not None and getattr(oob, "assigned_object", None) == iface:
         return True
-    # Cohesity/Dell nodes: the cable is modelled on the data NIC, but the box's
-    # only address is its iDRAC, so every link into it is management.
-    return getattr(device, "primary_ip", None) is None
+    return is_bmc_port(getattr(iface, "name", None))
 
 
 def expected_label_for(iface, structural_tag_ids: set[int]) -> tuple[str, str]:
@@ -669,8 +780,24 @@ def expected_label_for(iface, structural_tag_ids: set[int]) -> tuple[str, str]:
     if far is None:
         return "", "no_cable"
 
+    if type(far).__name__ == "CircuitTermination":
+        circuit = getattr(far, "circuit", None)
+        cid = str(getattr(circuit, "cid", None) or "CIRCUIT")
+        provider = (
+            getattr(getattr(circuit, "provider", None), "slug", None)
+            or getattr(getattr(circuit, "provider", None), "name", None)
+            or "ISP"
+        )
+        parts = split_device_name(str(provider), "", "")
+        if not parts.code:
+            parts = DeviceNameParts("", str(provider).upper()[:6], "", "")
+        try:
+            return build_label_for_far_end("UW", None, parts, cid), "ok"
+        except LabelTooLong as exc:
+            return exc.suggestion, "too_long"
+
     local_mbps = iftype_to_mbps(iface.type)
-    far_mbps = iftype_to_mbps(far.type)
+    far_mbps = iftype_to_mbps(getattr(far, "type", None))
     speeds = [s for s in (local_mbps, far_mbps) if s]
     link_mbps = min(speeds) if speeds else None
 
@@ -710,9 +837,9 @@ if _NETBOX:
                 "Compute the expected CLASS[-SPEED]-ID port label from NetBox "
                 "cabling, read the live label off each switch (EXOS "
                 "display-string / VOSS interface name), and report the diff. "
-                "Only ports that have a cable in NetBox are in scope — "
-                "everything else is skipped. Compliance-only by default; "
-                "remediation needs mode=remediate AND the Commit changes box."
+                "Cabled ports are evaluated; live labels without a NetBox cable "
+                "are reported as orphan and never pushed. Compliance-only by "
+                "default; remediation needs mode=remediate AND Commit changes."
             )
             commit_default = False
             scheduling_enabled = True
@@ -862,7 +989,12 @@ if _NETBOX:
                 line.strip() for line in (data.get("canary") or "").splitlines()
                 if line.strip()
             }
-            if remediating and allowlist:
+            if remediating and not allowlist:
+                self.log_warning(
+                    "Remediation with **no canary allowlist** — every non-compliant "
+                    "port in scope will be pushed. First live run should set the allowlist."
+                )
+            elif remediating and allowlist:
                 self.log_info(f"Canary allowlist active: {len(allowlist)} port(s).")
 
             # ---- 1. Build the expected plan from NetBox ----
@@ -876,14 +1008,13 @@ if _NETBOX:
                 if not plans:
                     continue
                 plans_by_device[device.name] = plans
-                ip = (str(device.primary_ip.address).split("/")[0]
-                      if device.primary_ip else None)
+                ip = _device_ssh_ip(device)
                 if ip:
                     targets.append((device, ip, kind))
                 else:
                     for plan in plans:
                         plan.status = "unreachable"
-                        plan.detail = "no primary IP in NetBox"
+                        plan.detail = "no oob_ip/primary_ip in NetBox"
 
             if not plans_by_device:
                 self.log_failure("No labellable ports found in the selected scope.")
@@ -907,6 +1038,7 @@ if _NETBOX:
                         self.log_warning(f"[{index}/{len(targets)}] ❌ **{name}** — {error}")
                         continue
                     live_by_device[name] = (labels, descriptions)
+                    self._note_orphans(plans_by_device[name], labels)
                     self.log_info(
                         f"[{index}/{len(targets)}] ✅ **{name}** — "
                         f"{len(labels)} live label(s) read"
@@ -925,7 +1057,7 @@ if _NETBOX:
             if not data.get("include_neutral", True):
                 all_plans = [
                     p for p in all_plans
-                    if not (parse_label(p.live) and parse_label(p.live).cls in ("X", "N"))
+                    if not (p.expected in {"X", "N"} or (p.expected or "").startswith(("X-", "N-")))
                 ]
 
             self._report(all_plans)
@@ -961,7 +1093,15 @@ if _NETBOX:
             else:
                 queryset = Device.objects.filter(status=DeviceStatusChoices.STATUS_ACTIVE)
                 if data.get("site_group"):
-                    queryset = queryset.filter(site__group__in=data["site_group"])
+                    group_ids: set[int] = set()
+                    for group in data["site_group"]:
+                        group_ids.add(group.pk)
+                        descendants = getattr(group, "get_descendants", None)
+                        if callable(descendants):
+                            group_ids.update(
+                                descendants(include_self=True).values_list("pk", flat=True)
+                            )
+                    queryset = queryset.filter(site__group_id__in=group_ids)
                 if data.get("site"):
                     queryset = queryset.filter(site__in=data["site"])
                 if data.get("role"):
@@ -971,7 +1111,9 @@ if _NETBOX:
 
             wanted = data.get("platform_filter", "both")
             result = []
-            for device in queryset.select_related("platform", "site", "primary_ip4"):
+            for device in queryset.select_related(
+                "platform", "site", "primary_ip4", "primary_ip6", "oob_ip"
+            ):
                 kind = _platform_kind(getattr(device.platform, "name", None))
                 if kind is None:
                     continue
@@ -982,11 +1124,14 @@ if _NETBOX:
 
         def _plan_device(self, device, kind, data, structural_tag_ids) -> list[PortPlan]:
             plans: list[PortPlan] = []
-            interfaces = (
+            qs = (
                 Interface.objects.filter(device=device)
-                .select_related("device")
+                .select_related("device", "device__role", "device__site")
                 .prefetch_related("tags")
             )
+            if any(f.name == "_path" for f in Interface._meta.get_fields()):
+                qs = qs.select_related("_path")
+            interfaces = qs
             for iface in interfaces:
                 if not _is_physical(iface):
                     continue
@@ -1010,6 +1155,11 @@ if _NETBOX:
             return plans
 
         def _read_device(self, name, ip, kind):
+            try:
+                from django.db import close_old_connections
+                close_old_connections()
+            except Exception:  # noqa: BLE001
+                pass
             nc = None
             try:
                 nc = _connect(name, ip, kind)
@@ -1024,20 +1174,50 @@ if _NETBOX:
                         nc.disconnect()
                     except Exception:  # noqa: BLE001
                         pass
+                try:
+                    from django.db import close_old_connections
+                    close_old_connections()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        @staticmethod
+        def _note_orphans(plans: list[PortPlan], labels: dict[str, str]) -> None:
+            """Live labels with no cabled NetBox port — report, never remediate."""
+            if not plans or not labels:
+                return
+            template = plans[0]
+            planned: set[str] = set()
+            for plan in plans:
+                planned |= port_key_aliases(plan.ifname)
+            for live_port, live_label in labels.items():
+                if not live_label:
+                    continue
+                if port_key_aliases(live_port) & planned:
+                    continue
+                plans.append(PortPlan(
+                    device=template.device,
+                    site=template.site,
+                    kind=template.kind,
+                    ifname=live_port,
+                    live=live_label,
+                    status="orphan",
+                    detail="labelled on box, no cable in NetBox",
+                ))
 
         @staticmethod
         def _compare(plan: PortPlan, labels, descriptions, clear_description: bool):
-            if plan.status in {"too_long", "unreachable"}:
+            if plan.status in {"too_long", "unreachable", "orphan"}:
                 return
-            plan.live = labels.get(plan.ifname, "")
-            plan.description_string = descriptions.get(plan.ifname, "")
+            plan.live = lookup_live_label(labels, plan.ifname)
+            plan.description_string = lookup_live_label(descriptions, plan.ifname)
 
             if plan.description_string:
                 # description-string wins ifAlias on EXOS, so the grammar label
                 # in display-string is invisible to Zabbix while it is set.
                 plan.status = "description_string_set"
                 plan.detail = f"description-string={plan.description_string!r}"
-                if plan.expected:
+                # Never wipe human text unless the operator ticked the box.
+                if plan.expected and clear_description:
                     plan.commands = exos_apply_commands(plan.ifname, plan.expected, True)
                 return
 
@@ -1157,6 +1337,9 @@ if _NETBOX:
                         output = nc.send_config_set(plan.commands, read_timeout=90)
                         transcript.append("> " + " ; ".join(plan.commands))
                         transcript.append((output or "").strip())
+                        if _looks_rejected(output):
+                            return (False, "\n".join(transcript),
+                                    f"command rejected: {plan.commands!r}")
                     else:
                         for cmd in plan.commands:
                             output = _send(nc, cmd, read_timeout=60)
