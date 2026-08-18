@@ -14,7 +14,7 @@ Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md]
 | **Ticket** (Average) | PSU/fan, optic DOM **alarm**, memory, unsupported-item count, **any discovered** link down |
 | **Graph** / next day | SNMP dead (**Warning** — same on EXOS/VOSS/IQ), CPU, traffic, util, ICMP loss/RTT (items on, triggers **off**), flaps, errors, duplex |
 | One incident | host triggers depend on SNMP → ICMP. Cable/PoE toward an AP is switch `UP-` Average plus AP ICMP High. |
-| Never silent | unsupported-item **Average** trigger; zero discovered interfaces = Health honeycomb/census; proxy last-seen |
+| Never silent | unsupported-item **Average**; **zero discovered interfaces** Average after SNMP is up 1h; proxy last-seen |
 | Control plane | on-box `ifAlias` + role macros. Access collects **only** `USW`+`UP`; a mistyped uplink → no items |
 | Collect first | Speed Expect **nested** on VOSS / EXOS Observability (empty `ifAlias` = not discovered). Routing **imported, not linked**. Util off (`101`). ISIS/card High **gated off** |
 | Host dashboards | **Health** for the box; **Network interfaces** for the status map, traffic grid, and (switches) one-port **Port** page. |
@@ -43,6 +43,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | Memory high | yes | Average — baseline first |
 | Optic DOM **status** alarm (VOSS) | yes | Average — prefer status, not raw dBm |
 | Unsupported item count | yes | Average — `{$UNSUPPORTED.MAX}` (default 5), 30m |
+| Zero discovered interfaces (SNMP up 1h) | yes | Average — IFALIAS/LLD break; Access with no `USW`/`UP` is this ticket |
 | Firmware / OS / serial change | yes | Info |
 | System name changed | stock **Info** | disable in Zabbix if it chatters |
 | ICMP loss / RTT | **no** | items on; triggers **DISABLED** (CH proxy RTT is WAN) |
@@ -123,8 +124,9 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - YAML `deleteMissing: false` — retired items linger; we do not wipe LLD  
 - Does **not** mass-sync every device (template updates inherit in Zabbix). Speed Expect nests on VOSS / Observability, so existing switch hosts pick up the LLD on `--apply` without HostSync. Empty display-string → nothing discovered.  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
-- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m/keep-lost 0, EXOS PSU LLD skip `notPresent`, EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
-- Role IFALIAS / Access `PORTID.*` changes need a **HostSync of those devices** — template inheritance does not push NetBox macros.
+- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, EXOS PSU LLD skip `notPresent`, EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
+- Role IFALIAS / Access `PORTID.*` changes need a **HostSync of those devices** — template inheritance does not push NetBox macros. `--apply` logs the active Switch* count and a name sample; it does **not** mass-sync.  
+- `{$PORTID.LLD.*}` defaults live on **Extreme Port Speed Expect**. `--apply` will delete leftover Zabbix **global** PORTID macros (they bump config for every host).
 
 Per-host sync only when **that** device’s NetBox role/platform/macros changed.
 
@@ -158,7 +160,7 @@ A site WAN blip is one ICMP High per switch. That is accepted.
 | Check | Why | Live |
 |---|---|---|
 | Unsupported item count | SNMP walk died; looks like health | Average trigger `{$UNSUPPORTED.MAX}` |
-| Switch with **zero** discovered interfaces | IFALIAS regex or LLD broken | Health / census (no trigger yet) |
+| Switch with **zero** discovered interfaces | IFALIAS regex or LLD broken | Average after SNMP up 1h (`{$NET.IF.DISCOVERY.MIN}=1`). ICMP down is not this ticket. |
 | SNMP = 0, ICMP = 1 | credentials / proxy cache / UDP 161 — not a forwarding outage | SNMP Warning |
 | Proxy last-seen | hosts go *unknown*, not *down* | Zabbix internal / later |
 
@@ -171,7 +173,7 @@ A site WAN blip is one ICMP High per switch. That is accepted.
 | Extreme EXOS Observability | Platform EXOS Template Rule; nests stock **Extreme EXOS by SNMP** + **Port Speed Expect**; owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; owns the native **Network interfaces** graph prototype/dashboard |
 
-We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, skips EXOS PSU `notPresent` stack-MIB padding, keeps discovered link-down **Average** (drops leftover USW High), disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory) and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD (15m, disable-lost immediately, delete after 7d), skips EXOS PSU `notPresent` stack-MIB padding, keeps discovered link-down **Average** (drops leftover USW High), disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory), the zero-interface Average trigger, and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
 
 Stock EXOS trigger severities stay upstream except those patches. SNMP-dead is **Warning** on EXOS, VOSS, and IQ.
 
@@ -203,7 +205,7 @@ Same `{$TEMP_*}` on **this template**. Re-import after this revision. Fleet macr
 
 V-IST: host `{$VIST.CONTROL}=1` only on fabric pairs. Classic IST stays 0. Fabric High (ISIS/card) stays collected; set the CONTROL macro to `1` on a canary **after** a quiet pilot — not on `--apply`. Traps: collect; do not page duplicates of polled items until seen on hardware.
 
-Poll weight (same idea as APs, more SNMP budget on a chassis): inventory **1h**; IF counters **3m**; oper-status default **1m**; chassis temp **1m**; optic DOM **5m** (Average tickets, not 03:00). Duplex LLD **15m** / keep-lost **0**, same as `net.if.discovery`. Uptime **1m** (reboot Warning still sees `< 10m`). Do not 1-minute every optic on a Core.
+Poll weight (same idea as APs, more SNMP budget on a chassis): inventory **1h**; IF counters **3m**; oper-status default **1m**; chassis temp **1m**; optic DOM **5m** (Average tickets, not 03:00). Duplex LLD **15m**, same as `net.if.discovery`. Lost LLD resources: **disable immediately**, **delete after 7d** (not delete-now). A discovery rule that goes **not supported** (SNMP timeout) does not process lost resources — a full outage is a graph gap, history stays. Immediate delete is how a truncated GETBULK or a wrong IFALIAS filter wipes interface history; disable-now still drops `X` ports and empty PSU slots off the honeycomb. Uptime **1m** (reboot Warning still sees `< 10m`). Do not 1-minute every optic on a Core.
 
 ---
 
@@ -214,7 +216,7 @@ Poll weight (same idea as APs, more SNMP budget on a chassis): inventory **1h**;
 | Extreme Port Speed Expect by SNMP | Nested on VOSS + EXOS Observability | Mismatch Warning **on**. Duplicate link-down and discards **DISABLED**. Util `{$IF.UTIL.MAX:"USW"}=101` (off) |
 | Extreme Routing by SNMP (OSPF) | Switch Core / Dist | YAML **on** (OSPF High). **Not linked** |
 
-Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Default (Core/Dist/Mgmt):
+Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Defaults live on **that template** (not Zabbix globals). Core/Dist/Mgmt:
 
 ```
 {$PORTID.LLD.IFALIAS.MATCHES} = ^(USW|US|UP|MON)(-|$)

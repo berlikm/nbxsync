@@ -107,6 +107,30 @@ def _walk_triggers(tpl: dict) -> list[dict]:
     return out
 
 
+def _lld_lost_policy_ok(rule: dict) -> bool:
+    return (
+        str(rule.get('lifetime_type') or '') == 'DELETE_AFTER'
+        and str(rule.get('lifetime') or '') in ('7d', '7d0h', '604800')
+        and str(rule.get('enabled_lifetime_type') or '') == 'DISABLE_IMMEDIATELY'
+        and str(rule.get('enabled_lifetime') or '0') in ('0', '0s', '0d', '0h')
+    )
+
+
+def validate_lld_lost_policy(name: str, tpl: dict) -> None:
+    rules = tpl.get('discovery_rules') or []
+    stated = [r for r in rules if r.get('lifetime') is not None or r.get('lifetime_type') is not None]
+    if not stated:
+        return
+    bad = []
+    for rule in stated:
+        if not _lld_lost_policy_ok(rule):
+            bad.append(
+                f"{rule.get('key')}: lifetime={rule.get('lifetime')} type={rule.get('lifetime_type')} "
+                f"enabled={rule.get('enabled_lifetime')} enabled_type={rule.get('enabled_lifetime_type')}"
+            )
+    record(f'{name} LLD disable-now delete-7d', not bad, '; '.join(bad[:6]))
+
+
 def _macro_map(tpl: dict) -> dict[str, str]:
     return {m['macro']: str(m.get('value', '')) for m in (tpl.get('macros') or []) if m.get('macro')}
 
@@ -445,8 +469,13 @@ def validate_voss(doc: dict) -> None:
     for n in ('Extreme VOSS: High ICMP ping loss', 'Extreme VOSS: High ICMP ping response time'):
         t = by_name.get(n)
         record(f'VOSS {n} DISABLED', bool(t) and t.get('status') == 'DISABLED', str((t or {}).get('status')))
-    for n in ('Extreme VOSS: Too many unsupported items',):
+    for n in ('Extreme VOSS: Too many unsupported items', 'Extreme VOSS: No discovered interfaces after SNMP is up'):
         record(f'VOSS has {n}', n in by_name, '')
+    record(
+        'VOSS {$NET.IF.DISCOVERY.MIN}',
+        macros.get('{$NET.IF.DISCOVERY.MIN}') == '1',
+        str(macros.get('{$NET.IF.DISCOVERY.MIN}')),
+    )
     snmp = by_name.get('Extreme VOSS: No SNMP data collection')
     record(
         'VOSS SNMP-dead Warning',
@@ -481,6 +510,7 @@ def validate_voss(doc: dict) -> None:
     )
     keys = _walk_item_keys(tpl)
     record('VOSS unsupported item', 'zabbix[host,,items_unsupported]' in keys, '')
+    record('VOSS discovery count', 'net.if.discovery.count' in keys, '')
     flap_ok = shutdown_ok = False
     for rule in tpl.get('discovery_rules') or []:
         for it in rule.get('item_prototypes') or []:
@@ -527,6 +557,21 @@ def validate_iq(doc: dict) -> None:
         t = by_name.get(n)
         record(f'IQ {n} DISABLED', bool(t) and t.get('status') == 'DISABLED', str((t or {}).get('status')))
     record('IQ unsupported trigger', 'Extreme IQ Engine: Too many unsupported items' in by_name, '')
+    record(
+        'IQ zero-interface trigger',
+        'Extreme IQ Engine: No discovered interfaces after SNMP is up' in by_name,
+        '',
+    )
+    record(
+        'IQ zero-radio trigger',
+        'Extreme IQ Engine: No discovered radios after SNMP is up' in by_name,
+        '',
+    )
+    record(
+        'IQ {$NET.IF.DISCOVERY.MIN}',
+        macros.get('{$NET.IF.DISCOVERY.MIN}') == '1',
+        str(macros.get('{$NET.IF.DISCOVERY.MIN}')),
+    )
     snmp = by_name.get('Extreme IQ Engine: No SNMP data collection')
     record(
         'IQ SNMP-dead Warning',
@@ -552,6 +597,19 @@ def validate_exos_observability(doc: dict) -> None:
         'exos.observability.snmp',
     }
     record('EXOS companion calculated mirrors', expected <= keys, str(sorted(expected - keys)))
+    record('EXOS companion discovery count', 'net.if.discovery.count' in keys, '')
+    trigs = _walk_triggers(tpl)
+    record(
+        'EXOS companion zero-interface trigger',
+        any(t.get('name') == 'Extreme EXOS: No discovered interfaces after SNMP is up' for t in trigs),
+        '',
+    )
+    macros = _macro_map(tpl)
+    record(
+        'EXOS companion {$NET.IF.DISCOVERY.MIN}',
+        macros.get('{$NET.IF.DISCOVERY.MIN}') == '1',
+        str(macros.get('{$NET.IF.DISCOVERY.MIN}')),
+    )
     validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware'))
 
 
@@ -601,6 +659,10 @@ def validate_yaml() -> None:
         except Exception as exc:
             record(f'parse {name}', False, str(exc))
             continue
+        try:
+            validate_lld_lost_policy(name, _tpl(doc))
+        except Exception as exc:
+            record(f'{name} LLD policy', False, str(exc))
         if name == 'Extreme VOSS by SNMP':
             validate_voss(doc)
         elif name == 'Extreme IQ Engine by SNMP':

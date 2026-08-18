@@ -562,7 +562,7 @@ def build_discovery_rules() -> str:
             "optic.discovery",
             f"discovery[{{#SNMPVALUE}},{OID['optVendor']},{{#DDM}},{OID['optSupports']}]",
             opt_items,
-            "RAPID-CITY rcPlugOptModTable — DDM-capable optics only. See YAML for LLD filter lifetime 0.",
+            "RAPID-CITY rcPlugOptModTable — DDM-capable optics only. See YAML for LLD filter; disable-lost immediately / delete after 7d.",
         )
     )
 

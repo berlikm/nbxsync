@@ -503,6 +503,37 @@ zabbix_export:
         tags:
         - tag: scope
           value: availability
+    - uuid: 7a3715bdd0224ad88ed7d3aa81b0e1ba
+      name: Discovered interface count
+      type: CALCULATED
+      key: net.if.discovery.count
+      delay: 15m
+      history: 7d
+      value_type: FLOAT
+      params: 'count(exists_foreach(//net.if.status[*]))'
+      description: |
+        Enabled IF-MIB oper-status items after LLD filters. Zero with SNMP up is the
+        IFALIAS / GETBULK break Watch the watcher must ticket. foreach ignores disabled
+        items (X-labelled / lost ports after disable-now). Empty foreach makes this
+        item unsupported — the trigger treats nodata the same as count 0.
+      tags:
+      - tag: component
+        value: health
+      triggers:
+      - uuid: 290c9ec628ac4e44ad0221201b97a2ee
+        expression: 'min(/Extreme VOSS by SNMP/zabbix[host,snmp,available],1h)=1 and (last(/Extreme VOSS by SNMP/net.if.discovery.count)<{$NET.IF.DISCOVERY.MIN} or nodata(/Extreme VOSS by SNMP/net.if.discovery.count,1h)=1)'
+        name: 'Extreme VOSS: No discovered interfaces after SNMP is up'
+        priority: AVERAGE
+        description: |
+          SNMP has been up for 1h and LLD produced no enabled net.if.status items.
+          Access with no USW/UP labels is this ticket — fix the label, do not widen the regex.
+          Core/Dist with admin-up ethernet at 0 is a broken walk or role macros.
+        dependencies:
+        - name: 'Extreme VOSS: Unavailable by ICMP ping'
+          expression: max(/Extreme VOSS by SNMP/icmpping,#3)=0
+        tags:
+        - tag: scope
+          value: availability
     - uuid: b909f8e8ee8941c98c11173572270452
       name: 'CPU utilization 1m avg (slot 1)'
       type: SNMP_AGENT
@@ -956,8 +987,10 @@ zabbix_export:
       snmp_oid: discovery[{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFALIAS},1.3.6.1.2.1.31.1.1.1.18,{#IFNAME},1.3.6.1.2.1.31.1.1.1.1,{#IFDESCR},1.3.6.1.2.1.2.2.1.2,{#IFTYPE},1.3.6.1.2.1.2.2.1.3]
       key: net.if.discovery
       delay: 15m
-      lifetime: '0'
+      lifetime: 7d
+      lifetime_type: DELETE_AFTER
       enabled_lifetime: '0'
+      enabled_lifetime_type: DISABLE_IMMEDIATELY
       filter:
         evaltype: AND
         conditions:
@@ -1459,8 +1492,10 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.2.1.10.7.2.1.19,{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8,{#IFALIAS},1.3.6.1.2.1.31.1.1.1.18,{#IFNAME},1.3.6.1.2.1.31.1.1.1.1,{#IFDESCR},1.3.6.1.2.1.2.2.1.2]
       key: net.if.duplex.discovery
       delay: 15m
-      lifetime: '0'
+      lifetime: 7d
+      lifetime_type: DELETE_AFTER
       enabled_lifetime: '0'
+      enabled_lifetime_type: DISABLE_IMMEDIATELY
       filter:
         evaltype: AND
         conditions:
@@ -1653,8 +1688,10 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.71.1.1.6,{#DDM},1.3.6.1.4.1.2272.1.71.1.1.13]
       key: optic.discovery
       delay: 1h
-      lifetime: '0'
+      lifetime: 7d
+      lifetime_type: DELETE_AFTER
       enabled_lifetime: '0'
+      enabled_lifetime_type: DISABLE_IMMEDIATELY
       filter:
         evaltype: AND
         conditions:
@@ -2353,6 +2390,9 @@ zabbix_export:
     - macro: '{$UNSUPPORTED.MAX}'
       value: '5'
       description: Average ticket when unsupported items stay above this for 30m.
+    - macro: '{$NET.IF.DISCOVERY.MIN}'
+      value: '1'
+      description: Average ticket when SNMP is up 1h and enabled interface items stay below this.
     - macro: '{$MLT.CONTROL}'
       value: '1'
       description: '1=destination (agg-down on transition via .diff()). 0=temporary cutover silence.'

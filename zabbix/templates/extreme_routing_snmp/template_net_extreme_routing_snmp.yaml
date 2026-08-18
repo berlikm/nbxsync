@@ -144,8 +144,10 @@ zabbix_export:
       type: DEPENDENT
       key: ospf.nbr.discovery
       delay: '0'
-      lifetime: '0'
+      lifetime: 7d
+      lifetime_type: DELETE_AFTER
       enabled_lifetime: '0'
+      enabled_lifetime_type: DISABLE_IMMEDIATELY
       description: 'Diagnosis only ΓÇö no triggers on prototypes. Missing neighbour
         is detected by ospf.nbr.full.count, not by this LLD.
 

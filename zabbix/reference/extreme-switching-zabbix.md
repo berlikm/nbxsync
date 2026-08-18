@@ -557,7 +557,7 @@ Do **not** use `rcSysCpuUtil` / `rcSysDram*` — unsupported on VOSS.
 
 ## 4. Discovery
 
-Same role-based macro model as §A.5 — identical macro values, only the platform template differs. A VOSS core switch and an EXOS core switch get the same Core role macros. Same LLD settings (15m interval, keep-lost-resources 0).
+Same role-based macro model as §A.5 — identical macro values, only the platform template differs. A VOSS core switch and an EXOS core switch get the same Core role macros. Same LLD settings (15m interval, disable-lost immediately, delete after 7d).
 
 Label is set with `name <WORD 0-64>` under `interface gigabitEthernet`.
 
@@ -576,7 +576,7 @@ Same set, severities and dependency chain as §A.6 once the template exists.
 | Base | lift interface/LLD half from `Extreme EXOS by SNMP`, add VOSS device-health OIDs |
 | Note | today VOSS may still fall back to Network Generic in production — remove that once this lands; watch for icmpping collision |
 
-Template defaults aligned with §A.8 **destination**: `{$IF.UTIL.MAX}=101`, `{$TEMP_WARN}=90`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, `{$MLT.CONTROL}=1`, `{$NET.IF.IFTYPE.MATCHES}=^(6|161)$`, interface LLD 15m / keep-lost 0. Role IFALIAS macros still come from nbxsync.
+Template defaults aligned with §A.8 **destination**: `{$IF.UTIL.MAX}=101`, `{$TEMP_WARN}=90`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, `{$MLT.CONTROL}=1`, `{$NET.IF.IFTYPE.MATCHES}=^(6|161)$`, interface LLD 15m / disable-lost immediately / delete after 7d. Role IFALIAS macros still come from nbxsync.
 
 ## 7. Open questions
 

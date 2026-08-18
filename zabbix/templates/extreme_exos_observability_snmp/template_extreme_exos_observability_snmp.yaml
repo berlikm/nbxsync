@@ -89,11 +89,42 @@ zabbix_export:
       tags:
       - tag: component
         value: system
+    - uuid: 5b5f794571c34e6796b3b9424b7b32f4
+      name: Discovered interface count
+      type: CALCULATED
+      key: net.if.discovery.count
+      delay: 15m
+      history: 7d
+      value_type: FLOAT
+      params: 'count(exists_foreach(//net.if.status[*]))'
+      description: |
+        Enabled stock EXOS net.if.status items (nested template). Zero with SNMP up
+        is the IFALIAS / GETBULK break. foreach ignores disabled leftovers; empty
+        foreach → unsupported, which the trigger treats as nodata.
+      tags:
+      - tag: component
+        value: health
+      triggers:
+      - uuid: 2efe8d519f8546ab978d215ec79aff60
+        expression: 'min(/Extreme EXOS Observability/exos.observability.snmp,1h)=1 and (last(/Extreme EXOS Observability/net.if.discovery.count)<{$NET.IF.DISCOVERY.MIN} or nodata(/Extreme EXOS Observability/net.if.discovery.count,1h)=1)'
+        name: 'Extreme EXOS: No discovered interfaces after SNMP is up'
+        priority: AVERAGE
+        description: |
+          SNMP has been up for 1h and LLD produced no enabled net.if.status items.
+          Access with no USW/UP labels is this ticket — fix the label, do not widen the regex.
+          Dead box stays on stock ICMP High (snmp mirror is 0, so this does not double-page).
+        tags:
+        - tag: scope
+          value: availability
     tags:
     - tag: class
       value: network
     - tag: target
       value: exos-observability
+    macros:
+    - macro: '{$NET.IF.DISCOVERY.MIN}'
+      value: '1'
+      description: Average ticket when SNMP is up 1h and enabled interface items stay below this.
     dashboards:
     - uuid: 87c5121b3ad94f7cb30119e08130d095
       name: Health

@@ -28,7 +28,7 @@ There is no separate “template uses IFNAME only” path for EXOS IF LLD.
 ## Likely causes when Dist = 0
 
 1. **Stock LLD interval 1h** — discovery not run yet after template link.  
-   Fix: `configure_nbxsync_network.py` patches delay **15m** / lifetime **0**; then **Execute now** on the host rule.
+   Fix: `configure_nbxsync_network.py` patches delay **15m**, disable-lost immediately, delete after **7d**; then **Execute now** on the host rule.
 2. **Discovery rule error** — heavy multi-OID IF-MIB walk times out (Fan/PSU use lighter Extreme OIDs and still work).  
    Check: host → Discovery rules → `Network interfaces discovery` → error text / SNMP timeout on proxy.
 3. **Wrong role macros** — Dist host still has Access `MATCHES=^(USW|…)` and no labels.  

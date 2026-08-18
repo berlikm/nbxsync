@@ -49,7 +49,7 @@ The on-box label is the contract (`USW`→10G, `US`→10G, `UP`→1G, `MON`→1G
 | VOSS ISIS circuit / card **High** ungated | 24/7 on unused SPBM / empty slots | `{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0` (same pattern as V-IST) |
 | Switch ICMP loss/RTT Warning | CH proxy RTT is WAN, not box health | **DISABLED** (items stay; same as APs) |
 | EXOS SNMP-dead | Stock Warning | VOSS/IQ match Warning |
-| “Never silent” | Census only | Average trigger on unsupported-item count |
+| “Never silent” | Census only | Average on unsupported-item count **and** on zero discovered interfaces (SNMP up 1h) |
 | Host dashboards | Traffic gallery only | **Health** for chassis/diagnostics plus unified **Network interfaces** status map and graph grid |
 
 ## Zero-touch / re-apply (do not break existing hosts)
@@ -57,10 +57,11 @@ The on-box label is the contract (`USW`→10G, `US`→10G, `UP`→1G, `MON`→1G
 | Lever | Who | New device | Re-run on a live estate |
 |---|---|---|---|
 | Platform Template Rule (EXOS / VOSS / `IQ ENGINE`) | nbxSync | First HostSync links the platform template | `ensure()` updates the rule; **does not** unlink hosts; retargets only if the rule still points at Network Generic |
-| Role IFALIAS / IFTYPE / Access `PORTID.*` | nbxSync MacroAssignment | Inherited on sync | Updates assignment **values**; next sync of a host pushes macros. `--apply` does **not** mass-sync |
+| Role IFALIAS / IFTYPE / Access `PORTID.*` | nbxSync MacroAssignment | Inherited on sync | Updates assignment **values**; next sync of a host pushes macros. `--apply` does **not** mass-sync; it logs who still needs HostSync |
+| `{$PORTID.LLD.*}` defaults | Speed Expect **template** macros | Nested with VOSS / Observability | Not Zabbix globals. `--apply` deletes leftover globals |
 | SNMP Monitoring CG on Switch* / AP | zerotouch | Inherited interface + SNMPv3 | Empty env **must not** wipe existing secrets (zerotouch already leaves them) |
 | YAML import `updateExisting` + `deleteMissing: false` | network `--apply` | n/a | Updates items/triggers/dashboards on the **template**; every already-linked host inherits. Does **not** delete hosts, interfaces, or history |
-| Stock EXOS patches (TEMP_*, EtherLike IFALIAS, IF LLD 15m/0, ICMP loss disable, interface grid) + Observability companion | network `--apply` | n/a | Companion YAML owns Health; stock keeps its graph prototype while its existing dashboard is normalized to the shared map + 3×2 grid |
+| Stock EXOS patches (TEMP_*, EtherLike IFALIAS, IF LLD 15m / disable-now / delete 7d, ICMP loss disable, interface grid) + Observability companion | network `--apply` | n/a | Companion YAML owns Health + zero-interface trigger; stock keeps its graph prototype while its existing dashboard is normalized to the shared map + 3×2 grid |
 | Speed Expect / OSPF | Speed Expect **nested** on VOSS / Observability; OSPF imported, not assigned | Empty ifAlias silent; OSPF stays off | `--apply` imports the nest. `--link-speed-expect` is extra role assignment — skip while nested |
 | VOSS/IQ TemplateRule when YAML is not in Zabbix yet | zerotouch | skip writing the rule | **Does not** retarget an existing Extreme rule at Network Generic |
 

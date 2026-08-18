@@ -45,7 +45,8 @@ TEMPLATES = {
     'Extreme IQ Engine by SNMP': ROOT / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
 }
 
-# Destination globals + speed-expect LLD filters (TEMP_* are template-only).
+# Destination globals. PORTID.* defaults live on Extreme Port Speed Expect,
+# not as Zabbix globals (a global write bumps config for every host).
 GLOBAL_MACROS = {
     '{$IF.UTIL.MAX}': '101',
     '{$OPTIC.TEMP.CRIT}': '70',
@@ -58,9 +59,12 @@ GLOBAL_MACROS = {
     '{$VIST.CONTROL}': '0',
     '{$IST.CONTROL}': '0',
     '{$SNMP.TIMEOUT}': '5m',
-    '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|US|UP|MON)(-|$)',
-    '{$PORTID.LLD.IFTYPE.MATCHES}': '^6$',
 }
+
+_PORTID_TEMPLATE_MACROS = (
+    '{$PORTID.LLD.IFALIAS.MATCHES}',
+    '{$PORTID.LLD.IFTYPE.MATCHES}',
+)
 
 # Role macros written as host macros (what nbxsync would push)
 ROLE_MACROS = {
@@ -112,6 +116,12 @@ def ensure_global_macros(api: ZabbixAPI) -> None:
         else:
             api.call('usermacro.createglobal', {'macro': macro, 'value': value})
             record(macro, True, f'created = {value}', group='global-macros')
+    for macro in _PORTID_TEMPLATE_MACROS:
+        if macro in existing:
+            api.call('usermacro.deleteglobal', [existing[macro]['globalmacroid']])
+            record(macro, True, 'deleted leaked global (template-scoped)', group='global-macros')
+        else:
+            record(macro, True, 'not a global (Speed Expect template owns it)', group='global-macros')
 
 
 def ensure_hostgroup(api: ZabbixAPI, name: str) -> str:
@@ -251,16 +261,41 @@ def verify_template_macros(api: ZabbixAPI, templateid: str) -> None:
 def verify_lld(api: ZabbixAPI, templateid: str) -> None:
     rules = api.call(
         'discoveryrule.get',
-        {'hostids': templateid, 'filter': {'key_': 'net.if.discovery'}, 'output': ['itemid', 'key_', 'delay', 'lifetime']},
+        {
+            'hostids': templateid,
+            'filter': {'key_': 'net.if.discovery'},
+            'output': [
+                'itemid',
+                'key_',
+                'delay',
+                'lifetime',
+                'lifetime_type',
+                'enabled_lifetime',
+                'enabled_lifetime_type',
+            ],
+        },
     )
     if not rules:
         record('net.if.discovery', False, 'LLD missing', group='lld')
         return
     r = rules[0]
-    # lifetime 0 or 0d both OK
-    lifetime_ok = str(r.get('lifetime', '')).lstrip('0') in ('', 'd', '0') or r.get('lifetime') in ('0', '0d', 0)
+    lifetime = str(r.get('lifetime') or '')
+    lifetime_type = str(r.get('lifetime_type') if r.get('lifetime_type') is not None else '')
+    enabled = str(r.get('enabled_lifetime') if r.get('enabled_lifetime') is not None else '')
+    enabled_type = str(r.get('enabled_lifetime_type') if r.get('enabled_lifetime_type') is not None else '')
     record('lld delay', r.get('delay') in ('15m', '1h'), f"delay={r.get('delay')}", group='lld')
-    record('lld keep-lost', lifetime_ok or str(r.get('lifetime')) in ('0', '0d'), f"lifetime={r.get('lifetime')}", group='lld')
+    record(
+        'lld disable-lost immediately',
+        enabled in ('0', '0s', '0d', '') and enabled_type in ('', '2', 'DISABLE_IMMEDIATELY'),
+        f'enabled_lifetime={enabled} type={enabled_type}',
+        group='lld',
+    )
+    record(
+        'lld delete-lost after 7d',
+        lifetime in ('7d', '7d0h', '604800') and lifetime_type in ('', '0', 'DELETE_AFTER'),
+        f'lifetime={lifetime} type={lifetime_type}',
+        group='lld',
+    )
 
 
 def verify_host(api: ZabbixAPI, host: str, *, expect_templates: list[str], role: str) -> None:
@@ -400,6 +435,33 @@ def main() -> int:
     if 'Extreme VOSS by SNMP' in tmpl_ids:
         verify_template_macros(api, tmpl_ids['Extreme VOSS by SNMP'])
         verify_lld(api, tmpl_ids['Extreme VOSS by SNMP'])
+        trigs = api.call(
+            'trigger.get',
+            {
+                'hostids': tmpl_ids['Extreme VOSS by SNMP'],
+                'output': ['description', 'priority'],
+                'search': {'description': 'No discovered interfaces after SNMP is up'},
+            },
+        )
+        record(
+            'watch-the-watcher zero interfaces',
+            bool(trigs) and str((trigs[0] or {}).get('priority')) == '3',
+            trigs[:1],
+            group='lld',
+        )
+    se_id = tmpl_ids.get('Extreme Port Speed Expect by SNMP')
+    if se_id:
+        se_macros = {
+            m['macro']: m['value']
+            for m in api.call('usermacro.get', {'hostids': se_id, 'output': ['macro', 'value']})
+        }
+        record(
+            'speed-expect owns PORTID defaults',
+            se_macros.get('{$PORTID.LLD.IFALIAS.MATCHES}') == '^(USW|US|UP|MON)(-|$)'
+            and se_macros.get('{$PORTID.LLD.IFTYPE.MATCHES}') == '^6$',
+            str({k: se_macros.get(k) for k in _PORTID_TEMPLATE_MACROS}),
+            group='global-macros',
+        )
 
     ensure_global_macros(api)
 

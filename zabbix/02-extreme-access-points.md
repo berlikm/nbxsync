@@ -14,7 +14,7 @@ The switch port toward the AP is `UP-…` (Access collects **only** `USW`+`UP` �
 | **Ticket** (Average) | Memory. Temp canary. Unsupported-item count. Switch `UP-` (AP). |
 | **Graph** causes | SNMP dead (**Warning** — same as EXOS/VOSS), CPU, clients, radio noise/Tx, retries/drops, eth traffic, ICMP loss/RTT (triggers **off**) |
 | One incident | Cable/PoE → switch `UP-` **Average**. AP ICMP stays **High**. A closet cut is two events. Do not drop AP ICMP to Average (that hides a hung AP). |
-| Never silent | Unsupported items (Average trigger); SNMP=0 while `UP-` is up; SNMP=1 and **zero** radios = Health census |
+| Never silent | Unsupported items (Average); SNMP=0 while `UP-` is up; SNMP=1 and **zero** radios or **zero** eth = Average after 1h |
 | Collect first | Radio retry alerts, client-count, ICMP loss/RTT, CPU-critical — **triggers off** in the YAML |
 | Host dashboard | Template dashboard **Health** (host-level). RF is page 2 |
 | Severity | Same scale as [_template.md](_template.md). **No Disaster** on this template |
@@ -36,12 +36,12 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | CPU high (`{$CPU.UTIL.WARN}=90`) | yes | Warning — GTAC: high CPU alone is not a fault |
 | AP eth / mgt oper down | yes | Warning — plant ticket is switch `UP-` (Average) |
 | Unsupported item count | yes | Average — `{$UNSUPPORTED.MAX}` (default 5), 30m |
+| Zero eth / zero radios (SNMP=1 for 1h) | yes | Average — LLD/filter break, not a cable |
 | CPU critical | **no** | trigger **DISABLED** until a quiet pilot |
 | ICMP loss / RTT | **no** | items on; triggers **DISABLED** (CH proxy RTT is a WAN signal) |
 | Client count | **no** | graph; trigger **DISABLED** |
 | Radio channel / Tx / noise | **no** | RF graphs on **Health** page 2 |
 | Radio retries / drops | **no** | graphs until baselined |
-| Zero radios (SNMP=1) | **no** | Health census until a pilot |
 | Per-client association | **no** | later |
 | Firmware / serial | **no** | inventory |
 | Fan | **no** | wall APs are fanless (item stays 0, not unsupported) |
@@ -57,7 +57,7 @@ Do **not** alert on: XIQ tenant as a host, VAP/SSID ifaces, a laptop on a switch
 | Page | 5-second read |
 |---|---|
 | **Overview** | ICMP / SNMP / CPU / **Uptime**. Problems. CPU+mem and Uptime history. Same four tiles as the switches. |
-| **RF** | Radio noise honeycomb. Client count + trend. Noise/Tx and retries/drops as a 2-column grid (wifi0 \| wifi1). Empty radios = census. |
+| **RF** | Radio noise honeycomb. Client count + trend. Noise/Tx and retries/drops as a 2-column grid (wifi0 \| wifi1). Empty radios ticket Average after 1h. |
 
 **Network interfaces → Overview** is the same map + 3×2 grid as switches (same IFNAME labels and oper-status colours), scoped to AP eth (`ifType=6`). The map is **12×3**, not 72×6: Zabbix honeycomb has no max cell size, and an AP has ~2 eth, so a switch-sized widget paints two giant hexes (`eth0` at ~340px). YAML plus `--apply` cap that widget; traffic is full width underneath at **height 14** so the 3×2 graphs stay readable. RF does not live there. There is no Health Diagnostics page and no Port page — AP eth has only status + RX/TX.
 
@@ -114,7 +114,8 @@ A closet PoE cut is AP ICMP High plus the switch `UP-` Average. That is accepted
 |---|---|---|
 | Unsupported items | OID missing on this AP class; looks like health | Average `{$UNSUPPORTED.MAX}` |
 | SNMP = 0, ICMP = 1, `UP-` up | XIQ manage-SNMP, credential, or CH-proxy SNMPv3 cache — not a cable | SNMP Warning |
-| SNMP = 1 and **zero** radios | LLD filter or empty walk — RF is blind | Health / RF page census |
+| SNMP = 1 and **zero** radios | LLD filter or empty walk — RF is blind | Average after 1h |
+| SNMP = 1 and **zero** eth | IF-MIB LLD blind | Average after 1h |
 | Proxy last-seen | unknown ≠ down | later |
 
 ---
@@ -144,7 +145,7 @@ CG **SNMP Monitoring** on role Access Point. No role-level template floor.
 {$IFCONTROL}         = 1
 ```
 
-Radio + eth LLD: **1h**, keep-lost **0**. Inventory (name/serial/fw/hw) **1h**. Health (CPU/mem/temp/clients) **1m**. Radio items **5m**. Re-import the YAML after this revision (poll delays, DISABLED flags, and **Health** live in the template).
+Radio + eth LLD: **1h**. Lost resources: **disable immediately**, **delete after 7d** (not delete-now — a truncated walk must not wipe RF/eth history). Inventory (name/serial/fw/hw) **1h**. Health (CPU/mem/temp/clients) **1m**. Radio items **5m**. Re-import the YAML after this revision (poll delays, DISABLED flags, and **Health** live in the template).
 
 ---
 

@@ -90,7 +90,7 @@ Roadmap / known debt:
     optic floors) are applied by the network script. TEMP_* live on EXOS/VOSS
     templates only. Context macros like {$IF.UTIL.MAX:"USW"} are post-cutover.
 
-  # Read-only census (coverage gaps)
+  # Read-only census (coverage gaps). Non-zero Extreme counters fail the process.
   python scripts/configure_nbxsync_zerotouch.py --verify
 
   # Lab proof against local Zabbix (prefixed synthetic estate)
@@ -2382,6 +2382,18 @@ def run_verify(*, limit: int | None = None) -> int:
             indent=2,
         )
     )
+    extreme_gaps = hiveos_without_iq_rule + switch_without_extreme_template + ap_without_iq_template
+    if extreme_gaps:
+        logger.error(
+            'Verify failed: Extreme coverage gaps '
+            '(hiveos_platform_without_iq_engine_token=%s '
+            'switch_role_without_exos_or_voss_template=%s '
+            'access_point_without_iq_template=%s)',
+            hiveos_without_iq_rule,
+            switch_without_extreme_template,
+            ap_without_iq_template,
+        )
+        return 1
     return 0
 
 
@@ -3094,7 +3106,7 @@ def run_simulate() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--simulate', action='store_true', help='Lab: synthetic estate + live Zabbix asserts')
-    parser.add_argument('--verify', action='store_true', help='Read-only census: unprofiled / agent-without-platform / no primary IP')
+    parser.add_argument('--verify', action='store_true', help='Read-only census; non-zero Extreme coverage gaps fail')
     parser.add_argument('--verify-limit', type=int, default=None, help='Optional cap on objects scanned by --verify')
     parser.add_argument('--mutate-netbox', action='store_true', help='Enable previous step0 inventory mutations')
     parser.add_argument('--zabbix-url', default=None, help='Override Zabbix URL')

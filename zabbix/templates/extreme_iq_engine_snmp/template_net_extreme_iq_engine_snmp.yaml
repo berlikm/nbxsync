@@ -124,6 +124,63 @@ zabbix_export:
         tags:
         - tag: scope
           value: availability
+    - uuid: d26809eb70a649f2a55d50dcaaa37bfa
+      name: Discovered interface count
+      type: CALCULATED
+      key: net.if.discovery.count
+      delay: 15m
+      history: 7d
+      value_type: FLOAT
+      params: 'count(exists_foreach(//net.if.status[*]))'
+      description: |
+        Enabled AP ethernet oper-status items. Zero with SNMP up is IF-MIB LLD blind
+        (not radio). foreach ignores disabled leftovers; empty foreach → unsupported,
+        which the trigger treats as nodata.
+      tags:
+      - tag: component
+        value: health
+      triggers:
+      - uuid: 1b1af9d05c51465b93c8047e3dd68d03
+        expression: 'min(/Extreme IQ Engine by SNMP/zabbix[host,snmp,available],1h)=1 and (last(/Extreme IQ Engine by SNMP/net.if.discovery.count)<{$NET.IF.DISCOVERY.MIN} or nodata(/Extreme IQ Engine by SNMP/net.if.discovery.count,1h)=1)'
+        name: 'Extreme IQ Engine: No discovered interfaces after SNMP is up'
+        priority: AVERAGE
+        description: |
+          SNMP has been up for 1h and LLD produced no enabled AP eth items.
+          IQ IF LLD is 1h — new hosts get that grace before this tickets.
+        dependencies:
+        - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+          expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: 6b74dfd6162e4cc990ca865b54ff681e
+      name: Discovered radio count
+      type: CALCULATED
+      key: ah.radio.discovery.count
+      delay: 15m
+      history: 7d
+      value_type: FLOAT
+      params: 'count(exists_foreach(//ah.radio.channel[*]))'
+      description: |
+        Enabled ahIfType=physical radio items. Zero with SNMP up is the radio LLD /
+        IFNAME filter break — RF honeycomb stays empty and nobody pages.
+      tags:
+      - tag: component
+        value: health
+      triggers:
+      - uuid: bee10015143c4255afde180e25a9f114
+        expression: 'min(/Extreme IQ Engine by SNMP/zabbix[host,snmp,available],1h)=1 and (last(/Extreme IQ Engine by SNMP/ah.radio.discovery.count)<{$AH.RADIO.DISCOVERY.MIN} or nodata(/Extreme IQ Engine by SNMP/ah.radio.discovery.count,1h)=1)'
+        name: 'Extreme IQ Engine: No discovered radios after SNMP is up'
+        priority: AVERAGE
+        description: |
+          SNMP has been up for 1h and radio LLD produced no enabled channel items.
+          Check {$AP.RADIO.IFNAME.MATCHES} and ahIfType=0 filter — not a cable.
+        dependencies:
+        - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
+          expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0
+        tags:
+        - tag: scope
+          value: availability
     - uuid: 5d01caae9d6643edae92ea3240bedbee
       name: System name
       type: SNMP_AGENT
@@ -418,8 +475,10 @@ zabbix_export:
       snmp_oid: discovery[{#AHIFNAME},1.3.6.1.4.1.26928.1.1.1.2.1.1.1.1,{#AHIFTYPE},1.3.6.1.4.1.26928.1.1.1.2.1.1.1.4]
       key: ah.radio.discovery
       delay: 1h
-      lifetime: '0'
+      lifetime: 7d
+      lifetime_type: DELETE_AFTER
       enabled_lifetime: '0'
+      enabled_lifetime_type: DISABLE_IMMEDIATELY
       description: |
         Primary filter: ahIfType=ahPHYSICAL(0) (AH-SMI-MIB) — vendor physical vs virtual.
         Secondary: {$AP.RADIO.IFNAME.MATCHES} drops VAP names (wifi0.1) seen on AP305C.
@@ -584,7 +643,10 @@ zabbix_export:
       snmp_oid: discovery[{#IFNAME},1.3.6.1.2.1.31.1.1.1.1,{#IFTYPE},1.3.6.1.2.1.2.2.1.3,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8,{#IFALIAS},1.3.6.1.2.1.31.1.1.1.18]
       key: net.if.discovery
       delay: 1h
-      lifetime: '0'
+      lifetime: 7d
+      lifetime_type: DELETE_AFTER
+      enabled_lifetime: '0'
+      enabled_lifetime_type: DISABLE_IMMEDIATELY
       description: Physical ethernet toward the switch. Wifi uses radio discovery.
       filter:
         evaltype: AND
@@ -740,6 +802,12 @@ zabbix_export:
     - macro: '{$UNSUPPORTED.MAX}'
       value: '5'
       description: Average ticket when unsupported items stay above this for 30m.
+    - macro: '{$NET.IF.DISCOVERY.MIN}'
+      value: '1'
+      description: Average ticket when SNMP is up 1h and enabled AP eth items stay below this.
+    - macro: '{$AH.RADIO.DISCOVERY.MIN}'
+      value: '1'
+      description: Average ticket when SNMP is up 1h and enabled radio items stay below this.
     dashboards:
     - uuid: c87fdffc6e3c4a7a9de4e1dc42275c6c
       name: Health

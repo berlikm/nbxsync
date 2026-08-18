@@ -26,8 +26,10 @@ zabbix_export:
       snmp_oid: discovery[{#IFALIAS},1.3.6.1.2.1.31.1.1.1.18,{#IFNAME},1.3.6.1.2.1.31.1.1.1.1,{#IFTYPE},1.3.6.1.2.1.2.2.1.3,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8]
       key: net.if.speedexpect.discovery
       delay: 15m
-      lifetime: '0'
+      lifetime: 7d
+      lifetime_type: DELETE_AFTER
       enabled_lifetime: '0'
+      enabled_lifetime_type: DISABLE_IMMEDIATELY
       description: 'Physical ports with monitored class labels. Parses CLASS[-SPEED]-ID
         into {#IF.CLASS}, {#IF.SPEED.EXPECTED} (Mbps), {#IF.UTIL.MULT}.
 

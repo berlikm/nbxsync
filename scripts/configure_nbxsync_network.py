@@ -13,7 +13,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 
   * Import Extreme VOSS / IQ Engine / EXOS Observability / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
-  * Patch stock EXOS ``net.if.discovery`` rollout (15m / lifetime 0 / SNMP timeout 30s)
+  * Patch stock EXOS ``net.if.discovery`` rollout (15m / disable-lost immediately / delete after 7d / SNMP timeout 30s)
   * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding and queue check-now discovery for stale rows (no fork, no host sync)
   * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it)
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
@@ -21,7 +21,8 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
   * Platform TemplateRules: EXOS → Observability companion (nests stock); VOSS / IQ Engine → Extreme * by SNMP
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
-  * Global **destination** macros on the Zabbix server object (production end-state)
+  * Global **destination** macros on the Zabbix server object (production end-state).
+    ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
   * Optional Speed Expect **role** assignment (``--link-speed-expect``). Prefer nesting
     on VOSS / EXOS Observability so unlabeled ports stay silent and labels start
@@ -38,6 +39,7 @@ Stage matrix (what each flag enables):
 Re-apply safety (estate already has switches/APs in Zabbix):
   * Does **not** delete hosts, interfaces, history, or hostids
   * Does **not** mass-sync every device (template updates inherit in Zabbix)
+  * After role macros, logs which active Switch* devices still need HostSync — does not sync them
   * YAML ``deleteMissing: false`` — retired items linger; LLD is not wiped
   * ``--apply`` without ``--link-speed-expect`` does **not** unlink a leftover role assignment
     (Speed Expect is nested on the platform templates; skip the flag).
@@ -198,8 +200,6 @@ DESTINATION_GLOBAL_MACROS = {
     '{$VIST.CONTROL}': '0',  # set host macro =1 on VOSS fabric pairs
     '{$IST.CONTROL}': '0',  # classic IST unused on FE fabric
     '{$SNMP.TIMEOUT}': '5m',
-    '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|US|UP|MON)(-|$)',
-    '{$PORTID.LLD.IFTYPE.MATCHES}': '^6$',
 }
 
 # Extreme EXOS/VOSS template-only macros (NOT global — scoped to switch templates).
@@ -435,8 +435,50 @@ def assert_etherlike_ifalias_filters(api, template_name: str) -> tuple[bool, str
 
 _IF_DISCOVERY_KEY = 'net.if.discovery'
 _IF_LLD_ROLLOUT_DELAY = '15m'
-_IF_LLD_ROLLOUT_LIFETIME = '0'
 _IF_LLD_ROLLOUT_TIMEOUT = '30s'
+
+# Zabbix 7 discoveryrule API. Immediate *delete* wipes history on a truncated
+# GETBULK or a wrong IFALIAS filter. A rule that goes not-supported (SNMP
+# timeout) does not process lost resources — a full outage is a graph gap.
+# Disable immediately so X-ports / empty PSU slots leave the honeycomb; delete
+# after 7d (default) so rediscovery re-enables with history intact.
+_LLD_DELETE_AFTER = 0
+_LLD_DELETE_IMMEDIATELY = 2
+_LLD_DISABLE_IMMEDIATELY = 2
+_LLD_DELETE_LIFETIME = '7d'
+_LLD_DISABLE_LIFETIME = '0'
+
+
+def _lld_lost_resources_fields() -> dict:
+    return {
+        'lifetime': _LLD_DELETE_LIFETIME,
+        'lifetime_type': _LLD_DELETE_AFTER,
+        'enabled_lifetime': _LLD_DISABLE_LIFETIME,
+        'enabled_lifetime_type': _LLD_DISABLE_IMMEDIATELY,
+    }
+
+
+def _lld_lost_resources_ok(rule: dict) -> bool:
+    """Disable lost immediately; delete after 7d — never delete-immediately."""
+    lifetime = str(rule.get('lifetime') or '')
+    lifetime_type = str(rule.get('lifetime_type') if rule.get('lifetime_type') is not None else '')
+    enabled = str(rule.get('enabled_lifetime') if rule.get('enabled_lifetime') is not None else '0')
+    enabled_type = str(rule.get('enabled_lifetime_type') if rule.get('enabled_lifetime_type') is not None else '')
+    if lifetime_type in (str(_LLD_DELETE_IMMEDIATELY), 'DELETE_IMMEDIATELY'):
+        return False
+    if lifetime in ('0', '0s', '0d', '0h') and lifetime_type not in ('1', 'DELETE_NEVER'):
+        return False
+    delete_after = lifetime in (_LLD_DELETE_LIFETIME, '7d0h', '604800') and lifetime_type in (
+        '',
+        str(_LLD_DELETE_AFTER),
+        'DELETE_AFTER',
+    )
+    disable_now = enabled in ('0', '0s', '0d', '0h', '') and enabled_type in (
+        '',
+        str(_LLD_DISABLE_IMMEDIATELY),
+        'DISABLE_IMMEDIATELY',
+    )
+    return delete_after and disable_now
 
 
 _PSU_DISCOVERY_KEY = 'psu.discovery'
@@ -447,15 +489,13 @@ _PSU_DISCOVERY_OID = (
 )
 _PSU_STATUS_MACRO = '{#PSU.STATUS}'
 _PSU_NOTPRESENT = '^1$'
-_PSU_LLD_LIFETIME = '0'
 
 
 def _psu_lld_skips_notpresent(rule: dict) -> bool:
     snmp_oid = str(rule.get('snmp_oid') or '')
     if '{#PSU.STATUS}' not in snmp_oid or _PSU_STATUS_OID not in snmp_oid:
         return False
-    lifetime = str(rule.get('lifetime') or '')
-    if lifetime not in (_PSU_LLD_LIFETIME, '0s', '0d', '0h'):
+    if not _lld_lost_resources_ok(rule):
         return False
     for c in (rule.get('filter') or {}).get('conditions') or []:
         if (
@@ -473,8 +513,9 @@ def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by S
     ``extremePowerSupplyTable`` has a row for every possible stack member slot.
     Stock LLD walks only the number column, so an 8-slot stack paints 32 grey
     hexes. Walk status too and skip ``notPresent(1)``. Failed/off units stay
-    (``presentNotOK`` / ``presentPowerOff``). Lifetime 0 so leftover empty-slot
-    items drop on the next discovery. Does not fork the stock YAML.
+    (``presentNotOK`` / ``presentPowerOff``). Disable lost immediately so empty
+    slots leave the honeycomb on the next discovery; delete after 7d so a
+    truncated walk does not wipe history. Does not fork the stock YAML.
     """
     logger.info('Network: EXOS psu.discovery present-only')
     tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
@@ -485,7 +526,7 @@ def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by S
     rules = api.discoveryrule.get(
         hostids=tid,
         filter={'key_': _PSU_DISCOVERY_KEY},
-        output=['itemid', 'key_', 'snmp_oid', 'lifetime', 'enabled_lifetime'],
+        output=['itemid', 'key_', 'snmp_oid', 'lifetime', 'lifetime_type', 'enabled_lifetime', 'enabled_lifetime_type'],
         selectFilter='extend',
     )
     if not rules:
@@ -516,9 +557,8 @@ def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by S
     api.discoveryrule.update(
         itemid=rule['itemid'],
         snmp_oid=_PSU_DISCOVERY_OID,
-        lifetime=_PSU_LLD_LIFETIME,
-        enabled_lifetime=_PSU_LLD_LIFETIME,
         filter={'evaltype': _LLD_EVAL_AND, 'conditions': conditions},
+        **_lld_lost_resources_fields(),
     )
     logger.info('  %s: patched PSU LLD to skip notPresent (itemid=%s)', template_name, rule['itemid'])
     return 'patched'
@@ -610,7 +650,7 @@ def assert_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by 
     rules = api.discoveryrule.get(
         hostids=tpls[0]['templateid'],
         filter={'key_': _PSU_DISCOVERY_KEY},
-        output=['itemid', 'snmp_oid', 'lifetime'],
+        output=['itemid', 'snmp_oid', 'lifetime', 'lifetime_type', 'enabled_lifetime', 'enabled_lifetime_type'],
         selectFilter='extend',
     )
     if not rules:
@@ -755,6 +795,7 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
     default SNMP timeout. Dist/Access EXOS boxes with many VLAN ifaces then
     show EtherLike duplex (small table) and **zero** ``net.if.*`` traffic
     items (full IF-MIB walk). Idempotent API patch; does not fork the stock YAML.
+    Lost resources: disable immediately, delete after 7d — not delete-now.
     """
     logger.info('Network: EXOS net.if.discovery rollout (delay/lifetime/timeout)')
     tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
@@ -765,7 +806,16 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
     rules = api.discoveryrule.get(
         hostids=tid,
         filter={'key_': _IF_DISCOVERY_KEY},
-        output=['itemid', 'key_', 'delay', 'lifetime', 'enabled_lifetime', 'timeout'],
+        output=[
+            'itemid',
+            'key_',
+            'delay',
+            'lifetime',
+            'lifetime_type',
+            'enabled_lifetime',
+            'enabled_lifetime_type',
+            'timeout',
+        ],
     )
     if not rules:
         logger.warning('  %s: no %s — skip', template_name, _IF_DISCOVERY_KEY)
@@ -773,15 +823,9 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
     rule = rules[0]
     delay = str(rule.get('delay') or '')
     lifetime = str(rule.get('lifetime') or '')
-    enabled = str(rule.get('enabled_lifetime') or '')
     timeout = str(rule.get('timeout') or '')
-    delay_ok = delay == _IF_LLD_ROLLOUT_DELAY and lifetime in (_IF_LLD_ROLLOUT_LIFETIME, '0s', '0d') and enabled in (
-        _IF_LLD_ROLLOUT_LIFETIME,
-        '0s',
-        '0d',
-        '',
-    )
-    if delay_ok and timeout == _IF_LLD_ROLLOUT_TIMEOUT:
+    already = delay == _IF_LLD_ROLLOUT_DELAY and _lld_lost_resources_ok(rule)
+    if already and timeout == _IF_LLD_ROLLOUT_TIMEOUT:
         logger.info(
             '  %s: IF LLD rollout already set (delay=%s lifetime=%s timeout=%s)',
             template_name,
@@ -793,9 +837,8 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
     payload = {
         'itemid': rule['itemid'],
         'delay': _IF_LLD_ROLLOUT_DELAY,
-        'lifetime': _IF_LLD_ROLLOUT_LIFETIME,
-        'enabled_lifetime': _IF_LLD_ROLLOUT_LIFETIME,
         'timeout': _IF_LLD_ROLLOUT_TIMEOUT,
+        **_lld_lost_resources_fields(),
     }
     try:
         api.discoveryrule.update(**payload)
@@ -809,15 +852,14 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
         api.discoveryrule.update(
             itemid=rule['itemid'],
             delay=_IF_LLD_ROLLOUT_DELAY,
-            lifetime=_IF_LLD_ROLLOUT_LIFETIME,
-            enabled_lifetime=_IF_LLD_ROLLOUT_LIFETIME,
+            **_lld_lost_resources_fields(),
         )
         return 'patched-no-timeout'
     logger.info(
         '  %s: patched IF LLD delay=%s lifetime=%s timeout=%s (was delay=%s lifetime=%s timeout=%s)',
         template_name,
         _IF_LLD_ROLLOUT_DELAY,
-        _IF_LLD_ROLLOUT_LIFETIME,
+        _LLD_DELETE_LIFETIME,
         _IF_LLD_ROLLOUT_TIMEOUT,
         delay,
         lifetime,
@@ -833,17 +875,17 @@ def assert_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by
     rules = api.discoveryrule.get(
         hostids=tpls[0]['templateid'],
         filter={'key_': _IF_DISCOVERY_KEY},
-        output=['delay', 'lifetime', 'enabled_lifetime', 'timeout'],
+        output=['delay', 'lifetime', 'lifetime_type', 'enabled_lifetime', 'enabled_lifetime_type', 'timeout'],
     )
     if not rules:
         return True, 'no IF LLD — n/a'
     r = rules[0]
-    detail = f"delay={r.get('delay')} lifetime={r.get('lifetime')} enabled_lifetime={r.get('enabled_lifetime')} timeout={r.get('timeout')}"
-    ok = str(r.get('delay')) == _IF_LLD_ROLLOUT_DELAY and str(r.get('lifetime')) in (
-        _IF_LLD_ROLLOUT_LIFETIME,
-        '0s',
-        '0d',
+    detail = (
+        f"delay={r.get('delay')} lifetime={r.get('lifetime')} lifetime_type={r.get('lifetime_type')} "
+        f"enabled_lifetime={r.get('enabled_lifetime')} enabled_lifetime_type={r.get('enabled_lifetime_type')} "
+        f"timeout={r.get('timeout')}"
     )
+    ok = str(r.get('delay')) == _IF_LLD_ROLLOUT_DELAY and _lld_lost_resources_ok(r)
     return ok, detail
 
 
@@ -851,6 +893,12 @@ def assert_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by
 # so setting globals alone never stops the G2+ "Normal @ 70°C" false critical.
 _TEMP_TEMPLATE_MACRO_KEYS = ('{$TEMP_WARN}', '{$TEMP_CRIT}', '{$TEMP_CRIT_LOW}')
 _TEMP_TEMPLATE_NAMES = ('Extreme EXOS by SNMP', 'Extreme VOSS by SNMP')
+# Speed Expect template owns defaults. A leftover Zabbix *global* forces a
+# config-cache bump on every host. Access override stays a role host macro.
+_PORTID_TEMPLATE_MACRO_KEYS = (
+    '{$PORTID.LLD.IFALIAS.MATCHES}',
+    '{$PORTID.LLD.IFTYPE.MATCHES}',
+)
 
 
 def _template_macro_map(macros: list) -> dict[str, str]:
@@ -971,10 +1019,12 @@ def step_global_macros_zabbix(api) -> None:
             api.usermacro.createglobal(macro=macro, value=value)
             logger.info('  Created global %s=%s', macro, value)
     # Older --cutover-silence wrote chassis TEMP_* as globals and muted APs/servers.
-    for macro in _TEMP_TEMPLATE_MACRO_KEYS:
+    # PORTID.* on the global layer forced a config update for every host; defaults
+    # live on Extreme Port Speed Expect by SNMP.
+    for macro in (*_TEMP_TEMPLATE_MACRO_KEYS, *_PORTID_TEMPLATE_MACRO_KEYS):
         if macro in existing and macro not in wanted:
             api.usermacro.deleteglobal([existing[macro]['globalmacroid']])
-            logger.info('  Deleted leaked global %s (chassis TEMP is template-only)', macro)
+            logger.info('  Deleted leaked global %s (template/role-scoped, not global)', macro)
 
 
 def step_server_macros(server) -> None:
@@ -1083,6 +1133,29 @@ def step_role_macros() -> None:
                     ma.value = value
                     ma.save(update_fields=['value'])
                 logger.info('  %s %s = %s', role.name, macro_name, value)
+
+
+def report_hosts_needing_macro_sync() -> dict:
+    """Role IFALIAS / Access PORTID are host macros. ``--apply`` does not HostSync."""
+    role_ids: set[int] = set()
+    for canonical in ROLE_MACROS:
+        for role in resolve_roles_for_macros(canonical):
+            role_ids.add(role.pk)
+    if not role_ids:
+        logger.info('Network: no Switch* roles found — skip HostSync reminder')
+        return {'count': 0, 'sample': []}
+    qs = Device.objects.filter(status='active', role_id__in=role_ids)
+    count = qs.count()
+    sample = list(qs.order_by('name').values_list('name', flat=True)[:12])
+    logger.warning(
+        'Role IFALIAS / Access PORTID live as host macros after HostSync. '
+        '--apply updated NetBox assignments only; existing Zabbix hosts keep old macros '
+        'until those hosts are synced. Does not mass-sync. '
+        'Active Switch Core/Dist/Access/Mgmt: %s. Sample: %s',
+        count,
+        sample,
+    )
+    return {'count': count, 'sample': sample}
 
 
 def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
@@ -1474,6 +1547,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
 
         step_server_macros(server)
         step_role_macros()
+        report_hosts_needing_macro_sync()
         step_template_rules(server, tpl_models)
         step_speed_expect_assignment(server, tpl_models, link=link_speed_expect)
 
@@ -1721,6 +1795,12 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             expect_mlt = GLOBAL_MACROS['{$MLT.CONTROL}']
             record('zbx_global_util_off', gmacros.get('{$IF.UTIL.MAX}') == '101', gmacros.get('{$IF.UTIL.MAX}'), group='zabbix')
             record('zbx_global_mlt_control', gmacros.get('{$MLT.CONTROL}') == expect_mlt, gmacros.get('{$MLT.CONTROL}'), group='zabbix')
+            record(
+                'zbx_global_no_portid',
+                '{$PORTID.LLD.IFALIAS.MATCHES}' not in gmacros and '{$PORTID.LLD.IFTYPE.MATCHES}' not in gmacros,
+                str({k: gmacros[k] for k in gmacros if k.startswith('{$PORTID.')}),
+                group='zabbix',
+            )
             # TEMP_* are template-only (EXOS/VOSS). Asserted earlier as template_temp_assert_*.
 
         passed = sum(1 for r in RESULTS if r['ok'])
@@ -1786,6 +1866,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
     step_server_macros(server)
     step_role_macros()
+    report_hosts_needing_macro_sync()
     step_template_rules(server, tpl_models)
     step_speed_expect_assignment(server, tpl_models, link=link_speed_expect)
     logger.info('Network configuration applied (macros=%s)', 'cutover-silence' if cutover_silence else 'destination')
