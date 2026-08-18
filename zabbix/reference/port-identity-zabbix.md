@@ -44,7 +44,7 @@ Stock `net.if.discovery` is **unmodified**. Scoping is host macros from nbxsync 
 | no label / unparseable | monitored | not monitored |
 | `X` / `X-<note>` | excluded | not monitored |
 
-Unused ports → **admin-down** (not discovered). Reserve `X` for up ports that must not alert.
+Unused ports → **admin-down** (not discovered). Reserve `X` for SPAN / mute. Stack / ISC / MLAG peer-links stay **`USW`**.
 
 ### Speed-expect LLD (own macros — do not reuse `{$NET.IF.*}`)
 

@@ -67,7 +67,7 @@ recovered in `port_label_canary.py` before replay. Rebuild the TSV with
 | **Canary allowlist** | `device-name::ifname` per line — limits the push |
 | **Scope** | site group / site / role / device tag / explicit devices |
 | **Platform** | EXOS · VOSS · both |
-| **Structural tags** | interface tags meaning "never alert" → expected label `X` |
+| **Structural tags** | interface tags meaning "never alert" (SPAN / mute) → expected label `X`. Do **not** tag stack / ISC / MLAG peer |
 | **Include admin-down / X·N** | reporting breadth |
 | **Also clear EXOS description-string** | off by default (may hold human text) |
 | **Fail the job on blocking diffs** | for scheduled compliance runs |
@@ -126,7 +126,7 @@ ID = [<SCOPE>-]<CODE><NN>[-<STACK>][_p<FARPORT>]
 | `SCOPE` | far-end **location** token when the far end is in the same site, otherwise the far **site** tail | `B01`, `L01`, `GFL` / `L42`, `L44` |
 | `CODE<NN>` | far-end device code + index | `DIST01`, `ACPO03`, `CORE02` |
 | `-STACK` | stack member suffix, when present | `-1`, `-2` |
-| `_pFARPORT` | far-end interface; `:`/`/` → `.`, leading zeros stripped | `_P29`, `_P1.24`. If that overflows by 1, concatenate: `_P120` |
+| `_pFARPORT` | far-end interface; `:`/`/`/`.` → `_`, leading zeros stripped | `_P29`, `_P1_24`. If that overflows by 1, concatenate: `_P120` |
 
 Non-numeric far ports use a bare `_` (`_LOM1`, `_X1`, `_VMNIC0`).
 `UP` (access point) omits the far port entirely — an AP has one uplink, so the
@@ -149,8 +149,8 @@ The abbreviator walks a fixed ladder and takes the **first form that fits**:
 | # | Form | Example |
 |---|---|---|
 | 1 | `SCOPE-CODE NN-STACK _pPORT` | `GFL-AC01_P23` |
-| 2 | drop stack, keep floor + dotted port | `L02-CO01_P1.1` |
-| 3 | concatenate slot+port (`1.20` → `_P120`) | `L01-MG01_P120` |
+| 2 | drop stack, keep floor + underscored port | `L02-CO01_P1_1` |
+| 3 | concatenate slot+port (`1_20` → `_P120`) | `L01-MG01_P120` |
 | 4 | drop the far port, keep the floor | `L17-CO01-1` |
 | 5 | drop the scope, keep the port | `AC01_P23` |
 | 6 | code + stack only | `AC01` |
@@ -189,12 +189,11 @@ token.
 Do **not** treat “device has no primary_ip in NetBox” as management — Pure/SAN
 often only have `oob_ip` recorded while the cable is a production data port.
 
-`X` is **policy, not inference.** Stack / ISC / MLAG peer-link / SPAN ports must
-never alert, but NetBox models them as ordinary switch-to-switch cables — see
-the ISC ports in the sample below, which the script correctly reports as `USW`
-because nothing in NetBox says otherwise. Tag those interfaces and select the
-tag in **Structural (never-alert) interface tags**. Auto-`X` without a policy is
-an explicit non-goal.
+`X` is **policy, not inference.** Use it for SPAN / lab / operator mute. **Stack,
+ISC, and MLAG peer-links are ordinary switch↔switch cables** — the script
+correctly labels them `USW` and they **must stay monitored** (split-stack /
+dual-active is an outage). Do not tag them structural. Auto-`X` from a
+description of `ISC` is an explicit non-goal.
 
 ---
 
@@ -290,8 +289,8 @@ addresses are reproduced here.
 Reading it:
 
 - Ports 1–4 and 11 are the **MLAG ISC**. NetBox models them as ordinary
-  switch↔switch cables, so the script proposes `USW-…`. These are exactly the
-  ports that need the structural tag → `X`.
+  switch↔switch cables, so the script proposes `USW-…`. **Keep that** — ISC
+  must alert. Do not tag them `X`.
 - Port 29/30 shows a **NetBox-vs-reality disagreement**: the cable says
   `san01`, the box says `SAN04-N01`. Fix NetBox, not the switch.
 - Ports 20, 21, 40, 41, 44, 47, 48 are `orphan` — labelled on the box, uncabled
@@ -377,5 +376,5 @@ Safety properties:
 ## 7. Non-goals (v1)
 
 Zabbix template edits · renaming NetBox devices · replacing Golden Config ·
-auto-`X` on every unused port without a policy · LAG / MLAG / MLT label grammar
-(still TBD upstream in `port-identity-foundation.md` §6).
+auto-`X` on stack / ISC / MLAG peer (those are `USW`) · LAG / MLAG / MLT bundle
+label grammar (still TBD upstream in `port-identity-foundation.md` §6).

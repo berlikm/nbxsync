@@ -21,7 +21,7 @@ CLASS-SPEED-ID
 | **ID** | Far-end / free text after normalize — **machine-short abbreviation**, not a hostname |
 | **Case** | Store UPPERCASE; match case-insensitive |
 | **Length** | Max **20** characters (EXOS `display-string` hard limit; VOSS allows 64 — use LCD **20**) |
-| **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric |
+| **Forbidden** | `:` `.` space `"` `<>` `&` `?` ; first char alphanumeric |
 
 One fact, one encoding: if the port runs at the class default, **omit SPEED**.
 
@@ -56,7 +56,7 @@ Classes are chosen by **expected default speed** (and role), not by inventing de
 
 Zabbix takes **no port alerts** on `X*`. Reason may also live in NetBox description.
 
-Only **`X`** removes a port from monitoring. Structural ports that must never alert (stack, ISC, MLAG peer-link, SPAN) need an explicit **`X`**, not a note.
+Only **`X`** removes a port from monitoring. Use it for SPAN / operator-mute / up-but-uninteresting. **Stack, ISC, and MLAG peer-links are switch↔switch fabric** — label them **`USW`** and alert like any other uplink (split-stack / dual-active is a real outage). Do not auto-`X` from a NetBox description of `ISC`. Unused ports stay **admin-down**.
 
 ### 2.3 Note — class `N` (monitoring-neutral)
 
@@ -108,7 +108,7 @@ Emit a token **only** for non-default speeds.
 | 1G server NIC | `MON-SRV12` | 9 | 1G |
 | WAN uplink | `UW-SC1` | 6 | link/flap/errors |
 | Temp watch | `TMON-GUEST` | 10 | items + INFO link-down |
-| Exclude | `X` / `X-STACK` | | none |
+| Exclude | `X` / `X-SPAN` | | none |
 | Note (neutral) | `N-SPARE` | 7 | same as unlabelled |
 
 **Exceptions (token required — not the class default):**
@@ -156,4 +156,4 @@ Lab canary on **Virtual Fabric Engine 9.3.1.0**:
 
 ## 6. LAG / MLAG / MLT
 
-**Naming TBD** — confirm later how bundle / peer-link / MLT labels fit this grammar (member ports vs aggregate, MLAG peer-link, VOSS MLT). Until then, structural links that must not alert use **`X`**.
+**Bundle naming TBD** — confirm later how LAG / MLT *aggregates* fit this grammar (member ports vs bundle). **Peer-link / ISC / stack members are `USW`**, same as any switch↔switch cable. SPAN and other never-alert ports stay **`X`**.

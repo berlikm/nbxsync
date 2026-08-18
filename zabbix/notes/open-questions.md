@@ -6,7 +6,7 @@
 - [x] ~~**64-char boundary**~~ **Answered** — EXOS `display-string` caps at **20** and truncates silently. Fleet budget is 20, not 64. **port-identity.md must be updated.**
 - [x] ~~**VOSS `name` → which OID**~~ **Answered — `ifAlias`.** `name USW-ID01` → `ifAlias.192 = "USW-ID01"`. `rcPortName` returns empty; do not use it. The IFALIAS macro model works unchanged on VOSS.
 - [x] ~~**VOSS device-health OIDs**~~ **Answered** — `rcKhiSlotCpuCurrentUtil` / `rcKhiSlot*` memory. `rcSysCpuUtil` and `rcSysDramSize/Used/Free` return *No Such Object* — do not use.
-- [ ] **Charset** — confirm `:` is rejected and `-` accepted by `display-string` on our EXOS versions. Also test `,` and `;` (EXOS port-list separators, not on the vendor forbidden list).
+- [ ] **Charset** — confirm `:` is rejected and `-` accepted by `display-string` on our EXOS versions. `.` is now also forbidden by policy (labels use `_` for slot/port). Also test `,` and `;` (EXOS port-list separators, not on the vendor forbidden list).
 - [ ] **Compliance check** — any port where `description-string` is non-empty; it silently hijacks `ifAlias`.
 - [ ] **VOSS hardware canary** — the lab is a *virtual* Fabric Engine. Fan (`rcChasFan*`), optics, LLDP peers, cards, ISIS/MLT and IST were absent, and temperature reads 0 °C. Re-run on a physical 5520 before trusting fan/temp/PSU triggers.
 - [ ] **VOSS `hrSystemUptime` absent** — restart trigger falls back to `sysUpTime.0` only, so the 497-day 32-bit wrap has **no mitigation** on VOSS. Accept the false restart, or suppress the trigger there.
@@ -26,8 +26,8 @@
 
 - [x] ~~**`X` vs `N` semantics**~~ **Answered** — only `X` excludes. `N` is **monitoring-neutral**: a note, behaving exactly like an unlabelled port plus human text. Core regex is `^X(-|$)`, not `^(X|N)(-|$)`.
 - [x] ~~**Unparseable legacy labels**~~ **Defined** — a label that matches neither the include classes nor `^X(-|$)` is neutral, same as `N`: monitored on core, not monitored on access. No longer undefined behaviour.
-- [ ] **Structural ports still need explicit `X`.** `ISC`, `Alternative_ISC`, `MLAG_MGMT01_p51` are neutral today, so on a core switch they are monitored as ordinary ports and MLAG peer-links will alert. Migration list needed before stage 2.
-- [ ] **LAG / MLAG / MLT** — port-identity §5 is TBD. Interim answer now in place: the ifType filter (`^6$`) keeps LAG aggregates out of the speed-expect template. Peer-link / ISC members still need `X` until resolved.
+- [x] ~~**Structural ports still need explicit `X`.**~~ **Answered** — stack / ISC / MLAG peer-links are **`USW`** (switch↔switch fabric; alert on down). **`X`** is SPAN / operator-mute / up-but-uninteresting only. Do not auto-`X` from a description of `ISC`.
+- [ ] **LAG / MLAG / MLT** — port-identity §6 is TBD for *bundle* naming. Member / peer-link / ISC ports are **`USW`**, not `X`. Speed-expect ifType filter (`^6$`) still keeps LAG aggregates out of that template.
 
 ## Design gaps to confirm still exist elsewhere
 

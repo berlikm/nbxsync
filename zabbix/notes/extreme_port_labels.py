@@ -70,8 +70,9 @@ if not logger.handlers:
 #: but the fleet uses the lowest common denominator so one label fits both.
 MAX_LABEL_LEN = 20
 
-#: Union of the two EXOS User Guide 32.7.1 character lists, plus ``?``.
-FORBIDDEN_CHARS = frozenset(': "<>&?')
+#: Union of the two EXOS User Guide 32.7.1 character lists, plus ``?`` and
+#: ``.`` (fleet policy: no dots in labels — SPEED is ``2G5``, ports use ``_``).
+FORBIDDEN_CHARS = frozenset(': ."<>&?')
 
 CLASSES = ("USW", "US", "UP", "MON", "UW", "TMON", "X", "N")
 
@@ -271,22 +272,23 @@ def split_device_name(name: str, site_slug: str, local_site_slug: str) -> Device
 
 
 def normalize_port_token(port_name: str) -> str:
-    """``1:24`` / ``1/24`` / ``01:01`` -> ``1.24`` / ``1.1``.
+    """``1:24`` / ``1/24`` / ``01:01`` / ``1.24`` -> ``1_24`` / ``1_1``.
 
+    Dots are forbidden on the box, so ``:`` / ``/`` / ``.`` all become ``_``.
     Leading zeros are stripped per numeric segment so a VOSS ``01:05`` and an
-    Excel-retyped ``1:5`` render the same ``_P1.5``, and so
-    ``USW-1G-L02-CO01_P1.1`` (20) fits instead of ``…_P01.01`` (22).
+    Excel-retyped ``1:5`` render the same ``_P1_5``, and so
+    ``USW-1G-L02-CO01_P1_1`` (20) fits instead of ``…_P01_01`` (22).
     """
-    token = (port_name or "").upper().replace(":", ".").replace("/", ".")
-    token = "".join(ch for ch in token if ch.isalnum() or ch in "._")
+    token = (port_name or "").upper().replace(":", "_").replace("/", "_").replace(".", "_")
+    token = "".join(ch for ch in token if ch.isalnum() or ch == "_")
     if not token:
         return ""
     parts = []
-    for seg in token.split("."):
+    for seg in token.split("_"):
         if not seg:
             continue
         parts.append(str(int(seg)) if seg.isdigit() else seg)
-    return ".".join(parts)
+    return "_".join(parts)
 
 
 def _port_suffix_candidates(port_name: str) -> list[str]:
@@ -294,7 +296,7 @@ def _port_suffix_candidates(port_name: str) -> list[str]:
 
     Vendor NIC names (``ct1.eth0``, ``CTE0.A.P2``) shed trailing segments so a
     tight budget costs detail rather than the whole port. Numeric switch ports
-    are never compacted — ``2.14`` shortened to ``2`` would name the slot only.
+    are never compacted — ``2_14`` shortened to ``2`` would name the slot only.
     """
     token = normalize_port_token(port_name)
     if not token:
@@ -302,13 +304,13 @@ def _port_suffix_candidates(port_name: str) -> list[str]:
     if token.startswith("PORT") and token[4:5].isdigit():
         token = token[4:]
     if token[0].isdigit():
-        # Dotted VOSS/EXOS ``1.20`` is never shortened to the slot (``1``):
+        # Underscored VOSS/EXOS ``1_20`` is never shortened to the slot (``1``):
         # that would collide 1:20 with 1:21. Concatenation (``120``) is a
-        # later, tighter rendering used only when the dotted form cannot fit.
+        # later, tighter rendering used only when the underscored form cannot fit.
         return [f"_P{token}"]
 
-    segments = token.split(".")
-    forms = [token, token.replace(".", "")]
+    segments = token.split("_")
+    forms = [token, token.replace("_", "")]
     forms += ["".join(segments[:n]) for n in range(len(segments) - 1, 0, -1)]
 
     out: list[str] = []
@@ -327,16 +329,16 @@ def _port_suffix(port_name: str) -> str:
 
 
 def _compact_port_suffixes(port_name: str) -> list[str]:
-    """One-character-tighter numeric ports: ``1.20`` -> ``_P120``.
+    """One-character-tighter numeric ports: ``1_20`` -> ``_P120``.
 
-    ``USW-1G-L01-MG01_P1.20`` is 21. Dropping the floor collides two floors'
+    ``USW-1G-L01-MG01_P1_20`` is 21. Dropping the floor collides two floors'
     MG01; dropping the port collides ``1:20`` with ``1:21`` on the same box.
     Concatenating slot+port keeps both and fits in 20. Never used when the
-    dotted form already fits (tried first).
+    underscored form already fits (tried first).
     """
     token = normalize_port_token(port_name)
-    if token and token[0].isdigit() and "." in token:
-        compact = token.replace(".", "")
+    if token and token[0].isdigit() and "_" in token:
+        compact = token.replace("_", "")
         if compact != token:
             return [f"_P{compact}"]
     return []
@@ -362,8 +364,8 @@ def id_candidates(parts: DeviceNameParts, port_name: str = "") -> list[str]:
     Keep the floor (SCOPE) whenever physics allow. Stack is dropped before
     SCOPE or the far port: on this estate ``CORE01-1`` / ``CORE01-2`` already
     differ by the VOSS slot (``01:01`` vs ``02:01``), so
-    ``USW-1G-L02-CO01_P1.1`` (20) keeps both floor and port, while
-    ``USW-1G-L02-CO01-1_P1.1`` (22) cannot. Dropping SCOPE while keeping the
+    ``USW-1G-L02-CO01_P1_1`` (20) keeps both floor and port, while
+    ``USW-1G-L02-CO01-1_P1_1`` (22) cannot. Dropping SCOPE while keeping the
     port is last-resort — that is what made Dist→Access ``USW-1G-AC01_P23``
     collide GFL-ACCE01 with L02-ACCE01 on Core.
     """
@@ -373,8 +375,8 @@ def id_candidates(parts: DeviceNameParts, port_name: str = "") -> list[str]:
     compact = _compact_port_suffixes(port_name)
 
     ladder: list[str] = []
-    # Dotted port on every code, then concatenated port, then drop the port.
-    # Concatenation is after the dotted form so ``USW-1G-L02-CO01_P1.1`` (20)
+    # Underscored port on every code, then concatenated port, then drop the port.
+    # Concatenation is after the underscored form so ``USW-1G-L02-CO01_P1_1`` (20)
     # still wins over ``USW-1G-L02-CO01-1_P11``, and before dropping the port
     # so ``USW-1G-L01-MG01_P120`` wins over a colliding floor-only MG01.
     for code in codes:
@@ -1004,9 +1006,10 @@ if _NETBOX:
             model=Tag,
             required=False,
             description=(
-                "Interface tags marking structural links that must never alert "
-                "(stack, ISC, MLAG peer-link, SPAN). Ports carrying one of these "
-                "tags are expected to be labelled `X` regardless of cabling."
+                "Interface tags marking ports that must never alert "
+                "(SPAN, lab, operator mute). Stack / ISC / MLAG peer-links "
+                "are ordinary USW uplinks — do not tag them. Tagged ports "
+                "are expected to be labelled `X` regardless of cabling."
             ),
             label="Structural (never-alert) interface tags",
         )

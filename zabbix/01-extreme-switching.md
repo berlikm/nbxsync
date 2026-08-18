@@ -93,7 +93,7 @@ Util and intended-speed stay Latest data until a port has a class label. Honeyco
 
 Access is two labels, full stop. Unlabelled Access ports produce **no items**. Dist / Core / Mgmt: if it is admin-up, it is in — labelled or not (except `X`). Unused ports must be **admin-down**, not left up “with nothing connected”.
 
-**`X` excludes. `N` does not** (Core/Dist/Mgmt). Stack / ISC / MLAG peer / SPAN need **`X`**. Unused: **admin-down**.
+**`X` excludes. `N` does not** (Core/Dist/Mgmt). Stack / ISC / MLAG peer-links are **`USW`** (alert). SPAN / operator-mute need **`X`**. Unused: **admin-down**.
 
 | Role | `{$NET.IF.IFALIAS.MATCHES}` | `{$NET.IF.IFALIAS.NOT_MATCHES}` | `{$NET.IF.IFTYPE.MATCHES}` |
 |---|---|---|---|

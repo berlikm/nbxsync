@@ -20,7 +20,7 @@ CLASS-SPEED-ID
 | **ID** | Short abbreviation, not a hostname — full name lives in NetBox |
 | **Case** | Store UPPERCASE; match case-insensitive |
 | **Length** | Max **20** (EXOS `display-string` hard limit; VOSS allows 64 — use **20**) |
-| **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric |
+| **Forbidden** | `:` `.` space `"` `<>` `&` `?` ; first char alphanumeric |
 
 If the port runs at the class default, **omit SPEED**. If it does not (Pure 25G, AP 2.5G, Dist↔Access 1G), **the token is the contract** — Speed Expect will Warning the live `ifHighSpeed` against that number. Refuse labels over 20 — do not let EXOS truncate.
 
@@ -74,7 +74,7 @@ Expected = token if present, else class default.
 | iDRAC (MON: important, no better class) | `MON-IDR03` | 9 | 1G |
 | Pure 25G | `US-25G-P01` | 10 | 25G |
 | AP at 2.5G | `UP-2G5-AP07` | 12 | 2.5G |
-| Exclude | `X-STACK` | 7 | none |
+| Exclude | `X-SPAN` | 6 | none |
 | Note | `N-SPARE` | 7 | = unlabelled |
 | Too long | `USW-10G-CH-ZRH-ZH4-DIST01` | **25** | refuse |
 
@@ -91,4 +91,4 @@ Expected = token if present, else class default.
 
 ## LAG / MLAG / MLT
 
-Naming TBD. Until then, structural links that must not alert use **`X`**.
+Bundle naming TBD. Peer-link / ISC / stack members are **`USW`**. SPAN and other never-alert ports stay **`X`**.

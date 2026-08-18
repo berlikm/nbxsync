@@ -190,7 +190,7 @@ Only **`X`** removes a port from monitoring. **`N` is monitoring-neutral** — i
 | unparseable legacy label (`ISC`, `esx40_ct1_eth0`, …) | **monitored** | not monitored |
 | `X` / `X-<note>` | **excluded** | not monitored |
 
-This is why the core regex is `^X(-|$)` and not `^(X|N)(-|$)`. It also defines the behaviour of legacy labels that match nothing: they are neutral, same as `N`. Structural ports that must never alert — stack, ISC, MLAG peer-link, SPAN — need an explicit **`X`**, not a note.
+This is why the core regex is `^X(-|$)` and not `^(X|N)(-|$)`. It also defines the behaviour of legacy labels that match nothing: they are neutral, same as `N`. **Stack / ISC / MLAG peer-links are `USW`** — they must alert (split-stack / dual-active). Only SPAN and other never-alert ports get an explicit **`X`**.
 
 `ZabbixMacroAssignment` has a `context` field, so class-scoped macros like `{$IF.UTIL.MAX:"USW"}` (§6.4) are first-class assignments rather than hand-edited host macros.
 
@@ -219,7 +219,7 @@ Net behaviour: *"tell me if something that was working stops working, even if no
 | 3 | class label | monitored per class |
 | 4 | `N`, unparseable, or no label | monitored on core, not monitored on access |
 
-Unused ports should be **admin-down** as hygiene, not labelled `X`. Reserve `X` for ports that are genuinely up and carrying traffic we don't want alerts about — stack / ISC / MLAG peer-links, SPAN, test gear.
+Unused ports should be **admin-down** as hygiene, not labelled `X`. Reserve `X` for ports that are genuinely up and must not alert — SPAN, lab, operator mute. **Stack / ISC / MLAG peer-links stay `USW`.**
 
 ### LLD rule settings
 
@@ -509,7 +509,7 @@ Silencing by macro rather than disabling triggers keeps the template untouched a
 - [ ] Memory baseline — if the fleet normally sits above 90% the stock trigger fires permanently
 - [ ] PSU status reported by an **empty** slot in a 2-PSU chassis
 - [ ] ifIndex stability across reboot and across adding a stack member
-- [ ] Legacy unparseable labels (`ISC`, `MLAG_MGMT01_p51`, `esx40_ct1_eth0`) — migration list. None match `^(X|N)`, so today they are monitored as ordinary fabric ports, on our busiest devices
+- [ ] Legacy unparseable labels (`ISC`, `MLAG_MGMT01_p51`, `esx40_ct1_eth0`) — migration list. Relabel ISC / peer-link members to **`USW-…`** (they should stay monitored); SPAN / mute stays **`X`**.
 
 ## 10. Done when
 

@@ -64,7 +64,7 @@ class FleetCanaryTests(unittest.TestCase):
         for row, _site, label in self.planned:
             if len(label) > e.MAX_LABEL_LEN:
                 failures.append(f"{row.canary_key}: {label!r} len={len(label)}")
-            if e.FORBIDDEN_CHARS & set(label):
+            if e.FORBIDDEN_CHARS & set(label) or "." in label:
                 failures.append(f"{row.canary_key}: forbidden in {label!r}")
             parsed = e.parse_label(label)
             if parsed is None:
@@ -115,7 +115,7 @@ class FleetCanaryTests(unittest.TestCase):
         wanted = {
             "CH-NKN-G08-L02-CORE01-1::1:5": "USW-1G-L02-AC01_P23",
             "CH-NKN-G08-GFL-DIST01::1": "USW-1G-GFL-AC01_P23",
-            "CH-NKN-G08-GFL-DIST01::23": "USW-1G-L02-CO01_P1.1",
+            "CH-NKN-G08-GFL-DIST01::23": "USW-1G-L02-CO01_P1_1",
         }
         got = {row.canary_key: label for row, _s, label in self.planned}
         missing = {key: wanted[key] for key in wanted if key not in got}
@@ -140,6 +140,27 @@ class FleetCanaryTests(unittest.TestCase):
         self.assertEqual(len(labels), len(set(labels)), got)
         for label in labels:
             self.assertRegex(label, r"USW-(GFL|L01|L02)-DI")
+
+    def test_isc_and_stack_ports_are_usw_not_x(self):
+        """Stack / ISC / MLAG peer-links are fabric. They must alert as USW."""
+        failures = []
+        seen = 0
+        for row, _site, label in self.planned:
+            desc = (row.netbox_description or "").upper()
+            iftype = (row.iftype or "").lower()
+            is_isc = "ISC" in desc
+            is_stack = "summitstack" in iftype
+            if not (is_isc or is_stack):
+                continue
+            seen += 1
+            parsed = e.parse_label(label)
+            if not parsed or parsed.cls != "USW" or label.startswith("X"):
+                failures.append(
+                    f"{row.canary_key}: {label!r} desc={row.netbox_description!r} "
+                    f"iftype={row.iftype!r}"
+                )
+        self.assertGreater(seen, 20, "canary has no ISC/stack rows to check")
+        self.assertEqual(failures, [], "\n".join(failures[:40]))
 
 
 if __name__ == "__main__":
