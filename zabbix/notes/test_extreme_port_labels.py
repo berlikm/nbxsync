@@ -470,10 +470,29 @@ class CliSafetyTests(unittest.TestCase):
             expected="USW-DI01_23", status="ok", far_device="DIST01",
         )
         text = e.plans_to_csv([plan])
-        self.assertTrue(text.startswith("site,device,port,"), text.splitlines()[0])
-        self.assertIn("description_string", text.splitlines()[0])
+        body = text.lstrip("\ufeff")
+        lines = body.splitlines()
+        self.assertEqual(lines[0], "sep=,")
+        header = lines[1]
+        self.assertTrue(header.startswith("site,device,port,"), header)
+        for col in (
+            "class", "speed", "link_mbps", "far_site", "ifalias_source",
+            "blocking", "collision", "description_string",
+        ):
+            self.assertIn(col, header.split(","), header)
         self.assertIn("SW1", text)
         self.assertIn("USW-DI01_23", text)
+        self.assertIn("USW", text)
+
+    def test_csv_protects_voss_port_from_excel_dates(self):
+        plan = e.PortPlan(
+            device="SW1", site="lab", kind="voss", ifname="1/17",
+            expected="USW-DI01_23", status="ok",
+        )
+        text = e.plans_to_csv([plan])
+        # csv.writer quotes the formula as "=""1/17""" — Excel reads ="1/17".
+        self.assertIn("1/17", text)
+        self.assertIn('=""', text)
 
     def test_kept_live_label_is_not_blocking(self):
         plan = e.PortPlan(
@@ -490,6 +509,91 @@ class CliSafetyTests(unittest.TestCase):
             device="SW1", site="lab", kind="exos", ifname="1",
             expected="USW-CO02_P1", live="ISC", status="diff",
         ).blocking)
+
+    def test_unreachable_and_hijacked_are_blocking(self):
+        self.assertTrue(e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1",
+            status="unreachable",
+        ).blocking)
+        self.assertTrue(e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1",
+            expected="USW-CO02_1", live="USW-CO02_1",
+            description_string="old text", status="alias_hijacked",
+            ifalias_source="description-string",
+        ).blocking)
+
+    def test_duplicate_expected_on_one_device_is_blocking(self):
+        a = e.PortPlan(
+            device="CORE01", site="lab", kind="exos", ifname="1",
+            expected="USW-AC01_23", status="ok",
+        )
+        b = e.PortPlan(
+            device="CORE01", site="lab", kind="exos", ifname="2",
+            expected="USW-AC01_23", status="ok",
+        )
+        c = e.PortPlan(
+            device="CORE01", site="lab", kind="exos", ifname="3",
+            expected="USW-DI01_29", status="ok",
+        )
+        e.flag_collisions([a, b, c])
+        self.assertTrue(a.collision)
+        self.assertTrue(b.collision)
+        self.assertFalse(c.collision)
+        self.assertTrue(a.blocking)
+        self.assertFalse(c.blocking)
+
+    def test_matching_display_with_description_string_is_hijacked(self):
+        plan = e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1",
+            expected="USW-CO02_1", status="ok",
+        )
+        e.compare_plan(
+            plan,
+            labels={"1": "USW-CO02_1"},
+            descriptions={"1": "ISC leftover"},
+            clear_description=False,
+        )
+        self.assertEqual(plan.status, "alias_hijacked")
+        self.assertEqual(plan.ifalias_source, "description-string")
+        self.assertTrue(plan.blocking)
+        self.assertEqual(plan.commands, [])
+
+    def test_hijacked_gets_clear_command_when_ticked(self):
+        plan = e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1",
+            expected="USW-CO02_1", status="ok",
+        )
+        e.compare_plan(
+            plan,
+            labels={"1": "USW-CO02_1"},
+            descriptions={"1": "ISC leftover"},
+            clear_description=True,
+        )
+        self.assertEqual(plan.status, "alias_hijacked")
+        self.assertIn("unconfigure port 1 description-string", plan.commands)
+
+    def test_scorecard_rolls_up_per_device(self):
+        plans = [
+            e.PortPlan(device="A", site="s", kind="exos", ifname="1",
+                       expected="USW-CO02_1", status="ok"),
+            e.PortPlan(device="A", site="s", kind="exos", ifname="2",
+                       expected="USW-DI01_23", status="diff"),
+            e.PortPlan(device="B", site="s", kind="voss", ifname="1/17",
+                       expected="USW-AC01_5", status="unreachable"),
+        ]
+        rows = {r["device"]: r for r in e.device_scorecard(plans)}
+        self.assertEqual(rows["A"]["ok"], 1)
+        self.assertEqual(rows["A"]["diff"], 1)
+        self.assertEqual(rows["A"]["blocking"], 1)
+        self.assertEqual(rows["B"]["unreach"], 1)
+        self.assertEqual(rows["B"]["blocking"], 1)
+
+    def test_markdown_table_truncates(self):
+        rows = [[str(i), "x"] for i in range(50)]
+        text = e.markdown_table(["N", "V"], rows, limit=5)
+        self.assertIn("… 45 more rows", text)
+        data_lines = [ln for ln in text.splitlines() if ln.startswith("| ") and "N" not in ln]
+        self.assertEqual(len(data_lines), 5)
 
 
     def test_semicolon_is_forbidden(self):

@@ -68,7 +68,7 @@ if not logger.handlers:
 # ===========================================================================
 #
 # Nothing below this banner imports NetBox, so the whole section is unit
-# testable outside a NetBox worker (see ../tests/test_extreme_port_labels.py).
+# testable outside a NetBox worker (see test_extreme_port_labels.py).
 
 #: EXOS ``display-string`` truncates silently past 20. VOSS ``name`` allows 64,
 #: but the fleet uses the lowest common denominator so one label fits both.
@@ -250,30 +250,189 @@ def redact_error(text: str) -> str:
     return re.sub(r"(?i)(password|passwd|secret|community)\s*[:=]\s*\S+", r"\1=***", raw)
 
 
+#: Statuses that must not look like a clean compliance run. ``kept`` is listed
+#: but not blocking — those strings are often still useful (ISP, leftover NIC).
+BLOCKING_STATUSES = frozenset({
+    "diff", "missing", "too_long", "forbidden",
+    "unreachable", "alias_hijacked",
+})
+
+#: Cap markdown tables in the NetBox job log. The archive is the CSV Output tab;
+#: a 1500-row first-run dump is truncated by NetBox and unreadable anyway.
+LOG_TABLE_LIMIT = 40
+
 CSV_COLUMNS = (
-    "site", "device", "port", "kind", "far_device", "far_port", "far_role",
-    "expected", "live", "description_string", "status", "len", "detail",
+    "site", "device", "port", "kind",
+    "class", "speed", "link_mbps",
+    "far_site", "far_device", "far_port", "far_role",
+    "expected", "live", "description_string", "ifalias_source",
+    "status", "blocking", "collision", "len", "detail",
 )
+
+_EXCEL_PORT_RE = re.compile(r"^\d{1,4}[:/.\-]\d{1,4}([:/.\-]\d{1,4})?$")
+
+
+def _excel_text(value: str) -> str:
+    """Stop Excel turning VOSS ``1/17`` into a date when the CSV is pasted."""
+    raw = "" if value is None else str(value)
+    if _EXCEL_PORT_RE.fullmatch(raw):
+        return f'="{raw}"'
+    return raw
+
+
+def plan_class(plan) -> str:
+    parsed = parse_label(getattr(plan, "expected", "") or "")
+    return parsed.cls if parsed else ""
+
+
+def plan_speed(plan) -> str:
+    parsed = parse_label(getattr(plan, "expected", "") or "")
+    return (parsed.speed_token or "") if parsed else ""
+
+
+def plan_ifalias_source(plan) -> str:
+    """What SNMP ifAlias actually is. Zabbix LLD reads this, not display-string."""
+    stored = getattr(plan, "ifalias_source", "") or ""
+    if stored:
+        return stored
+    if (getattr(plan, "kind", "") == "exos"
+            and getattr(plan, "description_string", "")):
+        return "description-string"
+    if getattr(plan, "kind", "") == "voss" and getattr(plan, "live", ""):
+        return "name"
+    if getattr(plan, "live", ""):
+        return "display-string"
+    return ""
+
+
+def plan_is_blocking(plan) -> bool:
+    return (
+        getattr(plan, "status", "") in BLOCKING_STATUSES
+        or bool(getattr(plan, "collision", False))
+    )
+
+
+def flag_collisions(plans: list) -> int:
+    """Mark ports that share an expected label on the same device.
+
+    The ladder is local (one far-end). Two neighbours can compress to the same
+    20-character string; preview must say so instead of looking clean.
+    """
+    groups: dict[tuple[str, str], list] = {}
+    for plan in plans:
+        plan.collision = False
+        expected = (plan.expected or "").strip().upper()
+        if not expected or plan.status in {"kept", "unreachable"}:
+            continue
+        groups.setdefault((plan.device or "", expected), []).append(plan)
+    hit = 0
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        for plan in group:
+            plan.collision = True
+        hit += len(group)
+    return hit
+
+
+def status_counts(plans: list) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for plan in plans:
+        key = plan.status or "?"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def class_counts(plans: list) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for plan in plans:
+        key = plan_class(plan) or (plan.status or "?")
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def device_scorecard(plans: list) -> list[dict[str, str | int]]:
+    """One row per switch — the job-log shape NetBox can actually render."""
+    by_device: dict[str, list] = {}
+    for plan in plans:
+        by_device.setdefault(plan.device or "", []).append(plan)
+    rows: list[dict[str, str | int]] = []
+    for name in sorted(by_device):
+        group = by_device[name]
+        counts = status_counts(group)
+        rows.append({
+            "device": name,
+            "site": group[0].site or "",
+            "kind": group[0].kind or "",
+            "ports": len(group),
+            "ok": counts.get("ok", 0),
+            "diff": counts.get("diff", 0),
+            "missing": counts.get("missing", 0),
+            "hijacked": counts.get("alias_hijacked", 0),
+            "kept": counts.get("kept", 0),
+            "unreach": counts.get("unreachable", 0),
+            "too_long": counts.get("too_long", 0),
+            "collision": sum(1 for p in group if getattr(p, "collision", False)),
+            "blocking": sum(1 for p in group if plan_is_blocking(p)),
+        })
+    return rows
+
+
+def markdown_table(
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    limit: int | None = LOG_TABLE_LIMIT,
+) -> str:
+    """Markdown table for the NetBox job log. Truncates; CSV is the archive."""
+    if not rows:
+        return ""
+    shown = rows if limit is None else rows[:limit]
+    omitted = len(rows) - len(shown)
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "|" + "|".join("--------" for _ in headers) + "|",
+    ]
+    for row in shown:
+        lines.append("| " + " | ".join(row) + " |")
+    if omitted:
+        lines.append("")
+        lines.append(f"_… {omitted} more rows in the CSV Output tab._")
+    return "\n".join(lines)
 
 
 def plans_to_csv(plans: list) -> str:
     """Excel-friendly CSV for the NetBox script Output tab (copy → sheet)."""
+    flag_collisions(plans)
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=CSV_COLUMNS, extrasaction="ignore")
+    buf.write("\ufeff")
+    buf.write("sep=,\n")
+    writer = csv.DictWriter(
+        buf, fieldnames=CSV_COLUMNS, extrasaction="ignore", lineterminator="\n",
+    )
     writer.writeheader()
     for plan in sorted(plans, key=lambda p: (p.device or "", p.ifname or "")):
+        parsed = parse_label(plan.expected) if plan.expected else None
+        link_mbps = getattr(plan, "link_mbps", None)
         writer.writerow({
             "site": plan.site,
             "device": plan.device,
-            "port": plan.ifname,
+            "port": _excel_text(plan.ifname),
             "kind": plan.kind,
+            "class": parsed.cls if parsed else "",
+            "speed": (parsed.speed_token or "") if parsed else "",
+            "link_mbps": "" if link_mbps is None else str(link_mbps),
+            "far_site": getattr(plan, "far_site", "") or "",
             "far_device": getattr(plan, "far_device", "") or "",
             "far_port": getattr(plan, "far_port", "") or "",
             "far_role": getattr(plan, "far_role", "") or "",
             "expected": plan.expected,
             "live": plan.live,
             "description_string": getattr(plan, "description_string", "") or "",
+            "ifalias_source": plan_ifalias_source(plan),
             "status": plan.status,
+            "blocking": "yes" if plan_is_blocking(plan) else "no",
+            "collision": "yes" if getattr(plan, "collision", False) else "no",
             "len": len(plan.expected) if plan.expected else 0,
             "detail": plan.detail,
         })
@@ -1044,13 +1203,72 @@ class PortPlan:
     far_device: str = ""
     far_port: str = ""
     far_role: str = ""
+    far_site: str = ""
+    link_mbps: int | None = None
+    ifalias_source: str = ""
+    collision: bool = False
 
     @property
     def blocking(self) -> bool:
-        # ``kept`` (live label, no cable) and a populated EXOS
-        # description-string are listed, not failed — they have operational
-        # value and are never wiped by default.
-        return self.status in {"diff", "missing", "too_long", "forbidden"}
+        # ``kept`` is listed, not failed — leftover ISP / NIC labels stay.
+        # Duplicate expected labels on one box are blocking even when each
+        # row looks ``ok`` in isolation.
+        return plan_is_blocking(self)
+
+
+def compare_plan(
+    plan: PortPlan,
+    labels: dict[str, str],
+    descriptions: dict[str, str],
+    clear_description: bool = False,
+) -> None:
+    """Fill live / status / commands on one plan. Pure helper (no SSH)."""
+    if plan.status in {"too_long", "unreachable", "kept"}:
+        return
+    plan.live = lookup_live_label(labels, plan.ifname)
+    plan.description_string = lookup_live_label(descriptions, plan.ifname)
+
+    issues = validate_label(plan.live) if plan.live else []
+    if plan.live and "forbidden_chars" in " ".join(issues):
+        plan.status = "forbidden"
+        plan.detail = ",".join(issues)
+    elif plan.live and "too_long" in issues:
+        plan.status = "too_long"
+        plan.detail = f"live label is {len(plan.live)} chars"
+    elif not plan.live:
+        plan.status = "missing"
+    elif plan.live.upper() == plan.expected.upper():
+        plan.status = "ok"
+    else:
+        plan.status = "diff"
+
+    if plan.kind == "exos" and plan.description_string:
+        plan.ifalias_source = "description-string"
+        extra = (
+            "description-string wins ifAlias "
+            f"({plan.description_string!r})"
+        )
+        if plan.status == "ok":
+            plan.status = "alias_hijacked"
+            extra += (
+                "; tick 'Also clear EXOS description-string' "
+                "before Zabbix LLD will see the grammar"
+            )
+        plan.detail = f"{plan.detail}; {extra}" if plan.detail else extra
+    elif plan.kind == "voss":
+        plan.ifalias_source = "name" if plan.live else ""
+    else:
+        plan.ifalias_source = "display-string" if plan.live else ""
+
+    if plan.status in {"missing", "diff", "forbidden", "too_long"} and plan.expected:
+        if plan.kind == "voss":
+            plan.commands = voss_apply_commands(plan.ifname, plan.expected)
+        else:
+            plan.commands = exos_apply_commands(
+                plan.ifname, plan.expected, clear_description
+            )
+    elif plan.status == "alias_hijacked" and clear_description:
+        plan.commands = exos_apply_commands(plan.ifname, plan.expected, True)
 
 
 def _platform_kind(platform_name: str | None) -> str | None:
@@ -1305,8 +1523,13 @@ if _NETBOX:
         )
         fail_on_diff = BooleanVar(
             default=False,
-            description="Mark the job failed when blocking diffs remain.",
-            label="Fail the job on blocking diffs",
+            description=(
+                "Mark the job failed when any blocking row remains: diff, "
+                "missing, too_long, forbidden, unreachable, alias_hijacked, "
+                "or a duplicate expected label on one switch. Tick this on "
+                "scheduled compliance runs."
+            ),
+            label="Fail the job on blocking rows",
         )
 
         # ---- Execution ----
@@ -1438,6 +1661,7 @@ if _NETBOX:
                     if not (p.expected in {"X", "N"} or (p.expected or "").startswith(("X-", "N-")))
                 ]
 
+            flag_collisions(all_plans)
             self._report(all_plans, preview_only=preview_only)
 
             # ---- 4. Remediate ----
@@ -1446,6 +1670,7 @@ if _NETBOX:
 
             # ---- 5. Outcome ----
             blocking = [p for p in all_plans if p.blocking]
+            unreachable_n = sum(1 for p in all_plans if p.status == "unreachable")
             elapsed = int(time.time() - started)
             if preview_only:
                 self.log_success(
@@ -1454,17 +1679,26 @@ if _NETBOX:
                 )
             elif not blocking:
                 self.log_success(
-                    f"All {len(all_plans)} evaluated port(s) compliant ({elapsed}s)."
+                    f"All {len(all_plans)} evaluated port(s) compliant ({elapsed}s). "
+                    f"Zabbix ifAlias matches expected on every cabled port we could read."
                 )
             elif data.get("fail_on_diff") and not remediating:
+                extra = (
+                    f" including {unreachable_n} unreachable"
+                    if unreachable_n else ""
+                )
                 self.log_failure(
-                    f"{len(blocking)} port(s) non-compliant out of "
-                    f"{len(all_plans)} ({elapsed}s)."
+                    f"{len(blocking)} port(s) blocking out of "
+                    f"{len(all_plans)}{extra} ({elapsed}s)."
                 )
             else:
+                extra = (
+                    f" including {unreachable_n} unreachable"
+                    if unreachable_n else ""
+                )
                 self.log_warning(
-                    f"{len(blocking)} port(s) non-compliant out of "
-                    f"{len(all_plans)} ({elapsed}s)."
+                    f"{len(blocking)} port(s) blocking out of "
+                    f"{len(all_plans)}{extra} ({elapsed}s)."
                 )
             return plans_to_csv(all_plans)
 
@@ -1507,10 +1741,10 @@ if _NETBOX:
             return sorted(result, key=lambda d: d.name or "")
 
         @staticmethod
-        def _far_bits(iface) -> tuple[str, str, str]:
+        def _far_bits(iface) -> tuple[str, str, str, str]:
             far = _far_endpoint(iface)
             if far is None:
-                return "", "", ""
+                return "", "", "", ""
             if type(far).__name__ == "CircuitTermination":
                 circuit = getattr(far, "circuit", None)
                 cid = str(getattr(circuit, "cid", None) or "")
@@ -1519,11 +1753,13 @@ if _NETBOX:
                     or getattr(getattr(circuit, "provider", None), "slug", None)
                     or ""
                 )
-                return str(provider), cid, "Circuit"
+                return str(provider), cid, "Circuit", ""
+            far_device = getattr(far, "device", None)
             return (
-                getattr(getattr(far, "device", None), "name", None) or "",
+                getattr(far_device, "name", None) or "",
                 getattr(far, "name", None) or "",
-                getattr(getattr(getattr(far, "device", None), "role", None), "name", None) or "",
+                getattr(getattr(far_device, "role", None), "name", None) or "",
+                getattr(getattr(far_device, "site", None), "slug", None) or "",
             )
 
         def _plan_device(self, device, kind, data, structural_tag_ids) -> list[PortPlan]:
@@ -1544,7 +1780,17 @@ if _NETBOX:
                 expected, status = expected_label_for(iface, structural_tag_ids)
                 if status == "no_cable":
                     continue
-                far_device, far_port, far_role = self._far_bits(iface)
+                far_device, far_port, far_role, far_site = self._far_bits(iface)
+                far = _far_endpoint(iface)
+                link_mbps = None
+                if far is not None and type(far).__name__ != "CircuitTermination":
+                    speeds = [
+                        s for s in (
+                            iftype_to_mbps(getattr(iface, "type", None)),
+                            iftype_to_mbps(getattr(far, "type", None)),
+                        ) if s
+                    ]
+                    link_mbps = min(speeds) if speeds else None
                 plan = PortPlan(
                     device=device.name,
                     site=getattr(device.site, "slug", "") or "",
@@ -1554,11 +1800,15 @@ if _NETBOX:
                     far_device=far_device,
                     far_port=far_port,
                     far_role=far_role,
+                    far_site=far_site,
+                    link_mbps=link_mbps,
                 )
                 if status == "too_long":
                     plan.status = "too_long"
-                    plan.detail = f"no ID form fits {MAX_LABEL_LEN} chars; shortest={expected}"
-                    plan.expected = ""
+                    plan.detail = (
+                        f"no ID form fits {MAX_LABEL_LEN} chars; "
+                        f"shortest={expected}"
+                    )
                 else:
                     plan.status = "ok"
                 plans.append(plan)
@@ -1620,127 +1870,103 @@ if _NETBOX:
                     description_string=lookup_live_label(descriptions, live_port),
                     status="kept",
                     detail="live label kept; no complete cable in NetBox",
+                    ifalias_source=(
+                        "description-string"
+                        if template.kind == "exos"
+                        and lookup_live_label(descriptions, live_port)
+                        else ("name" if template.kind == "voss" else "display-string")
+                    ),
                 ))
 
         @staticmethod
         def _compare(plan: PortPlan, labels, descriptions, clear_description: bool):
-            if plan.status in {"too_long", "unreachable", "kept"}:
-                return
-            plan.live = lookup_live_label(labels, plan.ifname)
-            plan.description_string = lookup_live_label(descriptions, plan.ifname)
-
-            issues = validate_label(plan.live) if plan.live else []
-            if plan.live and "forbidden_chars" in " ".join(issues):
-                plan.status = "forbidden"
-                plan.detail = ",".join(issues)
-            elif plan.live and "too_long" in issues:
-                plan.status = "too_long"
-                plan.detail = f"live label is {len(plan.live)} chars"
-            elif not plan.live:
-                plan.status = "missing"
-            elif plan.live.upper() == plan.expected.upper():
-                plan.status = "ok"
-            else:
-                plan.status = "diff"
-
-            if plan.description_string:
-                extra = f"description-string kept={plan.description_string!r} (wins ifAlias)"
-                plan.detail = f"{plan.detail}; {extra}" if plan.detail else extra
-
-            if plan.status in {"missing", "diff", "forbidden", "too_long"} and plan.expected:
-                if plan.kind == "voss":
-                    plan.commands = voss_apply_commands(plan.ifname, plan.expected)
-                else:
-                    # Never clear description-string unless the operator ticked
-                    # the box. The human text stays; display-string still gets
-                    # the grammar for `show ports`.
-                    plan.commands = exos_apply_commands(
-                        plan.ifname, plan.expected, clear_description
-                    )
+            compare_plan(plan, labels, descriptions, clear_description)
 
         def _report(self, plans: list[PortPlan], preview_only: bool = False):
-            counts: dict[str, int] = {}
-            classes: dict[str, int] = {}
-            for plan in plans:
-                counts[plan.status] = counts.get(plan.status, 0) + 1
-                parsed = parse_label(plan.expected) if plan.expected else None
-                cls = parsed.cls if parsed else (plan.status or "?")
-                classes[cls] = classes.get(cls, 0) + 1
+            counts = status_counts(plans)
+            classes = class_counts(plans)
+            blocking_n = sum(1 for p in plans if p.blocking)
+            hijacked = sum(1 for p in plans if plan_ifalias_source(p) == "description-string")
+            collisions = sum(1 for p in plans if p.collision)
             summary = " · ".join(f"**{k}** {v}" for k, v in sorted(counts.items()))
             class_line = " · ".join(f"**{k}** {v}" for k, v in sorted(classes.items()))
             self.log_info(
                 f"\n---\n## Summary\n{summary or '_nothing evaluated_'}\n\n"
                 f"CLASS: {class_line or '—'}\n\n"
+                f"**Blocking:** {blocking_n}"
+                f" · **ifAlias hijacked by description-string:** {hijacked}"
+                f" · **collisions:** {collisions}\n\n"
+                "`ok` means Zabbix ifAlias matches expected. "
+                "`alias_hijacked` means display-string matches but EXOS "
+                "description-string still owns ifAlias.\n\n"
                 "Full sheet is the **CSV in the Output tab** — copy into Excel "
-                "and filter by site / status / CLASS."
+                "and filter `blocking`, `status`, `class`, `ifalias_source`."
             )
 
+            scorecard = device_scorecard(plans)
+            score_rows = [
+                [
+                    _cell(str(r["device"])), _cell(str(r["site"])), _cell(str(r["kind"])),
+                    str(r["ports"]), str(r["ok"]), str(r["blocking"]),
+                    str(r["diff"]), str(r["missing"]), str(r["hijacked"]),
+                    str(r["kept"]), str(r["unreach"]), str(r["collision"]),
+                    str(r["too_long"]),
+                ]
+                for r in scorecard
+            ]
+            score_md = markdown_table(
+                ["Device", "Site", "Kind", "Ports", "ok", "blocking",
+                 "diff", "miss", "hijack", "kept", "unreach", "coll", "long"],
+                score_rows,
+                limit=None,
+            )
+            if score_md:
+                for start in range(0, len(score_md.splitlines()), 200):
+                    chunk = "\n".join(score_md.splitlines()[start:start + 200])
+                    self.log_info(f"\n### Per-device scorecard\n\n{chunk}")
+
             if preview_only:
-                # One line per device: network engineers scan "this switch is N ports".
-                by_device: dict[str, int] = {}
-                for plan in plans:
-                    by_device[plan.device] = by_device.get(plan.device, 0) + 1
-                rows = ["| Device | Ports |", "|--------|-------|"]
-                for name, n in sorted(by_device.items()):
-                    rows.append(f"| {_cell(name)} | {n} |")
-                for start in range(0, len(rows) - 2, 200):
-                    chunk = rows[:2] + rows[2 + start:2 + start + 200]
-                    self.log_info("\n### Devices in this preview\n\n" + "\n".join(chunk))
                 too_long = [p for p in plans if p.status == "too_long"]
+                collided = [p for p in plans if p.collision]
                 if too_long:
                     self.log_warning(
                         f"{len(too_long)} port(s) cannot fit 20 characters — "
                         "see CSV status=too_long."
                     )
+                if collided:
+                    self.log_warning(
+                        f"{len(collided)} port(s) share an expected label with "
+                        "another port on the same switch — see CSV collision=yes."
+                    )
                 return
 
-            diffs = [p for p in plans if p.status not in {"ok", "kept"}]
-            kept = [p for p in plans if p.status == "kept"]
-            described = [p for p in plans if p.description_string]
-
             def _emit(title: str, headers: list[str], body_rows: list[list[str]]) -> None:
-                if not body_rows:
-                    return
-                lines = [
-                    "| " + " | ".join(headers) + " |",
-                    "|" + "|".join("--------" for _ in headers) + "|",
-                ]
-                for row in body_rows:
-                    lines.append("| " + " | ".join(row) + " |")
-                for start in range(0, len(lines) - 2, 200):
-                    chunk = lines[:2] + lines[2 + start:2 + start + 200]
-                    self.log_info(f"\n### {title}\n\n" + "\n".join(chunk))
+                text = markdown_table(headers, body_rows)
+                if text:
+                    self.log_info(f"\n### {title}\n\n{text}")
 
+            blocking_rows = [p for p in plans if p.blocking]
             _emit(
-                "Diffs (expected vs live display-string)",
-                ["Device", "ifName", "Expected", "Live", "Len", "Status", "Detail"],
+                "Blocking (Zabbix ifAlias is not the expected grammar)",
+                ["Device", "ifName", "Expected", "Live", "ifAlias from", "Status"],
                 [
                     [
                         _cell(p.device), _cell(p.ifname),
-                        f"`{_cell(p.expected) or '—'}`", f"`{_cell(p.live) or '—'}`",
-                        str(len(p.expected)), p.status, _cell(p.detail),
+                        f"`{_cell(p.expected) or '—'}`",
+                        f"`{_cell(p.live) or '—'}`",
+                        _cell(plan_ifalias_source(p) or "—"),
+                        p.status + (" collision" if p.collision else ""),
                     ]
-                    for p in sorted(diffs, key=lambda x: (x.device, x.ifname))
+                    for p in sorted(blocking_rows, key=lambda x: (x.device, x.ifname))
                 ],
             )
+            kept = [p for p in plans if p.status == "kept"]
             _emit(
                 "Kept live labels (no NetBox cable — left on the box)",
                 ["Device", "ifName", "Live"],
                 [
                     [_cell(p.device), _cell(p.ifname), f"`{_cell(p.live) or '—'}`"]
                     for p in sorted(kept, key=lambda x: (x.device, x.ifname))
-                ],
-            )
-            _emit(
-                "EXOS description-string kept (wins ifAlias until you tick clear)",
-                ["Device", "ifName", "description-string", "Expected display-string"],
-                [
-                    [
-                        _cell(p.device), _cell(p.ifname),
-                        f"`{_cell(p.description_string)}`",
-                        f"`{_cell(p.expected) or '—'}`",
-                    ]
-                    for p in sorted(described, key=lambda x: (x.device, x.ifname))
                 ],
             )
 

@@ -8,10 +8,11 @@ The label lands in SNMP `ifAlias`, which is what Zabbix LLD filters on
 (`{$NET.IF.IFALIAS.MATCHES}`). A wrong or truncated label silently drops a port
 out of — or into — monitoring.
 
-Grammar authority: [`zabbix/reference/port-identity-foundation.md`](../../zabbix/reference/port-identity-foundation.md),
-[`zabbix/notes/verified-facts.md`](../../zabbix/notes/verified-facts.md).
+Grammar authority: [`../reference/port-identity-foundation.md`](../reference/port-identity-foundation.md),
+[`verified-facts.md`](verified-facts.md).
 This README only adds what those documents leave open: **how the ID is derived
-from NetBox topology**, and **which CLI verbs are used**.
+from NetBox topology**, **which CLI verbs are used**, and **how to read a
+compliance job**.
 
 ---
 
@@ -80,7 +81,7 @@ recovered in `port_label_canary.py` before replay. Rebuild the TSV with
 | **Structural tags** | interface tags meaning "never alert" (SPAN / mute) → expected label `X`. Do **not** tag stack / ISC / MLAG peer |
 | **Include admin-down / X·N** | reporting breadth |
 | **Also clear EXOS description-string** | off by default (may hold human text) |
-| **Fail the job on blocking diffs** | for scheduled compliance runs |
+| **Fail the job on blocking rows** | for scheduled compliance runs (diff, missing, unreachable, alias_hijacked, collision, …) |
 
 **Scope rule:** cabled ports get an expected grammar label from NetBox topology.
 A port with **no complete cable path** cannot derive a far end — it is **not**
@@ -90,8 +91,27 @@ something: ISP, leftover NIC). We do not blank the box to look tidy.
 
 SSH uses **`oob_ip` first**, then `primary_ip`. Site groups include **nested children**.
 
-Per-port statuses: `ok` · `diff` · `missing` · `too_long` · `forbidden` ·
-`kept` · `unreachable` · `applied`.
+Per-port statuses:
+
+| Status | Meaning | Blocking? |
+|---|---|---|
+| `ok` | Zabbix ifAlias **is** the expected grammar | no |
+| `diff` | live display-string / VOSS `name` ≠ expected | yes |
+| `missing` | cabled in NetBox, no live label | yes |
+| `too_long` | no ID form fits 20 characters (shortest form is still in `expected`) | yes |
+| `forbidden` | live label has a character EXOS would treat as a second command | yes |
+| `alias_hijacked` | EXOS display-string matches, but `description-string` still wins ifAlias | yes |
+| `unreachable` | no SSH (missing IP or session failed) | yes |
+| `kept` | live label, no complete cable — listed, never wiped | no |
+| `applied` | remediator wrote this port | no |
+
+`collision=yes` on the CSV is also blocking: two ports on the **same switch**
+share an expected label. The generator still emits both (it cannot know which
+cable is wrong); the job must not look clean.
+
+How to read a job: log is the **scorecard** (truncated tables). CSV in the
+**Output** tab is the archive. Details:
+[`port-label-compliance-review.md`](port-label-compliance-review.md).
 
 ---
 
@@ -172,14 +192,17 @@ The abbreviator walks a fixed ladder and takes the **first form that fits**:
 | 5 | drop the scope, keep the port | `AC01_23` |
 | 6 | code + stack only | `AC01` |
 
-Code is always the 2-letter form (`CORE→CO` `DIST→DI` `ACCE→AC` `ACPO→AP`
-`MGMT→MG` `FWGW/FWZONE→FW` …). Scope (building or far-site tail) is kept
-whenever it fits — that is what tells `GFL-ACCE01` from `L02-ACCE01`. Parallel
-links to the same neighbour that cannot fit floor+port collide and the script
-**refuses** that device rather than aliasing two floors together.
+**Fabric** codes are two letters (`CORE→CO` `DIST→DI` `ACCE→AC` `ACPO→AP`
+`MGMT→MG` `FWGW/FWZONE→FW`, unknown `SPINE→SP`). **Endpoints keep the hostname
+word** (`SAN`, `SNAS`, `ESX`) and only shorten that word if 20 characters force
+it. Scope (building or a site token that is actually on the hostname) is kept
+whenever it fits — that is what tells `GFL-ACCE01` from `L02-ACCE01`.
 
-If **no** form fits, the script **refuses** and reports the shortest form it
-tried — it never emits a string EXOS would silently truncate.
+If two ports on the **same switch** still share an expected label after the
+ladder, preview/compliance set `collision=yes` and the row is **blocking**. The
+script does not pick a winner. If **no** form fits 20 characters, status is
+`too_long` and `expected` holds the shortest form tried — it never emits a
+string EXOS would silently truncate.
 
 ### 3.4 CLASS and SPEED derivation
 
@@ -293,11 +316,51 @@ label works on both platforms.
 
 ---
 
-## 5. Sample compliance report
+## 5. Operations report (what NetBox can actually give you)
+
+A Custom Script is not a dashboard. The best report we can ship without a
+plugin is:
+
+1. **Job log** — counts, CLASS mix, **per-device scorecard**, then at most 40
+   blocking / kept rows. NetBox truncates long logs; do not treat this as the
+   archive.
+2. **Output tab CSV** — every evaluated port. Copy into Excel. First line is
+   `sep=,` plus a UTF-8 BOM so Excel keeps commas and encoding. VOSS `1/17` is
+   written as a text formula so Excel does not turn it into a date.
+3. **Job colour** — success only when nothing blocking remains. Tick **Fail the
+   job on blocking rows** on a schedule so a silent SSH outage cannot look
+   green.
+
+`ok` means **Zabbix will see the expected grammar on ifAlias**. It does **not**
+mean “display-string matches.” On EXOS, `description-string` still wins
+ifAlias. That row is `alias_hijacked` (blocking) until you tick clear.
+
+CSV columns worth filtering:
+
+| Column | Filter |
+|---|---|
+| `blocking=yes` | Work queue. Includes unreachable and hijacked, not `kept`. |
+| `status=diff` | Box label ≠ cabling |
+| `status=missing` | Cabled, no live label |
+| `status=alias_hijacked` | Grammar is on display-string; Zabbix still reads description-string |
+| `status=unreachable` | No SSH — the job must not go green |
+| `status=kept` | Live label, no cable. Listed, never wiped |
+| `collision=yes` | Two ports on this switch share `expected` |
+| `class` | `USW` / `US` / `UP` / `MON` / `UW` / `X` |
+| `ifalias_source` | `display-string` · `description-string` · `name` |
+| `len=20` | At the EXOS budget; check it still reads |
+
+Runbook (preview → Excel → one EXOS + one VOSS compliance → canary push):
+[`port-label-compliance-review.md`](port-label-compliance-review.md).
+
+---
+
+## 6. Sample: live box vs current generator
 
 Produced by running the script's own helpers over **real NetBox topology**
 (NetBox 4.5.10) and **real captured device configuration**. No credentials or
-addresses are reproduced here.
+addresses are reproduced here. Expected values are what **this** generator
+emits (hostname identity, no extra `P`, SPEED only when not the class default).
 
 > ⚠️ **Scope of this verification.** The compliance computation, both live-config
 > parsers and the whole grammar path were exercised against real data. SSH was
@@ -306,7 +369,7 @@ addresses are reproduced here.
 > have not been executed live. Run compliance mode against one EXOS and one VOSS
 > box before any remediation, and do the first push with the canary allowlist.
 
-### 5.1 EXOS — `CH-ZRH-ZH4-CORE01` (X690-48x-2Q-4C, site CH-ZRH-ZH4)
+### 6.1 EXOS — `CH-ZRH-ZH4-CORE01` (X690-48x-2Q-4C, site CH-ZRH-ZH4)
 
 38 live labels read · 0 description-strings · **diff 30 · kept 8**
 
@@ -333,7 +396,7 @@ Reading it:
   NetBox (`ISP_Netrics`, leftover NICs). Status is **`kept`**: we list them,
   we do not blank the box.
 
-### 5.2 VOSS — `CH-STA-L50-L01-CORE01` (5520-24X, site CH-STA-L50)
+### 6.2 VOSS — `CH-STA-L50-L01-CORE01` (5520-24X, site CH-STA-L50)
 
 28 live labels read · **diff 16 · kept 12**
 
@@ -363,7 +426,7 @@ Reading it:
   (firewall is `USW`; SPEED because the class default is 10G), not `MON-…`.
 - Longest generated label across both devices is **20** — at budget, never over.
 
-### 5.3 What the sample proves
+### 6.3 What the sample proves
 
 - SPEED is omitted at the class default. The 1G firewall HA is the exception
   (`USW-1G-FW01_HA`) because `USW` defaults to 10G.
@@ -380,7 +443,7 @@ Reading it:
 
 ---
 
-## 6. Remediation
+## 7. Remediation
 
 Double-gated: `mode=remediate` **and** *Commit changes*. With `remediate` but no
 commit, the script prints the exact command block per device and stops.
@@ -414,7 +477,7 @@ Safety properties:
 
 ---
 
-## 7. Non-goals (v1)
+## 8. Non-goals (v1)
 
 Zabbix template edits · renaming NetBox devices · replacing Golden Config ·
 auto-`X` on stack / ISC / MLAG peer (those are `USW`) · LAG / MLAG / MLT bundle
