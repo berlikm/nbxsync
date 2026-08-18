@@ -33,18 +33,25 @@ One fact, one encoding: if the port runs at the class default, **omit SPEED**.
 
 ### 2.1 Include / monitor
 
-Classes are chosen by **expected default speed** (and role), not by inventing device-type subclasses.
+Classes are chosen by **far-end identity** (NetBox role / what the cable hits).
+Speed only decides whether a SPEED token is emitted after CLASS is known.
 
 | CLASS | Rule | Default speed | Absolute expect | Alerts |
 |---|---|---|---|---|
-| `USW` | Switch ↔ switch — expect 10G | 10G | Yes | link / flap / errors + speed |
-| `US` | Endpoint expect **10G** (hypervisor, storage, 10G server NIC, …) | 10G | Yes | same |
-| `UP` | Toward AP — expect 1G | 1G | Yes | same |
-| `MON` | Endpoint expect **1G** (BMC/iDRAC, client, 1G server NIC, …) | 1G | Yes | same |
+| `USW` | Switch or firewall | 10G | Yes | link / flap / errors + speed |
+| `US` | Server / storage / Cohesity **data** NIC | 10G | Yes | same |
+| `UP` | Toward AP | 1G | Yes | same |
+| `MON` | BMC/iDRAC, **and anything else** (printer, camera, client, generic “Network Device”) | 1G | Yes | same |
 | `UW` | Uplink WAN / ISP | — | Later (circuit bandwidth) | link / flap / errors |
 | `TMON` | Temp watch | — | No | items; optional link-down **INFO** only |
 
-**`US` vs `MON`:** ask “what speed should this be?” — 10G → `US`, 1G → `MON`. A 1G server NIC is `MON-SRV12`, not `US-1G-SRV12`.
+**`US` vs `MON`:** ask “what is this?” — server/storage data NIC → `US` (a 1G
+server is `US-1G-SRV12`, not `MON-SRV12`). Everything that is not a named class
+is `MON`, **including 10G cameras / printers** (`MON-10G-…`). Speed is the
+token, not the class.
+
+ID role codes are always two letters so 40G still fits: `CORE→CO` `DIST→DI`
+`ACCE→AC` `MGMT→MG`. `USW-40G-NAG-CO04_P25` is 20; spelling CORE would be 22.
 
 **`TMON`:** keep a list of `TMON*` for ops review; reason in NetBox description.
 
@@ -105,7 +112,7 @@ Emit a token **only** for non-default speeds.
 | Storage 10G | `US-SAN01` | 8 | 10G |
 | AP | `UP-AP3F07` | 9 | 1G |
 | iDRAC / BMC | `MON-IDR03` | 9 | 1G |
-| 1G server NIC | `MON-SRV12` | 9 | 1G |
+| Printer / camera / anything else | `MON-PRN01` | 9 | 1G |
 | WAN uplink | `UW-SC1` | 6 | link/flap/errors |
 | Temp watch | `TMON-GUEST` | 10 | items + INFO link-down |
 | Exclude | `X` / `X-SPAN` | | none |
@@ -116,6 +123,7 @@ Emit a token **only** for non-default speeds.
 | Scenario | Display | Expect |
 |---|---|---|
 | Switch ↔ switch at 1G | `USW-1G-SWA08` | 1G |
+| 1G server NIC | `US-1G-SRV12` | 1G |
 | AP at 2.5G | `UP-2G5-AP07` | 2.5G |
 | 10G port that would otherwise be `MON` | `MON-10G-…` | 10G |
 

@@ -5,12 +5,14 @@ Extreme Port Labels — NetBox Custom Script
 Generate / verify the on-box port label ``CLASS[-SPEED]-ID`` (SNMP ``ifAlias``)
 on Extreme switches, from NetBox cabling topology.
 
-Two modes:
+Three modes:
 
-1. **compliance** (default) — compute the expected label from NetBox, read the
-   live label off the switch, report the diff. Nothing is pushed.
-2. **remediate** — same computation, but push only the non-compliant ports.
-   Double-gated: ``mode=remediate`` **and** NetBox's *Commit changes* box.
+1. **preview** (default) — expected labels from NetBox cabling. No SSH.
+2. **compliance** — same plan, plus the live label from the box. Nothing is
+   pushed. Live labels without a complete cable stay on the box and are listed
+   as ``kept``.
+3. **remediate** — push only non-compliant *cabled* ports. Double-gated:
+   ``mode=remediate`` **and** NetBox's *Commit changes* box.
 
 Why it matters: Zabbix LLD filters on ``{$NET.IF.IFALIAS.MATCHES}``. A wrong or
 truncated label silently drops a port out of (or into) monitoring.
@@ -198,7 +200,7 @@ def redact_error(text: str) -> str:
 
 CSV_COLUMNS = (
     "site", "device", "port", "kind", "far_device", "far_port", "far_role",
-    "expected", "live", "status", "len", "detail",
+    "expected", "live", "description_string", "status", "len", "detail",
 )
 
 
@@ -218,6 +220,7 @@ def plans_to_csv(plans: list) -> str:
             "far_role": getattr(plan, "far_role", "") or "",
             "expected": plan.expected,
             "live": plan.live,
+            "description_string": getattr(plan, "description_string", "") or "",
             "status": plan.status,
             "len": len(plan.expected) if plan.expected else 0,
             "detail": plan.detail,
@@ -464,10 +467,10 @@ def build_label_for_far_end(
 ) -> str:
     """Pick the longest ID form that fits.
 
-    Reserve the SPEED slot only when a token will actually be emitted, and
-    only for the token that will be emitted (``1G-`` is 3, not a 5-char
-    ``400G-`` worst case). Over-reserving dropped building/site scope on 1G
-    Dist→Access, so two floors' ACCE01 on port 23 collided on Core.
+    Reserve the SPEED slot only for the token that will actually be emitted
+    (``1G-`` is 3, ``40G-`` is 4). Do not reserve a phantom ``400G-`` on a 1G
+    link — that dropped floor tokens. Room for ``40G`` comes from **short
+    codes** (``CO`` ``DI`` ``AC`` ``MG``), not from leaving the ID blank.
     """
     token_needed = (
         cls not in NO_SPEED_CLASSES
@@ -549,7 +552,11 @@ def is_bmc_port(far_port: str | None) -> bool:
 
 def classify(far_role: str, link_mbps: int | None, far_port: str = "",
              far_is_mgmt: bool = False) -> str:
-    """CLASS from the far-end role, its interface purpose, and the link speed."""
+    """CLASS from the far-end **role**, not from link speed.
+
+    Speed only decides the optional SPEED token after CLASS is known.
+    Unknown roles are ``MON`` even at 10G — a 10G camera is not a server.
+    """
     role = (far_role or "").strip().lower()
     if any(token in role for token in INFRA_ROLE_TOKENS):
         return "USW"
@@ -560,7 +567,7 @@ def classify(far_role: str, link_mbps: int | None, far_port: str = "",
     if any(token in role for token in DATA_ENDPOINT_ROLE_TOKENS):
         # Lights-out and controller management is MON; data NICs are production.
         return "MON" if (far_is_mgmt or is_bmc_port(far_port)) else "US"
-    return "US" if (link_mbps or 0) >= 10000 else "MON"
+    return "MON"
 
 
 # ===========================================================================
@@ -847,8 +854,10 @@ class PortPlan:
 
     @property
     def blocking(self) -> bool:
-        return self.status in {"diff", "missing", "too_long", "forbidden",
-                               "description_string_set"}
+        # ``kept`` (live label, no cable) and a populated EXOS
+        # description-string are listed, not failed — they have operational
+        # value and are never wiped by default.
+        return self.status in {"diff", "missing", "too_long", "forbidden"}
 
 
 def _platform_kind(platform_name: str | None) -> str | None:
@@ -983,10 +992,10 @@ if _NETBOX:
             description = (
                 "Preview expected CLASS[-SPEED]-ID labels from NetBox cabling "
                 "(no SSH), compare them to the live box, or push. Cabled ports "
-                "are evaluated; live labels without a NetBox cable are orphan "
-                "and never pushed. Preview needs no Commit. Remediation needs "
-                "mode=remediate AND Commit changes AND (an allowlist or the "
-                "full-scope box)."
+                "are evaluated; live labels without a NetBox cable are kept on "
+                "the box and listed (never pushed). Preview needs no Commit. "
+                "Remediation needs mode=remediate AND Commit changes AND "
+                "(an allowlist or the full-scope box)."
             )
             commit_default = False
             scheduling_enabled = True
@@ -1215,7 +1224,7 @@ if _NETBOX:
                             )
                             continue
                         live_by_device[name] = (labels, descriptions)
-                        self._note_orphans(plans_by_device[name], labels)
+                        self._note_kept_live(plans_by_device[name], labels, descriptions)
                         self.log_info(
                             f"[{index}/{len(targets)}] **{name}** — "
                             f"{len(labels)} live label(s) read"
@@ -1389,14 +1398,21 @@ if _NETBOX:
                     pass
 
         @staticmethod
-        def _note_orphans(plans: list[PortPlan], labels: dict[str, str]) -> None:
-            """Live labels with no cabled NetBox port — report, never remediate."""
+        def _note_kept_live(plans: list[PortPlan], labels: dict[str, str],
+                            descriptions: dict[str, str] | None = None) -> None:
+            """Live labels with no cabled NetBox port — list them, never push.
+
+            These strings often still tell an engineer what the port used to
+            be (ISP, leftover server NIC). Keeping them beats blanking the
+            box. Status is ``kept``, not a failure.
+            """
             if not plans or not labels:
                 return
             template = plans[0]
             planned: set[str] = set()
             for plan in plans:
                 planned |= port_key_aliases(plan.ifname)
+            descriptions = descriptions or {}
             for live_port, live_label in labels.items():
                 if not live_label:
                     continue
@@ -1408,26 +1424,17 @@ if _NETBOX:
                     kind=template.kind,
                     ifname=live_port,
                     live=live_label,
-                    status="orphan",
-                    detail="labelled on box, no cable in NetBox",
+                    description_string=lookup_live_label(descriptions, live_port),
+                    status="kept",
+                    detail="live label kept; no complete cable in NetBox",
                 ))
 
         @staticmethod
         def _compare(plan: PortPlan, labels, descriptions, clear_description: bool):
-            if plan.status in {"too_long", "unreachable", "orphan"}:
+            if plan.status in {"too_long", "unreachable", "kept"}:
                 return
             plan.live = lookup_live_label(labels, plan.ifname)
             plan.description_string = lookup_live_label(descriptions, plan.ifname)
-
-            if plan.description_string:
-                # description-string wins ifAlias on EXOS, so the grammar label
-                # in display-string is invisible to Zabbix while it is set.
-                plan.status = "description_string_set"
-                plan.detail = f"description-string={plan.description_string!r}"
-                # Never wipe human text unless the operator ticked the box.
-                if plan.expected and clear_description:
-                    plan.commands = exos_apply_commands(plan.ifname, plan.expected, True)
-                return
 
             issues = validate_label(plan.live) if plan.live else []
             if plan.live and "forbidden_chars" in " ".join(issues):
@@ -1443,10 +1450,17 @@ if _NETBOX:
             else:
                 plan.status = "diff"
 
+            if plan.description_string:
+                extra = f"description-string kept={plan.description_string!r} (wins ifAlias)"
+                plan.detail = f"{plan.detail}; {extra}" if plan.detail else extra
+
             if plan.status in {"missing", "diff", "forbidden", "too_long"} and plan.expected:
                 if plan.kind == "voss":
                     plan.commands = voss_apply_commands(plan.ifname, plan.expected)
                 else:
+                    # Never clear description-string unless the operator ticked
+                    # the box. The human text stays; display-string still gets
+                    # the grammar for `show ports`.
                     plan.commands = exos_apply_commands(
                         plan.ifname, plan.expected, clear_description
                     )
@@ -1487,22 +1501,55 @@ if _NETBOX:
                     )
                 return
 
-            interesting = [p for p in plans if p.status != "ok"]
-            if not interesting:
-                return
-            rows = [
-                "| Device | ifName | Expected | Live | Len | Status | Detail |",
-                "|--------|--------|----------|------|-----|--------|--------|",
-            ]
-            for plan in sorted(interesting, key=lambda p: (p.device, p.ifname)):
-                rows.append(
-                    f"| {_cell(plan.device)} | {_cell(plan.ifname)} "
-                    f"| `{_cell(plan.expected) or '—'}` | `{_cell(plan.live) or '—'}` "
-                    f"| {len(plan.expected)} | {plan.status} | {_cell(plan.detail)} |"
-                )
-            for start in range(0, len(rows) - 2, 200):
-                chunk = rows[:2] + rows[2 + start:2 + start + 200]
-                self.log_info("\n### Non-compliant ports\n\n" + "\n".join(chunk))
+            diffs = [p for p in plans if p.status not in {"ok", "kept"}]
+            kept = [p for p in plans if p.status == "kept"]
+            described = [p for p in plans if p.description_string]
+
+            def _emit(title: str, headers: list[str], body_rows: list[list[str]]) -> None:
+                if not body_rows:
+                    return
+                lines = [
+                    "| " + " | ".join(headers) + " |",
+                    "|" + "|".join("--------" for _ in headers) + "|",
+                ]
+                for row in body_rows:
+                    lines.append("| " + " | ".join(row) + " |")
+                for start in range(0, len(lines) - 2, 200):
+                    chunk = lines[:2] + lines[2 + start:2 + start + 200]
+                    self.log_info(f"\n### {title}\n\n" + "\n".join(chunk))
+
+            _emit(
+                "Diffs (expected vs live display-string)",
+                ["Device", "ifName", "Expected", "Live", "Len", "Status", "Detail"],
+                [
+                    [
+                        _cell(p.device), _cell(p.ifname),
+                        f"`{_cell(p.expected) or '—'}`", f"`{_cell(p.live) or '—'}`",
+                        str(len(p.expected)), p.status, _cell(p.detail),
+                    ]
+                    for p in sorted(diffs, key=lambda x: (x.device, x.ifname))
+                ],
+            )
+            _emit(
+                "Kept live labels (no NetBox cable — left on the box)",
+                ["Device", "ifName", "Live"],
+                [
+                    [_cell(p.device), _cell(p.ifname), f"`{_cell(p.live) or '—'}`"]
+                    for p in sorted(kept, key=lambda x: (x.device, x.ifname))
+                ],
+            )
+            _emit(
+                "EXOS description-string kept (wins ifAlias until you tick clear)",
+                ["Device", "ifName", "description-string", "Expected display-string"],
+                [
+                    [
+                        _cell(p.device), _cell(p.ifname),
+                        f"`{_cell(p.description_string)}`",
+                        f"`{_cell(p.expected) or '—'}`",
+                    ]
+                    for p in sorted(described, key=lambda x: (x.device, x.ifname))
+                ],
+            )
 
         def _remediate(self, all_plans, targets, data, remediating, allowlist):
             actionable = [p for p in all_plans if p.commands]

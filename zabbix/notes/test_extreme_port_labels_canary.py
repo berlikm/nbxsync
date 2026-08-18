@@ -9,6 +9,7 @@ per-device collisions.
 
 from __future__ import annotations
 
+import re
 import unittest
 from collections import defaultdict
 
@@ -163,6 +164,17 @@ class FleetCanaryTests(unittest.TestCase):
                 )
         self.assertGreater(seen, 20, "canary has no ISC/stack rows to check")
         self.assertEqual(failures, [], "\n".join(failures[:40]))
+
+    def test_generated_ids_use_short_role_codes(self):
+        """CORE/DIST/ACCE/MGMT as device codes blow the 40G budget. `_MGMT` is a port."""
+        bad = []
+        for row, _site, label in self.planned:
+            if re.search(r"(?:^|-)(CORE|DIST|ACCE|MGMT)\d", label):
+                bad.append(f"{row.canary_key}: {label}")
+            if "." in label:
+                bad.append(f"{row.canary_key}: dot in {label}")
+        self.assertEqual(bad, [], "\n".join(bad[:40]))
+
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ If the port runs at the class default, **omit SPEED**. If it does not (Pure 25G,
 
 | CLASS | Meaning | Default speed | Speed-expect | Alerts (live cutover) |
 |---|---|---|---|---|
-| `USW` | Switch / firewall / other network box | 10G | Warning when linked (`USW-1G-…` if not 10G) | **Average** link. Flap/errors Warning |
+| `USW` | Switch / firewall | 10G | Warning when linked (`USW-1G-…` if not 10G) | **Average** link. Flap/errors Warning |
 | `US` | Server / storage | 10G | Warning when linked (`US-25G-…` / `US-100G-…` if the array is not 10G) | **Average** link — **Core/Dist/Mgmt only** (not collected on Access) |
 | `UP` | Access point | 1G | Warning when linked (`UP-2G5-…` if the AP is not 1G) | **Average** link on the switch (Access collects it). AP ICMP stays **High** |
 | `MON` | Important to monitor, no better default class | 1G | Warning when linked | **Average** link — **Core/Dist/Mgmt only** |
@@ -71,7 +71,8 @@ Expected = token if present, else class default.
 | Hypervisor / storage 10G | `US-ESX01` | 8 | 10G |
 | Pure / array | `US-PURE01` | 10 | 10G |
 | AP | `UP-AP3F07` | 9 | 1G |
-| iDRAC (MON: important, no better class) | `MON-IDR03` | 9 | 1G |
+| iDRAC (MON: BMC / anything else) | `MON-IDR03` | 9 | 1G |
+| 1G server NIC | `US-1G-SRV12` | 12 | 1G |
 | Pure 25G | `US-25G-P01` | 10 | 25G |
 | AP at 2.5G | `UP-2G5-AP07` | 12 | 2.5G |
 | Exclude | `X-SPAN` | 6 | none |

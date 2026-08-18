@@ -54,10 +54,10 @@ Excel filters that match how we think about a switch:
 
 | Filter | Why |
 |---|---|
-| `status = diff` | Box does not match cabling |
+| `status = diff` | Box display-string does not match cabling |
 | `status = missing` | Cabled in NetBox, no live label |
-| `status = orphan` | Label on box, no complete cable in NetBox |
-| `status = description_string_set` | EXOS `description-string` is hijacking `ifAlias` |
+| `status = kept` | Label (or EXOS description-string) on the box, no complete cable in NetBox. **Listed, never wiped.** Often still useful (ISP, leftover NIC). |
+| `description_string` column non-empty | EXOS `description-string` is still set (wins `ifAlias`). Left on the box unless you tick clear. |
 | `far_role` contains Core / Dist | Fabric |
 | `expected` starts with `USW-` and description `ISC` | Peer-link — **must stay USW** |
 | `len = 20` | At the EXOS budget; check it still reads |
@@ -142,7 +142,8 @@ The script is the right shape for NetBox: a **flat file** next to
 - Do not store passwords in NetBox secrets *and* env — one store (env, same as
   the firmware script).
 - Do not parse `connected_endpoints` into a recursive cable walker here; NetBox
-  already walks patch-panel front/rear. Incomplete paths stay `orphan`.
+  already walks patch-panel front/rear. Incomplete paths stay `kept` (listed,
+  never blanked).
 - Do not auto-`X` ISC from the description. That was the monitoring bug.
 
 ---

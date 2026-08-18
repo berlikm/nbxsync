@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 from dataclasses import replace
 
@@ -28,7 +29,16 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(e.classify("Access Point", 2500, "eth0"), "UP")
         self.assertEqual(e.classify("Sd Wan Socket", 1000, "wan1"), "UW")
 
+    def test_unknown_role_is_mon_even_at_10g(self):
+        """Speed does not pick CLASS. Server/storage are US; everything else is MON."""
+        self.assertEqual(e.classify("Printer", 10000, "eth0"), "MON")
+        self.assertEqual(e.classify("Camera", 1000, "eth0"), "MON")
+        self.assertEqual(e.classify("Network Device", 40000, "1"), "MON")
+        self.assertEqual(e.classify("Messpc", 10000, "eth0"), "MON")
 
+    def test_unknown_10g_emits_mon_with_speed_token(self):
+        self.assertEqual(e.build_label("MON", 10000, "PRN01"), "MON-10G-PRN01")
+        self.assertEqual(e.build_label("US", 1000, "ES40_VMNIC0"), "US-1G-ES40_VMNIC0")
 class LabelUniquenessTests(unittest.TestCase):
     def _label(self, cls, mbps, name, fsite, lsite, port, role):
         parts = e.split_device_name(name, fsite, lsite)
@@ -224,6 +234,7 @@ class LabelUniquenessTests(unittest.TestCase):
             "hu-deb-nag-b", "hu-deb-nag-b", "25", "Switch Core",
         )
         self.assertEqual(lab, "USW-40G-NAG-CO04_P25")
+        self.assertNotIn("CORE", lab)
         self.assertLessEqual(len(lab), 20)
 
     def test_cross_site_zh4_to_zh5_keeps_site_tail(self):
@@ -270,6 +281,12 @@ class LabelUniquenessTests(unittest.TestCase):
             self.assertNotIn(".", lab, lab)
             self.assertFalse(e.FORBIDDEN_CHARS & set(lab), lab)
             self.assertTrue(e.is_safe_cli_label(lab), lab)
+            # Role words in the ID, not a far-port token like `_MGMT`.
+            for banned in ("CORE", "DIST", "ACCE", "MGMT"):
+                self.assertIsNone(
+                    re.search(rf"(?:^|-){banned}\d", lab), lab
+                )
+
 
     def test_dot_is_a_forbidden_character(self):
         self.assertIn(".", e.FORBIDDEN_CHARS)
@@ -323,8 +340,26 @@ class CliSafetyTests(unittest.TestCase):
         )
         text = e.plans_to_csv([plan])
         self.assertTrue(text.startswith("site,device,port,"), text.splitlines()[0])
+        self.assertIn("description_string", text.splitlines()[0])
         self.assertIn("SW1", text)
         self.assertIn("USW-DI01_P23", text)
+
+    def test_kept_live_label_is_not_blocking(self):
+        plan = e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="48",
+            live="ISP_Netrics", status="kept",
+            detail="live label kept; no complete cable in NetBox",
+        )
+        self.assertFalse(plan.blocking)
+        self.assertFalse(e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1",
+            expected="USW-CO02_P1", status="ok",
+        ).blocking)
+        self.assertTrue(e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1",
+            expected="USW-CO02_P1", live="ISC", status="diff",
+        ).blocking)
+
 
     def test_semicolon_is_forbidden(self):
         self.assertIn(";", e.FORBIDDEN_CHARS)
