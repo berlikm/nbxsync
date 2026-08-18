@@ -65,6 +65,8 @@ HEALTH_TEMPLATES = (
     'Extreme IQ Engine by SNMP',
     'Extreme EXOS Observability',
 )
+IQ_TEMPLATE = 'Extreme IQ Engine by SNMP'
+IQ_INTERFACE_DASHBOARD = 'Network interfaces'
 
 
 def api_call(api: Any, method: str, params: dict | None = None) -> Any:
@@ -440,14 +442,107 @@ def assert_exos_stock_interface_grid(api: Any) -> tuple[bool, str]:
     return status in ('ok', 'patched', 'missing-template'), status
 
 
+def _dim(value: Any) -> str:
+    return str(value if value is not None else '0')
+
+
+def patch_iq_interface_honeycomb(api: Any) -> str:
+    """Cap IQ interface honeycomb. Zabbix has no max cell size; eth0+mgt0 in 72x6 are ~340px hexes."""
+    tid = _template_id(api, IQ_TEMPLATE)
+    if not tid:
+        return 'missing-template'
+    dashboards = (
+        api_call(
+            api,
+            'templatedashboard.get',
+            {
+                'templateids': tid,
+                'output': ['dashboardid', 'name'],
+                'selectPages': 'extend',
+            },
+        )
+        or []
+    )
+    dashboard = next((d for d in dashboards if d.get('name') == IQ_INTERFACE_DASHBOARD), None)
+    if not dashboard:
+        return 'missing-dashboard'
+    pages = dashboard.get('pages') or []
+    overview = next((p for p in pages if p.get('name') == 'Overview'), pages[0] if pages else None)
+    if not overview:
+        return 'missing-page'
+    widgets = overview.get('widgets') or []
+    map_widget = next((w for w in widgets if w.get('type') == 'honeycomb'), {})
+    grid_widget = next((w for w in widgets if w.get('type') == 'graphprototype'), {})
+    if (
+        _dim(map_widget.get('width')) == '12'
+        and _dim(map_widget.get('height')) == '3'
+        and _dim(grid_widget.get('y')) == '3'
+        and _dim(grid_widget.get('height')) == '11'
+    ):
+        return 'ok'
+
+    def payload(widget: dict, **geom: str) -> dict:
+        out = {
+            'type': widget.get('type'),
+            'name': widget.get('name') or '',
+            'x': geom.get('x', _dim(widget.get('x'))),
+            'y': geom.get('y', _dim(widget.get('y'))),
+            'width': geom.get('width', _dim(widget.get('width'))),
+            'height': geom.get('height', _dim(widget.get('height'))),
+            'view_mode': widget.get('view_mode', '0'),
+            'fields': widget.get('fields') or [],
+        }
+        if widget.get('widgetid'):
+            out['widgetid'] = widget['widgetid']
+        return out
+
+    new_widgets = []
+    for widget in widgets:
+        if widget.get('type') == 'honeycomb':
+            new_widgets.append(payload(widget, x='0', y='0', width='12', height='3'))
+        elif widget.get('type') == 'graphprototype':
+            new_widgets.append(payload(widget, x='0', y='3', width='72', height='11'))
+        else:
+            new_widgets.append(payload(widget))
+    api_call(
+        api,
+        'templatedashboard.update',
+        {
+            'dashboardid': dashboard['dashboardid'],
+            'pages': [
+                {
+                    'dashboard_pageid': overview['dashboard_pageid'],
+                    'name': overview.get('name') or 'Overview',
+                    'display_period': overview.get('display_period', '0'),
+                    'widgets': new_widgets,
+                }
+            ]
+            + [
+                {
+                    'dashboard_pageid': p['dashboard_pageid'],
+                    'name': p.get('name') or '',
+                    'display_period': p.get('display_period', '0'),
+                    'widgets': p.get('widgets') or [],
+                }
+                for p in pages
+                if p is not overview
+            ],
+        },
+    )
+    logger.info('  %s: interface honeycomb capped to 12x3', IQ_TEMPLATE)
+    return 'patched'
+
+
 def apply_extreme_health_patches(api: Any) -> dict[str, Any]:
     """Apply idempotent Health and stock EXOS interface-layout patches."""
     icmp = patch_disable_wan_icmp_noise(api)
     exos_grid = patch_exos_stock_interface_dashboard(api)
+    iq_map = patch_iq_interface_honeycomb(api)
     diagnostics = {name: drop_health_diagnostics_page(api, name) for name in HEALTH_TEMPLATES}
     return {
         'icmp_noise': icmp,
         'exos_health': 'companion-yaml',
         'exos_stock_grid': exos_grid,
+        'iq_interface_map': iq_map,
         'health_diagnostics': diagnostics,
     }

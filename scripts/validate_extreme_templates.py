@@ -605,6 +605,8 @@ def validate_zabbix() -> None:
     )
     grid_status = str(patch.get('exos_stock_grid'))
     record('patch exos_stock_grid', grid_status in ('ok', 'patched', 'missing-template'), grid_status)
+    iq_map = str(patch.get('iq_interface_map'))
+    record('patch iq_interface_map', iq_map in ('ok', 'patched', 'missing-template'), iq_map)
 
     ok, detail = assert_template_macros(api, 'Extreme VOSS by SNMP', VOSS_HEALTH_MACROS)
     record('zbx VOSS macros', ok, detail)

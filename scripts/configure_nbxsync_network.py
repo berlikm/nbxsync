@@ -1062,6 +1062,12 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 str(health.get('exos_stock_grid')),
                 group='import',
             )
+            record(
+                'iq_interface_honeycomb',
+                str(health.get('iq_interface_map')) in ('ok', 'patched', 'missing-template'),
+                str(health.get('iq_interface_map')),
+                group='import',
+            )
             for tname in ('Extreme VOSS by SNMP', 'Extreme IQ Engine by SNMP', 'Extreme EXOS by SNMP'):
                 ok, detail = assert_wan_icmp_noise_disabled(api, tname)
                 record(f'icmp_noise_assert_{tname}', ok, detail, group='import')
