@@ -13,7 +13,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 
   * Import Extreme VOSS / IQ Engine / EXOS Observability / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
-  * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding (no fork)
+  * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding and queue check-now discovery for stale rows (no fork, no host sync)
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
@@ -507,6 +507,85 @@ def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by S
     )
     logger.info('  %s: patched PSU LLD to skip notPresent (itemid=%s)', template_name, rule['itemid'])
     return 'patched'
+
+
+_EXOS_STOCK_TEMPLATE = 'Extreme EXOS by SNMP'
+_EXOS_OBSERVABILITY_TEMPLATE = 'Extreme EXOS Observability'
+_PSU_ITEM_NAME = 'Power supply status'
+_CHECK_NOW_TASK_TYPE = 6
+
+
+def queue_exos_psu_lld_checks(api, template_names: tuple[str, ...] | None = None) -> dict[str, int | str]:
+    """Queue immediate PSU LLD checks for hosts retaining notPresent rows.
+
+    LLD filters affect newly returned discovery data; they do not proactively
+    remove already-discovered item rows. Queueing check-now tasks makes an
+    apply converge immediately without host-syncing or changing NetBox.
+    Hosts are selected through either the stock EXOS template or its
+    Observability companion, and only hosts with a current PSU status value of
+    ``1`` are queued. ``-2`` stack hosts have neither template and are skipped.
+    """
+    names = template_names or (_EXOS_STOCK_TEMPLATE, _EXOS_OBSERVABILITY_TEMPLATE)
+    template_ids: set[str] = set()
+    for name in names:
+        found = api.template.get(filter={'name': [name]}, output=['templateid']) or []
+        template_ids.update(str(t['templateid']) for t in found)
+    if not template_ids:
+        return {'status': 'missing-template', 'hosts': 0, 'tasks': 0}
+
+    host_ids: set[str] = set()
+    for template_id in sorted(template_ids):
+        hosts = api.host.get(templateids=[template_id], output=['hostid']) or []
+        host_ids.update(str(h['hostid']) for h in hosts)
+    if not host_ids:
+        return {'status': 'no-hosts', 'hosts': 0, 'tasks': 0}
+
+    stale_hosts: set[str] = set()
+    ordered_hosts = sorted(host_ids)
+    for start in range(0, len(ordered_hosts), 100):
+        items = api.item.get(
+            hostids=ordered_hosts[start:start + 100],
+            search={'name': _PSU_ITEM_NAME},
+            searchByAny=True,
+            output=['hostid', 'lastvalue'],
+        ) or []
+        stale_hosts.update(
+            str(item['hostid'])
+            for item in items
+            if str(item.get('lastvalue')) in ('1', '1.0')
+        )
+    if not stale_hosts:
+        return {'status': 'clean', 'hosts': 0, 'tasks': 0}
+
+    rules = []
+    ordered_stale = sorted(stale_hosts)
+    for start in range(0, len(ordered_stale), 100):
+        rules.extend(
+            api.discoveryrule.get(
+                hostids=ordered_stale[start:start + 100],
+                filter={'key_': [_PSU_DISCOVERY_KEY]},
+                output=['itemid', 'hostid'],
+            )
+            or []
+        )
+    tasks = [
+        {'type': _CHECK_NOW_TASK_TYPE, 'request': {'itemid': rule['itemid']}}
+        for rule in rules
+    ]
+    if not tasks:
+        return {'status': 'no-discovery-rules', 'hosts': len(stale_hosts), 'tasks': 0}
+
+    task_ids: list[str] = []
+    for start in range(0, len(tasks), 20):
+        result = api.task.create(tasks[start:start + 20]) or {}
+        task_ids.extend(str(task_id) for task_id in result.get('taskids', []))
+    logger.info(
+        '  EXOS PSU LLD check-now queued: hosts=%s rules=%s tasks=%s',
+        len(stale_hosts),
+        len(rules),
+        len(task_ids),
+    )
+    return {'status': 'queued', 'hosts': len(stale_hosts), 'tasks': len(task_ids)}
 
 
 def assert_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by SNMP') -> tuple[bool, str]:
@@ -1520,6 +1599,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         patch_etherlike_ifalias_filters(api)
         patch_exos_interface_lld_rollout(api)
         patch_exos_psu_lld_present_only(api)
+        queue_exos_psu_lld_checks(api)
         patch_extreme_template_temp_macros(api)
         step_health_patches(api)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
