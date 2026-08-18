@@ -269,6 +269,7 @@ class LabelUniquenessTests(unittest.TestCase):
             lab = self._label(*args)
             self.assertNotIn(".", lab, lab)
             self.assertFalse(e.FORBIDDEN_CHARS & set(lab), lab)
+            self.assertTrue(e.is_safe_cli_label(lab), lab)
 
     def test_dot_is_a_forbidden_character(self):
         self.assertIn(".", e.FORBIDDEN_CHARS)
@@ -292,6 +293,42 @@ class LabelUniquenessTests(unittest.TestCase):
         self.assertTrue(stack.startswith("USW-"), stack)
         self.assertFalse(isc.startswith("X"), isc)
         self.assertFalse(stack.startswith("X"), stack)
+
+
+class CliSafetyTests(unittest.TestCase):
+    def test_safe_label_accepts_grammar(self):
+        self.assertTrue(e.is_safe_cli_label("USW-1G-L02-CO01_P1_1"))
+        self.assertTrue(e.is_safe_cli_label("US-SN02_CT0_ETH10"))
+
+    def test_safe_label_rejects_injection(self):
+        self.assertFalse(e.is_safe_cli_label("USW-FOO;SAVE"))
+        self.assertFalse(e.is_safe_cli_label("USW-FOO BAR"))
+        self.assertFalse(e.is_safe_cli_label("USW-P1.1"))
+        self.assertFalse(e.is_safe_cli_label(""))
+
+    def test_safe_port_accepts_exos_and_voss(self):
+        self.assertTrue(e.is_safe_cli_port("1"))
+        self.assertTrue(e.is_safe_cli_port("1:51"))
+        self.assertTrue(e.is_safe_cli_port("1/24"))
+
+    def test_safe_port_rejects_lists_and_junk(self):
+        self.assertFalse(e.is_safe_cli_port("1:1-1:3"))
+        self.assertFalse(e.is_safe_cli_port("1:1,1:3"))
+        self.assertFalse(e.is_safe_cli_port("1:1; reboot"))
+
+    def test_csv_has_header_and_row(self):
+        plan = e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1:1",
+            expected="USW-DI01_P23", status="ok", far_device="DIST01",
+        )
+        text = e.plans_to_csv([plan])
+        self.assertTrue(text.startswith("site,device,port,"), text.splitlines()[0])
+        self.assertIn("SW1", text)
+        self.assertIn("USW-DI01_P23", text)
+
+    def test_semicolon_is_forbidden(self):
+        self.assertIn(";", e.FORBIDDEN_CHARS)
+        self.assertIn(".", e.FORBIDDEN_CHARS)
 
 
 class ParserTests(unittest.TestCase):

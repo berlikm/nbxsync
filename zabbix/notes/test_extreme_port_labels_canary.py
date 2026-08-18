@@ -66,6 +66,8 @@ class FleetCanaryTests(unittest.TestCase):
                 failures.append(f"{row.canary_key}: {label!r} len={len(label)}")
             if e.FORBIDDEN_CHARS & set(label) or "." in label:
                 failures.append(f"{row.canary_key}: forbidden in {label!r}")
+            if not e.is_safe_cli_label(label):
+                failures.append(f"{row.canary_key}: unsafe CLI charset {label!r}")
             parsed = e.parse_label(label)
             if parsed is None:
                 failures.append(f"{row.canary_key}: unparseable {label!r}")

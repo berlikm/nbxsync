@@ -29,7 +29,9 @@ Environment variables (identical to the CLI runner):
 
 from __future__ import annotations
 
+import csv
 import importlib.util
+import io
 import logging
 import os
 import re
@@ -70,9 +72,17 @@ if not logger.handlers:
 #: but the fleet uses the lowest common denominator so one label fits both.
 MAX_LABEL_LEN = 20
 
-#: Union of the two EXOS User Guide 32.7.1 character lists, plus ``?`` and
-#: ``.`` (fleet policy: no dots in labels — SPEED is ``2G5``, ports use ``_``).
-FORBIDDEN_CHARS = frozenset(': ."<>&?')
+#: Union of the two EXOS User Guide 32.7.1 character lists, plus ``?``, ``.``
+#: (fleet policy: no dots — SPEED is ``2G5``, ports use ``_``), and the EXOS
+#: port-list separators ``,`` ``;`` so a label cannot become a second command.
+FORBIDDEN_CHARS = frozenset(': ."<>&?;,\t\n\r')
+
+#: Pushed labels are an allowlist, not a denylist. EXOS ``display-string`` is
+#: unquoted on the wire; anything outside this set is refused before SSH.
+SAFE_LABEL_RE = re.compile(r"^[A-Z0-9][A-Z0-9_-]{0,19}$")
+
+#: Local ifName interpolated into ``configure ports …`` / ``interface GigabitEthernet …``.
+SAFE_PORT_RE = re.compile(r"^\d{1,4}([:/]\d{1,4})?$")
 
 CLASSES = ("USW", "US", "UP", "MON", "UW", "TMON", "X", "N")
 
@@ -153,6 +163,8 @@ def validate_label(raw: str) -> list[str]:
         issues.append("forbidden_chars:" + "".join(bad))
     if not raw[0].isalnum():
         issues.append("first_char_not_alnum")
+    if not SAFE_LABEL_RE.fullmatch(raw.upper()):
+        issues.append("unsafe_charset")
     if raw != raw.upper():
         issues.append("not_uppercase")
     parsed = parse_label(raw)
@@ -166,6 +178,51 @@ def validate_label(raw: str) -> list[str]:
         # One fact, one encoding — a token equal to the class default is noise.
         issues.append("redundant_speed")
     return issues
+
+
+def is_safe_cli_label(label: str) -> bool:
+    """True when ``label`` is safe to interpolate into an unquoted EXOS CLI."""
+    return bool(label) and len(label) <= MAX_LABEL_LEN and bool(SAFE_LABEL_RE.fullmatch(label))
+
+
+def is_safe_cli_port(ifname: str) -> bool:
+    """True when ``ifname`` is a single EXOS/VOSS port, not a list or injection."""
+    return bool(ifname) and bool(SAFE_PORT_RE.fullmatch(ifname.strip()))
+
+
+def redact_error(text: str) -> str:
+    """Keep SSH errors useful without echoing a password if netmiko includes one."""
+    raw = "" if text is None else str(text)
+    return re.sub(r"(?i)(password|passwd|secret|community)\s*[:=]\s*\S+", r"\1=***", raw)
+
+
+CSV_COLUMNS = (
+    "site", "device", "port", "kind", "far_device", "far_port", "far_role",
+    "expected", "live", "status", "len", "detail",
+)
+
+
+def plans_to_csv(plans: list) -> str:
+    """Excel-friendly CSV for the NetBox script Output tab (copy → sheet)."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=CSV_COLUMNS, extrasaction="ignore")
+    writer.writeheader()
+    for plan in sorted(plans, key=lambda p: (p.device or "", p.ifname or "")):
+        writer.writerow({
+            "site": plan.site,
+            "device": plan.device,
+            "port": plan.ifname,
+            "kind": plan.kind,
+            "far_device": getattr(plan, "far_device", "") or "",
+            "far_port": getattr(plan, "far_port", "") or "",
+            "far_role": getattr(plan, "far_role", "") or "",
+            "expected": plan.expected,
+            "live": plan.live,
+            "status": plan.status,
+            "len": len(plan.expected) if plan.expected else 0,
+            "detail": plan.detail,
+        })
+    return buf.getvalue()
 
 
 def build_label(cls: str, link_mbps: int | None, ident: str) -> str:
@@ -784,6 +841,9 @@ class PortPlan:
     status: str = "pending"
     detail: str = ""
     commands: list[str] = field(default_factory=list)
+    far_device: str = ""
+    far_port: str = ""
+    far_role: str = ""
 
     @property
     def blocking(self) -> bool:
@@ -921,19 +981,20 @@ if _NETBOX:
         class Meta(Script.Meta):
             name = "Extreme Port Labels (ifAlias compliance)"
             description = (
-                "Compute the expected CLASS[-SPEED]-ID port label from NetBox "
-                "cabling, read the live label off each switch (EXOS "
-                "display-string / VOSS interface name), and report the diff. "
-                "Cabled ports are evaluated; live labels without a NetBox cable "
-                "are reported as orphan and never pushed. Compliance-only by "
-                "default; remediation needs mode=remediate AND Commit changes."
+                "Preview expected CLASS[-SPEED]-ID labels from NetBox cabling "
+                "(no SSH), compare them to the live box, or push. Cabled ports "
+                "are evaluated; live labels without a NetBox cable are orphan "
+                "and never pushed. Preview needs no Commit. Remediation needs "
+                "mode=remediate AND Commit changes AND (an allowlist or the "
+                "full-scope box)."
             )
             commit_default = False
             scheduling_enabled = True
             job_timeout = 3600
 
             fieldsets = (
-                ("Mode", ("mode", "clear_description_string", "canary")),
+                ("Mode", ("mode", "clear_description_string", "canary",
+                           "force_full_remediate")),
                 ("Scope", ("site_group", "site", "role", "tag", "devices",
                            "platform_filter", "structural_tag")),
                 ("Reporting", ("include_admin_down", "include_neutral",
@@ -945,11 +1006,17 @@ if _NETBOX:
 
         mode = ChoiceVar(
             choices=(
-                ("compliance", "Compliance — read only, report diffs"),
+                ("preview", "Preview — expected labels from NetBox, no SSH"),
+                ("compliance", "Compliance — read the box, report diffs"),
                 ("remediate", "Remediate — push non-compliant labels (needs Commit)"),
             ),
-            default="compliance",
-            description="Remediation additionally requires the Commit changes box.",
+            default="preview",
+            description=(
+                "Preview never opens SSH. Compliance reads display-string / "
+                "interface name. Remediation additionally requires Commit "
+                "changes, and either a canary allowlist or 'Remediate entire "
+                "scope'."
+            ),
             label="Mode",
         )
 
@@ -972,6 +1039,14 @@ if _NETBOX:
                 "ports are pushed. Strongly recommended for the first live run."
             ),
             label="Canary allowlist (device::ifname)",
+        )
+        force_full_remediate = BooleanVar(
+            default=False,
+            description=(
+                "Allow a remediate push without a canary allowlist. Leave off "
+                "until preview + compliance look right on paper."
+            ),
+            label="Remediate entire scope (no allowlist)",
         )
 
         # ---- Scope ----
@@ -1040,8 +1115,8 @@ if _NETBOX:
             label="Save config after apply",
         )
         max_workers = IntegerVar(
-            default=10, min_value=1, max_value=50,
-            description="Concurrent SSH sessions.",
+            default=8, min_value=1, max_value=20,
+            description="Concurrent SSH sessions (capped at 20 — do not stampede the OOB).",
             label="Concurrent workers",
         )
 
@@ -1049,8 +1124,9 @@ if _NETBOX:
 
         def run(self, data, commit):
             started = time.time()
-            mode = data.get("mode", "compliance")
+            mode = data.get("mode", "preview")
             remediating = mode == "remediate" and bool(commit)
+            preview_only = mode == "preview"
 
             structural_tag_ids = {t.pk for t in (data.get("structural_tag") or [])}
 
@@ -1062,10 +1138,11 @@ if _NETBOX:
             self.log_info(
                 f"## Extreme Port Labels\n"
                 f"- **Mode:** {mode}"
-                f"{' + COMMIT (live push)' if remediating else ' (read-only)'}\n"
+                f"{' + COMMIT (live push)' if remediating else ' (no push)'}\n"
+                f"- **SSH:** {'no' if preview_only else 'yes'}\n"
                 f"- **Devices:** {len(device_list)}\n"
                 f"- **Max label length:** {MAX_LABEL_LEN}\n"
-                f"- **Workers:** {data.get('max_workers', 10)}"
+                f"- **Workers:** {data.get('max_workers', 8)}"
             )
             if mode == "remediate" and not commit:
                 self.log_warning(
@@ -1077,10 +1154,16 @@ if _NETBOX:
                 line.strip() for line in (data.get("canary") or "").splitlines()
                 if line.strip()
             }
+            if remediating and not allowlist and not data.get("force_full_remediate"):
+                self.log_failure(
+                    "Remediate refused: set a **canary allowlist** or tick "
+                    "**Remediate entire scope**. Preview/compliance first."
+                )
+                return
             if remediating and not allowlist:
                 self.log_warning(
-                    "Remediation with **no canary allowlist** — every non-compliant "
-                    "port in scope will be pushed. First live run should set the allowlist."
+                    "Remediation with **no canary allowlist** — every "
+                    "non-compliant port in scope will be pushed."
                 )
             elif remediating and allowlist:
                 self.log_info(f"Canary allowlist active: {len(allowlist)} port(s).")
@@ -1096,6 +1179,8 @@ if _NETBOX:
                 if not plans:
                     continue
                 plans_by_device[device.name] = plans
+                if preview_only:
+                    continue
                 ip = _device_ssh_ip(device)
                 if ip:
                     targets.append((device, ip, kind))
@@ -1108,38 +1193,41 @@ if _NETBOX:
                 self.log_failure("No labellable ports found in the selected scope.")
                 return
 
-            # ---- 2. Read live labels ----
-            workers = min(int(data.get("max_workers", 10) or 10), max(1, len(targets)))
+            # ---- 2. Read live labels (skipped in preview) ----
             live_by_device: dict[str, tuple[dict[str, str], dict[str, str]]] = {}
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = {
-                    pool.submit(self._read_device, device.name, ip, kind): device.name
-                    for device, ip, kind in targets
-                }
-                for index, future in enumerate(as_completed(futures), 1):
-                    name = futures[future]
-                    labels, descriptions, error = future.result()
-                    if error:
-                        for plan in plans_by_device.get(name, []):
-                            plan.status = "unreachable"
-                            plan.detail = error
-                        self.log_warning(f"[{index}/{len(targets)}] ❌ **{name}** — {error}")
-                        continue
-                    live_by_device[name] = (labels, descriptions)
-                    self._note_orphans(plans_by_device[name], labels)
-                    self.log_info(
-                        f"[{index}/{len(targets)}] ✅ **{name}** — "
-                        f"{len(labels)} live label(s) read"
-                    )
+            if not preview_only:
+                workers = min(int(data.get("max_workers", 8) or 8), max(1, len(targets)))
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = {
+                        pool.submit(self._read_device, device.name, ip, kind): device.name
+                        for device, ip, kind in targets
+                    }
+                    for index, future in enumerate(as_completed(futures), 1):
+                        name = futures[future]
+                        labels, descriptions, error = future.result()
+                        if error:
+                            for plan in plans_by_device.get(name, []):
+                                plan.status = "unreachable"
+                                plan.detail = redact_error(error)
+                            self.log_warning(
+                                f"[{index}/{len(targets)}] **{name}** — "
+                                f"{redact_error(error)}"
+                            )
+                            continue
+                        live_by_device[name] = (labels, descriptions)
+                        self._note_orphans(plans_by_device[name], labels)
+                        self.log_info(
+                            f"[{index}/{len(targets)}] **{name}** — "
+                            f"{len(labels)} live label(s) read"
+                        )
 
-            # ---- 3. Compare ----
-            for name, plans in plans_by_device.items():
-                if name not in live_by_device:
-                    continue
-                labels, descriptions = live_by_device[name]
-                for plan in plans:
-                    self._compare(plan, labels, descriptions,
-                                  bool(data.get("clear_description_string")))
+                for name, plans in plans_by_device.items():
+                    if name not in live_by_device:
+                        continue
+                    labels, descriptions = live_by_device[name]
+                    for plan in plans:
+                        self._compare(plan, labels, descriptions,
+                                      bool(data.get("clear_description_string")))
 
             all_plans = [p for plans in plans_by_device.values() for p in plans]
             if not data.get("include_neutral", True):
@@ -1148,7 +1236,7 @@ if _NETBOX:
                     if not (p.expected in {"X", "N"} or (p.expected or "").startswith(("X-", "N-")))
                 ]
 
-            self._report(all_plans)
+            self._report(all_plans, preview_only=preview_only)
 
             # ---- 4. Remediate ----
             if mode == "remediate":
@@ -1157,7 +1245,12 @@ if _NETBOX:
             # ---- 5. Outcome ----
             blocking = [p for p in all_plans if p.blocking]
             elapsed = int(time.time() - started)
-            if not blocking:
+            if preview_only:
+                self.log_success(
+                    f"Preview: {len(all_plans)} expected label(s) from NetBox "
+                    f"cabling ({elapsed}s). CSV is in the Output tab — copy into Excel."
+                )
+            elif not blocking:
                 self.log_success(
                     f"All {len(all_plans)} evaluated port(s) compliant ({elapsed}s)."
                 )
@@ -1171,6 +1264,7 @@ if _NETBOX:
                     f"{len(blocking)} port(s) non-compliant out of "
                     f"{len(all_plans)} ({elapsed}s)."
                 )
+            return plans_to_csv(all_plans)
 
         # ---- helpers -------------------------------------------------------
 
@@ -1210,6 +1304,26 @@ if _NETBOX:
                 result.append(device)
             return sorted(result, key=lambda d: d.name or "")
 
+        @staticmethod
+        def _far_bits(iface) -> tuple[str, str, str]:
+            far = _far_endpoint(iface)
+            if far is None:
+                return "", "", ""
+            if type(far).__name__ == "CircuitTermination":
+                circuit = getattr(far, "circuit", None)
+                cid = str(getattr(circuit, "cid", None) or "")
+                provider = (
+                    getattr(getattr(circuit, "provider", None), "name", None)
+                    or getattr(getattr(circuit, "provider", None), "slug", None)
+                    or ""
+                )
+                return str(provider), cid, "Circuit"
+            return (
+                getattr(getattr(far, "device", None), "name", None) or "",
+                getattr(far, "name", None) or "",
+                getattr(getattr(getattr(far, "device", None), "role", None), "name", None) or "",
+            )
+
         def _plan_device(self, device, kind, data, structural_tag_ids) -> list[PortPlan]:
             plans: list[PortPlan] = []
             qs = (
@@ -1228,17 +1342,23 @@ if _NETBOX:
                 expected, status = expected_label_for(iface, structural_tag_ids)
                 if status == "no_cable":
                     continue
+                far_device, far_port, far_role = self._far_bits(iface)
                 plan = PortPlan(
                     device=device.name,
                     site=getattr(device.site, "slug", "") or "",
                     kind=kind,
                     ifname=iface.name,
                     expected=expected,
+                    far_device=far_device,
+                    far_port=far_port,
+                    far_role=far_role,
                 )
                 if status == "too_long":
                     plan.status = "too_long"
                     plan.detail = f"no ID form fits {MAX_LABEL_LEN} chars; shortest={expected}"
                     plan.expected = ""
+                else:
+                    plan.status = "ok"
                 plans.append(plan)
             return plans
 
@@ -1255,7 +1375,7 @@ if _NETBOX:
                 return labels, descriptions, None
             except Exception as exc:  # noqa: BLE001
                 logger.error("[%s] label read failed: %s", name, exc)
-                return {}, {}, str(exc)
+                return {}, {}, redact_error(str(exc))
             finally:
                 if nc is not None:
                     try:
@@ -1331,12 +1451,41 @@ if _NETBOX:
                         plan.ifname, plan.expected, clear_description
                     )
 
-        def _report(self, plans: list[PortPlan]):
+        def _report(self, plans: list[PortPlan], preview_only: bool = False):
             counts: dict[str, int] = {}
+            classes: dict[str, int] = {}
             for plan in plans:
                 counts[plan.status] = counts.get(plan.status, 0) + 1
+                parsed = parse_label(plan.expected) if plan.expected else None
+                cls = parsed.cls if parsed else (plan.status or "?")
+                classes[cls] = classes.get(cls, 0) + 1
             summary = " · ".join(f"**{k}** {v}" for k, v in sorted(counts.items()))
-            self.log_info(f"\n---\n## Summary\n{summary or '_nothing evaluated_'}")
+            class_line = " · ".join(f"**{k}** {v}" for k, v in sorted(classes.items()))
+            self.log_info(
+                f"\n---\n## Summary\n{summary or '_nothing evaluated_'}\n\n"
+                f"CLASS: {class_line or '—'}\n\n"
+                "Full sheet is the **CSV in the Output tab** — copy into Excel "
+                "and filter by site / status / CLASS."
+            )
+
+            if preview_only:
+                # One line per device: network engineers scan "this switch is N ports".
+                by_device: dict[str, int] = {}
+                for plan in plans:
+                    by_device[plan.device] = by_device.get(plan.device, 0) + 1
+                rows = ["| Device | Ports |", "|--------|-------|"]
+                for name, n in sorted(by_device.items()):
+                    rows.append(f"| {_cell(name)} | {n} |")
+                for start in range(0, len(rows) - 2, 200):
+                    chunk = rows[:2] + rows[2 + start:2 + start + 200]
+                    self.log_info("\n### Devices in this preview\n\n" + "\n".join(chunk))
+                too_long = [p for p in plans if p.status == "too_long"]
+                if too_long:
+                    self.log_warning(
+                        f"{len(too_long)} port(s) cannot fit 20 characters — "
+                        "see CSV status=too_long."
+                    )
+                return
 
             interesting = [p for p in plans if p.status != "ok"]
             if not interesting:
@@ -1351,7 +1500,6 @@ if _NETBOX:
                     f"| `{_cell(plan.expected) or '—'}` | `{_cell(plan.live) or '—'}` "
                     f"| {len(plan.expected)} | {plan.status} | {_cell(plan.detail)} |"
                 )
-            # NetBox truncates very long log entries; chunk the table.
             for start in range(0, len(rows) - 2, 200):
                 chunk = rows[:2] + rows[2 + start:2 + start + 200]
                 self.log_info("\n### Non-compliant ports\n\n" + "\n".join(chunk))
@@ -1384,7 +1532,7 @@ if _NETBOX:
                 return
 
             ip_kind = {device.name: (ip, kind) for device, ip, kind in targets}
-            workers = min(int(data.get("max_workers", 10) or 10), max(1, len(by_device)))
+            workers = min(int(data.get("max_workers", 8) or 8), max(1, len(by_device)))
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = {}
                 for name, plans in by_device.items():
@@ -1418,9 +1566,13 @@ if _NETBOX:
                         # Belt and braces — never push something EXOS would cut.
                         return (False, "\n".join(transcript),
                                 f"refused {plan.ifname}: label exceeds {MAX_LABEL_LEN}")
-                    if plan.expected and (FORBIDDEN_CHARS & set(plan.expected)):
+                    if not is_safe_cli_label(plan.expected or ""):
                         return (False, "\n".join(transcript),
-                                f"refused {plan.ifname}: forbidden characters")
+                                f"refused {plan.ifname}: label charset not [A-Z0-9_-]")
+                    if not is_safe_cli_port(plan.ifname):
+                        return (False, "\n".join(transcript),
+                                f"refused {plan.ifname}: port name is not a single "
+                                "EXOS/VOSS port (no lists, no extra punctuation)")
                     if kind == "voss":
                         output = nc.send_config_set(plan.commands, read_timeout=90)
                         transcript.append("> " + " ; ".join(plan.commands))
@@ -1446,7 +1598,7 @@ if _NETBOX:
                 return True, "\n".join(transcript), None
             except Exception as exc:  # noqa: BLE001
                 logger.error("[%s] remediation failed: %s", name, exc)
-                return False, "\n".join(transcript), str(exc)
+                return False, "\n".join(transcript), redact_error(str(exc))
             finally:
                 if nc is not None:
                     try:

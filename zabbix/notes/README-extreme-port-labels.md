@@ -46,7 +46,15 @@ Unit tests (pure helpers only, no NetBox required):
 ```bash
 python3 zabbix/notes/test_extreme_port_labels.py
 python3 zabbix/notes/test_extreme_port_labels_canary.py
+python3 zabbix/notes/export_port_label_preview.py   # regenerates the Excel sheet + summary
 ```
+
+What the current generator will write (1535 cabled ports):
+[`port-label-preview.md`](port-label-preview.md) and
+[`fixtures/port_label_preview.tsv`](fixtures/port_label_preview.tsv).
+
+How to run this in NetBox (preview → Excel → compliance → one canary push):
+[`port-label-compliance-review.md`](port-label-compliance-review.md).
 
 The fleet canary is `zabbix/notes/fixtures/port_label_canary.tsv` — every
 cabled Extreme port from the NetBox export. The `expected_label` column is
@@ -62,9 +70,10 @@ recovered in `port_label_canary.py` before replay. Rebuild the TSV with
 
 | Field | Meaning |
 |---|---|
-| **Mode** | `compliance` (default, read-only) or `remediate` |
-| **Commit changes** | NetBox's own box. Remediation needs **both** |
-| **Canary allowlist** | `device-name::ifname` per line — limits the push |
+| **Mode** | `preview` (default, **no SSH**) · `compliance` (read the box) · `remediate` (push; needs Commit) |
+| **Commit changes** | NetBox's own box. Remediation needs **both** mode=remediate and this |
+| **Canary allowlist** | `device-name::ifname` per line — required to push unless "entire scope" is ticked |
+| **Remediate entire scope** | Off by default. Only after preview + compliance look right |
 | **Scope** | site group / site / role / device tag / explicit devices |
 | **Platform** | EXOS · VOSS · both |
 | **Structural tags** | interface tags meaning "never alert" (SPAN / mute) → expected label `X`. Do **not** tag stack / ISC / MLAG peer |
