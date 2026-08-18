@@ -125,7 +125,7 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - Does **not** mass-sync every device (template updates inherit in Zabbix). Speed Expect nests on VOSS / Observability, so existing switch hosts pick up the LLD on `--apply` without HostSync. Empty display-string → nothing discovered.  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
 - Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, EXOS PSU LLD skip `notPresent`, EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
-- Role IFALIAS / Access `PORTID.*` changes need a **HostSync of those devices** — template inheritance does not push NetBox macros. `--apply` logs the active Switch* count and a name sample; it does **not** mass-sync.  
+- Role IFALIAS / Access `PORTID.*` changes need a **HostSync of those devices** — template inheritance does not push NetBox macros. `--apply` compares live Zabbix host macros and logs only drifted / missing hosts; it does **not** mass-sync.
 - `{$PORTID.LLD.*}` defaults live on **Extreme Port Speed Expect**. `--apply` will delete leftover Zabbix **global** PORTID macros (they bump config for every host).
 
 Per-host sync only when **that** device’s NetBox role/platform/macros changed.
