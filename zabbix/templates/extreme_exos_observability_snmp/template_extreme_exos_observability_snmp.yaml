@@ -73,6 +73,20 @@ zabbix_export:
       tags:
       - tag: component
         value: memory
+    - uuid: ec0191ec18404a51bcd71ef5a7c1a619
+      name: Uptime
+      type: CALCULATED
+      key: exos.observability.uptime
+      delay: 1m
+      value_type: FLOAT
+      units: uptime
+      params: 'last(//system.net.uptime[sysUpTime.0])'
+      description: 'sysUpTime from the nested stock template. Same Overview 4th tile
+        as VOSS/IQ. Do not bind the stock key on an svggraph item pattern — PHP
+        Array to string conversion in CSvgGraphHelper::getMetricsPattern.'
+      tags:
+      - tag: component
+        value: system
     tags:
     - tag: class
       value: network
@@ -272,71 +286,26 @@ zabbix_export:
           - type: STRING
             name: units
             value: '%'
-        - type: gauge
-          name: Temp
+        - type: item
+          name: Uptime
           x: '54'
           width: '18'
           height: '4'
           fields:
-          - type: INTEGER
-            name: angle
-            value: '270'
-          - type: INTEGER
-            name: decimal_places
-            value: '0'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.uptime
           - type: INTEGER
             name: show.0
             value: '2'
-          - type: INTEGER
-            name: show.1
-            value: '5'
-          - type: INTEGER
-            name: th_arc_size
-            value: '6'
-          - type: INTEGER
-            name: units_size
-            value: '14'
-          - type: INTEGER
-            name: value_arc_size
-            value: '16'
           - type: INTEGER
             name: value_bold
             value: '1'
           - type: INTEGER
             name: value_size
-            value: '25'
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Extreme EXOS Observability
-              key: exos.observability.temperature
-          - type: STRING
-            name: thresholds.0.color
-            value: 0EC9AC
-          - type: STRING
-            name: thresholds.0.threshold
-            value: '0'
-          - type: STRING
-            name: thresholds.1.color
-            value: FFD54F
-          - type: STRING
-            name: thresholds.1.threshold
-            value: '95'
-          - type: STRING
-            name: thresholds.2.color
-            value: FF465C
-          - type: STRING
-            name: thresholds.2.threshold
-            value: '100'
-          - type: INTEGER
-            name: th_show_arc
-            value: '1'
-          - type: INTEGER
-            name: th_show_labels
-            value: '0'
-          - type: STRING
-            name: units
-            value: °C
+            value: '28'
         - type: problems
           name: Problems
           'y': '4'
@@ -393,7 +362,7 @@ zabbix_export:
             name: legend
             value: '1'
         - type: svggraph
-          name: Temp
+          name: Uptime
           x: '36'
           'y': '7'
           width: '36'
@@ -401,7 +370,7 @@ zabbix_export:
           fields:
           - type: STRING
             name: ds.0.color.0
-            value: FF9800
+            value: 2774A4
           - type: INTEGER
             name: ds.0.dataset_type
             value: '0'
@@ -409,10 +378,10 @@ zabbix_export:
             name: ds.0.itemids.0
             value:
               host: Extreme EXOS Observability
-              key: exos.observability.temperature
+              key: exos.observability.uptime
           - type: STRING
             name: reference
-            value: ETMPH
+            value: EUPTH
           - type: INTEGER
             name: show_problems
             value: '1'
@@ -516,6 +485,98 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '3'
+        - type: gauge
+          name: Temp
+          'y': '3'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: th_arc_size
+            value: '6'
+          - type: INTEGER
+            name: units_size
+            value: '14'
+          - type: INTEGER
+            name: value_arc_size
+            value: '16'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.temperature
+          - type: STRING
+            name: thresholds.0.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: FFD54F
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '95'
+          - type: STRING
+            name: thresholds.2.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '100'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+          - type: STRING
+            name: units
+            value: °C
+        - type: svggraph
+          name: Temp
+          x: '18'
+          'y': '3'
+          width: '54'
+          height: '4'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: FF9800
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: Extreme EXOS Observability
+              key: exos.observability.temperature
+          - type: STRING
+            name: reference
+            value: ETMPH
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+          - type: INTEGER
+            name: legend
+            value: '0'
     valuemaps:
     - uuid: c4e06a81d8fb4b2a9e7c5d3f1a0b8c92
       name: Service state

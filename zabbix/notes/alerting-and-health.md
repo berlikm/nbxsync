@@ -78,9 +78,11 @@ Two host-level dashboards: **Health** for the box and **Network interfaces** for
 
 | Question | Where | Widget | Why this type |
 |---|---|---|---|
-| Can we reach the box? | Overview | ICMP + SNMP gauges | One binary number. Same chrome as CPU/Temp. |
+| Can we reach the box? | Overview | ICMP + SNMP gauges | One binary number. Same chrome as CPU. |
 | Is compute saturating? | Overview | CPU gauge; **CPU / memory** graph (EXOS, IQ) | Brendan Gregg USE: CPU and memory are the same class. IQ already did this. A honeycomb of one EXOS Access slot is a giant hex named Memory — wrong. |
-| Overtemp / reboot / clients? | Overview 4th tile + its graph | EXOS Temp gauge (High). VOSS Uptime. IQ Clients. | The 4th tile is the platform-specific *page or census* signal, not a 5th CPU. |
+| How long has SNMP been up? | Overview | **Uptime** item tile + graph | Same 4th tile on EXOS, VOSS, and IQ. Duration, not a 0–100 gauge. Reboot still tickets Warning from the template trigger. |
+| Overtemp on this switch? | Hardware | EXOS Temp gauge + trend; VOSS named °C honeycomb | Off Overview so the four tiles stay identical. Overtemp High still pages; the problems strip shows it. HiveOS often stubs 0 °C — APs keep temp off the board. |
+| How many clients on this AP? | RF | Clients item + graph | Census, not a page. Association table stays out. |
 | What is broken right now? | Overview | Problems strip | Tickets, not decoration. |
 | Did a fan/PSU die? | Hardware | Colour honeycomb, identity only | N similar FRUs. Empty map on Access = LLD found nothing (census). |
 | Where is heat / draw? | Hardware (VOSS chassis) | Temp °C + Power W honeycombs | Values, named sensors. Not SNMP indexes 1–5. |
@@ -96,7 +98,7 @@ Do **not** bind an svggraph **item pattern** on the EXOS companion (`ds.dataset_
 
 All platforms expose **Network interfaces → Overview** with the same map + 3×2 grid. Switches add **Port**. IQ has no Port page. YAML import does not delete leftover Diagnostics pages (`deleteMissing: false`); `--apply` drops them. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet.
 
-Overview tiles are short labels. Gauges show a bold value and colour arc only. FRU honeycombs keep **Custom 20%** (two fans must not explode) at height 3. Interface honeycombs use **Auto** on the short port ID (not bold). Switch maps are **72×6** so a dense VOSS stays above the 32px floor. IQ maps are **12×3**: same widget, ~2 eth, no max cell size — a switch-sized box would be two giant hexes. VOSS Temp binds `Temperature sensor *` (°C, `{#SENSOR_DESCR}`). Power is `PSU *: Output watts`. `rcSysTotalPower` is capacity, not load.
+Overview tiles are short labels. Gauges show a bold value and colour arc only. The 4th tile is an **item** widget (Uptime) on every platform — same chrome as VOSS already had. FRU honeycombs keep **Custom 20%** (two fans must not explode) at height 3. Interface honeycombs use **Auto** on the short port ID (not bold). Switch maps are **72×6** so a dense VOSS stays above the 32px floor. IQ maps are **12×3**: same widget, ~2 eth, no max cell size — a switch-sized box would be two giant hexes. VOSS Temp binds `Temperature sensor *` (°C, `{#SENSOR_DESCR}`). Power is `PSU *: Output watts`. `rcSysTotalPower` is capacity, not load.
 
 Honeycomb thresholds are `>=`. VOSS fan `notpresent(4)` paints like `down(3)` (red). Empty PSU `empty(2)` stays grey (green starts at 3). EXOS PSU LLD **skips `notPresent(1)`** — a stack MIB row for every possible member is padding, not a FRU. Failed/off units stay (`presentNotOK` / `presentPowerOff`). Do not host-sync to pick that up; `--apply` patches stock `psu.discovery`.
 

@@ -176,8 +176,9 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             f'{name} Overview 4-tile row',
             len(tiles) == 4
             and all(str(w.get('width')) == '18' for w in tiles)
-            and [w.get('name') for w in tiles[:3]] == ['ICMP', 'SNMP', 'CPU'],
-            f'tiles={[(w.get("name"), w.get("width")) for w in tiles]}',
+            and [w.get('name') for w in tiles] == ['ICMP', 'SNMP', 'CPU', 'Uptime']
+            and [w.get('type') for w in tiles] == ['gauge', 'gauge', 'gauge', 'item'],
+            f'tiles={[(w.get("name"), w.get("type"), w.get("width")) for w in tiles]}',
         )
         record(
             f'{name} Overview problems strip',
@@ -187,10 +188,13 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             and _wy(problems[0]) == '4',
             f'problems={[(w.get("width"), w.get("height"), _wy(w)) for w in problems]}',
         )
+        history_names = [w.get('name') for w in histories]
         record(
             f'{name} Overview two-pane history',
             len(histories) == 2
-            and all(str(w.get('width')) == '36' and str(w.get('height')) == '6' and _wy(w) == '7' for w in histories),
+            and all(str(w.get('width')) == '36' and str(w.get('height')) == '6' and _wy(w) == '7' for w in histories)
+            and history_names[-1] == 'Uptime'
+            and history_names[0] in ('CPU', 'CPU / memory'),
             f'histories={[(w.get("name"), w.get("width"), _wy(w)) for w in histories]}',
         )
         gauges = [w for w in (overview.get('widgets') or []) if w.get('type') == 'gauge']
@@ -279,13 +283,16 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
                 f'items={fields(power_w).get("items.0")}',
             )
         if name == 'EXOS companion':
+            hw_gauges = [w for w in hw_widgets if w.get('type') == 'gauge']
             record(
-                f'{name} Hardware is FRU maps only',
+                f'{name} Hardware FRU maps plus Temp',
                 [w.get('name') for w in hw_honey] == ['Fans', 'PSU']
                 and all(str(w.get('width')) == '36' for w in hw_honey)
                 and not hw_graphs
-                and not hw_svg,
-                f'honey={[(w.get("name"), w.get("width")) for w in hw_honey]} graphs={len(hw_graphs)} svg={len(hw_svg)}',
+                and [w.get('name') for w in hw_gauges] == ['Temp']
+                and [w.get('name') for w in hw_svg] == ['Temp'],
+                f'honey={[(w.get("name"), w.get("width")) for w in hw_honey]} '
+                f'gauges={[w.get("name") for w in hw_gauges]} svg={[w.get("name") for w in hw_svg]}',
             )
 
     rf = pages_by_name.get('RF')
@@ -303,6 +310,13 @@ def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[s
             'itemnavigator' not in rf_types,
             f'got={sorted(str(t) for t in rf_types)}',
         )
+        if name == 'IQ':
+            rf_names = [w.get('name') for w in (rf.get('widgets') or [])]
+            record(
+                f'{name} RF has Clients census',
+                rf_names.count('Clients') == 2,
+                f'names={rf_names}',
+            )
 
 
 def validate_interface_dashboard(

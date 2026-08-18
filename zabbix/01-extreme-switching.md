@@ -73,12 +73,12 @@ Until class-scoped High exists, a Core `USW` down is a **ticket**. ICMP High sti
 
 Not a country/role board. After the platform template is linked, **Monitoring → Hosts → host → Dashboards → Health**.
 
-Widget type follows the object count and the question. Honeycomb is only for **many similar things** (ports, fans, sensors). A gauge is for **one headline number** (ICMP, SNMP, CPU, Temp). A graph is for **trend**. Do not put a single memory pool in a honeycomb: on Access EXOS that becomes one giant hex titled Memory.
+Widget type follows the object count and the question. Honeycomb is only for **many similar things** (ports, fans, sensors). A gauge is for **one headline number with a scale** (ICMP, SNMP, CPU, Temp). Uptime is an **item** tile — a duration, not 0–100. A graph is for **trend**. Do not put a single memory pool in a honeycomb: on Access EXOS that becomes one giant hex titled Memory.
 
 | Page | What you see in 5 seconds |
 |---|---|
-| **Overview** | ICMP / SNMP / CPU / 4th tile (EXOS temp · VOSS uptime · AP clients). Problems. Compute trend (CPU+memory on EXOS/IQ; CPU on VOSS) plus the 4th-tile history. |
-| **Hardware / RF** | FRUs only on switches (fan/PSU colour; VOSS also named °C and PSU watts, then per-slot memory graph). IQ: radio noise map + Tx / retries grids. |
+| **Overview** | ICMP / SNMP / CPU / **Uptime** — same four tiles on EXOS, VOSS, and IQ. Problems. Compute trend (CPU+memory on EXOS/IQ; CPU on VOSS) plus Uptime history. |
+| **Hardware / RF** | Switches: fan/PSU colour. EXOS also chassis Temp gauge + trend (scalar `extremeCurrentTemperature`). VOSS also named °C and PSU watts, then per-slot memory. IQ RF: radio noise map, client census, Tx / retries grids. |
 
 **Network interfaces → Overview** is the status map + 3×2 traffic grid. Each hex is the **port ID** (`1:1`, `1/21`, `eth0`) — not the IFALIAS paragraph — with Auto type so the ID stays readable. Colour is oper-status; hover still shows the full item. Switch maps are **72×6** (traffic at y=6, **height 14**): Zabbix floors honeycomb cells at 32px and then hides labels that do not fit, so a height-3 strip on a Core/Dist VOSS (every admin-up port except `X`) paints nameless hexes in a modest window. IQ maps are **12×3** — Zabbix has no max cell size, and ~2 AP eth in a switch-sized widget are giant hexes. Traffic is the same **height 14** 3×2 grid on all three. **Port** (VOSS YAML / EXOS `--apply` on stock **Extreme EXOS by SNMP**, not the Observability companion) is the one-port fault picker (status/speed/duplex/errors/discards, VOSS flaps) — not bits. IQ has no Port page. Zabbix 7 cannot open a hex into a graph. Ethernet is full duplex: do **not** sum RX+TX for congestion.
 
@@ -175,7 +175,7 @@ A site WAN blip must not be one High per switch. Those Highs **depend on** a sit
 | Extreme EXOS Observability | Platform EXOS Template Rule; links the stock template and owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; owns the native **Network interfaces** graph prototype/dashboard |
 
-We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, skips EXOS PSU `notPresent` stack-MIB padding, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health gauges/SVG history (including slot-1 memory) and owns **Health** (Overview / Hardware). Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, skips EXOS PSU `notPresent` stack-MIB padding, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory) and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
 
 Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on stock is typically Warning until we match VOSS (Average) without a fork.
 

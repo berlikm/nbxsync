@@ -14,7 +14,8 @@ Community shortlist reference: `reference_bgp4plus_Aerohive_AP.xml` ([bgp4plus](
 | Memory % | `ahMemUtilization` | `26928.1.2.4.0` | 0..100 |
 | Serial | `ahSystemSerial` | `26928.1.2.5.0` | |
 | Device mode | `ahDeviceMode` | `26928.1.2.6.0` | |
-| Uptime | `ahUpTime` | `26928.1.2.7.0` | **DisplayString**, not TimeTicks |
+| Uptime | `ahUpTime` | `26928.1.2.7.0` | **DisplayString**, not TimeTicks — inventory only |
+| Uptime (network) | `sysUpTime` | `1.3.6.1.2.1.1.3.0` | TimeTicks; Health Overview 4th tile (same as EXOS/VOSS) |
 | Hardware | `ahHwVersion` | `26928.1.2.8.0` | |
 | Client count | `ahClientCount` | `26928.1.2.9.0` | 0..10000 |
 | Temperature | `ahEnvirmentTemp` | `26928.1.2.10.0` | MIB spelling |

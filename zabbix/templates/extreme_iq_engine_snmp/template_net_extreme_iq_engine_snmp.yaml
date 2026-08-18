@@ -269,6 +269,29 @@ zabbix_export:
       tags:
       - tag: component
         value: system
+    - uuid: 45199df8160d4eee8d429cd754243e26
+      name: Uptime (network)
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.2.1.1.3.0]
+      key: system.net.uptime[sysUpTime.0]
+      delay: 1m
+      trends: '0'
+      units: uptime
+      description: 'MIB: SNMPv2-MIB
+
+        Time (in hundredths of a second) since the network management portion of the system was last re-initialized.
+
+        HiveOS ahUpTime is a DisplayString (inventory). Overview uses this TimeTicks
+        item so EXOS / VOSS / IQ share the same Uptime tile.
+
+        '
+      preprocessing:
+      - type: MULTIPLIER
+        parameters:
+        - '0.01'
+      tags:
+      - tag: component
+        value: system
     - uuid: 40b79f002331484183086c5b4e911752
       name: Hardware version
       type: SNMP_AGENT
@@ -912,7 +935,7 @@ zabbix_export:
             name: units
             value: '%'
         - type: item
-          name: Clients
+          name: Uptime
           x: '54'
           width: '18'
           height: '4'
@@ -921,7 +944,7 @@ zabbix_export:
             name: itemid.0
             value:
               host: Extreme IQ Engine by SNMP
-              key: ah.system.client.count
+              key: system.net.uptime[sysUpTime.0]
           - type: INTEGER
             name: show.0
             value: '2'
@@ -972,7 +995,7 @@ zabbix_export:
             name: legend
             value: '1'
         - type: svggraph
-          name: Clients
+          name: Uptime
           x: '36'
           'y': '7'
           width: '36'
@@ -988,10 +1011,10 @@ zabbix_export:
             name: ds.0.itemids.0
             value:
               host: Extreme IQ Engine by SNMP
-              key: ah.system.client.count
+              key: system.net.uptime[sysUpTime.0]
           - type: STRING
             name: reference
-            value: XCLNT
+            value: XUPTH
           - type: INTEGER
             name: show_problems
             value: '1'
@@ -1074,9 +1097,56 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '-65'
+        - type: item
+          name: Clients
+          'y': '3'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: ah.system.client.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+        - type: svggraph
+          name: Clients
+          x: '18'
+          'y': '3'
+          width: '54'
+          height: '4'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: 2774A4
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: Extreme IQ Engine by SNMP
+              key: ah.system.client.count
+          - type: STRING
+            name: reference
+            value: XCLNT
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+          - type: INTEGER
+            name: legend
+            value: '0'
         - type: graphprototype
           name: RF
-          'y': '3'
+          'y': '7'
           width: '72'
           height: '5'
           fields:
@@ -1093,7 +1163,7 @@ zabbix_export:
             value: XRADG
         - type: graphprototype
           name: Retries / drops
-          'y': '8'
+          'y': '12'
           width: '72'
           height: '5'
           fields:
