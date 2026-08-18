@@ -145,7 +145,7 @@ VIP- or primary-DNS-only when the backup is unreachable. Record it as a watcher 
 
 ## Health dashboard
 
-Stock HTTP has no host **Health** board (same gap as stock EXOS). Plan: upsert **Health** on **FortiGate by HTTP** (template dashboard, not `create_dashboards.py`).
+Stock HTTP has no host **Health** board (same gap as stock EXOS). Plan: upsert **Health** on **FortiGate by HTTP** (template dashboard).
 
 | Page | 5-second read |
 |---|---|

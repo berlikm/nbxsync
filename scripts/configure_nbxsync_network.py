@@ -32,7 +32,6 @@ Stage matrix (what each flag enables):
 Re-apply safety (estate already has switches/APs in Zabbix):
   * Does **not** delete hosts, interfaces, history, or hostids
   * Does **not** mass-sync every device (template updates inherit in Zabbix)
-  * Does **not** run ``create_dashboards.py`` (those are country/role boards, not Health)
   * YAML ``deleteMissing: false`` — retired items linger; LLD is not wiped
   * ``--apply`` without ``--link-speed-expect`` does **not** unlink Speed Expect if it was linked earlier
   * Empty SNMP secrets are zerotouch's job and must not blank existing CG passphrases

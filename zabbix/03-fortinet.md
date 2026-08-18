@@ -21,7 +21,7 @@ This page is the **target contract**. Live nbxSync still links **FortiGate by SN
 | Never silent | unsupported items; API `*.data_errors`; SD-WAN site with **zero** members/health-checks; **zero** interfaces; HA pair with only one member in Zabbix |
 | Control plane | REST token + FQDN macros on the **device** (Pure pattern). Scope ifaces with LLD macros, not a second inventory |
 | Collect first | Policy LLD, util 95%, CPU/mem/disk **High**, firmware Info, ICMP loss/RTT |
-| Host dashboard | Template dashboard **Health** (not country/role boards). Traffic is page **Path** (WAN/SD-WAN, not 40 policies) |
+| Host dashboard | Template dashboard **Health**. Traffic is page **Path** (WAN/SD-WAN, not 40 policies) |
 | Severity | **Disaster** = site only. Warning = next day, not a dump bucket |
 
 Data path: stock **FortiGate by HTTP** + **ICMP Ping**. Do **not** also link FortiGate by SNMP or Network Generic (`icmpping` collision once ICMP Ping is on the host).
@@ -75,14 +75,14 @@ Do **not** alert on: every policy, every VLAN, FortiGuard “firmware exists”,
 
 ## Health dashboard (host, from the template)
 
-Not a country/role board. After **FortiGate by HTTP** is linked, **Monitoring → Hosts → host → Dashboards → Health**.
+After **FortiGate by HTTP** is linked, **Monitoring → Hosts → host → Dashboards → Health**.
 
 | Page | What you see in 5 seconds |
 |---|---|
 | **Health** | ICMP / API / CPU tiles. CPU + memory graphs |
 | **Path** | In-scope WAN / SD-WAN traffic + health-check loss/latency (2 columns) — not a policy wall |
 
-Stock HTTP has **no** host Health board. Upsert on this template via API (same pattern as EXOS `--apply`). Do **not** run `create_dashboards.py`.
+Stock HTTP has **no** host Health board. Upsert on this template via API (same pattern as EXOS `--apply`).
 
 ---
 

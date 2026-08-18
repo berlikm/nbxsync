@@ -13,7 +13,7 @@ The switch port toward the AP is `UP-…` (Access collects **only** `USW`+`UP` �
 | Page **symptoms** | ICMP down (**High**). Hung AP with eth still up (**High** on ICMP). |
 | **Ticket** (Average) | SNMP dead while ping works. Memory. Temp canary. Unsupported-item count. |
 | **Graph** causes | CPU, clients, radio noise/Tx, retries/drops, eth traffic, ICMP loss/RTT (triggers **off**) |
-| One incident | Cable/PoE → switch `UP-` **Average** live (class High later). AP ICMP **should** depend on that port. Until NetBox/LLDP mapping exists, a PoE cut is two events — accept it; do not drop AP ICMP to Average (that hides a hung AP). |
+| One incident | Cable/PoE → switch `UP-` **Average** live. AP ICMP stays **High**. A closet cut is two events until NetBox/LLDP maps the AP to that port — accept it; do not drop AP ICMP to Average (that hides a hung AP). |
 | Never silent | Unsupported items (Average trigger); SNMP=0 while `UP-` is up; SNMP=1 and **zero** radios = Health census |
 | Collect first | Radio retry alerts, client-count, ICMP loss/RTT, CPU-critical — **triggers off** in the YAML |
 | Host dashboard | Template dashboard **Health** (host-level). RF is page 2 |
@@ -101,11 +101,10 @@ AP `{$TEMP_*}` is **this** template (70 / 85 / −273), not EXOS/VOSS 95/100. Ma
 ## Dependencies
 
 ```
-CPU / mem / temp / AP eth  →  no SNMP  →  ICMP down  →  site unreachable
-AP ICMP                    →  switch UP-  (later, via NetBox/LLDP)
+CPU / mem / temp / AP eth  →  no SNMP  →  ICMP down
 ```
 
-A closet PoE failure must not stay two uncorrelated Highs once mapping exists. Site WAN blip → site **Disaster**, not one High per AP (later).
+A closet PoE cut is AP ICMP High plus the switch `UP-` Average. That is accepted. Do not lower AP ICMP.
 
 ---
 
@@ -149,6 +148,10 @@ Radio + eth LLD: **1h**, keep-lost **0**. Inventory (name/serial/fw/hw) **1h**. 
 
 ---
 
-## Later
+## Not this apply
 
-AP ICMP → switch `UP-` dependency via NetBox/LLDP; trigger on SNMP=1 and zero radios; per-client LLD; traps; XIQ REST; mesh; split GETBULK off APs only if HiveOS cannot take combined requests. FortiGate (API) / VMs: same bar, different doc ([03](03-fortinet.md)). Do not merge with Cato.
+`--apply` is the live AP contract (Health Overview / RF / Network interfaces). Do not add `--link-speed-expect` (switches only, and not until labels are clean).
+
+AP ICMP → switch `UP-` is not a dashboard follow-up. Live: two events on a closet cut. Leave it.
+
+FortiGate (API) / VMs: same bar, different doc ([03](03-fortinet.md)). Do not merge with Cato.

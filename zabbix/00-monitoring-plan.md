@@ -90,7 +90,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 5. Never fail silent: unsupported items, zero discovered objects, proxy last-seen.
 6. Collect first; enable noisy triggers after a quiet pilot.
 7. Macro overrides, not cloned stock templates.
-8. Signal with no trigger and no dashboard → delete it. Device **Health** is a **template** (host) dashboard, not a country/role board.
+8. Signal with no trigger and no dashboard → delete it. Device **Health** is a **template** (host) dashboard.
 9. Next domain copies [_template.md](_template.md) — FortiGate (03) is written in that shape; VMs stay stubbed.
 10. Use the full Zabbix scale. **Disaster** is site/service only (never on a switch/AP template). Do not park everything on Warning.
 

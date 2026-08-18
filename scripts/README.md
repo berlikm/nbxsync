@@ -10,7 +10,6 @@ If a script and that document disagree, **fix the script or the document so they
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
 | 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid |
-| — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** and **Network interfaces** ship from platform templates/runtime patch |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
 | — | `validate_extreme_templates.py` | YAML contract + optional `--zabbix` double-import |
@@ -41,7 +40,7 @@ python scripts/configure_nbxsync_zerotouch.py
 python scripts/configure_nbxsync_network.py --apply
 ```
 
-Always finish with the network script so VOSS / IQ Engine Template Rules are not left unresolved. Re-running both scripts on an estate that **already has** switches and APs in Zabbix is the maintenance path: YAML `deleteMissing: false`, no host delete, no mass `SyncHostJob`, no `create_dashboards.py`. Template Health dashboards and trigger status inherit in Zabbix without touching hostids.
+Always finish with the network script so VOSS / IQ Engine Template Rules are not left unresolved. Re-running both scripts on an estate that **already has** switches and APs in Zabbix is the maintenance path: YAML `deleteMissing: false`, no host delete, no mass `SyncHostJob`. Template Health dashboards and trigger status inherit in Zabbix without touching hostids.
 
 ```bash
 python3 scripts/validate_extreme_templates.py --zabbix   # lab: YAML contract + double import
@@ -80,7 +79,7 @@ delete and re-create the host. Use this for testing template/CG changes on one h
 **Do NOT delete all hosts from Zabbix Cloud for testing.** Only delete + re-sync
 the specific host you are changing.
 
-Optional: `--verify` (census), `--link-speed-expect` (Extreme stage 4), `--cutover-silence` (temporary LM overlay).
+Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **not** pass `--link-speed-expect` until on-box port labels are clean.
 
 ## Who writes which rows
 

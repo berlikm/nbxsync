@@ -28,7 +28,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 ## What we alert
 
-**This table is the live cutover contract** (YAML + stock EXOS after `--apply`). Class-scoped High and Speed Expect stay in [Later](#later).
+**This table is the live cutover contract** (YAML + stock EXOS after `--apply`).
 
 | Device | Alert | Sev |
 |---|---|---|
@@ -48,30 +48,30 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | ICMP loss / RTT | **no** | items on; triggers **DISABLED** (CH proxy RTT is WAN) |
 | ISIS circuit / card down | collect | High **gated** (`{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0`) until a fabric pilot |
 | V-IST / IST | collect | High gated (`{$VIST.CONTROL}=0`, `{$IST.CONTROL}=0`) |
-| **Site** unreachable | yes | **Disaster** — site-level, **not** on EXOS/VOSS (later) |
+| **Site** unreachable | not on this template | Needs a site check — not EXOS/VOSS |
 
-| Ports in scope | Alert | Live (cutover) | Later |
-|---|---|---|---|
-| `USW` / `US` / `UP` link down | yes | **Average** (one stock trigger for every discovered port) | class-scoped **High** for `USW`/`UP` |
-| `MON` link down | yes | Average — Core/Dist/Mgmt only | Warning |
-| `UW` link down | yes | Average — Core/Dist/Mgmt | **High**; all circuits at a site → **Disaster** |
-| Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not | — |
-| Wrong speed vs **intended** label | later | Speed Expect YAML triggers **on** — **do not link** | Warning |
-| Half duplex | yes | Warning | — |
-| Interface errors | yes | Warning | — |
-| Outbound discards (`USW`) | later | Speed Expect, not linked; util context **101** | Average (user impact) |
-| Sustained util vs **intended** speed | **no** | stock 15m off (`{$IF.UTIL.MAX}=101`); Speed Expect `USW` also **101** | Warning, 1h avg, stage 6 |
-| `X…` ports | **no** | not discovered | — |
+| Ports in scope | Alert | Live (cutover) |
+|---|---|---|
+| `USW` / `US` / `UP` link down | yes | **Average** (one stock trigger for every discovered port) |
+| `MON` link down | yes | Average — Core/Dist/Mgmt only |
+| `UW` link down | yes | Average — Core/Dist/Mgmt |
+| Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
+| Wrong speed vs **intended** label | **no** | Speed Expect YAML exists — **do not link** |
+| Half duplex | yes | Warning |
+| Interface errors | yes | Warning |
+| Outbound discards (`USW`) | **no** | Speed Expect, not linked; util context **101** |
+| Sustained util vs **intended** speed | **no** | stock 15m off (`{$IF.UTIL.MAX}=101`); Speed Expect `USW` also **101** |
+| `X…` ports | **no** | not discovered |
 
 Do **not** alert on: a laptop unplugging (Access **does not collect** desk ports), fifty **High**s for one site down, “bandwidth high” on a backup window.
 
-Until class-scoped High exists, a Core `USW` down is a **ticket**. ICMP High still catches a dead box. Access still cannot page a desk port — those items do not exist.
+A Core `USW` down is a **ticket** (Average). ICMP High still catches a dead box. Access still cannot page a desk port — those items do not exist.
 
 ---
 
 ## Health dashboard (host, from the template)
 
-Not a country/role board. After the platform template is linked, **Monitoring → Hosts → host → Dashboards → Health**.
+After the platform template is linked, **Monitoring → Hosts → host → Dashboards → Health**.
 
 Widget type follows the object count and the question. Honeycomb is only for **many similar things** (ports, fans, sensors). A gauge is for **one headline number with a scale** (ICMP, SNMP, CPU, Temp). Uptime is an **item** tile — a duration, not 0–100. A graph is for **trend**. Do not put a single memory pool in a honeycomb: on Access EXOS that becomes one giant hex titled Memory.
 
@@ -125,7 +125,6 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - YAML `deleteMissing: false` — retired items linger; we do not wipe LLD  
 - Does **not** mass-sync every device (template updates inherit in Zabbix)  
 - Does **not** unlink Speed Expect if it was linked earlier (no `--link-speed-expect` ≠ unlink)  
-- Does **not** run `create_dashboards.py`  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
 - Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m/keep-lost 0, EXOS PSU LLD skip `notPresent`, EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion
 
@@ -148,12 +147,11 @@ Grammar: EXOS `display-string` (max 20), leave `description-string` empty. VOSS 
 ## Dependencies
 
 ```
-util / speed-expect  →  link down  →  no SNMP  →  ICMP down  →  site unreachable
+util / speed-expect  →  link down  →  no SNMP  →  ICMP down
 CPU / mem / temp     →  ICMP down
-AP ICMP              →  Access UP-   (later — see 02)
 ```
 
-A site WAN blip must not be one High per switch. Those Highs **depend on** a site **Disaster** (proxy / core / synthetic) — **later**. Until then, expect N ICMP Highs for a WAN cut.
+A site WAN blip is one High per switch until a site-level check exists. That is accepted.
 
 ---
 
@@ -231,8 +229,21 @@ Intended speed = token or class default (`USW` 10G, `UP` 1G). Live `ifHighSpeed`
 
 ---
 
-## Later
+## Not this apply
 
-Class-scoped link-down High (`USW`/`UP`); OSPF count; USW util + discards after history; `{$ISIS.CONTROL}=1` / `{$CARD.CONTROL}=1` on fabric canaries; sFlow on a few Core `USW`; one synthetic ping per site as the **Disaster** SLI; NetBox vs live `ifAlias`; AP ICMP → `UP-`; syslog on the proxy; `walk[]` when we retune poll load; EXOS SNMP-dead → Average without forking stock.
+`--apply` is the Extreme switching + AP contract. Do not add extra flags.
+
+**Speed Expect** is imported so the template exists. Do **not** pass `--link-speed-expect`. Linking would attach a second LLD to every Switch role and Warning on ports whose live Mbps is not the label (`USW`→10G, `UP`→1G, token overrides). Util and discards in that YAML are already off (`{$IF.UTIL.MAX}=101`). Link it later only when on-box labels are clean — that is a separate ops decision, not Health dashboards.
+
+These alerting ideas are **not** unfinished `--apply` work. Live behaviour is the tables above.
+
+| Idea | Live after `--apply` | Why we leave it |
+|---|---|---|
+| `USW`/`UP` link-down **High** | One **Average** for every discovered port | Extra class-keyed triggers. ICMP High still pages a dead box. Access desk ports have no items. |
+| Site **Disaster** | N ICMP Highs if a site WAN dies | Needs a site check (synthetic / proxy / core), not a device template. |
+| AP ICMP depends on switch `UP-` | Closet PoE = AP ICMP **High** + switch port Average | Needs NetBox/LLDP “this AP hangs off that port”. Do not lower AP ICMP — that hides a hung AP. |
+| EXOS SNMP-dead → Average | Stock **Warning** | Matching VOSS means forking stock EXOS. We do not fork. VOSS/IQ are already Average. |
+
+OSPF stays imported-not-linked. Fabric High stays gated (`{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0`) until a canary.
 
 FortiGate (API) and network VMs reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md)). Do not merge with Cato ([04](04-cato.md)).

@@ -18,7 +18,7 @@ A **page** (Disaster/High) must be: user or forwarding impact now, urgent, actio
 | Next day / dashboard | Warning | CPU, errors, flaps, duplex, speed-expect (when linked) |
 | Log | Info | Firmware / serial |
 
-Google SRE: dashboards answer “what’s broken / why”; do not page on causes. Network practice splits **device health** (CPU, mem, temp, FRU) from **traffic**. Official Zabbix Extreme templates only ship a traffic gallery — we add a host **Health** dashboard on the platform template instead of global country/role boards.
+Google SRE: dashboards answer “what’s broken / why”; do not page on causes. Network practice splits **device health** (CPU, mem, temp, FRU) from **traffic**. Official Zabbix Extreme templates only ship a traffic gallery — we add a host **Health** dashboard on the platform template.
 
 ## Intended speed
 
@@ -33,7 +33,7 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 
 | Issue | Was | Now (cutover) |
 |---|---|---|
-| Docs said `USW`/`UP` link-down **High** | Stock/VOSS one **Average** for every discovered port | Average is the live contract; class High is later |
+| Docs said `USW`/`UP` link-down **High** | Stock/VOSS one **Average** for every discovered port | Average is the live contract |
 | Observability listed flaps/errors as “page” | Warning (next day) | Graph/ticket, not 03:00 |
 | Speed Expect `{$IF.UTIL.MAX:"USW"}=80` | Would page 80% of intended 10G the moment it was linked | **101** (off) |
 | VOSS ISIS circuit / card **High** ungated | 24/7 on unused SPBM / empty slots | `{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0` (same pattern as V-IST) |
@@ -52,7 +52,6 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 | YAML import `updateExisting` + `deleteMissing: false` | network `--apply` | n/a | Updates items/triggers/dashboards on the **template**; every already-linked host inherits. Does **not** delete hosts, interfaces, or history |
 | Stock EXOS patches (TEMP_*, EtherLike IFALIAS, IF LLD 15m/0, ICMP loss disable, interface grid) + Observability companion | network `--apply` | n/a | Companion YAML owns Health; stock keeps its graph prototype while its existing dashboard is normalized to the shared map + 3×2 grid |
 | Speed Expect / OSPF | imported, **not** assigned | Stays off | `--apply` without `--link-speed-expect` **does not unlink** if someone linked it earlier |
-| Global `create_dashboards.py` | not part of apply | — | Do not run on re-apply (hostgroup boards, not Health) |
 | VOSS/IQ TemplateRule when YAML is not in Zabbix yet | zerotouch | skip writing the rule | **Does not** retarget an existing Extreme rule at Network Generic |
 
 Mass `SyncHostJob` is **not** required for template dashboard / trigger-status changes. Zabbix pushes those from the template. Use per-host sync only when NetBox macros/CG/templates on **that** device changed.
@@ -63,16 +62,13 @@ Mass `SyncHostJob` is **not** required for template dashboard / trigger-status c
 - `HiveOS` platform without `IQ ENGINE` in the name: Template Rule never matches.
 - After AP/switch reboot, SNMP=0 while CLI from the proxy works: RFC 3414 engine boots — `zabbix_proxy -R snmp_cache_reload`, not a template bug.
 
-### Still later (do not invent in this pass)
+### Not this apply
 
-- Site **Disaster** parent (WAN blip → one incident). Without it, ICMP High is per device.
-- AP ICMP depends on Access `UP-` (needs NetBox/LLDP map).
-- Class-scoped link-down High.
-- OSPF, CRC/`dot3StatsFCSErrors`, util/discards enable.
+Speed Expect stays imported, not linked (`--apply` without `--link-speed-expect`). Site Disaster, AP ICMP → `UP-`, class-scoped High, and EXOS SNMP-dead → Average are **not** dashboard follow-ups. Live contract is the operator pages.
 
 ## Health dashboard (host, from template)
 
-Two host-level dashboards: **Health** for the box and **Network interfaces** for ports. Open **Monitoring → Hosts → host → Dashboards**. No hostgroup widgets, no Host Navigator.
+Two host-level dashboards: **Health** for the box and **Network interfaces** for ports. Open **Monitoring → Hosts → host → Dashboards**.
 
 ### Why each widget exists
 
@@ -96,7 +92,7 @@ There is no Health **Diagnostics** page. That was a second interface browser.
 
 Do **not** bind an svggraph **item pattern** on the EXOS companion (`ds.dataset_type=1` / `#*: Memory utilization`). Host view hits `CSvgGraphHelper::getMetricsPattern` and PHP `Array to string conversion`. Bind a calculated item on the companion (`last(//vm.memory.util[1])`) like CPU.
 
-All platforms expose **Network interfaces → Overview** with the same map + 3×2 grid. Switches add **Port**. IQ has no Port page. YAML import does not delete leftover Diagnostics pages (`deleteMissing: false`); `--apply` drops them. `create_dashboards.py` is not involved. Do not use RX+TX as a congestion total on full-duplex Ethernet.
+All platforms expose **Network interfaces → Overview** with the same map + 3×2 grid. Switches add **Port**. IQ has no Port page. YAML import does not delete leftover Diagnostics pages (`deleteMissing: false`); `--apply` drops them. Do not use RX+TX as a congestion total on full-duplex Ethernet.
 
 Overview tiles are short labels. Gauges show a bold value and colour arc only. The 4th tile is an **item** widget (Uptime) on every platform — same chrome as VOSS already had. FRU honeycombs keep **Custom 20%** (two fans must not explode) at height 3. Interface honeycombs use **Auto** on the short port ID (not bold). Switch maps are **72×6** so a dense VOSS stays above the 32px floor. IQ maps are **12×3**: same widget, ~2 eth, no max cell size — a switch-sized box would be two giant hexes. VOSS Temp binds `Temperature sensor *` (°C, `{#SENSOR_DESCR}`). Power is `PSU *: Output watts`. `rcSysTotalPower` is capacity, not load.
 
