@@ -125,24 +125,30 @@ port number is noise.
 
 ### 3.3 Fitting into 20 characters
 
-A SPEED token is reserved **only when it will be emitted**. At the class default
-(most fabric ports) the prefix is `USW-` / `US-` (3–4 chars) and the ID can use
-the rest. Reserving 5 characters on every port “in case it is later re-optic’d”
-dropped building/site scope, so two `DIST01` uplinks on port 29 became the same
-label.
+A SPEED token is reserved **only when it will be emitted**, and only for the
+token that will be emitted (`1G-` is 3 characters, not a worst-case `400G-`
+of 5). At the class default (most fabric ports) the prefix is `USW-` / `US-`
+(3–4 chars) and the ID can use the rest.
+
+Reserving 5 characters on a 1G USW link dropped the floor on Dist→Access, so
+`USW-1G-GFL-AC01_P23` (19, fits) became `USW-1G-AC01_P23`. NKN G08 has both
+`GFL-ACCE01` and `L02-ACCE01`; without the floor those are the same label on
+Core.
 
 The abbreviator walks a fixed ladder and takes the **first form that fits**:
 
 | # | Form | Example |
 |---|---|---|
-| 1 | `SCOPE-CODE NN-STACK _pPORT` | `B01-DI01_P29` |
-| 2 | drop the scope | `DI01_P29` |
-| 3 | drop the far port | `B01-DI01` |
-| 4 | code + stack only | `DI01` |
+| 1 | `SCOPE-CODE NN-STACK _pPORT` | `GFL-AC01_P23` |
+| 2 | drop the far port, keep the floor | `L02-CO01-1` |
+| 3 | drop the scope, keep the port | `AC01_P23` |
+| 4 | code + stack only | `AC01` |
 
 Code is always the 2-letter form (`CORE→CO` `DIST→DI` `ACCE→AC` `ACPO→AP`
 `MGMT→MG` `FWGW/FWZONE→FW` …). Scope (building or far-site tail) is kept
-whenever it fits — that is what tells `B01-DIST01` from `L01-DIST01`.
+whenever it fits — that is what tells `GFL-ACCE01` from `L02-ACCE01`. Parallel
+links to the same neighbour that cannot fit floor+port collide and the script
+**refuses** that device rather than aliasing two floors together.
 
 If **no** form fits, the script **refuses** and reports the shortest form it
 tried — it never emits a string EXOS would silently truncate.

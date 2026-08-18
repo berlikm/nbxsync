@@ -66,6 +66,52 @@ class LabelUniquenessTests(unittest.TestCase):
         self.assertTrue(lab.startswith("UW-"), lab)
         self.assertNotIn("1G", lab)
 
+    def test_nkn_gfl_1g_dist_to_access_keeps_floor(self):
+        """Canary Dist::23 → GFL-ACCE01. Floor must stay (GFL vs L02)."""
+        lab = self._label(
+            "USW", 1000, "CH-NKN-G08-GFL-ACCE01",
+            "ch-nkn-g08", "ch-nkn-g08", "23", "Switch Access",
+        )
+        self.assertEqual(lab, "USW-1G-GFL-AC01_P23")
+        self.assertLessEqual(len(lab), 20)
+
+    def test_nkn_gfl_vs_l02_access_do_not_collide_on_core(self):
+        """Core sees both GFL-ACCE01 and L02-ACCE01 on port 23."""
+        gfl = self._label(
+            "USW", 1000, "CH-NKN-G08-GFL-ACCE01",
+            "ch-nkn-g08", "ch-nkn-g08", "23", "Switch Access",
+        )
+        l02 = self._label(
+            "USW", 1000, "CH-NKN-G08-L02-ACCE01",
+            "ch-nkn-g08", "ch-nkn-g08", "23", "Switch Access",
+        )
+        self.assertEqual(gfl, "USW-1G-GFL-AC01_P23")
+        self.assertEqual(l02, "USW-1G-L02-AC01_P23")
+        self.assertNotEqual(gfl, l02)
+
+    def test_nkn_gfl_ap_keeps_floor_without_far_port(self):
+        lab = self._label(
+            "UP", 1000, "CH-NKN-G08-GFL-ACPO01",
+            "ch-nkn-g08", "ch-nkn-g08", "", "Access Point",
+        )
+        self.assertEqual(lab, "UP-GFL-AP01")
+
+    def test_nkn_gfl_1g_access_to_dist_keeps_floor(self):
+        lab = self._label(
+            "USW", 1000, "CH-NKN-G08-GFL-DIST01",
+            "ch-nkn-g08", "ch-nkn-g08", "1", "Switch Dist",
+        )
+        self.assertEqual(lab, "USW-1G-GFL-DI01_P1")
+
+    def test_nkn_dist_to_core_keeps_floor_when_port_does_not_fit(self):
+        """USW-1G-L02-CO01-1_P1.1 is 22. Keep L02, drop the far port."""
+        lab = self._label(
+            "USW", 1000, "CH-NKN-G08-L02-CORE01-1",
+            "ch-nkn-g08", "ch-nkn-g08", "01:01", "Switch Core",
+        )
+        self.assertEqual(lab, "USW-1G-L02-CO01-1")
+        self.assertLessEqual(len(lab), 20)
+
 
 class ParserTests(unittest.TestCase):
     def test_exos_range_expands(self):

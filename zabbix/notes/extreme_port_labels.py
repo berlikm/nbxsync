@@ -93,11 +93,10 @@ MBPS_SPEED_TOKEN = {v: k for k, v in SPEED_TOKEN_MBPS.items()}
 
 CLASS_DEFAULT_MBPS = {"USW": 10000, "US": 10000, "UP": 1000, "MON": 1000}
 
-#: Widest SPEED token plus its separator. Every label is sized as if a token
-#: were present, even when the link runs at the class default today — so a port
-#: that is later re-optic'd (1G -> 40G) never overflows and never needs a
-#: fleet-wide re-label.
-SPEED_SLOT_LEN = max(len(token) for token in SPEED_TOKEN_MBPS) + 1
+#: Do not size the ID against a worst-case SPEED token. Reserving ``400G-`` (5)
+#: on a 1G USW link forced Dist→Access ``USW-1G-GFL-AC01_P23`` (19) to drop
+#: the floor, so GFL-ACCE01 and L02-ACCE01 both became ``USW-1G-AC01_P23``
+#: on Core. Reserve ``len(token)+1`` of the token that will actually be emitted.
 
 
 class LabelTooLong(ValueError):
@@ -311,24 +310,28 @@ def _port_suffix(port_name: str) -> str:
     return _port_suffix_candidates(port_name)[0]
 
 def id_candidates(parts: DeviceNameParts, port_name: str = "") -> list[str]:
-    """Deterministic shortest-first-that-fits ladder for the ID field.
+    """Longest-first ID forms. ``build_label_for_far_end`` takes the first that fits.
 
     The role code is *always* the two-letter form -- spelling out ``ACCE`` buys
     no clarity over ``AC`` but costs two characters that the port number needs.
-    Order is deliberate: drop the scope before the port, because two parallel
-    links to the same neighbour are only told apart by the port.
+    Order is deliberate: keep SCOPE+port, then drop the port, then drop SCOPE.
+    Floors like GFL vs L02 are the uniqueness that survives a Core view of two
+    ACCE01s on port 23. Two parallel links to the *same* neighbour that cannot
+    fit SCOPE+port will collide and the script will refuse that device rather
+    than silently alias GFL onto L02.
     """
     short_code = ROLE_CODE_SHORT.get(parts.code, parts.code[:2])
     short = f"{short_code}{parts.num}" + (f"-{parts.stack}" if parts.stack else "")
     scope = f"{parts.scope}-" if parts.scope else ""
 
-    ladder = []
-    for sfx in _port_suffix_candidates(port_name):
-        ladder.append(f"{scope}{short}{sfx}")
-        ladder.append(f"{short}{sfx}")
-    ladder += [f"{scope}{short}", short]
+    suffixes = _port_suffix_candidates(port_name)
+    ladder = [f"{scope}{short}{sfx}" for sfx in suffixes]
+    if scope:
+        ladder.append(f"{scope}{short}")
+    ladder += [f"{short}{sfx}" for sfx in suffixes]
+    ladder.append(short)
     seen: set[str] = set()
-    return [c for c in ladder if not (c in seen or seen.add(c))]
+    return [c for c in ladder if c and not (c in seen or seen.add(c))]
 
 
 def build_label_for_far_end(
@@ -339,10 +342,10 @@ def build_label_for_far_end(
 ) -> str:
     """Pick the longest ID form that fits.
 
-    Reserve the SPEED slot only when a token will actually be emitted.
-    Reserving 5 characters on every default-speed USW/US/UP/MON port was
-    dropping building/site scope, so two DIST01 uplinks on port 29 became
-    the same label.
+    Reserve the SPEED slot only when a token will actually be emitted, and
+    only for the token that will be emitted (``1G-`` is 3, not a 5-char
+    ``400G-`` worst case). Over-reserving dropped building/site scope on 1G
+    Dist→Access, so two floors' ACCE01 on port 23 collided on Core.
     """
     token_needed = (
         cls not in NO_SPEED_CLASSES
@@ -350,7 +353,8 @@ def build_label_for_far_end(
         and link_mbps != CLASS_DEFAULT_MBPS.get(cls)
         and link_mbps in MBPS_SPEED_TOKEN
     )
-    reserve = SPEED_SLOT_LEN if token_needed else 0
+    token = MBPS_SPEED_TOKEN[link_mbps] if token_needed else None
+    reserve = (len(token) + 1) if token else 0
     budget = MAX_LABEL_LEN - reserve
     tried = ""
     for ident in id_candidates(parts, port_name):
