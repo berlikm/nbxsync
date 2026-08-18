@@ -47,6 +47,9 @@ SPEED_EXPECT_HEALTH_MACROS = {
 
 IQ_HEALTH_MACROS = {
     '{$UNSUPPORTED.MAX}': '5',
+    '{$TEMP_WARN}': '70',
+    '{$TEMP_CRIT}': '85',
+    '{$TEMP_CRIT_LOW}': '-273',
 }
 EXOS_STOCK_TEMPLATE = 'Extreme EXOS by SNMP'
 EXOS_INTERFACE_DASHBOARD = 'Network interfaces'

@@ -110,7 +110,7 @@ NetBox: those Access macros on role Switch Access. Locked checklist §11.1 still
 
 ## Zero-touch (nbxSync)
 
-New switch: NetBox **platform** contains `EXOS` or `VOSS`, **role** is Switch Core/Dist/Access/Mgmt, site in a country SiteGroup. First HostSync:
+New switch: NetBox **platform** matches `EXOS|Switch Engine` or `VOSS|Fabric Engine`, **role** is Switch Core/Dist/Access/Mgmt, site in a country SiteGroup. First HostSync:
 
 1. Template Rule → `Extreme EXOS Observability` (nests stock **Extreme EXOS by SNMP** and **Port Speed Expect**) or `Extreme VOSS by SNMP` (nests Speed Expect) + `OS/Network` hostgroup. Zabbix host view shows `Extreme EXOS Observability (Extreme EXOS by SNMP)` — that is the companion, not a second poller. Empty port labels do not create Speed Expect items.  
 2. Role MacroAssignment → IFALIAS / IFTYPE (Access also `PORTID.*`)  
@@ -123,7 +123,8 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - YAML `deleteMissing: false` — retired items linger; we do not wipe LLD  
 - Does **not** mass-sync every device (template updates inherit in Zabbix). Speed Expect nests on VOSS / Observability, so existing switch hosts pick up the LLD on `--apply` without HostSync. Empty display-string → nothing discovered.  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
-- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m/keep-lost 0, EXOS PSU LLD skip `notPresent`, EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion
+- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m/keep-lost 0, EXOS PSU LLD skip `notPresent`, EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
+- Role IFALIAS / Access `PORTID.*` changes need a **HostSync of those devices** — template inheritance does not push NetBox macros.
 
 Per-host sync only when **that** device’s NetBox role/platform/macros changed.
 
@@ -135,7 +136,7 @@ Production poller for NL/US/CH is the **Swiss proxy group**, SNMPv3 `MONITORING`
 
 After a **reboot**, if CLI SNMPv3 from the proxy works but Zabbix stays SNMP=0: RFC 3414 engine boots. Reload `zabbix_proxy -R snmp_cache_reload` or re-sync the host. If CLI from the proxy times out: UDP 161 / allow-list, not the template.
 
-Platform names must match Template Rules: **EXOS**, **VOSS** (case-insensitive substring).
+Platform names must match Template Rules (case-insensitive `re.search`): **`EXOS|Switch Engine`**, **`VOSS|Fabric Engine`**. Extreme renamed Universal hardware in 31.6 / 8.6; a platform named only `Switch Engine` used to miss the EXOS rule.
 
 Grammar: EXOS `display-string` (max 20), leave `description-string` empty. VOSS interface `name` → `ifAlias`. Do not use `rcPortName`.
 

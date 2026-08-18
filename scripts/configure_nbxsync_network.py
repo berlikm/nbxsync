@@ -211,19 +211,26 @@ EXTREME_TEMPLATE_TEMP_MACROS = {
 }
 
 # Temporary LM-migration overlay only — never the long-term target.
+# TEMP_* stay template-scoped (EXOS/VOSS). Putting them in GLOBAL_MACROS would
+# create Zabbix *global* macros and mute AP/server temperature as well.
 CUTOVER_SILENCE_OVERLAY = {
-    '{$TEMP_WARN}': '999',
-    '{$TEMP_CRIT}': '999',
     '{$OPTIC.TEMP.CRIT}': '999',
     '{$OPTIC.RX.DBM.MIN}': '-100',
     '{$MLT.CONTROL}': '0',
 }
+CUTOVER_TEMPLATE_TEMP_MACROS = {
+    '{$TEMP_WARN}': '999',
+    '{$TEMP_CRIT}': '999',
+}
 
 GLOBAL_MACROS = dict(DESTINATION_GLOBAL_MACROS)
+_CUTOVER_SILENCE = False
 
 
 def apply_macro_mode(*, cutover_silence: bool = False) -> None:
     """Set module GLOBAL_MACROS to destination, optionally overlay cutover silence."""
+    global _CUTOVER_SILENCE
+    _CUTOVER_SILENCE = cutover_silence
     GLOBAL_MACROS.clear()
     GLOBAL_MACROS.update(DESTINATION_GLOBAL_MACROS)
     if cutover_silence:
@@ -855,11 +862,11 @@ def _template_macro_map(macros: list) -> dict[str, str]:
 
 
 def _wanted_temp_template_macros() -> dict[str, str]:
-    """TEMP_* values for Extreme templates. Uses EXTREME_TEMPLATE_TEMP_MACROS
-    unless cutover-silence overlay is active (then GLOBAL_MACROS has 999s)."""
-    if any(k in GLOBAL_MACROS for k in _TEMP_TEMPLATE_MACRO_KEYS):
-        return {k: GLOBAL_MACROS[k] for k in _TEMP_TEMPLATE_MACRO_KEYS if k in GLOBAL_MACROS}
-    return dict(EXTREME_TEMPLATE_TEMP_MACROS)
+    """Chassis TEMP_* for EXOS/VOSS templates only — never Zabbix globals."""
+    wanted = dict(EXTREME_TEMPLATE_TEMP_MACROS)
+    if _CUTOVER_SILENCE:
+        wanted.update(CUTOVER_TEMPLATE_TEMP_MACROS)
+    return wanted
 
 
 def patch_extreme_template_temp_macros(api, template_names: tuple[str, ...] | None = None) -> dict[str, str]:
@@ -932,13 +939,9 @@ def assert_extreme_template_temp_macros(api, template_name: str) -> tuple[bool, 
 
 
 def step_health_patches(api) -> dict:
-    """ICMP noise off + EXOS Health dashboard. Never raises."""
+    """ICMP noise off + EXOS Health dashboard. Fail closed — a silent skip hid broken Health."""
     logger.info('Network: Health / ICMP-noise patches')
-    try:
-        return apply_extreme_health_patches(api)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('  Health patches failed (non-fatal): %s', exc)
-        return {'icmp_noise': {'error': str(exc)}, 'exos_health': f'error:{exc}'}
+    return apply_extreme_health_patches(api)
 
 
 def ensure_nbx_template(server, templateid: int, name: str) -> M.ZabbixTemplate:
@@ -967,6 +970,11 @@ def step_global_macros_zabbix(api) -> None:
         else:
             api.usermacro.createglobal(macro=macro, value=value)
             logger.info('  Created global %s=%s', macro, value)
+    # Older --cutover-silence wrote chassis TEMP_* as globals and muted APs/servers.
+    for macro in _TEMP_TEMPLATE_MACRO_KEYS:
+        if macro in existing and macro not in wanted:
+            api.usermacro.deleteglobal([existing[macro]['globalmacroid']])
+            logger.info('  Deleted leaked global %s (chassis TEMP is template-only)', macro)
 
 
 def step_server_macros(server) -> None:
@@ -1091,9 +1099,9 @@ def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
     )
 
     rule_specs = (
-        ('Extreme EXOS', 'EXOS', 'Extreme EXOS Observability'),
-        ('Extreme VOSS', 'VOSS', 'Extreme VOSS by SNMP'),
-        ('Extreme IQ Engine', 'IQ ENGINE', 'Extreme IQ Engine by SNMP'),
+        ('Extreme EXOS', 'EXOS|Switch Engine', 'Extreme EXOS Observability'),
+        ('Extreme VOSS', 'VOSS|Fabric Engine', 'Extreme VOSS by SNMP'),
+        ('Extreme IQ Engine', 'IQ ENGINE|IQEngine|IQ-ENGINE', 'Extreme IQ Engine by SNMP'),
     )
     for rule_name, pattern, tpl_name in rule_specs:
         if tpl_name not in tpl:
@@ -1140,15 +1148,33 @@ def step_speed_expect_assignment(server, tpl: dict[str, M.ZabbixTemplate], *, li
     VOSS and EXOS Observability, so empty display-strings stay undiscovered and
     a later HostSync must not also link the same template directly.
     """
-    if not link or 'Extreme Port Speed Expect by SNMP' not in tpl:
+    t = tpl.get('Extreme Port Speed Expect by SNMP')
+    role_names = ('Switch Core', 'Switch Dist', 'Switch Mgmt', 'Switch Access')
+    if not link or t is None:
+        if t is not None:
+            pruned = 0
+            for role_name in role_names:
+                try:
+                    role = get_role(role_name)
+                except DeviceRole.DoesNotExist:
+                    role = DeviceRole.objects.filter(name__icontains=role_name.replace('Switch ', '')).first()
+                    if role is None:
+                        continue
+                deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+                    zabbixtemplate=t,
+                    assigned_object_type=ct(DeviceRole),
+                    assigned_object_id=role.id,
+                ).delete()
+                pruned += deleted
+            if pruned:
+                logger.info('  PRUNED: %s leftover Speed Expect role assignment(s) (nested on VOSS/Observability)', pruned)
         logger.info(
             '  Speed Expect: nested on VOSS / EXOS Observability (unlabeled ifAlias '
             'is not discovered). Not assigning on Switch roles (pass --link-speed-expect '
             'only if a stock-only host has no companion/VOSS parent).'
         )
         return
-    t = tpl['Extreme Port Speed Expect by SNMP']
-    for role_name in ('Switch Core', 'Switch Dist', 'Switch Mgmt', 'Switch Access'):
+    for role_name in role_names:
         try:
             role = get_role(role_name)
         except DeviceRole.DoesNotExist:
@@ -1185,7 +1211,8 @@ def step_snmp_cg_on_switch_roles(snmp_group) -> None:
 
 def cleanup_lab() -> None:
     Device.objects.filter(name__startswith=PREFIX).delete()
-    M.ZabbixTemplateRule.objects.filter(name__in=['Extreme EXOS', 'Extreme VOSS', 'Extreme IQ Engine']).delete()
+    # Never delete production-named Extreme TemplateRules. Lab rows are prefixed.
+    M.ZabbixTemplateRule.objects.filter(name__startswith=PREFIX).delete()
     M.ZabbixTemplateRule.objects.filter(zabbixtemplate__name__startswith=PREFIX).delete()
     M.ZabbixMacroAssignment.objects.filter(zabbixmacro__description__startswith='nwn:').delete()
     M.ZabbixMacro.objects.filter(description__startswith='nwn:').delete()
@@ -1723,26 +1750,27 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     """Apply network deltas on the production / shared ZabbixServer row."""
     apply_macro_mode(cutover_silence=cutover_silence)
     if cutover_silence:
-        logger.warning('CUTOVER-SILENCE IS ENABLED — TEMP_* set to 999, MLT/VIST disabled.')
+        logger.warning('CUTOVER-SILENCE IS ENABLED — EXOS/VOSS TEMP_* set to 999, MLT/optic floors muted.')
         logger.warning('This is a temporary LM migration overlay. Re-run without --cutover-silence to restore destination values.')
-    else:
-        # Warn if cutover-silence macros are still in place from a previous run
-        from nbxsync.models import ZabbixMacro
-
-        stuck = ZabbixMacro.objects.filter(macro='{$TEMP_WARN}', value='999').count()
-        if stuck:
-            logger.warning('CUTOVER-SILENCE STILL ACTIVE: %s macro(s) with TEMP_WARN=999 found. Re-run with --cutover-silence then without to clear, or manually verify.', stuck)
     token = os.environ.get('NBX_ZABBIX_TOKEN')
     if not token:
         raise SystemExit('Set NBX_ZABBIX_TOKEN (or use --simulate)')
-    url = os.environ.get('NBX_ZABBIX_URL', 'http://10.0.105.144:8080')
+    url = os.environ.get('NBX_ZABBIX_URL') or (ztc.ZABBIX_URL if ztc is not None else None)
     server = M.ZabbixServer.objects.filter(name='Zabbix Production').first() or M.ZabbixServer.objects.first()
     if server is None:
-        server = M.ZabbixServer.objects.create(name='Zabbix', url=url, token=token, validate_certs=False, sync_enabled=True)
+        if not url:
+            raise SystemExit('Set NBX_ZABBIX_URL — no ZabbixServer row exists yet')
+        server = M.ZabbixServer.objects.create(
+            name='Zabbix Production',
+            url=url,
+            token=token,
+            validate_certs=not url.startswith('http://'),
+            sync_enabled=True,
+        )
     else:
         server.token = token
-        if url:
-            server.url = url
+        if os.environ.get('NBX_ZABBIX_URL'):
+            server.url = os.environ['NBX_ZABBIX_URL']
         server.save()
 
     with ZabbixConnection(server) as api:
