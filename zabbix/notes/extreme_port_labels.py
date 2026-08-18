@@ -317,12 +317,17 @@ def flag_collisions(plans: list) -> int:
 
     The ladder is local (one far-end). Two neighbours can compress to the same
     20-character string; preview must say so instead of looking clean.
+
+    ``X`` / ``N`` are policy labels — every SPAN port on a switch is *supposed*
+    to be ``X``. Those must not count as collisions.
     """
     groups: dict[tuple[str, str], list] = {}
     for plan in plans:
         plan.collision = False
         expected = (plan.expected or "").strip().upper()
-        if not expected or plan.status in {"kept", "unreachable"}:
+        if not expected or expected in {"X", "N"}:
+            continue
+        if plan.status in {"kept", "unreachable"}:
             continue
         groups.setdefault((plan.device or "", expected), []).append(plan)
     hit = 0
@@ -817,14 +822,18 @@ def build_label_for_far_end(
     budget = MAX_LABEL_LEN - reserve
     tried = ""
     short_fabric = cls == "USW"
-    for ident in id_candidates(parts, port_name, short_fabric=short_fabric):
+    cands = id_candidates(parts, port_name, short_fabric=short_fabric)
+    if not cands:
+        empty = build_label(cls, link_mbps, "")
+        raise LabelTooLong(empty, empty)
+    for ident in cands:
         bare = build_label(cls, None, ident)
         label = build_label(cls, link_mbps, ident)
         tried = label
         if len(bare) <= budget and not (FORBIDDEN_CHARS & set(label)):
             return label
     raise LabelTooLong(
-        build_label(cls, link_mbps, id_candidates(parts, port_name, short_fabric=short_fabric)[0]),
+        build_label(cls, link_mbps, cands[0]),
         tried,
     )
 
@@ -863,6 +872,21 @@ def iftype_to_mbps(iface_type: str | None) -> int | None:
         return None
     value = float(match.group(1))
     return int(value * (1000 if match.group(2).lower() == "g" else 1))
+
+
+def iface_speed_mbps(iface) -> int | None:
+    """Designed speed from NetBox ifType, falling back to ``Interface.speed`` (Kbps)."""
+    parsed = iftype_to_mbps(getattr(iface, "type", None))
+    if parsed:
+        return parsed
+    raw = getattr(iface, "speed", None)
+    try:
+        kbps = int(raw) if raw else 0
+    except (TypeError, ValueError):
+        return None
+    if kbps <= 0:
+        return None
+    return kbps // 1000
 
 
 # ---- Far-end role -> CLASS -----------------------------------------------
@@ -1018,6 +1042,15 @@ def lookup_live_label(labels: dict[str, str], ifname: str) -> str:
         if key in wanted or (port_key_aliases(key) & wanted):
             return value
     return ""
+
+
+def allowlist_hit(device: str, ifname: str, allowlist: set[str]) -> bool:
+    """True when ``device::ifname`` is on the canary list (``:``/``/``/``.`` equivalent)."""
+    if not allowlist:
+        return False
+    if f"{device}::{ifname}" in allowlist:
+        return True
+    return any(f"{device}::{alias}" in allowlist for alias in port_key_aliases(ifname))
 
 
 def parse_exos_labels(config_text: str) -> tuple[dict[str, str], dict[str, str]]:
@@ -1223,13 +1256,16 @@ def compare_plan(
     clear_description: bool = False,
 ) -> None:
     """Fill live / status / commands on one plan. Pure helper (no SSH)."""
-    if plan.status in {"too_long", "unreachable", "kept"}:
+    if plan.status in {"unreachable", "kept"}:
         return
+    planned_too_long = plan.status == "too_long"
     plan.live = lookup_live_label(labels, plan.ifname)
     plan.description_string = lookup_live_label(descriptions, plan.ifname)
 
     issues = validate_label(plan.live) if plan.live else []
-    if plan.live and "forbidden_chars" in " ".join(issues):
+    if planned_too_long:
+        plan.status = "too_long"
+    elif plan.live and "forbidden_chars" in " ".join(issues):
         plan.status = "forbidden"
         plan.detail = ",".join(issues)
     elif plan.live and "too_long" in issues:
@@ -1260,7 +1296,19 @@ def compare_plan(
     else:
         plan.ifalias_source = "display-string" if plan.live else ""
 
+    if planned_too_long:
+        plan.commands = []
+        return
+    if not is_safe_cli_port(plan.ifname):
+        plan.status = "forbidden"
+        extra = "local ifName is not a single EXOS/VOSS port"
+        plan.detail = f"{plan.detail}; {extra}" if plan.detail else extra
+        plan.commands = []
+        return
     if plan.status in {"missing", "diff", "forbidden", "too_long"} and plan.expected:
+        if not is_safe_cli_label(plan.expected):
+            plan.commands = []
+            return
         if plan.kind == "voss":
             plan.commands = voss_apply_commands(plan.ifname, plan.expected)
         else:
@@ -1268,7 +1316,8 @@ def compare_plan(
                 plan.ifname, plan.expected, clear_description
             )
     elif plan.status == "alias_hijacked" and clear_description:
-        plan.commands = exos_apply_commands(plan.ifname, plan.expected, True)
+        if is_safe_cli_label(plan.expected) and is_safe_cli_port(plan.ifname):
+            plan.commands = exos_apply_commands(plan.ifname, plan.expected, True)
 
 
 def _platform_kind(platform_name: str | None) -> str | None:
@@ -1365,8 +1414,8 @@ def expected_label_for(iface, structural_tag_ids: set[int]) -> tuple[str, str]:
         except LabelTooLong as exc:
             return exc.suggestion, "too_long"
 
-    local_mbps = iftype_to_mbps(iface.type)
-    far_mbps = iftype_to_mbps(getattr(far, "type", None))
+    local_mbps = iface_speed_mbps(iface)
+    far_mbps = iface_speed_mbps(far)
     speeds = [s for s in (local_mbps, far_mbps) if s]
     link_mbps = min(speeds) if speeds else None
 
@@ -1455,8 +1504,9 @@ if _NETBOX:
             required=False,
             description=(
                 "Allowlist for remediation: `device-name::ifname` per line "
-                "(e.g. `CH-STA-L50-L01-CORE01::1/17`). When set, only these "
-                "ports are pushed. Strongly recommended for the first live run."
+                "(e.g. `CH-STA-L50-L01-CORE01::1/17`). `1:17` and `1/17` match. "
+                "When set, only these ports are pushed. Strongly recommended "
+                "for the first live run."
             ),
             label="Canary allowlist (device::ifname)",
         )
@@ -1518,18 +1568,21 @@ if _NETBOX:
         )
         include_neutral = BooleanVar(
             default=True,
-            description="Report ports whose live label is class X or N.",
+            description=(
+                "Include ports whose *expected* label is X or N (structural / "
+                "neutral). Off = hide them from the CSV. Default on."
+            ),
             label="Include X / N ports",
         )
         fail_on_diff = BooleanVar(
             default=False,
             description=(
-                "Mark the job failed when any blocking row remains: diff, "
-                "missing, too_long, forbidden, unreachable, alias_hijacked, "
-                "or a duplicate expected label on one switch. Tick this on "
-                "scheduled compliance runs."
+                "Mark the job failed when label diffs remain (diff, missing, "
+                "too_long, forbidden, alias_hijacked, collision). Unreachable "
+                "boxes always fail the job — we cannot attest those ports. "
+                "Tick this on scheduled compliance runs."
             ),
-            label="Fail the job on blocking rows",
+            label="Fail the job on blocking label diffs",
         )
 
         # ---- Execution ----
@@ -1556,6 +1609,7 @@ if _NETBOX:
             structural_tag_ids = {t.pk for t in (data.get("structural_tag") or [])}
 
             device_list = self._resolve_devices(data)
+            device_by_name = {d.name: d for d in device_list}
             if not device_list:
                 self.log_failure("No Extreme devices match the selected scope.")
                 return
@@ -1613,6 +1667,10 @@ if _NETBOX:
                     for plan in plans:
                         plan.status = "unreachable"
                         plan.detail = "no oob_ip/primary_ip in NetBox"
+                    self.log_warning(
+                        f"**{device.name}** — no oob_ip/primary_ip in NetBox",
+                        obj=device,
+                    )
 
             if not plans_by_device:
                 self.log_failure("No labellable ports found in the selected scope.")
@@ -1636,7 +1694,8 @@ if _NETBOX:
                                 plan.detail = redact_error(error)
                             self.log_warning(
                                 f"[{index}/{len(targets)}] **{name}** — "
-                                f"{redact_error(error)}"
+                                f"{redact_error(error)}",
+                                obj=device_by_name.get(name),
                             )
                             continue
                         live_by_device[name] = (labels, descriptions)
@@ -1662,7 +1721,8 @@ if _NETBOX:
                 ]
 
             flag_collisions(all_plans)
-            self._report(all_plans, preview_only=preview_only)
+            self._report(all_plans, preview_only=preview_only,
+                         devices_by_name=device_by_name)
 
             # ---- 4. Remediate ----
             if mode == "remediate":
@@ -1682,23 +1742,21 @@ if _NETBOX:
                     f"All {len(all_plans)} evaluated port(s) compliant ({elapsed}s). "
                     f"Zabbix ifAlias matches expected on every cabled port we could read."
                 )
-            elif data.get("fail_on_diff") and not remediating:
-                extra = (
-                    f" including {unreachable_n} unreachable"
-                    if unreachable_n else ""
+            elif unreachable_n and not remediating:
+                self.log_failure(
+                    f"{unreachable_n} port(s) unreachable; "
+                    f"{len(blocking)} blocking out of {len(all_plans)} ({elapsed}s). "
+                    "Cannot attest ifAlias on those boxes."
                 )
+            elif data.get("fail_on_diff") and not remediating:
                 self.log_failure(
                     f"{len(blocking)} port(s) blocking out of "
-                    f"{len(all_plans)}{extra} ({elapsed}s)."
+                    f"{len(all_plans)} ({elapsed}s)."
                 )
             else:
-                extra = (
-                    f" including {unreachable_n} unreachable"
-                    if unreachable_n else ""
-                )
                 self.log_warning(
                     f"{len(blocking)} port(s) blocking out of "
-                    f"{len(all_plans)}{extra} ({elapsed}s)."
+                    f"{len(all_plans)} ({elapsed}s)."
                 )
             return plans_to_csv(all_plans)
 
@@ -1709,16 +1767,30 @@ if _NETBOX:
             if selected:
                 queryset = Device.objects.filter(pk__in=[d.pk for d in selected])
             else:
+                from django.db.models import Q
                 queryset = Device.objects.filter(status=DeviceStatusChoices.STATUS_ACTIVE)
+                queryset = queryset.filter(
+                    Q(device_type__manufacturer__slug="extreme-networks")
+                    | Q(platform__name__icontains="exos")
+                    | Q(platform__name__icontains="voss")
+                    | Q(platform__name__icontains="switch engine")
+                    | Q(platform__name__icontains="fabric engine")
+                ).distinct()
                 if data.get("site_group"):
                     group_ids: set[int] = set()
                     for group in data["site_group"]:
                         group_ids.add(group.pk)
                         descendants = getattr(group, "get_descendants", None)
-                        if callable(descendants):
-                            group_ids.update(
-                                descendants(include_self=True).values_list("pk", flat=True)
-                            )
+                        if not callable(descendants):
+                            continue
+                        try:
+                            desc = descendants(include_self=True)
+                        except TypeError:
+                            desc = descendants()
+                        if hasattr(desc, "values_list"):
+                            group_ids.update(desc.values_list("pk", flat=True))
+                        else:
+                            group_ids.update(getattr(g, "pk", g) for g in desc)
                     queryset = queryset.filter(site__group_id__in=group_ids)
                 if data.get("site"):
                     queryset = queryset.filter(site__in=data["site"])
@@ -1730,7 +1802,9 @@ if _NETBOX:
             wanted = data.get("platform_filter", "both")
             result = []
             for device in queryset.select_related(
-                "platform", "site", "primary_ip4", "primary_ip6", "oob_ip"
+                "platform", "site", "role",
+                "device_type", "device_type__manufacturer",
+                "primary_ip4", "primary_ip6", "oob_ip",
             ):
                 kind = _platform_kind(getattr(device.platform, "name", None))
                 if kind is None:
@@ -1786,8 +1860,8 @@ if _NETBOX:
                 if far is not None and type(far).__name__ != "CircuitTermination":
                     speeds = [
                         s for s in (
-                            iftype_to_mbps(getattr(iface, "type", None)),
-                            iftype_to_mbps(getattr(far, "type", None)),
+                            iface_speed_mbps(iface),
+                            iface_speed_mbps(far),
                         ) if s
                     ]
                     link_mbps = min(speeds) if speeds else None
@@ -1882,7 +1956,8 @@ if _NETBOX:
         def _compare(plan: PortPlan, labels, descriptions, clear_description: bool):
             compare_plan(plan, labels, descriptions, clear_description)
 
-        def _report(self, plans: list[PortPlan], preview_only: bool = False):
+        def _report(self, plans: list[PortPlan], preview_only: bool = False,
+                    devices_by_name: dict | None = None):
             counts = status_counts(plans)
             classes = class_counts(plans)
             blocking_n = sum(1 for p in plans if p.blocking)
@@ -1903,10 +1978,21 @@ if _NETBOX:
                 "and filter `blocking`, `status`, `class`, `ifalias_source`."
             )
 
+            def _dev_cell(name: str) -> str:
+                dev = (devices_by_name or {}).get(name)
+                pk = getattr(dev, "pk", None)
+                if pk:
+                    return f"[{_cell(name)}](/dcim/devices/{pk}/)"
+                return _cell(name)
+
             scorecard = device_scorecard(plans)
+            score_headers = [
+                "Device", "Site", "Kind", "Ports", "ok", "blocking",
+                "diff", "miss", "hijack", "kept", "unreach", "coll", "long",
+            ]
             score_rows = [
                 [
-                    _cell(str(r["device"])), _cell(str(r["site"])), _cell(str(r["kind"])),
+                    _dev_cell(str(r["device"])), _cell(str(r["site"])), _cell(str(r["kind"])),
                     str(r["ports"]), str(r["ok"]), str(r["blocking"]),
                     str(r["diff"]), str(r["missing"]), str(r["hijacked"]),
                     str(r["kept"]), str(r["unreach"]), str(r["collision"]),
@@ -1914,16 +2000,20 @@ if _NETBOX:
                 ]
                 for r in scorecard
             ]
-            score_md = markdown_table(
-                ["Device", "Site", "Kind", "Ports", "ok", "blocking",
-                 "diff", "miss", "hijack", "kept", "unreach", "coll", "long"],
-                score_rows,
-                limit=None,
-            )
-            if score_md:
-                for start in range(0, len(score_md.splitlines()), 200):
-                    chunk = "\n".join(score_md.splitlines()[start:start + 200])
-                    self.log_info(f"\n### Per-device scorecard\n\n{chunk}")
+            if score_rows:
+                header_lines = [
+                    "| " + " | ".join(score_headers) + " |",
+                    "|" + "|".join("--------" for _ in score_headers) + "|",
+                ]
+                body = [
+                    "| " + " | ".join(row) + " |"
+                    for row in score_rows
+                ]
+                for start in range(0, len(body), 200):
+                    chunk = header_lines + body[start:start + 200]
+                    self.log_info(
+                        "\n### Per-device scorecard\n\n" + "\n".join(chunk)
+                    )
 
             if preview_only:
                 too_long = [p for p in plans if p.status == "too_long"]
@@ -1951,7 +2041,7 @@ if _NETBOX:
                 ["Device", "ifName", "Expected", "Live", "ifAlias from", "Status"],
                 [
                     [
-                        _cell(p.device), _cell(p.ifname),
+                        _dev_cell(p.device), _cell(p.ifname),
                         f"`{_cell(p.expected) or '—'}`",
                         f"`{_cell(p.live) or '—'}`",
                         _cell(plan_ifalias_source(p) or "—"),
@@ -1965,7 +2055,7 @@ if _NETBOX:
                 "Kept live labels (no NetBox cable — left on the box)",
                 ["Device", "ifName", "Live"],
                 [
-                    [_cell(p.device), _cell(p.ifname), f"`{_cell(p.live) or '—'}`"]
+                    [_dev_cell(p.device), _cell(p.ifname), f"`{_cell(p.live) or '—'}`"]
                     for p in sorted(kept, key=lambda x: (x.device, x.ifname))
                 ],
             )
@@ -1974,7 +2064,8 @@ if _NETBOX:
             actionable = [p for p in all_plans if p.commands]
             if allowlist:
                 actionable = [
-                    p for p in actionable if f"{p.device}::{p.ifname}" in allowlist
+                    p for p in actionable
+                    if allowlist_hit(p.device, p.ifname, allowlist)
                 ]
             if not actionable:
                 self.log_info("Nothing to remediate.")

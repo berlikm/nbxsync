@@ -542,6 +542,44 @@ class CliSafetyTests(unittest.TestCase):
         self.assertTrue(a.blocking)
         self.assertFalse(c.blocking)
 
+    def test_structural_x_ports_are_not_collisions(self):
+        a = e.PortPlan(device="CORE01", site="lab", kind="exos", ifname="47",
+                       expected="X", status="ok")
+        b = e.PortPlan(device="CORE01", site="lab", kind="exos", ifname="48",
+                       expected="X", status="ok")
+        e.flag_collisions([a, b])
+        self.assertFalse(a.collision)
+        self.assertFalse(b.collision)
+        self.assertFalse(a.blocking)
+
+    def test_allowlist_accepts_colon_or_slash(self):
+        allow = {"CORE01::1/17"}
+        self.assertTrue(e.allowlist_hit("CORE01", "1:17", allow))
+        self.assertTrue(e.allowlist_hit("CORE01", "1/17", allow))
+        self.assertFalse(e.allowlist_hit("CORE01", "1/18", allow))
+        self.assertFalse(e.allowlist_hit("CORE02", "1/17", allow))
+
+    def test_iface_speed_falls_back_to_kbps_field(self):
+        iface = type("I", (), {"type": None, "speed": 10_000_000})()
+        self.assertEqual(e.iface_speed_mbps(iface), 10000)
+        typed = type("I", (), {"type": "10gbase-x-sfpp", "speed": 1000})()
+        self.assertEqual(e.iface_speed_mbps(typed), 10000)
+
+    def test_empty_far_name_raises_label_too_long_not_index_error(self):
+        parts = e.split_device_name("", "", "")
+        with self.assertRaises(e.LabelTooLong):
+            e.build_label_for_far_end("USW", 10000, parts, "1:20")
+
+    def test_too_long_plan_still_records_live_ifalias(self):
+        plan = e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1",
+            expected="USW-THIS-WILL-NOT-FIT-AT-ALL", status="too_long",
+        )
+        e.compare_plan(plan, labels={"1": "ISC"}, descriptions={})
+        self.assertEqual(plan.status, "too_long")
+        self.assertEqual(plan.live, "ISC")
+        self.assertEqual(plan.commands, [])
+
     def test_matching_display_with_description_string_is_hijacked(self):
         plan = e.PortPlan(
             device="SW1", site="lab", kind="exos", ifname="1",

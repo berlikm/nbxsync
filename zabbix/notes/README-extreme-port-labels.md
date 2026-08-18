@@ -74,14 +74,14 @@ recovered in `port_label_canary.py` before replay. Rebuild the TSV with
 |---|---|
 | **Mode** | `preview` (default, **no SSH**) · `compliance` (read the box) · `remediate` (push; needs Commit) |
 | **Commit changes** | NetBox's own box. Remediation needs **both** mode=remediate and this |
-| **Canary allowlist** | `device-name::ifname` per line — required to push unless "entire scope" is ticked |
+| **Canary allowlist** | `device-name::ifname` per line — `1:17` and `1/17` match. Required to push unless "entire scope" is ticked |
 | **Remediate entire scope** | Off by default. Only after preview + compliance look right |
 | **Scope** | site group / site / role / device tag / explicit devices |
 | **Platform** | EXOS · VOSS · both |
 | **Structural tags** | interface tags meaning "never alert" (SPAN / mute) → expected label `X`. Do **not** tag stack / ISC / MLAG peer |
 | **Include admin-down / X·N** | reporting breadth |
 | **Also clear EXOS description-string** | off by default (may hold human text) |
-| **Fail the job on blocking rows** | for scheduled compliance runs (diff, missing, unreachable, alias_hijacked, collision, …) |
+| **Fail the job on blocking label diffs** | scheduled compliance. Unreachable boxes **always** fail the job |
 
 **Scope rule:** cabled ports get an expected grammar label from NetBox topology.
 A port with **no complete cable path** cannot derive a far end — it is **not**
@@ -106,8 +106,9 @@ Per-port statuses:
 | `applied` | remediator wrote this port | no |
 
 `collision=yes` on the CSV is also blocking: two ports on the **same switch**
-share an expected label. The generator still emits both (it cannot know which
-cable is wrong); the job must not look clean.
+share an expected grammar label. Policy labels `X` / `N` are excluded (every
+SPAN port is supposed to be `X`). The generator still emits both colliding
+rows (it cannot know which cable is wrong); the job must not look clean.
 
 How to read a job: log is the **scorecard** (truncated tables). CSV in the
 **Output** tab is the archive. Details:
@@ -327,9 +328,11 @@ plugin is:
 2. **Output tab CSV** — every evaluated port. Copy into Excel. First line is
    `sep=,` plus a UTF-8 BOM so Excel keeps commas and encoding. VOSS `1/17` is
    written as a text formula so Excel does not turn it into a date.
-3. **Job colour** — success only when nothing blocking remains. Tick **Fail the
-   job on blocking rows** on a schedule so a silent SSH outage cannot look
-   green.
+3. **Job colour** — success only when nothing blocking remains. Unreachable
+   boxes **always** fail the job (`log_failure`, clickable device). Tick **Fail
+   the job on blocking label diffs** on a schedule so leftover `diff` rows also
+   go red. A first interactive fleet run will be almost all `diff`; leave that
+   tick off then.
 
 `ok` means **Zabbix will see the expected grammar on ifAlias**. It does **not**
 mean “display-string matches.” On EXOS, `description-string` still wins

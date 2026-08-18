@@ -69,7 +69,8 @@ row is `alias_hijacked` and **blocking** until you tick clear.
 | `status = diff` | Box display-string / VOSS `name` ≠ cabling |
 | `status = missing` | Cabled in NetBox, no live label |
 | `status = alias_hijacked` | Grammar is on display-string; Zabbix still reads description-string |
-| `status = unreachable` | SSH failed or no `oob_ip`/`primary_ip`. A scheduled job **must not go green** |
+| `status = unreachable` | SSH failed or no `oob_ip`/`primary_ip`. The job **always fails** — we cannot attest those ports |
+| `collision = yes` | Two ports on this switch share `expected` (not `X`/`N`) |
 | `status = kept` | Label on the box, no complete cable. **Listed, never wiped.** Often still useful (ISP, leftover NIC) |
 | `collision = yes` | Two ports on this switch share `expected`. Generator cannot pick a winner |
 | `class` | `USW` / `US` / `UP` / `MON` / `UW` / `X` — own column, do not parse `expected` |
@@ -93,9 +94,10 @@ Permissions (NetBox Object Permissions, not the script):
 - Do **not** grant `run_script` to everyone. Custom scripts can SSH with the
   NAPALM credentials.
 
-Scheduled compliance: tick **Fail the job on blocking rows**. Hook a NetBox
-event rule on failed script jobs if you want mail/Slack. Leave the tick off
-for the first interactive fleet run (everything will be `diff`).
+Scheduled compliance: tick **Fail the job on blocking label diffs**. Unreachable
+boxes fail the job even without that tick. Hook a NetBox event rule on failed
+script jobs if you want mail/Slack. Leave the diffs tick off for the first
+interactive fleet run (everything will be `diff`).
 
 ---
 
@@ -134,8 +136,14 @@ The script is the right shape for NetBox: a **flat file** next to
 - EXOS `description-string` is not cleared unless that box is ticked.
 - A matching display-string with a leftover description-string is
   `alias_hijacked`, not `ok`.
-- Unreachable boxes are blocking. `fail_on_diff` sees them.
+- Unreachable boxes **always** fail the job (`log_failure` + `obj=device`).
+  Label diffs fail only when **Fail the job on blocking label diffs** is ticked.
 - Duplicate expected labels on one switch are `collision=yes` (blocking).
+  Multiple `X` (SPAN) ports on the same switch are **not** collisions.
+- Device names in the scorecard are NetBox links (`/dcim/devices/<id>/`).
+- Fleet-wide scope is Extreme manufacturer **or** EXOS/VOSS/Switch Engine /
+  Fabric Engine platform — it does not scan every server in DCIM.
+- Canary allowlist treats `1:17` and `1/17` as the same port.
 - Label length and charset are checked again immediately before the write.
 - Threads call `close_old_connections()` so Django is not surprised.
 
@@ -145,7 +153,8 @@ The script is the right shape for NetBox: a **flat file** next to
   can add a script can take the NAPALM env. Limit `extras.add_scriptmodule`.
 - Auto-confirm `y/N` is the runner’s behaviour (needed for `save`). Display-string
   itself does not prompt.
-- Canary allowlist is exact `device::ifName`. Copy ifName from NetBox.
+- Canary allowlist is `device::ifName`. `1:17` and `1/17` match. Copy the
+  device name from NetBox.
 - If `oob_ip` is empty, SSH goes to `primary_ip` (in-band). Fill OOB in NetBox.
 - Live `show running-config` on VOSS can be slow; timeout is 180s.
 - `mgmt` / `oob` as substrings on a far-port name can false-positive BMC.
