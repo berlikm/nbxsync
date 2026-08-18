@@ -13,9 +13,9 @@ A **page** (Disaster/High) must be: user or forwarding impact now, urgent, actio
 
 | Channel | Zabbix sev | Use |
 |---|---|---|
-| SMS/call 24/7 | Disaster, High | Site down; device ICMP down; temp **critical** |
-| Ticket, business hours | Average | SNMP dead, PSU/fan, DOM alarm, memory, “we are blind” |
-| Next day / dashboard | Warning | CPU, errors, flaps, duplex, speed-expect (when linked) |
+| SMS/call 24/7 | Disaster, High | Device ICMP down; temp **critical**; `USW` link down |
+| Ticket, business hours | Average | PSU/fan, DOM alarm, memory, `UP`/other in-scope link down, “we are blind” (unsupported items) |
+| Next day / dashboard | Warning | SNMP dead, CPU, errors, flaps, duplex, speed-expect (when linked) |
 | Log | Info | Firmware / serial |
 
 Google SRE: dashboards answer “what’s broken / why”; do not page on causes. Network practice splits **device health** (CPU, mem, temp, FRU) from **traffic**. Official Zabbix Extreme templates only ship a traffic gallery — we add a host **Health** dashboard on the platform template.
@@ -33,12 +33,12 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 
 | Issue | Was | Now (cutover) |
 |---|---|---|
-| Docs said `USW`/`UP` link-down **High** | Stock/VOSS one **Average** for every discovered port | Average is the live contract |
+| Docs said `USW`/`UP` link-down **High** | Stock/VOSS one **Average** for every discovered port | `USW` is **High** (storage/server). `UP` stays Average |
 | Observability listed flaps/errors as “page” | Warning (next day) | Graph/ticket, not 03:00 |
 | Speed Expect `{$IF.UTIL.MAX:"USW"}=80` | Would page 80% of intended 10G the moment it was linked | **101** (off) |
 | VOSS ISIS circuit / card **High** ungated | 24/7 on unused SPBM / empty slots | `{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0` (same pattern as V-IST) |
 | Switch ICMP loss/RTT Warning | CH proxy RTT is WAN, not box health | **DISABLED** (items stay; same as APs) |
-| EXOS SNMP-dead | Stock Warning | Still stock (do not fork); VOSS/IQ are Average |
+| EXOS SNMP-dead | Stock Warning | VOSS/IQ match Warning |
 | “Never silent” | Census only | Average trigger on unsupported-item count |
 | Host dashboards | Traffic gallery only | **Health** for chassis/diagnostics plus unified **Network interfaces** status map and graph grid |
 
@@ -64,7 +64,7 @@ Mass `SyncHostJob` is **not** required for template dashboard / trigger-status c
 
 ### Not this apply
 
-Speed Expect stays imported, not linked (`--apply` without `--link-speed-expect`). Site Disaster, AP ICMP → `UP-`, class-scoped High, and EXOS SNMP-dead → Average are **not** dashboard follow-ups. Live contract is the operator pages.
+Speed Expect stays imported, not linked (`--apply` without `--link-speed-expect`).
 
 ## Health dashboard (host, from template)
 

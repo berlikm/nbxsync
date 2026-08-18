@@ -11,9 +11,9 @@ The switch port toward the AP is `UP-…` (Access collects **only** `USW`+`UP` �
 | Rule | Here |
 |---|---|
 | Page **symptoms** | ICMP down (**High**). Hung AP with eth still up (**High** on ICMP). |
-| **Ticket** (Average) | SNMP dead while ping works. Memory. Temp canary. Unsupported-item count. |
-| **Graph** causes | CPU, clients, radio noise/Tx, retries/drops, eth traffic, ICMP loss/RTT (triggers **off**) |
-| One incident | Cable/PoE → switch `UP-` **Average** live. AP ICMP stays **High**. A closet cut is two events until NetBox/LLDP maps the AP to that port — accept it; do not drop AP ICMP to Average (that hides a hung AP). |
+| **Ticket** (Average) | Memory. Temp canary. Unsupported-item count. Switch `UP-` (AP). |
+| **Graph** causes | SNMP dead (**Warning** — same as EXOS/VOSS), CPU, clients, radio noise/Tx, retries/drops, eth traffic, ICMP loss/RTT (triggers **off**) |
+| One incident | Cable/PoE → switch `UP-` **Average**. AP ICMP stays **High**. A closet cut is two events. Do not drop AP ICMP to Average (that hides a hung AP). |
 | Never silent | Unsupported items (Average trigger); SNMP=0 while `UP-` is up; SNMP=1 and **zero** radios = Health census |
 | Collect first | Radio retry alerts, client-count, ICMP loss/RTT, CPU-critical — **triggers off** in the YAML |
 | Host dashboard | Template dashboard **Health** (host-level). RF is page 2 |
@@ -29,12 +29,12 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 | Thing | Alert | Sev |
 |---|---|---|
-| ICMP down | yes | **High** — device unreachable. Depends on switch `UP-` when mapping exists |
-| SNMP dead (ICMP still up) | yes | **Average** — mgmt blind; Wi-Fi may still work |
+| ICMP down | yes | **High** — device unreachable |
+| SNMP dead (ICMP still up) | yes | **Warning** — mgmt blind; Wi-Fi may still work (same as EXOS/VOSS) |
 | Memory high | yes | Average |
 | Temperature (canary) | yes | Average — many APs stub `ahEnvirmentTemp`; **not** switch 95/100 |
 | CPU high (`{$CPU.UTIL.WARN}=90`) | yes | Warning — GTAC: high CPU alone is not a fault |
-| AP eth / mgt oper down | yes | Warning — plant page is switch `UP-` (Average live; High later) |
+| AP eth / mgt oper down | yes | Warning — plant ticket is switch `UP-` (Average) |
 | Unsupported item count | yes | Average — `{$UNSUPPORTED.MAX}` (default 5), 30m |
 | CPU critical | **no** | trigger **DISABLED** until a quiet pilot |
 | ICMP loss / RTT | **no** | items on; triggers **DISABLED** (CH proxy RTT is a WAN signal) |
@@ -113,7 +113,7 @@ A closet PoE cut is AP ICMP High plus the switch `UP-` Average. That is accepted
 | Check | Why | Live |
 |---|---|---|
 | Unsupported items | OID missing on this AP class; looks like health | Average `{$UNSUPPORTED.MAX}` |
-| SNMP = 0, ICMP = 1, `UP-` up | XIQ manage-SNMP, credential, or CH-proxy SNMPv3 cache — not a cable | SNMP Average |
+| SNMP = 0, ICMP = 1, `UP-` up | XIQ manage-SNMP, credential, or CH-proxy SNMPv3 cache — not a cable | SNMP Warning |
 | SNMP = 1 and **zero** radios | LLD filter or empty walk — RF is blind | Health / RF page census |
 | Proxy last-seen | unknown ≠ down | later |
 
@@ -151,7 +151,5 @@ Radio + eth LLD: **1h**, keep-lost **0**. Inventory (name/serial/fw/hw) **1h**. 
 ## Not this apply
 
 `--apply` is the live AP contract (Health Overview / RF / Network interfaces). Do not add `--link-speed-expect` (switches only, and not until labels are clean).
-
-AP ICMP → switch `UP-` is not a dashboard follow-up. Live: two events on a closet cut. Leave it.
 
 FortiGate (API) / VMs: same bar, different doc ([03](03-fortinet.md)). Do not merge with Cato.

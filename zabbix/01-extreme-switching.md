@@ -10,10 +10,10 @@ Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md]
 
 | Rule | Here |
 |---|---|
-| Page **symptoms** | ICMP down (**High**). Temp **critical**. Site unreachable is **Disaster** (not on this template). |
-| **Ticket** (Average) | SNMP dead, PSU/fan, optic DOM **alarm**, memory, unsupported-item count, in-scope **link down** (live stock trigger) |
-| **Graph** / next day | CPU, traffic, util, ICMP loss/RTT (items on, triggers **off**), flaps, errors, duplex |
-| One incident | host triggers depend on SNMP → ICMP; ICMP depends on **site** (later). AP cable/PoE pages on Access `UP-` — see [02](02-extreme-access-points.md) |
+| Page **symptoms** | ICMP down (**High**). Temp **critical**. `USW` link down (**High** — storage/server). |
+| **Ticket** (Average) | PSU/fan, optic DOM **alarm**, memory, unsupported-item count, `UP`/`US`/`MON`/`UW` link down |
+| **Graph** / next day | SNMP dead (**Warning** — same on EXOS/VOSS/IQ), CPU, traffic, util, ICMP loss/RTT (items on, triggers **off**), flaps, errors, duplex |
+| One incident | host triggers depend on SNMP → ICMP. Cable/PoE toward an AP is switch `UP-` Average plus AP ICMP High. |
 | Never silent | unsupported-item **Average** trigger; zero discovered interfaces = Health honeycomb/census; proxy last-seen |
 | Control plane | on-box `ifAlias` + role macros. Access collects **only** `USW`+`UP`; a mistyped uplink → no items |
 | Collect first | Speed Expect / Routing **imported, not linked**. Util off (`{$IF.UTIL.MAX}=101` and Speed Expect `{$IF.UTIL.MAX:"USW"}=101`). ISIS/card High **gated off** |
@@ -33,7 +33,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | Device | Alert | Sev |
 |---|---|---|
 | ICMP down | yes | **High** |
-| SNMP dead (ICMP still up) | yes | **Average** on VOSS. Stock EXOS stays **Warning** (do not fork) |
+| SNMP dead (ICMP still up) | yes | **Warning** on VOSS, IQ, and stock EXOS — mgmt blind; forwarding / Wi-Fi may still work |
 | Unplanned reboot | yes | Warning |
 | Temperature **critical** (100 °C) / vendor alarm | yes | **High** |
 | Temperature warning (95 °C) | yes | Warning — next day; not stock 55 |
@@ -52,9 +52,8 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 | Ports in scope | Alert | Live (cutover) |
 |---|---|---|
-| `USW` / `US` / `UP` link down | yes | **Average** (one stock trigger for every discovered port) |
-| `MON` link down | yes | Average — Core/Dist/Mgmt only |
-| `UW` link down | yes | Average — Core/Dist/Mgmt |
+| `USW` link down | yes | **High** — storage/server uplink (`{$LINKDOWN.HIGH:regex:"^USW(-|$)"}=1`) |
+| `UP` / `US` / `MON` / `UW` link down | yes | **Average** — AP and other in-scope ports. Access still does not collect desk ports. |
 | Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
 | Wrong speed vs **intended** label | **no** | Speed Expect YAML exists — **do not link** |
 | Half duplex | yes | Warning |
@@ -65,7 +64,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 Do **not** alert on: a laptop unplugging (Access **does not collect** desk ports), fifty **High**s for one site down, “bandwidth high” on a backup window.
 
-A Core `USW` down is a **ticket** (Average). ICMP High still catches a dead box. Access still cannot page a desk port — those items do not exist.
+A Core `USW` down **pages** (High). An Access `UP` (AP) down is a **ticket** (Average). Desk ports still produce no items.
 
 ---
 
@@ -151,7 +150,7 @@ util / speed-expect  →  link down  →  no SNMP  →  ICMP down
 CPU / mem / temp     →  ICMP down
 ```
 
-A site WAN blip is one High per switch until a site-level check exists. That is accepted.
+A site WAN blip is one ICMP High per switch. That is accepted.
 
 ---
 
@@ -161,7 +160,7 @@ A site WAN blip is one High per switch until a site-level check exists. That is 
 |---|---|---|
 | Unsupported item count | SNMP walk died; looks like health | Average trigger `{$UNSUPPORTED.MAX}` |
 | Switch with **zero** discovered interfaces | IFALIAS regex or LLD broken | Health / census (no trigger yet) |
-| SNMP = 0, ICMP = 1 | credentials / proxy cache / UDP 161 — not a forwarding outage | SNMP Average |
+| SNMP = 0, ICMP = 1 | credentials / proxy cache / UDP 161 — not a forwarding outage | SNMP Warning |
 | Proxy last-seen | hosts go *unknown*, not *down* | Zabbix internal / later |
 
 ---
@@ -173,9 +172,9 @@ A site WAN blip is one High per switch until a site-level check exists. That is 
 | Extreme EXOS Observability | Platform EXOS Template Rule; links the stock template and owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; owns the native **Network interfaces** graph prototype/dashboard |
 
-We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, skips EXOS PSU `notPresent` stack-MIB padding, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory) and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, skips EXOS PSU `notPresent` stack-MIB padding, sets `USW` link-down **High**, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory) and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
 
-Stock EXOS trigger severities stay upstream except those patches. SNMP-dead on stock is typically Warning until we match VOSS (Average) without a fork.
+Stock EXOS trigger severities stay upstream except those patches. SNMP-dead is **Warning** on EXOS, VOSS, and IQ.
 
 ---
 
@@ -234,15 +233,6 @@ Intended speed = token or class default (`USW` 10G, `UP` 1G). Live `ifHighSpeed`
 `--apply` is the Extreme switching + AP contract. Do not add extra flags.
 
 **Speed Expect** is imported so the template exists. Do **not** pass `--link-speed-expect`. Linking would attach a second LLD to every Switch role and Warning on ports whose live Mbps is not the label (`USW`→10G, `UP`→1G, token overrides). Util and discards in that YAML are already off (`{$IF.UTIL.MAX}=101`). Link it later only when on-box labels are clean — that is a separate ops decision, not Health dashboards.
-
-These alerting ideas are **not** unfinished `--apply` work. Live behaviour is the tables above.
-
-| Idea | Live after `--apply` | Why we leave it |
-|---|---|---|
-| `USW`/`UP` link-down **High** | One **Average** for every discovered port | Extra class-keyed triggers. ICMP High still pages a dead box. Access desk ports have no items. |
-| Site **Disaster** | N ICMP Highs if a site WAN dies | Needs a site check (synthetic / proxy / core), not a device template. |
-| AP ICMP depends on switch `UP-` | Closet PoE = AP ICMP **High** + switch port Average | Needs NetBox/LLDP “this AP hangs off that port”. Do not lower AP ICMP — that hides a hung AP. |
-| EXOS SNMP-dead → Average | Stock **Warning** | Matching VOSS means forking stock EXOS. We do not fork. VOSS/IQ are already Average. |
 
 OSPF stays imported-not-linked. Fabric High stays gated (`{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0`) until a canary.
 

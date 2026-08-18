@@ -445,6 +445,40 @@ def validate_voss(doc: dict) -> None:
         record(f'VOSS {n} DISABLED', bool(t) and t.get('status') == 'DISABLED', str((t or {}).get('status')))
     for n in ('Extreme VOSS: Too many unsupported items',):
         record(f'VOSS has {n}', n in by_name, '')
+    snmp = by_name.get('Extreme VOSS: No SNMP data collection')
+    record(
+        'VOSS SNMP-dead Warning',
+        bool(snmp) and snmp.get('priority') == 'WARNING',
+        str((snmp or {}).get('priority')),
+    )
+    record(
+        'VOSS {$LINKDOWN.HIGH} default off',
+        macros.get('{$LINKDOWN.HIGH}') == '0',
+        str(macros.get('{$LINKDOWN.HIGH}')),
+    )
+    record(
+        'VOSS {$LINKDOWN.HIGH} USW on',
+        macros.get('{$LINKDOWN.HIGH:regex:"^USW(-|$)"}') == '1',
+        str(macros.get('{$LINKDOWN.HIGH:regex:"^USW(-|$)"}')),
+    )
+    avg_ld = next(
+        (t for t in trigs if t.get('name') == 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'),
+        None,
+    )
+    usw_ld = next(
+        (t for t in trigs if t.get('name') == 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down (USW)'),
+        None,
+    )
+    record(
+        'VOSS USW link-down High',
+        bool(avg_ld)
+        and '{$LINKDOWN.HIGH:"{#IFALIAS}"}=0' in (avg_ld.get('expression') or '')
+        and avg_ld.get('priority') == 'AVERAGE'
+        and bool(usw_ld)
+        and '{$LINKDOWN.HIGH:"{#IFALIAS}"}=1' in (usw_ld.get('expression') or '')
+        and usw_ld.get('priority') == 'HIGH',
+        f'avg={bool(avg_ld)} usw={bool(usw_ld)} prio={(usw_ld or {}).get("priority")}',
+    )
     card = next((t for t in trigs if 'card' in (t.get('name') or '').lower() and 'down' in (t.get('name') or '').lower()), None)
     isis = next((t for t in trigs if 'isis' in (t.get('name') or '').lower() and 'circuit' in (t.get('name') or '').lower()), None)
     record(
@@ -505,6 +539,12 @@ def validate_iq(doc: dict) -> None:
         t = by_name.get(n)
         record(f'IQ {n} DISABLED', bool(t) and t.get('status') == 'DISABLED', str((t or {}).get('status')))
     record('IQ unsupported trigger', 'Extreme IQ Engine: Too many unsupported items' in by_name, '')
+    snmp = by_name.get('Extreme IQ Engine: No SNMP data collection')
+    record(
+        'IQ SNMP-dead Warning',
+        bool(snmp) and snmp.get('priority') == 'WARNING',
+        str((snmp or {}).get('priority')),
+    )
     validate_health_dashboard('IQ', doc, tpl, pages=('Overview', 'RF'))
     validate_interface_dashboard('IQ', tpl, compact_map=True)
 

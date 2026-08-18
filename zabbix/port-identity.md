@@ -30,11 +30,11 @@ If the port runs at the class default, **omit SPEED**. Refuse labels over 20 —
 
 | CLASS | Meaning | Default speed | Speed-expect | Alerts (live cutover) |
 |---|---|---|---|---|
-| `USW` | Switch ↔ switch | 10G | later (do not link yet) | **Average** link (stock). Class **High** later. Flap/errors Warning |
+| `USW` | Switch ↔ switch | 10G | later (do not link yet) | **High** link (storage/server). Flap/errors Warning |
 | `US` | Endpoint, expect 10G | 10G | later | **Average** link — **Core/Dist/Mgmt only** (not collected on Access) |
-| `UP` | Toward AP | 1G | later | **Average** link on the switch (Access collects it). AP ICMP **High** until `UP-` dependency exists — see [02](02-extreme-access-points.md) |
-| `MON` | Endpoint, expect 1G | 1G | later | Average link — **Core/Dist/Mgmt only** (intended Warning) |
-| `UW` | WAN / ISP | — | later (circuit bw) | Average link; intended **High**; all circuits at site = **Disaster** |
+| `UP` | Toward AP | 1G | later | **Average** link on the switch (Access collects it). AP ICMP stays **High** |
+| `MON` | Endpoint, expect 1G | 1G | later | Average link — **Core/Dist/Mgmt only** |
+| `UW` | WAN / ISP | — | later (circuit bw) | Average link |
 | `TMON` | Temp watch | — | no | items; optional INFO link-down |
 | `X` / `X-<note>` | **Exclude** | — | — | none |
 | `N` / `N-<text>` | Note — monitoring-neutral | — | — | same as unlabelled |

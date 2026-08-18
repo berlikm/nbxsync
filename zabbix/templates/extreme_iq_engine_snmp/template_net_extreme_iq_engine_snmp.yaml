@@ -13,7 +13,7 @@ zabbix_export:
       Official pack: XIQ Auxiliary Files. Operator page: zabbix/02-extreme-access-points.md.
       Do not also link Network Generic (icmpping collision).
       ICMP loss/RTT, CPU critical, and client-count triggers are present but DISABLED
-      (collect first). SNMP-dead is Average; AP eth down is Warning (plant page is switch UP-).
+      (collect first). SNMP-dead is Warning; AP eth down is Warning (plant ticket is switch UP-).
     groups:
     - name: Templates/Network devices
     items:
@@ -93,9 +93,9 @@ zabbix_export:
       - uuid: bd852a25cab44dcea3efc09624d5c284
         expression: max(/Extreme IQ Engine by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
         name: 'Extreme IQ Engine: No SNMP data collection'
-        priority: AVERAGE
+        priority: WARNING
         description: |
-          Mgmt blind; Wi-Fi may still work. Ticket, not a 03:00 page.
+          Mgmt blind; Wi-Fi may still work. Next day, same as stock EXOS.
           XIQ manage-SNMP, MONITORING SNMPv3, or CH-proxy SNMPv3 cache after AP reboot.
         dependencies:
         - name: 'Extreme IQ Engine: Unavailable by ICMP ping'

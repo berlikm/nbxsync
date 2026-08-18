@@ -13,7 +13,9 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 
   * Import Extreme VOSS / IQ Engine / EXOS Observability / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
+  * Patch stock EXOS ``net.if.discovery`` rollout (15m / lifetime 0 / SNMP timeout 30s)
   * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding and queue check-now discovery for stale rows (no fork, no host sync)
+  * Patch stock EXOS ``USW`` link-down to **High** (storage/server uplink); other in-scope ports stay Average
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
@@ -602,6 +604,214 @@ def assert_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by 
         return True, 'no PSU LLD — n/a'
     ok = _psu_lld_skips_notpresent(rules[0])
     return ok, str({'snmp_oid': rules[0].get('snmp_oid'), 'filter': rules[0].get('filter')})
+
+
+_LINKDOWN_HIGH_DEFAULT = '{$LINKDOWN.HIGH}'
+_LINKDOWN_HIGH_USW = '{$LINKDOWN.HIGH:regex:"^USW(-|$)"}'
+_LINKDOWN_HIGH_MACROS = {
+    _LINKDOWN_HIGH_DEFAULT: '0',
+    _LINKDOWN_HIGH_USW: '1',
+}
+_LINKDOWN_HIGH_GATE = '{$LINKDOWN.HIGH:"{#IFALIAS}"}'
+_PRIO_AVERAGE = 3
+_PRIO_HIGH = 4
+
+
+def _triggerproto_name(proto: dict) -> str:
+    return str(proto.get('description') or proto.get('name') or '')
+
+
+def _is_stock_linkdown_avg(proto: dict) -> bool:
+    name = _triggerproto_name(proto)
+    return 'Link down' in name and '(USW)' not in name and 'speed-expect' not in name.lower()
+
+
+def _is_stock_linkdown_usw(proto: dict) -> bool:
+    name = _triggerproto_name(proto)
+    return 'Link down' in name and '(USW)' in name
+
+
+def _merge_template_macros(api, template_name: str, wanted: dict[str, str]) -> str:
+    tpls = api.template.get(
+        filter={'name': [template_name]},
+        output=['templateid', 'name'],
+        selectMacros='extend',
+    )
+    if not tpls:
+        return 'missing'
+    tid = tpls[0]['templateid']
+    existing = list(tpls[0].get('macros') or [])
+    by_name = {m['macro']: dict(m) for m in existing if isinstance(m, dict) and m.get('macro')}
+    current = {k: by_name[k].get('value', '') for k in wanted if k in by_name}
+    if all(current.get(k) == v for k, v in wanted.items()) and len(current) == len(wanted):
+        return 'ok'
+    for macro, value in wanted.items():
+        if macro in by_name:
+            by_name[macro]['value'] = value
+        else:
+            by_name[macro] = {'macro': macro, 'value': value}
+    payload = []
+    for m in by_name.values():
+        entry = {'macro': m['macro'], 'value': m.get('value', '')}
+        if m.get('hostmacroid'):
+            entry['hostmacroid'] = m['hostmacroid']
+        if m.get('description') is not None:
+            entry['description'] = m.get('description', '')
+        if m.get('type') is not None:
+            entry['type'] = m['type']
+        payload.append(entry)
+    api.template.update(templateid=tid, macros=payload)
+    return 'patched'
+
+
+def patch_exos_usw_linkdown_high(api, template_name: str = 'Extreme EXOS by SNMP') -> str:
+    """USW (storage/server) link-down High on stock EXOS without forking YAML.
+
+    Context macro ``{$LINKDOWN.HIGH:"{#IFALIAS}"}`` is 1 for ``^USW(-|$)``.
+    Average sibling keeps UP / US / MON / UW. Same split as VOSS YAML.
+    """
+    logger.info('Network: EXOS USW link-down High')
+    tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
+    if not tpls:
+        logger.warning('  %s: template not found — skip USW link-down patch', template_name)
+        return 'missing'
+    tid = tpls[0]['templateid']
+    macro_status = _merge_template_macros(api, template_name, _LINKDOWN_HIGH_MACROS)
+    if macro_status == 'missing':
+        return 'missing'
+    rules = api.discoveryrule.get(
+        hostids=tid,
+        filter={'key_': _IF_DISCOVERY_KEY},
+        output=['itemid', 'key_'],
+    )
+    if not rules:
+        logger.warning('  %s: no %s — skip USW link-down patch', template_name, _IF_DISCOVERY_KEY)
+        return 'no-if-lld'
+    protos = api.triggerprototype.get(
+        discoveryids=rules[0]['itemid'],
+        output='extend',
+        selectTags='extend',
+        selectDependencies='extend',
+    ) or []
+    avg = next((p for p in protos if _is_stock_linkdown_avg(p)), None)
+    usw = next((p for p in protos if _is_stock_linkdown_usw(p)), None)
+    if avg is None:
+        logger.warning('  %s: no stock Link down prototype — skip', template_name)
+        return 'no-linkdown'
+    avg_expr = str(avg.get('expression') or '')
+    gated_avg = f'{_LINKDOWN_HIGH_GATE}=0'
+    gated_high = f'{_LINKDOWN_HIGH_GATE}=1'
+    changed = False
+    if gated_avg not in avg_expr:
+        new_expr = avg_expr.rstrip()
+        joiner = ' and ' if new_expr.endswith(')') or new_expr[-1:].isalnum() else 'and '
+        api.triggerprototype.update(triggerid=avg['triggerid'], expression=f'{new_expr}{joiner}{gated_avg}')
+        avg_expr = f'{new_expr}{joiner}{gated_avg}'
+        changed = True
+        logger.info('  %s: gated Average link-down on %s', template_name, _LINKDOWN_HIGH_GATE)
+    if usw is None:
+        high_name = _triggerproto_name(avg)
+        if high_name.endswith(': Link down'):
+            high_name = f'{high_name} (USW)'
+        else:
+            high_name = f'{high_name} (USW)'
+        high_expr = avg_expr.replace(gated_avg, gated_high)
+        create = {
+            'description': high_name,
+            'expression': high_expr,
+            'priority': _PRIO_HIGH,
+            'comments': 'USW is the storage/server uplink. Page. UP (AP) stays Average on the sibling trigger.',
+        }
+        if avg.get('recovery_mode') is not None:
+            create['recovery_mode'] = avg['recovery_mode']
+        if avg.get('recovery_expression'):
+            create['recovery_expression'] = avg['recovery_expression']
+        if avg.get('manual_close') is not None:
+            create['manual_close'] = avg['manual_close']
+        if avg.get('opdata'):
+            create['opdata'] = avg['opdata']
+        if avg.get('event_name'):
+            create['event_name'] = avg['event_name']
+        if avg.get('type') is not None:
+            create['type'] = avg['type']
+        tags = avg.get('tags') or []
+        if tags:
+            create['tags'] = [{'tag': t['tag'], 'value': t.get('value', '')} for t in tags if t.get('tag')]
+        deps = avg.get('dependencies') or []
+        if deps:
+            create['dependencies'] = [{'triggerid': d['triggerid']} for d in deps if d.get('triggerid')]
+        created = api.triggerprototype.create(**create)
+        high_ids = created.get('triggerids') if isinstance(created, dict) else None
+        high_id = (high_ids or [None])[0]
+        changed = True
+        logger.info('  %s: created USW High link-down (triggerid=%s)', template_name, high_id)
+        usw = {'triggerid': high_id} if high_id else None
+    else:
+        high_id = usw.get('triggerid')
+        if str(usw.get('priority')) not in (str(_PRIO_HIGH), 'HIGH', '4'):
+            api.triggerprototype.update(triggerid=high_id, priority=_PRIO_HIGH)
+            changed = True
+    if usw and usw.get('triggerid'):
+        high_id = str(usw['triggerid'])
+        avg_id = str(avg['triggerid'])
+        for proto in protos:
+            pid = str(proto.get('triggerid') or '')
+            if pid in {avg_id, high_id}:
+                continue
+            dep_ids = {str(d.get('triggerid')) for d in (proto.get('dependencies') or []) if d.get('triggerid')}
+            if avg_id in dep_ids and high_id not in dep_ids:
+                api.triggerprototype.update(
+                    triggerid=pid,
+                    dependencies=[{'triggerid': d} for d in sorted(dep_ids | {high_id})],
+                )
+                changed = True
+                logger.info('  %s: added USW High dependency on %s', template_name, _triggerproto_name(proto)[:60])
+    if not changed and macro_status == 'ok':
+        return 'ok'
+    return 'patched'
+
+
+def assert_exos_usw_linkdown_high(api, template_name: str = 'Extreme EXOS by SNMP') -> tuple[bool, str]:
+    tpls = api.template.get(
+        filter={'name': [template_name]},
+        output=['templateid'],
+        selectMacros='extend',
+    )
+    if not tpls:
+        return True, 'template absent — n/a'
+    macros = {m['macro']: m.get('value', '') for m in (tpls[0].get('macros') or []) if m.get('macro')}
+    if macros.get(_LINKDOWN_HIGH_DEFAULT) != '0' or macros.get(_LINKDOWN_HIGH_USW) != '1':
+        missing = {k: macros.get(k) for k in _LINKDOWN_HIGH_MACROS}
+        return False, f'macros={missing}'
+    rules = api.discoveryrule.get(
+        hostids=tpls[0]['templateid'],
+        filter={'key_': _IF_DISCOVERY_KEY},
+        output=['itemid'],
+    )
+    if not rules:
+        return True, 'no IF LLD — n/a'
+    protos = api.triggerprototype.get(
+        discoveryids=rules[0]['itemid'],
+        output=['triggerid', 'description', 'expression', 'priority'],
+    ) or []
+    avg = next((p for p in protos if _is_stock_linkdown_avg(p)), None)
+    usw = next((p for p in protos if _is_stock_linkdown_usw(p)), None)
+    avg_expr = str((avg or {}).get('expression') or '')
+    usw_expr = str((usw or {}).get('expression') or '')
+    ok = (
+        bool(avg)
+        and f'{_LINKDOWN_HIGH_GATE}=0' in avg_expr
+        and bool(usw)
+        and f'{_LINKDOWN_HIGH_GATE}=1' in usw_expr
+        and str((usw or {}).get('priority')) in (str(_PRIO_HIGH), '4')
+    )
+    return ok, str(
+        {
+            'avg': (avg or {}).get('description'),
+            'usw': (usw or {}).get('description'),
+            'usw_priority': (usw or {}).get('priority'),
+        }
+    )
 
 
 def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by SNMP') -> str:
@@ -1218,6 +1428,16 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             ok, detail = assert_exos_psu_lld_present_only(api)
             record('exos_psu_lld_present_only_assert', ok or 'n/a' in detail, detail, group='import')
 
+            usw_status = patch_exos_usw_linkdown_high(api)
+            record(
+                'exos_usw_linkdown_high',
+                usw_status in ('ok', 'patched', 'missing', 'no-if-lld', 'no-linkdown'),
+                usw_status,
+                group='import',
+            )
+            ok, detail = assert_exos_usw_linkdown_high(api)
+            record('exos_usw_linkdown_high_assert', ok or 'n/a' in detail, detail, group='import')
+
             temp_statuses = patch_extreme_template_temp_macros(api)
             for tname, status in temp_statuses.items():
                 record(
@@ -1600,6 +1820,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         patch_exos_interface_lld_rollout(api)
         patch_exos_psu_lld_present_only(api)
         queue_exos_psu_lld_checks(api)
+        patch_exos_usw_linkdown_high(api)
         patch_extreme_template_temp_macros(api)
         step_health_patches(api)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
