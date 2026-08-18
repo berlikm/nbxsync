@@ -90,7 +90,8 @@ Roadmap / known debt:
     optic floors) are applied by the network script. TEMP_* live on EXOS/VOSS
     templates only. Context macros like {$IF.UTIL.MAX:"USW"} are post-cutover.
 
-  # Read-only census (coverage gaps). Non-zero Extreme counters fail the process.
+  # Read-only census (coverage gaps). Non-zero Extreme counters fail the process,
+  # including unprofiled Switch*/AP/HiveOS objects that have no configuration group.
   python scripts/configure_nbxsync_zerotouch.py --verify
 
   # Lab proof against local Zabbix (prefixed synthetic estate)
@@ -433,6 +434,127 @@ def ensure(model, defaults=None, update_fields=None, **lookup):
     else:
         logger.info('  EXISTS: %s = %s', model.__name__, obj)
     return obj, False
+
+
+# ZabbixTemplateRule.name is not unique and the model has no zabbixserver FK.
+# Lookups must go through the template/hostgroup server, or --simulate can
+# update/delete production-named rules on a shared NetBox database.
+KNOWN_LAB_SERVER_NAMES = frozenset({
+    'ZeroTouch Configure Lab',
+    'Network Configure Lab',
+})
+
+
+def is_lab_zabbix_server(server, *, sim_server_name: str | None = None) -> bool:
+    name = getattr(server, 'name', None) if server is not None else None
+    if not name:
+        return False
+    if sim_server_name and name == sim_server_name:
+        return True
+    return name in KNOWN_LAB_SERVER_NAMES
+
+
+def simulation_rule_name(
+    server,
+    name: str,
+    *,
+    prefix: str | None = None,
+    sim_server_name: str | None = None,
+) -> str:
+    """Prefixed rule name on this script's lab server; canonical on apply."""
+    prefix = PREFIX if prefix is None else prefix
+    sim_server_name = SIM_SERVER_NAME if sim_server_name is None else sim_server_name
+    if (
+        server is not None
+        and getattr(server, 'name', None) == sim_server_name
+        and prefix
+        and not name.startswith(prefix)
+    ):
+        return f'{prefix}{name}'
+    return name
+
+
+def template_rules_for_server(server):
+    """Every TemplateRule whose template or hostgroup belongs to ``server``."""
+    return M.ZabbixTemplateRule.objects.filter(
+        Q(zabbixtemplate__zabbixserver=server) | Q(zabbixhostgroup__zabbixserver=server)
+    ).distinct()
+
+
+def template_rule_names(server, name: str, *, prefix: str | None = None, sim_server_name: str | None = None) -> list[str]:
+    sim_name = simulation_rule_name(server, name, prefix=prefix, sim_server_name=sim_server_name)
+    names = [sim_name]
+    if name not in names:
+        names.append(name)
+    return names
+
+
+def get_template_rule(server, name: str, *, prefix: str | None = None, sim_server_name: str | None = None):
+    """Return the TemplateRule ``name`` on ``server`` only (prefixed name first)."""
+    names = template_rule_names(server, name, prefix=prefix, sim_server_name=sim_server_name)
+    by_name = {rule.name: rule for rule in template_rules_for_server(server).filter(name__in=names)}
+    for candidate in names:
+        found = by_name.get(candidate)
+        if found is not None:
+            return found
+    return None
+
+
+def ensure_template_rule(
+    server,
+    name: str,
+    defaults: dict,
+    *,
+    prefix: str | None = None,
+    sim_server_name: str | None = None,
+    update_fields=None,
+):
+    """Create/update a TemplateRule on ``server``. Never ``get_or_create(name=)``."""
+    rule_name = simulation_rule_name(server, name, prefix=prefix, sim_server_name=sim_server_name)
+    obj = get_template_rule(server, name, prefix=prefix, sim_server_name=sim_server_name)
+    fields = list(update_fields) if update_fields is not None else list(defaults.keys())
+    if obj is None:
+        create_kwargs = dict(defaults)
+        create_kwargs['name'] = rule_name
+        obj = M.ZabbixTemplateRule.objects.create(**create_kwargs)
+        logger.info('  CREATED: ZabbixTemplateRule = %s', obj)
+        return obj, True
+    changed: list[str] = []
+    if obj.name != rule_name:
+        obj.name = rule_name
+        changed.append('name')
+    for field in fields:
+        if field not in defaults:
+            continue
+        new = defaults[field]
+        old = getattr(obj, field)
+        if _values_equal(old, new):
+            continue
+        setattr(obj, field, new)
+        changed.append(field)
+    if changed:
+        obj.save()
+        logger.info('  UPDATED: ZabbixTemplateRule = %s (%s)', obj, ', '.join(changed))
+    else:
+        logger.info('  EXISTS: ZabbixTemplateRule = %s', obj)
+    return obj, False
+
+
+def delete_template_rule(
+    server,
+    name: str,
+    reason: str,
+    *,
+    prefix: str | None = None,
+    sim_server_name: str | None = None,
+) -> int:
+    names = template_rule_names(server, name, prefix=prefix, sim_server_name=sim_server_name)
+    qs = template_rules_for_server(server).filter(name__in=names)
+    count = qs.count()
+    if count:
+        qs.delete()
+        logger.info('  DELETED TemplateRule %r (%s)', name, reason)
+    return count
 
 
 def prune_shadow_macros() -> int:
@@ -1408,6 +1530,14 @@ def step6_template_rules(server, country_slugs=None):
             '  Extreme IQ Engine by SNMP not resolved — leaving Extreme IQ Engine TemplateRule untouched '
             '(HiveOS alone never matches; platform must contain IQ ENGINE / IQEngine / IQ-ENGINE)'
         )
+
+    def ensure_rule(name: str, defaults: dict, update_fields=None):
+        fields = list(update_fields) if update_fields is not None else list(defaults.keys())
+        return ensure_template_rule(server, name, defaults, update_fields=fields)
+
+    def delete_rule(name: str, reason: str) -> None:
+        delete_template_rule(server, name, reason)
+
     for name, pattern, template, hostgroup, priority, role_pattern in rules:
         defaults = {
             'pattern': pattern,
@@ -1420,13 +1550,7 @@ def step6_template_rules(server, country_slugs=None):
             'role_pattern': role_pattern,
             'manufacturer': None,
         }
-        ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
-
-    def delete_rule(name: str, reason: str) -> None:
-        stale = M.ZabbixTemplateRule.objects.filter(name=name).first()
-        if stale is not None:
-            stale.delete()
-            logger.info('  DELETED TemplateRule %r (%s)', name, reason)
+        ensure_rule(name, defaults)
 
     # OS: one Windows / one Linux rule. Photon is in the Linux pattern.
     delete_rule('Windows Server', 'redundant with Windows catch-all (re.search)')
@@ -1456,16 +1580,15 @@ def step6_template_rules(server, country_slugs=None):
             'enabled': True,
             'priority': 40,
         }
-        ensure(M.ZabbixTemplateRule, name=name, defaults=defaults, update_fields=list(defaults.keys()))
+        ensure_rule(name, defaults)
 
     # Oracle: tag-gated TemplateRule — tag any VM/Device with 'oracle' tag to get
     # Oracle by Zabbix agent 2. Merges with OS template from platform rule (Linux/Windows).
     if 'oracle_agent2' in TPL:
         tpl_oracle = make_template(*TPL['oracle_agent2'], req=[HostInterfaceRequirementChoices.AGENT])
-        ensure(
-            M.ZabbixTemplateRule,
-            name='Oracle (tag)',
-            defaults={
+        ensure_rule(
+            'Oracle (tag)',
+            {
                 'pattern': '.*',
                 'zabbixtemplate': tpl_oracle,
                 'zabbixhostgroup': None,
@@ -1476,7 +1599,6 @@ def step6_template_rules(server, country_slugs=None):
                 'enabled': True,
                 'priority': 40,
             },
-            update_fields=['pattern', 'zabbixtemplate', 'zabbixhostgroup', 'zabbixtag', 'require_tags', 'role_pattern', 'manufacturer', 'enabled', 'priority'],
         )
         logger.info('  Rule Oracle (tag) → %s', tpl_oracle.name)
     else:
@@ -1489,11 +1611,11 @@ def step6_template_rules(server, country_slugs=None):
     if dell is not None:
         tpl_dell_snmp = make_template(*TPL['dell_idrac_snmp'],
                                       req=[HostInterfaceRequirementChoices.SNMP])
-        renamed = M.ZabbixTemplateRule.objects.filter(name='Dell iDRAC (Server)').first()
-        if renamed is not None and not M.ZabbixTemplateRule.objects.filter(name='Dell iDRAC').exists():
-            renamed.name = 'Dell iDRAC'
+        renamed = get_template_rule(server, 'Dell iDRAC (Server)')
+        if renamed is not None and get_template_rule(server, 'Dell iDRAC') is None:
+            renamed.name = simulation_rule_name(server, 'Dell iDRAC')
             renamed.save(update_fields=['name'])
-            logger.info('  Renamed TemplateRule Dell iDRAC (Server) → Dell iDRAC')
+            logger.info('  Renamed TemplateRule Dell iDRAC (Server) → %s', renamed.name)
         defaults_idrac = {
             'pattern': '.*',
             'role_pattern': '^(Server|Cohesity|ESXi Hypervisor)$',
@@ -1505,7 +1627,7 @@ def step6_template_rules(server, country_slugs=None):
             'enabled': True,
             'priority': 80,
         }
-        ensure(M.ZabbixTemplateRule, name='Dell iDRAC', defaults=defaults_idrac, update_fields=list(defaults_idrac.keys()))
+        ensure_rule('Dell iDRAC', defaults_idrac)
         delete_rule('Dell iDRAC (ESXi)', 'merged into Dell iDRAC; OS/VMware is on the ESXi role')
         delete_rule('Dell iDRAC (Server)', 'renamed to Dell iDRAC')
         logger.info('  Rule Dell iDRAC → %s (Dell ∧ Server|Cohesity|ESXi Hypervisor)', tpl_dell_snmp.name)
@@ -1552,7 +1674,7 @@ def step6_template_rules(server, country_slugs=None):
             'enabled': True,
             'priority': 80,
         }
-        ensure(M.ZabbixTemplateRule, name='Pure Storage (HTTP)', defaults=defaults, update_fields=list(defaults.keys()))
+        ensure_rule('Pure Storage (HTTP)', defaults)
         logger.info('  Rule Pure Storage (HTTP) → %s', tpl_pure.name)
     else:
         logger.warning("  Manufacturer 'Pure Storage' not found, skipping Pure Storage TemplateRule")
@@ -1560,7 +1682,7 @@ def step6_template_rules(server, country_slugs=None):
     # Dell Storage: Manufacturer Dell ∧ role Storage → HPE MSA 2060 Storage by HTTP.
     # Estate uses that template on Dell arrays (no separate Dell Storage by HTTP import).
     # No HPE manufacturer rule — HPE MSA mapping removed.
-    legacy_hpe_msa = M.ZabbixTemplateRule.objects.filter(name='HPE MSA (HTTP)').first()
+    legacy_hpe_msa = get_template_rule(server, 'HPE MSA (HTTP)')
     if legacy_hpe_msa is not None and legacy_hpe_msa.enabled:
         legacy_hpe_msa.enabled = False
         legacy_hpe_msa.save(update_fields=['enabled'])
@@ -1575,7 +1697,7 @@ def step6_template_rules(server, country_slugs=None):
                 'manufacturer': dell_mfr, 'zabbixtemplate': tpl_msa_http,
                 'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
             }
-            ensure(M.ZabbixTemplateRule, name='Dell Storage (HTTP)', defaults=defaults, update_fields=list(defaults.keys()))
+            ensure_rule('Dell Storage (HTTP)', defaults)
             logger.info('  Rule Dell Storage (HTTP) → %s', tpl_msa_http.name)
         else:
             logger.warning("  Manufacturer 'Dell' not found, skipping Dell Storage TemplateRule")
@@ -1592,7 +1714,7 @@ def step6_template_rules(server, country_slugs=None):
                 'manufacturer': huawei, 'zabbixtemplate': tpl_huawei,
                 'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
             }
-            ensure(M.ZabbixTemplateRule, name='Huawei OceanStor (SNMP)', defaults=defaults, update_fields=list(defaults.keys()))
+            ensure_rule('Huawei OceanStor (SNMP)', defaults)
             logger.info('  Rule Huawei OceanStor (SNMP) → %s', tpl_huawei.name)
         else:
             logger.warning("  Manufacturer 'Huawei' not found, skipping Huawei TemplateRule")
@@ -1609,7 +1731,7 @@ def step6_template_rules(server, country_slugs=None):
                 'manufacturer': synology, 'zabbixtemplate': tpl_synology,
                 'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 80,
             }
-            ensure(M.ZabbixTemplateRule, name='Synology DiskStation (SNMP)', defaults=defaults, update_fields=list(defaults.keys()))
+            ensure_rule('Synology DiskStation (SNMP)', defaults)
             logger.info('  Rule Synology DiskStation (SNMP) → %s', tpl_synology.name)
             if 'icmp_ping' in TPL:
                 tpl_icmp = make_template(*TPL['icmp_ping'], req=[HostInterfaceRequirementChoices.ANY])
@@ -1618,7 +1740,7 @@ def step6_template_rules(server, country_slugs=None):
                     'manufacturer': synology, 'zabbixtemplate': tpl_icmp,
                     'zabbixhostgroup': None, 'zabbixtag': None, 'enabled': True, 'priority': 85,
                 }
-                ensure(M.ZabbixTemplateRule, name='Synology Storage ICMP', defaults=defaults_icmp, update_fields=list(defaults_icmp.keys()))
+                ensure_rule('Synology Storage ICMP', defaults_icmp)
         else:
             logger.warning("  Manufacturer 'Synology' not found, skipping Synology TemplateRule")
     else:
@@ -1632,7 +1754,7 @@ def step6_template_rules(server, country_slugs=None):
 
     # Rename leftovers from placeholder template names.
     for old_name in ('Huawei Storage (SNMP)', 'Synology NAS (SNMP)'):
-        stale = M.ZabbixTemplateRule.objects.filter(name=old_name).first()
+        stale = get_template_rule(server, old_name)
         if stale is not None:
             stale.enabled = False
             stale.save(update_fields=['enabled'])
@@ -1642,10 +1764,14 @@ def step6_template_rules(server, country_slugs=None):
     orphan_tags = M.ZabbixTag.objects.filter(tag='os_family')
     if orphan_tags.exists():
         # Detach any remaining rule FKs first (rules above already set zabbixtag=None).
-        M.ZabbixTemplateRule.objects.filter(zabbixtag__in=orphan_tags).update(zabbixtag=None)
-        M.ZabbixTagAssignment.objects.filter(zabbixtag__in=orphan_tags).delete()
-        n, _ = orphan_tags.delete()
-        logger.info('  PRUNED: %s os_family ZabbixTag row(s)', n)
+        # Server-scoped: do not clear zabbixtag on another ZabbixServer's rules.
+        template_rules_for_server(server).filter(zabbixtag__in=orphan_tags).update(zabbixtag=None)
+        if is_lab_zabbix_server(server):
+            logger.info('  Detached os_family tags from lab TemplateRules (left tag rows for other servers)')
+        else:
+            M.ZabbixTagAssignment.objects.filter(zabbixtag__in=orphan_tags).delete()
+            n, _ = orphan_tags.delete()
+            logger.info('  PRUNED: %s os_family ZabbixTag row(s)', n)
 
 
 def step7_template_assignments(server):
@@ -2345,6 +2471,15 @@ def run_verify(*, limit: int | None = None) -> int:
         )
         plat = getattr(getattr(obj, 'platform', None), 'name', '') or ''
         role_name = getattr(getattr(obj, 'role', None), 'name', '') or ''
+        # Extreme coverage is independent of CG assignment. Check before the
+        # unprofiled continue so a missing CG still fails --verify.
+        if _HIVEOS_ONLY_RE.search(plat) and not _IQ_PLATFORM_RE.search(plat):
+            hiveos_without_iq_rule += 1
+        if role_name in switch_roles:
+            if not any(n in tpl_names for n in ('EXOS', 'VOSS', 'Observability')):
+                switch_without_extreme_template += 1
+        if role_name == 'Access Point' and 'IQ Engine' not in tpl_names:
+            ap_without_iq_template += 1
         if cg is None:
             unprofiled += 1
             continue
@@ -2356,13 +2491,6 @@ def run_verify(*, limit: int | None = None) -> int:
         if cg_name == agent_cg_name or cg_name.endswith('Agent Monitoring'):
             if not AGENT_PLATFORM_HINT.search(plat):
                 agent_without_platform_fact += 1
-        if _HIVEOS_ONLY_RE.search(plat) and not _IQ_PLATFORM_RE.search(plat):
-            hiveos_without_iq_rule += 1
-        if role_name in switch_roles:
-            if not any(n in tpl_names for n in ('EXOS', 'VOSS', 'Observability')):
-                switch_without_extreme_template += 1
-        if role_name == 'Access Point' and 'IQ Engine' not in tpl_names:
-            ap_without_iq_template += 1
 
     print(
         json.dumps(
@@ -2415,8 +2543,6 @@ def cleanup_lab() -> None:
     """Tear down only the prefixed lab estate. Never touch a non-lab ZabbixServer."""
     Device.objects.filter(name__startswith=PREFIX).delete()
     VirtualMachine.objects.filter(name__startswith=PREFIX).delete()
-    M.ZabbixTemplateRule.objects.filter(name__startswith=PREFIX).delete()
-    M.ZabbixTemplateRule.objects.filter(zabbixtemplate__name__startswith=PREFIX).delete()
     M.ZabbixHostgroupAssignment.objects.filter(zabbixhostgroup__name__startswith=PREFIX).delete()
     M.ZabbixConfigurationGroupAssignment.objects.filter(zabbixconfigurationgroup__name__startswith=PREFIX).delete()
     M.ZabbixTemplateAssignment.objects.filter(zabbixtemplate__name__startswith=PREFIX).delete()
@@ -2443,7 +2569,8 @@ def cleanup_lab() -> None:
         M.ZabbixHostBinding.objects.filter(zabbixserver=server, hostname__startswith=PREFIX).delete()
         M.ZabbixProxy.objects.filter(zabbixserver=server, name__startswith=PREFIX).delete()
         M.ZabbixProxyGroup.objects.filter(zabbixserver=server, name__startswith=PREFIX).delete()
-        # Rules may reference PREFIX templates with non-prefixed rule names — clear first.
+        # Prefixed rule names, plus rules whose template is a prefixed lab template.
+        template_rules_for_server(server).filter(name__startswith=PREFIX).delete()
         M.ZabbixTemplateRule.objects.filter(zabbixtemplate__zabbixserver=server, zabbixtemplate__name__startswith=PREFIX).delete()
         M.ZabbixTemplateAssignment.objects.filter(zabbixtemplate__zabbixserver=server, zabbixtemplate__name__startswith=PREFIX).delete()
         M.ZabbixHostgroupAssignment.objects.filter(zabbixhostgroup__zabbixserver=server, zabbixhostgroup__name__startswith=PREFIX).delete()
@@ -2919,19 +3046,22 @@ def run_simulate() -> int:
             fw_tpls = [t.get('name') for t in (h_fw.get('parentTemplates', []) if h_fw else [])]
             record('zbx_firewall_fortigate', any('FortiGate' in (n or '') for n in fw_tpls), str(fw_tpls), group='zabbix')
 
-            # Hostgroup-first hygiene
+            # Hostgroup-first hygiene (server-scoped TemplateRule lookups)
             record('no_os_family_tags', M.ZabbixTag.objects.filter(tag='os_family').count() == 0, str(M.ZabbixTag.objects.filter(tag='os_family').count()), group='hygiene')
+            snmp_linux_rule = get_template_rule(server, 'SNMP Linux (tag)')
+            snmp_windows_rule = get_template_rule(server, 'SNMP Windows (tag)')
             record(
                 'snmp_os_template_rules',
-                M.ZabbixTemplateRule.objects.filter(name__in=['SNMP Linux (tag)', 'SNMP Windows (tag)'], enabled=True).count() == 2,
-                str(list(M.ZabbixTemplateRule.objects.filter(name__startswith='SNMP ').values_list('name', flat=True))),
+                bool(snmp_linux_rule and snmp_linux_rule.enabled and snmp_windows_rule and snmp_windows_rule.enabled),
+                str(list(template_rules_for_server(server).filter(name__icontains='SNMP').values_list('name', flat=True))),
                 group='hygiene',
             )
-            idrac_rule = M.ZabbixTemplateRule.objects.filter(name='Dell iDRAC', enabled=True).select_related('manufacturer').first()
+            idrac_rule = get_template_rule(server, 'Dell iDRAC')
             record(
                 'dell_idrac_rule',
                 bool(
                     idrac_rule
+                    and idrac_rule.enabled
                     and idrac_rule.manufacturer_id
                     and idrac_rule.role_pattern == '^(Server|Cohesity|ESXi Hypervisor)$'
                     and idrac_rule.zabbixhostgroup_id is None
@@ -2941,8 +3071,9 @@ def run_simulate() -> int:
             )
             record(
                 'dell_idrac_split_rules_gone',
-                M.ZabbixTemplateRule.objects.filter(name__in=['Dell iDRAC (Server)', 'Dell iDRAC (ESXi)']).count() == 0,
-                str(list(M.ZabbixTemplateRule.objects.filter(name__startswith='Dell iDRAC').values_list('name', flat=True))),
+                get_template_rule(server, 'Dell iDRAC (Server)') is None
+                and get_template_rule(server, 'Dell iDRAC (ESXi)') is None,
+                str(list(template_rules_for_server(server).filter(name__icontains='Dell iDRAC').values_list('name', flat=True))),
                 group='hygiene',
             )
             esxi_role = DeviceRole.objects.filter(name__iexact='ESXi Hypervisor').first()
@@ -2958,7 +3089,7 @@ def run_simulate() -> int:
                     assigned_object_id=esxi_role.id,
                 ).exists()
             record('os_vmware_on_esxi_role', esxi_hg_ok, str((esxi_role, os_vmware)), group='hygiene')
-            legacy_vmware_esxi = M.ZabbixTemplateRule.objects.filter(name='VMware ESXi').first()
+            legacy_vmware_esxi = get_template_rule(server, 'VMware ESXi')
             record(
                 'vmware_esxi_platform_rule_disabled',
                 legacy_vmware_esxi is None or not legacy_vmware_esxi.enabled,
@@ -2980,7 +3111,7 @@ def run_simulate() -> int:
             )
             record(
                 'agent_host_icmp_rule_gone',
-                not M.ZabbixTemplateRule.objects.filter(name='Agent Host ICMP').exists(),
+                get_template_rule(server, 'Agent Host ICMP') is None,
                 'ok',
                 group='hygiene',
             )

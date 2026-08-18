@@ -39,7 +39,8 @@ Stage matrix (what each flag enables):
 Re-apply safety (estate already has switches/APs in Zabbix):
   * Does **not** delete hosts, interfaces, history, or hostids
   * Does **not** mass-sync every device (template updates inherit in Zabbix)
-  * After role macros, logs which active Switch* devices still need HostSync — does not sync them
+  * After role macros, logs Switch* hosts whose Zabbix host macros differ from
+    NetBox role assignments (not every active Switch*). Does not mass-sync.
   * YAML ``deleteMissing: false`` — retired items linger; LLD is not wiped
   * ``--apply`` without ``--link-speed-expect`` does **not** unlink a leftover role assignment
     (Speed Expect is nested on the platform templates; skip the flag).
@@ -62,6 +63,7 @@ Usage::
 
   # Apply destination network deltas (production token)
   export NBX_ZABBIX_TOKEN=...
+  # If NetBox has no row named "Zabbix Production", also set NBX_ZABBIX_URL.
   python scripts/configure_nbxsync_network.py --apply
 
   # Temporary LM cutover silence only (not the long-term target)
@@ -272,6 +274,43 @@ def ensure(model, defaults=None, update_fields=None, **lookup):
     if dirty:
         obj.save(update_fields=dirty)
     return obj, False
+
+
+def _lab_server_names() -> set[str]:
+    names = {SIM_SERVER_NAME}
+    if ztc is not None and hasattr(ztc, 'KNOWN_LAB_SERVER_NAMES'):
+        names.update(ztc.KNOWN_LAB_SERVER_NAMES)
+    else:
+        names.update({'ZeroTouch Configure Lab', 'Network Configure Lab'})
+    return names
+
+
+def _rule_kwargs():
+    return {'prefix': PREFIX, 'sim_server_name': SIM_SERVER_NAME}
+
+
+def template_rules_for_server(server):
+    if ztc is None:
+        raise SystemExit('configure_nbxsync_zerotouch.py is required for TemplateRule server scoping')
+    return ztc.template_rules_for_server(server)
+
+
+def ensure_template_rule(server, name: str, defaults: dict, update_fields=None):
+    return ztc.ensure_template_rule(
+        server,
+        name,
+        defaults,
+        update_fields=update_fields,
+        **_rule_kwargs(),
+    )
+
+
+def get_template_rule(server, name: str):
+    return ztc.get_template_rule(server, name, **_rule_kwargs())
+
+
+def simulation_rule_name(server, name: str) -> str:
+    return ztc.simulation_rule_name(server, name, **_rule_kwargs())
 
 
 def get_role(name: str) -> DeviceRole:
@@ -1081,13 +1120,11 @@ def resolve_role_for_macros(canonical_name: str) -> DeviceRole | None:
     return roles[0] if roles else None
 
 
-def step_role_macros() -> None:
+def step_role_macros(server) -> None:
     """ZabbixMacroAssignment on Switch* roles — what inheritance actually syncs."""
     logger.info('=' * 60)
     logger.info('Network: role IFALIAS / IFTYPE macros')
     logger.info('=' * 60)
-    # Macros need a ZabbixMacro parent (server-scoped). Find/create per name.
-    server = M.ZabbixServer.objects.filter(name=SIM_SERVER_NAME).first() or M.ZabbixServer.objects.first()
     if server is None:
         raise SystemExit('No ZabbixServer — run with --simulate or create a server first')
 
@@ -1135,27 +1172,121 @@ def step_role_macros() -> None:
                 logger.info('  %s %s = %s', role.name, macro_name, value)
 
 
-def report_hosts_needing_macro_sync() -> dict:
-    """Role IFALIAS / Access PORTID are host macros. ``--apply`` does not HostSync."""
-    role_ids: set[int] = set()
-    for canonical in ROLE_MACROS:
+def _zabbix_hosts_by_name(api, names: list[str]) -> dict[str, dict]:
+    """host technical name → host.get row with macros. Chunked for large estates."""
+    out: dict[str, dict] = {}
+    chunk = 100
+    for i in range(0, len(names), chunk):
+        part = names[i : i + chunk]
+        rows = api.host.get(
+            filter={'host': part},
+            output=['host', 'hostid'],
+            selectMacros=['macro', 'value'],
+        ) or []
+        for row in rows:
+            out[row['host']] = row
+    return out
+
+
+def _host_macros_match(host_row: dict, expected: dict[str, str]) -> bool:
+    current = {m.get('macro'): m.get('value') for m in host_row.get('macros') or []}
+    return all(current.get(macro) == value for macro, value in expected.items())
+
+
+def report_hosts_needing_macro_sync(server=None) -> dict:
+    """Log Switch* hosts whose Zabbix host macros differ from NetBox role assignments.
+
+    `--apply` does not HostSync. Without a live API this is a reminder, not a stale list.
+    """
+    role_macros_by_id: dict[int, dict[str, str]] = {}
+    for canonical, macros in ROLE_MACROS.items():
         for role in resolve_roles_for_macros(canonical):
-            role_ids.add(role.pk)
-    if not role_ids:
+            role_macros_by_id[role.pk] = macros
+    if not role_macros_by_id:
         logger.info('Network: no Switch* roles found — skip HostSync reminder')
-        return {'count': 0, 'sample': []}
-    qs = Device.objects.filter(status='active', role_id__in=role_ids)
-    count = qs.count()
-    sample = list(qs.order_by('name').values_list('name', flat=True)[:12])
+        return {'count': 0, 'sample': [], 'in_sync': 0, 'missing': 0}
+    qs = Device.objects.filter(status='active', role_id__in=role_macros_by_id).select_related('role')
+    devices = list(qs.order_by('name'))
+    if not devices:
+        logger.info('Network: no active Switch* devices — skip HostSync reminder')
+        return {'count': 0, 'sample': [], 'in_sync': 0, 'missing': 0}
+
+    drifted: list[str] = []
+    missing: list[str] = []
+    in_sync = 0
+    compared = False
+    if server is not None:
+        try:
+            with ZabbixConnection(server) as api:
+                by_host = _zabbix_hosts_by_name(api, [d.name for d in devices])
+            compared = True
+            for device in devices:
+                expected = role_macros_by_id.get(device.role_id) or {}
+                row = by_host.get(device.name)
+                if row is None:
+                    missing.append(device.name)
+                    continue
+                if _host_macros_match(row, expected):
+                    in_sync += 1
+                else:
+                    drifted.append(device.name)
+        except Exception as exc:
+            logger.info(
+                'Could not compare Switch* host macros via Zabbix API (%s). '
+                '%s active Switch* device(s) inherit role IFALIAS / Access PORTID; '
+                'this is not a stale-host list. --apply does not mass-sync. Sample: %s',
+                exc,
+                len(devices),
+                [d.name for d in devices[:12]],
+            )
+            return {
+                'count': 0,
+                'sample': [d.name for d in devices[:12]],
+                'in_sync': 0,
+                'missing': 0,
+                'reminder_only': True,
+            }
+
+    if not compared:
+        logger.info(
+            'Reminder: role IFALIAS / Access PORTID become host macros only after HostSync. '
+            '%s active Switch* device(s) inherit those assignments; this is not a stale-host list. '
+            '--apply does not mass-sync. Sample: %s',
+            len(devices),
+            [d.name for d in devices[:12]],
+        )
+        return {
+            'count': 0,
+            'sample': [d.name for d in devices[:12]],
+            'in_sync': 0,
+            'missing': 0,
+            'reminder_only': True,
+        }
+
+    needs_sync = drifted + missing
+    if not needs_sync:
+        logger.info(
+            'Network: %s active Switch* Zabbix host(s) already have role IFALIAS / PORTID macros; none need HostSync',
+            in_sync,
+        )
+        return {'count': 0, 'sample': [], 'in_sync': in_sync, 'missing': 0}
+
     logger.warning(
         'Role IFALIAS / Access PORTID live as host macros after HostSync. '
-        '--apply updated NetBox assignments only; existing Zabbix hosts keep old macros '
-        'until those hosts are synced. Does not mass-sync. '
-        'Active Switch Core/Dist/Access/Mgmt: %s. Sample: %s',
-        count,
-        sample,
+        '--apply updated NetBox assignments only. Does not mass-sync. '
+        '%s host(s) differ from role assignments, %s not yet in Zabbix, %s already in sync. Sample: %s',
+        len(drifted),
+        len(missing),
+        in_sync,
+        needs_sync[:12],
     )
-    return {'count': count, 'sample': sample}
+    return {
+        'count': len(needs_sync),
+        'sample': needs_sync[:12],
+        'in_sync': in_sync,
+        'missing': len(missing),
+        'drifted': len(drifted),
+    }
 
 
 def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
@@ -1179,10 +1310,10 @@ def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
     for rule_name, pattern, tpl_name in rule_specs:
         if tpl_name not in tpl:
             continue
-        ensure(
-            M.ZabbixTemplateRule,
-            name=rule_name,
-            defaults={
+        ensure_template_rule(
+            server,
+            rule_name,
+            {
                 'pattern': pattern,
                 'zabbixtemplate': tpl[tpl_name],
                 'enabled': True,
@@ -1193,27 +1324,18 @@ def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
                 'role_pattern': '',
                 'manufacturer': None,
             },
-            update_fields=[
-                'pattern',
-                'zabbixtemplate',
-                'enabled',
-                'priority',
-                'zabbixhostgroup',
-                'require_tags',
-                'role_pattern',
-                'manufacturer',
-            ],
         )
-        logger.info('  Rule %s → %s', rule_name, tpl[tpl_name].name)
+        logger.info('  Rule %s → %s', simulation_rule_name(server, rule_name), tpl[tpl_name].name)
 
     for rule_name, _pattern, tpl_name in rule_specs:
         if tpl_name not in tpl:
             continue
-        for rule in M.ZabbixTemplateRule.objects.filter(name=rule_name):
+        names = ztc.template_rule_names(server, rule_name, **_rule_kwargs())
+        for rule in template_rules_for_server(server).filter(name__in=names):
             if rule.zabbixtemplate_id and 'Network Generic' in (rule.zabbixtemplate.name or ''):
                 rule.zabbixtemplate = tpl[tpl_name]
                 rule.save(update_fields=['zabbixtemplate'])
-                logger.info('  PRUNED: %s rule was Network Generic → retargeted', rule_name)
+                logger.info('  PRUNED: %s rule was Network Generic → retargeted', rule.name)
 
 
 def step_speed_expect_assignment(server, tpl: dict[str, M.ZabbixTemplate], *, link: bool) -> None:
@@ -1284,9 +1406,6 @@ def step_snmp_cg_on_switch_roles(snmp_group) -> None:
 
 def cleanup_lab() -> None:
     Device.objects.filter(name__startswith=PREFIX).delete()
-    # Never delete production-named Extreme TemplateRules. Lab rows are prefixed.
-    M.ZabbixTemplateRule.objects.filter(name__startswith=PREFIX).delete()
-    M.ZabbixTemplateRule.objects.filter(zabbixtemplate__name__startswith=PREFIX).delete()
     M.ZabbixMacroAssignment.objects.filter(zabbixmacro__description__startswith='nwn:').delete()
     M.ZabbixMacro.objects.filter(description__startswith='nwn:').delete()
     M.ZabbixHostgroupAssignment.objects.filter(zabbixhostgroup__name__startswith=PREFIX).delete()
@@ -1297,12 +1416,25 @@ def cleanup_lab() -> None:
         assigned_object_id__in=DeviceRole.objects.filter(slug__startswith=PREFIX).values_list('pk', flat=True),
     ).delete()
     # Do not delete a shared lab ZabbixServer (may be ZeroTouch Configure Lab).
-    lab_servers = M.ZabbixServer.objects.filter(name=SIM_SERVER_NAME)
+    # Never treat an arbitrary URL match as lab — that can be production.
+    lab_ok_names = _lab_server_names()
+    lab_servers = M.ZabbixServer.objects.filter(name__in=lab_ok_names)
     if LAB_JSON.exists():
         lab_url = json.loads(LAB_JSON.read_text()).get('url')
         if lab_url:
-            lab_servers = M.ZabbixServer.objects.filter(url=lab_url) | lab_servers
+            foreign = M.ZabbixServer.objects.filter(url=lab_url).exclude(name__in=lab_ok_names)
+            if foreign.exists():
+                names = ', '.join(foreign.values_list('name', flat=True))
+                raise SystemExit(
+                    f'Refusing --simulate cleanup: ZabbixServer(s) {names} share lab URL {lab_url!r} '
+                    f'but are not {sorted(lab_ok_names)}. Rename or remove them first.'
+                )
     for server in lab_servers.distinct():
+        template_rules_for_server(server).filter(name__startswith=PREFIX).delete()
+        M.ZabbixTemplateRule.objects.filter(
+            zabbixtemplate__zabbixserver=server,
+            zabbixtemplate__name__startswith=PREFIX,
+        ).delete()
         M.ZabbixHostBinding.objects.filter(zabbixserver=server, hostname__startswith=PREFIX).delete()
         M.ZabbixHostgroup.objects.filter(zabbixserver=server, name__startswith=PREFIX).delete()
         M.ZabbixTemplate.objects.filter(zabbixserver=server, name__startswith=PREFIX).delete()
@@ -1352,10 +1484,18 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
 
     try:
         # One ZabbixServer per URL (unique constraint). Reuse zerotouch lab server if present.
+        lab_ok_names = _lab_server_names()
         server = M.ZabbixServer.objects.filter(name=SIM_SERVER_NAME).first()
         if server is None:
-            server = M.ZabbixServer.objects.filter(url=lab['url']).first()
+            ztc_lab = 'ZeroTouch Configure Lab'
+            server = M.ZabbixServer.objects.filter(name=ztc_lab, url=lab['url']).first()
         if server is None:
+            conflict = M.ZabbixServer.objects.filter(url=lab['url']).exclude(name__in=lab_ok_names).first()
+            if conflict is not None:
+                raise SystemExit(
+                    f'Lab URL {lab["url"]!r} already used by ZabbixServer {conflict.name!r} — '
+                    'refusing to reuse a non-lab server for --simulate'
+                )
             server = M.ZabbixServer.objects.create(
                 name=SIM_SERVER_NAME,
                 url=lab['url'],
@@ -1546,8 +1686,8 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             record(f'import_{name}', True, str(tid), group='import')
 
         step_server_macros(server)
-        step_role_macros()
-        report_hosts_needing_macro_sync()
+        step_role_macros(server)
+        report_hosts_needing_macro_sync(server)
         step_template_rules(server, tpl_models)
         step_speed_expect_assignment(server, tpl_models, link=link_speed_expect)
 
@@ -1677,16 +1817,26 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             str(m_acc),
             group='resolve',
         )
+        def rule_templates(canonical: str) -> list[str]:
+            names = ztc.template_rule_names(server, canonical, **_rule_kwargs())
+            return list(
+                template_rules_for_server(server)
+                .filter(name__in=names)
+                .values_list('zabbixtemplate__name', flat=True)
+            )
+
+        voss_tpls = rule_templates('Extreme VOSS')
         record(
             'voss_rule_not_netgeneric',
-            M.ZabbixTemplateRule.objects.filter(name='Extreme VOSS').exclude(zabbixtemplate__name__icontains='Network Generic').exists(),
-            str(list(M.ZabbixTemplateRule.objects.filter(name='Extreme VOSS').values_list('zabbixtemplate__name', flat=True))),
+            any(n and 'Network Generic' not in n for n in voss_tpls),
+            str(voss_tpls),
             group='resolve',
         )
+        iq_tpls = rule_templates('Extreme IQ Engine')
         record(
             'iq_rule_not_netgeneric',
-            M.ZabbixTemplateRule.objects.filter(name='Extreme IQ Engine').exclude(zabbixtemplate__name__icontains='Network Generic').exists(),
-            str(list(M.ZabbixTemplateRule.objects.filter(name='Extreme IQ Engine').values_list('zabbixtemplate__name', flat=True))),
+            any(n and 'Network Generic' not in n for n in iq_tpls),
+            str(iq_tpls),
             group='resolve',
         )
         record(
@@ -1695,10 +1845,11 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             str(tpl_names(objects['ap_access'])),
             group='resolve',
         )
+        exos_tpls = rule_templates('Extreme EXOS')
         record(
             'exos_rule_exists',
-            M.ZabbixTemplateRule.objects.filter(name='Extreme EXOS').exclude(zabbixtemplate__name__icontains='Network Generic').exists(),
-            str(list(M.ZabbixTemplateRule.objects.filter(name='Extreme EXOS').values_list('zabbixtemplate__name', flat=True))),
+            any(n and 'Network Generic' not in n for n in exos_tpls),
+            str(exos_tpls),
             group='resolve',
         )
 
@@ -1826,6 +1977,70 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
         globals()['get_role'] = orig_get_role
 
 
+PROD_SERVER_NAME = 'Zabbix Production'
+
+
+def _assert_server_url_ready(server, expected_url: str | None = None) -> None:
+    url = (getattr(server, 'url', None) or '').strip()
+    if not url:
+        raise SystemExit(
+            f'ZabbixServer {server.name!r} has an empty URL — set NBX_ZABBIX_URL before --apply'
+        )
+    if expected_url and url.rstrip('/') != expected_url.rstrip('/'):
+        raise SystemExit(
+            f'ZabbixServer {server.name!r} url={url!r} does not match '
+            f'NBX_ZABBIX_URL={expected_url!r} — refusing API mutations'
+        )
+
+
+def resolve_apply_zabbix_server(*, token: str):
+    """Select the --apply target. Never fall back to an arbitrary ZabbixServer.objects.first()."""
+    env_url = (os.environ.get('NBX_ZABBIX_URL') or '').strip() or None
+    named = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
+    if named is None:
+        if not env_url:
+            raise SystemExit(
+                f'No ZabbixServer named {PROD_SERVER_NAME!r}. Set NBX_ZABBIX_URL to create '
+                'or select the target server by URL. Refusing arbitrary ZabbixServer.objects.first().'
+            )
+        matches = list(M.ZabbixServer.objects.filter(url=env_url))
+        if len(matches) > 1:
+            names = ', '.join(sorted(row.name for row in matches))
+            raise SystemExit(
+                f'Multiple ZabbixServer rows use NBX_ZABBIX_URL={env_url!r}: {names}. '
+                f'Rename so exactly one is {PROD_SERVER_NAME!r} or unique by URL.'
+            )
+        if len(matches) == 1:
+            server = matches[0]
+            server.token = token
+            server.save(update_fields=['token'])
+            logger.warning(
+                'No ZabbixServer named %r; using existing row %r with matching NBX_ZABBIX_URL',
+                PROD_SERVER_NAME,
+                server.name,
+            )
+        else:
+            server = M.ZabbixServer.objects.create(
+                name=PROD_SERVER_NAME,
+                url=env_url,
+                token=token,
+                validate_certs=not env_url.startswith('http://'),
+                sync_enabled=True,
+            )
+            logger.info('  CREATED ZabbixServer %s url=%s', server.name, server.url)
+        _assert_server_url_ready(server, expected_url=env_url)
+        return server
+
+    named.token = token
+    update_fields = ['token']
+    if env_url:
+        named.url = env_url
+        update_fields.append('url')
+    named.save(update_fields=update_fields)
+    _assert_server_url_ready(named, expected_url=env_url)
+    return named
+
+
 def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False) -> int:
     """Apply network deltas on the production / shared ZabbixServer row."""
     apply_macro_mode(cutover_silence=cutover_silence)
@@ -1835,23 +2050,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     token = os.environ.get('NBX_ZABBIX_TOKEN')
     if not token:
         raise SystemExit('Set NBX_ZABBIX_TOKEN (or use --simulate)')
-    url = os.environ.get('NBX_ZABBIX_URL') or (ztc.ZABBIX_URL if ztc is not None else None)
-    server = M.ZabbixServer.objects.filter(name='Zabbix Production').first() or M.ZabbixServer.objects.first()
-    if server is None:
-        if not url:
-            raise SystemExit('Set NBX_ZABBIX_URL — no ZabbixServer row exists yet')
-        server = M.ZabbixServer.objects.create(
-            name='Zabbix Production',
-            url=url,
-            token=token,
-            validate_certs=not url.startswith('http://'),
-            sync_enabled=True,
-        )
-    else:
-        server.token = token
-        if os.environ.get('NBX_ZABBIX_URL'):
-            server.url = os.environ['NBX_ZABBIX_URL']
-        server.save()
+    server = resolve_apply_zabbix_server(token=token)
 
     with ZabbixConnection(server) as api:
         imported = import_extreme_templates(api)
@@ -1865,8 +2064,8 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         step_health_patches(api)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
     step_server_macros(server)
-    step_role_macros()
-    report_hosts_needing_macro_sync()
+    step_role_macros(server)
+    report_hosts_needing_macro_sync(server)
     step_template_rules(server, tpl_models)
     step_speed_expect_assignment(server, tpl_models, link=link_speed_expect)
     logger.info('Network configuration applied (macros=%s)', 'cutover-silence' if cutover_silence else 'destination')
