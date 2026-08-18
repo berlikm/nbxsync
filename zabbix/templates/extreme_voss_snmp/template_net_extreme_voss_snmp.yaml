@@ -1215,8 +1215,7 @@ zabbix_export:
         trigger_prototypes:
         - uuid: 7b543f006f5046de8a4604ac30104969
           expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))
-            and {$LINKDOWN.HIGH:"{#IFALIAS}"}=0'
+            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))'
           recovery_mode: RECOVERY_EXPRESSION
           recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
           name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
@@ -1232,26 +1231,10 @@ zabbix_export:
             3. `{TEMPLATE_NAME:METRIC.diff()}=1` - the trigger fires only if the operational status was up to (1) sometime
             before (so, does not fire for "eternal off" interfaces.)
 
-            4. `{$LINKDOWN.HIGH:"{#IFALIAS}"}=0` — USW (storage/server) uses the High sibling. UP/US/MON/UW stay here.
-
 
             WARNING: if closed manually - it will not fire again on the next poll, because of .diff.
 
             '
-          manual_close: 'YES'
-          tags:
-          - tag: scope
-            value: availability
-        - uuid: 09c3fa36cf6f485bb5c63a7d2c44e492
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))
-            and {$LINKDOWN.HIGH:"{#IFALIAS}"}=1'
-          recovery_mode: RECOVERY_EXPRESSION
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
-          name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down (USW)'
-          opdata: 'Current state: {ITEM.LASTVALUE1}'
-          priority: HIGH
-          description: 'USW is the storage/server uplink. Page. UP (AP) stays Average on the sibling trigger.'
           manual_close: 'YES'
           tags:
           - tag: scope
@@ -1364,13 +1347,7 @@ zabbix_export:
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
           expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))
-            and {$LINKDOWN.HIGH:"{#IFALIAS}"}=0'
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
-        - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down (USW)'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))
-            and {$LINKDOWN.HIGH:"{#IFALIAS}"}=1'
+            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))'
           recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
         tags:
         - tag: scope
@@ -1402,13 +1379,7 @@ zabbix_export:
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
           expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))
-            and {$LINKDOWN.HIGH:"{#IFALIAS}"}=0'
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
-        - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down (USW)'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))
-            and {$LINKDOWN.HIGH:"{#IFALIAS}"}=1'
+            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))'
           recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
         tags:
         - tag: scope
@@ -1434,13 +1405,7 @@ zabbix_export:
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
           expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))
-            and {$LINKDOWN.HIGH:"{#IFALIAS}"}=0'
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
-        - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down (USW)'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))
-            and {$LINKDOWN.HIGH:"{#IFALIAS}"}=1'
+            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))'
           recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
         tags:
         - tag: scope
@@ -2310,11 +2275,6 @@ zabbix_export:
       value: '101'
       description: Silence stock bandwidth trigger (101=off). Capacity uses Port Speed Expect + class context.
     - macro: '{$IFCONTROL}'
-      value: '1'
-    - macro: '{$LINKDOWN.HIGH}'
-      value: '0'
-      description: '1 = page this ifAlias class on link-down. Default 0. USW (storage/server) is High; UP stays Average.'
-    - macro: '{$LINKDOWN.HIGH:regex:"^USW(-|$)"}'
       value: '1'
     - macro: '{$MEMORY.UTIL.MAX}'
       value: '90'

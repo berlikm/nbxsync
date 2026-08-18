@@ -10,8 +10,8 @@ Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md]
 
 | Rule | Here |
 |---|---|
-| Page **symptoms** | ICMP down (**High**). Temp **critical**. `USW` link down (**High** — storage/server). |
-| **Ticket** (Average) | PSU/fan, optic DOM **alarm**, memory, unsupported-item count, `UP`/`US`/`MON`/`UW` link down |
+| Page **symptoms** | ICMP down (**High**). Temp **critical**. |
+| **Ticket** (Average) | PSU/fan, optic DOM **alarm**, memory, unsupported-item count, **any discovered** link down |
 | **Graph** / next day | SNMP dead (**Warning** — same on EXOS/VOSS/IQ), CPU, traffic, util, ICMP loss/RTT (items on, triggers **off**), flaps, errors, duplex |
 | One incident | host triggers depend on SNMP → ICMP. Cable/PoE toward an AP is switch `UP-` Average plus AP ICMP High. |
 | Never silent | unsupported-item **Average** trigger; zero discovered interfaces = Health honeycomb/census; proxy last-seen |
@@ -52,8 +52,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 | Ports in scope | Alert | Live (cutover) |
 |---|---|---|
-| `USW` link down | yes | **High** — storage/server uplink (`{$LINKDOWN.HIGH:regex:"^USW(-|$)"}=1`) |
-| `UP` / `US` / `MON` / `UW` link down | yes | **Average** — AP and other in-scope ports. Access still does not collect desk ports. |
+| Discovered link down (`USW` / `UP` / `US` / `MON` / `UW` / unlabelled Dist) | yes | **Average** — one trigger. Scope is LLD, not a second severity map. |
 | Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
 | Wrong speed vs **intended** label | **no** | Speed Expect YAML exists — **do not link** |
 | Half duplex | yes | Warning |
@@ -64,7 +63,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 Do **not** alert on: a laptop unplugging (Access **does not collect** desk ports), fifty **High**s for one site down, “bandwidth high” on a backup window.
 
-A Core `USW` down **pages** (High). An Access `UP` (AP) down is a **ticket** (Average). Desk ports still produce no items.
+Discovery already decides what is important. Do not also split High vs Average by label: Access is only `USW`+`UP`; Core/Dist still collect every admin-up port except `X` (so High-everywhere would page Dist endpoints). Warning is the wrong channel for a path that is already down. Page the box (ICMP) and overtemp; ticket the port.
 
 ---
 
@@ -172,7 +171,7 @@ A site WAN blip is one ICMP High per switch. That is accepted.
 | Extreme EXOS Observability | Platform EXOS Template Rule; links the stock template and owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; owns the native **Network interfaces** graph prototype/dashboard |
 
-We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, skips EXOS PSU `notPresent` stack-MIB padding, sets `USW` link-down **High**, disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory) and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, skips EXOS PSU `notPresent` stack-MIB padding, keeps discovered link-down **Average** (drops leftover USW High), disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory) and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
 
 Stock EXOS trigger severities stay upstream except those patches. SNMP-dead is **Warning** on EXOS, VOSS, and IQ.
 

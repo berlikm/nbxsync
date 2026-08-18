@@ -451,33 +451,19 @@ def validate_voss(doc: dict) -> None:
         bool(snmp) and snmp.get('priority') == 'WARNING',
         str((snmp or {}).get('priority')),
     )
-    record(
-        'VOSS {$LINKDOWN.HIGH} default off',
-        macros.get('{$LINKDOWN.HIGH}') == '0',
-        str(macros.get('{$LINKDOWN.HIGH}')),
-    )
-    record(
-        'VOSS {$LINKDOWN.HIGH} USW on',
-        macros.get('{$LINKDOWN.HIGH:regex:"^USW(-|$)"}') == '1',
-        str(macros.get('{$LINKDOWN.HIGH:regex:"^USW(-|$)"}')),
-    )
     avg_ld = next(
         (t for t in trigs if t.get('name') == 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'),
         None,
     )
-    usw_ld = next(
-        (t for t in trigs if t.get('name') == 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down (USW)'),
-        None,
-    )
+    usw_ld = next((t for t in trigs if 'Link down (USW)' in (t.get('name') or '')), None)
     record(
-        'VOSS USW link-down High',
+        'VOSS link-down one Average',
         bool(avg_ld)
-        and '{$LINKDOWN.HIGH:"{#IFALIAS}"}=0' in (avg_ld.get('expression') or '')
         and avg_ld.get('priority') == 'AVERAGE'
-        and bool(usw_ld)
-        and '{$LINKDOWN.HIGH:"{#IFALIAS}"}=1' in (usw_ld.get('expression') or '')
-        and usw_ld.get('priority') == 'HIGH',
-        f'avg={bool(avg_ld)} usw={bool(usw_ld)} prio={(usw_ld or {}).get("priority")}',
+        and 'LINKDOWN.HIGH' not in (avg_ld.get('expression') or '')
+        and usw_ld is None
+        and '{$LINKDOWN.HIGH}' not in macros,
+        f'avg={bool(avg_ld)} usw={bool(usw_ld)}',
     )
     card = next((t for t in trigs if 'card' in (t.get('name') or '').lower() and 'down' in (t.get('name') or '').lower()), None)
     isis = next((t for t in trigs if 'isis' in (t.get('name') or '').lower() and 'circuit' in (t.get('name') or '').lower()), None)

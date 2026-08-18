@@ -30,7 +30,7 @@ If the port runs at the class default, **omit SPEED**. Refuse labels over 20 —
 
 | CLASS | Meaning | Default speed | Speed-expect | Alerts (live cutover) |
 |---|---|---|---|---|
-| `USW` | Switch ↔ switch | 10G | later (do not link yet) | **High** link (storage/server). Flap/errors Warning |
+| `USW` | Switch ↔ switch | 10G | later (do not link yet) | **Average** link. Flap/errors Warning |
 | `US` | Endpoint, expect 10G | 10G | later | **Average** link — **Core/Dist/Mgmt only** (not collected on Access) |
 | `UP` | Toward AP | 1G | later | **Average** link on the switch (Access collects it). AP ICMP stays **High** |
 | `MON` | Endpoint, expect 1G | 1G | later | Average link — **Core/Dist/Mgmt only** |

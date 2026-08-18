@@ -13,8 +13,8 @@ A **page** (Disaster/High) must be: user or forwarding impact now, urgent, actio
 
 | Channel | Zabbix sev | Use |
 |---|---|---|
-| SMS/call 24/7 | Disaster, High | Device ICMP down; temp **critical**; `USW` link down |
-| Ticket, business hours | Average | PSU/fan, DOM alarm, memory, `UP`/other in-scope link down, “we are blind” (unsupported items) |
+| SMS/call 24/7 | Disaster, High | Device ICMP down; temp **critical** |
+| Ticket, business hours | Average | PSU/fan, DOM alarm, memory, discovered link down, “we are blind” (unsupported items) |
 | Next day / dashboard | Warning | SNMP dead, CPU, errors, flaps, duplex, speed-expect (when linked) |
 | Log | Info | Firmware / serial |
 
@@ -33,7 +33,7 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 
 | Issue | Was | Now (cutover) |
 |---|---|---|
-| Docs said `USW`/`UP` link-down **High** | Stock/VOSS one **Average** for every discovered port | `USW` is **High** (storage/server). `UP` stays Average |
+| Docs said `USW`/`UP` link-down **High** | Stock/VOSS one **Average** for every discovered port | Average is the live contract. Discovery is the filter. |
 | Observability listed flaps/errors as “page” | Warning (next day) | Graph/ticket, not 03:00 |
 | Speed Expect `{$IF.UTIL.MAX:"USW"}=80` | Would page 80% of intended 10G the moment it was linked | **101** (off) |
 | VOSS ISIS circuit / card **High** ungated | 24/7 on unused SPBM / empty slots | `{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0` (same pattern as V-IST) |
