@@ -23,11 +23,15 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
   * Global **destination** macros on the Zabbix server object (production end-state)
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
-  * Optional Speed Expect template link (stage 4); Routing stays unlinked until OSPF canary
+  * Optional Speed Expect **role** assignment (``--link-speed-expect``). Prefer nesting
+    on VOSS / EXOS Observability so unlabeled ports stay silent and labels start
+    working on the next LLD without HostSync. Do not also role-assign if nested
+    (Zabbix rejects a template linked both directly and through a parent).
 
 Stage matrix (what each flag enables):
-  ``--apply``                     = stages 0–3: template imports + EXOS/VOSS/IQ rules + IFALIAS + destination globals + TEMP/ICMP/Health patches
-  ``--apply --link-speed-expect`` = stage 4: + Speed Expect template assignments on Switch roles
+  ``--apply``                     = stages 0–3: template imports + EXOS/VOSS/IQ rules + IFALIAS + destination globals + TEMP/ICMP/Health patches.
+                                    Speed Expect is nested on VOSS and EXOS Observability (empty ifAlias = not discovered).
+  ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
 
@@ -35,13 +39,14 @@ Re-apply safety (estate already has switches/APs in Zabbix):
   * Does **not** delete hosts, interfaces, history, or hostids
   * Does **not** mass-sync every device (template updates inherit in Zabbix)
   * YAML ``deleteMissing: false`` — retired items linger; LLD is not wiped
-  * ``--apply`` without ``--link-speed-expect`` does **not** unlink Speed Expect if it was linked earlier
+  * ``--apply`` without ``--link-speed-expect`` does **not** unlink a leftover role assignment
+    (Speed Expect is nested on the platform templates; skip the flag).
   * Empty SNMP secrets are zerotouch's job and must not blank existing CG passphrases
 
 Import policy:
   YAML imports use deleteMissing=False (safe — retired items linger but templates don't lose content).
   Re-run ``--apply`` after Extreme template upgrades to re-assert TEMP/EtherLike/ICMP/Health patches.
-  Speed Expect: re-running ``--apply`` without ``--link-speed-expect`` does NOT unlink existing assignments (future: add ``--unlink-speed-expect``).
+  Speed Expect nests on VOSS / Observability. Do not pass ``--link-speed-expect`` while nested.
 
 Does **not** re-implement SiteGroup Agent / hostgroup-first / Server OOB — call
 ``configure_nbxsync_zerotouch.py`` for that. This script assumes SNMP CG on Switch*
@@ -136,9 +141,10 @@ SIM_SERVER_NAME = 'Network Configure Lab'
 RESULTS: list[dict] = []
 
 TEMPLATE_FILES = {
+    # Speed Expect first — VOSS and EXOS Observability nest it.
+    'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme VOSS by SNMP': ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
     'Extreme EXOS Observability': ROOT / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
-    'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
     'Extreme IQ Engine by SNMP': ROOT / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
 }
@@ -1130,12 +1136,16 @@ def step_template_rules(server, tpl: dict[str, M.ZabbixTemplate]) -> None:
 
 
 def step_speed_expect_assignment(server, tpl: dict[str, M.ZabbixTemplate], *, link: bool) -> None:
-    """Stage 4 — optional. Assign Speed Expect on Switch roles.
-
-    ``link=False`` is a no-op: existing assignments stay. Never unlink here.
+    """Optional NetBox role assignment. Default off — Speed Expect is nested on
+    VOSS and EXOS Observability, so empty display-strings stay undiscovered and
+    a later HostSync must not also link the same template directly.
     """
     if not link or 'Extreme Port Speed Expect by SNMP' not in tpl:
-        logger.info('  Speed Expect: not linking (pass --link-speed-expect for stage 4). ' 'Existing assignments are left in place.')
+        logger.info(
+            '  Speed Expect: nested on VOSS / EXOS Observability (unlabeled ifAlias '
+            'is not discovered). Not assigning on Switch roles (pass --link-speed-expect '
+            'only if a stock-only host has no companion/VOSS parent).'
+        )
         return
     t = tpl['Extreme Port Speed Expect by SNMP']
     for role_name in ('Switch Core', 'Switch Dist', 'Switch Mgmt', 'Switch Access'):
@@ -1771,7 +1781,7 @@ def main() -> int:
     mode.add_argument('--simulate', action='store_true', help='Lab: NetBox estate + SyncHostJob + Zabbix asserts')
     mode.add_argument('--zabbix-only', action='store_true', help='Zabbix API smoke only (no NetBox graph)')
     mode.add_argument('--apply', action='store_true', help='Apply network deltas (needs NBX_ZABBIX_TOKEN)')
-    parser.add_argument('--link-speed-expect', action='store_true', help='Stage 4: assign Port Speed Expect on Switch roles')
+    parser.add_argument('--link-speed-expect', action='store_true', help='Also assign Port Speed Expect on Switch roles (avoid if already nested on VOSS/Observability)')
     parser.add_argument(
         '--cutover-silence',
         action='store_true',

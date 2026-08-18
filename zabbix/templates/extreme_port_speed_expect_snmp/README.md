@@ -6,12 +6,16 @@ Design: [01-extreme-switching.md](../../01-extreme-switching.md) (Intended speed
 
 ## Link with
 
-| Platform | Also link |
-|---|---|
-| EXOS | `Extreme EXOS by SNMP` (release/7.0) |
-| VOSS | `Extreme VOSS by SNMP` |
+Nested by `--apply` (not a Switch-role assignment):
 
-Assigned on **both platforms** (not per role). Role scoping for the *stock* interface LLD stays on `{$NET.IF.*}` macros from nbxsync. This template uses its **own** filter macros so the two LLDs can differ.
+| Platform template | Nests |
+|---|---|
+| Extreme EXOS Observability | stock **Extreme EXOS by SNMP** + this template |
+| Extreme VOSS by SNMP | this template |
+
+Do **not** also assign this template on Switch roles while nested — HostSync then tries to link it twice. IQ does not nest it.
+
+Role scoping for the *stock* interface LLD stays on `{$NET.IF.*}`. This template uses `{$PORTID.LLD.*}` so the two LLDs can differ. Empty / unclassed `ifAlias` fails the filter → no items.
 
 ## Macros (template defaults)
 
@@ -27,7 +31,7 @@ Assigned on **both platforms** (not per role). Role scoping for the *stock* inte
 
 | Trigger | Status | Why |
 |---|---|---|
-| Speed ≠ expected Mbps, oper-up 5m | **on** (Warning) | the product; still do not *link* the template until a label census is quiet |
+| Speed ≠ expected Mbps, oper-up 5m | **on** (Warning) | the product; silent until a class label exists |
 | Sustained util vs intended | on, but `{$IF.UTIL.MAX}=101` | unreachable until USW is set to 80 |
 | Link down (speed-expect) | **DISABLED** | platform already Average-tickets discovered link-down |
 | Outbound discards | **DISABLED** | 1 pps is not gated by util 101; need a baseline |
@@ -51,4 +55,4 @@ Design prefers **dependent items** on platform-template masters (`net.if.speed[�
 
 ## Rollout
 
-Do **not** link this template until a census of `ifAlias` vs `ifHighSpeed` is quiet. Linking Warning-tickets every Pure still labelled as 10G, every 2.5G AP still labelled `UP-…`, every 1G Dist↔Access still labelled `USW-…`. Access must override `{$PORTID.LLD.IFALIAS.MATCHES}` to `^(USW|UP)(-|$)`.
+`--apply` nests this on every EXOS/VOSS switch. Unlabeled ports stay silent. A proper `display-string` / VOSS `name` starts items within 15m. Wrong token (Pure labelled `US-…` at 25G) is a Warning — fix the label. Access must override `{$PORTID.LLD.IFALIAS.MATCHES}` to `^(USW|UP)(-|$)`.

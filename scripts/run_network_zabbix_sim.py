@@ -37,9 +37,10 @@ REPORT_JSON = Path('/opt/cursor/artifacts/network_zabbix_sim_results.json')
 REPORT_MD = Path('/opt/cursor/artifacts/NETWORK_ZABBIX_SIM_REPORT.md')
 
 TEMPLATES = {
+    # Speed Expect first — VOSS and EXOS Observability nest it.
+    'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme VOSS by SNMP': ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
     'Extreme EXOS Observability': ROOT / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
-    'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
     'Extreme IQ Engine by SNMP': ROOT / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
 }
@@ -408,8 +409,8 @@ def main() -> int:
     g_site = ensure_hostgroup(api, 'Sites/nw-lab/nw-site')
 
     core_tmpls = ['Extreme VOSS by SNMP']
-    if args.with_speed_expect and 'Extreme Port Speed Expect by SNMP' in tmpl_ids:
-        core_tmpls.append('Extreme Port Speed Expect by SNMP')
+    # Speed Expect is nested on VOSS — do not also link it directly (Zabbix rejects a
+    # template linked both as parent and on the host). `--with-speed-expect` is a no-op.
     # Routing template imported but NOT linked — post-cutover / triggers off
 
     try:

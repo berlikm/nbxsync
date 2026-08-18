@@ -32,6 +32,8 @@ zabbix_export:
       '
     groups:
     - name: Templates/Network devices
+    templates:
+    - name: Extreme Port Speed Expect by SNMP
     items:
     - uuid: 8aa443651dc04d919c41fba12ac0fbdc
       name: ICMP ping

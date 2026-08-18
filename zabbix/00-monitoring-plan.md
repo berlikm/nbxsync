@@ -29,7 +29,7 @@ The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everythi
 | Capability | Why it can wait |
 |---|---|
 | **OSPF adjacency** | LogicMonitor almost certainly is not watching it — deferring is not a regression |
-| Speed expectation | new capability, not parity. Needs labels first. YAML triggers are **on**; `{$IF.UTIL.MAX:"USW"}=101` — do not link until then |
+| Speed expectation | nested on VOSS / Observability now. Empty labels silent. Needs class `display-string` before any Warning. Util `101` |
 | Capacity: discards + utilisation | new capability. Needs 4+ weeks of history to threshold honestly |
 | CRC / `dot3StatsFCSErrors` | new capability, and unconfirmed |
 | Full port-label rollout | parity only needs *link down* on Core/Dist/Mgmt; Access is `USW`+`UP` only |
@@ -60,7 +60,7 @@ port-identity (foundation)
     ▼
 06  Network VMs                               ← prepared
 
-post-cutover:  OSPF · VOSS fabric · speed-expect triggers · USW discards/util · label compliance · site synthetic
+post-cutover:  OSPF · VOSS fabric · USW discards/util · label compliance · site synthetic
 ```
 
 Rationale: device health before ports, ports before overlay, overlay before circuits, circuits before SLA composition.
@@ -71,7 +71,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 |---|---|---|---|---|---|
 | 01a | EXOS | stock (7.0 branch) | yes | no | no |
 | 01b | VOSS | **built** — `templates/extreme_voss_snmp/` | yes | lab only (virtual) | no |
-| 01–ports | Port Speed Expect | **built** — `templates/extreme_port_speed_expect_snmp/` | yes | no | no |
+| 01–ports | Port Speed Expect | **built** — nested on VOSS / EXOS Observability | yes | empty labels silent | armed on `--apply` |
 | 01c | OSPF routing (core/dist, both platforms) | **built** — `templates/extreme_routing_snmp/` | yes | no | no |
 | 02 | HiveOS / IQ Engine AP | **built** — `templates/extreme_iq_engine_snmp/` | yes | ICMP/SNMP path in prod; RF canary open | partial |
 | 03 | FortiGate | stock **FortiGate by HTTP** (7.0) + ICMP Ping | yes — [03](03-fortinet.md) | no | no (live nbxSync still **SNMP**) |

@@ -8,10 +8,12 @@ zabbix_export:
     template: Extreme EXOS Observability
     name: Extreme EXOS Observability
     description: Health dashboard companion for the stock Extreme EXOS by SNMP template.
+      Also nests Port Speed Expect (empty ifAlias is not discovered).
     groups:
     - name: Templates/Network devices
     templates:
     - name: Extreme EXOS by SNMP
+    - name: Extreme Port Speed Expect by SNMP
     items:
     - uuid: f4033ae72ce44151b548b1c442f3c68a
       name: CPU

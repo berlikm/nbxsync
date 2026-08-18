@@ -150,6 +150,6 @@ Radio + eth LLD: **1h**, keep-lost **0**. Inventory (name/serial/fw/hw) **1h**. 
 
 ## Not this apply
 
-`--apply` is the live AP contract (Health Overview / RF / Network interfaces). Do not add `--link-speed-expect` (switches only, and not until labels are clean).
+`--apply` is the live AP contract (Health Overview / RF / Network interfaces). Do not add `--link-speed-expect` (Speed Expect nests on switch templates; APs are not that LLD).
 
 FortiGate (API) / VMs: same bar, different doc ([03](03-fortinet.md)). Do not merge with Cato.

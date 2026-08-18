@@ -22,10 +22,10 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
 TEMPLATES = {
+    'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme VOSS by SNMP': ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
     'Extreme IQ Engine by SNMP': ROOT / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
     'Extreme EXOS Observability': ROOT / 'zabbix/templates/extreme_exos_observability_snmp/template_extreme_exos_observability_snmp.yaml',
-    'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
 }
 
@@ -428,6 +428,8 @@ def validate_interface_dashboard(
 def validate_voss(doc: dict) -> None:
     tpl = _tpl(doc)
     record('VOSS name', tpl.get('name') == 'Extreme VOSS by SNMP', str(tpl.get('name')))
+    linked = {row.get('name') for row in (tpl.get('templates') or [])}
+    record('VOSS nests Speed Expect', 'Extreme Port Speed Expect by SNMP' in linked, str(sorted(linked)))
     macros = _macro_map(tpl)
     for k, v in {
         '{$ISIS.CONTROL}': '0',
@@ -540,6 +542,7 @@ def validate_exos_observability(doc: dict) -> None:
     record('EXOS companion name', tpl.get('name') == 'Extreme EXOS Observability', str(tpl.get('name')))
     linked = {row.get('name') for row in (tpl.get('templates') or [])}
     record('EXOS companion links stock', 'Extreme EXOS by SNMP' in linked, str(sorted(linked)))
+    record('EXOS companion nests Speed Expect', 'Extreme Port Speed Expect by SNMP' in linked, str(sorted(linked)))
     keys = _walk_item_keys(tpl)
     expected = {
         'exos.observability.cpu.util',

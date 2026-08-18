@@ -16,7 +16,7 @@ Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md]
 | One incident | host triggers depend on SNMP → ICMP. Cable/PoE toward an AP is switch `UP-` Average plus AP ICMP High. |
 | Never silent | unsupported-item **Average** trigger; zero discovered interfaces = Health honeycomb/census; proxy last-seen |
 | Control plane | on-box `ifAlias` + role macros. Access collects **only** `USW`+`UP`; a mistyped uplink → no items |
-| Collect first | Speed Expect / Routing **imported, not linked**. Util off (`{$IF.UTIL.MAX}=101` and Speed Expect `{$IF.UTIL.MAX:"USW"}=101`). ISIS/card High **gated off** |
+| Collect first | Speed Expect **nested** on VOSS / EXOS Observability (empty `ifAlias` = not discovered). Routing **imported, not linked**. Util off (`101`). ISIS/card High **gated off** |
 | Host dashboards | **Health** for the box; **Network interfaces** for the status map, traffic grid, and (switches) one-port **Port** page. |
 | Severity | **Disaster** = site only. Warning = next day, not a dump bucket |
 
@@ -54,7 +54,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 |---|---|---|
 | Discovered link down (`USW` / `UP` / `US` / `MON` / `UW` / unlabelled Dist) | yes | **Average** — one trigger. Scope is LLD, not a second severity map. |
 | Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
-| Wrong speed vs **intended** label | **no** | Speed Expect YAML exists — **do not link**. When linked: **Warning**, not a page |
+| Wrong speed vs **intended** label | **armed** | Nested; **no items** until `USW`/`US`/`UP`/`MON`. Then **Warning**, not a page |
 | Half duplex | yes | Warning |
 | Interface errors | yes | Warning |
 | Outbound discards (`USW`) | **no** | Speed Expect discards trigger is **DISABLED** until a pps baseline |
@@ -80,7 +80,7 @@ Widget type follows the object count and the question. Honeycomb is only for **m
 
 **Network interfaces → Overview** is the status map + 3×2 traffic grid. Each hex is the **port ID** (`1:1`, `1/21`, `eth0`) — not the IFALIAS paragraph — with Auto type so the ID stays readable. Colour is oper-status; hover still shows the full item. Switch maps are **72×6** (traffic at y=6, **height 14**): Zabbix floors honeycomb cells at 32px and then hides labels that do not fit, so a height-3 strip on a Core/Dist VOSS (every admin-up port except `X`) paints nameless hexes in a modest window. IQ maps are **12×3** — Zabbix has no max cell size, and ~2 AP eth in a switch-sized widget are giant hexes. Traffic is the same **height 14** 3×2 grid on all three. **Port** (VOSS YAML / EXOS `--apply` on stock **Extreme EXOS by SNMP**, not the Observability companion) is the one-port fault picker (status/speed/duplex/errors/discards, VOSS flaps) — not bits. IQ has no Port page. Zabbix 7 cannot open a hex into a graph. Ethernet is full duplex: do **not** sum RX+TX for congestion.
 
-Util and intended-speed stay graphs / Latest data until Speed Expect is linked. Honeycomb stays oper-status.
+Util and intended-speed stay Latest data until a port has a class label. Honeycomb stays oper-status.
 
 ---
 
@@ -112,7 +112,7 @@ NetBox: those Access macros on role Switch Access. Locked checklist §11.1 still
 
 New switch: NetBox **platform** contains `EXOS` or `VOSS`, **role** is Switch Core/Dist/Access/Mgmt, site in a country SiteGroup. First HostSync:
 
-1. Template Rule → `Extreme EXOS Observability` (nests stock **Extreme EXOS by SNMP**) or `Extreme VOSS by SNMP` + `OS/Network` hostgroup. Zabbix host view shows `Extreme EXOS Observability (Extreme EXOS by SNMP)` — that is the companion, not a second poller.  
+1. Template Rule → `Extreme EXOS Observability` (nests stock **Extreme EXOS by SNMP** and **Port Speed Expect**) or `Extreme VOSS by SNMP` (nests Speed Expect) + `OS/Network` hostgroup. Zabbix host view shows `Extreme EXOS Observability (Extreme EXOS by SNMP)` — that is the companion, not a second poller. Empty port labels do not create Speed Expect items.  
 2. Role MacroAssignment → IFALIAS / IFTYPE (Access also `PORTID.*`)  
 3. Configuration Group **SNMP Monitoring** → SNMPv3 interface  
 4. Template **Health** dashboard is already on the template — no extra dashboard script  
@@ -121,8 +121,7 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 
 - Does **not** delete hosts, interfaces, history, or hostids  
 - YAML `deleteMissing: false` — retired items linger; we do not wipe LLD  
-- Does **not** mass-sync every device (template updates inherit in Zabbix)  
-- Does **not** unlink Speed Expect if it was linked earlier (no `--link-speed-expect` ≠ unlink)  
+- Does **not** mass-sync every device (template updates inherit in Zabbix). Speed Expect nests on VOSS / Observability, so existing switch hosts pick up the LLD on `--apply` without HostSync. Empty display-string → nothing discovered.  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
 - Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m/keep-lost 0, EXOS PSU LLD skip `notPresent`, EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion
 
@@ -168,7 +167,7 @@ A site WAN blip is one ICMP High per switch. That is accepted.
 
 | Template | Where |
 |---|---|
-| Extreme EXOS Observability | Platform EXOS Template Rule; links the stock template and owns **Health** |
+| Extreme EXOS Observability | Platform EXOS Template Rule; nests stock **Extreme EXOS by SNMP** + **Port Speed Expect**; owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; owns the native **Network interfaces** graph prototype/dashboard |
 
 We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD, skips EXOS PSU `notPresent` stack-MIB padding, keeps discovered link-down **Average** (drops leftover USW High), disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory) and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
@@ -181,7 +180,7 @@ Stock EXOS trigger severities stay upstream except those patches. SNMP-dead is *
 
 | Template | Where |
 |---|---|
-| Extreme VOSS by SNMP | Platform VOSS |
+| Extreme VOSS by SNMP | Platform VOSS; nests **Port Speed Expect** |
 
 Same `{$TEMP_*}` on **this template**. Re-import after this revision. Fleet macros (template / globals, not Switch* role):
 
@@ -211,7 +210,7 @@ Poll weight (same idea as APs, more SNMP budget on a chassis): inventory **1h**;
 
 | Template | Where | Triggers |
 |---|---|---|
-| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt | **imported, not linked**. Speed-mismatch Warning **on** in YAML. Duplicate link-down and discards **DISABLED**. Util `{$IF.UTIL.MAX:"USW"}=101` (off) |
+| Extreme Port Speed Expect by SNMP | Nested on VOSS + EXOS Observability | Mismatch Warning **on**. Duplicate link-down and discards **DISABLED**. Util `{$IF.UTIL.MAX:"USW"}=101` (off) |
 | Extreme Routing by SNMP (OSPF) | Switch Core / Dist | YAML **on** (OSPF High). **Not linked** |
 
 Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Default (Core/Dist/Mgmt):
@@ -240,19 +239,21 @@ The on-box label **is** the contract. Live `ifHighSpeed` (IF-MIB, million bits/s
 
 LLD JS parses `CLASS[-SPEED]-ID` into `{#IF.CLASS}` + `{#IF.SPEED.EXPECTED}`. Only **physical ethernet** (`ifType=6`). LAG/MLT aggregates report **summed** speed and would sit in problem forever — they stay on the platform template for link-down/errors, not here.
 
-**Operator view (when linked, not now):**
+**Operator view:** nothing, until a port has a class label. Then, within **15m** LLD:
 
 - **Problems:** Warning, next day — `Port identity: Interface 1/21(USW-SWD14): Speed 1000 ≠ expected 10000 Mbps (class USW)`.
 - **Network interfaces → Overview** honeycomb stays **oper-status**. Do not paint hexes by Mbps (10G vs 1G vs 2.5G is not a colour scale).
 - **Network interfaces → Port** already shows live **Speed** (platform item, bps after ×1e6) + duplex. That is the “what is it now” pane. The Warning is “what should it be”.
 - **Latest data** grows `Speed (speed-expect)` in Mbps plus util-%-of-intended helpers. Util graphs are later; they are **% of the label**, 1h average — not stock 15m vs live speed.
-- Stock/VOSS **“Ethernet has changed to lower speed”** stays as a change-detect safety net until this template is proven. It has a hole: `10G → down → up at 1G` often never fires (speed reads 0 while down). Absolute expect exists because of that hole. After a quiet pilot, disable the stock change-detect so one mismatch is not two Warnings.
+- Stock/VOSS **“Ethernet has changed to lower speed”** stays as a change-detect safety net until this LLD is proven. It has a hole: `10G → down → up at 1G` often never fires (speed reads 0 while down). Absolute expect exists because of that hole. After a quiet pilot, disable the stock change-detect so one mismatch is not two Warnings.
 
 **Severity (SRE):** wrong speed still forwards. Dayside checks cable / SFP / autoneg **or** fixes the label. Do **not** High it (pikett cannot make autoneg 10G at 03:00). Do **not** Average it (that queue is link-down / unused-port cleanup). Warning = next day. If the 1G pipe is actually dropping users, **discards** (later) is the impact signal. If the box is gone, **ICMP**.
 
-**Do not link until a census is quiet.** Walk `ifAlias` + `ifHighSpeed` on Core/Dist/Mgmt (Access: `USW`+`UP` only). Parse the grammar; diff live Mbps vs expected. The first-week ticket storm is almost always: Pure still labelled `US-…` at 25G, APs still `UP-…` at 2.5G, Dist↔Access still `USW-…` at 1G. Relabel (token) or the port is mis-negotiating — both are dayside. Changing a class default later (`USW` 10G → 25G) silently re-values every tokenless label; freeze defaults.
+**Empty display-string is the safe case.** LLD filter is `^(USW|US|UP|MON)(-|$)`. No class → no Speed Expect items → no Warnings. Building production without labels does **not** need a census first. Arm it now (`--apply` nests the template). The 15m discovery starts the day you write `USW-…` / `US-25G-…` / `UP-2G5-…`.
 
-**When `--link-speed-expect` is eventually passed:** second LLD on every Switch role; speed-mismatch Warning on. Util stays off (`101`) until 4+ weeks of history, then maybe `{$IF.UTIL.MAX:"USW"}=80` — **USW only**, not `US`/`UP`/`MON` (a busy server/AP port is that box’s problem). Discards stay DISABLED until a pps baseline. Extra SNMP GETs exist today (platform-neutral YAML cannot declare cross-template dependent masters); swap to dependents on `net.if.speed[ifHighSpeed.{#SNMPINDEX}]` later — compare in Mbps, never `min(speed,5m)` (heartbeat 1h → unknown).
+**Dirty labels are the noisy case** — class present, token wrong (`US-PURE01` on a 25G array, `UP-AP07` on a 2.5G AP). That Warning *is* the census: fix the token. Changing a class default later (`USW` 10G → 25G) silently re-values every tokenless label; freeze defaults.
+
+Do **not** pass `--link-speed-expect` while nested: HostSync would try to link the same template directly and Zabbix rejects that. Util stays off (`101`) until 4+ weeks of history, then maybe `{$IF.UTIL.MAX:"USW"}=80` — **USW only**, not `US`/`UP`/`MON`. Discards stay DISABLED. Extra SNMP GETs exist today (platform-neutral YAML cannot declare cross-template dependent masters); swap to dependents later — compare in Mbps, never `min(speed,5m)` (heartbeat 1h → unknown).
 
 ---
 
@@ -260,7 +261,7 @@ LLD JS parses `CLASS[-SPEED]-ID` into `{#IF.CLASS}` + `{#IF.SPEED.EXPECTED}`. On
 
 `--apply` is the Extreme switching + AP contract. Do not add extra flags.
 
-**Speed Expect** is imported so the template exists. Do **not** pass `--link-speed-expect`. Linking attaches a second LLD and Warning on every labelled port whose live Mbps is not the label (`USW`→10G, `US`→10G, `UP`→1G, token overrides). Util is already off (`101`). Duplicate link-down and discards are **DISABLED** in YAML — platform already Average-tickets link-down; 1 pps discards is not a threshold. Link later only after a label census is quiet — that is a separate ops decision, not Health dashboards.
+**Speed Expect** is nested on VOSS and EXOS Observability. `--apply` is enough — unlabeled ports stay silent; a class label starts the LLD within 15m. Do **not** pass `--link-speed-expect` (that is a second, direct role assignment; Zabbix rejects the same template linked twice). Util is off (`101`). Duplicate link-down and discards are **DISABLED**. Routing stays imported-not-linked.
 
 OSPF stays imported-not-linked. Fabric High stays gated (`{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0`) until a canary.
 

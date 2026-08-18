@@ -80,7 +80,7 @@ delete and re-create the host. Use this for testing template/CG changes on one h
 **Do NOT delete all hosts from Zabbix Cloud for testing.** Only delete + re-sync
 the specific host you are changing.
 
-Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **not** pass `--link-speed-expect` until an `ifAlias` vs `ifHighSpeed` census is quiet.
+Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **not** pass `--link-speed-expect` — Speed Expect already nests on VOSS / Observability; empty display-strings stay silent.
 
 ## Who writes which rows
 

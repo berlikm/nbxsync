@@ -26,7 +26,7 @@ Google SRE: dashboards answer “what’s broken / why”; do not page on causes
 
 The on-box label is the contract (`USW`→10G, `US`→10G, `UP`→1G, `MON`→1G, `UP-2G5-…`→2.5G). Live `ifHighSpeed` is observed state (IF-MIB million bits/s, compared in **Mbps**).
 
-- **When linked:** Warning `last(speed) <> {#IF.SPEED.EXPECTED}` while oper-up 5m. Next day, not a page — the link still forwards. Dayside: cable / SFP / autoneg, or the label is wrong.
+- **When a class label exists:** Warning `last(speed) <> {#IF.SPEED.EXPECTED}` while oper-up 5m. Empty `ifAlias` → no items. Next day, not a page — the link still forwards. Dayside: cable / SFP / autoneg, or the label is wrong.
 - Settle on **oper-status 5m**, never `min(speed,5m)` (heartbeat 1h → unknown).
 - Stock “changed to lower speed” misses `10G → bounce → 1G`. Absolute expect exists because of that hole.
 - Do **not** split High by class. A Pure port at 25G labelled `US-PURE01` (expect 10G) is a **label** bug, same channel as an AP at 2.5G labelled `UP-…`.
@@ -34,7 +34,7 @@ The on-box label is the contract (`USW`→10G, `US`→10G, `UP`→1G, `MON`→1G
 - Discards are the “someone is dropping” signal. YAML trigger **DISABLED** until a baseline; `{$IF.DISCARDS.WARN}=1` is not gated by util `101`.
 - Duplicate Speed Expect link-down is **DISABLED** — platform already Average-tickets discovered ports.
 - Honeycomb stays oper-status. Operator sees the Warning title (`Speed 1000 ≠ expected 10000 Mbps`) plus Port-page live Speed.
-- **Do not link** until a census of `ifAlias` vs `ifHighSpeed` is quiet. YAML util context for `USW` is **101** (off). Stage 6 may set `{$IF.UTIL.MAX:"USW"}=80` after history.
+- **Do not wait for a census of empty ports.** No class label → LLD discovers nothing. Nesting on VOSS / Observability arms it; the day you write `US-25G-…` it starts. Dirty labels (class present, wrong token) Warning — that *is* the census. Util `{$IF.UTIL.MAX:"USW"}=101` (off). Stage 6 may set 80 after history.
 
 `UW` has no PHY expect — commit rate is the NetBox Circuit (05). LAG aggregates (`ifType` 161) are out (`^6$`) because their speed is the sum of members.
 
@@ -61,7 +61,7 @@ The on-box label is the contract (`USW`→10G, `US`→10G, `UP`→1G, `MON`→1G
 | SNMP Monitoring CG on Switch* / AP | zerotouch | Inherited interface + SNMPv3 | Empty env **must not** wipe existing secrets (zerotouch already leaves them) |
 | YAML import `updateExisting` + `deleteMissing: false` | network `--apply` | n/a | Updates items/triggers/dashboards on the **template**; every already-linked host inherits. Does **not** delete hosts, interfaces, or history |
 | Stock EXOS patches (TEMP_*, EtherLike IFALIAS, IF LLD 15m/0, ICMP loss disable, interface grid) + Observability companion | network `--apply` | n/a | Companion YAML owns Health; stock keeps its graph prototype while its existing dashboard is normalized to the shared map + 3×2 grid |
-| Speed Expect / OSPF | imported, **not** assigned | Stays off | `--apply` without `--link-speed-expect` **does not unlink** if someone linked it earlier |
+| Speed Expect / OSPF | Speed Expect **nested** on VOSS / Observability; OSPF imported, not assigned | Empty ifAlias silent; OSPF stays off | `--apply` imports the nest. `--link-speed-expect` is extra role assignment — skip while nested |
 | VOSS/IQ TemplateRule when YAML is not in Zabbix yet | zerotouch | skip writing the rule | **Does not** retarget an existing Extreme rule at Network Generic |
 
 Mass `SyncHostJob` is **not** required for template dashboard / trigger-status changes. Zabbix pushes those from the template. Use per-host sync only when NetBox macros/CG/templates on **that** device changed.
@@ -74,7 +74,7 @@ Mass `SyncHostJob` is **not** required for template dashboard / trigger-status c
 
 ### Not this apply
 
-Speed Expect stays imported, not linked (`--apply` without `--link-speed-expect`).
+Speed Expect is nested on VOSS / EXOS Observability (`--apply`). Unlabeled ports are not discovered.
 
 ## Health dashboard (host, from template)
 
