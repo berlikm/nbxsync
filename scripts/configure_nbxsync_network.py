@@ -13,7 +13,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 
   * Import Extreme VOSS / IQ Engine / EXOS Observability / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
-  * Patch stock EXOS ``net.if.discovery`` rollout (15m / lifetime 0 / SNMP timeout 30s) — stock is 1h / 3s; VLAN-heavy EXOS walks miss traffic while EtherLike duplex still works
+  * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding (no fork)
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
@@ -423,6 +423,107 @@ _IF_DISCOVERY_KEY = 'net.if.discovery'
 _IF_LLD_ROLLOUT_DELAY = '15m'
 _IF_LLD_ROLLOUT_LIFETIME = '0'
 _IF_LLD_ROLLOUT_TIMEOUT = '30s'
+
+
+_PSU_DISCOVERY_KEY = 'psu.discovery'
+_PSU_NUMBER_OID = '1.3.6.1.4.1.1916.1.1.1.27.1.1'
+_PSU_STATUS_OID = '1.3.6.1.4.1.1916.1.1.1.27.1.2'
+_PSU_DISCOVERY_OID = (
+    f'discovery[{{#SNMPVALUE}},{_PSU_NUMBER_OID},{{#PSU.STATUS}},{_PSU_STATUS_OID}]'
+)
+_PSU_STATUS_MACRO = '{#PSU.STATUS}'
+_PSU_NOTPRESENT = '^1$'
+_PSU_LLD_LIFETIME = '0'
+
+
+def _psu_lld_skips_notpresent(rule: dict) -> bool:
+    snmp_oid = str(rule.get('snmp_oid') or '')
+    if '{#PSU.STATUS}' not in snmp_oid or _PSU_STATUS_OID not in snmp_oid:
+        return False
+    lifetime = str(rule.get('lifetime') or '')
+    if lifetime not in (_PSU_LLD_LIFETIME, '0s', '0d', '0h'):
+        return False
+    for c in (rule.get('filter') or {}).get('conditions') or []:
+        if (
+            c.get('macro') == _PSU_STATUS_MACRO
+            and int(c.get('operator', 0)) == _LLD_NOT_MATCHES_REGEX
+            and c.get('value') == _PSU_NOTPRESENT
+        ):
+            return True
+    return False
+
+
+def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by SNMP') -> str:
+    """Drop stack-MIB padding from stock EXOS PSU discovery.
+
+    ``extremePowerSupplyTable`` has a row for every possible stack member slot.
+    Stock LLD walks only the number column, so an 8-slot stack paints 32 grey
+    hexes. Walk status too and skip ``notPresent(1)``. Failed/off units stay
+    (``presentNotOK`` / ``presentPowerOff``). Lifetime 0 so leftover empty-slot
+    items drop on the next discovery. Does not fork the stock YAML.
+    """
+    logger.info('Network: EXOS psu.discovery present-only')
+    tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
+    if not tpls:
+        logger.warning('  %s: template not found — skip PSU LLD patch', template_name)
+        return 'missing'
+    tid = tpls[0]['templateid']
+    rules = api.discoveryrule.get(
+        hostids=tid,
+        filter={'key_': _PSU_DISCOVERY_KEY},
+        output=['itemid', 'key_', 'snmp_oid', 'lifetime', 'enabled_lifetime'],
+        selectFilter='extend',
+    )
+    if not rules:
+        logger.warning('  %s: no %s — skip', template_name, _PSU_DISCOVERY_KEY)
+        return 'no-psu-lld'
+    rule = rules[0]
+    if _psu_lld_skips_notpresent(rule):
+        logger.info('  %s: PSU LLD already skips notPresent', template_name)
+        return 'ok'
+    conditions = []
+    for c in (rule.get('filter') or {}).get('conditions') or []:
+        if c.get('macro') == _PSU_STATUS_MACRO:
+            continue
+        conditions.append(
+            {
+                'macro': c['macro'],
+                'value': c.get('value', ''),
+                'operator': int(c.get('operator', _LLD_MATCHES_REGEX)),
+            }
+        )
+    conditions.append(
+        {
+            'macro': _PSU_STATUS_MACRO,
+            'value': _PSU_NOTPRESENT,
+            'operator': _LLD_NOT_MATCHES_REGEX,
+        }
+    )
+    api.discoveryrule.update(
+        itemid=rule['itemid'],
+        snmp_oid=_PSU_DISCOVERY_OID,
+        lifetime=_PSU_LLD_LIFETIME,
+        enabled_lifetime=_PSU_LLD_LIFETIME,
+        filter={'evaltype': _LLD_EVAL_AND, 'conditions': conditions},
+    )
+    logger.info('  %s: patched PSU LLD to skip notPresent (itemid=%s)', template_name, rule['itemid'])
+    return 'patched'
+
+
+def assert_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by SNMP') -> tuple[bool, str]:
+    tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
+    if not tpls:
+        return True, 'template absent — n/a'
+    rules = api.discoveryrule.get(
+        hostids=tpls[0]['templateid'],
+        filter={'key_': _PSU_DISCOVERY_KEY},
+        output=['itemid', 'snmp_oid', 'lifetime'],
+        selectFilter='extend',
+    )
+    if not rules:
+        return True, 'no PSU LLD — n/a'
+    ok = _psu_lld_skips_notpresent(rules[0])
+    return ok, str({'snmp_oid': rules[0].get('snmp_oid'), 'filter': rules[0].get('filter')})
 
 
 def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by SNMP') -> str:
@@ -1029,6 +1130,16 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             # Lab stub EXOS has no real IF LLD — treat missing/n/a as pass
             record('exos_if_lld_rollout_assert', ok or 'n/a' in detail, detail, group='import')
 
+            psu_lld_status = patch_exos_psu_lld_present_only(api)
+            record(
+                'exos_psu_lld_present_only',
+                psu_lld_status in ('ok', 'patched', 'missing', 'no-psu-lld'),
+                psu_lld_status,
+                group='import',
+            )
+            ok, detail = assert_exos_psu_lld_present_only(api)
+            record('exos_psu_lld_present_only_assert', ok or 'n/a' in detail, detail, group='import')
+
             temp_statuses = patch_extreme_template_temp_macros(api)
             for tname, status in temp_statuses.items():
                 record(
@@ -1409,6 +1520,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         step_global_macros_zabbix(api)
         patch_etherlike_ifalias_filters(api)
         patch_exos_interface_lld_rollout(api)
+        patch_exos_psu_lld_present_only(api)
         patch_extreme_template_temp_macros(api)
         step_health_patches(api)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
