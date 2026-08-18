@@ -71,8 +71,10 @@ Usage::
   python scripts/configure_nbxsync_zerotouch.py
 
   # IMPORTANT: Run scripts/configure_nbxsync_network.py after zerotouch for
-  # Extreme EXOS/VOSS/IQ Engine template imports, TemplateRules, and macros.
-  # Zerotouch creates the template objects but not the EXOS TemplateRule.
+  # Extreme YAML import, Health patches, Switch* IFALIAS, and VOSS/IQ rules.
+  # Zerotouch writes the Extreme EXOS TemplateRule when Observability (or stock
+  # EXOS) is already in Zabbix. VOSS/IQ rules are skipped until --apply imports
+  # those templates — never retargeted at Network Generic.
 
   # --mutate-netbox: tags do_not_monitor on Cato/Messpc. Does NOT create
   # roles — netbox-sync handles role assignment (incl. ESXi Hypervisor).
@@ -262,6 +264,7 @@ SNMP_ROLES = [
     'Firewall',
     'Network Device',
     'Virtual Appliance',
+    'Cohesity Appliance',  # VMs with primary_ip; physical Cohesity stays iDRAC CG
     # 'Storage' not in SNMP CG: prevents Pure arrays from getting SNMP interface.
 ]
 
@@ -635,6 +638,10 @@ def step0_cleanup(*, mutate_netbox: bool):
     # ESXi hosts keep role=Server (other automations depend on it).
     # The ESXi OOB iDRAC CG is assigned on the ESXi platform (step 5b),
     # not on a separate role. This avoids creating a new DeviceRole.
+
+    if not mutate_netbox:
+        logger.info('  NetBox inventory mutations off (pass --mutate-netbox to tag Cato/Messpc)')
+        return
 
     for slug, label in [('sd-wan-socket', 'Cato socket'), ('messpc', 'Messpc')]:
         qs = Device.objects.filter(role__slug=slug)
@@ -1377,7 +1384,7 @@ def step6_template_rules(server, country_slugs=None):
     rules = [
         ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 100, ''),
         ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100, '^(?!vCenter$).*'),
-        ('Extreme EXOS', r'EXOS', tpl_exos, hg_os_network, 100, ''),
+        ('Extreme EXOS', r'EXOS|Switch Engine', tpl_exos, hg_os_network, 100, ''),
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100, ''),
         ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50, ''),
     ]
@@ -1385,7 +1392,7 @@ def step6_template_rules(server, country_slugs=None):
     # Falling back to Network Generic on re-apply would retarget a live estate.
     if 'extreme_voss_snmp' in TPL:
         tpl_voss = make_template(*TPL['extreme_voss_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
-        rules.insert(3, ('Extreme VOSS', r'VOSS', tpl_voss, hg_os_network, 100, ''))
+        rules.insert(3, ('Extreme VOSS', r'VOSS|Fabric Engine', tpl_voss, hg_os_network, 100, ''))
     else:
         logger.warning(
             '  Extreme VOSS by SNMP not resolved — leaving Extreme VOSS TemplateRule untouched '
@@ -1395,11 +1402,11 @@ def step6_template_rules(server, country_slugs=None):
         tpl_iq = make_template(*TPL['extreme_iq_engine_snmp'], req=[HostInterfaceRequirementChoices.SNMP])
         # After possible VOSS insert, append before FortiOS (index of Extreme EXOS + 1 or + 2)
         insert_at = next(i for i, r in enumerate(rules) if r[0] == 'FortiOS')
-        rules.insert(insert_at, ('Extreme IQ Engine', r'IQ ENGINE', tpl_iq, hg_os_network, 100, ''))
+        rules.insert(insert_at, ('Extreme IQ Engine', r'IQ ENGINE|IQEngine|IQ-ENGINE', tpl_iq, hg_os_network, 100, ''))
     else:
         logger.warning(
             '  Extreme IQ Engine by SNMP not resolved — leaving Extreme IQ Engine TemplateRule untouched '
-            '(HiveOS alone never matches; platform name must contain IQ ENGINE)'
+            '(HiveOS alone never matches; platform must contain IQ ENGINE / IQEngine / IQ-ENGINE)'
         )
     for name, pattern, template, hostgroup, priority, role_pattern in rules:
         defaults = {
@@ -2287,13 +2294,16 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
         logger.info('  %s: %s', model.__name__, model.objects.count())
     logger.info(
         'Zero-touch deltas: SiteGroup Agent, multi-credential SNMP CGs '
-        '(Linux via tag snmp, SAP via roles), SPACE :10060, Dell iDRAC SNMP (v2c public), '
+        '(Linux via tag snmp, SAP via roles), SPACE :10060, Dell iDRAC SNMPv3, '
         'hostgroup-first (Sites×Roles×OS); HI never on tags'
     )
     return server
 
 
 AGENT_PLATFORM_HINT = re.compile(r'Windows|Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon', re.I)
+# Keep in lock-step with the Extreme IQ TemplateRule pattern in step6.
+_IQ_PLATFORM_RE = re.compile(r'IQ ENGINE|IQEngine|IQ-ENGINE', re.I)
+_HIVEOS_ONLY_RE = re.compile(r'HiveOS', re.I)
 SNMP_ROLE_NAMES = set(SNMP_ROLES)
 
 
@@ -2302,7 +2312,7 @@ def run_verify(*, limit: int | None = None) -> int:
     logger.info('=' * 60)
     logger.info('Verify: resolution census (read-only, hostgroup-first)')
     logger.info('=' * 60)
-    devices = list(Device.objects.filter(status='active').select_related('role', 'platform', 'site'))
+    devices = list(Device.objects.filter(status='active').select_related('role', 'platform', 'site', 'device_type'))
     vms = list(VirtualMachine.objects.filter(status='active').select_related('role', 'platform', 'site'))
     objects = devices + vms
     if limit is not None:
@@ -2313,19 +2323,13 @@ def run_verify(*, limit: int | None = None) -> int:
     active_no_primary = 0
     no_template = 0
     snmp_role_on_agent_cg = 0
-    esxi_on_platform = 0  # informational — ESXi platforms with ESXi OOB iDRAC CG
     snmp_tag_ifs = M.ZabbixHostInterface.objects.filter(assigned_object_type=ct(Tag)).count()
+    os_family_tags_remaining = M.ZabbixTag.objects.filter(tag='os_family').count()
     agent_cg_name = 'Agent Monitoring'
-    snmp_ish_cgs = {
-        'SNMP Monitoring',
-        'SNMP Monitoring (Linux)',
-        'SNMP Monitoring (by tag)',
-        'SAP Agent+SNMP',
-        'OOB SNMP Only',
-        'Server Agent+OOB',
-        'SNMP by tag',
-        'VM by SNMP',
-    }
+    switch_roles = {'Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt'}
+    hiveos_without_iq_rule = 0
+    switch_without_extreme_template = 0
+    ap_without_iq_template = 0
 
     for obj in objects:
         if getattr(obj, 'primary_ip4_id', None) is None and getattr(obj, 'primary_ip6_id', None) is None:
@@ -2335,23 +2339,31 @@ def run_verify(*, limit: int | None = None) -> int:
         assigned = get_assigned_zabbixobjects(obj)
         cg = assigned.get('configurationgroup')
         templates = assigned.get('templates') or []
+        tpl_names = ' '.join(
+            getattr(getattr(t, 'zabbixtemplate', None), 'name', '') or ''
+            for t in templates
+        )
+        plat = getattr(getattr(obj, 'platform', None), 'name', '') or ''
+        role_name = getattr(getattr(obj, 'role', None), 'name', '') or ''
         if cg is None:
             unprofiled += 1
             continue
         if not templates:
             no_template += 1
         cg_name = cg.zabbixconfigurationgroup.name
-        role_name = getattr(getattr(obj, 'role', None), 'name', '') or ''
         if role_name in SNMP_ROLE_NAMES and cg_name == agent_cg_name:
             snmp_role_on_agent_cg += 1
         if cg_name == agent_cg_name or cg_name.endswith('Agent Monitoring'):
-            plat = getattr(getattr(obj, 'platform', None), 'name', '') or ''
             if not AGENT_PLATFORM_HINT.search(plat):
                 agent_without_platform_fact += 1
-        # Soft check: SNMP-ish roles should not sit on plain Agent without a template.
+        if _HIVEOS_ONLY_RE.search(plat) and not _IQ_PLATFORM_RE.search(plat):
+            hiveos_without_iq_rule += 1
+        if role_name in switch_roles:
+            if not any(n in tpl_names for n in ('EXOS', 'VOSS', 'Observability')):
+                switch_without_extreme_template += 1
+        if role_name == 'Access Point' and 'IQ Engine' not in tpl_names:
+            ap_without_iq_template += 1
 
-        # ESXi platforms correctly have role=Server (no separate ESXi Hypervisor role).
-        # The ESXi OOB iDRAC CG is assigned on the platform, not the role.
     print(
         json.dumps(
             {
@@ -2361,9 +2373,11 @@ def run_verify(*, limit: int | None = None) -> int:
                 'agent_cg_without_agent_platform_fact': agent_without_platform_fact,
                 'snmp_role_resolved_to_agent_cg': snmp_role_on_agent_cg,
                 'active_without_primary_or_oob_ip': active_no_primary,
-                'esxi_on_platform': esxi_on_platform,
                 'os_family_tags_remaining': os_family_tags_remaining,
                 'tag_targeted_host_interfaces_remaining': snmp_tag_ifs,
+                'hiveos_platform_without_iq_engine_token': hiveos_without_iq_rule,
+                'switch_role_without_exos_or_voss_template': switch_without_extreme_template,
+                'access_point_without_iq_template': ap_without_iq_template,
             },
             indent=2,
         )

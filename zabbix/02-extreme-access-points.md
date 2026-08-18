@@ -76,9 +76,9 @@ Do **not** alert on: XIQ tenant as a host, VAP/SSID ifaces, a laptop on a switch
 
 ## Zero-touch (nbxSync)
 
-New AP: NetBox **platform name contains `IQ ENGINE`** (case-insensitive), role **Access Point**, SNMP Monitoring CG on that role.
+New AP: NetBox **platform** matches `IQ ENGINE`, `IQEngine`, or `IQ-ENGINE` (case-insensitive), role **Access Point**, SNMP Monitoring CG on that role.
 
-First HostSync links this template + `OS/Network`. **`HiveOS` alone does not match** — the IQ template never links.
+First HostSync links this template + `OS/Network`. **`HiveOS` alone does not match** — rename the platform (do not widen the rule to bare `HiveOS`; that would also hit non-AP HiveOS boxes and collide with `icmpping`).
 
 Re-run zerotouch + `configure_nbxsync_network.py --apply` on APs **already in Zabbix**: same contract as [01](01-extreme-switching.md) — no host delete, no mass sync, YAML `deleteMissing: false`, Health dashboard updates in place on the template.
 
@@ -123,7 +123,7 @@ A closet PoE cut is AP ICMP High plus the switch `UP-` Average. That is accepted
 
 | Template | Where | Triggers |
 |---|---|---|
-| Extreme IQ Engine by SNMP | Platform matching `IQ ENGINE` | as table above |
+| Extreme IQ Engine by SNMP | Platform matching `IQ ENGINE` / `IQEngine` / `IQ-ENGINE` | as table above |
 
 CG **SNMP Monitoring** on role Access Point. No role-level template floor.
 

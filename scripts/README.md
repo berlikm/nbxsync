@@ -90,7 +90,7 @@ Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **
 | SNMP Monitoring on Switch Core/Dist/Access/Mgmt + AP | yes | assumes present |
 | Linux SNMP CG on tag `snmp`; SAP CG on SAP HANA / SAP ME | yes | — |
 | Dell iDRAC SNMPv3 / SPACE :10060 | yes | — |
-| Extreme TemplateRules (EXOS/VOSS/IQ) | ensure when template exists; **never** fall back to Network Generic | import + retarget if a rule still points at Network Generic |
+| Extreme TemplateRules (EXOS/VOSS/IQ) | ensure when template exists; **never** fall back to Network Generic. Patterns: `EXOS\|Switch Engine`, `VOSS\|Fabric Engine`, `IQ ENGINE\|IQEngine\|IQ-ENGINE` | import + retarget if a rule still points at Network Generic |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |

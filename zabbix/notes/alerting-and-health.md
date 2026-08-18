@@ -69,7 +69,7 @@ Mass `SyncHostJob` is **not** required for template dashboard / trigger-status c
 ### Things that look like bugs but are features
 
 - Access unlabelled / desk ports: **no items** (IFALIAS `USW|UP` only). A mistyped uplink is silent — fix the label, do not widen the regex.
-- `HiveOS` platform without `IQ ENGINE` in the name: Template Rule never matches.
+- `HiveOS` platform without `IQ ENGINE` / `IQEngine` / `IQ-ENGINE` in the name: Template Rule never matches. Do not match bare `HiveOS`.
 - After AP/switch reboot, SNMP=0 while CLI from the proxy works: RFC 3414 engine boots — `zabbix_proxy -R snmp_cache_reload`, not a template bug.
 
 ### Not this apply
