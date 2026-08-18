@@ -39,6 +39,73 @@ class ClassifyTests(unittest.TestCase):
     def test_unknown_10g_emits_mon_with_speed_token(self):
         self.assertEqual(e.build_label("MON", 10000, "PRN01"), "MON-10G-PRN01")
         self.assertEqual(e.build_label("US", 1000, "ES40_VMNIC0"), "US-1G-ES40_VMNIC0")
+
+    def test_new_switch_role_is_usw_without_a_table_row(self):
+        self.assertEqual(e.classify("Switch Spine", 40000, "1"), "USW")
+        self.assertEqual(e.classify("Switch Leaf", 10000, "1"), "USW")
+        self.assertEqual(e.role_code("Switch Spine"), "SP")
+        self.assertEqual(e.role_code("Switch Leaf"), "LE")
+
+
+class FutureProofTests(unittest.TestCase):
+    """Rates / roles / ports that do not exist in the current estate."""
+
+    def test_speed_token_from_mbps_not_a_closed_table(self):
+        self.assertEqual(e.mbps_to_speed_token(2500), "2G5")
+        self.assertEqual(e.mbps_to_speed_token(50000), "50G")
+        self.assertEqual(e.mbps_to_speed_token(200000), "200G")
+        self.assertEqual(e.mbps_to_speed_token(800000), "800G")
+        self.assertEqual(e.mbps_to_speed_token(100), "100M")
+        self.assertEqual(e.speed_token_to_mbps("50G"), 50000)
+        self.assertEqual(e.speed_token_to_mbps("2G5"), 2500)
+
+    def test_iftype_parses_future_ieee_slugs(self):
+        self.assertEqual(e.iftype_to_mbps("50gbase-x"), 50000)
+        self.assertEqual(e.iftype_to_mbps("200gbase-kr4"), 200000)
+        self.assertEqual(e.iftype_to_mbps("800gbase-r"), 800000)
+        self.assertEqual(e.iftype_to_mbps("2.5gbase-t"), 2500)
+
+    def test_build_label_emits_50g_without_a_table_row(self):
+        self.assertEqual(e.build_label("US", 50000, "SAN01_4"), "US-50G-SAN01_4")
+        parsed = e.parse_label("US-50G-SAN01_4")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.speed_token, "50G")
+        self.assertEqual(parsed.expected_mbps, 50000)
+
+    def test_new_spine_hostname_shortens_like_core(self):
+        """USW role-words not in FABRIC_CODE_SHORT still get 2 letters.
+
+        ``USW-40G-L01-SP01_1_20`` is 21, so the ladder concatenates slot+port
+        the same way it does for MG01 — ``_120`` — instead of dropping the floor.
+        """
+        lab = e.plan_label(
+            local_site="ch-sta-l50",
+            far_name="CH-STA-L50-L01-SPINE01",
+            far_site="ch-sta-l50",
+            far_port="1:20",
+            far_role="Switch Spine",
+            far_is_mgmt=False,
+            link_mbps=40000,
+        )
+        self.assertEqual(lab, "USW-40G-L01-SP01_120")
+        self.assertLessEqual(len(lab), 20)
+
+    def test_endpoint_is_not_flattened_to_two_letters(self):
+        lab = e.plan_label(
+            local_site="ch-zrh-zh4",
+            far_name="ch-zrh-zh4-snas01",
+            far_site="ch-zrh-zh4",
+            far_port="lan5",
+            far_role="Storage",
+            far_is_mgmt=False,
+            link_mbps=10000,
+        )
+        self.assertIn("SNAS", lab)
+        self.assertNotIn("SN01", lab)
+
+    def test_voss_subport_is_a_safe_cli_port(self):
+        self.assertTrue(e.is_safe_cli_port("1/1/1"))
+        self.assertFalse(e.is_safe_cli_port("1:1-1:3"))
 class LabelUniquenessTests(unittest.TestCase):
     def _label(self, cls, mbps, name, fsite, lsite, port, role):
         parts = e.split_device_name(name, fsite, lsite)
@@ -390,6 +457,7 @@ class CliSafetyTests(unittest.TestCase):
         self.assertTrue(e.is_safe_cli_port("1"))
         self.assertTrue(e.is_safe_cli_port("1:51"))
         self.assertTrue(e.is_safe_cli_port("1/24"))
+        self.assertTrue(e.is_safe_cli_port("1/1/1"))
 
     def test_safe_port_rejects_lists_and_junk(self):
         self.assertFalse(e.is_safe_cli_port("1:1-1:3"))

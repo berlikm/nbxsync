@@ -84,13 +84,16 @@ FORBIDDEN_CHARS = frozenset(': ."<>&?;,\t\n\r')
 SAFE_LABEL_RE = re.compile(r"^[A-Z0-9][A-Z0-9_-]{0,19}$")
 
 #: Local ifName interpolated into ``configure ports …`` / ``interface GigabitEthernet …``.
-SAFE_PORT_RE = re.compile(r"^\d{1,4}([:/]\d{1,4})?$")
+#: One, two, or three numeric fields (EXOS ``1:24``, VOSS ``1/24`` / ``1/1/1``).
+SAFE_PORT_RE = re.compile(r"^\d{1,4}([:/]\d{1,4}){0,2}$")
 
 CLASSES = ("USW", "US", "UP", "MON", "UW", "TMON", "X", "N")
 
 #: Classes that never carry a SPEED token.
 NO_SPEED_CLASSES = frozenset({"X", "N", "UW", "TMON"})
 
+#: Grammar token ``2G5`` (dots forbidden). Other PHYs are derived from Mbps
+#: (``50G``, ``200G``, ``800G``) so a new IEEE rate does not need a table row.
 SPEED_TOKEN_MBPS = {
     "100M": 100,
     "1G": 1000,
@@ -103,8 +106,52 @@ SPEED_TOKEN_MBPS = {
     "400G": 400000,
 }
 MBPS_SPEED_TOKEN = {v: k for k, v in SPEED_TOKEN_MBPS.items()}
+_SPEED_TOKEN_RE = re.compile(r"^(?:\d+G\d*|\d+M)$")
 
 CLASS_DEFAULT_MBPS = {"USW": 10000, "US": 10000, "UP": 1000, "MON": 1000}
+
+
+def mbps_to_speed_token(mbps: int | None) -> str | None:
+    """Map a link rate to a grammar SPEED token.
+
+    Known spellings win (``2500`` → ``2G5``, not ``2.5G``). Anything else that
+    is a whole number of Gbps or Mbps becomes ``NG`` / ``NM`` so 50G / 200G /
+    800G work the day the first transceiver shows up in NetBox.
+    """
+    if not mbps or mbps <= 0:
+        return None
+    known = MBPS_SPEED_TOKEN.get(mbps)
+    if known:
+        return known
+    if mbps % 1000 == 0:
+        return f"{mbps // 1000}G"
+    if mbps > 1000 and mbps % 500 == 0 and (mbps % 1000) == 500:
+        return f"{mbps // 1000}G5"
+    if mbps < 1000:
+        return f"{mbps}M"
+    return None
+
+
+def speed_token_to_mbps(token: str | None) -> int | None:
+    """Inverse of ``mbps_to_speed_token``. ``None`` if the token is not a PHY."""
+    if not token:
+        return None
+    known = SPEED_TOKEN_MBPS.get(token)
+    if known is not None:
+        return known
+    match = re.fullmatch(r"(\d+)G(\d*)", token)
+    if match:
+        whole = int(match.group(1))
+        frac = match.group(2)
+        if not frac:
+            return whole * 1000
+        if frac == "5":
+            return whole * 1000 + 500
+        return None
+    match = re.fullmatch(r"(\d+)M", token)
+    if match:
+        return int(match.group(1))
+    return None
 
 #: Do not size the ID against a worst-case SPEED token. Reserving ``400G-`` (5)
 #: on a 1G USW link forced Dist→Access ``USW-1G-GFL-AC01_23`` (18) to drop
@@ -133,7 +180,7 @@ class ParsedLabel:
     @property
     def expected_mbps(self) -> int | None:
         if self.speed_token:
-            return SPEED_TOKEN_MBPS[self.speed_token]
+            return speed_token_to_mbps(self.speed_token)
         return CLASS_DEFAULT_MBPS.get(self.cls)
 
 
@@ -147,7 +194,12 @@ def parse_label(raw: str) -> ParsedLabel | None:
         return None
     rest = parts[1:]
     speed = None
-    if rest and cls not in NO_SPEED_CLASSES and rest[0] in SPEED_TOKEN_MBPS:
+    if (
+        rest
+        and cls not in NO_SPEED_CLASSES
+        and _SPEED_TOKEN_RE.fullmatch(rest[0])
+        and speed_token_to_mbps(rest[0]) is not None
+    ):
         speed = rest[0]
         rest = rest[1:]
     return ParsedLabel(cls=cls, speed_token=speed, ident="-".join(rest))
@@ -176,7 +228,7 @@ def validate_label(raw: str) -> list[str]:
     if parsed.speed_token and parsed.cls in NO_SPEED_CLASSES:
         issues.append("speed_on_neutral_class")
     if (parsed.speed_token
-            and SPEED_TOKEN_MBPS[parsed.speed_token] == CLASS_DEFAULT_MBPS.get(parsed.cls)):
+            and speed_token_to_mbps(parsed.speed_token) == CLASS_DEFAULT_MBPS.get(parsed.cls)):
         # One fact, one encoding — a token equal to the class default is noise.
         issues.append("redundant_speed")
     return issues
@@ -233,7 +285,7 @@ def build_label(cls: str, link_mbps: int | None, ident: str) -> str:
     token = None
     if cls not in NO_SPEED_CLASSES and link_mbps:
         if link_mbps != CLASS_DEFAULT_MBPS.get(cls):
-            token = MBPS_SPEED_TOKEN.get(link_mbps)
+            token = mbps_to_speed_token(link_mbps)
     pieces = [cls]
     if token:
         pieces.append(token)
@@ -243,6 +295,17 @@ def build_label(cls: str, link_mbps: int | None, ident: str) -> str:
 
 
 # ---- ID abbreviator -------------------------------------------------------
+#
+# Two layers, on purpose:
+#
+#   OPEN (do not add per-device rows): hostname tokens, site-slug prefix
+#   strip, port segmentation, longest-fit ladder, refuse vs truncate.
+#   A new SAN / ESX / Cohesity / odd box follows its NetBox name.
+#
+#   CLOSED (edit only when the *taxonomy* changes): FABRIC_CODE_SHORT /
+#   ROLE_TO_CODE (estate spelling of CORE/DIST/…), CLASS role words,
+#   BMC fallback tokens, port-name filler. Unknown USW role-words still
+#   collapse to two letters (SPINE→SP) so 40G physics keep working.
 #
 # Validated against real device names in this estate:
 #   CH-STA-L50-B01-ACCE01   CH-STA-L50-L01-CORE01   CH-NKN-G08-L02-CORE01-1
@@ -278,8 +341,26 @@ ROLE_TO_CODE = {
 
 
 def role_code(far_role: str | None) -> str:
-    """Two-letter fabric code, or '' so the hostname token is kept."""
-    return ROLE_TO_CODE.get((far_role or "").strip().lower(), "")
+    """Two-letter fabric code, or '' so the hostname token is kept.
+
+    Exact role names from this estate win. A new ``Switch Spine`` / ``Switch
+    Leaf`` role still shortens (SPINE→SP, LEAF→LE) without a table row —
+    same rule ``_code_bases`` uses for unknown USW hostname words.
+    """
+    key = (far_role or "").strip().lower()
+    if not key:
+        return ""
+    known = ROLE_TO_CODE.get(key)
+    if known:
+        return known
+    words = key.replace("-", " ").split()
+    if len(words) >= 2 and words[0] == "switch":
+        tail = words[-1].upper()
+        if tail in FABRIC_CODE_SHORT:
+            return FABRIC_CODE_SHORT[tail]
+        if len(tail) >= 4 and tail.isalpha():
+            return tail[:2]
+    return ""
 
 _TAIL_RE = re.compile(r"^(?P<code>[A-Z]+)(?P<num>\d*)$")
 _PORT_PAREN_RE = re.compile(r"\(([^)]+)\)")
@@ -474,13 +555,21 @@ def _compact_port_suffixes(port_name: str) -> list[str]:
     return []
 
 
-def _code_bases(parts: DeviceNameParts) -> list[str]:
-    """Fabric → 2 letters. Everything else keeps the hostname word, then shortens."""
+def _code_bases(parts: DeviceNameParts, short_fabric: bool = False) -> list[str]:
+    """Fabric → 2 letters. Everything else keeps the hostname word, then shortens.
+
+    ``short_fabric`` is True for USW (switch/firewall). Unknown role-words
+    (``SPINE``, ``LEAF``, ``BORDER``) take the first two letters so a 40G
+    token still has room for floor + port — the same reason CORE is CO.
+    Endpoints must NOT use this: SNAS→SN is how labels stopped making sense.
+    """
     word = parts.code or ""
     if word in FABRIC_CODE_SHORT:
         return [FABRIC_CODE_SHORT[word]]
     if word in FABRIC_CODE_SHORT.values():
         return [word]
+    if short_fabric and len(word) >= 4 and word.isalpha():
+        return [word[:2]]
     if not word:
         return [""]
     bases = [word[:n] for n in range(len(word), 1, -1)]
@@ -489,9 +578,9 @@ def _code_bases(parts: DeviceNameParts) -> list[str]:
     return _uniq(bases)
 
 
-def _code_forms(parts: DeviceNameParts) -> list[str]:
+def _code_forms(parts: DeviceNameParts, short_fabric: bool = False) -> list[str]:
     """Longest identity first: ``SAN10-N01``, then ``N01``; ``CO01-1``, then ``CO01``."""
-    numbered = [f"{base}{parts.num}" for base in _code_bases(parts) if base or parts.num]
+    numbered = [f"{base}{parts.num}" for base in _code_bases(parts, short_fabric) if base or parts.num]
     extras = [parts.extra] if parts.extra else [""]
     if parts.extra:
         extras.append("")  # retry without the cluster token if over budget
@@ -505,7 +594,11 @@ def _code_forms(parts: DeviceNameParts) -> list[str]:
     return _uniq(forms)
 
 
-def id_candidates(parts: DeviceNameParts, port_name: str = "") -> list[str]:
+def id_candidates(
+    parts: DeviceNameParts,
+    port_name: str = "",
+    short_fabric: bool = False,
+) -> list[str]:
     """Longest-first ID forms. ``build_label_for_far_end`` takes the first that fits.
 
     Fabric codes are two letters so 40G still fits. Endpoint codes stay as
@@ -516,7 +609,7 @@ def id_candidates(parts: DeviceNameParts, port_name: str = "") -> list[str]:
     differ by the VOSS slot (``01:01`` vs ``02:01``), so
     ``USW-1G-L02-CO01_1_1`` (18) keeps both floor and port.
     """
-    codes = _code_forms(parts)
+    codes = _code_forms(parts, short_fabric)
     scope = f"{parts.scope}-" if parts.scope else ""
     suffixes = _port_suffix_candidates(port_name)
     compact = _compact_port_suffixes(port_name)
@@ -558,19 +651,23 @@ def build_label_for_far_end(
         cls not in NO_SPEED_CLASSES
         and bool(link_mbps)
         and link_mbps != CLASS_DEFAULT_MBPS.get(cls)
-        and link_mbps in MBPS_SPEED_TOKEN
+        and mbps_to_speed_token(link_mbps) is not None
     )
-    token = MBPS_SPEED_TOKEN[link_mbps] if token_needed else None
+    token = mbps_to_speed_token(link_mbps) if token_needed else None
     reserve = (len(token) + 1) if token else 0
     budget = MAX_LABEL_LEN - reserve
     tried = ""
-    for ident in id_candidates(parts, port_name):
+    short_fabric = cls == "USW"
+    for ident in id_candidates(parts, port_name, short_fabric=short_fabric):
         bare = build_label(cls, None, ident)
         label = build_label(cls, link_mbps, ident)
         tried = label
         if len(bare) <= budget and not (FORBIDDEN_CHARS & set(label)):
             return label
-    raise LabelTooLong(build_label(cls, link_mbps, id_candidates(parts, port_name)[0]), tried)
+    raise LabelTooLong(
+        build_label(cls, link_mbps, id_candidates(parts, port_name, short_fabric=short_fabric)[0]),
+        tried,
+    )
 
 
 def plan_label(
@@ -610,20 +707,33 @@ def iftype_to_mbps(iface_type: str | None) -> int | None:
 
 
 # ---- Far-end role -> CLASS -----------------------------------------------
+#
+# This is the *closed* policy table. The ID abbreviator is open (it follows
+# whatever hostname NetBox has). CLASS cannot be open: a new "Camera" at 10G
+# must stay MON, not become US. Operational contract: reuse the NetBox roles
+# below. Inventing "Hypervisor" / "HCI" / "Tape" without adding a token here
+# labels those data NICs MON (safe default, not silent US).
 
 #: Far-end roles that are network infrastructure rather than an endpoint. A
 #: firewall link carries the same operational weight as a switch uplink, so it
 #: gets USW (link/flap/errors + speed expectation) rather than US/MON.
-INFRA_ROLE_TOKENS = ("switch", "firewall")
+INFRA_ROLE_TOKENS = frozenset({"switch", "firewall"})
 
 #: Far-end roles whose data NICs are production data path -> US regardless of
 #: negotiated speed. Their out-of-band management ports are still MON.
-DATA_ENDPOINT_ROLE_TOKENS = ("server", "storage", "cohesity")
+DATA_ENDPOINT_ROLE_TOKENS = frozenset({"server", "storage", "cohesity"})
 
 #: Fallback only. The authoritative out-of-band signal is the far device's
 #: NetBox ``oob_ip`` being assigned to that interface; these name tokens cover
 #: hosts where nobody has set it yet.
 BMC_PORT_TOKENS = ("idrac", "ilo", "bmc", "ipmi", "cimc", "imm", "mgmt", "oob")
+
+_ROLE_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def _role_words(role: str) -> set[str]:
+    """Word tokens from a NetBox role name (``Switch Dist`` → {switch, dist})."""
+    return set(_ROLE_WORD_RE.findall((role or "").lower()))
 
 
 def is_bmc_port(far_port: str | None) -> bool:
@@ -638,15 +748,16 @@ def classify(far_role: str, link_mbps: int | None, far_port: str = "",
 
     Speed only decides the optional SPEED token after CLASS is known.
     Unknown roles are ``MON`` even at 10G — a 10G camera is not a server.
+    Matching is by role *words* so ``IPswitch`` does not become USW.
     """
-    role = (far_role or "").strip().lower()
-    if any(token in role for token in INFRA_ROLE_TOKENS):
+    words = _role_words(far_role)
+    if words & INFRA_ROLE_TOKENS:
         return "USW"
-    if "access point" in role:
+    if "access" in words and "point" in words:
         return "UP"
-    if "sd wan" in role or "sd-wan" in role:
+    if "sdwan" in words or ("sd" in words and "wan" in words):
         return "UW"
-    if any(token in role for token in DATA_ENDPOINT_ROLE_TOKENS):
+    if words & DATA_ENDPOINT_ROLE_TOKENS:
         # Lights-out and controller management is MON; data NICs are production.
         return "MON" if (far_is_mgmt or is_bmc_port(far_port)) else "US"
     return "MON"

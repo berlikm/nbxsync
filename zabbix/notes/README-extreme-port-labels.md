@@ -132,15 +132,15 @@ which is what makes a deterministic abbreviation possible at all.
 ### 3.2 The rule
 
 ```
-ID = [<SCOPE>-]<CODE><NN>[-<STACK>][_P<FARPORT>]
+ID = [<SCOPE>-]<CODE><NN>[-<STACK>][_FARPORT]
 ```
 
 | Piece | Source | Example |
 |---|---|---|
-| `SCOPE` | far-end **location** token when the far end is in the same site, otherwise the far **site** tail | `B01`, `L01`, `GFL` / `L42`, `L44` |
-| `CODE<NN>` | 2-letter role + index — **never** the full word | `DI01`, `AC03`, `CO02`, `MG01`, `AP03` |
+| `SCOPE` | a token that exists on the **hostname** (or was stripped from it) — never a NetBox site tail like `DC` that is not in the name | `B01`, `L01`, `GFL`, `L50` |
+| `CODE<NN>` | **Fabric** (switch/firewall/AP): 2 letters (`CORE→CO`, unknown `SPINE→SP`). **Endpoints**: the hostname word (`SAN`, `SNAS`, `ESX`) | `DI01`, `AC03`, `SAN11`, `SNAS01` |
 | `-STACK` | stack member suffix, when present | `-1`, `-2` |
-| `_FARPORT` | far-end interface; `:`/`/`/`.` → `_`, leading zeros stripped | `_29`, `_1_24`. If that overflows, concatenate: `_120`. No extra `P` — that letter is the 40G budget. Filler `ETH`/`NIC`/`PORT` drops (`ct0.eth4` → `_CT0_4`). |
+| `_FARPORT` | far-end interface; `:`/`/`/`.` → `_`, leading zeros stripped | `_29`, `_1_24`. If that overflows, concatenate: `_120`. No extra `P`. Filler `ETH`/`NIC`/`PORT` drops (`ct0.eth4` → `_CT0_4`). |
 
 Non-numeric far ports use a bare `_` (`_LOM1`, `_X1`, `_VMNIC0`).
 `UP` (access point) omits the far port entirely — an AP has one uplink, so the
@@ -210,6 +210,37 @@ ISC, and MLAG peer-links are ordinary switch↔switch cables** — the script
 correctly labels them `USW` and they **must stay monitored** (split-stack /
 dual-active is an outage). Do not tag them structural. Auto-`X` from a
 description of `ISC` is an explicit non-goal.
+
+### 3.5 What is closed vs open (so this script is not a catalogue)
+
+The generator is two layers. Mixing them is how `CY` / `NS` / `DC` appeared:
+someone encoded *this estate’s inventory* instead of *the grammar*.
+
+**Open — follows NetBox, no per-device rows**
+
+| Mechanic | What happens when you add a new box |
+|---|---|
+| Hostname ID | Keep the words on the name (`SAN`, `SNAS`, `ESX`, `SAN10-N01`). Shorten the prefix only if 20 characters force it. |
+| Site strip | Token-wise shared prefix with the far-site slug. Never invent a site tail (`DC`) that is not on the hostname. |
+| Port token | Split on `:` `/` `.`; drop generic filler (`ETH`, `NIC`, `PORT`); no extra `P`. |
+| Length | Longest ID that fits the *emitted* SPEED token. Refuse rather than truncate. |
+| Unknown CLASS | Anything that is not switch/firewall/AP/SD-WAN/server/storage/cohesity is `MON`. |
+| SPEED token | `Mbps → NG` / `2G5`. 50G / 200G / 800G do not need a table row. |
+| New USW role-word | `Switch Spine` / hostname `SPINE01` → `SP` (two letters, same physics as `CORE→CO`). |
+
+**Closed — a small policy table, edited when the *taxonomy* changes**
+
+| Table | When you touch it |
+|---|---|
+| `INFRA_ROLE_TOKENS` / `DATA_ENDPOINT_ROLE_TOKENS` | You invent a NetBox role instead of reusing Server / Storage / Switch \*. Prefer **not** inventing roles. |
+| `BMC_PORT_TOKENS` | A new lights-out vendor string, and nobody set `oob_ip` / `mgmt_only`. |
+| `FABRIC_CODE_SHORT` | Estate spelling that is *not* “first two letters” (`FWZONE→FW` not `FZ`, `CATO→CT` not `CA`). |
+| `_PORT_NOISE` | A new filler word in vendor ifNames (`QSFP`, `SLOT`) that burns the 40G budget. |
+
+Operational contract that keeps the script stable: **reuse NetBox roles**. A
+hypervisor is a Server. A NAS is Storage. A new leaf switch is still Switch \*.
+The day you add “Hypervisor” as a role, data NICs become `MON` until you add
+one token — that is the safe default, not a silent mis-class as `US`.
 
 ---
 
