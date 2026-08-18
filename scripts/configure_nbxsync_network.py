@@ -13,7 +13,9 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 
   * Import Extreme VOSS / IQ Engine / EXOS Observability / Port Speed Expect / Routing templates into Zabbix
   * Patch stock Extreme EXOS EtherLike duplex LLD with the same IFALIAS filters as net.if.discovery
-  * Patch stock EXOS ``net.if.discovery`` rollout (15m / disable-lost immediately / delete after 7d / SNMP timeout 30s)
+  * Patch stock EXOS ``net.if.discovery`` rollout (15m / disable-lost immediately / delete after 7d).
+    Per-rule ``timeout`` stays empty: classic SNMP OID LLD is not ``walk[``/``get[``, so Zabbix
+    requires the proxy/global SNMP timeout.
   * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding and queue check-now discovery for stale rows (no fork, no host sync)
   * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it)
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
@@ -474,7 +476,11 @@ def assert_etherlike_ifalias_filters(api, template_name: str) -> tuple[bool, str
 
 _IF_DISCOVERY_KEY = 'net.if.discovery'
 _IF_LLD_ROLLOUT_DELAY = '15m'
-_IF_LLD_ROLLOUT_TIMEOUT = '30s'
+# Per-rule timeout is only valid for SNMP LLD whose snmp_oid starts with walk[ or get[.
+# Stock Extreme EXOS uses classic discovery[{#SNMPVALUE},…] — Zabbix then requires
+# timeout="" and uses the proxy/global SNMP timeout. Sending 30s yields
+# Invalid parameter "/1/timeout": value must be empty.
+_IF_LLD_WALK_TIMEOUT = '30s'
 
 # Zabbix 7 discoveryrule API. Immediate *delete* wipes history on a truncated
 # GETBULK or a wrong IFALIAS filter. A rule that goes not-supported (SNMP
@@ -827,6 +833,12 @@ def assert_linkdown_one_average(api, template_name: str) -> tuple[bool, str]:
     return ok, f'linkdown={names}'
 
 
+def _discovery_item_timeout_supported(rule: dict) -> bool:
+    """Zabbix allows discoveryrule.timeout for SNMP only on walk[/get[ OIDs."""
+    oid = str(rule.get('snmp_oid') or '')
+    return oid.startswith('walk[') or oid.startswith('get[')
+
+
 def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by SNMP') -> str:
     """Align stock EXOS net.if.discovery with VOSS rollout settings.
 
@@ -835,8 +847,9 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
     show EtherLike duplex (small table) and **zero** ``net.if.*`` traffic
     items (full IF-MIB walk). Idempotent API patch; does not fork the stock YAML.
     Lost resources: disable immediately, delete after 7d — not delete-now.
+    Do not set discoveryrule.timeout on classic SNMP OID LLD.
     """
-    logger.info('Network: EXOS net.if.discovery rollout (delay/lifetime/timeout)')
+    logger.info('Network: EXOS net.if.discovery rollout (delay/lifetime)')
     tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
     if not tpls:
         logger.warning('  %s: template not found — skip IF LLD rollout patch', template_name)
@@ -854,6 +867,7 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
             'enabled_lifetime',
             'enabled_lifetime_type',
             'timeout',
+            'snmp_oid',
         ],
     )
     if not rules:
@@ -863,46 +877,34 @@ def patch_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by 
     delay = str(rule.get('delay') or '')
     lifetime = str(rule.get('lifetime') or '')
     timeout = str(rule.get('timeout') or '')
+    timeout_ok = _discovery_item_timeout_supported(rule)
     already = delay == _IF_LLD_ROLLOUT_DELAY and _lld_lost_resources_ok(rule)
-    if already and timeout == _IF_LLD_ROLLOUT_TIMEOUT:
+    if already and (not timeout_ok or timeout == _IF_LLD_WALK_TIMEOUT):
         logger.info(
             '  %s: IF LLD rollout already set (delay=%s lifetime=%s timeout=%s)',
             template_name,
             delay,
             lifetime,
-            timeout,
+            timeout or '(proxy/global)',
         )
         return 'ok'
     payload = {
         'itemid': rule['itemid'],
         'delay': _IF_LLD_ROLLOUT_DELAY,
-        'timeout': _IF_LLD_ROLLOUT_TIMEOUT,
         **_lld_lost_resources_fields(),
     }
-    try:
-        api.discoveryrule.update(**payload)
-    except Exception as exc:
-        logger.warning(
-            '  %s: IF LLD timeout=%s rejected (%s) — patching delay/lifetime only',
-            template_name,
-            _IF_LLD_ROLLOUT_TIMEOUT,
-            exc,
-        )
-        api.discoveryrule.update(
-            itemid=rule['itemid'],
-            delay=_IF_LLD_ROLLOUT_DELAY,
-            **_lld_lost_resources_fields(),
-        )
-        return 'patched-no-timeout'
+    if timeout_ok:
+        payload['timeout'] = _IF_LLD_WALK_TIMEOUT
+    api.discoveryrule.update(**payload)
     logger.info(
         '  %s: patched IF LLD delay=%s lifetime=%s timeout=%s (was delay=%s lifetime=%s timeout=%s)',
         template_name,
         _IF_LLD_ROLLOUT_DELAY,
         _LLD_DELETE_LIFETIME,
-        _IF_LLD_ROLLOUT_TIMEOUT,
+        payload.get('timeout', timeout or '(proxy/global)'),
         delay,
         lifetime,
-        timeout,
+        timeout or '(empty)',
     )
     return 'patched'
 
@@ -914,17 +916,21 @@ def assert_exos_interface_lld_rollout(api, template_name: str = 'Extreme EXOS by
     rules = api.discoveryrule.get(
         hostids=tpls[0]['templateid'],
         filter={'key_': _IF_DISCOVERY_KEY},
-        output=['delay', 'lifetime', 'lifetime_type', 'enabled_lifetime', 'enabled_lifetime_type', 'timeout'],
+        output=['delay', 'lifetime', 'lifetime_type', 'enabled_lifetime', 'enabled_lifetime_type', 'timeout', 'snmp_oid'],
     )
     if not rules:
         return True, 'no IF LLD — n/a'
     r = rules[0]
+    timeout = str(r.get('timeout') or '')
+    timeout_note = timeout or '(proxy/global)'
     detail = (
         f"delay={r.get('delay')} lifetime={r.get('lifetime')} lifetime_type={r.get('lifetime_type')} "
         f"enabled_lifetime={r.get('enabled_lifetime')} enabled_lifetime_type={r.get('enabled_lifetime_type')} "
-        f"timeout={r.get('timeout')}"
+        f"timeout={timeout_note}"
     )
     ok = str(r.get('delay')) == _IF_LLD_ROLLOUT_DELAY and _lld_lost_resources_ok(r)
+    if ok and _discovery_item_timeout_supported(r):
+        ok = timeout == _IF_LLD_WALK_TIMEOUT
     return ok, detail
 
 
@@ -1581,7 +1587,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             if_lld_status = patch_exos_interface_lld_rollout(api)
             record(
                 'exos_if_lld_rollout',
-                if_lld_status in ('ok', 'patched', 'patched-no-timeout', 'missing', 'no-if-lld'),
+                if_lld_status in ('ok', 'patched', 'missing', 'no-if-lld'),
                 if_lld_status,
                 group='import',
             )

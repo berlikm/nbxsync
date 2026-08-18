@@ -40,4 +40,4 @@ There is no separate “template uses IFNAME only” path for EXOS IF LLD.
 1. Host macros: `IFALIAS.MATCHES=.*`, `NOT_MATCHES=^X(-|$)`, `IFTYPE.MATCHES=^(6|161)$`.
 2. Discovery rule state/error for `net.if.discovery`.
 3. Execute now; confirm items appear within one cycle.
-4. If timeout: raise proxy/host SNMP timeout for that walk, or poll fewer OIDs later (thin template) — do not clone stock.
+4. If the IF-MIB walk times out: raise the **proxy/global** SNMP timeout (`timeout_snmp_agent` / Administration → Timeouts). Stock EXOS `net.if.discovery` uses classic SNMP OID discovery, not `walk[`/`get[`, so Zabbix requires the rule `timeout` field to stay **empty**. Do not set 30s on the discovery rule.
