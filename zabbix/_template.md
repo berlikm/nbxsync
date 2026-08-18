@@ -30,9 +30,9 @@ Every domain uses the same bar. Only the signals change.
 | Sev | Page? | Meaning | Examples |
 |---|---|---|---|
 | **Disaster** | 24/7 | Site or business service is down. Not a single box. | Site unreachable, both WAN circuits down, site→DC synthetic dead |
-| **High** | 24/7 if it affects production | Device or **key path** gone | Host ICMP down, Core/Dist `USW` down, Access `USW`/`UP` down, temp **critical** |
-| **Average** | Ticket / business hours | Partial failure; will become an outage | PSU/fan, optic DOM alarm, SNMP dead (forwarding may still work), memory |
-| **Warning** | Next business day | Could escalate; do not SMS | Errors, flaps, half duplex, CPU, endpoint `US`/`MON` down, speed-expect |
+| **High** | 24/7 if it affects production | Device gone, or something pikett can act on tonight | Host ICMP down, temp **critical**. Not a discovered link-down. |
+| **Average** | Ticket / business hours | Partial failure, path loss, or hygiene that dayside must clean | PSU/fan, optic DOM alarm, memory, **any discovered** link down (`US`/`USW`/`UP`/`MON`/unlabelled Core) |
+| **Warning** | Next business day | Could escalate; do not SMS | SNMP dead, errors, flaps, half duplex, CPU, speed-expect |
 | **Info** | No | Notice | Firmware / serial change |
 
 Actions: Disaster+High → SMS/call. Average → ticket. Warning → queue/dashboard. Info → log. If everything is Warning, the scale is unused.

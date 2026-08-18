@@ -205,7 +205,7 @@ SD-WAN / WAN iface  →  API dead  →  ICMP down  →  site unreachable
 CPU / mem / license →  ICMP down
 ```
 
-A site WAN blip must not be Forti Average **plus** Extreme `UW` High **plus** Cato site High for the same circuit. Tag Forti path events as **firewall/path**, not fabric `USW`. Site **Disaster** parent is later — until then expect per-device ICMP Highs.
+A site WAN blip must not be Forti Average **plus** Extreme `UW` Average **plus** Cato site High for the same circuit. Tag Forti path events as **firewall/path**, not fabric `USW`. Site **Disaster** parent is later — until then expect per-device ICMP Highs.
 
 ---
 

@@ -73,7 +73,7 @@ A FortiGate is not a switch. Users feel **paths** (SD-WAN / IPsec / last circuit
 | HA / IPsec | later (peer/sync); ICMP High per member now | later | do not pretend HTTP has HA LLD; do not hide members behind a VIP |
 | Firmware | Info or off | inventory | Info forever if FortiGuard always offers an image |
 
-One incident: **API → ICMP → site**. Do not also High Extreme `UW`, Forti WAN iface, and Cato for the same ISP cut ([05](../05-internet-circuits.md), [04](../04-cato.md)). Forti WAN ≠ fabric `USW`.
+One incident: **API → ICMP → site**. Do not also ticket Extreme `UW`, Forti WAN iface, and Cato for the same ISP cut ([05](../05-internet-circuits.md), [04](../04-cato.md)). Forti WAN ≠ fabric `USW`.
 
 ---
 

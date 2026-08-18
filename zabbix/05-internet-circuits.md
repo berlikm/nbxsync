@@ -1,6 +1,6 @@
 # Internet circuits
 
-Prepared later. Same bar as [01](01-extreme-switching.md): a circuit High is not a fabric `USW` High. Tag them so Forti WAN and Extreme `UW-` can share the class later.
+Prepared later. Same bar as [01](01-extreme-switching.md): a circuit page is not a fabric `USW` ticket. Tag them so Forti WAN and Extreme `UW-` can share the class later. On the switch template, `UW` is **Average** like every other discovered link.
 
 Depends on Extreme `UW-…` labels ([port-identity.md](port-identity.md)) and/or Forti WAN / SD-WAN health-checks ([03-fortinet.md](03-fortinet.md) — API, not SNMP). Do not page the same ISP cut as Extreme `UW`, Forti path, and Cato.
 

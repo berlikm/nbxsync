@@ -30,18 +30,18 @@ If the port runs at the class default, **omit SPEED**. Refuse labels over 20 —
 
 | CLASS | Meaning | Default speed | Speed-expect | Alerts (live cutover) |
 |---|---|---|---|---|
-| `USW` | Switch ↔ switch | 10G | later (do not link yet) | **Average** link. Flap/errors Warning |
-| `US` | Endpoint, expect 10G | 10G | later | **Average** link — **Core/Dist/Mgmt only** (not collected on Access) |
-| `UP` | Toward AP | 1G | later | **Average** link on the switch (Access collects it). AP ICMP stays **High** |
-| `MON` | Endpoint, expect 1G | 1G | later | Average link — **Core/Dist/Mgmt only** |
+| `USW` | Switch / firewall / other network box | 10G | later (do not link yet) | **Average** link. Flap/errors Warning |
+| `US` | Server / storage | 10G | later | **Average** link — **Core/Dist/Mgmt only** (not collected on Access) |
+| `UP` | Access point | 1G | later | **Average** link on the switch (Access collects it). AP ICMP stays **High** |
+| `MON` | Important to monitor, no better default class | 1G | later | **Average** link — **Core/Dist/Mgmt only** |
 | `UW` | WAN / ISP | — | later (circuit bw) | Average link |
 | `TMON` | Temp watch | — | no | items; optional INFO link-down |
 | `X` / `X-<note>` | **Exclude** | — | — | none |
 | `N` / `N-<text>` | Note — monitoring-neutral | — | — | same as unlabelled |
 
-**`X` excludes. `N` does not.** On Core/Dist/Mgmt, `N` / empty / unparseable labels are monitored (all admin-up except `X`). On **Access**, only **`USW` (to Dist) and `UP` (to AP)** are collected — no desk, laptop, `US`, `MON`, `UW`, `TMON`, or unlabelled. A laptop unplug cannot alert: there are no items.
+**`X` excludes. `N` does not.** On Core/Dist/Mgmt, **admin-up means it should be live** — including `N`, empty, or odd labels. Unused: **admin-down** (or `X`). On **Access**, only **`USW` (to Dist) and `UP` (to AP)** are collected — no desk, laptop, `US`, `MON`, `UW`, `TMON`, or unlabelled.
 
-Live stock **link-down is Average** for every discovered port. That **is** the cutover contract. Class **High** for `USW`/`UP` is later — [01](01-extreme-switching.md).
+Every discovered **link-down is Average** (ticket). Same for Pure/`US` and an empty admin-up port you forgot to shut. Do not also split High by class.
 
 ---
 
@@ -67,10 +67,11 @@ Expected = token if present, else class default.
 
 | Scenario | Display | Len | Expect |
 |---|---|---|---|
-| Switch ↔ switch | `USW-SWD14` | 9 | 10G |
-| Hypervisor 10G | `US-ESX01` | 8 | 10G |
+| Switch / firewall | `USW-SWD14` | 9 | 10G |
+| Hypervisor / storage 10G | `US-ESX01` | 8 | 10G |
+| Pure / array | `US-PURE01` | 10 | 10G |
 | AP | `UP-AP3F07` | 9 | 1G |
-| iDRAC | `MON-IDR03` | 9 | 1G |
+| iDRAC (MON: important, no better class) | `MON-IDR03` | 9 | 1G |
 | AP at 2.5G | `UP-2G5-AP07` | 12 | 2.5G |
 | Exclude | `X-STACK` | 7 | none |
 | Note | `N-SPARE` | 7 | = unlabelled |

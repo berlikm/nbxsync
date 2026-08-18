@@ -61,9 +61,9 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | Sustained util vs **intended** speed | **no** | stock 15m off (`{$IF.UTIL.MAX}=101`); Speed Expect `USW` also **101** |
 | `X…` ports | **no** | not discovered |
 
-Do **not** alert on: a laptop unplugging (Access **does not collect** desk ports), fifty **High**s for one site down, “bandwidth high” on a backup window.
+Do **not** alert on: a laptop unplugging on Access (those ports are not collected), fifty **High**s for one site down, “bandwidth high” on a backup window.
 
-Discovery already decides what is important. Do not also split High vs Average by label: Access is only `USW`+`UP`; Core/Dist still collect every admin-up port except `X` (so High-everywhere would page Dist endpoints). Warning is the wrong channel for a path that is already down. Page the box (ICMP) and overtemp; ticket the port.
+On Core/Dist/Mgmt, **admin-up is the contract**: only important ports should be up. Link-down is either a real path loss (Pure/`US`, `USW` to a firewall, `UP` to an AP) or an empty port you forgot to shut — both get a **ticket** so dayside can fix or admin-down. Same Average for every class. Do **not** page it: pikett cannot restore an array at 03:00, and cleaning unused ports is not a night job. High is ICMP (the box is gone) and overtemp. If the *storage switch itself* must wake someone, that is the host `critical` tag, not a special `US` trigger.
 
 ---
 
@@ -91,7 +91,7 @@ Util and intended-speed comparison stay graphs until Speed Expect is linked.
 | Switch Core / Dist / Mgmt | **Every** admin-up port except `X…` | `X…`; **admin-down** is not discovered |
 | Switch Access | **Only** `USW` (to Dist) and `UP` (to AP) | Desk / laptop / `US` / `MON` / `UW` / `TMON` / unlabelled / `N…` / `X…` |
 
-Access is two labels, full stop. Unlabelled Access ports produce **no items**. Dist / Core / Mgmt alert if an admin-up port goes down, labelled or not (except `X`). Do not leave a desk port admin-up on Dist.
+Access is two labels, full stop. Unlabelled Access ports produce **no items**. Dist / Core / Mgmt: if it is admin-up, it is in — labelled or not (except `X`). Unused ports must be **admin-down**, not left up “with nothing connected”.
 
 **`X` excludes. `N` does not** (Core/Dist/Mgmt). Stack / ISC / MLAG peer / SPAN need **`X`**. Unused: **admin-down**.
 

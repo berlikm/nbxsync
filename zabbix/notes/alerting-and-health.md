@@ -9,14 +9,16 @@ Cutover must be **no worse than LogicMonitor**, and **re-running zero-touch must
 
 ## Alerting model (SRE + NMS)
 
-A **page** (Disaster/High) must be: user or forwarding impact now, urgent, actionable, one incident per root cause.
+A **page** (Disaster/High) must be: user or forwarding impact now, urgent, **actionable tonight**, one incident per root cause.
 
 | Channel | Zabbix sev | Use |
 |---|---|---|
 | SMS/call 24/7 | Disaster, High | Device ICMP down; temp **critical** |
-| Ticket, business hours | Average | PSU/fan, DOM alarm, memory, discovered link down, “we are blind” (unsupported items) |
+| Ticket, business hours | Average | PSU/fan, DOM alarm, memory, **every discovered** link down, “we are blind” (unsupported items) |
 | Next day / dashboard | Warning | SNMP dead, CPU, errors, flaps, duplex, speed-expect (when linked) |
 | Log | Info | Firmware / serial |
+
+On-box classes are identity, not a second severity map: `US` = server/storage (Pure), `USW` = switch/firewall/other network box, `UP` = AP, `MON` = important with no better class. On Core/Dist/Mgmt, **only important ports are admin-up**. Admin-up + nothing connected is a ticket so dayside can check and **admin-down**. A Pure/`US` path down is a critical service we most likely **cannot restore at 03:00** — still Average, not High. Page the **box** (ICMP) and overtemp. If a *storage switch host* must wake pikett, that is host tag `critical`, not a special `US` trigger.
 
 Google SRE: dashboards answer “what’s broken / why”; do not page on causes. Network practice splits **device health** (CPU, mem, temp, FRU) from **traffic**. Official Zabbix Extreme templates only ship a traffic gallery — we add a host **Health** dashboard on the platform template.
 
@@ -33,7 +35,7 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 
 | Issue | Was | Now (cutover) |
 |---|---|---|
-| Docs said `USW`/`UP` link-down **High** | Stock/VOSS one **Average** for every discovered port | Average is the live contract. Discovery is the filter. |
+| Docs said `USW`/`UP` link-down **High** | Stock/VOSS one **Average** for every discovered port | Average is the live contract. Admin-up = should be live; ticket, do not page. |
 | Observability listed flaps/errors as “page” | Warning (next day) | Graph/ticket, not 03:00 |
 | Speed Expect `{$IF.UTIL.MAX:"USW"}=80` | Would page 80% of intended 10G the moment it was linked | **101** (off) |
 | VOSS ISIS circuit / card **High** ungated | 24/7 on unused SPBM / empty slots | `{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0` (same pattern as V-IST) |
