@@ -1,8 +1,8 @@
 # Extreme Port Speed Expect by SNMP
 
-Thin Zabbix **7.0** template: absolute speed expectation, sustained utilisation, and outbound discards for ports labelled `USW` / `US` / `UP` / `MON`.
+Thin Zabbix **7.0** template: absolute speed expectation from the on-box label, plus later util-%-of-intended and outbound discards for ports labelled `USW` / `US` / `UP` / `MON`.
 
-Design: [01-extreme-switching.md](../../01-extreme-switching.md) (Speed Expect). Own LLD macros (`{$PORTID.LLD.*}`) — do not reuse `{$NET.IF.IFALIAS.*}`.
+Design: [01-extreme-switching.md](../../01-extreme-switching.md) (Intended speed). Own LLD macros (`{$PORTID.LLD.*}`) — do not reuse `{$NET.IF.IFALIAS.*}`.
 
 ## Link with
 
@@ -23,6 +23,15 @@ Assigned on **both platforms** (not per role). Role scoping for the *stock* inte
 {$IF.DISCARDS.WARN}           = 1
 ```
 
+## Triggers (YAML)
+
+| Trigger | Status | Why |
+|---|---|---|
+| Speed ≠ expected Mbps, oper-up 5m | **on** (Warning) | the product; still do not *link* the template until a label census is quiet |
+| Sustained util vs intended | on, but `{$IF.UTIL.MAX}=101` | unreachable until USW is set to 80 |
+| Link down (speed-expect) | **DISABLED** | platform already Average-tickets discovered link-down |
+| Outbound discards | **DISABLED** | 1 pps is not gated by util 101; need a baseline |
+
 ## Keys (no collision with stock)
 
 | Kind | Key |
@@ -38,8 +47,8 @@ LLD JS preprocessing emits `{#IF.CLASS}`, `{#IF.SPEED.EXPECTED}` (Mbps), `{#IF.U
 
 ## Polling note
 
-Design prefers **dependent items** on platform-template masters (`net.if.speed[ΓÇª]`, etc.) to avoid extra SNMP. Zabbix template YAML cannot reliably declare cross-template masters for a platform-neutral template, so this scaffold uses uniquely keyed SNMP prototypes. Swap to dependents at host/template-link time once proven ΓÇö same keys for triggers can stay.
+Design prefers **dependent items** on platform-template masters (`net.if.speed[…]`, etc.) to avoid extra SNMP. Zabbix template YAML cannot reliably declare cross-template masters for a platform-neutral template, so this scaffold uses uniquely keyed SNMP prototypes. Swap to dependents at host/template-link time once proven — same keys for triggers can stay. Compare in **Mbps**; never `min(speed,5m)` (platform speed uses discard-unchanged heartbeat 1h).
 
 ## Rollout
 
-Do **not** link this template until labels are clean. YAML trigger prototypes are **enabled** (speed mismatch, util, discards, link-down). Linking it pages. Keep `{$IF.UTIL.MAX}=101` **and** `{$IF.UTIL.MAX:"USW"}=101` until util is baselined. Access must override `{$PORTID.LLD.IFALIAS.MATCHES}` to `^(USW|UP)(-|$)`.
+Do **not** link this template until a census of `ifAlias` vs `ifHighSpeed` is quiet. Linking Warning-tickets every Pure still labelled as 10G, every 2.5G AP still labelled `UP-…`, every 1G Dist↔Access still labelled `USW-…`. Access must override `{$PORTID.LLD.IFALIAS.MATCHES}` to `^(USW|UP)(-|$)`.

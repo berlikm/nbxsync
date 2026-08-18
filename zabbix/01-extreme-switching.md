@@ -54,10 +54,10 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 |---|---|---|
 | Discovered link down (`USW` / `UP` / `US` / `MON` / `UW` / unlabelled Dist) | yes | **Average** — one trigger. Scope is LLD, not a second severity map. |
 | Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
-| Wrong speed vs **intended** label | **no** | Speed Expect YAML exists — **do not link** |
+| Wrong speed vs **intended** label | **no** | Speed Expect YAML exists — **do not link**. When linked: **Warning**, not a page |
 | Half duplex | yes | Warning |
 | Interface errors | yes | Warning |
-| Outbound discards (`USW`) | **no** | Speed Expect, not linked; util context **101** |
+| Outbound discards (`USW`) | **no** | Speed Expect discards trigger is **DISABLED** until a pps baseline |
 | Sustained util vs **intended** speed | **no** | stock 15m off (`{$IF.UTIL.MAX}=101`); Speed Expect `USW` also **101** |
 | `X…` ports | **no** | not discovered |
 
@@ -80,7 +80,7 @@ Widget type follows the object count and the question. Honeycomb is only for **m
 
 **Network interfaces → Overview** is the status map + 3×2 traffic grid. Each hex is the **port ID** (`1:1`, `1/21`, `eth0`) — not the IFALIAS paragraph — with Auto type so the ID stays readable. Colour is oper-status; hover still shows the full item. Switch maps are **72×6** (traffic at y=6, **height 14**): Zabbix floors honeycomb cells at 32px and then hides labels that do not fit, so a height-3 strip on a Core/Dist VOSS (every admin-up port except `X`) paints nameless hexes in a modest window. IQ maps are **12×3** — Zabbix has no max cell size, and ~2 AP eth in a switch-sized widget are giant hexes. Traffic is the same **height 14** 3×2 grid on all three. **Port** (VOSS YAML / EXOS `--apply` on stock **Extreme EXOS by SNMP**, not the Observability companion) is the one-port fault picker (status/speed/duplex/errors/discards, VOSS flaps) — not bits. IQ has no Port page. Zabbix 7 cannot open a hex into a graph. Ethernet is full duplex: do **not** sum RX+TX for congestion.
 
-Util and intended-speed comparison stay graphs until Speed Expect is linked.
+Util and intended-speed stay graphs / Latest data until Speed Expect is linked. Honeycomb stays oper-status.
 
 ---
 
@@ -211,7 +211,7 @@ Poll weight (same idea as APs, more SNMP budget on a chassis): inventory **1h**;
 
 | Template | Where | Triggers |
 |---|---|---|
-| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt | YAML **on**. **Do not assign** on Switch roles until labels are clean. `{$IF.UTIL.MAX:"USW"}=101` (off) |
+| Extreme Port Speed Expect by SNMP | Switch Core / Dist / Access / Mgmt | **imported, not linked**. Speed-mismatch Warning **on** in YAML. Duplicate link-down and discards **DISABLED**. Util `{$IF.UTIL.MAX:"USW"}=101` (off) |
 | Extreme Routing by SNMP (OSPF) | Switch Core / Dist | YAML **on** (OSPF High). **Not linked** |
 
 Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Default (Core/Dist/Mgmt):
@@ -223,7 +223,36 @@ Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Default (Core/Dist
 
 On **Access**, override MATCHES to `^(USW|UP)(-|$)`.
 
-Intended speed = token or class default (`USW` 10G, `UP` 1G). Live `ifHighSpeed` is compared in **Mbps**. Util (when enabled) is `% of intended`, 1h — not live speed.
+### How intended speed works
+
+The on-box label **is** the contract. Live `ifHighSpeed` (IF-MIB, million bits/s → we store **Mbps**) is observed state.
+
+| Label | Expected (Mbps) | Why |
+|---|---|---|
+| `USW-SWD14` | 10000 | class default `USW` = 10G |
+| `US-PURE01` | 10000 | class default `US` = 10G — **wrong** if the array is 25G/100G; write `US-25G-PURE01` |
+| `UP-AP3F07` | 1000 | class default `UP` = 1G — **wrong** if the AP is 2.5G; write `UP-2G5-AP3F07` |
+| `UP-2G5-AP07` | 2500 | token overrides the class default |
+| `USW-1G-SWA14` | 1000 | Dist↔Access copper that is really 1G |
+| `MON-IDR03` | 1000 | class default `MON` = 1G |
+| `UW-ISP1` | — | **not in this LLD**. PHY speed ≠ circuit commit (05) |
+| unlabelled Dist port | — | **not in this LLD**. Platform still Average-tickets link-down. No intended speed without a class |
+
+LLD JS parses `CLASS[-SPEED]-ID` into `{#IF.CLASS}` + `{#IF.SPEED.EXPECTED}`. Only **physical ethernet** (`ifType=6`). LAG/MLT aggregates report **summed** speed and would sit in problem forever — they stay on the platform template for link-down/errors, not here.
+
+**Operator view (when linked, not now):**
+
+- **Problems:** Warning, next day — `Port identity: Interface 1/21(USW-SWD14): Speed 1000 ≠ expected 10000 Mbps (class USW)`.
+- **Network interfaces → Overview** honeycomb stays **oper-status**. Do not paint hexes by Mbps (10G vs 1G vs 2.5G is not a colour scale).
+- **Network interfaces → Port** already shows live **Speed** (platform item, bps after ×1e6) + duplex. That is the “what is it now” pane. The Warning is “what should it be”.
+- **Latest data** grows `Speed (speed-expect)` in Mbps plus util-%-of-intended helpers. Util graphs are later; they are **% of the label**, 1h average — not stock 15m vs live speed.
+- Stock/VOSS **“Ethernet has changed to lower speed”** stays as a change-detect safety net until this template is proven. It has a hole: `10G → down → up at 1G` often never fires (speed reads 0 while down). Absolute expect exists because of that hole. After a quiet pilot, disable the stock change-detect so one mismatch is not two Warnings.
+
+**Severity (SRE):** wrong speed still forwards. Dayside checks cable / SFP / autoneg **or** fixes the label. Do **not** High it (pikett cannot make autoneg 10G at 03:00). Do **not** Average it (that queue is link-down / unused-port cleanup). Warning = next day. If the 1G pipe is actually dropping users, **discards** (later) is the impact signal. If the box is gone, **ICMP**.
+
+**Do not link until a census is quiet.** Walk `ifAlias` + `ifHighSpeed` on Core/Dist/Mgmt (Access: `USW`+`UP` only). Parse the grammar; diff live Mbps vs expected. The first-week ticket storm is almost always: Pure still labelled `US-…` at 25G, APs still `UP-…` at 2.5G, Dist↔Access still `USW-…` at 1G. Relabel (token) or the port is mis-negotiating — both are dayside. Changing a class default later (`USW` 10G → 25G) silently re-values every tokenless label; freeze defaults.
+
+**When `--link-speed-expect` is eventually passed:** second LLD on every Switch role; speed-mismatch Warning on. Util stays off (`101`) until 4+ weeks of history, then maybe `{$IF.UTIL.MAX:"USW"}=80` — **USW only**, not `US`/`UP`/`MON` (a busy server/AP port is that box’s problem). Discards stay DISABLED until a pps baseline. Extra SNMP GETs exist today (platform-neutral YAML cannot declare cross-template dependent masters); swap to dependents on `net.if.speed[ifHighSpeed.{#SNMPINDEX}]` later — compare in Mbps, never `min(speed,5m)` (heartbeat 1h → unknown).
 
 ---
 
@@ -231,7 +260,7 @@ Intended speed = token or class default (`USW` 10G, `UP` 1G). Live `ifHighSpeed`
 
 `--apply` is the Extreme switching + AP contract. Do not add extra flags.
 
-**Speed Expect** is imported so the template exists. Do **not** pass `--link-speed-expect`. Linking would attach a second LLD to every Switch role and Warning on ports whose live Mbps is not the label (`USW`→10G, `UP`→1G, token overrides). Util and discards in that YAML are already off (`{$IF.UTIL.MAX}=101`). Link it later only when on-box labels are clean — that is a separate ops decision, not Health dashboards.
+**Speed Expect** is imported so the template exists. Do **not** pass `--link-speed-expect`. Linking attaches a second LLD and Warning on every labelled port whose live Mbps is not the label (`USW`→10G, `US`→10G, `UP`→1G, token overrides). Util is already off (`101`). Duplicate link-down and discards are **DISABLED** in YAML — platform already Average-tickets link-down; 1 pps discards is not a threshold. Link later only after a label census is quiet — that is a separate ops decision, not Health dashboards.
 
 OSPF stays imported-not-linked. Fabric High stays gated (`{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0`) until a canary.
 

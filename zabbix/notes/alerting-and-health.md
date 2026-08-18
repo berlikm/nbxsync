@@ -24,12 +24,19 @@ Google SRE: dashboards answer “what’s broken / why”; do not page on causes
 
 ## Intended speed
 
-The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). Live `ifHighSpeed` is observed state.
+The on-box label is the contract (`USW`→10G, `US`→10G, `UP`→1G, `MON`→1G, `UP-2G5-…`→2.5G). Live `ifHighSpeed` is observed state (IF-MIB million bits/s, compared in **Mbps**).
 
-- Compare `last(speed) <> {#IF.SPEED.EXPECTED}` (Mbps). Settle on **oper-status 5m**, never `min(speed,5m)` (heartbeat 1h → unknown).
-- Utilisation (later) is **% of intended**, 1h average — not stock 15m vs live speed.
-- Discards are the “someone is dropping” signal.
-- **Do not link** Speed Expect until labels are clean. YAML util context for `USW` is **101** (off). Stage 6 may set `{$IF.UTIL.MAX:"USW"}=80` on the template.
+- **When linked:** Warning `last(speed) <> {#IF.SPEED.EXPECTED}` while oper-up 5m. Next day, not a page — the link still forwards. Dayside: cable / SFP / autoneg, or the label is wrong.
+- Settle on **oper-status 5m**, never `min(speed,5m)` (heartbeat 1h → unknown).
+- Stock “changed to lower speed” misses `10G → bounce → 1G`. Absolute expect exists because of that hole.
+- Do **not** split High by class. A Pure port at 25G labelled `US-PURE01` (expect 10G) is a **label** bug, same channel as an AP at 2.5G labelled `UP-…`.
+- Utilisation (later) is **% of intended**, 1h average, **USW only** — not stock 15m vs live speed. A busy `US`/`UP` is that box’s problem.
+- Discards are the “someone is dropping” signal. YAML trigger **DISABLED** until a baseline; `{$IF.DISCARDS.WARN}=1` is not gated by util `101`.
+- Duplicate Speed Expect link-down is **DISABLED** — platform already Average-tickets discovered ports.
+- Honeycomb stays oper-status. Operator sees the Warning title (`Speed 1000 ≠ expected 10000 Mbps`) plus Port-page live Speed.
+- **Do not link** until a census of `ifAlias` vs `ifHighSpeed` is quiet. YAML util context for `USW` is **101** (off). Stage 6 may set `{$IF.UTIL.MAX:"USW"}=80` after history.
+
+`UW` has no PHY expect — commit rate is the NetBox Circuit (05). LAG aggregates (`ifType` 161) are out (`^6$`) because their speed is the sum of members.
 
 ## What was wrong vs the docs
 
@@ -37,7 +44,8 @@ The on-box label is the contract (`USW`→10G, `UP`→1G, `UP-2G5-…`→2.5G). 
 |---|---|---|
 | Docs said `USW`/`UP` link-down **High** | Stock/VOSS one **Average** for every discovered port | Average is the live contract. Admin-up = should be live; ticket, do not page. |
 | Observability listed flaps/errors as “page” | Warning (next day) | Graph/ticket, not 03:00 |
-| Speed Expect `{$IF.UTIL.MAX:"USW"}=80` | Would page 80% of intended 10G the moment it was linked | **101** (off) |
+| Speed Expect `{$IF.UTIL.MAX:"USW"}=80` | Would Warning 80% of intended 10G the moment it was linked | **101** (off) |
+| Speed Expect discards at 1 pps + second link-down | Would Warning besides platform Average link-down | discards and duplicate link-down **DISABLED** |
 | VOSS ISIS circuit / card **High** ungated | 24/7 on unused SPBM / empty slots | `{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0` (same pattern as V-IST) |
 | Switch ICMP loss/RTT Warning | CH proxy RTT is WAN, not box health | **DISABLED** (items stay; same as APs) |
 | EXOS SNMP-dead | Stock Warning | VOSS/IQ match Warning |

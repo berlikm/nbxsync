@@ -24,7 +24,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | Folder | Template | Status |
 |---|---|---|
 | `templates/extreme_voss_snmp/` | Extreme VOSS by SNMP | imported; **Health** dashboard; SNMP-dead **Warning**; link-down **Average**; ISIS/card High gated; ICMP loss **off** — [01](01-extreme-switching.md) |
-| `templates/extreme_port_speed_expect_snmp/` | Extreme Port Speed Expect by SNMP | imported; YAML triggers **on** — do not link; `{$IF.UTIL.MAX:"USW"}=101` |
+| `templates/extreme_port_speed_expect_snmp/` | Extreme Port Speed Expect by SNMP | imported, **not linked**; mismatch Warning on; duplicate link-down + discards **off**; `{$IF.UTIL.MAX:"USW"}=101` |
 | `templates/extreme_routing_snmp/` | Extreme Routing by SNMP (OSPF) | imported; not linked (YAML High if linked) |
 | `templates/extreme_iq_engine_snmp/` | Extreme IQ Engine by SNMP | imported; **Health** dashboard; severities per [02](02-extreme-access-points.md) |
 

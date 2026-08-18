@@ -562,8 +562,28 @@ def validate_speed_expect(doc: dict) -> None:
         str(macros.get('{$IF.UTIL.MAX:"USW"}')),
     )
     trigs = _walk_triggers(tpl)
-    enabled = [t.get('name') for t in trigs if t.get('status') not in ('DISABLED', 'disabled')]
-    record('SpeedExpect triggers present (on)', bool(trigs), f'count={len(trigs)} sample={enabled[:3]}')
+
+    def _is_on(t: dict) -> bool:
+        return str(t.get('status') or '').upper() not in ('DISABLED',)
+
+    speed_mismatch = next((t for t in trigs if 'Speed not equal to expected' in (t.get('name') or '')), None)
+    link_down = next((t for t in trigs if 'Link down (speed-expect)' in (t.get('name') or '')), None)
+    discards = next((t for t in trigs if 'Outbound discards' in (t.get('name') or '')), None)
+    record(
+        'SpeedExpect mismatch Warning on',
+        bool(speed_mismatch) and _is_on(speed_mismatch),
+        (speed_mismatch or {}).get('status') or 'enabled',
+    )
+    record(
+        'SpeedExpect link-down DISABLED',
+        bool(link_down) and not _is_on(link_down),
+        (link_down or {}).get('status'),
+    )
+    record(
+        'SpeedExpect discards DISABLED',
+        bool(discards) and not _is_on(discards),
+        (discards or {}).get('status'),
+    )
 
 
 def validate_yaml() -> None:

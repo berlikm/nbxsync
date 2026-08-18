@@ -130,10 +130,11 @@ zabbix_export:
             and last(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#1)<>last(/Extreme
             Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],#2)'
           name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Link down (speed-expect)'
+          status: DISABLED
           priority: WARNING
-          description: 'Dependency anchor for speed-expect / util. Prefer platform
-            template link-down for ops; this exists so thin-template triggers can
-            depend without cross-LLD references.
+          description: 'DISABLED — platform template already Average-tickets discovered
+            link-down. Kept as a dependency name only. Speed mismatch settles on
+            min(oper-status,5m)=1 instead.
 
             '
           manual_close: 'YES'
@@ -221,8 +222,13 @@ zabbix_export:
           expression: 'min(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.outdiscards[{#SNMPINDEX}],15m)>{$IF.DISCARDS.WARN}'
           name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Outbound discards'
           event_name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Outbound discards >{$IF.DISCARDS.WARN} pps (15m)'
+          status: DISABLED
           priority: WARNING
-          description: Traffic actually dropped ΓÇö user impact. Enable stage 6.
+          description: 'DISABLED until a discard baseline exists. {$IF.DISCARDS.WARN}=1
+            pps for 15m is not gated by {$IF.UTIL.MAX}=101 — linking with this on
+            would Warning every slightly droppy port. Enable later, USW first.
+
+            '
           tags:
           - tag: scope
             value: capacity

@@ -22,7 +22,7 @@ CLASS-SPEED-ID
 | **Length** | Max **20** (EXOS `display-string` hard limit; VOSS allows 64 — use **20**) |
 | **Forbidden** | `:` space `"` `<>` `&` `?` ; first char alphanumeric |
 
-If the port runs at the class default, **omit SPEED**. Refuse labels over 20 — do not let EXOS truncate.
+If the port runs at the class default, **omit SPEED**. If it does not (Pure 25G, AP 2.5G, Dist↔Access 1G), **the token is the contract** — Speed Expect will Warning the live `ifHighSpeed` against that number. Refuse labels over 20 — do not let EXOS truncate.
 
 ---
 
@@ -30,11 +30,11 @@ If the port runs at the class default, **omit SPEED**. Refuse labels over 20 —
 
 | CLASS | Meaning | Default speed | Speed-expect | Alerts (live cutover) |
 |---|---|---|---|---|
-| `USW` | Switch / firewall / other network box | 10G | later (do not link yet) | **Average** link. Flap/errors Warning |
-| `US` | Server / storage | 10G | later | **Average** link — **Core/Dist/Mgmt only** (not collected on Access) |
-| `UP` | Access point | 1G | later | **Average** link on the switch (Access collects it). AP ICMP stays **High** |
-| `MON` | Important to monitor, no better default class | 1G | later | **Average** link — **Core/Dist/Mgmt only** |
-| `UW` | WAN / ISP | — | later (circuit bw) | Average link |
+| `USW` | Switch / firewall / other network box | 10G | Warning when linked (`USW-1G-…` if not 10G) | **Average** link. Flap/errors Warning |
+| `US` | Server / storage | 10G | Warning when linked (`US-25G-…` / `US-100G-…` if the array is not 10G) | **Average** link — **Core/Dist/Mgmt only** (not collected on Access) |
+| `UP` | Access point | 1G | Warning when linked (`UP-2G5-…` if the AP is not 1G) | **Average** link on the switch (Access collects it). AP ICMP stays **High** |
+| `MON` | Important to monitor, no better default class | 1G | Warning when linked | **Average** link — **Core/Dist/Mgmt only** |
+| `UW` | WAN / ISP | — | **no** (circuit commit, not PHY) | Average link |
 | `TMON` | Temp watch | — | no | items; optional INFO link-down |
 | `X` / `X-<note>` | **Exclude** | — | — | none |
 | `N` / `N-<text>` | Note — monitoring-neutral | — | — | same as unlabelled |
@@ -72,6 +72,7 @@ Expected = token if present, else class default.
 | Pure / array | `US-PURE01` | 10 | 10G |
 | AP | `UP-AP3F07` | 9 | 1G |
 | iDRAC (MON: important, no better class) | `MON-IDR03` | 9 | 1G |
+| Pure 25G | `US-25G-P01` | 10 | 25G |
 | AP at 2.5G | `UP-2G5-AP07` | 12 | 2.5G |
 | Exclude | `X-STACK` | 7 | none |
 | Note | `N-SPARE` | 7 | = unlabelled |
