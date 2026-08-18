@@ -45,7 +45,16 @@ Unit tests (pure helpers only, no NetBox required):
 
 ```bash
 python3 zabbix/notes/test_extreme_port_labels.py
+python3 zabbix/notes/test_extreme_port_labels_canary.py
 ```
+
+The fleet canary is `zabbix/notes/fixtures/port_label_canary.tsv` — every
+cabled Extreme port from the NetBox export. The `expected_label` column is
+the *old* generator (5-character SPEED slot, floor often dropped); tests
+**recompute** and assert length ≤ 20, CLASS, floor kept, and no per-device
+collisions. Excel-coerced VOSS ports (`Jan 19`, `01. Jul`, `02. Mär`) are
+recovered in `port_label_canary.py` before replay. Rebuild the TSV with
+`python3 zabbix/notes/fixtures/build_port_label_canary.py`.
 
 ---
 
@@ -117,7 +126,7 @@ ID = [<SCOPE>-]<CODE><NN>[-<STACK>][_p<FARPORT>]
 | `SCOPE` | far-end **location** token when the far end is in the same site, otherwise the far **site** tail | `B01`, `L01`, `GFL` / `L42`, `L44` |
 | `CODE<NN>` | far-end device code + index | `DIST01`, `ACPO03`, `CORE02` |
 | `-STACK` | stack member suffix, when present | `-1`, `-2` |
-| `_pFARPORT` | far-end interface, `:` and `/` → `.` | `_p29`, `_p1.24`, `_p2.14` |
+| `_pFARPORT` | far-end interface; `:`/`/` → `.`, leading zeros stripped | `_P29`, `_P1.24`. If that overflows by 1, concatenate: `_P120` |
 
 Non-numeric far ports use a bare `_` (`_LOM1`, `_X1`, `_VMNIC0`).
 `UP` (access point) omits the far port entirely — an AP has one uplink, so the
@@ -140,9 +149,11 @@ The abbreviator walks a fixed ladder and takes the **first form that fits**:
 | # | Form | Example |
 |---|---|---|
 | 1 | `SCOPE-CODE NN-STACK _pPORT` | `GFL-AC01_P23` |
-| 2 | drop the far port, keep the floor | `L02-CO01-1` |
-| 3 | drop the scope, keep the port | `AC01_P23` |
-| 4 | code + stack only | `AC01` |
+| 2 | drop stack, keep floor + dotted port | `L02-CO01_P1.1` |
+| 3 | concatenate slot+port (`1.20` → `_P120`) | `L01-MG01_P120` |
+| 4 | drop the far port, keep the floor | `L17-CO01-1` |
+| 5 | drop the scope, keep the port | `AC01_P23` |
+| 6 | code + stack only | `AC01` |
 
 Code is always the 2-letter form (`CORE→CO` `DIST→DI` `ACCE→AC` `ACPO→AP`
 `MGMT→MG` `FWGW/FWZONE→FW` …). Scope (building or far-site tail) is kept
@@ -177,13 +188,6 @@ token.
 
 Do **not** treat “device has no primary_ip in NetBox” as management — Pure/SAN
 often only have `oob_ip` recorded while the cable is a production data port.
-
-`X` is **policy, not inference.** Stack / ISC / MLAG peer-link / SPAN ports must
-never alert, but NetBox models them as ordinary switch-to-switch cables — see
-the ISC ports in the sample below, which the script correctly reports as `USW`
-because nothing in NetBox says otherwise. Tag those interfaces and select the
-tag in **Structural (never-alert) interface tags**. Auto-`X` without a policy is
-an explicit non-goal.
 
 `X` is **policy, not inference.** Stack / ISC / MLAG peer-link / SPAN ports must
 never alert, but NetBox models them as ordinary switch-to-switch cables — see

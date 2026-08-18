@@ -103,14 +103,160 @@ class LabelUniquenessTests(unittest.TestCase):
         )
         self.assertEqual(lab, "USW-1G-GFL-DI01_P1")
 
-    def test_nkn_dist_to_core_keeps_floor_when_port_does_not_fit(self):
-        """USW-1G-L02-CO01-1_P1.1 is 22. Keep L02, drop the far port."""
+    def test_nkn_dist_to_core_keeps_floor_and_port_by_dropping_stack(self):
+        """USW-1G-L02-CO01-1_P1.1 is 22. Drop stack; VOSS slot 01: vs 02: remains."""
         lab = self._label(
             "USW", 1000, "CH-NKN-G08-L02-CORE01-1",
             "ch-nkn-g08", "ch-nkn-g08", "01:01", "Switch Core",
         )
-        self.assertEqual(lab, "USW-1G-L02-CO01-1")
+        self.assertEqual(lab, "USW-1G-L02-CO01_P1.1")
         self.assertLessEqual(len(lab), 20)
+
+    def test_leading_zeros_on_voss_port_match_unpadded(self):
+        a = self._label(
+            "USW", 1000, "CH-NKN-G08-L02-CORE01-1",
+            "ch-nkn-g08", "ch-nkn-g08", "01:05", "Switch Core",
+        )
+        b = self._label(
+            "USW", 1000, "CH-NKN-G08-L02-CORE01-1",
+            "ch-nkn-g08", "ch-nkn-g08", "1:5", "Switch Core",
+        )
+        self.assertEqual(a, b)
+        self.assertEqual(a, "USW-1G-L02-CO01_P1.5")
+
+    def test_szx_1g_access_to_stacked_core_keeps_floor_and_concat_port(self):
+        """USW-1G-L17-CO01-1_P1.48 is 22; drop-stack dotted is 21. Concat port."""
+        a = self._label(
+            "USW", 1000, "CN-SZX-ECP-L17-CORE01-1",
+            "cn-szx-ecp", "cn-szx-ecp", "01:48", "Switch Core",
+        )
+        b = self._label(
+            "USW", 1000, "CN-SZX-ECP-L17-CORE01-2",
+            "cn-szx-ecp", "cn-szx-ecp", "02:48", "Switch Core",
+        )
+        self.assertEqual(a, "USW-1G-L17-CO01_P148")
+        self.assertEqual(b, "USW-1G-L17-CO01_P248")
+        self.assertLessEqual(len(a), 20)
+
+    def test_l50_1g_mgmt_slotted_ports_keep_floor(self):
+        """USW-1G-L01-MG01_P1.20 is 21. Concatenate so 1:20 and 1:21 differ."""
+        a = self._label(
+            "USW", 1000, "CH-STA-L50-L01-MGMT01",
+            "ch-sta-l50", "ch-sta-l50", "1:20", "Switch Mgmt",
+        )
+        b = self._label(
+            "USW", 1000, "CH-STA-L50-L01-MGMT01",
+            "ch-sta-l50", "ch-sta-l50", "1:21", "Switch Mgmt",
+        )
+        self.assertEqual(a, "USW-1G-L01-MG01_P120")
+        self.assertEqual(b, "USW-1G-L01-MG01_P121")
+        self.assertNotEqual(a, b)
+
+    def test_jp_core_without_numeric_keeps_floor_by_dropping_stack(self):
+        """CORE-1 has no index; USW-1G-L06-CO-1_P1.48 is 21."""
+        lab = self._label(
+            "USW", 1000, "JP-YOK-CHO-L06-CORE-1",
+            "jp-yok-cho", "jp-yok-cho", "01:48", "Switch Core",
+        )
+        self.assertEqual(lab, "USW-1G-L06-CO_P1.48")
+        self.assertLessEqual(len(lab), 20)
+
+    def test_l44_gfl_and_b01_access_do_not_collide_on_dist(self):
+        gfl = self._label(
+            "USW", 1000, "CH-STA-L44-GFL-ACCE02",
+            "ch-sta-l44", "ch-sta-l44", "24", "Switch Access",
+        )
+        b01 = self._label(
+            "USW", 1000, "CH-STA-L44-B01-ACCE02",
+            "ch-sta-l44", "ch-sta-l44", "24", "Switch Access",
+        )
+        self.assertEqual(gfl, "USW-1G-GFL-AC02_P24")
+        self.assertEqual(b01, "USW-1G-B01-AC02_P24")
+
+    def test_l50_core_dist_floors_stay_distinct(self):
+        labels = [
+            self._label("USW", 10000, name, "ch-sta-l50", "ch-sta-l50", port, "Switch Dist")
+            for name, port in (
+                ("CH-STA-L50-B01-DIST01", "29"),
+                ("CH-STA-L50-GFL-DIST01", "29"),
+                ("CH-STA-L50-L01-DIST01", "29"),
+                ("CH-STA-L50-L02-DIST01", "54"),
+            )
+        ]
+        self.assertEqual(labels, [
+            "USW-B01-DI01_P29",
+            "USW-GFL-DI01_P29",
+            "USW-L01-DI01_P29",
+            "USW-L02-DI01_P54",
+        ])
+        self.assertEqual(len(set(labels)), 4)
+
+    def test_stacking_ports_keep_far_port(self):
+        a = self._label(
+            "USW", None, "CH-NKN-G08-L02-CORE01-2",
+            "ch-nkn-g08", "ch-nkn-g08", "02:16", "Switch Core",
+        )
+        b = self._label(
+            "USW", None, "CH-NKN-G08-L02-CORE01-2",
+            "ch-nkn-g08", "ch-nkn-g08", "02:15", "Switch Core",
+        )
+        self.assertEqual(a, "USW-L02-CO01-2_P2.16")
+        self.assertEqual(b, "USW-L02-CO01-2_P2.15")
+
+    def test_san_eth10_and_eth2_stay_distinct(self):
+        a = self._label(
+            "US", 10000, "ch-zrh-zh4-san02",
+            "ch-zrh-zh4", "ch-zrh-zh4", "ct0.eth10", "Storage",
+        )
+        b = self._label(
+            "US", 10000, "ch-zrh-zh4-san02",
+            "ch-zrh-zh4", "ch-zrh-zh4", "ct0.eth2", "Storage",
+        )
+        self.assertNotEqual(a, b)
+        self.assertIn("ETH10", a)
+        self.assertIn("ETH2", b)
+        self.assertLessEqual(len(a), 20)
+        self.assertLessEqual(len(b), 20)
+
+    def test_hu_40g_isc_keeps_nag_scope(self):
+        lab = self._label(
+            "USW", 40000, "HU-DEB-NAG-CORE04",
+            "hu-deb-nag-b", "hu-deb-nag-b", "25", "Switch Core",
+        )
+        self.assertEqual(lab, "USW-40G-NAG-CO04_P25")
+        self.assertLessEqual(len(lab), 20)
+
+    def test_cross_site_zh4_to_zh5_keeps_site_tail(self):
+        lab = self._label(
+            "USW", 10000, "CH-ZRH-ZH5-CORE01",
+            "ch-zrh-zh5", "ch-zrh-zh4", "46", "Switch Core",
+        )
+        self.assertEqual(lab, "USW-ZH5-CO01_P46")
+
+    def test_jiux_l3_firewall_keeps_l3_scope(self):
+        lab = self._label(
+            "USW", 1000, "CN-SHA-JIUX-L3-FWGW01",
+            "cn-sha-jiu", "cn-sha-jiu", "port15", "Firewall",
+        )
+        self.assertEqual(lab, "USW-1G-L3-FW01_P15")
+
+    def test_idrac_fits_and_stays_mon(self):
+        lab = self._label(
+            "MON", 1000, "ch-zrh-zh4-esx40.sensirion.lokal",
+            "ch-zrh-zh4", "ch-zrh-zh4", "iDRAC 10 (NIC.1)", "Server",
+        )
+        self.assertTrue(lab.startswith("MON-ES40"), lab)
+        self.assertLessEqual(len(lab), 20)
+
+    def test_cohesity_ilo_uses_far_device_not_description(self):
+        """Description says N07; the cable lands on n08."""
+        lab = self._label(
+            "MON", 1000, "lr50-san10-n08.sensirion.lokal",
+            "ch-sta-l50", "ch-sta-l26",
+            "Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)",
+            "Cohesity",
+        )
+        self.assertEqual(lab, "MON-L50-CY08")
 
 
 class ParserTests(unittest.TestCase):

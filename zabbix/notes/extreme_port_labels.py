@@ -271,9 +271,22 @@ def split_device_name(name: str, site_slug: str, local_site_slug: str) -> Device
 
 
 def normalize_port_token(port_name: str) -> str:
-    """``1:24`` / ``1/24`` -> ``1.24``; strip anything the grammar forbids."""
+    """``1:24`` / ``1/24`` / ``01:01`` -> ``1.24`` / ``1.1``.
+
+    Leading zeros are stripped per numeric segment so a VOSS ``01:05`` and an
+    Excel-retyped ``1:5`` render the same ``_P1.5``, and so
+    ``USW-1G-L02-CO01_P1.1`` (20) fits instead of ``…_P01.01`` (22).
+    """
     token = (port_name or "").upper().replace(":", ".").replace("/", ".")
-    return "".join(ch for ch in token if ch.isalnum() or ch in "._")
+    token = "".join(ch for ch in token if ch.isalnum() or ch in "._")
+    if not token:
+        return ""
+    parts = []
+    for seg in token.split("."):
+        if not seg:
+            continue
+        parts.append(str(int(seg)) if seg.isdigit() else seg)
+    return ".".join(parts)
 
 
 def _port_suffix_candidates(port_name: str) -> list[str]:
@@ -289,6 +302,9 @@ def _port_suffix_candidates(port_name: str) -> list[str]:
     if token.startswith("PORT") and token[4:5].isdigit():
         token = token[4:]
     if token[0].isdigit():
+        # Dotted VOSS/EXOS ``1.20`` is never shortened to the slot (``1``):
+        # that would collide 1:20 with 1:21. Concatenation (``120``) is a
+        # later, tighter rendering used only when the dotted form cannot fit.
         return [f"_P{token}"]
 
     segments = token.split(".")
@@ -309,27 +325,74 @@ def _port_suffix(port_name: str) -> str:
     both render as ``_P23``. Non-numeric ports keep their own token."""
     return _port_suffix_candidates(port_name)[0]
 
+
+def _compact_port_suffixes(port_name: str) -> list[str]:
+    """One-character-tighter numeric ports: ``1.20`` -> ``_P120``.
+
+    ``USW-1G-L01-MG01_P1.20`` is 21. Dropping the floor collides two floors'
+    MG01; dropping the port collides ``1:20`` with ``1:21`` on the same box.
+    Concatenating slot+port keeps both and fits in 20. Never used when the
+    dotted form already fits (tried first).
+    """
+    token = normalize_port_token(port_name)
+    if token and token[0].isdigit() and "." in token:
+        compact = token.replace(".", "")
+        if compact != token:
+            return [f"_P{compact}"]
+    return []
+
+def _code_forms(parts: DeviceNameParts) -> list[str]:
+    """``CO01-1``, then ``CO01`` (stack is redundant with a VOSS ``01:`` slot)."""
+    short_code = ROLE_CODE_SHORT.get(parts.code, parts.code[:2] if parts.code else "")
+    numbered = f"{short_code}{parts.num}"
+    forms = []
+    if parts.stack:
+        forms.append(f"{numbered}-{parts.stack}")
+    forms.append(numbered)
+    seen: set[str] = set()
+    return [f for f in forms if f and not (f in seen or seen.add(f))]
+
+
 def id_candidates(parts: DeviceNameParts, port_name: str = "") -> list[str]:
     """Longest-first ID forms. ``build_label_for_far_end`` takes the first that fits.
 
     The role code is *always* the two-letter form -- spelling out ``ACCE`` buys
     no clarity over ``AC`` but costs two characters that the port number needs.
-    Order is deliberate: keep SCOPE+port, then drop the port, then drop SCOPE.
-    Floors like GFL vs L02 are the uniqueness that survives a Core view of two
-    ACCE01s on port 23. Two parallel links to the *same* neighbour that cannot
-    fit SCOPE+port will collide and the script will refuse that device rather
-    than silently alias GFL onto L02.
-    """
-    short_code = ROLE_CODE_SHORT.get(parts.code, parts.code[:2])
-    short = f"{short_code}{parts.num}" + (f"-{parts.stack}" if parts.stack else "")
-    scope = f"{parts.scope}-" if parts.scope else ""
 
+    Keep the floor (SCOPE) whenever physics allow. Stack is dropped before
+    SCOPE or the far port: on this estate ``CORE01-1`` / ``CORE01-2`` already
+    differ by the VOSS slot (``01:01`` vs ``02:01``), so
+    ``USW-1G-L02-CO01_P1.1`` (20) keeps both floor and port, while
+    ``USW-1G-L02-CO01-1_P1.1`` (22) cannot. Dropping SCOPE while keeping the
+    port is last-resort — that is what made Dist→Access ``USW-1G-AC01_P23``
+    collide GFL-ACCE01 with L02-ACCE01 on Core.
+    """
+    codes = _code_forms(parts)
+    scope = f"{parts.scope}-" if parts.scope else ""
     suffixes = _port_suffix_candidates(port_name)
-    ladder = [f"{scope}{short}{sfx}" for sfx in suffixes]
+    compact = _compact_port_suffixes(port_name)
+
+    ladder: list[str] = []
+    # Dotted port on every code, then concatenated port, then drop the port.
+    # Concatenation is after the dotted form so ``USW-1G-L02-CO01_P1.1`` (20)
+    # still wins over ``USW-1G-L02-CO01-1_P11``, and before dropping the port
+    # so ``USW-1G-L01-MG01_P120`` wins over a colliding floor-only MG01.
+    for code in codes:
+        for sfx in suffixes:
+            ladder.append(f"{scope}{code}{sfx}")
+    for code in codes:
+        for sfx in compact:
+            ladder.append(f"{scope}{code}{sfx}")
     if scope:
-        ladder.append(f"{scope}{short}")
-    ladder += [f"{short}{sfx}" for sfx in suffixes]
-    ladder.append(short)
+        for code in codes:
+            ladder.append(f"{scope}{code}")
+    for code in codes:
+        for sfx in suffixes:
+            ladder.append(f"{code}{sfx}")
+    for code in codes:
+        for sfx in compact:
+            ladder.append(f"{code}{sfx}")
+    ladder.extend(codes)
     seen: set[str] = set()
     return [c for c in ladder if c and not (c in seen or seen.add(c))]
 
@@ -364,6 +427,26 @@ def build_label_for_far_end(
         if len(bare) <= budget and not (FORBIDDEN_CHARS & set(label)):
             return label
     raise LabelTooLong(build_label(cls, link_mbps, id_candidates(parts, port_name)[0]), tried)
+
+
+def plan_label(
+    *,
+    local_site: str,
+    far_name: str,
+    far_site: str,
+    far_port: str,
+    far_role: str,
+    far_is_mgmt: bool,
+    link_mbps: int | None,
+) -> str:
+    """Same derivation ``expected_label_for`` uses, without NetBox objects."""
+    cls = classify(far_role, link_mbps, far_port or "", far_is_mgmt)
+    parts = split_device_name(far_name, far_site, local_site)
+    code = role_code(far_role)
+    if code:
+        parts = replace(parts, code=code)
+    port_ref = "" if cls == "UP" else (far_port or "")
+    return build_label_for_far_end(cls, link_mbps, parts, port_ref)
 
 
 # ---- Interface type -> speed ---------------------------------------------
@@ -807,21 +890,19 @@ def expected_label_for(iface, structural_tag_ids: set[int]) -> tuple[str, str]:
 
     far_device = far.device
     far_role = getattr(getattr(far_device, "role", None), "name", "") or ""
-    cls = classify(far_role, link_mbps, far.name or "", _is_management_interface(far))
-
-    parts = split_device_name(
-        far_device.name or "",
-        getattr(getattr(far_device, "site", None), "slug", "") or "",
-        getattr(getattr(iface.device, "site", None), "slug", "") or "",
-    )
-    code = role_code(far_role)
-    if code:
-        parts = replace(parts, code=code)
-    # An AP has a single uplink, so its far-end port number is pure noise.
-    port_ref = "" if cls == "UP" else (far.name or "")
-
+    far_is_mgmt = _is_management_interface(far)
+    local_site = getattr(getattr(iface.device, "site", None), "slug", "") or ""
+    far_site = getattr(getattr(far_device, "site", None), "slug", "") or ""
     try:
-        return build_label_for_far_end(cls, link_mbps, parts, port_ref), "ok"
+        return plan_label(
+            local_site=local_site,
+            far_name=far_device.name or "",
+            far_site=far_site,
+            far_port=far.name or "",
+            far_role=far_role,
+            far_is_mgmt=far_is_mgmt,
+            link_mbps=link_mbps,
+        ), "ok"
     except LabelTooLong as exc:
         return exc.suggestion, "too_long"
 
