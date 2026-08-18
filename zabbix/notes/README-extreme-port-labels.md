@@ -50,8 +50,9 @@ python3 zabbix/notes/export_port_label_preview.py   # regenerates the Excel shee
 ```
 
 What the current generator will write (1535 cabled ports):
-[`port-label-preview.md`](port-label-preview.md) and
-[`fixtures/port_label_preview.tsv`](fixtures/port_label_preview.tsv).
+[`port-label-preview.md`](port-label-preview.md) (eyeball sheet),
+[`port-label-verify.md`](port-label-verify.md) (every port, grouped by switch),
+[`fixtures/port_label_preview.tsv`](fixtures/port_label_preview.tsv) (Excel).
 
 How to run this in NetBox (preview → Excel → compliance → one canary push):
 [`port-label-compliance-review.md`](port-label-compliance-review.md).
