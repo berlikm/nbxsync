@@ -140,7 +140,7 @@ ID = [<SCOPE>-]<CODE><NN>[-<STACK>][_P<FARPORT>]
 | `SCOPE` | far-end **location** token when the far end is in the same site, otherwise the far **site** tail | `B01`, `L01`, `GFL` / `L42`, `L44` |
 | `CODE<NN>` | 2-letter role + index — **never** the full word | `DI01`, `AC03`, `CO02`, `MG01`, `AP03` |
 | `-STACK` | stack member suffix, when present | `-1`, `-2` |
-| `_PFARPORT` | far-end interface; `:`/`/`/`.` → `_`, leading zeros stripped | `_P29`, `_P1_24`. If that overflows by 1, concatenate: `_P120` |
+| `_FARPORT` | far-end interface; `:`/`/`/`.` → `_`, leading zeros stripped | `_29`, `_1_24`. If that overflows, concatenate: `_120`. No extra `P` — that letter is the 40G budget. Filler `ETH`/`NIC`/`PORT` drops (`ct0.eth4` → `_CT0_4`). |
 
 Non-numeric far ports use a bare `_` (`_LOM1`, `_X1`, `_VMNIC0`).
 `UP` (access point) omits the far port entirely — an AP has one uplink, so the
@@ -151,12 +151,13 @@ port number is noise.
 A SPEED token is reserved **only for the token that will actually be emitted**
 (`1G-` is 3, `40G-` is 4). We do **not** leave a blank 5-character `400G-` hole
 on a 1G link — that is what dropped floors. Room for `40G` / `100G` comes from
-**short codes**: `CORE→CO` `DIST→DI` `ACCE→AC` `MGMT→MG`.
-`USW-40G-NAG-CO04_P25` is 20; `…NAG-CORE04_P25` would be 22 and EXOS would
-truncate. That is why the ID never says DIST/CORE/ACCE/MGMT.
+**short fabric codes** (`CORE→CO` …) **and** dropping the extra `P` on ports
+(`_1_20` not `_P1_20`). `USW-40G-L01-MG01_120` is 20; spelling CORE or keeping
+`P` would overflow. Endpoint names stay readable (`SAN`, `SNAS`, `ESX`) — we
+do not invent `SN`/`NS`/`CY`/`DC`.
 
 Reserving 5 characters on a 1G USW link dropped the floor on Dist→Access, so
-`USW-1G-GFL-AC01_P23` (19, fits) became `USW-1G-AC01_P23`. NKN G08 has both
+`USW-1G-GFL-AC01_23` (18, fits) became `USW-1G-AC01_23`. NKN G08 has both
 `GFL-ACCE01` and `L02-ACCE01`; without the floor those are the same label on
 Core.
 
@@ -164,11 +165,11 @@ The abbreviator walks a fixed ladder and takes the **first form that fits**:
 
 | # | Form | Example |
 |---|---|---|
-| 1 | `SCOPE-CODE-STACK _PPORT` | `GFL-AC01_P23` |
-| 2 | drop stack, keep floor + underscored port | `L02-CO01_P1_1` |
-| 3 | concatenate slot+port (`1_20` → `_P120`) | `L01-MG01_P120` |
+| 1 | `SCOPE-CODE-STACK _PORT` | `GFL-AC01_23` |
+| 2 | drop stack, keep floor + underscored port | `L02-CO01_1_1` |
+| 3 | concatenate slot+port (`1_20` → `_120`) | `L01-MG01_120` |
 | 4 | drop the far port, keep the floor | `L17-CO01-1` |
-| 5 | drop the scope, keep the port | `AC01_P23` |
+| 5 | drop the scope, keep the port | `AC01_23` |
 | 6 | code + stack only | `AC01` |
 
 Code is always the 2-letter form (`CORE→CO` `DIST→DI` `ACCE→AC` `ACPO→AP`
@@ -280,14 +281,14 @@ addresses are reproduced here.
 
 | ifName | Far end (NetBox) | Expected | Live | Len | Status |
 |---|---|---|---|---|---|
-| 1 | CH-ZRH-ZH4-CORE02::1 [Switch Core] | `USW-CO02_P1` | `ISC` | 11 | diff |
-| 5 | CH-ZRH-ZH4-MGMT01-1::1:51 [Switch Mgmt] | `USW-MG01-1_P1_51` | `MLAG_MGMT01_p51` | 16 | diff |
-| 12 | ch-zrh-zh4-esx40…::vmnic0 [Server] | `US-ES40_VMNIC0` | `esx40_ct1_eth0` | 14 | diff |
+| 1 | CH-ZRH-ZH4-CORE02::1 [Switch Core] | `USW-CO02_1` | `ISC` | 10 | diff |
+| 5 | CH-ZRH-ZH4-MGMT01-1::1:51 [Switch Mgmt] | `USW-MG01-1_1_51` | `MLAG_MGMT01_p51` | 15 | diff |
+| 12 | ch-zrh-zh4-esx40…::vmnic0 [Server] | `US-ESX40_VMNIC0` | `esx40_ct1_eth0` | 15 | diff |
 | 15 | CH-ZRH-ZH4-FWGW01::x1 [Firewall] | `USW-FW01_X1` | `ZRH-FWGW01_x1` | 11 | diff |
 | 20 | — | `—` | `esx45_ct1_eth0` | — | kept |
-| 23 | ch-zrh-zh4-san02::ct0.eth10 [Storage] | `US-SN02_CT0_ETH10` | `SAN02_ctl0_eth10` | 17 | diff |
-| 29 | ch-zrh-zh4-san01::ct0.eth10 [Storage] | `US-SN01_CT0_ETH10` | `ZH4-SAN04-N01_CT0_e4` | 17 | diff |
-| 46 | CH-ZRH-ZH5-CORE01::46 [Switch Core] | `USW-ZH5-CO01_P46` | `ZH5-CORE01-P46` | 16 | diff |
+| 23 | ch-zrh-zh4-san02::ct0.eth10 [Storage] | `US-SAN02_CT0_10` | `SAN02_ctl0_eth10` | 15 | diff |
+| 29 | ch-zrh-zh4-san01::ct0.eth10 [Storage] | `US-SAN01_CT0_10` | `ZH4-SAN04-N01_CT0_e4` | 15 | diff |
+| 46 | CH-ZRH-ZH5-CORE01::46 [Switch Core] | `USW-ZH5-CO01_46` | `ZH5-CORE01-P46` | 15 | diff |
 | 48 | — | `—` | `ISP_Netrics` | — | kept |
 
 Reading it:
@@ -309,13 +310,13 @@ Reading it:
 |---|---|---|---|---|---|
 | 1/2 | CH-STA-L50-FWZone01::x1 [Firewall] | `USW-FW01_X1` | `S-FWZONE:X1` | 11 | diff |
 | 1/4 | CH-STA-L50-FWZone01::ha [Firewall] | `USW-1G-FW01_HA` | `FWZONE-HA1` | 14 | diff |
-| 1/7 | CH-STA-L50-L01-MGMT01::1/29 [Switch Mgmt] | `USW-L01-MG01_P1_29` | `NNI:L50-L01-MGMT01_1/29` | 18 | diff |
-| 1/17 | CH-STA-L50-B01-DIST01::29 [Switch Dist] | `USW-B01-DI01_P29` | `L50-B01-Di01:29` | 16 | diff |
-| 1/20 | CH-STA-L50-L01-DIST01::29 [Switch Dist] | `USW-L01-DI01_P29` | `L50-L02-Di02:54` | 16 | diff |
-| 1/21 | CH-STA-L50-L02-DIST01::54 [Switch Dist] | `USW-L02-DI01_P54` | `L50-L01-Di01:29` | 16 | diff |
-| 1/22 | CH-STA-L42-CORE01-2::2:14 [Switch Core] | `USW-L42-CO01-2_P2_14` | `L42-Co01:1:14` | 20 | diff |
-| 1/24 | CH-STA-L50-L01-CORE02::1/24 [Switch Core] | `USW-L01-CO02_P1_24` | `NNI:L50-Co02:1/24` | 18 | diff |
-| 2/2 | CH-STA-L26-L02-CORE01::2/2 [Switch Core] | `USW-L26-CO01_P2_2` | `NNI:L26-Co01:2/2` | 17 | diff |
+| 1/7 | CH-STA-L50-L01-MGMT01::1/29 [Switch Mgmt] | `USW-L01-MG01_1_29` | `NNI:L50-L01-MGMT01_1/29` | 17 | diff |
+| 1/17 | CH-STA-L50-B01-DIST01::29 [Switch Dist] | `USW-B01-DI01_29` | `L50-B01-Di01:29` | 15 | diff |
+| 1/20 | CH-STA-L50-L01-DIST01::29 [Switch Dist] | `USW-L01-DI01_29` | `L50-L02-Di02:54` | 15 | diff |
+| 1/21 | CH-STA-L50-L02-DIST01::54 [Switch Dist] | `USW-L02-DI01_54` | `L50-L01-Di01:29` | 15 | diff |
+| 1/22 | CH-STA-L42-CORE01-2::2:14 [Switch Core] | `USW-L42-CO01-2_2_14` | `L42-Co01:1:14` | 19 | diff |
+| 1/24 | CH-STA-L50-L01-CORE02::1/24 [Switch Core] | `USW-L01-CO02_1_24` | `NNI:L50-Co02:1/24` | 17 | diff |
+| 2/2 | CH-STA-L26-L02-CORE01::2/2 [Switch Core] | `USW-L26-CO01_2_2` | `NNI:L26-Co01:2/2` | 16 | diff |
 
 Reading it:
 
@@ -323,8 +324,8 @@ Reading it:
   legal on VOSS but **forbidden by the fleet grammar** and would be rejected by
   EXOS — one reason to normalise both platforms onto the same generator.
 - `1/7` live label is **23 characters** — fine on VOSS (`WORD<0-64>`), but EXOS
-  would truncate it. The generated form `USW-L01-MG01_P1_29` is 18 (`MG` not
-  `MGMT`; `_` not `.`).
+  would truncate it. The generated form `USW-L01-MG01_1_29` is 17 (`MG` not
+  `MGMT`; `_` not `.`; no extra `P`).
 - `1/20` / `1/21` are **swapped** between the on-box labels and the NetBox
   cabling — precisely the class of error this script exists to surface.
 - `1/4` is the firewall HA link at 1G, so the generator emits `USW-1G-FW01_HA`
@@ -335,13 +336,16 @@ Reading it:
 
 - SPEED is omitted at the class default. The 1G firewall HA is the exception
   (`USW-1G-FW01_HA`) because `USW` defaults to 10G.
-- Cross-site `1/22` is `USW-L42-CO01-2_P2_14` (20). Spelling `CORE` would be 22
-  (`USW-L42-CORE01-2_P2_14`) and EXOS would truncate. That is why codes are
-  always `CO`/`DI`/`AC`/`MG` — those two characters are the 40G budget
-  (`USW-40G-NAG-CO04_P25` = 20).
-- Dots are forbidden. Slot/port uses `_` (`_P2_14`, never `_p2.14`).
+- Cross-site `1/22` is `USW-L42-CO01-2_2_14` (19). Spelling `CORE` would overflow.
+  Fabric codes stay `CO`/`DI`/`AC`/`MG`. 40G on a slotted mgmt uplink is
+  `USW-40G-L01-MG01_120` (20) — that only fits because there is no extra `P`.
+- Dots are forbidden. Slot/port uses `_` (`_2_14`, never `_p2.14`).
 - Live on-box strings (`L02-ACCE03_p23`, `L42-Co01:1:14`) stay in the Live
   column. Compliance lists them; it does not wipe them to look tidy.
+- Endpoint IDs keep hostname words: Cohesity `lr50-san10-n08` →
+  `MON-LR50-SAN10-N08` (not `CY08`). `SNAS01` stays `SNAS`, `san11` stays `SAN`.
+  A NetBox site slug that is not on the hostname (`ch-zrh-dc`) is not invented
+  as `DC`.
 
 ---
 
@@ -354,12 +358,12 @@ Per port it pushes only what is non-compliant:
 
 ```
 # EXOS
-configure ports 1:8 display-string USW-1G-L02-AC03_P23
+configure ports 1:8 display-string USW-1G-L02-AC03_23
 unconfigure port 1:8 description-string      # only if explicitly ticked
 
 # VOSS
 interface GigabitEthernet 1/17
-name "USW-B01-DI01_P29"
+name "USW-B01-DI01_29"
 exit
 ```
 

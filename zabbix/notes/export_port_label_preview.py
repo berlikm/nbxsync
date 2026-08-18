@@ -53,12 +53,12 @@ def _note(row: canary.CanaryRow, label: str, error: str) -> str:
     if "MLAG" in desc:
         bits.append("MLAG")
     if label and "_" in label.split("-")[-1] and any(
-        ch.isdigit() for ch in label.split("_P")[-1]
+        ch.isdigit() for ch in label.rsplit("_", 1)[-1]
     ) and "." not in label:
         token = e.normalize_port_token(row.far_port)
         if token and token[0].isdigit() and "_" in token:
             compact = token.replace("_", "")
-            if label.endswith(f"_P{compact}") and f"_P{token}" not in label:
+            if label.endswith(f"_{compact}") and f"_{token}" not in label:
                 bits.append("concat-port")
     if label and len(label) == e.MAX_LABEL_LEN:
         bits.append("at-20")
@@ -172,7 +172,7 @@ def write_markdown(records: list[dict[str, str]], errors: list[str]) -> None:
         f"- Labels with `.`: **{len(dots)}** (must be 0)",
         f"- Duplicate label on the same device: **{len(collided)}** (must be 0)",
         f"- Exactly 20 characters: **{len(at_20)}**",
-        f"- Concatenated slot+port (`_P120` style): **{len(concat)}**",
+        f"- Concatenated slot+port (`_120` style): **{len(concat)}**",
         f"- ISC (from NetBox description): **{len(isc)}** — all must be `USW`",
         f"- Stack (`extreme-summitstack`): **{len(stack)}** — all must be `USW`",
         "",
@@ -197,7 +197,7 @@ def write_markdown(records: list[dict[str, str]], errors: list[str]) -> None:
         "",
         _sample(stack, 30),
         "",
-        "### Concatenated far port (1:20 → `_P120`)",
+        "### Concatenated far port (1:20 → `_120`)",
         "",
         _sample(concat, 25),
         "",

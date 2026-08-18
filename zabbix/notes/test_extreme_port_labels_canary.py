@@ -116,9 +116,9 @@ class FleetCanaryTests(unittest.TestCase):
 
     def test_nkn_gfl_and_l02_access_differ_on_core(self):
         wanted = {
-            "CH-NKN-G08-L02-CORE01-1::1:5": "USW-1G-L02-AC01_P23",
-            "CH-NKN-G08-GFL-DIST01::1": "USW-1G-GFL-AC01_P23",
-            "CH-NKN-G08-GFL-DIST01::23": "USW-1G-L02-CO01_P1_1",
+            "CH-NKN-G08-L02-CORE01-1::1:5": "USW-1G-L02-AC01_23",
+            "CH-NKN-G08-GFL-DIST01::1": "USW-1G-GFL-AC01_23",
+            "CH-NKN-G08-GFL-DIST01::23": "USW-1G-L02-CO01_1_1",
         }
         got = {row.canary_key: label for row, _s, label in self.planned}
         missing = {key: wanted[key] for key in wanted if key not in got}
@@ -126,7 +126,7 @@ class FleetCanaryTests(unittest.TestCase):
         failures = [f"{key}: got {got[key]} want {val}" for key, val in wanted.items() if got.get(key) != val]
         self.assertEqual(failures, [])
         core = got.get("CH-NKN-G08-L02-CORE01-1::1:5")
-        # L02 access on Core must not be the floor-less USW-1G-AC01_P23.
+        # L02 access on Core must not be the floor-less USW-1G-AC01_23.
         if core:
             self.assertIn("L02", core)
 

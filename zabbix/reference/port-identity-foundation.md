@@ -50,8 +50,9 @@ server is `US-1G-SRV12`, not `MON-SRV12`). Everything that is not a named class
 is `MON`, **including 10G cameras / printers** (`MON-10G-…`). Speed is the
 token, not the class.
 
-ID role codes are always two letters so 40G still fits: `CORE→CO` `DIST→DI`
-`ACCE→AC` `MGMT→MG`. `USW-40G-NAG-CO04_P25` is 20; spelling CORE would be 22.
+ID role codes are always two letters **for fabric** so 40G still fits: `CORE→CO` `DIST→DI`
+`ACCE→AC` `MGMT→MG`. Ports have no extra `P` (`_25` not `_P25`). Endpoints keep
+the hostname (`SAN`, `SNAS`, `ESX`). `USW-40G-L01-MG01_120` is 20.
 
 **`TMON`:** keep a list of `TMON*` for ops review; reason in NetBox description.
 

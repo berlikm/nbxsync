@@ -107,8 +107,8 @@ MBPS_SPEED_TOKEN = {v: k for k, v in SPEED_TOKEN_MBPS.items()}
 CLASS_DEFAULT_MBPS = {"USW": 10000, "US": 10000, "UP": 1000, "MON": 1000}
 
 #: Do not size the ID against a worst-case SPEED token. Reserving ``400G-`` (5)
-#: on a 1G USW link forced Dist→Access ``USW-1G-GFL-AC01_P23`` (19) to drop
-#: the floor, so GFL-ACCE01 and L02-ACCE01 both became ``USW-1G-AC01_P23``
+#: on a 1G USW link forced Dist→Access ``USW-1G-GFL-AC01_23`` (18) to drop
+#: the floor, so GFL-ACCE01 and L02-ACCE01 both became ``USW-1G-AC01_23``
 #: on Core. Reserve ``len(token)+1`` of the token that will actually be emitted.
 
 
@@ -247,10 +247,11 @@ def build_label(cls: str, link_mbps: int | None, ident: str) -> str:
 # Validated against real device names in this estate:
 #   CH-STA-L50-B01-ACCE01   CH-STA-L50-L01-CORE01   CH-NKN-G08-L02-CORE01-1
 #   CH-STA-L50-B01-ACPO03   CH-STA-L42-CORE01-2     CH-STA-P-BACK02
-# The 2-letter compression mirrors the convention already on the boxes
-# (``L26-GFL-Di02:29``, ``NNI:L26-Co02:1/24``).
+# Two-letter codes are **fabric only** (the estate already writes Co/Di on
+# the box). Endpoints keep the hostname token (SAN, SNAS, ESX, BACK) — a
+# made-up SN/NS/CY/DC does not tell an engineer what they are looking at.
 
-ROLE_CODE_SHORT = {
+FABRIC_CODE_SHORT = {
     "CORE": "CO",
     "DIST": "DI",
     "ACCE": "AC",
@@ -259,18 +260,12 @@ ROLE_CODE_SHORT = {
     "FWGW": "FW",
     "FWZONE": "FW",
     "CATO": "CT",
-    "BACK": "BK",
-    "ESX": "ES",
-    "VM": "VM",
-    "SAN": "SN",
-    "SNAS": "NS",
-    "STOD": "SD",
 }
+ROLE_CODE_SHORT = FABRIC_CODE_SHORT  # used by the fabric ladder only
 
-#: The NetBox *role* is the authority for the code wherever it is at least as
-#: specific as the hostname — hostname hygiene varies, roles do not. Server and
-#: Storage are deliberately absent: their names (ESX/BACK, SAN/SNAS/STOD) carry
-#: a distinction the role flattens away.
+#: Role overwrites the hostname **only** for fabric, where CORE/DIST hygiene
+#: varies. Server / storage / cohesity names (ESX, SAN, SNAS, SAN10-N01) are
+#: left alone — flattening them to ES/SN/CY is how labels stopped making sense.
 ROLE_TO_CODE = {
     "switch core": "CO",
     "switch dist": "DI",
@@ -278,156 +273,248 @@ ROLE_TO_CODE = {
     "switch mgmt": "MG",
     "access point": "AP",
     "firewall": "FW",
-    "cohesity": "CY",
     "sd wan socket": "WA",
-    "network device": "ND",
-    "messpc": "PC",
 }
 
 
 def role_code(far_role: str | None) -> str:
-    """Two-letter code for a NetBox device role, '' when the name knows better."""
+    """Two-letter fabric code, or '' so the hostname token is kept."""
     return ROLE_TO_CODE.get((far_role or "").strip().lower(), "")
 
 _TAIL_RE = re.compile(r"^(?P<code>[A-Z]+)(?P<num>\d*)$")
+_PORT_PAREN_RE = re.compile(r"\(([^)]+)\)")
+#: Port-name filler. Whole segments only (``ct0.eth4`` → ``CT0_4``). Never
+#: invented per-vendor — if a segment is not in this set it stays.
+_PORT_NOISE = frozenset({"ETH", "NIC", "NETWORK", "EMBEDDED", "PARTITION", "PORT"})
+
+
+def _uniq(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
 
 
 @dataclass(frozen=True)
 class DeviceNameParts:
-    scope: str      # location token (same site) or far-site tail (cross site)
-    code: str       # ACCE / CORE / ESX / ...
+    scope: str      # location token taken from the *hostname* (or a site token that was actually stripped from it)
+    code: str       # CORE / ESX / SAN / N / ...
     num: str        # 01 / 42 / ''
     stack: str      # stack member suffix ('1', '2') or ''
+    extra: str = "" # leftover identity between scope and code (SAN10 on lr50-san10-n01)
 
 
 def split_device_name(name: str, site_slug: str, local_site_slug: str) -> DeviceNameParts:
     """Break a NetBox device name into the pieces the abbreviator needs.
 
-    ``<SITESLUG>-[<LOC>-]<CODE><NN>[-<STACK>]`` is the house convention; names
-    that do not follow it degrade gracefully to their trailing segment.
+    Strip only leading hostname tokens that also lead the far-site slug.
+    Scope is a token that exists on the hostname (or was stripped from it) —
+    never a NetBox site tail like ``DC`` that does not appear in the name.
+    Leftover middle tokens (``SAN10``) stay as ``extra`` so Cohesity
+    ``lr50-san10-n01`` remains ``LR50-SAN10-N01``, not ``CY01``.
     """
-    clean = (name or "").upper().split(".")[0]      # drop any DNS suffix
-    site = (site_slug or "").upper()
+    clean = (name or "").upper().split(".")[0]
+    host = [tok for tok in clean.split("-") if tok]
+    if not host:
+        return DeviceNameParts("", "", "", "")
+    site = [tok for tok in (site_slug or "").upper().split("-") if tok]
     local = (local_site_slug or "").upper()
+    site_u = (site_slug or "").upper()
 
-    rest = clean[len(site) + 1:] if site and clean.startswith(site + "-") else clean
-    segments = [s for s in rest.split("-") if s]
-    if not segments:
-        return DeviceNameParts("", clean, "", "")
+    shared = 0
+    while shared < len(host) and shared < len(site) and host[shared] == site[shared]:
+        shared += 1
+    rest = list(host[shared:] or host[-1:])
 
     stack = ""
-    if len(segments) > 1 and segments[-1].isdigit() and len(segments[-1]) <= 2:
-        stack = segments.pop()
+    if len(rest) > 1 and rest[-1].isdigit() and len(rest[-1]) <= 2:
+        stack = rest.pop()
 
-    tail = segments.pop()
+    tail = rest.pop() if rest else (host[-1] if host else "")
     match = _TAIL_RE.match(tail)
     code, num = (match.group("code"), match.group("num")) if match else (tail, "")
+    leftover = rest
+    site_tail = site[-1] if site else ""
+    same_site = bool(site_u) and site_u == local
+    local_toks = set(local.split("-")) if local else set()
 
-    if site and site == local:
-        scope = segments[-1] if segments else ""
+    if same_site:
+        scope = leftover[-1] if leftover else ""
+        extra_toks = leftover[:-1] if leftover else []
+    elif site_tail and site_tail in host:
+        # Building/site token really is on the hostname (L50, ZH5). Floor leftover
+        # is dropped — L50-CO01 from L26 is the useful identity, not L01-CO01.
+        scope = site_tail
+        extra_toks = []
+    elif leftover:
+        scope = leftover[0]
+        extra_toks = leftover[1:]
+    elif shared:
+        scope = host[shared - 1]
+        extra_toks = []
     else:
-        # Cross-site: the far site identifies the box better than its floor.
-        scope = (site.split("-")[-1] if site else (segments[-1] if segments else ""))
-    return DeviceNameParts(scope=scope, code=code, num=num, stack=stack)
+        scope = ""
+        extra_toks = []
+
+    # Do not repeat the building we are sitting in (ch-zrh-zh4 → ZH4).
+    # That was inventing ``DC``'s cousin: a scope that costs the far-port.
+    if scope and scope in local_toks:
+        extra_toks = [tok for tok in extra_toks if tok != scope]
+        scope = extra_toks[0] if extra_toks else ""
+        extra_toks = extra_toks[1:] if extra_toks else []
+
+    return DeviceNameParts(
+        scope=scope, code=code, num=num, stack=stack,
+        extra="-".join(extra_toks),
+    )
 
 
-def normalize_port_token(port_name: str) -> str:
-    """``1:24`` / ``1/24`` / ``01:01`` / ``1.24`` -> ``1_24`` / ``1_1``.
-
-    Dots are forbidden on the box, so ``:`` / ``/`` / ``.`` all become ``_``.
-    Leading zeros are stripped per numeric segment so a VOSS ``01:05`` and an
-    Excel-retyped ``1:5`` render the same ``_P1_5``, and so
-    ``USW-1G-L02-CO01_P1_1`` (20) fits instead of ``…_P01_01`` (22).
-    """
-    token = (port_name or "").upper().replace(":", "_").replace("/", "_").replace(".", "_")
+def _clean_port_segments(text: str) -> list[str]:
+    token = (text or "").upper().replace(":", "_").replace("/", "_").replace(".", "_")
     token = "".join(ch for ch in token if ch.isalnum() or ch == "_")
-    if not token:
-        return ""
-    parts = []
+    segs: list[str] = []
     for seg in token.split("_"):
         if not seg:
             continue
-        parts.append(str(int(seg)) if seg.isdigit() else seg)
-    return "_".join(parts)
+        if seg.startswith("PORT") and len(seg) > 4 and seg[4:].isdigit():
+            seg = seg[4:]
+        for noise in _PORT_NOISE:
+            if seg.startswith(noise) and seg[len(noise):].isdigit():
+                seg = seg[len(noise):]
+                break
+            if (
+                seg.endswith(noise)
+                and len(seg) > len(noise)
+                and seg[: -len(noise)].isalnum()
+                and (
+                    any(ch.isdigit() for ch in seg[: -len(noise)])
+                    or len(seg[: -len(noise)]) > 3
+                )
+            ):
+                # ``IDRAC10NIC`` → ``IDRAC10``. Not ``VMNIC`` → ``VM``.
+                seg = seg[: -len(noise)]
+                break
+        segs.append(str(int(seg)) if seg.isdigit() else seg)
+    kept = [seg for seg in segs if seg not in _PORT_NOISE]
+    return kept or segs
+
+
+def normalize_port_token(port_name: str) -> str:
+    """``1:24`` / ``ct0.eth4`` / ``port15`` → ``1_24`` / ``CT0_4`` / ``15``.
+
+    Dots are forbidden. Filler segments (ETH, NIC, PORT, EMBEDDED, …) drop
+    so ``ct0.eth4`` is ``CT0_4`` and a 40G token still fits. Leading zeros
+    stripped per numeric segment.
+    """
+    return "_".join(_port_identity_segments(port_name))
+
+
+def _port_identity_segments(port_name: str) -> list[str]:
+    """Prefer a rendering that still has letters (``CT0_4``, ``IDRAC_1``)."""
+    raw = port_name or ""
+    candidates = [raw]
+    match = _PORT_PAREN_RE.search(raw)
+    if match:
+        candidates.append(match.group(1))
+        candidates.append(f"{raw[:match.start()]} {match.group(1)}")
+
+    scored: list[tuple[tuple[int, int], list[str]]] = []
+    for cand in candidates:
+        segs = _clean_port_segments(cand)
+        if not segs:
+            continue
+        joined = "_".join(segs)
+        has_letter = any(ch.isalpha() for ch in joined)
+        scored.append(((0 if has_letter else 1, len(joined)), segs))
+    if not scored:
+        return []
+    scored.sort(key=lambda item: item[0])
+    return scored[0][1]
 
 
 def _port_suffix_candidates(port_name: str) -> list[str]:
     """Renderings of the far-end port, most detailed first.
 
-    Vendor NIC names (``ct1.eth0``, ``CTE0.A.P2``) shed trailing segments so a
-    tight budget costs detail rather than the whole port. Numeric switch ports
-    are never compacted — ``2_14`` shortened to ``2`` would name the slot only.
+    Numeric switch ports use ``_23`` / ``_1_20`` — the extra ``P`` was a
+    character 40G does not have. Vendor NIC names shed trailing segments so a
+    tight budget costs detail rather than the whole port. Numeric slot+port is
+    never shortened to the slot only (``2_14`` → ``2`` would name the slot).
     """
     token = normalize_port_token(port_name)
     if not token:
         return [""]
-    if token.startswith("PORT") and token[4:5].isdigit():
-        token = token[4:]
     if token[0].isdigit():
-        # Underscored VOSS/EXOS ``1_20`` is never shortened to the slot (``1``):
-        # that would collide 1:20 with 1:21. Concatenation (``120``) is a
-        # later, tighter rendering used only when the underscored form cannot fit.
-        return [f"_P{token}"]
+        return [f"_{token}"]
 
     segments = token.split("_")
     forms = [token, token.replace("_", "")]
     forms += ["".join(segments[:n]) for n in range(len(segments) - 1, 0, -1)]
-
-    out: list[str] = []
-    seen: set[str] = set()
-    for form in forms:
-        if form and form not in seen:
-            seen.add(form)
-            out.append(f"_{form}")
-    return out
+    return [f"_{form}" for form in _uniq(forms)]
 
 
 def _port_suffix(port_name: str) -> str:
-    """``_P`` is the one and only port marker: ``23`` and Fortinet ``port23``
-    both render as ``_P23``. Non-numeric ports keep their own token."""
+    """``23`` and Fortinet ``port23`` both render as ``_23``."""
     return _port_suffix_candidates(port_name)[0]
 
 
 def _compact_port_suffixes(port_name: str) -> list[str]:
-    """One-character-tighter numeric ports: ``1_20`` -> ``_P120``.
+    """One-character-tighter numeric ports: ``1_20`` -> ``_120``.
 
-    ``USW-1G-L01-MG01_P1_20`` is 21. Dropping the floor collides two floors'
-    MG01; dropping the port collides ``1:20`` with ``1:21`` on the same box.
-    Concatenating slot+port keeps both and fits in 20. Never used when the
-    underscored form already fits (tried first).
+    Used only when the underscored form cannot fit. Dropping the floor collides
+    two floors' MG01; dropping the port collides ``1:20`` with ``1:21``.
     """
     token = normalize_port_token(port_name)
     if token and token[0].isdigit() and "_" in token:
         compact = token.replace("_", "")
         if compact != token:
-            return [f"_P{compact}"]
+            return [f"_{compact}"]
     return []
 
+
+def _code_bases(parts: DeviceNameParts) -> list[str]:
+    """Fabric → 2 letters. Everything else keeps the hostname word, then shortens."""
+    word = parts.code or ""
+    if word in FABRIC_CODE_SHORT:
+        return [FABRIC_CODE_SHORT[word]]
+    if word in FABRIC_CODE_SHORT.values():
+        return [word]
+    if not word:
+        return [""]
+    bases = [word[:n] for n in range(len(word), 1, -1)]
+    if len(word) == 1:
+        bases = [word]
+    return _uniq(bases)
+
+
 def _code_forms(parts: DeviceNameParts) -> list[str]:
-    """``CO01-1``, then ``CO01`` (stack is redundant with a VOSS ``01:`` slot)."""
-    short_code = ROLE_CODE_SHORT.get(parts.code, parts.code[:2] if parts.code else "")
-    numbered = f"{short_code}{parts.num}"
-    forms = []
-    if parts.stack:
-        forms.append(f"{numbered}-{parts.stack}")
-    forms.append(numbered)
-    seen: set[str] = set()
-    return [f for f in forms if f and not (f in seen or seen.add(f))]
+    """Longest identity first: ``SAN10-N01``, then ``N01``; ``CO01-1``, then ``CO01``."""
+    numbered = [f"{base}{parts.num}" for base in _code_bases(parts) if base or parts.num]
+    extras = [parts.extra] if parts.extra else [""]
+    if parts.extra:
+        extras.append("")  # retry without the cluster token if over budget
+    forms: list[str] = []
+    for extra in extras:
+        prefix = f"{extra}-" if extra else ""
+        for num in numbered:
+            if parts.stack:
+                forms.append(f"{prefix}{num}-{parts.stack}")
+            forms.append(f"{prefix}{num}")
+    return _uniq(forms)
 
 
 def id_candidates(parts: DeviceNameParts, port_name: str = "") -> list[str]:
     """Longest-first ID forms. ``build_label_for_far_end`` takes the first that fits.
 
-    The role code is *always* the two-letter form -- spelling out ``ACCE`` buys
-    no clarity over ``AC`` but costs two characters that the port number needs.
+    Fabric codes are two letters so 40G still fits. Endpoint codes stay as
+    they appear on the hostname until the budget forces a shorter prefix.
 
     Keep the floor (SCOPE) whenever physics allow. Stack is dropped before
     SCOPE or the far port: on this estate ``CORE01-1`` / ``CORE01-2`` already
     differ by the VOSS slot (``01:01`` vs ``02:01``), so
-    ``USW-1G-L02-CO01_P1_1`` (20) keeps both floor and port, while
-    ``USW-1G-L02-CO01-1_P1_1`` (22) cannot. Dropping SCOPE while keeping the
-    port is last-resort — that is what made Dist→Access ``USW-1G-AC01_P23``
-    collide GFL-ACCE01 with L02-ACCE01 on Core.
+    ``USW-1G-L02-CO01_1_1`` (18) keeps both floor and port.
     """
     codes = _code_forms(parts)
     scope = f"{parts.scope}-" if parts.scope else ""
@@ -435,10 +522,6 @@ def id_candidates(parts: DeviceNameParts, port_name: str = "") -> list[str]:
     compact = _compact_port_suffixes(port_name)
 
     ladder: list[str] = []
-    # Underscored port on every code, then concatenated port, then drop the port.
-    # Concatenation is after the underscored form so ``USW-1G-L02-CO01_P1_1`` (20)
-    # still wins over ``USW-1G-L02-CO01-1_P11``, and before dropping the port
-    # so ``USW-1G-L01-MG01_P120`` wins over a colliding floor-only MG01.
     for code in codes:
         for sfx in suffixes:
             ladder.append(f"{scope}{code}{sfx}")
@@ -455,8 +538,7 @@ def id_candidates(parts: DeviceNameParts, port_name: str = "") -> list[str]:
         for sfx in compact:
             ladder.append(f"{code}{sfx}")
     ladder.extend(codes)
-    seen: set[str] = set()
-    return [c for c in ladder if c and not (c in seen or seen.add(c))]
+    return _uniq(ladder)
 
 
 def build_label_for_far_end(
