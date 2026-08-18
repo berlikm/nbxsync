@@ -87,7 +87,7 @@ Two host-level dashboards: **Health** for the box and **Network interfaces** for
 | Per-slot memory on a chassis | Hardware (VOSS) | Graph prototype on **this** template | Same-template graph refs import cleanly. |
 | Are radios noisy? | RF (IQ) | Noise honeycomb + 2-col graphs | Two radios, gallery is enough. |
 | Which port is down? | Network interfaces | Honeycomb of **IFNAME** (`1:1`, `1/21`, `eth0`) | Colour without an ID is a Christmas tree. Auto type + short ID; alias is hover. Switches: height 6 so cells stay above Zabbix's 32px floor. IQ: **12×3** — Zabbix has no max cell size; two eth in 72×6 are giant hexes. Custom 20% truncated IDs on dense maps. |
-| How much traffic? | Network interfaces | 3×2 native graphs | Demand. Errors/discards on the VOSS/EXOS secondary axis. |
+| How much traffic? | Network interfaces | 3×2 native graphs, **height 14** | Demand. Errors/discards on the VOSS/EXOS secondary axis. Same size on VOSS YAML, IQ YAML, and stock EXOS `--apply`. |
 | Why is *this* port sick? | Network interfaces → Port | Navigator of faults, not bits | Does not repeat Overview traffic. |
 
 There is no Health **Diagnostics** page. That was a second interface browser.

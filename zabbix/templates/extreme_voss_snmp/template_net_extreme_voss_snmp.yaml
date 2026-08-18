@@ -2947,7 +2947,7 @@ zabbix_export:
           name: Traffic
           'y': '6'
           width: '72'
-          height: '8'
+          height: '14'
           fields:
           - type: INTEGER
             name: columns

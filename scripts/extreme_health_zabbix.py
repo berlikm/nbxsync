@@ -233,7 +233,7 @@ def _exos_overview_widgets(graphid: str) -> list[dict]:
             'x': '0',
             'y': '6',
             'width': '72',
-            'height': '8',
+            'height': '14',
             'view_mode': '0',
             'fields': [
                 {'type': '0', 'name': 'columns', 'value': '3'},
@@ -388,7 +388,7 @@ def patch_exos_stock_interface_dashboard(api: Any) -> str:
         and str(map_fields.get('primary_label_size_type') or '0') == '0'
         and '(?:' in str(map_fields.get('primary_label') or '')
         and grid_widget.get('width') == '72'
-        and grid_widget.get('height') == '8'
+        and grid_widget.get('height') == '14'
         and grid_widget.get('y') == '6'
         and grid_fields.get('columns') == '3'
         and grid_fields.get('rows') == '2'
