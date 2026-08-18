@@ -477,7 +477,7 @@ def patch_iq_interface_honeycomb(api: Any) -> str:
         _dim(map_widget.get('width')) == '12'
         and _dim(map_widget.get('height')) == '3'
         and _dim(grid_widget.get('y')) == '3'
-        and _dim(grid_widget.get('height')) == '11'
+        and _dim(grid_widget.get('height')) == '14'
     ):
         return 'ok'
 
@@ -501,7 +501,7 @@ def patch_iq_interface_honeycomb(api: Any) -> str:
         if widget.get('type') == 'honeycomb':
             new_widgets.append(payload(widget, x='0', y='0', width='12', height='3'))
         elif widget.get('type') == 'graphprototype':
-            new_widgets.append(payload(widget, x='0', y='3', width='72', height='11'))
+            new_widgets.append(payload(widget, x='0', y='3', width='72', height='14'))
         else:
             new_widgets.append(payload(widget))
     api_call(

@@ -339,7 +339,7 @@ def validate_interface_dashboard(
     # IQ APs have ~2 eth — the same box paints giant hexes. Cap that map.
     if compact_map:
         map_ok = map_widget.get('width') == '12' and map_widget.get('height') == '3'
-        grid_ok = grid_widget.get('height') == '11' and grid_widget.get('y') == '3'
+        grid_ok = grid_widget.get('height') == '14' and grid_widget.get('y') == '3'
     else:
         map_ok = map_widget.get('width') == '72' and map_widget.get('height') == '6'
         grid_ok = grid_widget.get('height') == '8' and grid_widget.get('y') == '6'
