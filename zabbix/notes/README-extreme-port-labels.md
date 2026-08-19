@@ -387,7 +387,8 @@ session prep, and the EXOS runner's `_send_exos` hunts `(?:\#|>)` — that is
 the `Pattern not detected: '(?:\\#|>)'` failure after three attempts. This
 script's VOSS path matches Extreme Firmware Upgrade: `extreme_vsp`,
 `expect_string=r"#|>"` (covers `hostname:1#` and `hostname:1(config-if)#`),
-and `send_command_timing` for `save config`. EXOS SSH is unchanged.
+and `send_command_timing` for `save config`. Login `timeout` / `auth_timeout`
+are **60s** (slow TACACS/RADIUS); banner stays 30s. EXOS SSH is unchanged.
 
 > **Corpus gap:** the Fabric Engine *CLI Commands Reference* is not in the
 > doc-to-rag index (only the 9.3 User Guide), which is why the `name` verb is

@@ -1186,10 +1186,10 @@ class VossSshTransportTests(unittest.TestCase):
     def tearDown(self):
         e._reset_cli_runner()
 
-    def test_connect_kwargs_match_firmware_upgrade(self):
+    def test_connect_kwargs_give_auth_60s(self):
         kw = e.voss_connect_kwargs()
-        self.assertEqual(kw["timeout"], 30)
-        self.assertEqual(kw["auth_timeout"], 30)
+        self.assertEqual(kw["timeout"], 60)
+        self.assertEqual(kw["auth_timeout"], 60)
         self.assertEqual(kw["banner_timeout"], 30)
         self.assertIs(kw["fast_cli"], False)
 

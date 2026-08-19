@@ -1541,13 +1541,15 @@ VOSS_CONNECT_RETRY_DELAY = 5
 def voss_connect_kwargs() -> dict:
     """SSH kwargs matching ``extreme_firmware_upgrade.py`` VOSS ``ConnectHandler``.
 
-    Timeouts are the firmware script's 30s. ``fast_cli=False`` is extra:
-    Netmiko 4 ``fast_cli`` races Fabric Engine's ``hostname:1#`` prompt and
-    raises ``Pattern not detected: '(?:\\#|>)'``. EXOS does not use this.
+    ``auth_timeout`` / ``timeout`` are 60s — TACACS/RADIUS login on Fabric
+    Engine can exceed the firmware script's 30s window. Banner stays 30s.
+    ``fast_cli=False`` is extra: Netmiko 4 ``fast_cli`` races Fabric Engine's
+    ``hostname:1#`` prompt and raises ``Pattern not detected: '(?:\\#|>)'``.
+    EXOS does not use this.
     """
     return {
-        "timeout": 30,
-        "auth_timeout": 30,
+        "timeout": 60,
+        "auth_timeout": 60,
         "banner_timeout": 30,
         "fast_cli": False,
     }
