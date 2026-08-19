@@ -81,7 +81,7 @@ only if that box is ticked).
 | `status = diff` | Box display-string / VOSS `name` ≠ cabling |
 | `status = missing` | Cabled in NetBox, no live label |
 | `status = alias_hijacked` | Grammar is on display-string; Zabbix still reads description-string |
-| `status = unreachable` | SSH failed or no `oob_ip`/`primary_ip`. The job **always fails** — we cannot attest those ports |
+| `status = unreachable` | SSH failed or no `oob_ip`/`primary_ip`. One **device** login; every port on that box gets the same short `detail`. The job **always fails** — we cannot attest those ports |
 | `collision = yes` | Two ports on this switch share `expected` (not `X`/`N`) |
 | `status = kept` | Label on the box, no complete cable. **Listed, never wiped.** Often still useful (ISP, leftover NIC) |
 | `class` | `USW` / `US` / `UP` / `MON` / `UW` / `X` — own column, do not parse `expected` |
@@ -159,6 +159,9 @@ The script is the right shape for NetBox: a **flat file** next to
 - Canary allowlist treats `1:17` and `1/17` as the same port.
 - Label length and charset are checked again immediately before the write.
 - Threads call `close_old_connections()` so Django is not surprised.
+- One SSH login per switch: all ports share the session; remediate with Commit
+  applies on that same connection. CSV `unreachable` is that one failure, not
+  a login per port.
 
 ### Residual (accept, do not “fix” into something worse)
 

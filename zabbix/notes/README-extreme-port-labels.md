@@ -95,6 +95,7 @@ recovered in `port_label_canary.py` before replay. Rebuild the TSV with
 | **Include admin-down / X·N** | reporting breadth |
 | **Also clear EXOS description-string** | off by default (may hold human text). SSH / remediate |
 | **Fail the job on blocking label diffs** | scheduled compliance. Unreachable boxes **always** fail the job |
+| **Concurrent workers** | Parallel **logins** (one session per switch). All ports on a box share that session |
 
 **Scope rule:** cabled ports get an expected grammar label from NetBox topology.
 A port with **no complete cable path** cannot derive a far end — it is **not**
@@ -103,6 +104,16 @@ text is **kept** and listed in compliance as `kept` (it often still means
 something: ISP, leftover NIC). We do not blank the box to look tidy.
 
 SSH uses **`oob_ip` first**, then `primary_ip`. Site groups include **nested children**.
+Compliance and remediate open **one SSH login per switch**: `show configuration vlan`
+(or VOSS `show running-config`) once, then every port on that box is compared in
+memory. Remediate with **Commit** pushes on **that same session**, then disconnects.
+Workers are concurrent *devices*, not concurrent ports. Duplicate NetBox names /
+pks are skipped so EXOS is not hammered with a second login.
+
+If login fails, every port on that switch is `status=unreachable` with the **same
+short** `detail` (`SSH session failed (1 login, N port(s)): …`). That is one
+failed session copied onto the CSV, not N separate connections. The job log
+prints the full netmiko blob **once**.
 
 Per-port statuses:
 
@@ -510,7 +521,8 @@ Reading it:
 Double-gated: `mode=remediate` **and** *Commit changes*. With `remediate` but no
 commit, the script prints the exact command block per device and stops.
 
-Per port it pushes only what is non-compliant:
+With Commit, the write uses the **same SSH session** that just read live labels
+(no second login). Per port it pushes only what is non-compliant:
 
 ```
 # EXOS

@@ -23,7 +23,9 @@ Vendor CLI citations + the ID convention: ``README-extreme-port-labels.md``.
 Transport is borrowed from ``extreme_cli_runner.py`` (SCRIPTS_ROOT, also
 searched under BASE_DIR/scripts). This script does not open its own SSH
 stack. The runner module is registered in ``sys.modules`` before exec
-(Python 3.12 dataclasses).
+(Python 3.12 dataclasses). Compliance/remediate open **one SSH login per
+switch**; every port on that box is compared (and optionally pushed) on
+that same session.
 
 Environment variables (identical to the CLI runner):
   EXTREME_VENV_PATH                                   — venv holding netmiko
@@ -250,6 +252,72 @@ def redact_error(text: str) -> str:
     """Keep SSH errors useful without echoing a password if netmiko includes one."""
     raw = "" if text is None else str(text)
     return re.sub(r"(?i)(password|passwd|secret|community)\s*[:=]\s*\S+", r"\1=***", raw)
+
+
+_ATTEMPTS_RE = re.compile(r"failed after (\d+) attempts", re.I)
+SSH_DETAIL_MAX = 160
+
+
+def summarize_ssh_error(text: str) -> str:
+    """One-line reason. Drop netmiko's 'Common causes' lecture from the CSV."""
+    raw = redact_error(text)
+    attempts = ""
+    match = _ATTEMPTS_RE.search(raw)
+    if match:
+        attempts = f"{match.group(1)} attempts"
+    kept: list[str] = []
+    skipping_causes = False
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        low = stripped.lower()
+        if low.startswith("common causes"):
+            skipping_causes = True
+            continue
+        if skipping_causes:
+            if stripped[:2] in {"1.", "2.", "3."} or low.startswith("device settings"):
+                continue
+            skipping_causes = False
+        if low.startswith("device settings"):
+            continue
+        if stripped[:2] in {"1.", "2.", "3."}:
+            continue
+        kept.append(stripped)
+    reason = ""
+    for line in reversed(kept):
+        low = line.lower()
+        if "timeout" in low or (
+            "authentication" in low and "failed after" not in low
+        ):
+            reason = line.rstrip(".")
+            break
+    if not reason:
+        reason = kept[0] if kept else "SSH failed"
+    reason = re.sub(r"\s+", " ", reason).strip()
+    if attempts and attempts not in reason.lower():
+        reason = f"{reason} ({attempts})"
+    if len(reason) > SSH_DETAIL_MAX:
+        reason = reason[: SSH_DETAIL_MAX - 1] + "…"
+    return reason
+
+
+def device_ssh_fail_detail(error: str, port_count: int) -> str:
+    """CSV detail for every port on a box that had one failed login."""
+    return (
+        f"SSH session failed (1 login, {port_count} port(s)): "
+        f"{summarize_ssh_error(error)}"
+    )
+
+
+def stamp_device_ssh_failure(plans: list, error: str) -> str:
+    """One login failed — mark every port unreachable with the same short note."""
+    detail = device_ssh_fail_detail(error, len(plans))
+    for plan in plans:
+        plan.status = "unreachable"
+        plan.detail = detail
+        plan.commands = []
+    return detail
 
 
 #: Statuses that must not look like a clean compliance run. ``kept`` is listed
@@ -1888,7 +1956,10 @@ if _NETBOX:
         )
         max_workers = IntegerVar(
             default=8, min_value=1, max_value=20,
-            description="Concurrent SSH sessions (capped at 20 — do not stampede the OOB).",
+            description=(
+                "Concurrent SSH logins — one session per switch, not per port. "
+                "All ports on a box share that session. Capped at 20."
+            ),
             label="Concurrent workers",
         )
 
@@ -1971,6 +2042,13 @@ if _NETBOX:
                 kind = _platform_kind(getattr(device.platform, "name", None))
                 if kind is None:
                     continue
+                if device.name in plans_by_device:
+                    self.log_warning(
+                        f"Skipping duplicate NetBox name **{device.name}** "
+                        "(one SSH session per switch).",
+                        obj=device,
+                    )
+                    continue
                 plans = self._plan_device(device, kind, data, structural_tag_ids)
                 if not plans:
                     continue
@@ -1993,42 +2071,69 @@ if _NETBOX:
                 self.log_failure("No labellable ports found in the selected scope.")
                 return
 
-            # ---- 2. Read live labels (skipped in preview) ----
-            live_by_device: dict[str, tuple[dict[str, str], dict[str, str]]] = {}
+            # ---- 2. One SSH login per switch (all ports share the session) ----
+            apply_now = remediating
             if not preview_only:
                 workers = min(int(data.get("max_workers", 8) or 8), max(1, len(targets)))
+                self.log_info(
+                    f"SSH: **{len(targets)}** login(s) (one per switch, "
+                    f"{workers} concurrent). Ports on the same box share "
+                    "the session — not one connection per port."
+                )
                 with ThreadPoolExecutor(max_workers=workers) as pool:
                     futures = {
-                        pool.submit(self._read_device, device.name, ip, kind): device.name
+                        pool.submit(
+                            self._session_device,
+                            device.name, ip, kind,
+                            plans_by_device[device.name],
+                            apply_now,
+                            bool(data.get("save_config", True)),
+                            bool(data.get("clear_description_string")),
+                            allowlist if apply_now else None,
+                        ): device.name
                         for device, ip, kind in targets
                     }
                     for index, future in enumerate(as_completed(futures), 1):
                         name = futures[future]
-                        labels, descriptions, error = future.result()
-                        if error:
-                            for plan in plans_by_device.get(name, []):
-                                plan.status = "unreachable"
-                                plan.detail = redact_error(error)
+                        connect_error, apply_error, transcript = future.result()
+                        nports = len(plans_by_device.get(name, []))
+                        if connect_error:
+                            stamp_device_ssh_failure(
+                                plans_by_device.get(name, []), connect_error,
+                            )
                             self.log_warning(
                                 f"[{index}/{len(targets)}] **{name}** — "
-                                f"{redact_error(error)}",
+                                f"1 SSH session for {nports} port(s) failed: "
+                                f"{summarize_ssh_error(connect_error)}",
                                 obj=device_by_name.get(name),
                             )
+                            self.log_info(
+                                f"```\n{redact_error(connect_error)}\n```"
+                            )
                             continue
-                        live_by_device[name] = (labels, descriptions)
-                        self._note_kept_live(plans_by_device[name], labels, descriptions)
+                        live_n = sum(
+                            1 for p in plans_by_device.get(name, [])
+                            if p.live
+                        )
+                        applied_n = sum(
+                            1 for p in plans_by_device.get(name, [])
+                            if p.status == "applied"
+                        )
                         self.log_info(
                             f"[{index}/{len(targets)}] **{name}** — "
-                            f"{len(labels)} live label(s) read"
+                            f"1 SSH session, {nports} port(s), "
+                            f"{live_n} live label(s) read"
+                            + (f", {applied_n} applied" if applied_n else "")
                         )
-
-                for name, plans in plans_by_device.items():
-                    if name not in live_by_device:
-                        continue
-                    labels, descriptions = live_by_device[name]
-                    for plan in plans:
-                        self._compare(plan, labels, descriptions,
-                                      bool(data.get("clear_description_string")))
+                        if apply_now and transcript:
+                            self.log_info(
+                                f"\n---\n### {name}\n```\n{transcript}\n```"
+                            )
+                        if apply_error:
+                            self.log_failure(
+                                f"**{name}** — apply on the same session failed: "
+                                f"{summarize_ssh_error(apply_error)}"
+                            )
 
             all_plans = [p for plans in plans_by_device.values() for p in plans]
             if not data.get("include_neutral", True):
@@ -2041,9 +2146,9 @@ if _NETBOX:
             self._report(all_plans, preview_only=preview_only,
                          devices_by_name=device_by_name)
 
-            # ---- 4. Remediate ----
-            if mode == "remediate":
-                self._remediate(all_plans, targets, data, remediating, allowlist)
+            # ---- 4. Remediate (dry-run only — live push used the read session) ----
+            if mode == "remediate" and not remediating:
+                self._remediate(all_plans, targets, data, False, allowlist)
 
             # ---- 5. Outcome ----
             blocking = [p for p in all_plans if p.blocking]
@@ -2120,6 +2225,7 @@ if _NETBOX:
 
             wanted = data.get("platform_filter", "both")
             result = []
+            seen: set[int] = set()
             for device in queryset.select_related(
                 "platform", "site", "role",
                 "device_type", "device_type__manufacturer",
@@ -2130,6 +2236,11 @@ if _NETBOX:
                     continue
                 if wanted != "both" and kind != wanted:
                     continue
+                pk = getattr(device, "pk", None)
+                if pk is not None and pk in seen:
+                    continue
+                if pk is not None:
+                    seen.add(pk)
                 result.append(device)
             return sorted(result, key=lambda d: d.name or "")
 
@@ -2207,20 +2318,42 @@ if _NETBOX:
                 plans.append(plan)
             return plans
 
-        def _read_device(self, name, ip, kind):
+        def _session_device(
+            self, name, ip, kind, plans, apply, save_config,
+            clear_description, allowlist,
+        ):
+            """One SSH login: read every port, optionally apply, then disconnect."""
             try:
                 from django.db import close_old_connections
                 close_old_connections()
             except Exception:  # noqa: BLE001
                 pass
             nc = None
+            transcript = ""
             try:
                 nc = _connect(name, ip, kind)
                 labels, descriptions = _fetch_live_labels(nc, kind)
-                return labels, descriptions, None
+                self._note_kept_live(plans, labels, descriptions)
+                for plan in plans:
+                    self._compare(plan, labels, descriptions, clear_description)
+                flag_collisions(plans)
+                if apply:
+                    todo = [p for p in plans if p.commands]
+                    if allowlist:
+                        todo = [
+                            p for p in todo
+                            if allowlist_hit(p.device, p.ifname, allowlist)
+                        ]
+                    _ok, transcript, err = self._apply_on_session(
+                        nc, kind, todo, save_config,
+                    )
+                    if err:
+                        # Live labels already compared — do not stamp unreachable.
+                        return None, err, transcript
+                return None, None, transcript
             except Exception as exc:  # noqa: BLE001
-                logger.error("[%s] label read failed: %s", name, exc)
-                return {}, {}, redact_error(str(exc))
+                logger.error("[%s] SSH session failed: %s", name, exc)
+                return redact_error(str(exc)), None, transcript
             finally:
                 if nc is not None:
                     try:
@@ -2432,6 +2565,8 @@ if _NETBOX:
             )
 
         def _remediate(self, all_plans, targets, data, remediating, allowlist):
+            """Dry-run only. Live push happens on the same SSH session as the read."""
+            del targets, data, remediating
             actionable = [p for p in all_plans if p.commands]
             if allowlist:
                 actionable = [
@@ -2446,93 +2581,56 @@ if _NETBOX:
             for plan in actionable:
                 by_device.setdefault(plan.device, []).append(plan)
 
-            if not remediating:
-                for name, plans in sorted(by_device.items()):
-                    lines = [c for p in plans for c in p.commands]
-                    self.log_info(
-                        f"\n---\n### Would apply on {name} ({len(plans)} port(s))\n"
-                        "```\n" + "\n".join(lines) + "\n```"
-                    )
-                self.log_success(
-                    f"Preview only — {len(actionable)} port(s) across "
-                    f"{len(by_device)} device(s). Tick **Commit changes** to push."
+            for name, plans in sorted(by_device.items()):
+                lines = [c for p in plans for c in p.commands]
+                self.log_info(
+                    f"\n---\n### Would apply on {name} ({len(plans)} port(s)) "
+                    "— one SSH session when you tick Commit\n"
+                    "```\n" + "\n".join(lines) + "\n```"
                 )
-                return
+            self.log_success(
+                f"Preview only — {len(actionable)} port(s) across "
+                f"{len(by_device)} device(s). Tick **Commit changes** to push "
+                "on the same login that reads live labels."
+            )
 
-            ip_kind = {device.name: (ip, kind) for device, ip, kind in targets}
-            workers = min(int(data.get("max_workers", 8) or 8), max(1, len(by_device)))
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = {}
-                for name, plans in by_device.items():
-                    if name not in ip_kind:
-                        self.log_warning(f"⏭️ {name} — no reachable IP, skipped.")
-                        continue
-                    ip, kind = ip_kind[name]
-                    futures[pool.submit(
-                        self._apply_device, name, ip, kind, plans,
-                        bool(data.get("save_config", True)),
-                    )] = name
-                for index, future in enumerate(as_completed(futures), 1):
-                    name = futures[future]
-                    ok, transcript, error = future.result()
-                    icon = "✅" if ok else "❌"
-                    self.log_info(
-                        f"[{index}/{len(futures)}] {icon} **{name}** — "
-                        f"{len(by_device[name])} port(s)"
-                    )
-                    self.log_info(f"\n---\n### {icon} {name}\n```\n{transcript}\n```")
-                    if error:
-                        self.log_failure(f"**{name}** — {error}")
-
-        def _apply_device(self, name, ip, kind, plans, save_config):
-            nc = None
+        def _apply_on_session(self, nc, kind, plans, save_config):
+            """Push labels on an already-open session (no second login)."""
             transcript: list[str] = []
-            try:
-                nc = _connect(name, ip, kind)
-                for plan in plans:
-                    if plan.expected and len(plan.expected) > MAX_LABEL_LEN:
-                        # Belt and braces — never push something EXOS would cut.
+            for plan in plans:
+                if plan.expected and len(plan.expected) > MAX_LABEL_LEN:
+                    return (False, "\n".join(transcript),
+                            f"refused {plan.ifname}: label exceeds {MAX_LABEL_LEN}")
+                if not is_safe_cli_label(plan.expected or ""):
+                    return (False, "\n".join(transcript),
+                            f"refused {plan.ifname}: label charset not [A-Z0-9_-]")
+                if not is_safe_cli_port(plan.ifname):
+                    return (False, "\n".join(transcript),
+                            f"refused {plan.ifname}: port name is not a single "
+                            "EXOS/VOSS port (no lists, no extra punctuation)")
+                if kind == "voss":
+                    output = nc.send_config_set(plan.commands, read_timeout=90)
+                    transcript.append("> " + " ; ".join(plan.commands))
+                    transcript.append((output or "").strip())
+                    if _looks_rejected(output):
                         return (False, "\n".join(transcript),
-                                f"refused {plan.ifname}: label exceeds {MAX_LABEL_LEN}")
-                    if not is_safe_cli_label(plan.expected or ""):
-                        return (False, "\n".join(transcript),
-                                f"refused {plan.ifname}: label charset not [A-Z0-9_-]")
-                    if not is_safe_cli_port(plan.ifname):
-                        return (False, "\n".join(transcript),
-                                f"refused {plan.ifname}: port name is not a single "
-                                "EXOS/VOSS port (no lists, no extra punctuation)")
-                    if kind == "voss":
-                        output = nc.send_config_set(plan.commands, read_timeout=90)
-                        transcript.append("> " + " ; ".join(plan.commands))
-                        transcript.append((output or "").strip())
+                                f"command rejected: {plan.commands!r}")
+                else:
+                    for cmd in plan.commands:
+                        output = _send(nc, cmd, read_timeout=60)
+                        transcript.append(f"> {cmd}")
+                        if output.strip():
+                            transcript.append(output.strip())
                         if _looks_rejected(output):
                             return (False, "\n".join(transcript),
-                                    f"command rejected: {plan.commands!r}")
-                    else:
-                        for cmd in plan.commands:
-                            output = _send(nc, cmd, read_timeout=60)
-                            transcript.append(f"> {cmd}")
-                            if output.strip():
-                                transcript.append(output.strip())
-                            if _looks_rejected(output):
-                                return (False, "\n".join(transcript),
-                                        f"command rejected: {cmd!r}")
-                    plan.status = "applied"
-                if save_config:
-                    cmd = "save config" if kind == "voss" else "save configuration"
-                    output = _send(nc, cmd, read_timeout=180)
-                    transcript.append(f"> {cmd}")
-                    transcript.append((output or "").strip())
-                return True, "\n".join(transcript), None
-            except Exception as exc:  # noqa: BLE001
-                logger.error("[%s] remediation failed: %s", name, exc)
-                return False, "\n".join(transcript), redact_error(str(exc))
-            finally:
-                if nc is not None:
-                    try:
-                        nc.disconnect()
-                    except Exception:  # noqa: BLE001
-                        pass
+                                    f"command rejected: {cmd!r}")
+                plan.status = "applied"
+            if save_config and plans:
+                cmd = "save config" if kind == "voss" else "save configuration"
+                output = _send(nc, cmd, read_timeout=180)
+                transcript.append(f"> {cmd}")
+                transcript.append((output or "").strip())
+            return True, "\n".join(transcript), None
 
 
 _RE_REJECTED = re.compile(

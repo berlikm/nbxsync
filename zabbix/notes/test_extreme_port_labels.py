@@ -1083,5 +1083,50 @@ class CliRunnerLoadTests(unittest.TestCase):
             self.assertEqual(lines[3], "credentials unavailable")
 
 
+_NETMIKO_AUTH_TIMEOUT = """\
+SSH failed after 3 attempts: Authentication to device failed.
+
+Common causes of this problem are:
+1. Invalid username and password
+2. Incorrect SSH-key file
+3. Connecting to the wrong device
+
+Device settings: extreme_exos 10.8.30.11:22
+
+
+Authentication timeout.
+"""
+
+
+class SshSessionErrorTests(unittest.TestCase):
+    """One failed login is copied onto every port — keep the CSV one line."""
+
+    def test_summarize_drops_netmiko_lecture_keeps_timeout(self):
+        summary = e.summarize_ssh_error(_NETMIKO_AUTH_TIMEOUT)
+        self.assertIn("Authentication timeout", summary)
+        self.assertIn("3 attempts", summary)
+        self.assertNotIn("Common causes", summary)
+        self.assertNotIn("Invalid username", summary)
+        self.assertNotIn("Device settings", summary)
+        self.assertNotIn("10.8.30.11", summary)
+        self.assertLessEqual(len(summary), e.SSH_DETAIL_MAX)
+
+    def test_stamp_marks_every_port_with_one_login_note(self):
+        plans = [
+            e.PortPlan(device="SW1", site="s", kind="exos", ifname=str(n),
+                       expected="UP-GFL-AP01", commands=["should-clear"])
+            for n in (17, 19, 21, 22, 23, 24)
+        ]
+        detail = e.stamp_device_ssh_failure(plans, _NETMIKO_AUTH_TIMEOUT)
+        self.assertIn("1 login", detail)
+        self.assertIn("6 port(s)", detail)
+        self.assertIn("Authentication timeout", detail)
+        self.assertNotIn("Common causes", detail)
+        for plan in plans:
+            self.assertEqual(plan.status, "unreachable")
+            self.assertEqual(plan.detail, detail)
+            self.assertEqual(plan.commands, [])
+
+
 if __name__ == "__main__":
     unittest.main()
