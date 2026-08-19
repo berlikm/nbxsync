@@ -21,7 +21,7 @@ There is no separate “template uses IFNAME only” path for EXOS IF LLD.
 | Host role | Labels on box | `net.if.*` count | Verdict |
 |---|---|---|---|
 | **Access / Hybrid** | none / no USW\|… | **0** | **Expected** — opt-in filter |
-| **Access** | some `UP-…` / `USW-…` | >0 for those ports | OK |
+| **Access** | some `USW`/`US`/`UP`/`MON`/`UW`/`TMON` | >0 for those ports | OK |
 | **Dist / Core / Mgmt** | any (incl. empty) | **0** | **Broken** — LLD not succeeding or wrong role macros |
 | Dist/Core | empty + admin-up eth | >0 | OK |
 

@@ -188,7 +188,8 @@ on a 1G link — that is what dropped floors. Room for `40G` / `100G` comes from
 **short fabric codes** (`CORE→C` `DIST→D` `ACCE→A` `MGMT→M`) **and** dropping the extra `P` on ports
 (`_1_20` not `_P1_20`). `USW-40G-L01-M01_1_20` is 20; spelling CORE or keeping
 `P` would overflow. CLASS tokens stay `USW`/`UP`/`US` — renaming them to
-`SW`/`AP`/`S` would miss live Access LLD until zerotouch is rewritten.
+`SW`/`AP`/`S` would miss live Access LLD (`USW|US|UP|MON|UW|TMON`) until
+the role macros are rewritten.
 Endpoint names stay readable (`SAN`, `SNAS`, `ESX`) — we
 do not invent `SN`/`NS`/`CY`/`DC`.
 
