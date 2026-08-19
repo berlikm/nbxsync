@@ -580,6 +580,7 @@ class CliSafetyTests(unittest.TestCase):
             "class", "speed", "link_mbps", "speed_source", "far_site",
             "netbox_description", "ifalias_source",
             "blocking", "collision", "description_string",
+            "rewrite",
         ):
             self.assertIn(col, header.split(","), header)
         self.assertIn("SW1", text)
@@ -739,6 +740,39 @@ class CliSafetyTests(unittest.TestCase):
         self.assertEqual(rows["A"]["blocking"], 1)
         self.assertEqual(rows["B"]["unreach"], 1)
         self.assertEqual(rows["B"]["blocking"], 1)
+
+    def test_preview_planned_is_not_a_match_and_not_a_rewrite(self):
+        plan = e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1",
+            expected="USW-CO02_1", status="planned",
+        )
+        self.assertFalse(plan.blocking)
+        self.assertEqual(e.plan_rewrite(plan), "")
+        rows = e.device_scorecard([plan])
+        self.assertEqual(rows[0]["planned"], 1)
+        self.assertEqual(rows[0]["ok"], 0)
+        self.assertEqual(rows[0]["rewrite"], 0)
+        csv = e.plans_to_csv([plan])
+        self.assertIn("planned", csv)
+        self.assertRegex(csv, r",planned,,no,")
+
+    def test_compliance_diff_is_rewrite_yes(self):
+        plan = e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1",
+            expected="USW-CO02_1", status="planned",
+        )
+        e.compare_plan(plan, labels={"1": "ISC"}, descriptions={})
+        self.assertEqual(plan.status, "diff")
+        self.assertEqual(e.plan_rewrite(plan), "yes")
+        self.assertTrue(plan.commands)
+        match = e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="2",
+            expected="USW-DI01_23", status="planned",
+        )
+        e.compare_plan(match, labels={"2": "USW-DI01_23"}, descriptions={})
+        self.assertEqual(match.status, "ok")
+        self.assertEqual(e.plan_rewrite(match), "no")
+        self.assertFalse(match.commands)
 
     def test_markdown_table_truncates(self):
         rows = [[str(i), "x"] for i in range(50)]

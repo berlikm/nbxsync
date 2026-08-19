@@ -93,28 +93,35 @@ SSH uses **`oob_ip` first**, then `primary_ip`. Site groups include **nested chi
 
 Per-port statuses:
 
-| Status | Meaning | Blocking? |
-|---|---|---|
-| `ok` | Zabbix ifAlias **is** the expected grammar | no |
-| `diff` | live display-string / VOSS `name` ≠ expected | yes |
-| `missing` | cabled in NetBox, no live label | yes |
-| `too_long` | no ID form fits 20 characters (shortest form is still in `expected`) | yes |
-| `forbidden` | live label has a character EXOS would treat as a second command | yes |
-| `alias_hijacked` | EXOS display-string matches, but `description-string` still wins ifAlias | yes |
-| `unreachable` | no SSH (missing IP or session failed) | yes |
-| `kept` | live label, no complete cable — listed, never wiped | no |
-| `applied` | remediator wrote this port | no |
+| Status | Meaning | Blocking? | Rewritten on remediate? |
+|---|---|---|---|
+| `planned` | **Preview only.** Cabling produced a label. Box was not read. | no | unknown (no SSH) |
+| `ok` | **Compliance.** Zabbix ifAlias **already is** the expected grammar | no | no |
+| `diff` | live display-string / VOSS `name` ≠ expected | yes | **yes** |
+| `missing` | cabled in NetBox, no live label | yes | **yes** |
+| `too_long` | no ID form fits 20 characters (shortest form is still in `expected`) | yes | no (refused) |
+| `forbidden` | live label or ifName has a character EXOS would treat as a second command | yes | yes if expected is safe |
+| `alias_hijacked` | EXOS display-string matches, but `description-string` still wins ifAlias | yes | only if “clear description-string” is ticked |
+| `unreachable` | no SSH (missing IP or session failed) | yes | no |
+| `kept` | live label, no complete cable — listed, never wiped | no | **never** |
+| `applied` | remediator wrote this port | no | already done |
 
 `collision=yes` on the CSV is also blocking: two ports on the **same switch**
 share an expected grammar label. Policy labels `X` / `N` are excluded (every
 SPAN port is supposed to be `X`). The generator still emits both colliding
 rows (it cannot know which cable is wrong); the job must not look clean.
 
-Preview has no SSH, so `live` / `description_string` are empty. CSV
-`netbox_description` is the current NetBox interface description (what is
+Preview has no SSH, so `live` / `description_string` / `rewrite` are empty and
+every derived row is `status=planned` — that is **not** “already on the box”.
+CSV `netbox_description` is the current NetBox interface description (what is
 on the port today). `speed_source` is `iftype:<slug>` or `speed:<kbps>kbps`
 from the slower of local/far — empty when neither NetBox field has a rate
 (`extreme-summitstack`).
+
+**Compliance** fills `live` and `rewrite`. Filter `rewrite=yes` for the
+overwrite queue (`diff` / `missing` / `forbidden`). `ok` means leave it.
+The job log also has a **Would rewrite on next remediate** table (capped at
+40; the CSV is the full list).
 
 How to read a job: log is the **scorecard** (truncated tables). CSV in the
 **Output** tab is the archive. Details:
@@ -362,12 +369,16 @@ plugin is:
 `ok` means **Zabbix will see the expected grammar on ifAlias**. It does **not**
 mean “display-string matches.” On EXOS, `description-string` still wins
 ifAlias. That row is `alias_hijacked` (blocking) until you tick clear.
+Preview uses `planned` instead of `ok` so a cabling-only run cannot look
+like the fleet already matches.
 
 CSV columns worth filtering:
 
 | Column | Filter |
 |---|---|
+| `rewrite=yes` | **Overwrite queue.** What remediate would push. Empty in preview. |
 | `blocking=yes` | Work queue. Includes unreachable and hijacked, not `kept`. |
+| `status=planned` | Preview: label derived, box not read |
 | `status=diff` | Box label ≠ cabling |
 | `status=missing` | Cabled, no live label |
 | `status=alias_hijacked` | Grammar is on display-string; Zabbix still reads description-string |

@@ -272,7 +272,7 @@ CSV_COLUMNS = (
     "far_site", "far_device", "far_port", "far_role",
     "netbox_description", "expected", "live", "description_string",
     "ifalias_source",
-    "status", "blocking", "collision", "len", "detail",
+    "status", "rewrite", "blocking", "collision", "len", "detail",
 )
 
 _EXCEL_PORT_RE = re.compile(r"^\d{1,4}[:/.\-]\d{1,4}([:/.\-]\d{1,4})?$")
@@ -316,6 +316,19 @@ def plan_is_blocking(plan) -> bool:
         getattr(plan, "status", "") in BLOCKING_STATUSES
         or bool(getattr(plan, "collision", False))
     )
+
+
+def plan_rewrite(plan) -> str:
+    """``yes`` when remediate would push CLI for this port.
+
+    Preview never SSH's, so the cell stays empty — ``planned`` is not a match.
+    ``alias_hijacked`` is rewritten only if the operator ticked clear
+    description (that is when ``commands`` is filled). ``kept`` is never wiped.
+    """
+    status = getattr(plan, "status", "") or ""
+    if status in {"planned", "pending"}:
+        return ""
+    return "yes" if getattr(plan, "commands", None) else "no"
 
 
 def flag_collisions(plans: list) -> int:
@@ -376,7 +389,9 @@ def device_scorecard(plans: list) -> list[dict[str, str | int]]:
             "site": group[0].site or "",
             "kind": group[0].kind or "",
             "ports": len(group),
+            "planned": counts.get("planned", 0),
             "ok": counts.get("ok", 0),
+            "rewrite": sum(1 for p in group if plan_rewrite(p) == "yes"),
             "diff": counts.get("diff", 0),
             "missing": counts.get("missing", 0),
             "hijacked": counts.get("alias_hijacked", 0),
@@ -472,6 +487,7 @@ def plans_to_csv(plans: list) -> str:
             "description_string": getattr(plan, "description_string", "") or "",
             "ifalias_source": plan_ifalias_source(plan),
             "status": plan.status,
+            "rewrite": plan_rewrite(plan),
             "blocking": "yes" if plan_is_blocking(plan) else "no",
             "collision": "yes" if getattr(plan, "collision", False) else "no",
             "len": len(plan.expected) if plan.expected else 0,
@@ -1760,9 +1776,10 @@ if _NETBOX:
             if preview_only:
                 self.log_info(
                     "Preview reads **NetBox cabling only** (site / role / "
-                    "devices / tags). Expected `CLASS[-SPEED]-ID` comes from "
-                    "the far end of each complete cable. No SSH. Canary "
-                    "allowlist is not used."
+                    "devices / tags). CSV `status=planned` is “we could "
+                    "derive a label”, not “the box already matches”. No SSH. "
+                    "Canary allowlist is not used. Run **Compliance** later to "
+                    "see which ports would be overwritten."
                 )
             if mode == "remediate" and not commit:
                 self.log_warning(
@@ -1881,8 +1898,10 @@ if _NETBOX:
             elapsed = int(time.time() - started)
             if preview_only:
                 self.log_success(
-                    f"Preview: {len(all_plans)} expected label(s) from NetBox "
-                    f"cabling ({elapsed}s). CSV is in the Output tab — copy into Excel."
+                    f"Preview: {len(all_plans)} planned label(s) from NetBox "
+                    f"cabling ({elapsed}s). status=planned means the box was "
+                    "not read. Run Compliance for rewrite=yes. CSV is in the "
+                    "Output tab."
                 )
             elif not blocking:
                 self.log_success(
@@ -2028,7 +2047,10 @@ if _NETBOX:
                         f"shortest={expected}"
                     )
                 else:
-                    plan.status = "ok"
+                    # Preview (and the pre-SSH plan) — cabling produced a
+                    # label. Not "the box already matches"; that is ``ok``
+                    # after Compliance compares live ifAlias.
+                    plan.status = "planned"
                 plans.append(plan)
             return plans
 
@@ -2109,17 +2131,34 @@ if _NETBOX:
             collisions = sum(1 for p in plans if p.collision)
             summary = " · ".join(f"**{k}** {v}" for k, v in sorted(counts.items()))
             class_line = " · ".join(f"**{k}** {v}" for k, v in sorted(classes.items()))
+            rewrite_n = sum(1 for p in plans if plan_rewrite(p) == "yes")
+            if preview_only:
+                status_blurb = (
+                    "`planned` means cabling produced an expected label. "
+                    "The box was **not** read — this is not “already matches”. "
+                    "`live` and `rewrite` are empty. Run **Compliance** to see "
+                    "which ports would be overwritten (`rewrite=yes`, "
+                    "`status=diff` or `missing`)."
+                )
+            else:
+                status_blurb = (
+                    "`ok` means Zabbix ifAlias **already** matches expected. "
+                    f"**Would rewrite:** {rewrite_n} — filter CSV `rewrite=yes` "
+                    "(live `diff` / `missing` / `forbidden`; `alias_hijacked` "
+                    "only if you ticked clear description-string). "
+                    "`kept` is listed and **never** wiped."
+                )
             self.log_info(
                 f"\n---\n## Summary\n{summary or '_nothing evaluated_'}\n\n"
                 f"CLASS: {class_line or '—'}\n\n"
                 f"**Blocking:** {blocking_n}"
+                f" · **Would rewrite:** {rewrite_n}"
                 f" · **ifAlias hijacked by description-string:** {hijacked}"
                 f" · **collisions:** {collisions}\n\n"
-                "`ok` means Zabbix ifAlias matches expected. "
-                "`alias_hijacked` means display-string matches but EXOS "
-                "description-string still owns ifAlias.\n\n"
+                f"{status_blurb}\n\n"
                 "Full sheet is the **CSV in the Output tab** — copy into Excel "
-                "and filter `blocking`, `status`, `class`, `ifalias_source`. "
+                "and filter `rewrite`, `blocking`, `status`, `class`, "
+                "`ifalias_source`. "
                 "Preview has no SSH: `netbox_description` is the current NetBox "
                 "interface description; `speed_source` is iftype vs "
                 "`Interface.speed` (Kbps).\n\n"
@@ -2136,20 +2175,38 @@ if _NETBOX:
                 return _cell(name)
 
             scorecard = device_scorecard(plans)
-            score_headers = [
-                "Device", "Site", "Kind", "Ports", "ok", "blocking",
-                "diff", "miss", "hijack", "kept", "unreach", "coll", "long",
-            ]
-            score_rows = [
-                [
-                    _dev_cell(str(r["device"])), _cell(str(r["site"])), _cell(str(r["kind"])),
-                    str(r["ports"]), str(r["ok"]), str(r["blocking"]),
-                    str(r["diff"]), str(r["missing"]), str(r["hijacked"]),
-                    str(r["kept"]), str(r["unreach"]), str(r["collision"]),
-                    str(r["too_long"]),
+            if preview_only:
+                score_headers = [
+                    "Device", "Site", "Kind", "Ports", "planned", "blocking",
+                    "coll", "long",
                 ]
-                for r in scorecard
-            ]
+                score_rows = [
+                    [
+                        _dev_cell(str(r["device"])), _cell(str(r["site"])),
+                        _cell(str(r["kind"])),
+                        str(r["ports"]), str(r["planned"]), str(r["blocking"]),
+                        str(r["collision"]), str(r["too_long"]),
+                    ]
+                    for r in scorecard
+                ]
+            else:
+                score_headers = [
+                    "Device", "Site", "Kind", "Ports", "ok", "rewrite",
+                    "blocking",
+                    "diff", "miss", "hijack", "kept", "unreach", "coll", "long",
+                ]
+                score_rows = [
+                    [
+                        _dev_cell(str(r["device"])), _cell(str(r["site"])),
+                        _cell(str(r["kind"])),
+                        str(r["ports"]), str(r["ok"]), str(r["rewrite"]),
+                        str(r["blocking"]),
+                        str(r["diff"]), str(r["missing"]), str(r["hijacked"]),
+                        str(r["kept"]), str(r["unreach"]), str(r["collision"]),
+                        str(r["too_long"]),
+                    ]
+                    for r in scorecard
+                ]
             if score_rows:
                 header_lines = [
                     "| " + " | ".join(score_headers) + " |",
@@ -2195,6 +2252,20 @@ if _NETBOX:
                         p.status + (" collision" if p.collision else ""),
                     ]
                     for p in sorted(blocking_rows, key=lambda x: (x.device, x.ifname))
+                ],
+            )
+            rewrite_rows = [p for p in plans if plan_rewrite(p) == "yes"]
+            _emit(
+                "Would rewrite on next remediate (CSV rewrite=yes)",
+                ["Device", "ifName", "Expected", "Live", "Status"],
+                [
+                    [
+                        _dev_cell(p.device), _cell(p.ifname),
+                        f"`{_cell(p.expected) or '—'}`",
+                        f"`{_cell(p.live) or '—'}`",
+                        p.status,
+                    ]
+                    for p in sorted(rewrite_rows, key=lambda x: (x.device, x.ifname))
                 ],
             )
             kept = [p for p in plans if p.status == "kept"]

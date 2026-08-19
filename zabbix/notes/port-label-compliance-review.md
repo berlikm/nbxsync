@@ -49,33 +49,41 @@ Three modes, same script. **Do them in this order.**
 
 ### 2.1 How to read the job (NetBox 4.5)
 
-1. **Log — scorecard.** Status counts, CLASS mix, blocking / hijacked /
-   collision totals, then **one line per switch** (`ok`, `blocking`, `diff`,
-   `miss`, `hijack`, `kept`, `unreach`, `coll`, `long`). A fleet-wide table
-   is split across log entries of 200 switches so NetBox does not truncate
-   it (`Per-device scorecard (1/2, …)` then `(2/2, …)`). Blocking tables are
-   capped at 40 rows. This is for scanning, not for 1500 diffs.
+1. **Log — scorecard.** Status counts, CLASS mix, blocking / **would rewrite**
+   / hijacked / collision totals, then **one line per switch**. Preview
+   columns are `planned` / `blocking` (box not read). Compliance columns are
+   `ok`, `rewrite`, `diff`, `miss`, `hijack`, `kept`, `unreach`, `coll`,
+   `long`. A fleet-wide table is split across log entries of 200 switches
+   so NetBox does not truncate it (`Per-device scorecard (1/2, …)` then
+   `(2/2, …)`). Blocking / rewrite tables are capped at 40 rows. This is for
+   scanning, not for 1500 diffs.
 2. **Output — CSV.** Every evaluated port. Copy → Excel. This is the sheet you
    keep. First line is `sep=,` (Excel delimiter) plus a UTF-8 BOM. VOSS
    `1/17` is a text formula so Excel does not make it a date.
 3. Do **not** treat the job log as the archive. NetBox truncates long logs.
 
-`ok` means **Zabbix ifAlias matches expected**. It is not “display-string
-matches.” On EXOS, a leftover `description-string` still wins ifAlias; that
-row is `alias_hijacked` and **blocking** until you tick clear.
+Preview `status=planned` means **cabling produced a label**. It is not “the
+box already matches.” `rewrite` is empty until Compliance SSH's.
+
+Compliance `ok` means **Zabbix ifAlias matches expected**. Filter
+`rewrite=yes` for the overwrite list. It is not “display-string matches.”
+On EXOS, a leftover `description-string` still wins ifAlias; that row is
+`alias_hijacked` and **blocking** until you tick clear (and is rewritten
+only if that box is ticked).
 
 ### 2.2 Excel filters
 
 | Filter | Why |
 |---|---|
+| `rewrite = yes` | **What remediate would push.** Empty in preview |
 | `blocking = yes` | The work queue. Diff + missing + too_long + forbidden + unreachable + alias_hijacked + collision |
+| `status = planned` | Preview: derived, box not read |
 | `status = diff` | Box display-string / VOSS `name` ≠ cabling |
 | `status = missing` | Cabled in NetBox, no live label |
 | `status = alias_hijacked` | Grammar is on display-string; Zabbix still reads description-string |
 | `status = unreachable` | SSH failed or no `oob_ip`/`primary_ip`. The job **always fails** — we cannot attest those ports |
 | `collision = yes` | Two ports on this switch share `expected` (not `X`/`N`) |
 | `status = kept` | Label on the box, no complete cable. **Listed, never wiped.** Often still useful (ISP, leftover NIC) |
-| `collision = yes` | Two ports on this switch share `expected`. Generator cannot pick a winner |
 | `class` | `USW` / `US` / `UP` / `MON` / `UW` / `X` — own column, do not parse `expected` |
 | `netbox_description` | Current NetBox interface description (preview has no SSH `live`) |
 | `speed_source` | `iftype:<slug>` or `speed:<kbps>kbps` from the slower of local/far; empty when neither is set |
