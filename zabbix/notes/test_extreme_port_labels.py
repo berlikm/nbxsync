@@ -70,6 +70,33 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(e.role_code("Switch Mgmt"), "M")
 
 
+class PlatformKindTests(unittest.TestCase):
+    def test_exos_and_switch_engine(self):
+        self.assertEqual(e.platform_kind("Extreme EXOS"), "exos")
+        self.assertEqual(e.platform_kind("Switch Engine"), "exos")
+        self.assertEqual(e.platform_kind(None, "switch-engine"), "exos")
+
+    def test_voss_is_not_matched_as_exos_via_xos(self):
+        """``XOS`` is a substring of ``VOSS`` — must not classify VOSS as EXOS."""
+        self.assertEqual(e.platform_kind("VOSS"), "voss")
+        self.assertEqual(e.platform_kind("Extreme VOSS"), "voss")
+
+    def test_fabric_engine_and_vsp(self):
+        self.assertEqual(e.platform_kind("Fabric Engine"), "voss")
+        self.assertEqual(e.platform_kind(None, "fabric-engine"), "voss")
+        self.assertEqual(e.platform_kind("VSP 8600"), "voss")
+        self.assertEqual(e.platform_kind(None, "vsp-7400"), "voss")
+
+    def test_normalize_choicevar_and_labels(self):
+        self.assertEqual(e.normalize_platform_filter("voss"), "voss")
+        self.assertEqual(e.normalize_platform_filter("VOSS only"), "voss")
+        self.assertEqual(e.normalize_platform_filter(("voss", "VOSS only")), "voss")
+        self.assertEqual(e.normalize_platform_filter(""), "both")
+        self.assertEqual(e.normalize_platform_filter(None), "both")
+        self.assertEqual(e.normalize_platform_filter("EXOS + VOSS"), "both")
+        self.assertEqual(e.normalize_platform_filter("exos"), "exos")
+
+
 class FutureProofTests(unittest.TestCase):
     """Rates / roles / ports that do not exist in the current estate."""
 

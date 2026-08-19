@@ -1552,7 +1552,7 @@ def _fetch_live_labels(nc, kind: str) -> tuple[dict[str, str], dict[str, str]]:
 
 try:
     from dcim.choices import DeviceStatusChoices
-    from dcim.models import Device, DeviceRole, Interface, Site, SiteGroup
+    from dcim.models import Device, DeviceRole, Interface, Platform, Site, SiteGroup
     from extras.models import Tag
     from extras.scripts import (
         BooleanVar,
@@ -1675,13 +1675,52 @@ def compare_plan(
             plan.commands = exos_apply_commands(plan.ifname, plan.expected, True)
 
 
-def _platform_kind(platform_name: str | None) -> str | None:
-    name = (platform_name or "").upper()
-    if "EXOS" in name or "SWITCH ENGINE" in name:
+def platform_kind(platform_name: str | None, platform_slug: str | None = None) -> str | None:
+    """Map a NetBox platform name/slug to ``exos`` or ``voss``.
+
+    Do not match bare ``XOS`` — it is a substring of ``VOSS``.
+    """
+    blob = f"{platform_name or ''} {platform_slug or ''}".upper()
+    blob = blob.replace("-", " ").replace("_", " ")
+    compact = blob.replace(" ", "")
+    if any(m in blob or m in compact for m in ("EXOS", "SWITCH ENGINE", "SWITCHENGINE", "EXTREMEXOS")):
         return "exos"
-    if "VOSS" in name or "FABRIC ENGINE" in name:
+    if any(m in blob or m in compact for m in ("VOSS", "FABRIC ENGINE", "FABRICENGINE")):
+        return "voss"
+    if re.search(r"(^|[\s])VSP([\s0-9]|$)", blob) or compact.startswith("VSP"):
         return "voss"
     return None
+
+
+def _platform_kind(platform_name: str | None, platform_slug: str | None = None) -> str | None:
+    return platform_kind(platform_name, platform_slug)
+
+
+def normalize_platform_filter(wanted) -> str:
+    """ChoiceVar / scheduled-job value → ``exos`` | ``voss`` | ``both``.
+
+    NetBox may pass the key (``voss``), the label (``VOSS only``), a blank
+    choice, or a one-element sequence. Blank means both, not “match nothing”.
+    """
+    if wanted is None:
+        return "both"
+    if isinstance(wanted, (list, tuple, set)):
+        parts = [normalize_platform_filter(item) for item in wanted if item not in (None, "")]
+        if not parts:
+            return "both"
+        if all(item == parts[0] for item in parts):
+            return parts[0]
+        return "both"
+    text = str(wanted).strip().lower().replace("_", " ").replace("+", " ")
+    text = re.sub(r"\bonly\b", " ", text)
+    text = " ".join(text.split())
+    if text in {"", "both", "all", "any", "exos voss", "exos and voss"}:
+        return "both"
+    if "voss" in text or "fabric" in text or text == "vsp":
+        return "voss"
+    if "exos" in text or "switch engine" in text:
+        return "exos"
+    return "both"
 
 
 def _ip_from(addr) -> str | None:
@@ -1821,8 +1860,9 @@ if _NETBOX:
             fieldsets = (
                 ("Mode", ("mode",)),
                 ("Scope (NetBox devices and cables)", (
-                    "site_group", "site", "role", "tag", "devices",
-                    "platform_filter", "structural_tag",
+                    "site_group", "site", "role", "tag",
+                    "platform_filter", "platforms", "devices",
+                    "structural_tag",
                 )),
                 ("Reporting", ("include_admin_down", "include_neutral",
                                "fail_on_diff")),
@@ -1891,23 +1931,45 @@ if _NETBOX:
                               description="Filter by device role")
         tag = MultiObjectVar(model=Tag, required=False,
                              description="Filter by device tag")
+        platform_filter = ChoiceVar(
+            choices=(("both", "EXOS + VOSS"), ("exos", "EXOS only"), ("voss", "VOSS only")),
+            default="both",
+            description=(
+                "Operating system. Applied with every other scope filter, "
+                "including an explicit device list. VOSS only = Fabric Engine / "
+                "VSP / VOSS. EXOS only = Switch Engine / EXOS."
+            ),
+            label="Platform (EXOS / VOSS)",
+        )
+        platforms = MultiObjectVar(
+            model=Platform,
+            required=False,
+            description=(
+                "Optional NetBox platform objects (the Devices dropdown follows "
+                "this). Combined with EXOS/VOSS above: pick the VOSS / Fabric "
+                "Engine platform here so the device list is VOSS-only before "
+                "you run."
+            ),
+            label="Platforms (device list)",
+        )
         devices = MultiObjectVar(
             model=Device,
             required=False,
-            description="Specific devices. Empty = all active devices matching above.",
+            description=(
+                "Specific devices. Empty = every active Extreme switch matching "
+                "the filters above. Combined with site, role, tag, site group, "
+                "and platform (EXOS/VOSS and any Platform objects). A VOSS-only "
+                "run never includes EXOS boxes even if they appear in this list."
+            ),
             query_params={
                 "status": "active",
                 "manufacturer": "extreme-networks",
                 "site_id": "$site",
+                "site_group_id": "$site_group",
                 "role_id": "$role",
                 "tag_id": "$tag",
+                "platform_id": "$platforms",
             },
-        )
-        platform_filter = ChoiceVar(
-            choices=(("both", "EXOS + VOSS"), ("exos", "EXOS only"), ("voss", "VOSS only")),
-            default="both",
-            description="Which Extreme platform to include.",
-            label="Platform",
         )
         structural_tag = MultiObjectVar(
             model=Tag,
@@ -1975,8 +2037,16 @@ if _NETBOX:
 
             device_list = self._resolve_devices(data)
             device_by_name = {d.name: d for d in device_list}
+            wanted = normalize_platform_filter(data.get("platform_filter"))
+            plat_names = ", ".join(
+                getattr(p, "name", "") or str(p)
+                for p in (data.get("platforms") or [])
+            ) or "—"
             if not device_list:
-                self.log_failure("No Extreme devices match the selected scope.")
+                self.log_failure(
+                    "No Extreme devices match the selected scope "
+                    f"(platform={wanted}, platforms={plat_names})."
+                )
                 return
 
             self.log_info(
@@ -1984,6 +2054,8 @@ if _NETBOX:
                 f"- **Mode:** {mode}"
                 f"{' + COMMIT (live push)' if remediating else ' (no push)'}\n"
                 f"- **SSH:** {'no' if preview_only else 'yes'}\n"
+                f"- **Platform:** {wanted}"
+                f"{f' ∩ {plat_names}' if plat_names != '—' else ''}\n"
                 f"- **Devices:** {len(device_list)}\n"
                 f"- **Max label length:** {MAX_LABEL_LEN}\n"
                 f"- **Workers:** {data.get('max_workers', 8)}"
@@ -2039,7 +2111,10 @@ if _NETBOX:
             plans_by_device: dict[str, list[PortPlan]] = {}
             targets: list[tuple[Device, str, str]] = []   # (device, ip, kind)
             for device in device_list:
-                kind = _platform_kind(getattr(device.platform, "name", None))
+                kind = _platform_kind(
+                    getattr(device.platform, "name", None),
+                    getattr(device.platform, "slug", None),
+                )
                 if kind is None:
                     continue
                 if device.name in plans_by_device:
@@ -2187,43 +2262,66 @@ if _NETBOX:
         # ---- helpers -------------------------------------------------------
 
         def _resolve_devices(self, data) -> list:
-            selected = data.get("devices")
-            if selected:
-                queryset = Device.objects.filter(pk__in=[d.pk for d in selected])
-            else:
-                from django.db.models import Q
-                queryset = Device.objects.filter(status=DeviceStatusChoices.STATUS_ACTIVE)
-                queryset = queryset.filter(
-                    Q(device_type__manufacturer__slug="extreme-networks")
-                    | Q(platform__name__icontains="exos")
-                    | Q(platform__name__icontains="voss")
-                    | Q(platform__name__icontains="switch engine")
-                    | Q(platform__name__icontains="fabric engine")
-                ).distinct()
-                if data.get("site_group"):
-                    group_ids: set[int] = set()
-                    for group in data["site_group"]:
-                        group_ids.add(group.pk)
-                        descendants = getattr(group, "get_descendants", None)
-                        if not callable(descendants):
-                            continue
-                        try:
-                            desc = descendants(include_self=True)
-                        except TypeError:
-                            desc = descendants()
-                        if hasattr(desc, "values_list"):
-                            group_ids.update(desc.values_list("pk", flat=True))
-                        else:
-                            group_ids.update(getattr(g, "pk", g) for g in desc)
-                    queryset = queryset.filter(site__group_id__in=group_ids)
-                if data.get("site"):
-                    queryset = queryset.filter(site__in=data["site"])
-                if data.get("role"):
-                    queryset = queryset.filter(role__in=data["role"])
-                if data.get("tag"):
-                    queryset = queryset.filter(tags__in=data["tag"]).distinct()
+            """AND every scope filter. Platform is not skipped when devices are set."""
+            from django.db.models import Q
 
-            wanted = data.get("platform_filter", "both")
+            def _os_q(kind: str):
+                if kind == "exos":
+                    return (
+                        Q(platform__name__icontains="exos")
+                        | Q(platform__name__icontains="switch engine")
+                        | Q(platform__slug__icontains="exos")
+                        | Q(platform__slug__icontains="switch-engine")
+                        | Q(platform__slug__icontains="switchengine")
+                    )
+                if kind == "voss":
+                    return (
+                        Q(platform__name__icontains="voss")
+                        | Q(platform__name__icontains="fabric engine")
+                        | Q(platform__slug__icontains="voss")
+                        | Q(platform__slug__icontains="fabric-engine")
+                        | Q(platform__slug__icontains="fabricengine")
+                        | Q(platform__name__icontains="vsp")
+                        | Q(platform__slug__icontains="vsp")
+                    )
+                return _os_q("exos") | _os_q("voss")
+
+            queryset = Device.objects.filter(status=DeviceStatusChoices.STATUS_ACTIVE)
+            queryset = queryset.filter(
+                Q(device_type__manufacturer__slug="extreme-networks")
+                | _os_q("both")
+            ).distinct()
+
+            # Explicit devices narrow the set; they do not drop site / role / OS.
+            if data.get("devices"):
+                queryset = queryset.filter(pk__in=[d.pk for d in data["devices"]])
+            if data.get("site_group"):
+                group_ids: set[int] = set()
+                for group in data["site_group"]:
+                    group_ids.add(group.pk)
+                    descendants = getattr(group, "get_descendants", None)
+                    if not callable(descendants):
+                        continue
+                    try:
+                        desc = descendants(include_self=True)
+                    except TypeError:
+                        desc = descendants()
+                    if hasattr(desc, "values_list"):
+                        group_ids.update(desc.values_list("pk", flat=True))
+                    else:
+                        group_ids.update(getattr(g, "pk", g) for g in desc)
+                queryset = queryset.filter(site__group_id__in=group_ids)
+            if data.get("site"):
+                queryset = queryset.filter(site__in=data["site"])
+            if data.get("role"):
+                queryset = queryset.filter(role__in=data["role"])
+            if data.get("tag"):
+                queryset = queryset.filter(tags__in=data["tag"]).distinct()
+            if data.get("platforms"):
+                queryset = queryset.filter(platform__in=data["platforms"])
+            wanted = normalize_platform_filter(data.get("platform_filter"))
+            queryset = queryset.filter(_os_q(wanted))
+
             result = []
             seen: set[int] = set()
             for device in queryset.select_related(
@@ -2231,7 +2329,10 @@ if _NETBOX:
                 "device_type", "device_type__manufacturer",
                 "primary_ip4", "primary_ip6", "oob_ip",
             ):
-                kind = _platform_kind(getattr(device.platform, "name", None))
+                kind = _platform_kind(
+                    getattr(device.platform, "name", None),
+                    getattr(device.platform, "slug", None),
+                )
                 if kind is None:
                     continue
                 if wanted != "both" and kind != wanted:

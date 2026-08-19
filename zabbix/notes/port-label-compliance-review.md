@@ -100,7 +100,8 @@ VOSS `1/17` vs `1:17` will miss). Do not start with “all sites”.
 Permissions (NetBox Object Permissions, not the script):
 
 - **Preview / compliance:** `extras.run_script` is enough. The script does not
-  write NetBox objects.
+  write NetBox objects. **Platform (EXOS / VOSS)** is ANDed with site, role, tag,
+  site group, and any device list — VOSS-only never yields EXOS switches.
 - **Remediate:** same permission **plus** the Commit box. NetBox has no
   per-mode permission — that is why remediate is double-gated (mode + Commit +
   allowlist or an explicit “entire scope” tick).

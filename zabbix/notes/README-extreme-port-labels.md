@@ -87,8 +87,9 @@ recovered in `port_label_canary.py` before replay. Rebuild the TSV with
 |---|---|
 | **Mode** | `preview` (default, **no SSH**) · `compliance` (read the box) · `remediate` (push; needs Commit) |
 | **Commit changes** | NetBox's own box. Remediation needs **both** mode=remediate and this |
-| **Scope** | site group / site / role / device tag / explicit devices — **this** is what preview uses |
-| **Platform** | EXOS · VOSS · both |
+| **Scope** | site group / site / role / device tag / explicit devices — **this** is what preview uses. Every filter is **AND** (picking devices no longer ignores site or platform) |
+| **Platform (EXOS / VOSS)** | `VOSS only` never includes EXOS, even with a device list or site. Same for EXOS only. Applied with site / role / tag / site group |
+| **Platforms (device list)** | Optional NetBox platform objects. The Devices dropdown follows this (`platform_id`). Pick Fabric Engine / VOSS here so the picker is VOSS-only |
 | **Canary allowlist** | **Remediate only**, ignored in preview/compliance. `device-name::ifname` per line; `1:17` and `1/17` match. Required to push unless "entire scope" is ticked |
 | **Remediate entire scope** | Off by default. Ignored unless Mode is Remediate |
 | **Structural tags** | interface tags meaning "never alert" (SPAN / mute) → expected label `X`. Do **not** tag stack / ISC / MLAG peer |
