@@ -1451,24 +1451,29 @@ if _NETBOX:
             name = "Extreme Port Labels (ifAlias compliance)"
             description = (
                 "Preview expected CLASS[-SPEED]-ID labels from NetBox cabling "
-                "(no SSH), compare them to the live box, or push. Cabled ports "
-                "are evaluated; live labels without a NetBox cable are kept on "
-                "the box and listed (never pushed). Preview needs no Commit. "
-                "Remediation needs mode=remediate AND Commit changes AND "
-                "(an allowlist or the full-scope box)."
+                "(no SSH), compare them to the live box, or push. Preview uses "
+                "Scope (site / role / devices) and cables — not the canary "
+                "allowlist. Cabled ports are evaluated; live labels without a "
+                "NetBox cable are kept on the box and listed (never pushed). "
+                "Preview needs no Commit. Remediation needs mode=remediate AND "
+                "Commit changes AND (an allowlist or the full-scope box)."
             )
             commit_default = False
             scheduling_enabled = True
             job_timeout = 3600
 
             fieldsets = (
-                ("Mode", ("mode", "clear_description_string", "canary",
-                           "force_full_remediate")),
-                ("Scope", ("site_group", "site", "role", "tag", "devices",
-                           "platform_filter", "structural_tag")),
+                ("Mode", ("mode",)),
+                ("Scope (NetBox devices and cables)", (
+                    "site_group", "site", "role", "tag", "devices",
+                    "platform_filter", "structural_tag",
+                )),
                 ("Reporting", ("include_admin_down", "include_neutral",
                                "fail_on_diff")),
-                ("Execution", ("save_config", "max_workers")),
+                ("Remediate only — ignored in preview and compliance", (
+                    "canary", "force_full_remediate",
+                    "clear_description_string", "save_config", "max_workers",
+                )),
             )
 
         # ---- Mode ----
@@ -1481,10 +1486,10 @@ if _NETBOX:
             ),
             default="preview",
             description=(
-                "Preview never opens SSH. Compliance reads display-string / "
-                "interface name. Remediation additionally requires Commit "
-                "changes, and either a canary allowlist or 'Remediate entire "
-                "scope'."
+                "Preview never opens SSH: it reads NetBox devices and cables "
+                "and writes expected labels. Compliance SSHs to compare live "
+                "ifAlias. Remediate needs Commit plus a canary allowlist or "
+                "'Remediate entire scope'."
             ),
             label="Mode",
         )
@@ -1503,18 +1508,19 @@ if _NETBOX:
         canary = TextVar(
             required=False,
             description=(
-                "Allowlist for remediation: `device-name::ifname` per line "
-                "(e.g. `CH-STA-L50-L01-CORE01::1/17`). `1:17` and `1/17` match. "
-                "When set, only these ports are pushed. Strongly recommended "
-                "for the first live run."
+                "Ignored in preview and compliance. Remediate only: "
+                "`device-name::ifname` per line (e.g. "
+                "`CH-STA-L50-L01-CORE01::1/17`). `1:17` and `1/17` match. "
+                "When Mode is Remediate, only these ports are pushed."
             ),
-            label="Canary allowlist (device::ifname)",
+            label="Canary allowlist (remediate only)",
         )
         force_full_remediate = BooleanVar(
             default=False,
             description=(
-                "Allow a remediate push without a canary allowlist. Leave off "
-                "until preview + compliance look right on paper."
+                "Ignored in preview and compliance. Allow a remediate push "
+                "without a canary allowlist. Leave off until preview + "
+                "compliance look right."
             ),
             label="Remediate entire scope (no allowlist)",
         )
@@ -1623,6 +1629,13 @@ if _NETBOX:
                 f"- **Max label length:** {MAX_LABEL_LEN}\n"
                 f"- **Workers:** {data.get('max_workers', 8)}"
             )
+            if preview_only:
+                self.log_info(
+                    "Preview reads **NetBox cabling only** (site / role / "
+                    "devices / tags). Expected `CLASS[-SPEED]-ID` comes from "
+                    "the far end of each complete cable. No SSH. Canary "
+                    "allowlist is not used."
+                )
             if mode == "remediate" and not commit:
                 self.log_warning(
                     "Mode is *remediate* but **Commit changes** is unticked — "
@@ -1633,6 +1646,12 @@ if _NETBOX:
                 line.strip() for line in (data.get("canary") or "").splitlines()
                 if line.strip()
             }
+            if preview_only and allowlist:
+                self.log_warning(
+                    "Canary allowlist is ignored in preview. Scope devices "
+                    "with site / role / devices above; every cabled port in "
+                    "that scope is in the CSV."
+                )
             if remediating and not allowlist and not data.get("force_full_remediate"):
                 self.log_failure(
                     "Remediate refused: set a **canary allowlist** or tick "

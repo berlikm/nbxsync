@@ -175,7 +175,7 @@ The script is the right shape for NetBox: a **flat file** next to
 
 1. Copy `extreme_port_labels.py` next to `extreme_cli_runner.py` in `SCRIPTS_ROOT`.
 2. NetBox → Customization → Scripts → **Extreme Port Labels**.
-3. Mode **Preview**, one site (or one device). **No Commit**. Copy CSV from Output.
+3. Mode **Preview**, pick **Scope** (one site or a few devices). Leave canary empty — it is ignored. **No Commit**. Copy CSV from Output.
 4. Eyeball ISC / stack / SAN / AP rows. Floor tokens (`GFL`, `L02`) must still
    be there on 1G uplinks. `collision=yes` must be empty.
 5. Mode **Compliance** on **one EXOS** and **one VOSS**. Confirm live parse

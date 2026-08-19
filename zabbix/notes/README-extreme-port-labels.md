@@ -74,13 +74,13 @@ recovered in `port_label_canary.py` before replay. Rebuild the TSV with
 |---|---|
 | **Mode** | `preview` (default, **no SSH**) · `compliance` (read the box) · `remediate` (push; needs Commit) |
 | **Commit changes** | NetBox's own box. Remediation needs **both** mode=remediate and this |
-| **Canary allowlist** | `device-name::ifname` per line — `1:17` and `1/17` match. Required to push unless "entire scope" is ticked |
-| **Remediate entire scope** | Off by default. Only after preview + compliance look right |
-| **Scope** | site group / site / role / device tag / explicit devices |
+| **Scope** | site group / site / role / device tag / explicit devices — **this** is what preview uses |
 | **Platform** | EXOS · VOSS · both |
+| **Canary allowlist** | **Remediate only**, ignored in preview/compliance. `device-name::ifname` per line; `1:17` and `1/17` match. Required to push unless "entire scope" is ticked |
+| **Remediate entire scope** | Off by default. Ignored unless Mode is Remediate |
 | **Structural tags** | interface tags meaning "never alert" (SPAN / mute) → expected label `X`. Do **not** tag stack / ISC / MLAG peer |
 | **Include admin-down / X·N** | reporting breadth |
-| **Also clear EXOS description-string** | off by default (may hold human text) |
+| **Also clear EXOS description-string** | off by default (may hold human text). SSH / remediate |
 | **Fail the job on blocking label diffs** | scheduled compliance. Unreachable boxes **always** fail the job |
 
 **Scope rule:** cabled ports get an expected grammar label from NetBox topology.
