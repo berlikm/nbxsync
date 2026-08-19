@@ -635,6 +635,12 @@ def validate_speed_expect(doc: dict) -> None:
         bool(speed_mismatch) and _is_on(speed_mismatch),
         (speed_mismatch or {}).get('status') or 'enabled',
     )
+    event = (speed_mismatch or {}).get('event_name') or ''
+    record(
+        'SpeedExpect event_name ASCII !=',
+        event.isascii() and '!=' in event,
+        event,
+    )
     record(
         'SpeedExpect link-down DISABLED',
         bool(link_down) and not _is_on(link_down),

@@ -33,7 +33,7 @@ The on-box label is the contract (`USW`→10G, `US`→10G, `UP`→1G, `MON`→1G
 - Utilisation (later) is **% of intended**, 1h average, **USW only** — not stock 15m vs live speed. A busy `US`/`UP` is that box’s problem.
 - Discards are the “someone is dropping” signal. YAML trigger **DISABLED** until a baseline; `{$IF.DISCARDS.WARN}=1` is not gated by util `101`.
 - Duplicate Speed Expect link-down is **DISABLED** — platform already Average-tickets discovered ports.
-- Honeycomb stays oper-status. Operator sees the Warning title (`Speed 1000 ≠ expected 10000 Mbps`) plus Port-page live Speed.
+- Honeycomb stays oper-status. Operator sees the Warning title (`Speed 1000 Mbps != expected 10000 Mbps`) plus Port-page live Speed.
 - **Do not wait for a census of empty ports.** No class label → LLD discovers nothing. Nesting on VOSS / Observability arms it; the day you write `US-25G-…` it starts. Dirty labels (class present, wrong token) Warning — that *is* the census. Util `{$IF.UTIL.MAX:"USW"}=101` (off). Stage 6 may set 80 after history.
 
 `UW` has no PHY expect — commit rate is the NetBox Circuit (05). LAG aggregates (`ifType` 161) are out (`^6$`) because their speed is the sum of members.

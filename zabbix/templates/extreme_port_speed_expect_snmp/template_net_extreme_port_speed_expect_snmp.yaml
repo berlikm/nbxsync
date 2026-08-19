@@ -11,10 +11,10 @@ zabbix_export:
       sustained util vs intended speed, outbound discards.
 
 
-      Own LLD macros ({$PORTID.LLD.*}) ΓÇö do not reuse {$NET.IF.IFALIAS.*}.
+      Own LLD macros ({$PORTID.LLD.*}) - do not reuse {$NET.IF.IFALIAS.*}.
 
 
-      See docs/extreme-switching-zabbix.md ┬ºA.5 / ┬ºA.6.4.
+      See docs/extreme-switching-zabbix.md section A.5 / A.6.4.
 
       '
     groups:
@@ -81,7 +81,7 @@ zabbix_export:
         trends: 30d
         units: Mbps
         description: 'Live ifHighSpeed. Compared to {#IF.SPEED.EXPECTED} from label.
-          Unique key ΓÇö does not collide with stock net.if.speed[].
+          Unique key - does not collide with stock net.if.speed[].
 
           '
         tags:
@@ -98,7 +98,7 @@ zabbix_export:
           expression: 'last(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.speed[{#SNMPINDEX}])<>{#IF.SPEED.EXPECTED}
             and min(/Extreme Port Speed Expect by SNMP/net.if.speedexpect.status[{#SNMPINDEX}],5m)=1'
           name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Speed not equal to expected {#IF.SPEED.EXPECTED} Mbps'
-          event_name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Speed {ITEM.LASTVALUE1} Γëá expected {#IF.SPEED.EXPECTED} Mbps (class {#IF.CLASS})'
+          event_name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Speed {ITEM.LASTVALUE1} != expected {#IF.SPEED.EXPECTED} Mbps (class {#IF.CLASS})'
           priority: WARNING
           description: 'Absolute speed expectation from ifAlias. Settle on oper-status
             (dense), not on speed (discard-unchanged heartbeat).
@@ -134,7 +134,7 @@ zabbix_export:
           name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Link down (speed-expect)'
           status: DISABLED
           priority: WARNING
-          description: 'DISABLED — platform template already Average-tickets discovered
+          description: 'DISABLED - platform template already Average-tickets discovered
             link-down. Kept as a dependency name only. Speed mismatch settles on
             min(oper-status,5m)=1 instead.
 
@@ -190,7 +190,7 @@ zabbix_export:
           name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Sustained high utilisation'
           event_name: 'Port identity: Interface {#IFNAME}({#IFALIAS}): Sustained util >{$IF.UTIL.MAX:"{#IF.CLASS}"}% of intended {#IF.SPEED.EXPECTED} Mbps (1h)'
           priority: WARNING
-          description: 'Capacity — 1h average vs intended speed from label. Global
+          description: 'Capacity - 1h average vs intended speed from label. Global
             {$IF.UTIL.MAX}=101 keeps this off until stage 6; {$IF.UTIL.MAX:"USW"}=101
             (off). Stage 6 may set 80 after labels + history.
 
@@ -227,7 +227,7 @@ zabbix_export:
           status: DISABLED
           priority: WARNING
           description: 'DISABLED until a discard baseline exists. {$IF.DISCARDS.WARN}=1
-            pps for 15m is not gated by {$IF.UTIL.MAX}=101 — linking with this on
+            pps for 15m is not gated by {$IF.UTIL.MAX}=101 - linking with this on
             would Warning every slightly droppy port. Enable later, USW first.
 
             '
@@ -248,7 +248,7 @@ zabbix_export:
         trends: 30d
         value_type: FLOAT
         units: '%'
-        description: 'Dashboard helper ΓÇö custom multiplier {#IF.UTIL.MULT} on bps.
+        description: 'Dashboard helper - custom multiplier {#IF.UTIL.MULT} on bps.
           '
         preprocessing:
         - type: MULTIPLIER
@@ -280,7 +280,7 @@ zabbix_export:
     macros:
     - macro: '{$IF.DISCARDS.WARN}'
       value: '1'
-      description: Outbound discard rate (pps) warning ΓÇö tune from baseline (stage 6).
+      description: Outbound discard rate (pps) warning - tune from baseline (stage 6).
     - macro: '{$IF.UTIL.MAX}'
       value: '101'
       description: Global util threshold; 101 = off. Class context macros opt in.
@@ -289,7 +289,7 @@ zabbix_export:
       description: 'Off until stage 6. Set 80 after labels + 4 weeks of history. Linking this template with 80 would page USW util immediately.'
     - macro: '{$PORTID.LLD.IFALIAS.MATCHES}'
       value: '^(USW|US|UP|MON)(-|$)'
-      description: Speed-expect / capacity LLD ΓÇö monitored classes only.
+      description: Speed-expect / capacity LLD - monitored classes only.
     - macro: '{$PORTID.LLD.IFTYPE.MATCHES}'
       value: '^6$'
       description: Physical ethernet only (exclude LAG aggregates).

@@ -244,7 +244,7 @@ LLD JS parses `CLASS[-SPEED]-ID` into `{#IF.CLASS}` + `{#IF.SPEED.EXPECTED}`. On
 
 **Operator view:** nothing, until a port has a class label. Then, within **15m** LLD:
 
-- **Problems:** Warning, next day — `Port identity: Interface 1/21(USW-SWD14): Speed 1000 ≠ expected 10000 Mbps (class USW)`.
+- **Problems:** Warning, next day — `Port identity: Interface 1/21(USW-SWD14): Speed 1000 Mbps != expected 10000 Mbps (class USW)`.
 - **Network interfaces → Overview** honeycomb stays **oper-status**. Do not paint hexes by Mbps (10G vs 1G vs 2.5G is not a colour scale).
 - **Network interfaces → Port** already shows live **Speed** (platform item, bps after ×1e6) + duplex. That is the “what is it now” pane. The Warning is “what should it be”.
 - **Latest data** grows `Speed (speed-expect)` in Mbps plus util-%-of-intended helpers. Util graphs are later; they are **% of the label**, 1h average — not stock 15m vs live speed.
