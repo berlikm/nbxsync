@@ -8,11 +8,10 @@ The label lands in SNMP `ifAlias`, which is what Zabbix LLD filters on
 (`{$NET.IF.IFALIAS.MATCHES}`). A wrong or truncated label silently drops a port
 out of — or into — monitoring.
 
-Grammar authority: [`../reference/port-identity-foundation.md`](../reference/port-identity-foundation.md),
-[`verified-facts.md`](verified-facts.md).
+Grammar authority: [`zabbix/reference/port-identity-foundation.md`](../../zabbix/reference/port-identity-foundation.md),
+[`zabbix/notes/verified-facts.md`](../../zabbix/notes/verified-facts.md).
 This README only adds what those documents leave open: **how the ID is derived
-from NetBox topology**, **which CLI verbs are used**, and **how to read a
-compliance job**.
+from NetBox topology**, and **which CLI verbs are used**.
 
 ---
 
@@ -45,26 +44,9 @@ Same environment variables as the runner — **no secrets in code**:
 Unit tests (pure helpers only, no NetBox required):
 
 ```bash
-python3 zabbix/notes/test_extreme_port_labels.py
-python3 zabbix/notes/test_extreme_port_labels_canary.py
-python3 zabbix/notes/export_port_label_preview.py   # regenerates the Excel sheet + summary
+cd "netbox-scripts and network-scripts"
+python -m pytest tests/ -q          # 62 passed
 ```
-
-What the current generator will write (1535 cabled ports):
-[`port-label-preview.md`](port-label-preview.md) (eyeball sheet),
-[`port-label-verify.md`](port-label-verify.md) (every port, grouped by switch),
-[`fixtures/port_label_preview.tsv`](fixtures/port_label_preview.tsv) (Excel).
-
-How to run this in NetBox (preview → Excel → compliance → one canary push):
-[`port-label-compliance-review.md`](port-label-compliance-review.md).
-
-The fleet canary is `zabbix/notes/fixtures/port_label_canary.tsv` — every
-cabled Extreme port from the NetBox export. The `expected_label` column is
-the *old* generator (5-character SPEED slot, floor often dropped); tests
-**recompute** and assert length ≤ 20, CLASS, floor kept, and no per-device
-collisions. Excel-coerced VOSS ports (`Jan 19`, `01. Jul`, `02. Mär`) are
-recovered in `port_label_canary.py` before replay. Rebuild the TSV with
-`python3 zabbix/notes/fixtures/build_port_label_canary.py`.
 
 ---
 
@@ -72,47 +54,22 @@ recovered in `port_label_canary.py` before replay. Rebuild the TSV with
 
 | Field | Meaning |
 |---|---|
-| **Mode** | `preview` (default, **no SSH**) · `compliance` (read the box) · `remediate` (push; needs Commit) |
-| **Commit changes** | NetBox's own box. Remediation needs **both** mode=remediate and this |
-| **Canary allowlist** | `device-name::ifname` per line — `1:17` and `1/17` match. Required to push unless "entire scope" is ticked |
-| **Remediate entire scope** | Off by default. Only after preview + compliance look right |
+| **Mode** | `compliance` (default, read-only) or `remediate` |
+| **Commit changes** | NetBox's own box. Remediation needs **both** |
+| **Canary allowlist** | `device-name::ifname` per line — limits the push |
 | **Scope** | site group / site / role / device tag / explicit devices |
 | **Platform** | EXOS · VOSS · both |
-| **Structural tags** | interface tags meaning "never alert" (SPAN / mute) → expected label `X`. Do **not** tag stack / ISC / MLAG peer |
+| **Structural tags** | interface tags meaning "never alert" → expected label `X` |
 | **Include admin-down / X·N** | reporting breadth |
 | **Also clear EXOS description-string** | off by default (may hold human text) |
-| **Fail the job on blocking label diffs** | scheduled compliance. Unreachable boxes **always** fail the job |
+| **Fail the job on blocking diffs** | for scheduled compliance runs |
 
-**Scope rule:** cabled ports get an expected grammar label from NetBox topology.
-A port with **no complete cable path** cannot derive a far end — it is **not**
-pushed. If the box still has a live label or EXOS `description-string`, that
-text is **kept** and listed in compliance as `kept` (it often still means
-something: ISP, leftover NIC). We do not blank the box to look tidy.
+**Scope rule:** only interfaces that have a **cable in NetBox** are evaluated.
+A port with no cable has no derivable far end, so it is skipped entirely — it is
+not reported, not counted, and never remediated. Cable the port in NetBox first.
 
-SSH uses **`oob_ip` first**, then `primary_ip`. Site groups include **nested children**.
-
-Per-port statuses:
-
-| Status | Meaning | Blocking? |
-|---|---|---|
-| `ok` | Zabbix ifAlias **is** the expected grammar | no |
-| `diff` | live display-string / VOSS `name` ≠ expected | yes |
-| `missing` | cabled in NetBox, no live label | yes |
-| `too_long` | no ID form fits 20 characters (shortest form is still in `expected`) | yes |
-| `forbidden` | live label has a character EXOS would treat as a second command | yes |
-| `alias_hijacked` | EXOS display-string matches, but `description-string` still wins ifAlias | yes |
-| `unreachable` | no SSH (missing IP or session failed) | yes |
-| `kept` | live label, no complete cable — listed, never wiped | no |
-| `applied` | remediator wrote this port | no |
-
-`collision=yes` on the CSV is also blocking: two ports on the **same switch**
-share an expected grammar label. Policy labels `X` / `N` are excluded (every
-SPAN port is supposed to be `X`). The generator still emits both colliding
-rows (it cannot know which cable is wrong); the job must not look clean.
-
-How to read a job: log is the **scorecard** (truncated tables). CSV in the
-**Output** tab is the archive. Details:
-[`port-label-compliance-review.md`](port-label-compliance-review.md).
+Per-port statuses: `ok` · `diff` · `missing` · `too_long` · `forbidden` ·
+`description_string_set` · `unreachable` · `applied`.
 
 ---
 
@@ -153,15 +110,15 @@ which is what makes a deterministic abbreviation possible at all.
 ### 3.2 The rule
 
 ```
-ID = [<SCOPE>-]<CODE><NN>[-<STACK>][_FARPORT]
+ID = [<SCOPE>-]<CODE><NN>[-<STACK>][_p<FARPORT>]
 ```
 
 | Piece | Source | Example |
 |---|---|---|
-| `SCOPE` | a token that exists on the **hostname** (or was stripped from it) — never a NetBox site tail like `DC` that is not in the name | `B01`, `L01`, `GFL`, `L50` |
-| `CODE<NN>` | **Fabric** (switch/firewall/AP): 2 letters (`CORE→CO`, unknown `SPINE→SP`). **Endpoints**: the hostname word (`SAN`, `SNAS`, `ESX`) | `DI01`, `AC03`, `SAN11`, `SNAS01` |
+| `SCOPE` | far-end **location** token when the far end is in the same site, otherwise the far **site** tail | `B01`, `L01`, `GFL` / `L42`, `L44` |
+| `CODE<NN>` | far-end device code + index | `DIST01`, `ACPO03`, `CORE02` |
 | `-STACK` | stack member suffix, when present | `-1`, `-2` |
-| `_FARPORT` | far-end interface; `:`/`/`/`.` → `_`, leading zeros stripped | `_29`, `_1_24`. If that overflows, concatenate: `_120`. No extra `P`. Filler `ETH`/`NIC`/`PORT` drops (`ct0.eth4` → `_CT0_4`). |
+| `_pFARPORT` | far-end interface, `:` and `/` → `.` | `_p29`, `_p1.24`, `_p2.14` |
 
 Non-numeric far ports use a bare `_` (`_LOM1`, `_X1`, `_VMNIC0`).
 `UP` (access point) omits the far port entirely — an AP has one uplink, so the
@@ -169,102 +126,50 @@ port number is noise.
 
 ### 3.3 Fitting into 20 characters
 
-A SPEED token is reserved **only for the token that will actually be emitted**
-(`1G-` is 3, `40G-` is 4). We do **not** leave a blank 5-character `400G-` hole
-on a 1G link — that is what dropped floors. Room for `40G` / `100G` comes from
-**short fabric codes** (`CORE→CO` …) **and** dropping the extra `P` on ports
-(`_1_20` not `_P1_20`). `USW-40G-L01-MG01_120` is 20; spelling CORE or keeping
-`P` would overflow. Endpoint names stay readable (`SAN`, `SNAS`, `ESX`) — we
-do not invent `SN`/`NS`/`CY`/`DC`.
-
-Reserving 5 characters on a 1G USW link dropped the floor on Dist→Access, so
-`USW-1G-GFL-AC01_23` (18, fits) became `USW-1G-AC01_23`. NKN G08 has both
-`GFL-ACCE01` and `L02-ACCE01`; without the floor those are the same label on
-Core.
-
-The abbreviator walks a fixed ladder and takes the **first form that fits**:
+Worst-case prefix is `USW-100M-` (9), leaving 11. The abbreviator walks a fixed
+ladder and takes the **first form that fits**, so the result is deterministic
+and the same input always produces the same label:
 
 | # | Form | Example |
 |---|---|---|
-| 1 | `SCOPE-CODE-STACK _PORT` | `GFL-AC01_23` |
-| 2 | drop stack, keep floor + underscored port | `L02-CO01_1_1` |
-| 3 | concatenate slot+port (`1_20` → `_120`) | `L01-MG01_120` |
-| 4 | drop the far port, keep the floor | `L17-CO01-1` |
-| 5 | drop the scope, keep the port | `AC01_23` |
-| 6 | code + stack only | `AC01` |
+| 1 | `SCOPE-CODE NN-STACK _pPORT` | `L42-CORE01-2_p2.14` |
+| 2 | …with the code compressed to 2 letters | `L42-CO01-2_p2.14` ✅ |
+| 3 | drop the far port | `L42-CORE01-2` |
+| 4 | short code, no port | `L42-CO01-2` |
+| 5–8 | drop the scope, repeat | `CO01-2` |
 
-**Fabric** codes are two letters (`CORE→CO` `DIST→DI` `ACCE→AC` `ACPO→AP`
-`MGMT→MG` `FWGW/FWZONE→FW`, unknown `SPINE→SP`). **Endpoints keep the hostname
-word** (`SAN`, `SNAS`, `ESX`) and only shorten that word if 20 characters force
-it. Scope (building or a site token that is actually on the hostname) is kept
-whenever it fits — that is what tells `GFL-ACCE01` from `L02-ACCE01`.
+Code compression map: `CORE→CO` `DIST→DI` `ACCE→AC` `ACPO→AP` `MGMT→MG`
+`FWGW→FW` `FWZONE→FZ` `CATO→CT` `BACK→BK` `SNAS→NS` `STOD→SD`; anything else
+falls back to its first two letters. This is the same shorthand already on the
+boxes.
 
-If two ports on the **same switch** still share an expected label after the
-ladder, preview/compliance set `collision=yes` and the row is **blocking**. The
-script does not pick a winner. If **no** form fits 20 characters, status is
-`too_long` and `expected` holds the shortest form tried — it never emits a
-string EXOS would silently truncate.
+If **no** form fits, the script **refuses** and reports the shortest form it
+tried — it never emits a string EXOS would silently truncate.
 
 ### 3.4 CLASS and SPEED derivation
 
-CLASS comes from the far-end NetBox **device role** (identity, not speed):
+CLASS comes from the far-end NetBox **device role**:
 
 | Far-end role | CLASS |
 |---|---|
 | `Switch *` (Core / Dist / Access / Mgmt) | `USW` |
-| `Firewall` | `USW` |
 | `Access Point` | `UP` |
-| `Sd Wan Socket` or a **circuit termination** | `UW` |
-| `Server` / `Storage` / `Cohesity` data NIC | `US` |
-| same roles, lights-out port (`mgmt_only`, `oob_ip` on that iface, or `idrac`/`ilo`/`bmc`) | `MON` |
-| **anything else** (printer, camera, generic “Network Device”, …) | `MON` |
+| `Sd Wan Socket` | `UW` |
+| anything else at ≥ 10G (Server, Storage, Cohesity, Firewall) | `US` |
+| anything else below 10G | `MON` |
 | interface carries a configured *structural* tag | `X` |
 
 Link speed = `min(local interface type, far interface type)` from the NetBox
 interface types. The SPEED token is emitted **only** when that differs from the
-class default (`USW`/`US` → 10G, `UP`/`MON` → 1G). A 1G **server** NIC is
-`US-1G-…`, not `MON-…`. A 1G **firewall** is `USW-1G-…`. `UW` never gets a PHY
-token.
+class default (`USW`/`US` → 10G, `UP`/`MON` → 1G), so a 1G server NIC is
+`MON-SRV12`, never `US-1G-SRV12`.
 
-Do **not** treat “device has no primary_ip in NetBox” as management — Pure/SAN
-often only have `oob_ip` recorded while the cable is a production data port.
-
-`X` is **policy, not inference.** Use it for SPAN / lab / operator mute. **Stack,
-ISC, and MLAG peer-links are ordinary switch↔switch cables** — the script
-correctly labels them `USW` and they **must stay monitored** (split-stack /
-dual-active is an outage). Do not tag them structural. Auto-`X` from a
-description of `ISC` is an explicit non-goal.
-
-### 3.5 What is closed vs open (so this script is not a catalogue)
-
-The generator is two layers. Mixing them is how `CY` / `NS` / `DC` appeared:
-someone encoded *this estate’s inventory* instead of *the grammar*.
-
-**Open — follows NetBox, no per-device rows**
-
-| Mechanic | What happens when you add a new box |
-|---|---|
-| Hostname ID | Keep the words on the name (`SAN`, `SNAS`, `ESX`, `SAN10-N01`). Shorten the prefix only if 20 characters force it. |
-| Site strip | Token-wise shared prefix with the far-site slug. Never invent a site tail (`DC`) that is not on the hostname. |
-| Port token | Split on `:` `/` `.`; drop generic filler (`ETH`, `NIC`, `PORT`); no extra `P`. |
-| Length | Longest ID that fits the *emitted* SPEED token. Refuse rather than truncate. |
-| Unknown CLASS | Anything that is not switch/firewall/AP/SD-WAN/server/storage/cohesity is `MON`. |
-| SPEED token | `Mbps → NG` / `2G5`. 50G / 200G / 800G do not need a table row. |
-| New USW role-word | `Switch Spine` / hostname `SPINE01` → `SP` (two letters, same physics as `CORE→CO`). |
-
-**Closed — a small policy table, edited when the *taxonomy* changes**
-
-| Table | When you touch it |
-|---|---|
-| `INFRA_ROLE_TOKENS` / `DATA_ENDPOINT_ROLE_TOKENS` | You invent a NetBox role instead of reusing Server / Storage / Switch \*. Prefer **not** inventing roles. |
-| `BMC_PORT_TOKENS` | A new lights-out vendor string, and nobody set `oob_ip` / `mgmt_only`. |
-| `FABRIC_CODE_SHORT` | Estate spelling that is *not* “first two letters” (`FWZONE→FW` not `FZ`, `CATO→CT` not `CA`). |
-| `_PORT_NOISE` | A new filler word in vendor ifNames (`QSFP`, `SLOT`) that burns the 40G budget. |
-
-Operational contract that keeps the script stable: **reuse NetBox roles**. A
-hypervisor is a Server. A NAS is Storage. A new leaf switch is still Switch \*.
-The day you add “Hypervisor” as a role, data NICs become `MON` until you add
-one token — that is the safe default, not a silent mis-class as `US`.
+`X` is **policy, not inference.** Stack / ISC / MLAG peer-link / SPAN ports must
+never alert, but NetBox models them as ordinary switch-to-switch cables — see
+the ISC ports in the sample below, which the script correctly reports as `USW`
+because nothing in NetBox says otherwise. Tag those interfaces and select the
+tag in **Structural (never-alert) interface tags**. Auto-`X` without a policy is
+an explicit non-goal.
 
 ---
 
@@ -284,15 +189,26 @@ one token — that is the safe default, not a silent mis-class as `US`.
 > `New folder (3)/scratch/probe-exos-10_2_30_11-*/text__show_ports_configuration_no_refresh.txt`:
 > `GFL-ACPO>None       E       A   ON  ON ...`
 
-**Existing `description-string` is kept.** It may be human text. The script
-lists every non-empty one in compliance and **does not clear it** unless that
-box is ticked. While it is set it still **wins `ifAlias`** (lab canary on
-EXOS-VM 32.7.2.19), so Zabbix sees that text rather than the grammar in
-`display-string` — that is why it is listed, not because we want to delete it.
+**`description-string` must stay empty.** doc-o-rag chunk
+`EXOS_User_Guide_32.7.1-471-562d1f4a10e5` (*ExtremeXOS Port Description String*):
 
-Length: live truncation warning from `CH-NKN-G08-L02-CORE01` — *"Warning: port
-display string exceeds maximum length of 20 characters, truncating to …"*. The
-script treats that warning text as a command rejection.
+> provides a configurable per-port “display-string” parameter that is displayed
+> on each of the `show port` CLI commands, exposed through the SNMP ifAlias
+> element […] This feature provides a new and separate per-port field call
+> “description-string” that allows you to configure strings up to 255
+> characters.
+> Some characters are not permitted […] `“ < > : <space> &`. The first
+> character should by alphanumeric.
+
+`zabbix/notes/verified-facts.md` records the canary result on EXOS-VM 32.7.2.19:
+when both are set, **`description-string` wins `ifAlias`**. So a port with a
+`description-string` is reported as `description_string_set` — the grammar label
+in `display-string` is invisible to Zabbix while that field is populated.
+
+Length: the same file records the live truncation warning from
+`CH-NKN-G08-L02-CORE01` — *"Warning: port display string exceeds maximum length
+of 20 characters, truncating to …"*. The script treats that warning text as a
+command rejection.
 
 ### 4.2 VOSS / Fabric Engine
 
@@ -317,53 +233,11 @@ label works on both platforms.
 
 ---
 
-## 5. Operations report (what NetBox can actually give you)
-
-A Custom Script is not a dashboard. The best report we can ship without a
-plugin is:
-
-1. **Job log** — counts, CLASS mix, **per-device scorecard**, then at most 40
-   blocking / kept rows. NetBox truncates long logs; do not treat this as the
-   archive.
-2. **Output tab CSV** — every evaluated port. Copy into Excel. First line is
-   `sep=,` plus a UTF-8 BOM so Excel keeps commas and encoding. VOSS `1/17` is
-   written as a text formula so Excel does not turn it into a date.
-3. **Job colour** — success only when nothing blocking remains. Unreachable
-   boxes **always** fail the job (`log_failure`, clickable device). Tick **Fail
-   the job on blocking label diffs** on a schedule so leftover `diff` rows also
-   go red. A first interactive fleet run will be almost all `diff`; leave that
-   tick off then.
-
-`ok` means **Zabbix will see the expected grammar on ifAlias**. It does **not**
-mean “display-string matches.” On EXOS, `description-string` still wins
-ifAlias. That row is `alias_hijacked` (blocking) until you tick clear.
-
-CSV columns worth filtering:
-
-| Column | Filter |
-|---|---|
-| `blocking=yes` | Work queue. Includes unreachable and hijacked, not `kept`. |
-| `status=diff` | Box label ≠ cabling |
-| `status=missing` | Cabled, no live label |
-| `status=alias_hijacked` | Grammar is on display-string; Zabbix still reads description-string |
-| `status=unreachable` | No SSH — the job must not go green |
-| `status=kept` | Live label, no cable. Listed, never wiped |
-| `collision=yes` | Two ports on this switch share `expected` |
-| `class` | `USW` / `US` / `UP` / `MON` / `UW` / `X` |
-| `ifalias_source` | `display-string` · `description-string` · `name` |
-| `len=20` | At the EXOS budget; check it still reads |
-
-Runbook (preview → Excel → one EXOS + one VOSS compliance → canary push):
-[`port-label-compliance-review.md`](port-label-compliance-review.md).
-
----
-
-## 6. Sample: live box vs current generator
+## 5. Sample compliance report
 
 Produced by running the script's own helpers over **real NetBox topology**
 (NetBox 4.5.10) and **real captured device configuration**. No credentials or
-addresses are reproduced here. Expected values are what **this** generator
-emits (hostname identity, no extra `P`, SPEED only when not the class default).
+addresses are reproduced here.
 
 > ⚠️ **Scope of this verification.** The compliance computation, both live-config
 > parsers and the whole grammar path were exercised against real data. SSH was
@@ -372,81 +246,72 @@ emits (hostname identity, no extra `P`, SPEED only when not the class default).
 > have not been executed live. Run compliance mode against one EXOS and one VOSS
 > box before any remediation, and do the first push with the canary allowlist.
 
-### 6.1 EXOS — `CH-ZRH-ZH4-CORE01` (X690-48x-2Q-4C, site CH-ZRH-ZH4)
+### 5.1 EXOS — `CH-ZRH-ZH4-CORE01` (X690-48x-2Q-4C, site CH-ZRH-ZH4)
 
-38 live labels read · 0 description-strings · **diff 30 · kept 8**
+38 live labels read · 0 description-strings · **diff 30 · orphan 8 · no_cable 34**
 
 | ifName | Far end (NetBox) | Expected | Live | Len | Status |
 |---|---|---|---|---|---|
-| 1 | CH-ZRH-ZH4-CORE02::1 [Switch Core] | `USW-CO02_1` | `ISC` | 10 | diff |
-| 5 | CH-ZRH-ZH4-MGMT01-1::1:51 [Switch Mgmt] | `USW-MG01-1_1_51` | `MLAG_MGMT01_p51` | 15 | diff |
+| 1 | CH-ZRH-ZH4-CORE02::1 [Switch Core] | `USW-CORE02_p1` | `ISC` | 13 | diff |
+| 5 | CH-ZRH-ZH4-MGMT01-1::1:51 [Switch Mgmt] | `USW-MGMT01-1_p1.51` | `MLAG_MGMT01_p51` | 18 | diff |
 | 12 | ch-zrh-zh4-esx40…::vmnic0 [Server] | `US-ESX40_VMNIC0` | `esx40_ct1_eth0` | 15 | diff |
-| 15 | CH-ZRH-ZH4-FWGW01::x1 [Firewall] | `USW-FW01_X1` | `ZRH-FWGW01_x1` | 11 | diff |
-| 20 | — | `—` | `esx45_ct1_eth0` | — | kept |
-| 23 | ch-zrh-zh4-san02::ct0.eth10 [Storage] | `US-SAN02_CT0_10` | `SAN02_ctl0_eth10` | 15 | diff |
-| 29 | ch-zrh-zh4-san01::ct0.eth10 [Storage] | `US-SAN01_CT0_10` | `ZH4-SAN04-N01_CT0_e4` | 15 | diff |
-| 46 | CH-ZRH-ZH5-CORE01::46 [Switch Core] | `USW-ZH5-CO01_46` | `ZH5-CORE01-P46` | 15 | diff |
-| 48 | — | `—` | `ISP_Netrics` | — | kept |
+| 15 | CH-ZRH-ZH4-FWGW01::x1 [Firewall] | `US-FWGW01_X1` | `ZRH-FWGW01_x1` | 12 | diff |
+| 20 | — | `—` | `esx45_ct1_eth0` | 0 | orphan |
+| 23 | ch-zrh-zh4-san02::ct0.eth10 [Storage] | `US-SAN02_CT0.ETH10` | `SAN02_ctl0_eth10` | 18 | diff |
+| 29 | ch-zrh-zh4-san01::ct0.eth10 [Storage] | `US-SAN01_CT0.ETH10` | `ZH4-SAN04-N01_CT0_e4` | 18 | diff |
+| 46 | CH-ZRH-ZH5-CORE01::46 [Switch Core] | `USW-ZH5-CORE01_p46` | `ZH5-CORE01-P46` | 18 | diff |
+| 48 | — | `—` | `ISP_Netrics` | 0 | orphan |
 
 Reading it:
 
 - Ports 1–4 and 11 are the **MLAG ISC**. NetBox models them as ordinary
-  switch↔switch cables, so the script proposes `USW-…`. **Keep that** — ISC
-  must alert. Do not tag them `X`.
+  switch↔switch cables, so the script proposes `USW-…`. These are exactly the
+  ports that need the structural tag → `X`.
 - Port 29/30 shows a **NetBox-vs-reality disagreement**: the cable says
   `san01`, the box says `SAN04-N01`. Fix NetBox, not the switch.
-- Ports 20, 21, 40, 41, 44, 47, 48 have a live label and **no cable** in
-  NetBox (`ISP_Netrics`, leftover NICs). Status is **`kept`**: we list them,
-  we do not blank the box.
+- Ports 20, 21, 40, 41, 44, 47, 48 are `orphan` — labelled on the box, uncabled
+  in NetBox (`ISP_Netrics`, `CATO-WAN1-Cogent`, `L50-CORE02-lag.0.2`).
 
-### 6.2 VOSS — `CH-STA-L50-L01-CORE01` (5520-24X, site CH-STA-L50)
+### 5.2 VOSS — `CH-STA-L50-L01-CORE01` (5520-24X, site CH-STA-L50)
 
-28 live labels read · **diff 16 · kept 12**
+28 live labels read · **diff 16 · orphan 12**
 
 | ifName | Far end (NetBox) | Expected | Live | Len | Status |
 |---|---|---|---|---|---|
-| 1/2 | CH-STA-L50-FWZone01::x1 [Firewall] | `USW-FW01_X1` | `S-FWZONE:X1` | 11 | diff |
-| 1/4 | CH-STA-L50-FWZone01::ha [Firewall] | `USW-1G-FW01_HA` | `FWZONE-HA1` | 14 | diff |
-| 1/7 | CH-STA-L50-L01-MGMT01::1/29 [Switch Mgmt] | `USW-L01-MG01_1_29` | `NNI:L50-L01-MGMT01_1/29` | 17 | diff |
-| 1/17 | CH-STA-L50-B01-DIST01::29 [Switch Dist] | `USW-B01-DI01_29` | `L50-B01-Di01:29` | 15 | diff |
-| 1/20 | CH-STA-L50-L01-DIST01::29 [Switch Dist] | `USW-L01-DI01_29` | `L50-L02-Di02:54` | 15 | diff |
-| 1/21 | CH-STA-L50-L02-DIST01::54 [Switch Dist] | `USW-L02-DI01_54` | `L50-L01-Di01:29` | 15 | diff |
-| 1/22 | CH-STA-L42-CORE01-2::2:14 [Switch Core] | `USW-L42-CO01-2_2_14` | `L42-Co01:1:14` | 19 | diff |
-| 1/24 | CH-STA-L50-L01-CORE02::1/24 [Switch Core] | `USW-L01-CO02_1_24` | `NNI:L50-Co02:1/24` | 17 | diff |
-| 2/2 | CH-STA-L26-L02-CORE01::2/2 [Switch Core] | `USW-L26-CO01_2_2` | `NNI:L26-Co01:2/2` | 16 | diff |
+| 1/2 | CH-STA-L50-FWZone01::x1 [Firewall] | `US-FWZONE01_X1` | `S-FWZONE:X1` | 14 | diff |
+| 1/4 | CH-STA-L50-FWZone01::ha [Firewall] | `MON-FWZONE01_HA` | `OLD_CORE50` | 15 | diff |
+| 1/7 | CH-STA-L50-L01-MGMT01::1/29 [Switch Mgmt] | `USW-L01-MGMT01_p1.29` | `NNI:L50-L01-MGMT01_1/29` | 20 | diff |
+| 1/10 | CH-STA-P-BACK02::LOM1 [Server] | `US-P-BACK02_LOM1` | `Backup_SRV_LAN1` | 16 | diff |
+| 1/17 | CH-STA-L50-B01-DIST01::29 [Switch Dist] | `USW-B01-DIST01_p29` | `L50-B01-Di01:29` | 18 | diff |
+| 1/20 | CH-STA-L50-L01-DIST01::29 [Switch Dist] | `USW-L01-DIST01_p29` | `L50-L02-Di02:54` | 18 | diff |
+| 1/21 | CH-STA-L50-L02-DIST01::54 [Switch Dist] | `USW-L02-DIST01_p54` | `L50-L01-Di01:29` | 18 | diff |
+| 1/22 | CH-STA-L42-CORE01-2::2:14 [Switch Core] | `USW-L42-CO01-2_p2.14` | `L42-Co01:1:14` | 20 | diff |
+| 1/24 | CH-STA-L50-L01-CORE02::1/24 [Switch Core] | `USW-L01-CORE02_p1.24` | `NNI:L50-Co02:1/24` | 20 | diff |
+| 2/2 | CH-STA-L26-L02-CORE01::2/2 [Switch Core] | `USW-L26-CORE01_p2.2` | `NNI:L26-Co01:2/2` | 19 | diff |
 
 Reading it:
 
 - Every live VOSS label containing `:` (`S-FWZONE:X1`, `NNI:L26-Co01:2/2`) is
   legal on VOSS but **forbidden by the fleet grammar** and would be rejected by
   EXOS — one reason to normalise both platforms onto the same generator.
-- `1/7` live label is **23 characters** — fine on VOSS (`WORD<0-64>`), but EXOS
-  would truncate it. The generated form `USW-L01-MG01_1_29` is 17 (`MG` not
-  `MGMT`; `_` not `.`; no extra `P`).
+- `1/7` live label is **23 characters** — fine on VOSS (`WORD<0-64>`), but it
+  would be truncated to 20 on EXOS. The generated form is exactly 20.
 - `1/20` / `1/21` are **swapped** between the on-box labels and the NetBox
   cabling — precisely the class of error this script exists to surface.
-- `1/4` is the firewall HA link at 1G, so the generator emits `USW-1G-FW01_HA`
-  (firewall is `USW`; SPEED because the class default is 10G), not `MON-…`.
+- `1/4` is the firewall HA link at 1G, so it correctly becomes `MON-…` and not
+  `US-1G-…`.
 - Longest generated label across both devices is **20** — at budget, never over.
 
-### 6.3 What the sample proves
+### 5.3 What the sample proves
 
-- SPEED is omitted at the class default. The 1G firewall HA is the exception
-  (`USW-1G-FW01_HA`) because `USW` defaults to 10G.
-- Cross-site `1/22` is `USW-L42-CO01-2_2_14` (19). Spelling `CORE` would overflow.
-  Fabric codes stay `CO`/`DI`/`AC`/`MG`. 40G on a slotted mgmt uplink is
-  `USW-40G-L01-MG01_120` (20) — that only fits because there is no extra `P`.
-- Dots are forbidden. Slot/port uses `_` (`_2_14`, never `_p2.14`).
-- Live on-box strings (`L02-ACCE03_p23`, `L42-Co01:1:14`) stay in the Live
-  column. Compliance lists them; it does not wipe them to look tidy.
-- Endpoint IDs keep hostname words: Cohesity `lr50-san10-n08` →
-  `MON-LR50-SAN10-N08` (not `CY08`). `SNAS01` stays `SNAS`, `san11` stays `SAN`.
-  A NetBox site slug that is not on the hostname (`ch-zrh-dc`) is not invented
-  as `DC`.
+- SPEED is omitted throughout because every link runs at its class default.
+- The cross-site uplink `1/22` needed tier 2 of the ladder
+  (`USW-L42-CORE01-2_p2.14` = 22 → `USW-L42-CO01-2_p2.14` = 20).
+- Nothing longer than 20 was ever emitted.
 
 ---
 
-## 7. Remediation
+## 6. Remediation
 
 Double-gated: `mode=remediate` **and** *Commit changes*. With `remediate` but no
 commit, the script prints the exact command block per device and stops.
@@ -455,12 +320,12 @@ Per port it pushes only what is non-compliant:
 
 ```
 # EXOS
-configure ports 1:8 display-string USW-1G-L02-AC03_23
+configure ports 1:8 display-string USW-L02-ACCE03_p23
 unconfigure port 1:8 description-string      # only if explicitly ticked
 
 # VOSS
 interface GigabitEthernet 1/17
-name "USW-B01-DI01_29"
+name "USW-B01-DIST01_p29"
 exit
 ```
 
@@ -470,18 +335,16 @@ Safety properties:
 
 - refuses any label > 20 characters or containing a forbidden character,
   immediately before the write, not only at generation time;
-- treats the EXOS truncation warning **and VOSS CLI errors** as a rejection and
-  aborts that device before `save`, so a half-applied device is never written to
-  flash;
-- does **not** clear EXOS `description-string` unless that box is ticked;
-- prefers `oob_ip` for SSH;
+- treats the EXOS truncation warning and the usual CLI error strings as a
+  rejection and aborts that device before `save`, so a half-applied device is
+  never written to flash;
 - idempotent — a port already at the expected label produces no command;
 - the canary allowlist restricts the push to named `device::ifname` pairs.
 
 ---
 
-## 8. Non-goals (v1)
+## 7. Non-goals (v1)
 
 Zabbix template edits · renaming NetBox devices · replacing Golden Config ·
-auto-`X` on stack / ISC / MLAG peer (those are `USW`) · LAG / MLAG / MLT bundle
-label grammar (still TBD upstream in `port-identity-foundation.md` §6).
+auto-`X` on every unused port without a policy · LAG / MLAG / MLT label grammar
+(still TBD upstream in `port-identity-foundation.md` §6).
