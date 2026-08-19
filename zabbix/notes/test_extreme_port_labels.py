@@ -27,6 +27,19 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(e.classify("Server", 1000, "iDRAC", True), "MON")
         self.assertEqual(e.classify("Server", 1000, "idrac"), "MON")
 
+    def test_cohesity_embedded_nic_is_ilo_mon(self):
+        """HPE inventory name NIC.Embedded is iLO on Cohesity, not a data NIC."""
+        embedded = "Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)"
+        self.assertEqual(
+            e.classify("Cohesity", 1000, embedded, False), "MON",
+        )
+        self.assertEqual(
+            e.classify("Cohesity", 1000, "eth0", False, extra="COH-N01-ILO"),
+            "MON",
+        )
+        self.assertEqual(e.classify("Cohesity", 1000, "eth0", False), "US")
+        self.assertEqual(e.classify("Server", 1000, embedded, False), "US")
+
     def test_ap_and_sdwan(self):
         self.assertEqual(e.classify("Access Point", 2500, "eth0"), "UP")
         self.assertEqual(e.classify("Sd Wan Socket", 1000, "wan1"), "UW")
@@ -188,12 +201,12 @@ class LabelUniquenessTests(unittest.TestCase):
         self.assertEqual(lab, "USW-1G-GFL-D01_1")
 
     def test_nkn_dist_to_core_keeps_stack_floor_and_port(self):
-        """USW-1G-L02-C01-1_1_1 is 20. Short C keeps the stack member."""
+        """Slotted ``1:1`` *is* member 1. Hostname ``-1`` is not repeated."""
         lab = self._label(
             "USW", 1000, "CH-NKN-G08-L02-CORE01-1",
             "ch-nkn-g08", "ch-nkn-g08", "01:01", "Switch Core",
         )
-        self.assertEqual(lab, "USW-1G-L02-C01-1_1_1")
+        self.assertEqual(lab, "USW-1G-L02-C01_1_1")
         self.assertEqual(
             self._label(
                 "USW", 40000, "CH-NKN-G08-L02-CORE01-1",
@@ -213,7 +226,7 @@ class LabelUniquenessTests(unittest.TestCase):
             "ch-nkn-g08", "ch-nkn-g08", "1:5", "Switch Core",
         )
         self.assertEqual(a, b)
-        self.assertEqual(a, "USW-1G-L02-C01-1_1_5")
+        self.assertEqual(a, "USW-1G-L02-C01_1_5")
 
     def test_szx_1g_access_to_stacked_core_keeps_floor_and_concat_port(self):
         """Dropping P frees the underscored slot+port; 40G still fits ``_1_48``."""
@@ -258,12 +271,12 @@ class LabelUniquenessTests(unittest.TestCase):
         self.assertNotEqual(a, b)
 
     def test_jp_core_without_numeric_keeps_floor_by_dropping_stack(self):
-        """CORE-1 has no index. Without P the stack still fits."""
+        """CORE-1 has no index. Slot ``1:48`` already names member 1."""
         lab = self._label(
             "USW", 1000, "JP-YOK-CHO-L06-CORE-1",
             "jp-yok-cho", "jp-yok-cho", "01:48", "Switch Core",
         )
-        self.assertEqual(lab, "USW-1G-L06-C-1_1_48")
+        self.assertEqual(lab, "USW-1G-L06-C_1_48")
         self.assertLessEqual(len(lab), 20)
 
     def test_l44_gfl_and_b01_access_do_not_collide_on_dist(self):
@@ -297,6 +310,7 @@ class LabelUniquenessTests(unittest.TestCase):
         self.assertEqual(len(set(labels)), 4)
 
     def test_stacking_ports_keep_far_port(self):
+        """Member lives in ``_2_16``. Do not drop the far port (1:15 vs 1:16)."""
         a = self._label(
             "USW", None, "CH-NKN-G08-L02-CORE01-2",
             "ch-nkn-g08", "ch-nkn-g08", "02:16", "Switch Core",
@@ -305,8 +319,24 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", None, "CH-NKN-G08-L02-CORE01-2",
             "ch-nkn-g08", "ch-nkn-g08", "02:15", "Switch Core",
         )
-        self.assertEqual(a, "USW-L02-C01-2_2_16")
-        self.assertEqual(b, "USW-L02-C01-2_2_15")
+        self.assertEqual(a, "USW-L02-C01_2_16")
+        self.assertEqual(b, "USW-L02-C01_2_15")
+
+    def test_unslotted_port_keeps_hostname_stack(self):
+        """``48`` does not encode member 2, so hostname ``-2`` stays."""
+        lab = self._label(
+            "USW", 10000, "CH-NKN-G08-L02-CORE01-2",
+            "ch-nkn-g08", "ch-nkn-g08", "48", "Switch Core",
+        )
+        self.assertEqual(lab, "USW-L02-C01-2_48")
+
+    def test_hostname_stack_kept_when_port_slot_differs(self):
+        """Peer ``1:1`` on hostname ``-2`` is not member 2 — keep ``-2``."""
+        lab = self._label(
+            "USW", None, "CH-NKN-G08-L02-CORE01-2",
+            "ch-nkn-g08", "ch-nkn-g08", "1:1", "Switch Core",
+        )
+        self.assertEqual(lab, "USW-L02-C01-2_1_1")
 
     def test_san_eth10_and_eth2_stay_distinct(self):
         a = self._label(
@@ -435,12 +465,31 @@ class LabelUniquenessTests(unittest.TestCase):
         lab = self._label(
             "US", 1000, "lr50-san10-n01.sensirion.lokal",
             "ch-sta-l50", "ch-sta-l26",
-            "Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)",
+            "",
             "Cohesity",
         )
         self.assertEqual(lab, "US-1G-LR50-SAN10-N01")
         self.assertEqual(len(lab), 20)
         self.assertNotIn("10G", lab)
+
+    def test_cohesity_embedded_nic_plan_is_mon_from_cable(self):
+        """Live Preview has no far_is_mgmt. NIC.Embedded + Cohesity → MON.
+
+        ID still comes from the far hostname (n01), not ``COH-N07-ILO``.
+        """
+        lab = e.plan_label(
+            local_site="ch-sta-l26",
+            far_name="lr50-san10-n01.sensirion.lokal",
+            far_site="ch-sta-l50",
+            far_port="Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)",
+            far_role="Cohesity",
+            far_is_mgmt=False,
+            link_mbps=1000,
+            extra="COH-N07-ILO",
+        )
+        self.assertEqual(lab, "MON-LR50-SAN10-N01")
+        self.assertNotIn("N07", lab)
+        self.assertNotIn("1G", lab)
 
     def test_generated_labels_never_contain_dots(self):
         samples = [
@@ -469,6 +518,12 @@ class LabelUniquenessTests(unittest.TestCase):
         self.assertEqual(e.normalize_port_token("1/24"), "1_24")
         self.assertEqual(e.normalize_port_token("ct0.eth10"), "CT0_10")
         self.assertEqual(e.normalize_port_token("ct0.eth4"), "CT0_4")
+
+    def test_port_encodes_stack_on_slotted_ifname(self):
+        self.assertTrue(e._port_encodes_stack("02:10", "2"))
+        self.assertTrue(e._port_encodes_stack("2:10", "02"))
+        self.assertFalse(e._port_encodes_stack("48", "2"))
+        self.assertFalse(e._port_encodes_stack("1:1", "2"))
 
     def test_isc_and_stack_peer_are_usw_not_x(self):
         """Switch↔switch ISC / stack members alert as USW. X is SPAN / mute."""
@@ -741,6 +796,40 @@ class MgmtHeuristicTests(unittest.TestCase):
             device = type("D", (), {"oob_ip": None})()
 
         self.assertTrue(e._is_management_interface(_Iface()))
+
+    def test_cohesity_embedded_nic_is_mgmt(self):
+        class _Role:
+            name = "Cohesity"
+
+        class _Iface:
+            mgmt_only = False
+            name = "Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)"
+            device = type("D", (), {"oob_ip": None, "role": _Role()})()
+
+        self.assertTrue(e._is_management_interface(_Iface()))
+
+    def test_server_embedded_nic_is_not_mgmt(self):
+        class _Role:
+            name = "Server"
+
+        class _Iface:
+            mgmt_only = False
+            name = "Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)"
+            device = type("D", (), {"oob_ip": None, "role": _Role()})()
+
+        self.assertFalse(e._is_management_interface(_Iface()))
+
+    def test_ilo_in_local_description_is_mgmt_hint(self):
+        class _Role:
+            name = "Cohesity"
+
+        class _Iface:
+            mgmt_only = False
+            name = "eth0"
+            device = type("D", (), {"oob_ip": None, "role": _Role()})()
+
+        self.assertTrue(e._is_management_interface(_Iface(), extra="COH-N01-ILO"))
+        self.assertFalse(e._is_management_interface(_Iface()))
 
 
 if __name__ == "__main__":

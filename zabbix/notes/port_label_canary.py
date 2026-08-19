@@ -159,4 +159,5 @@ def replay(row: CanaryRow, local_site: str) -> str:
         far_role=row.far_role,
         far_is_mgmt=row.far_is_mgmt,
         link_mbps=row.link_mbps,
+        extra=row.netbox_description,
     )

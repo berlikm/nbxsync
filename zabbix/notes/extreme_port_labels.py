@@ -510,8 +510,9 @@ def build_label(cls: str, link_mbps: int | None, ident: str) -> str:
 # Validated against real device names in this estate:
 #   CH-STA-L50-B01-ACCE01   CH-STA-L50-L01-CORE01   CH-NKN-G08-L02-CORE01-1
 #   CH-STA-L50-B01-ACPO03   CH-STA-L42-CORE01-2     CH-STA-P-BACK02
-# Fabric codes are **short** (CORE→C, DIST→D) so a stack member ``-1`` still
-# fits at 1G. CLASS tokens stay USW/UP/US — renaming those would miss live
+# Fabric codes are **short** (CORE→C, DIST→D). Hostname ``-1``/``-2`` is
+# omitted when the slotted far port already is the member (``2:10`` →
+# ``_2_10``). CLASS tokens stay USW/UP/US — renaming those would miss live
 # Zabbix Access LLD. Endpoints keep the hostname token (SAN, SNAS, ESX).
 
 FABRIC_CODE_SHORT = {
@@ -805,10 +806,11 @@ def id_candidates(
     member still fit. Endpoint codes stay as they appear on the hostname
     until the budget forces a shorter prefix.
 
-    Keep the floor (SCOPE) whenever physics allow. Stack is dropped before
-    SCOPE or the far port only when the budget forces it. At 1G,
-    ``USW-1G-L02-C01-1_1_1`` (20) keeps stack, floor, and port; the VOSS
-    slot (``01:01`` vs ``02:01``) still distinguishes the peer.
+    Keep the floor (SCOPE) whenever physics allow. Hostname ``-STACK`` is
+    stripped earlier when the far ifName already starts with that member
+    (``2:10`` → ``_2_10``, not ``-2_2_10``). Remaining stack is dropped
+    before SCOPE or the far port only when the budget forces it. Dist→core
+    ``USW-1G-L02-C01_1_1`` keeps floor and the slotted port.
     """
     codes = _code_forms(parts, short_fabric)
     scope = f"{parts.scope}-" if parts.scope else ""
@@ -835,6 +837,25 @@ def id_candidates(
     return _uniq(ladder)
 
 
+def _port_encodes_stack(port_name: str, stack: str) -> bool:
+    """True when the far ifName already starts with the stack member.
+
+    SummitStack / VOSS slot *is* the member: ``2:10`` → ``_2_10``. Repeating
+    the hostname suffix would emit ``C01-2_2_10``. Unslotted ``48`` does not
+    encode the member, so hostname ``-2`` stays.
+    """
+    if not stack or not port_name:
+        return False
+    want = str(stack).lstrip("0") or "0"
+    token = normalize_port_token(port_name)
+    if not token:
+        return False
+    first = token.split("_", 1)[0]
+    if not first.isdigit():
+        return False
+    return (first.lstrip("0") or "0") == want
+
+
 def build_label_for_far_end(
     cls: str,
     link_mbps: int | None,
@@ -848,6 +869,8 @@ def build_label_for_far_end(
     link — that dropped floor tokens. Room for ``40G`` comes from **short
     codes** (``C`` ``D`` ``A`` ``M``), not from leaving the ID blank.
     """
+    if parts.stack and _port_encodes_stack(port_name, parts.stack):
+        parts = replace(parts, stack="")
     token_needed = (
         cls not in NO_SPEED_CLASSES
         and bool(link_mbps)
@@ -884,9 +907,12 @@ def plan_label(
     far_role: str,
     far_is_mgmt: bool,
     link_mbps: int | None,
+    extra: str = "",
 ) -> str:
     """Same derivation ``expected_label_for`` uses, without NetBox objects."""
-    cls = classify(far_role, link_mbps, far_port or "", far_is_mgmt)
+    cls = classify(
+        far_role, link_mbps, far_port or "", far_is_mgmt, extra=extra,
+    )
     parts = split_device_name(far_name, far_site, local_site)
     code = role_code(far_role)
     if code:
@@ -991,8 +1017,14 @@ DATA_ENDPOINT_ROLE_TOKENS = frozenset({
 
 #: Fallback only. The authoritative out-of-band signal is the far device's
 #: NetBox ``oob_ip`` being assigned to that interface; these name tokens cover
-#: hosts where nobody has set it yet.
+#: hosts where nobody has set it yet. ``ilo`` / ``idrac`` in a *local*
+#: description (``COH-N01-ILO``) is a CLASS hint only — never the ID.
 BMC_PORT_TOKENS = ("idrac", "ilo", "bmc", "ipmi", "cimc", "imm", "mgmt", "oob")
+BMC_HINT_IN_DESCRIPTION = ("idrac", "ilo")
+
+#: HPE/Dell inventory name for the dedicated BMC LOM. Only Cohesity uses this
+#: as iLO here — a server LOM named ``NIC.Embedded.1-1`` stays a data NIC.
+COHESITY_BMC_PORT_TOKENS = ("nic.embedded", "embedded nic")
 
 _ROLE_WORD_RE = re.compile(r"[a-z0-9]+")
 
@@ -1002,14 +1034,23 @@ def _role_words(role: str) -> set[str]:
     return set(_ROLE_WORD_RE.findall((role or "").lower()))
 
 
-def is_bmc_port(far_port: str | None) -> bool:
+def is_bmc_port(far_port: str | None, far_role: str = "", extra: str = "") -> bool:
     """True for an out-of-band management interface on the far end."""
     name = (far_port or "").lower()
-    return any(token in name for token in BMC_PORT_TOKENS)
+    if any(token in name for token in BMC_PORT_TOKENS):
+        return True
+    extra_l = (extra or "").lower()
+    if extra_l and any(token in extra_l for token in BMC_HINT_IN_DESCRIPTION):
+        return True
+    if "cohesity" in _role_words(far_role) and any(
+        token in name for token in COHESITY_BMC_PORT_TOKENS
+    ):
+        return True
+    return False
 
 
 def classify(far_role: str, link_mbps: int | None, far_port: str = "",
-             far_is_mgmt: bool = False) -> str:
+             far_is_mgmt: bool = False, extra: str = "") -> str:
     """CLASS from the far-end **role**, not from link speed.
 
     Speed only decides the optional SPEED token after CLASS is known.
@@ -1025,7 +1066,8 @@ def classify(far_role: str, link_mbps: int | None, far_port: str = "",
         return "UW"
     if words & DATA_ENDPOINT_ROLE_TOKENS:
         # Lights-out and controller management is MON; data NICs are production.
-        return "MON" if (far_is_mgmt or is_bmc_port(far_port)) else "US"
+        bmc = far_is_mgmt or is_bmc_port(far_port, far_role=far_role, extra=extra)
+        return "MON" if bmc else "US"
     return "MON"
 
 
@@ -1454,19 +1496,21 @@ def _far_endpoint(iface):
     return None
 
 
-def _is_management_interface(iface) -> bool:
+def _is_management_interface(iface, extra: str = "") -> bool:
     """True when the far end is a lights-out / controller management port.
 
     Do **not** treat "device has no primary_ip" as management — Pure/SAN/Cohesity
     often only have oob_ip in NetBox while the cable is a production data NIC.
-    Those must stay ``US``, not ``MON``.
+    Those must stay ``US``, not ``MON``. ``extra`` is the *local* description
+    (``COH-N01-ILO``) used only as an ``ilo``/``idrac`` CLASS hint.
     """
     if getattr(iface, "mgmt_only", False):
         return True
     oob = getattr(getattr(iface, "device", None), "oob_ip", None)
     if oob is not None and getattr(oob, "assigned_object", None) == iface:
         return True
-    return is_bmc_port(getattr(iface, "name", None))
+    far_role = getattr(getattr(getattr(iface, "device", None), "role", None), "name", "") or ""
+    return is_bmc_port(getattr(iface, "name", None), far_role=far_role, extra=extra)
 
 
 def expected_label_for(iface, structural_tag_ids: set[int]) -> tuple[str, str]:
@@ -1503,7 +1547,8 @@ def expected_label_for(iface, structural_tag_ids: set[int]) -> tuple[str, str]:
 
     far_device = far.device
     far_role = getattr(getattr(far_device, "role", None), "name", "") or ""
-    far_is_mgmt = _is_management_interface(far)
+    local_desc = getattr(iface, "description", "") or ""
+    far_is_mgmt = _is_management_interface(far, extra=local_desc)
     local_site = getattr(getattr(iface.device, "site", None), "slug", "") or ""
     far_site = getattr(getattr(far_device, "site", None), "slug", "") or ""
     try:
@@ -1515,6 +1560,7 @@ def expected_label_for(iface, structural_tag_ids: set[int]) -> tuple[str, str]:
             far_role=far_role,
             far_is_mgmt=far_is_mgmt,
             link_mbps=link_mbps,
+            extra=local_desc,
         ), "ok"
     except LabelTooLong as exc:
         return exc.suggestion, "too_long"

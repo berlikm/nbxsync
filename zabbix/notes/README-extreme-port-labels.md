@@ -166,7 +166,7 @@ ID = [<SCOPE>-]<CODE><NN>[-<STACK>][_FARPORT]
 |---|---|---|
 | `SCOPE` | a token that exists on the **hostname** (or was stripped from it) — never a NetBox site tail like `DC` that is not in the name | `B01`, `L01`, `GFL`, `L50` |
 | `CODE<NN>` | **Fabric** (switch/firewall/AP): short codes (`CORE→C`, `DIST→D`, `ACCE→A`, `MGMT→M`; unknown `SPINE→SP`). **Endpoints**: the hostname word (`SAN`, `SNAS`, `ESX`) | `D01`, `A03`, `SAN11`, `SNAS01` |
-| `-STACK` | stack member suffix, when present | `-1`, `-2` |
+| `-STACK` | hostname `-1`/`-2`, **only when the far port does not already start with that member** | omitted on `2:10` (the slot *is* the member → `_2_10`); kept on unslotted `48` → `-2_48` |
 | `_FARPORT` | far-end interface; `:`/`/`/`.` → `_`, leading zeros stripped | `_29`, `_1_24`. If that overflows, concatenate: `_120`. No extra `P`. Filler `ETH`/`NIC`/`PORT` drops (`ct0.eth4` → `_CT0_4`). |
 
 Non-numeric far ports use a bare `_` (`_LOM1`, `_X1`, `_VMNIC0`).
@@ -195,15 +195,18 @@ The abbreviator walks a fixed ladder and takes the **first form that fits**:
 | # | Form | Example |
 |---|---|---|
 | 1 | `SCOPE-CODE-STACK _PORT` | `GFL-A01_23` |
-| 2 | drop stack, keep floor + underscored port | `L02-C01_1_1` |
+| 2 | slotted stack: drop hostname `-1`/`-2`, keep floor + `_member_port` | `L02-C01_2_16` |
 | 3 | concatenate slot+port (`1_20` → `_120`) | `L01-M01_120` |
 | 4 | drop the far port, keep the floor | `L17-C01-1` |
 | 5 | drop the scope, keep the port | `A01_23` |
 | 6 | code + stack only | `A01` |
 
 **Fabric** codes: `CORE→C` `DIST→D` `ACCE→A` `ACPO→AP`
-`MGMT→M` `FWGW/FWZONE→FW`, unknown `SPINE→SP`. A 1G stack uplink
-`USW-1G-L02-C01-1_1_1` is 20 — the `-1` member stays. **Endpoints keep the hostname
+`MGMT→M` `FWGW/FWZONE→FW`, unknown `SPINE→SP`. A slotted stack uplink
+is `USW-1G-L02-C01_1_1` — the member is `_1_1`, not a second `-1`.
+**Do not drop the far port** on stack links (`1:15` vs `1:16` must stay
+distinct). Hostname `-2` remains only when the ifName is unslotted.
+**Endpoints keep the hostname
 word** (`SAN`, `SNAS`, `ESX`) and only shorten that word if 20 characters force
 it. Scope (building or a site token that is actually on the hostname) is kept
 whenever it fits — that is what tells `GFL-ACCE01` from `L02-ACCE01`.
@@ -225,7 +228,7 @@ CLASS comes from the far-end NetBox **device role** (identity, not speed):
 | `Access Point` | `UP` |
 | `Sd Wan Socket` or a **circuit termination** | `UW` |
 | `Server` / `Storage` / `Cohesity` / `ESXi Hypervisor` data NIC | `US` |
-| same roles, lights-out port (`mgmt_only`, `oob_ip` on that iface, or `idrac`/`ilo`/`bmc`) | `MON` |
+| same roles, lights-out port (`mgmt_only`, `oob_ip` on that iface, `idrac`/`ilo`/`bmc`, or Cohesity `NIC.Embedded`) | `MON` |
 | **anything else** (printer, camera, generic “Network Device”, …) | `MON` |
 | interface carries a configured *structural* tag | `X` |
 
@@ -243,6 +246,11 @@ is what drops the `1G` token.
 
 Do **not** treat “device has no primary_ip in NetBox” as management — Pure/SAN
 often only have `oob_ip` recorded while the cable is a production data port.
+Cohesity **iLO** is the dedicated LOM named
+`Embedded NIC … (NIC.Embedded.1-1)` (and/or a local description `COH-N01-ILO`).
+That is `MON-LR50-SAN10-N01`, not `US-1G-…`. A Cohesity **data** NIC stays
+`US`. The description is a CLASS hint only — ID still comes from the far
+hostname (`n08` on the cable, even if the description says `N07`).
 
 `X` is **policy, not inference.** Use it for SPAN / lab / operator mute. **Stack,
 ISC, and MLAG peer-links are ordinary switch↔switch cables** — the script
@@ -272,7 +280,7 @@ someone encoded *this estate’s inventory* instead of *the grammar*.
 | Table | When you touch it |
 |---|---|
 | `INFRA_ROLE_TOKENS` / `DATA_ENDPOINT_ROLE_TOKENS` | You invent a NetBox role instead of reusing Server / Storage / Switch \*. Prefer **not** inventing roles. |
-| `BMC_PORT_TOKENS` | A new lights-out vendor string, and nobody set `oob_ip` / `mgmt_only`. |
+| `BMC_PORT_TOKENS` | A new lights-out vendor string, and nobody set `oob_ip` / `mgmt_only`. Cohesity iLO is `NIC.Embedded` (not a global LOM token). |
 | `FABRIC_CODE_SHORT` | Estate spelling that is *not* “first two letters” (`FWZONE→FW` not `FZ`, `CATO→CT` not `CA`). |
 | `_PORT_NOISE` | A new filler word in vendor ifNames (`QSFP`, `SLOT`) that burns the 40G budget. |
 
@@ -396,7 +404,7 @@ emits (hostname identity, no extra `P`, SPEED only when not the class default).
 | ifName | Far end (NetBox) | Expected | Live | Len | Status |
 |---|---|---|---|---|---|
 | 1 | CH-ZRH-ZH4-CORE02::1 [Switch Core] | `USW-C02_1` | `ISC` | 9 | diff |
-| 5 | CH-ZRH-ZH4-MGMT01-1::1:51 [Switch Mgmt] | `USW-M01-1_1_51` | `MLAG_MGMT01_p51` | 14 | diff |
+| 5 | CH-ZRH-ZH4-MGMT01-1::1:51 [Switch Mgmt] | `USW-M01_1_51` | `MLAG_MGMT01_p51` | 12 | diff |
 | 12 | ch-zrh-zh4-esx40…::vmnic0 [Server] | `US-ESX40_VMNIC0` | `esx40_ct1_eth0` | 15 | diff |
 | 15 | CH-ZRH-ZH4-FWGW01::x1 [Firewall] | `USW-FW01_X1` | `ZRH-FWGW01_x1` | 11 | diff |
 | 20 | — | `—` | `esx45_ct1_eth0` | — | kept |
@@ -428,7 +436,7 @@ Reading it:
 | 1/17 | CH-STA-L50-B01-DIST01::29 [Switch Dist] | `USW-B01-D01_29` | `L50-B01-Di01:29` | 14 | diff |
 | 1/20 | CH-STA-L50-L01-DIST01::29 [Switch Dist] | `USW-L01-D01_29` | `L50-L02-Di02:54` | 14 | diff |
 | 1/21 | CH-STA-L50-L02-DIST01::54 [Switch Dist] | `USW-L02-D01_54` | `L50-L01-Di01:29` | 14 | diff |
-| 1/22 | CH-STA-L42-CORE01-2::2:14 [Switch Core] | `USW-L42-C01-2_2_14` | `L42-Co01:1:14` | 18 | diff |
+| 1/22 | CH-STA-L42-CORE01-2::2:14 [Switch Core] | `USW-L42-C01_2_14` | `L42-Co01:1:14` | 16 | diff |
 | 1/24 | CH-STA-L50-L01-CORE02::1/24 [Switch Core] | `USW-L01-C02_1_24` | `NNI:L50-Co02:1/24` | 16 | diff |
 | 2/2 | CH-STA-L26-L02-CORE01::2/2 [Switch Core] | `USW-L26-C01_2_2` | `NNI:L26-Co01:2/2` | 15 | diff |
 
@@ -450,7 +458,9 @@ Reading it:
 
 - SPEED is omitted at the class default. The 1G firewall HA is the exception
   (`USW-1G-FW01_HA`) because `USW` defaults to 10G.
-- Cross-site `1/22` is `USW-L42-C01-2_2_14` (18). Spelling `CORE` would overflow.
+- Cross-site `1/22` is `USW-L42-C01_2_14` (16). The stack member is the
+  slotted port (`2_14`), not a second `-2` on the hostname. Spelling `CORE`
+  would overflow.
   Fabric codes stay `C`/`D`/`A`/`M`. 40G on a slotted mgmt uplink is
   `USW-40G-L01-M01_1_20` (20) — that only fits because there is no extra `P`.
 - Dots are forbidden. Slot/port uses `_` (`_2_14`, never `_p2.14`).

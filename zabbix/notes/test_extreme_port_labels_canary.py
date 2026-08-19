@@ -77,7 +77,10 @@ class FleetCanaryTests(unittest.TestCase):
     def test_class_matches_classify(self):
         failures = []
         for row, _site, label in self.planned:
-            cls = e.classify(row.far_role, row.link_mbps, row.far_port, row.far_is_mgmt)
+            cls = e.classify(
+                row.far_role, row.link_mbps, row.far_port, row.far_is_mgmt,
+                extra=row.netbox_description,
+            )
             if cls != row.canary_class:
                 role_words = set(re.findall(r"[a-z0-9]+", (row.far_role or "").lower()))
                 hypervisor = bool(role_words & {"hypervisor", "esxi"})
@@ -121,7 +124,7 @@ class FleetCanaryTests(unittest.TestCase):
         wanted = {
             "CH-NKN-G08-L02-CORE01-1::1:5": "USW-1G-L02-A01_23",
             "CH-NKN-G08-GFL-DIST01::1": "USW-1G-GFL-A01_23",
-            "CH-NKN-G08-GFL-DIST01::23": "USW-1G-L02-C01-1_1_1",
+            "CH-NKN-G08-GFL-DIST01::23": "USW-1G-L02-C01_1_1",
         }
         got = {row.canary_key: label for row, _s, label in self.planned}
         missing = {key: wanted[key] for key in wanted if key not in got}
@@ -184,6 +187,26 @@ class FleetCanaryTests(unittest.TestCase):
             self.assertIsNotNone(parsed)
             self.assertEqual(parsed.cls, "US", f"{key}: {label}")
             self.assertIn("VMNIC", label, f"{key}: {label}")
+
+    def test_cohesity_embedded_nic_is_mon_without_mgmt_flag(self):
+        """Live Preview often has oob_ip unset. NIC.Embedded + Cohesity is iLO."""
+        seen = 0
+        failures = []
+        for row, _site, label in self.planned:
+            port = (row.far_port or "").lower()
+            if row.far_role != "Cohesity":
+                continue
+            if "nic.embedded" not in port and "embedded nic" not in port:
+                continue
+            seen += 1
+            cls = e.classify(row.far_role, row.link_mbps, row.far_port, False)
+            parsed = e.parse_label(label)
+            if cls != "MON" or not parsed or parsed.cls != "MON":
+                failures.append(f"{row.canary_key}: classify={cls} label={label}")
+            if "N07" in label and "n08" in (row.far_device or "").lower():
+                failures.append(f"{row.canary_key}: ID from description {label}")
+        self.assertGreater(seen, 10, "canary has no Cohesity Embedded NIC rows")
+        self.assertEqual(failures, [], "\n".join(failures[:20]))
 
     def test_generated_ids_use_short_role_codes(self):
         """CORE/DIST/ACCE/MGMT as device codes blow the 40G budget. `_MGMT` is a port."""

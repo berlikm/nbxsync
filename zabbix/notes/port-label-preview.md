@@ -15,7 +15,7 @@ live vs expected compliance diff.
 - Too long: **0**
 - Labels with `.`: **0** (must be 0)
 - Duplicate label on the same device: **0** (must be 0)
-- Exactly 20 characters: **46**
+- Exactly 20 characters: **25**
 - Concatenated slot+port (`_120` style): **0**
 - ISC (from NetBox description): **42** — all must be `USW`
 - Stack (`extreme-summitstack`): **56** — all must be `USW`
@@ -71,12 +71,12 @@ live vs expected compliance diff.
 | CN-SHA-JIU-L02-DIST01 | 26 | CN-SHA-JIU-L02-DIST02 | 26 | `USW-L02-D02_26` | 14 | ISC |
 | CN-SHA-JIU-L02-DIST02 | 25 | CN-SHA-JIU-L02-DIST01 | 25 | `USW-L02-D01_25` | 14 | ISC |
 | CN-SHA-JIU-L02-DIST02 | 26 | CN-SHA-JIU-L02-DIST01 | 26 | `USW-L02-D01_26` | 14 | ISC |
-| CN-SHA-JIU-L03-CORE01-1 | 1:13 | CN-SHA-JIU-L03-CORE03-1 | 01:13 | `USW-L03-C03-1_1_13` | 18 | ISC |
-| CN-SHA-JIU-L03-CORE01-1 | 1:14 | CN-SHA-JIU-L03-CORE03-1 | 01:14 | `USW-L03-C03-1_1_14` | 18 | ISC |
-| CN-SHA-JIU-L03-CORE01-2 | 2:14 | CN-SHA-JIU-L03-CORE03-2 | 02:14 | `USW-L03-C03-2_2_14` | 18 | ISC |
-| CN-SHA-JIU-L03-CORE03-1 | 1:13 | CN-SHA-JIU-L03-CORE01-1 | 01:13 | `USW-L03-C01-1_1_13` | 18 | ISC |
-| CN-SHA-JIU-L03-CORE03-1 | 1:14 | CN-SHA-JIU-L03-CORE01-1 | 01:14 | `USW-L03-C01-1_1_14` | 18 | ISC |
-| CN-SHA-JIU-L03-CORE03-2 | 2:14 | CN-SHA-JIU-L03-CORE01-2 | 02:14 | `USW-L03-C01-2_2_14` | 18 | ISC |
+| CN-SHA-JIU-L03-CORE01-1 | 1:13 | CN-SHA-JIU-L03-CORE03-1 | 01:13 | `USW-L03-C03_1_13` | 16 | ISC |
+| CN-SHA-JIU-L03-CORE01-1 | 1:14 | CN-SHA-JIU-L03-CORE03-1 | 01:14 | `USW-L03-C03_1_14` | 16 | ISC |
+| CN-SHA-JIU-L03-CORE01-2 | 2:14 | CN-SHA-JIU-L03-CORE03-2 | 02:14 | `USW-L03-C03_2_14` | 16 | ISC |
+| CN-SHA-JIU-L03-CORE03-1 | 1:13 | CN-SHA-JIU-L03-CORE01-1 | 01:13 | `USW-L03-C01_1_13` | 16 | ISC |
+| CN-SHA-JIU-L03-CORE03-1 | 1:14 | CN-SHA-JIU-L03-CORE01-1 | 01:14 | `USW-L03-C01_1_14` | 16 | ISC |
+| CN-SHA-JIU-L03-CORE03-2 | 2:14 | CN-SHA-JIU-L03-CORE01-2 | 02:14 | `USW-L03-C01_2_14` | 16 | ISC |
 | CN-SHA-JIU-L03-DIST01 | 49 | CN-SHA-JIU-L03-DIST02 | 49 | `USW-L03-D02_49` | 14 | ISC |
 | CN-SHA-JIU-L03-DIST01 | 50 | CN-SHA-JIU-L03-DIST02 | 50 | `USW-L03-D02_50` | 14 | ISC |
 | CN-SHA-JIU-L03-DIST02 | 49 | CN-SHA-JIU-L03-DIST01 | 49 | `USW-L03-D01_49` | 14 | ISC |
@@ -94,36 +94,36 @@ _12 more in `port_label_preview.tsv`._
 
 | Device | Port | Far device | Far port | Expected | Len | Note |
 |---|---|---|---|---|---|---|
-| CH-NKN-G08-L02-CORE01-1 | 1:15 | CH-NKN-G08-L02-CORE01-2 | 02:16 | `USW-L02-C01-2_2_16` | 18 | stack |
-| CH-NKN-G08-L02-CORE01-1 | 1:16 | CH-NKN-G08-L02-CORE01-2 | 02:15 | `USW-L02-C01-2_2_15` | 18 | stack |
-| CH-NKN-G08-L02-CORE01-2 | 2:15 | CH-NKN-G08-L02-CORE01-1 | 01:16 | `USW-L02-C01-1_1_16` | 18 | stack |
-| CH-NKN-G08-L02-CORE01-2 | 2:16 | CH-NKN-G08-L02-CORE01-1 | 01:15 | `USW-L02-C01-1_1_15` | 18 | stack |
-| CH-STA-L42-CORE01-1 | 1:15 | CH-STA-L42-CORE01-2 | 02:16 | `USW-C01-2_2_16` | 14 | stack |
-| CH-STA-L42-CORE01-1 | 1:16 | CH-STA-L42-CORE01-2 | 02:15 | `USW-C01-2_2_15` | 14 | stack |
-| CH-STA-L42-CORE01-2 | 2:15 | CH-STA-L42-CORE01-1 | 01:16 | `USW-C01-1_1_16` | 14 | stack |
-| CH-STA-L42-CORE01-2 | 2:16 | CH-STA-L42-CORE01-1 | 01:15 | `USW-C01-1_1_15` | 14 | stack |
-| CH-STA-L44-L02-CORE01-1 | 1:15 | CH-STA-L44-L02-CORE01-2 | 02:16 | `USW-L02-C01-2_2_16` | 18 | stack |
-| CH-STA-L44-L02-CORE01-1 | 1:16 | CH-STA-L44-L02-CORE01-2 | 02:15 | `USW-L02-C01-2_2_15` | 18 | stack |
-| CH-STA-L44-L02-CORE01-2 | 2:15 | CH-STA-L44-L02-CORE01-1 | 01:16 | `USW-L02-C01-1_1_16` | 18 | stack |
-| CH-STA-L44-L02-CORE01-2 | 2:16 | CH-STA-L44-L02-CORE01-1 | 01:15 | `USW-L02-C01-1_1_15` | 18 | stack |
-| CH-ZRH-ZH4-MGMT01-1 | 1:49 | CH-ZRH-ZH4-MGMT01-2 | 02:50 | `USW-M01-2_2_50` | 14 | stack |
-| CH-ZRH-ZH4-MGMT01-1 | 1:50 | CH-ZRH-ZH4-MGMT01-2 | 02:49 | `USW-M01-2_2_49` | 14 | stack |
-| CH-ZRH-ZH4-MGMT01-2 | 2:49 | CH-ZRH-ZH4-MGMT01-1 | 01:50 | `USW-M01-1_1_50` | 14 | stack |
-| CH-ZRH-ZH4-MGMT01-2 | 2:50 | CH-ZRH-ZH4-MGMT01-1 | 01:49 | `USW-M01-1_1_49` | 14 | stack |
-| CH-ZRH-ZH5-MGMT01-1 | 1:49 | CH-ZRH-ZH5-MGMT01-2 | 02:50 | `USW-M01-2_2_50` | 14 | stack |
-| CH-ZRH-ZH5-MGMT01-1 | 1:50 | CH-ZRH-ZH5-MGMT01-2 | 02:49 | `USW-M01-2_2_49` | 14 | stack |
-| CH-ZRH-ZH5-MGMT01-2 | 2:49 | CH-ZRH-ZH5-MGMT01-1 | 01:50 | `USW-M01-1_1_50` | 14 | stack |
-| CH-ZRH-ZH5-MGMT01-2 | 2:50 | CH-ZRH-ZH5-MGMT01-1 | 01:49 | `USW-M01-1_1_49` | 14 | stack |
-| CN-SHA-JIU-L03-CORE01-1 | 1:15 | CN-SHA-JIU-L03-CORE01-2 | 02:16 | `USW-L03-C01-2_2_16` | 18 | stack |
-| CN-SHA-JIU-L03-CORE01-1 | 1:16 | CN-SHA-JIU-L03-CORE01-2 | 02:15 | `USW-L03-C01-2_2_15` | 18 | stack |
-| CN-SHA-JIU-L03-CORE01-2 | 2:15 | CN-SHA-JIU-L03-CORE01-1 | 01:16 | `USW-L03-C01-1_1_16` | 18 | stack |
-| CN-SHA-JIU-L03-CORE01-2 | 2:16 | CN-SHA-JIU-L03-CORE01-1 | 01:15 | `USW-L03-C01-1_1_15` | 18 | stack |
-| CN-SHA-JIU-L03-CORE03-1 | 1:15 | CN-SHA-JIU-L03-CORE03-2 | 02:16 | `USW-L03-C03-2_2_16` | 18 | stack |
-| CN-SHA-JIU-L03-CORE03-1 | 1:16 | CN-SHA-JIU-L03-CORE03-2 | 02:15 | `USW-L03-C03-2_2_15` | 18 | stack |
-| CN-SHA-JIU-L03-CORE03-2 | 2:15 | CN-SHA-JIU-L03-CORE03-1 | 01:16 | `USW-L03-C03-1_1_16` | 18 | stack |
-| CN-SHA-JIU-L03-CORE03-2 | 2:16 | CN-SHA-JIU-L03-CORE03-1 | 01:15 | `USW-L03-C03-1_1_15` | 18 | stack |
-| HU-DEB-NAG-MGMT01-1 | 1:31 | HU-DEB-NAG-MGMT01-2 | 02:32 | `USW-M01-2_2_32` | 14 | stack |
-| HU-DEB-NAG-MGMT01-1 | 1:32 | HU-DEB-NAG-MGMT01-2 | 02:31 | `USW-M01-2_2_31` | 14 | stack |
+| CH-NKN-G08-L02-CORE01-1 | 1:15 | CH-NKN-G08-L02-CORE01-2 | 02:16 | `USW-L02-C01_2_16` | 16 | stack |
+| CH-NKN-G08-L02-CORE01-1 | 1:16 | CH-NKN-G08-L02-CORE01-2 | 02:15 | `USW-L02-C01_2_15` | 16 | stack |
+| CH-NKN-G08-L02-CORE01-2 | 2:15 | CH-NKN-G08-L02-CORE01-1 | 01:16 | `USW-L02-C01_1_16` | 16 | stack |
+| CH-NKN-G08-L02-CORE01-2 | 2:16 | CH-NKN-G08-L02-CORE01-1 | 01:15 | `USW-L02-C01_1_15` | 16 | stack |
+| CH-STA-L42-CORE01-1 | 1:15 | CH-STA-L42-CORE01-2 | 02:16 | `USW-C01_2_16` | 12 | stack |
+| CH-STA-L42-CORE01-1 | 1:16 | CH-STA-L42-CORE01-2 | 02:15 | `USW-C01_2_15` | 12 | stack |
+| CH-STA-L42-CORE01-2 | 2:15 | CH-STA-L42-CORE01-1 | 01:16 | `USW-C01_1_16` | 12 | stack |
+| CH-STA-L42-CORE01-2 | 2:16 | CH-STA-L42-CORE01-1 | 01:15 | `USW-C01_1_15` | 12 | stack |
+| CH-STA-L44-L02-CORE01-1 | 1:15 | CH-STA-L44-L02-CORE01-2 | 02:16 | `USW-L02-C01_2_16` | 16 | stack |
+| CH-STA-L44-L02-CORE01-1 | 1:16 | CH-STA-L44-L02-CORE01-2 | 02:15 | `USW-L02-C01_2_15` | 16 | stack |
+| CH-STA-L44-L02-CORE01-2 | 2:15 | CH-STA-L44-L02-CORE01-1 | 01:16 | `USW-L02-C01_1_16` | 16 | stack |
+| CH-STA-L44-L02-CORE01-2 | 2:16 | CH-STA-L44-L02-CORE01-1 | 01:15 | `USW-L02-C01_1_15` | 16 | stack |
+| CH-ZRH-ZH4-MGMT01-1 | 1:49 | CH-ZRH-ZH4-MGMT01-2 | 02:50 | `USW-M01_2_50` | 12 | stack |
+| CH-ZRH-ZH4-MGMT01-1 | 1:50 | CH-ZRH-ZH4-MGMT01-2 | 02:49 | `USW-M01_2_49` | 12 | stack |
+| CH-ZRH-ZH4-MGMT01-2 | 2:49 | CH-ZRH-ZH4-MGMT01-1 | 01:50 | `USW-M01_1_50` | 12 | stack |
+| CH-ZRH-ZH4-MGMT01-2 | 2:50 | CH-ZRH-ZH4-MGMT01-1 | 01:49 | `USW-M01_1_49` | 12 | stack |
+| CH-ZRH-ZH5-MGMT01-1 | 1:49 | CH-ZRH-ZH5-MGMT01-2 | 02:50 | `USW-M01_2_50` | 12 | stack |
+| CH-ZRH-ZH5-MGMT01-1 | 1:50 | CH-ZRH-ZH5-MGMT01-2 | 02:49 | `USW-M01_2_49` | 12 | stack |
+| CH-ZRH-ZH5-MGMT01-2 | 2:49 | CH-ZRH-ZH5-MGMT01-1 | 01:50 | `USW-M01_1_50` | 12 | stack |
+| CH-ZRH-ZH5-MGMT01-2 | 2:50 | CH-ZRH-ZH5-MGMT01-1 | 01:49 | `USW-M01_1_49` | 12 | stack |
+| CN-SHA-JIU-L03-CORE01-1 | 1:15 | CN-SHA-JIU-L03-CORE01-2 | 02:16 | `USW-L03-C01_2_16` | 16 | stack |
+| CN-SHA-JIU-L03-CORE01-1 | 1:16 | CN-SHA-JIU-L03-CORE01-2 | 02:15 | `USW-L03-C01_2_15` | 16 | stack |
+| CN-SHA-JIU-L03-CORE01-2 | 2:15 | CN-SHA-JIU-L03-CORE01-1 | 01:16 | `USW-L03-C01_1_16` | 16 | stack |
+| CN-SHA-JIU-L03-CORE01-2 | 2:16 | CN-SHA-JIU-L03-CORE01-1 | 01:15 | `USW-L03-C01_1_15` | 16 | stack |
+| CN-SHA-JIU-L03-CORE03-1 | 1:15 | CN-SHA-JIU-L03-CORE03-2 | 02:16 | `USW-L03-C03_2_16` | 16 | stack |
+| CN-SHA-JIU-L03-CORE03-1 | 1:16 | CN-SHA-JIU-L03-CORE03-2 | 02:15 | `USW-L03-C03_2_15` | 16 | stack |
+| CN-SHA-JIU-L03-CORE03-2 | 2:15 | CN-SHA-JIU-L03-CORE03-1 | 01:16 | `USW-L03-C03_1_16` | 16 | stack |
+| CN-SHA-JIU-L03-CORE03-2 | 2:16 | CN-SHA-JIU-L03-CORE03-1 | 01:15 | `USW-L03-C03_1_15` | 16 | stack |
+| HU-DEB-NAG-MGMT01-1 | 1:31 | HU-DEB-NAG-MGMT01-2 | 02:32 | `USW-M01_2_32` | 12 | stack |
+| HU-DEB-NAG-MGMT01-1 | 1:32 | HU-DEB-NAG-MGMT01-2 | 02:31 | `USW-M01_2_31` | 12 | stack |
 
 _26 more in `port_label_preview.tsv`._
 
@@ -136,23 +136,6 @@ _26 more in `port_label_preview.tsv`._
 
 | Device | Port | Far device | Far port | Expected | Len | Note |
 |---|---|---|---|---|---|---|
-| CH-NKN-G08-GFL-DIST01 | 23 | CH-NKN-G08-L02-CORE01-1 | 01:01 | `USW-1G-L02-C01-1_1_1` | 20 | at-20 |
-| CH-NKN-G08-GFL-DIST01 | 24 | CH-NKN-G08-L02-CORE01-2 | 02:01 | `USW-1G-L02-C01-2_2_1` | 20 | at-20 |
-| CH-NKN-G08-L02-ACCE01 | 23 | CH-NKN-G08-L02-CORE01-1 | 01:05 | `USW-1G-L02-C01-1_1_5` | 20 | at-20 |
-| CH-NKN-G08-L02-ACCE01 | 24 | CH-NKN-G08-L02-CORE01-2 | 02:05 | `USW-1G-L02-C01-2_2_5` | 20 | at-20 |
-| CH-NKN-G08-L02-ACCE02 | 23 | CH-NKN-G08-L02-CORE01-1 | 01:06 | `USW-1G-L02-C01-1_1_6` | 20 | at-20 |
-| CH-NKN-G08-L02-ACCE02 | 24 | CH-NKN-G08-L02-CORE01-2 | 02:06 | `USW-1G-L02-C01-2_2_6` | 20 | at-20 |
-| CH-NKN-G08-L02-ACCE03 | 23 | CH-NKN-G08-L02-CORE01-1 | 01:07 | `USW-1G-L02-C01-1_1_7` | 20 | at-20 |
-| CH-NKN-G08-L02-ACCE03 | 24 | CH-NKN-G08-L02-CORE01-2 | 02:07 | `USW-1G-L02-C01-2_2_7` | 20 | at-20 |
-| CH-NKN-G08-L02-ACCE04 | 23 | CH-NKN-G08-L02-CORE01-1 | 01:08 | `USW-1G-L02-C01-1_1_8` | 20 | at-20 |
-| CH-NKN-G08-L02-ACCE04 | 24 | CH-NKN-G08-L02-CORE01-2 | 02:08 | `USW-1G-L02-C01-2_2_8` | 20 | at-20 |
-| CH-NKN-G08-L02-DIST01 | 23 | CH-NKN-G08-L02-CORE01-1 | 01:03 | `USW-1G-L02-C01-1_1_3` | 20 | at-20 |
-| CH-NKN-G08-L02-DIST01 | 24 | CH-NKN-G08-L02-CORE01-2 | 02:03 | `USW-1G-L02-C01-2_2_3` | 20 | at-20 |
-| CH-STA-L44-L01-ACCE06 | 23 | CH-STA-L44-L02-CORE01-1 | 01:09 | `USW-1G-L02-C01-1_1_9` | 20 | at-20 |
-| CH-STA-L44-L01-DIST02 | 23 | CH-STA-L44-L02-CORE01-2 | 02:05 | `USW-1G-L02-C01-2_2_5` | 20 | at-20 |
-| CH-STA-L44-L01-DIST02 | 24 | CH-STA-L44-L02-CORE01-1 | 01:05 | `USW-1G-L02-C01-1_1_5` | 20 | at-20 |
-| CH-STA-L44-L02-ACCE03 | 29 | CH-STA-L44-L02-CORE01-1 | 01:08 | `USW-1G-L02-C01-1_1_8` | 20 | at-20 |
-| CH-STA-L44-L02-ACCE03 | 30 | CH-STA-L44-L02-CORE01-2 | 02:08 | `USW-1G-L02-C01-2_2_8` | 20 | at-20 |
 | CN-SHA-JIU-L03-DIST01 | 38 | cn-sha-p-esx13.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX13_IDRAC9_1` | 20 | at-20 |
 | CN-SHA-JIU-L03-DIST02 | 31 | cn-sha-p-esx11.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX11_IDRAC9_1` | 20 | at-20 |
 | CN-SHA-JIU-L03-DIST02 | 38 | cn-sha-p-esx12.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX12_IDRAC9_1` | 20 | at-20 |
@@ -176,8 +159,8 @@ _26 more in `port_label_preview.tsv`._
 | KR-SEL-HAN-L14-DIST02 | 10 | kr-sel-p-esx12.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX12_IDRAC9_1` | 20 | at-20 |
 | KR-SEL-HAN-L14-DIST02 | 12 | kr-sel-p-esx11.sensirion.lokal | vmnic0 | `US-1G-P-ESX11_VMNIC0` | 20 | at-20 |
 | KR-SEL-HAN-L14-DIST02 | 13 | kr-sel-p-esx12.sensirion.lokal | vmnic0 | `US-1G-P-ESX12_VMNIC0` | 20 | at-20 |
-
-_6 more in `port_label_preview.tsv`._
+| KR-SEL-HAN-L14-DIST02 | 14 | kr-sel-p-esx13.sensirion.lokal | vmnic0 | `US-1G-P-ESX13_VMNIC0` | 20 | at-20 |
+| KR-SEL-HAN-L14-DIST02 | 21 | KR-SEL-HAN-L14-FWGW02 | mgmt | `USW-1G-L14-FW02_MGMT` | 20 | at-20 |
 
 ## Sample devices
 
@@ -213,16 +196,16 @@ _6 more in `port_label_preview.tsv`._
 | CH-ZRH-ZH4-CORE01 | 4 | CH-ZRH-ZH4-CORE02 | 4 | `USW-C02_4` | 9 | ISC |
 | CH-ZRH-ZH4-CORE01 | 42 | ch-zrh-zh4-esx47.sensirion.lokal | vmnic2 | `US-ESX47_VMNIC2` | 15 |  |
 | CH-ZRH-ZH4-CORE01 | 46 | CH-ZRH-ZH5-CORE01 | 46 | `USW-ZH5-C01_46` | 14 |  |
-| CH-ZRH-ZH4-CORE01 | 5 | CH-ZRH-ZH4-MGMT01-1 | 01:51 | `USW-M01-1_1_51` | 14 | MLAG |
-| CH-ZRH-ZH4-CORE01 | 6 | CH-ZRH-ZH4-MGMT01-2 | 02:51 | `USW-M01-2_2_51` | 14 | MLAG |
+| CH-ZRH-ZH4-CORE01 | 5 | CH-ZRH-ZH4-MGMT01-1 | 01:51 | `USW-M01_1_51` | 12 | MLAG |
+| CH-ZRH-ZH4-CORE01 | 6 | CH-ZRH-ZH4-MGMT01-2 | 02:51 | `USW-M01_2_51` | 12 | MLAG |
 
 ### `CH-NKN-G08-L02-CORE01-1` (floor kept on 1G, stack USW)
 
 | Device | Port | Far device | Far port | Expected | Len | Note |
 |---|---|---|---|---|---|---|
 | CH-NKN-G08-L02-CORE01-1 | 1:1 | CH-NKN-G08-GFL-DIST01 | 23 | `USW-1G-GFL-D01_23` | 17 |  |
-| CH-NKN-G08-L02-CORE01-1 | 1:15 | CH-NKN-G08-L02-CORE01-2 | 02:16 | `USW-L02-C01-2_2_16` | 18 | stack |
-| CH-NKN-G08-L02-CORE01-1 | 1:16 | CH-NKN-G08-L02-CORE01-2 | 02:15 | `USW-L02-C01-2_2_15` | 18 | stack |
+| CH-NKN-G08-L02-CORE01-1 | 1:15 | CH-NKN-G08-L02-CORE01-2 | 02:16 | `USW-L02-C01_2_16` | 16 | stack |
+| CH-NKN-G08-L02-CORE01-1 | 1:16 | CH-NKN-G08-L02-CORE01-2 | 02:15 | `USW-L02-C01_2_15` | 16 | stack |
 | CH-NKN-G08-L02-CORE01-1 | 1:3 | CH-NKN-G08-L02-DIST01 | 23 | `USW-1G-L02-D01_23` | 17 |  |
 | CH-NKN-G08-L02-CORE01-1 | 1:5 | CH-NKN-G08-L02-ACCE01 | 23 | `USW-1G-L02-A01_23` | 17 |  |
 | CH-NKN-G08-L02-CORE01-1 | 1:6 | CH-NKN-G08-L02-ACCE02 | 23 | `USW-1G-L02-A02_23` | 17 |  |
@@ -235,5 +218,5 @@ _6 more in `port_label_preview.tsv`._
 |---|---|
 | MLAG | 70 |
 | stack | 56 |
-| at-20 | 46 |
 | ISC | 42 |
+| at-20 | 25 |

@@ -62,8 +62,8 @@ _CH-ZRH-ZH4 · 30 ports_
 | 4 | `ISC` | `CH-ZRH-ZH4-CORE02::4` | Switch Core | 10000 | `USW-C02_4` | 9 |
 | 42 | `esx47_ct1_eth2` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX47_VMNIC2` | 15 |
 | 46 | `ZH5-CORE01-P46` | `CH-ZRH-ZH5-CORE01::46` | Switch Core | 10000 | `USW-ZH5-C01_46` | 14 |
-| 5 | `MLAG_MGMT01_p51` | `CH-ZRH-ZH4-MGMT01-1::01:51` | Switch Mgmt | 10000 | `USW-M01-1_1_51` | 14 |
-| 6 | `MLAG_MGMT02_p51` | `CH-ZRH-ZH4-MGMT01-2::02:51` | Switch Mgmt | 10000 | `USW-M01-2_2_51` | 14 |
+| 5 | `MLAG_MGMT01_p51` | `CH-ZRH-ZH4-MGMT01-1::01:51` | Switch Mgmt | 10000 | `USW-M01_1_51` | 12 |
+| 6 | `MLAG_MGMT02_p51` | `CH-ZRH-ZH4-MGMT01-2::02:51` | Switch Mgmt | 10000 | `USW-M01_2_51` | 12 |
 
 ### CH-STA-L50-L01-CORE01
 
@@ -78,8 +78,8 @@ _CH-STA-L50 · 16 ports_
 | 1/2 | `S-FWZONE:X1` | `CH-STA-L50-FWZone01::x1` | Firewall | 10000 | `USW-FW01_X1` | 11 |
 | 1/20 | `L50-L02-Di02:54` | `CH-STA-L50-L01-DIST01::29` | Switch Dist | 10000 | `USW-L01-D01_29` | 14 |
 | 1/21 | `L50-L01-Di01:29` | `CH-STA-L50-L02-DIST01::54` | Switch Dist | 10000 | `USW-L02-D01_54` | 14 |
-| 1/22 | `L42-Co01:1:14` | `CH-STA-L42-CORE01-2::02:14` | Switch Core | 10000 | `USW-L42-C01-2_2_14` | 18 |
-| 1/23 | `L44-Co01:1:1` | `CH-STA-L44-L02-CORE01-1::01:01` | Switch Core | 10000 | `USW-L44-C01-1_1_1` | 17 |
+| 1/22 | `L42-Co01:1:14` | `CH-STA-L42-CORE01-2::02:14` | Switch Core | 10000 | `USW-L42-C01_2_14` | 16 |
+| 1/23 | `L44-Co01:1:1` | `CH-STA-L44-L02-CORE01-1::01:01` | Switch Core | 10000 | `USW-L44-C01_1_1` | 15 |
 | 1/24 | `NNI:L50-Co02:1/24` | `CH-STA-L50-L01-CORE02::1:24` | Switch Core | 10000 | `USW-L01-C02_1_24` | 16 |
 | 1/3 | `S-FWZONE:X3` | `CH-STA-L50-FWZone01::x3` | Firewall | 10000 | `USW-FW01_X3` | 11 |
 | 1/4 | `FWZONE-HA1` | `CH-STA-L50-FWZone01::ha` | Firewall | 1000 | `USW-1G-FW01_HA` | 14 |
@@ -147,8 +147,8 @@ _CH-NKN-G08 · 8 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 1:1 | `GFL_DIST01_p23` | `CH-NKN-G08-GFL-DIST01::23` | Switch Dist | 1000 | `USW-1G-GFL-D01_23` | 17 |
-| 1:15 | `Stack-CORE02_p16` | `CH-NKN-G08-L02-CORE01-2::02:16` | Switch Core | — | `USW-L02-C01-2_2_16` | 18 |
-| 1:16 | `Stack-CORE02_p15` | `CH-NKN-G08-L02-CORE01-2::02:15` | Switch Core | — | `USW-L02-C01-2_2_15` | 18 |
+| 1:15 | `Stack-CORE02_p16` | `CH-NKN-G08-L02-CORE01-2::02:16` | Switch Core | — | `USW-L02-C01_2_16` | 16 |
+| 1:16 | `Stack-CORE02_p15` | `CH-NKN-G08-L02-CORE01-2::02:15` | Switch Core | — | `USW-L02-C01_2_15` | 16 |
 | 1:3 | `L02-DIST01_p23` | `CH-NKN-G08-L02-DIST01::23` | Switch Dist | 1000 | `USW-1G-L02-D01_23` | 17 |
 | 1:5 | `L02-ACCE01_p23` | `CH-NKN-G08-L02-ACCE01::23` | Switch Access | 1000 | `USW-1G-L02-A01_23` | 17 |
 | 1:6 | `L02-ACCE02_p23` | `CH-NKN-G08-L02-ACCE02::23` | Switch Access | 1000 | `USW-1G-L02-A02_23` | 17 |
@@ -185,8 +185,8 @@ _CH-NKN-G08 · 6 ports_
 |---|---|---|---|---|---|---|
 | 1 | `GFL-ACCE01_p23` | `CH-NKN-G08-GFL-ACCE01::23` | Switch Access | 1000 | `USW-1G-GFL-A01_23` | 17 |
 | 2 | `GFL-ACCE01_p24` | `CH-NKN-G08-GFL-ACCE01::24` | Switch Access | 1000 | `USW-1G-GFL-A01_24` | 17 |
-| 23 | `CH-NKN-CORE01_p1` | `CH-NKN-G08-L02-CORE01-1::01:01` | Switch Core | 1000 | `USW-1G-L02-C01-1_1_1` | 20 |
-| 24 | `CH-NKN-CORE02_p1` | `CH-NKN-G08-L02-CORE01-2::02:01` | Switch Core | 1000 | `USW-1G-L02-C01-2_2_1` | 20 |
+| 23 | `CH-NKN-CORE01_p1` | `CH-NKN-G08-L02-CORE01-1::01:01` | Switch Core | 1000 | `USW-1G-L02-C01_1_1` | 18 |
+| 24 | `CH-NKN-CORE02_p1` | `CH-NKN-G08-L02-CORE01-2::02:01` | Switch Core | 1000 | `USW-1G-L02-C01_2_1` | 18 |
 | 3 | `GFL-ACCE02_p23` | `CH-NKN-G08-GFL-ACCE02::23` | Switch Access | 1000 | `USW-1G-GFL-A02_23` | 17 |
 | 4 | `GFL-ACCE02_p24` | `CH-NKN-G08-GFL-ACCE02::24` | Switch Access | 1000 | `USW-1G-GFL-A02_24` | 17 |
 
@@ -201,8 +201,8 @@ _CH-NKN-G08 · 7 ports_
 | 18 | `L02-ACPO09` | `CH-NKN-G08-L02-ACPO09::mgmt0` | Access Point | 1000 | `UP-L02-AP09` | 11 |
 | 19 | `L02-ACPO06` | `CH-NKN-G08-L02-ACPO06::mgmt0` | Access Point | 1000 | `UP-L02-AP06` | 11 |
 | 20 | `L02-ACPO01` | `CH-NKN-G08-L02-ACPO01::mgmt0` | Access Point | 1000 | `UP-L02-AP01` | 11 |
-| 23 | `CH-NKN-CORE01_p3` | `CH-NKN-G08-L02-CORE01-1::01:05` | Switch Core | 1000 | `USW-1G-L02-C01-1_1_5` | 20 |
-| 24 | `CH-NKN-CORE02_p3` | `CH-NKN-G08-L02-CORE01-2::02:05` | Switch Core | 1000 | `USW-1G-L02-C01-2_2_5` | 20 |
+| 23 | `CH-NKN-CORE01_p3` | `CH-NKN-G08-L02-CORE01-1::01:05` | Switch Core | 1000 | `USW-1G-L02-C01_1_5` | 18 |
+| 24 | `CH-NKN-CORE02_p3` | `CH-NKN-G08-L02-CORE01-2::02:05` | Switch Core | 1000 | `USW-1G-L02-C01_2_5` | 18 |
 
 ### CH-NKN-G08-L02-ACCE02
 
@@ -212,8 +212,8 @@ _CH-NKN-G08 · 4 ports_
 |---|---|---|---|---|---|---|
 | 19 | `L02-ACPO05` | `CH-NKN-G08-L02-ACPO05::mgmt0` | Access Point | 1000 | `UP-L02-AP05` | 11 |
 | 20 | `L02-ACPO02` | `CH-NKN-G08-L02-ACPO02::mgmt0` | Access Point | 1000 | `UP-L02-AP02` | 11 |
-| 23 | `CH-NKN-CORE01_p4` | `CH-NKN-G08-L02-CORE01-1::01:06` | Switch Core | 1000 | `USW-1G-L02-C01-1_1_6` | 20 |
-| 24 | `CH-NKN-CORE02_p4` | `CH-NKN-G08-L02-CORE01-2::02:06` | Switch Core | 1000 | `USW-1G-L02-C01-2_2_6` | 20 |
+| 23 | `CH-NKN-CORE01_p4` | `CH-NKN-G08-L02-CORE01-1::01:06` | Switch Core | 1000 | `USW-1G-L02-C01_1_6` | 18 |
+| 24 | `CH-NKN-CORE02_p4` | `CH-NKN-G08-L02-CORE01-2::02:06` | Switch Core | 1000 | `USW-1G-L02-C01_2_6` | 18 |
 
 ### CH-NKN-G08-L02-ACCE03
 
@@ -223,8 +223,8 @@ _CH-NKN-G08 · 4 ports_
 |---|---|---|---|---|---|---|
 | 21 | `L02-ACPO03` | `CH-NKN-G08-L02-ACPO03::mgmt0` | Access Point | 1000 | `UP-L02-AP03` | 11 |
 | 22 | `L02-ACPO04` | `CH-NKN-G08-L02-ACPO04::mgmt0` | Access Point | 1000 | `UP-L02-AP04` | 11 |
-| 23 | `CH-NKN-CORE01_p5` | `CH-NKN-G08-L02-CORE01-1::01:07` | Switch Core | 1000 | `USW-1G-L02-C01-1_1_7` | 20 |
-| 24 | `CH-NKN-CORE02_p5` | `CH-NKN-G08-L02-CORE01-2::02:07` | Switch Core | 1000 | `USW-1G-L02-C01-2_2_7` | 20 |
+| 23 | `CH-NKN-CORE01_p5` | `CH-NKN-G08-L02-CORE01-1::01:07` | Switch Core | 1000 | `USW-1G-L02-C01_1_7` | 18 |
+| 24 | `CH-NKN-CORE02_p5` | `CH-NKN-G08-L02-CORE01-2::02:07` | Switch Core | 1000 | `USW-1G-L02-C01_2_7` | 18 |
 
 ### CH-NKN-G08-L02-ACCE04
 
@@ -233,8 +233,8 @@ _CH-NKN-G08 · 3 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 14 | `L02-ACPO10` | `CH-NKN-G08-L02-ACPO10::mgmt0` | Access Point | 1000 | `UP-L02-AP10` | 11 |
-| 23 | `CH-NKN-CORE01_p6` | `CH-NKN-G08-L02-CORE01-1::01:08` | Switch Core | 1000 | `USW-1G-L02-C01-1_1_8` | 20 |
-| 24 | `CH-NKN-CORE02_p6` | `CH-NKN-G08-L02-CORE01-2::02:08` | Switch Core | 1000 | `USW-1G-L02-C01-2_2_8` | 20 |
+| 23 | `CH-NKN-CORE01_p6` | `CH-NKN-G08-L02-CORE01-1::01:08` | Switch Core | 1000 | `USW-1G-L02-C01_1_8` | 18 |
+| 24 | `CH-NKN-CORE02_p6` | `CH-NKN-G08-L02-CORE01-2::02:08` | Switch Core | 1000 | `USW-1G-L02-C01_2_8` | 18 |
 
 ### CH-NKN-G08-L02-ACCE05
 
@@ -278,8 +278,8 @@ _CH-NKN-G08 · 8 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 2:1 | `GFL_DIST01_p24` | `CH-NKN-G08-GFL-DIST01::24` | Switch Dist | 1000 | `USW-1G-GFL-D01_24` | 17 |
-| 2:15 | `Stack-CORE01_p16` | `CH-NKN-G08-L02-CORE01-1::01:16` | Switch Core | — | `USW-L02-C01-1_1_16` | 18 |
-| 2:16 | `Stack-CORE01_p15` | `CH-NKN-G08-L02-CORE01-1::01:15` | Switch Core | — | `USW-L02-C01-1_1_15` | 18 |
+| 2:15 | `Stack-CORE01_p16` | `CH-NKN-G08-L02-CORE01-1::01:16` | Switch Core | — | `USW-L02-C01_1_16` | 16 |
+| 2:16 | `Stack-CORE01_p15` | `CH-NKN-G08-L02-CORE01-1::01:15` | Switch Core | — | `USW-L02-C01_1_15` | 16 |
 | 2:3 | `L02-DIST01_p24` | `CH-NKN-G08-L02-DIST01::24` | Switch Dist | 1000 | `USW-1G-L02-D01_24` | 17 |
 | 2:5 | `L02-ACCE01_p24` | `CH-NKN-G08-L02-ACCE01::24` | Switch Access | 1000 | `USW-1G-L02-A01_24` | 17 |
 | 2:6 | `L02-ACCE02_p24` | `CH-NKN-G08-L02-ACCE02::24` | Switch Access | 1000 | `USW-1G-L02-A02_24` | 17 |
@@ -294,8 +294,8 @@ _CH-NKN-G08 · 7 ports_
 |---|---|---|---|---|---|---|
 | 1 | `L02-ACCE01_p23` | `CH-NKN-G08-L02-ACCE05::23` | Switch Access | 1000 | `USW-1G-L02-A05_23` | 17 |
 | 2 | `L02-ACCE01_p24` | `CH-NKN-G08-L02-ACCE05::24` | Switch Access | 1000 | `USW-1G-L02-A05_24` | 17 |
-| 23 | `CH-NKN-CORE02_p1` | `CH-NKN-G08-L02-CORE01-1::01:03` | Switch Core | 1000 | `USW-1G-L02-C01-1_1_3` | 20 |
-| 24 | `CH-NKN-CORE02_p1` | `CH-NKN-G08-L02-CORE01-2::02:03` | Switch Core | 1000 | `USW-1G-L02-C01-2_2_3` | 20 |
+| 23 | `CH-NKN-CORE02_p1` | `CH-NKN-G08-L02-CORE01-1::01:03` | Switch Core | 1000 | `USW-1G-L02-C01_1_3` | 18 |
+| 24 | `CH-NKN-CORE02_p1` | `CH-NKN-G08-L02-CORE01-2::02:03` | Switch Core | 1000 | `USW-1G-L02-C01_2_3` | 18 |
 | 3 | `L02-ACCE06` | `CH-NKN-G08-L02-ACCE06::24` | Switch Access | 1000 | `USW-1G-L02-A06_24` | 17 |
 | 6 | `L02-ACCE07` | `CH-NKN-G08-L02-ACCE07::24` | Switch Access | 1000 | `USW-1G-L02-A07_24` | 17 |
 | 8 | `L02-ACCE08` | `CH-NKN-G08-L02-ACCE08::24` | Switch Access | 1000 | `USW-1G-L02-A08_24` | 17 |
@@ -1117,8 +1117,8 @@ _CH-STA-L42 · 6 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 1:14 | `LR50-CORE_tg.3.1` | `CH-STA-L50-L01-CORE02::1:22` | Switch Core | 10000 | `USW-L50-C02_1_22` | 16 |
-| 1:15 | `Stack-CORE02_p16` | `CH-STA-L42-CORE01-2::02:16` | Switch Core | — | `USW-C01-2_2_16` | 14 |
-| 1:16 | `Stack-CORE02_p15` | `CH-STA-L42-CORE01-2::02:15` | Switch Core | — | `USW-C01-2_2_15` | 14 |
+| 1:15 | `Stack-CORE02_p16` | `CH-STA-L42-CORE01-2::02:16` | Switch Core | — | `USW-C01_2_16` | 12 |
+| 1:16 | `Stack-CORE02_p15` | `CH-STA-L42-CORE01-2::02:15` | Switch Core | — | `USW-C01_2_15` | 12 |
 | 1:3 | `L42-L02-DIST01_p` | `CH-STA-L42-L02-DIST01::29` | Switch Dist | 1000 | `USW-1G-L02-D01_29` | 17 |
 | 1:4 | `L42-L03-DIST01_p` | `CH-STA-L42-L03-DIST01::30` | Switch Dist | 1000 | `USW-1G-L03-D01_30` | 17 |
 | 1:5 | `L42-L04-DIST01_p` | `CH-STA-L42-L04-DIST01::23` | Switch Dist | 1000 | `USW-1G-L04-D01_23` | 17 |
@@ -1130,8 +1130,8 @@ _CH-STA-L42 · 6 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 2:14 | `LR50-CORE_tg.7.1` | `CH-STA-L50-L01-CORE01::1:22` | Switch Core | 10000 | `USW-L50-C01_1_22` | 16 |
-| 2:15 | `Stack-CORE01_p16` | `CH-STA-L42-CORE01-1::01:16` | Switch Core | — | `USW-C01-1_1_16` | 14 |
-| 2:16 | `Stack-CORE01_p15` | `CH-STA-L42-CORE01-1::01:15` | Switch Core | — | `USW-C01-1_1_15` | 14 |
+| 2:15 | `Stack-CORE01_p16` | `CH-STA-L42-CORE01-1::01:16` | Switch Core | — | `USW-C01_1_16` | 12 |
+| 2:16 | `Stack-CORE01_p15` | `CH-STA-L42-CORE01-1::01:15` | Switch Core | — | `USW-C01_1_15` | 12 |
 | 2:3 | `L42-L02-DIST01_p` | `CH-STA-L42-L02-DIST01::30` | Switch Dist | 1000 | `USW-1G-L02-D01_30` | 17 |
 | 2:4 | `L42-L03-DIST01_p` | `CH-STA-L42-L03-DIST01::29` | Switch Dist | 1000 | `USW-1G-L03-D01_29` | 17 |
 | 2:5 | `L42-L04-DIST01_p` | `CH-STA-L42-L04-DIST01::24` | Switch Dist | 1000 | `USW-1G-L04-D01_24` | 17 |
@@ -1195,9 +1195,9 @@ _CH-STA-L42 · 12 ports_
 | 1 | `L02-ACCE01_p23` | `CH-STA-L42-L02-ACCE01::23` | Switch Access | 1000 | `USW-1G-L02-A01_23` | 17 |
 | 10 | `L02-ACCE05_p24` | `CH-STA-L42-L02-ACCE05::24` | Switch Access | 1000 | `USW-1G-L02-A05_24` | 17 |
 | 2 | `L02-ACCE01_p24` | `CH-STA-L42-L02-ACCE01::24` | Switch Access | 1000 | `USW-1G-L02-A01_24` | 17 |
-| 29 | `L04-CORE01_p3` | `CH-STA-L42-CORE01-1::01:03` | Switch Core | 1000 | `USW-1G-C01-1_1_3` | 16 |
+| 29 | `L04-CORE01_p3` | `CH-STA-L42-CORE01-1::01:03` | Switch Core | 1000 | `USW-1G-C01_1_3` | 14 |
 | 3 | `L02-ACCE02_p23` | `CH-STA-L42-L02-ACCE02::23` | Switch Access | 1000 | `USW-1G-L02-A02_23` | 17 |
-| 30 | `L04-CORE02_p3` | `CH-STA-L42-CORE01-2::02:03` | Switch Core | 1000 | `USW-1G-C01-2_2_3` | 16 |
+| 30 | `L04-CORE02_p3` | `CH-STA-L42-CORE01-2::02:03` | Switch Core | 1000 | `USW-1G-C01_2_3` | 14 |
 | 4 | `L02-ACCE02_p24` | `CH-STA-L42-L02-ACCE02::24` | Switch Access | 1000 | `USW-1G-L02-A02_24` | 17 |
 | 5 | `L02-ACCE03_p23` | `CH-STA-L42-L02-ACCE03::23` | Switch Access | 1000 | `USW-1G-L02-A03_23` | 17 |
 | 6 | `L02-ACCE03_p24` | `CH-STA-L42-L02-ACCE03::24` | Switch Access | 1000 | `USW-1G-L02-A03_24` | 17 |
@@ -1246,9 +1246,9 @@ _CH-STA-L42 · 8 ports_
 |---|---|---|---|---|---|---|
 | 1 | `L03-ACCE01_p23` | `CH-STA-L42-L03-ACCE01::23` | Switch Access | 1000 | `USW-1G-L03-A01_23` | 17 |
 | 2 | `L03-ACCE01_p24` | `CH-STA-L42-L03-ACCE01::24` | Switch Access | 1000 | `USW-1G-L03-A01_24` | 17 |
-| 29 | `L04-CORE01_p3` | `CH-STA-L42-CORE01-2::02:04` | Switch Core | 1000 | `USW-1G-C01-2_2_4` | 16 |
+| 29 | `L04-CORE01_p3` | `CH-STA-L42-CORE01-2::02:04` | Switch Core | 1000 | `USW-1G-C01_2_4` | 14 |
 | 3 | `L03-ACCE02_p23` | `CH-STA-L42-L03-ACCE02::23` | Switch Access | 1000 | `USW-1G-L03-A02_23` | 17 |
-| 30 | `L04-CORE02_p3` | `CH-STA-L42-CORE01-1::01:04` | Switch Core | 1000 | `USW-1G-C01-1_1_4` | 16 |
+| 30 | `L04-CORE02_p3` | `CH-STA-L42-CORE01-1::01:04` | Switch Core | 1000 | `USW-1G-C01_1_4` | 14 |
 | 4 | `L03-ACCE02_p24` | `CH-STA-L42-L03-ACCE02::24` | Switch Access | 1000 | `USW-1G-L03-A02_24` | 17 |
 | 5 | `L03-ACCE03_p23` | `CH-STA-L42-L03-ACCE03::23` | Switch Access | 1000 | `USW-1G-L03-A03_23` | 17 |
 | 6 | `L03-ACCE03_p24` | `CH-STA-L42-L03-ACCE03::24` | Switch Access | 1000 | `USW-1G-L03-A03_24` | 17 |
@@ -1283,8 +1283,8 @@ _CH-STA-L42 · 6 ports_
 |---|---|---|---|---|---|---|
 | 1 | `L04-ACCE01_p47` | `CH-STA-L42-L04-ACCE01::47` | Switch Access | 1000 | `USW-1G-L04-A01_47` | 17 |
 | 2 | `L04-ACCE01_p48` | `CH-STA-L42-L04-ACCE01::48` | Switch Access | 1000 | `USW-1G-L04-A01_48` | 17 |
-| 23 | `L04-CORE_p1:5` | `CH-STA-L42-CORE01-1::01:05` | Switch Core | 1000 | `USW-1G-C01-1_1_5` | 16 |
-| 24 | `L04-CORE_p2:5` | `CH-STA-L42-CORE01-2::02:05` | Switch Core | 1000 | `USW-1G-C01-2_2_5` | 16 |
+| 23 | `L04-CORE_p1:5` | `CH-STA-L42-CORE01-1::01:05` | Switch Core | 1000 | `USW-1G-C01_1_5` | 14 |
+| 24 | `L04-CORE_p2:5` | `CH-STA-L42-CORE01-2::02:05` | Switch Core | 1000 | `USW-1G-C01_2_5` | 14 |
 | 3 | `L04-ACCE02_p23` | `CH-STA-L42-L04-ACCE02::23` | Switch Access | 1000 | `USW-1G-L04-A02_23` | 17 |
 | 4 | `L04-ACCE02_p24` | `CH-STA-L42-L04-ACCE02::24` | Switch Access | 1000 | `USW-1G-L04-A02_24` | 17 |
 
@@ -1380,9 +1380,9 @@ _CH-STA-L44 · 6 ports_
 |---|---|---|---|---|---|---|
 | 1 | `GFL-ACCE01_p24` | `CH-STA-L44-GFL-ACCE01::24` | Switch Access | 1000 | `USW-1G-GFL-A01_24` | 17 |
 | 2 | `GFL-ACCE03_p24` | `CH-STA-L44-GFL-ACCE03::24` | Switch Access | 1000 | `USW-1G-GFL-A03_24` | 17 |
-| 29 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:02` | Switch Core | 10000 | `USW-L02-C01-1_1_2` | 17 |
+| 29 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:02` | Switch Core | 10000 | `USW-L02-C01_1_2` | 15 |
 | 3 | `GFL-ACCE05_p24` | `CH-STA-L44-GFL-ACCE05::48` | Switch Access | 1000 | `USW-1G-GFL-A05_48` | 17 |
-| 30 | `L02-CORE02` | `CH-STA-L44-L02-CORE01-2::02:02` | Switch Core | 10000 | `USW-L02-C01-2_2_2` | 17 |
+| 30 | `L02-CORE02` | `CH-STA-L44-L02-CORE01-2::02:02` | Switch Core | 10000 | `USW-L02-C01_2_2` | 15 |
 | 4 | `GFL-ACCE06_p24` | `CH-STA-L44-GFL-ACCE06::24` | Switch Access | 1000 | `USW-1G-GFL-A06_24` | 17 |
 
 ### CH-STA-L44-GFL-DIST02
@@ -1394,9 +1394,9 @@ _CH-STA-L44 · 7 ports_
 | 1 | `GFL-ACCE02_p24` | `CH-STA-L44-GFL-ACCE02::24` | Switch Access | 1000 | `USW-1G-GFL-A02_24` | 17 |
 | 2 | `GFL-ACCE04_p24` | `CH-STA-L44-GFL-ACCE04::24` | Switch Access | 1000 | `USW-1G-GFL-A04_24` | 17 |
 | 21 | `B01-ACCE01_p24` | `CH-STA-L44-B01-ACCE02::24` | Switch Access | 1000 | `USW-1G-B01-A02_24` | 17 |
-| 29 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:03` | Switch Core | 10000 | `USW-L02-C01-1_1_3` | 17 |
+| 29 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:03` | Switch Core | 10000 | `USW-L02-C01_1_3` | 15 |
 | 3 | `GFL-ACCE07_p24` | `CH-STA-L44-GFL-ACCE07::24` | Switch Access | 1000 | `USW-1G-GFL-A07_24` | 17 |
-| 30 | `L02-CORE02` | `CH-STA-L44-L02-CORE01-2::02:03` | Switch Core | 10000 | `USW-L02-C01-2_2_3` | 17 |
+| 30 | `L02-CORE02` | `CH-STA-L44-L02-CORE01-2::02:03` | Switch Core | 10000 | `USW-L02-C01_2_3` | 15 |
 | 4 | `GFL-ACCE08_p48` | `CH-STA-L44-GFL-ACCE08::48` | Switch Access | 1000 | `USW-1G-GFL-A08_48` | 17 |
 
 ### CH-STA-L44-L01-ACCE01
@@ -1459,7 +1459,7 @@ _CH-STA-L44 · 1 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 23 | `—` | `CH-STA-L44-L02-CORE01-1::01:09` | Switch Core | 1000 | `USW-1G-L02-C01-1_1_9` | 20 |
+| 23 | `—` | `CH-STA-L44-L02-CORE01-1::01:09` | Switch Core | 1000 | `USW-1G-L02-C01_1_9` | 18 |
 
 ### CH-STA-L44-L01-ACCE07
 
@@ -1487,9 +1487,9 @@ _CH-STA-L44 · 5 ports_
 |---|---|---|---|---|---|---|
 | 1 | `L01-ACCE01_p24` | `CH-STA-L44-L01-ACCE01::24` | Switch Access | 1000 | `USW-1G-L01-A01_24` | 17 |
 | 2 | `L01-ACCE03_p48` | `CH-STA-L44-L01-ACCE03::48` | Switch Access | 1000 | `USW-1G-L01-A03_48` | 17 |
-| 29 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:04` | Switch Core | 10000 | `USW-L02-C01-1_1_4` | 17 |
+| 29 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:04` | Switch Core | 10000 | `USW-L02-C01_1_4` | 15 |
 | 3 | `L01-ACCE04_p48` | `CH-STA-L44-L01-ACCE04::48` | Switch Access | 1000 | `USW-1G-L01-A04_48` | 17 |
-| 30 | `L02-CORE02` | `CH-STA-L44-L02-CORE01-2::02:04` | Switch Core | 10000 | `USW-L02-C01-2_2_4` | 17 |
+| 30 | `L02-CORE02` | `CH-STA-L44-L02-CORE01-2::02:04` | Switch Core | 10000 | `USW-L02-C01_2_4` | 15 |
 
 ### CH-STA-L44-L01-DIST02
 
@@ -1499,8 +1499,8 @@ _CH-STA-L44 · 10 ports_
 |---|---|---|---|---|---|---|
 | 1 | `ACCE02_p24` | `CH-STA-L44-L01-ACCE02::24` | Switch Access | 1000 | `USW-1G-L01-A02_24` | 17 |
 | 2 | `ACCE05_p24` | `CH-STA-L44-L01-ACCE02::23` | Switch Access | 1000 | `USW-1G-L01-A02_23` | 17 |
-| 23 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-2::02:05` | Switch Core | 1000 | `USW-1G-L02-C01-2_2_5` | 20 |
-| 24 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:05` | Switch Core | 1000 | `USW-1G-L02-C01-1_1_5` | 20 |
+| 23 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-2::02:05` | Switch Core | 1000 | `USW-1G-L02-C01_2_5` | 18 |
+| 24 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:05` | Switch Core | 1000 | `USW-1G-L02-C01_1_5` | 18 |
 | 3 | `L01-ACCE05` | `CH-STA-L44-L01-ACCE05::24` | Switch Access | 1000 | `USW-1G-L01-A05_24` | 17 |
 | 4 | `L01-ACCE05` | `CH-STA-L44-L01-ACCE05::23` | Switch Access | 1000 | `USW-1G-L01-A05_23` | 17 |
 | 5 | `L01-ACCE07` | `CH-STA-L44-L01-ACCE07::24` | Switch Access | 1000 | `USW-1G-L01-A07_24` | 17 |
@@ -1542,8 +1542,8 @@ _CH-STA-L44 · 2 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 29 | `CORE_p1:8` | `CH-STA-L44-L02-CORE01-1::01:08` | Switch Core | 1000 | `USW-1G-L02-C01-1_1_8` | 20 |
-| 30 | `CORE_p2:8` | `CH-STA-L44-L02-CORE01-2::02:08` | Switch Core | 1000 | `USW-1G-L02-C01-2_2_8` | 20 |
+| 29 | `CORE_p1:8` | `CH-STA-L44-L02-CORE01-1::01:08` | Switch Core | 1000 | `USW-1G-L02-C01_1_8` | 18 |
+| 30 | `CORE_p2:8` | `CH-STA-L44-L02-CORE01-2::02:08` | Switch Core | 1000 | `USW-1G-L02-C01_2_8` | 18 |
 
 ### CH-STA-L44-L02-ACCE05
 
@@ -1632,8 +1632,8 @@ _CH-STA-L44 · 11 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 1:1 | `LR50-CORE01_tg.3` | `CH-STA-L50-L01-CORE01::1:23` | Switch Core | 10000 | `USW-L50-C01_1_23` | 16 |
-| 1:15 | `—` | `CH-STA-L44-L02-CORE01-2::02:16` | Switch Core | — | `USW-L02-C01-2_2_16` | 18 |
-| 1:16 | `—` | `CH-STA-L44-L02-CORE01-2::02:15` | Switch Core | — | `USW-L02-C01-2_2_15` | 18 |
+| 1:15 | `—` | `CH-STA-L44-L02-CORE01-2::02:16` | Switch Core | — | `USW-L02-C01_2_16` | 16 |
+| 1:16 | `—` | `CH-STA-L44-L02-CORE01-2::02:15` | Switch Core | — | `USW-L02-C01_2_15` | 16 |
 | 1:2 | `LR44-GFL-DIST01_` | `CH-STA-L44-GFL-DIST01::29` | Switch Dist | 10000 | `USW-GFL-D01_29` | 14 |
 | 1:3 | `LR44-GFL-DIST02_` | `CH-STA-L44-GFL-DIST02::29` | Switch Dist | 10000 | `USW-GFL-D02_29` | 14 |
 | 1:4 | `LR44-L01-DIST01_` | `CH-STA-L44-L01-DIST01::29` | Switch Dist | 10000 | `USW-L01-D01_29` | 14 |
@@ -1650,8 +1650,8 @@ _CH-STA-L44 · 10 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 2:1 | `LR50-CORE01_tg.7` | `CH-STA-L50-L01-CORE02::1:23` | Switch Core | 10000 | `USW-L50-C02_1_23` | 16 |
-| 2:15 | `—` | `CH-STA-L44-L02-CORE01-1::01:16` | Switch Core | — | `USW-L02-C01-1_1_16` | 18 |
-| 2:16 | `—` | `CH-STA-L44-L02-CORE01-1::01:15` | Switch Core | — | `USW-L02-C01-1_1_15` | 18 |
+| 2:15 | `—` | `CH-STA-L44-L02-CORE01-1::01:16` | Switch Core | — | `USW-L02-C01_1_16` | 16 |
+| 2:16 | `—` | `CH-STA-L44-L02-CORE01-1::01:15` | Switch Core | — | `USW-L02-C01_1_15` | 16 |
 | 2:2 | `LR44-GFL-DIST01_` | `CH-STA-L44-GFL-DIST01::30` | Switch Dist | 10000 | `USW-GFL-D01_30` | 14 |
 | 2:3 | `LR44-GFL-DIST02_` | `CH-STA-L44-GFL-DIST02::30` | Switch Dist | 10000 | `USW-GFL-D02_30` | 14 |
 | 2:4 | `LR44-L01-DIST01_` | `CH-STA-L44-L01-DIST01::30` | Switch Dist | 10000 | `USW-L01-D01_30` | 14 |
@@ -1668,9 +1668,9 @@ _CH-STA-L44 · 9 ports_
 |---|---|---|---|---|---|---|
 | 1 | `ACCE01_p24` | `CH-STA-L44-L02-ACCE01::24` | Switch Access | 1000 | `USW-1G-L02-A01_24` | 17 |
 | 2 | `ACCE05_p48` | `CH-STA-L44-L02-ACCE05::48` | Switch Access | 1000 | `USW-1G-L02-A05_48` | 17 |
-| 29 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:06` | Switch Core | 10000 | `USW-L02-C01-1_1_6` | 17 |
+| 29 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:06` | Switch Core | 10000 | `USW-L02-C01_1_6` | 15 |
 | 3 | `ACCE06_p24` | `CH-STA-L44-L02-ACCE06::24` | Switch Access | 1000 | `USW-1G-L02-A06_24` | 17 |
-| 30 | `L02-CORE02` | `CH-STA-L44-L02-CORE01-2::02:06` | Switch Core | 10000 | `USW-L02-C01-2_2_6` | 17 |
+| 30 | `L02-CORE02` | `CH-STA-L44-L02-CORE01-2::02:06` | Switch Core | 10000 | `USW-L02-C01_2_6` | 15 |
 | 4 | `ACCE07_p24` | `CH-STA-L44-L02-ACCE07::24` | Switch Access | 1000 | `USW-1G-L02-A07_24` | 17 |
 | 5 | `ACCE08_p24` | `CH-STA-L44-L02-ACCE08::24` | Switch Access | 1000 | `USW-1G-L02-A08_24` | 17 |
 | 6 | `ACCE09_p24` | `CH-STA-L44-L02-ACCE09::24` | Switch Access | 1000 | `USW-1G-L02-A09_24` | 17 |
@@ -1684,9 +1684,9 @@ _CH-STA-L44 · 7 ports_
 |---|---|---|---|---|---|---|
 | 1 | `L02-ACCE02_p24` | `CH-STA-L44-L02-ACCE02::24` | Switch Access | 1000 | `USW-1G-L02-A02_24` | 17 |
 | 2 | `L02-ACCE10_p24` | `CH-STA-L44-L02-ACCE10::24` | Switch Access | 1000 | `USW-1G-L02-A10_24` | 17 |
-| 29 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:07` | Switch Core | 10000 | `USW-L02-C01-1_1_7` | 17 |
+| 29 | `L02-CORE01` | `CH-STA-L44-L02-CORE01-1::01:07` | Switch Core | 10000 | `USW-L02-C01_1_7` | 15 |
 | 3 | `L02-ACCE11_p24` | `CH-STA-L44-L02-ACCE11::24` | Switch Access | 1000 | `USW-1G-L02-A11_24` | 17 |
-| 30 | `L02-CORE02` | `CH-STA-L44-L02-CORE01-2::02:07` | Switch Core | 10000 | `USW-L02-C01-2_2_7` | 17 |
+| 30 | `L02-CORE02` | `CH-STA-L44-L02-CORE01-2::02:07` | Switch Core | 10000 | `USW-L02-C01_2_7` | 15 |
 | 4 | `L02-ACCE12_p24` | `CH-STA-L44-L02-ACCE12::24` | Switch Access | 1000 | `USW-1G-L02-A12_24` | 17 |
 | 5 | `L02-ACCE13_p24` | `CH-STA-L44-L02-ACCE13::48` | Switch Access | 1000 | `USW-1G-L02-A13_48` | 17 |
 
@@ -2037,8 +2037,8 @@ _CH-STA-L50 · 16 ports_
 | 1/2 | `S-FWZONE:X2` | `CH-STA-L50-FWZone01::x2` | Firewall | 10000 | `USW-FW01_X2` | 11 |
 | 1/20 | `L50-L02-Di02:54` | `CH-STA-L50-L01-DIST01::30` | Switch Dist | 10000 | `USW-L01-D01_30` | 14 |
 | 1/21 | `L50-L01-Di01:30` | `CH-STA-L50-L02-DIST01::53` | Switch Dist | 10000 | `USW-L02-D01_53` | 14 |
-| 1/22 | `L42-Co01:2:14` | `CH-STA-L42-CORE01-1::01:14` | Switch Core | 10000 | `USW-L42-C01-1_1_14` | 18 |
-| 1/23 | `L44-Co01:2:1` | `CH-STA-L44-L02-CORE01-2::02:01` | Switch Core | 10000 | `USW-L44-C01-2_2_1` | 17 |
+| 1/22 | `L42-Co01:2:14` | `CH-STA-L42-CORE01-1::01:14` | Switch Core | 10000 | `USW-L42-C01_1_14` | 16 |
+| 1/23 | `L44-Co01:2:1` | `CH-STA-L44-L02-CORE01-2::02:01` | Switch Core | 10000 | `USW-L44-C01_2_1` | 15 |
 | 1/24 | `NNI:L50-Co01:1/24` | `CH-STA-L50-L01-CORE01::1:24` | Switch Core | 10000 | `USW-L01-C01_1_24` | 16 |
 | 1/3 | `S-FWZONE:X4` | `CH-STA-L50-FWZone01::x4` | Firewall | 10000 | `USW-FW01_X4` | 11 |
 | 1/4 | `FWZONE-HA2` | `CH-STA-L50-FWZone01::port1` | Firewall | 1000 | `USW-1G-FW01_1` | 13 |
@@ -2385,8 +2385,8 @@ _CH-ZRH-ZH4 · 30 ports_
 | 4 | `ISC` | `CH-ZRH-ZH4-CORE01::4` | Switch Core | 10000 | `USW-C01_4` | 9 |
 | 42 | `esx47_ct1_eth3` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX47_VMNIC3` | 15 |
 | 46 | `ZH5-CORE02-P46` | `CH-ZRH-ZH5-CORE02::46` | Switch Core | 10000 | `USW-ZH5-C02_46` | 14 |
-| 5 | `MLAG_MGMT01_p52` | `CH-ZRH-ZH4-MGMT01-1::01:52` | Switch Mgmt | 10000 | `USW-M01-1_1_52` | 14 |
-| 6 | `MLAG_MGMT02_p52` | `CH-ZRH-ZH4-MGMT01-2::02:52` | Switch Mgmt | 10000 | `USW-M01-2_2_52` | 14 |
+| 5 | `MLAG_MGMT01_p52` | `CH-ZRH-ZH4-MGMT01-1::01:52` | Switch Mgmt | 10000 | `USW-M01_1_52` | 12 |
+| 6 | `MLAG_MGMT02_p52` | `CH-ZRH-ZH4-MGMT01-2::02:52` | Switch Mgmt | 10000 | `USW-M01_2_52` | 12 |
 
 ### CH-ZRH-ZH4-MGMT01-1
 
@@ -2411,9 +2411,9 @@ _CH-ZRH-ZH4 · 22 ports_
 | 1:32 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH4-FWGW01::port3` | Firewall | 1000 | `USW-1G-FW01_3` | 13 |
 | 1:33 | `s-fwgw01:lag.0.3` | `CH-ZRH-ZH4-FWGW01::port13` | Firewall | 1000 | `USW-1G-FW01_13` | 14 |
 | 1:34 | `s-fwgw01:lag.0.4` | `CH-ZRH-ZH4-FWGW01::port9` | Firewall | 1000 | `USW-1G-FW01_9` | 13 |
-| 1:49 | `STACKING_PORT` | `CH-ZRH-ZH4-MGMT01-2::02:50` | Switch Mgmt | — | `USW-M01-2_2_50` | 14 |
+| 1:49 | `STACKING_PORT` | `CH-ZRH-ZH4-MGMT01-2::02:50` | Switch Mgmt | — | `USW-M01_2_50` | 12 |
 | 1:5 | `S-fwgw01:mgmt1` | `CH-ZRH-ZH4-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
-| 1:50 | `STACKING_PORT` | `CH-ZRH-ZH4-MGMT01-2::02:49` | Switch Mgmt | — | `USW-M01-2_2_49` | 14 |
+| 1:50 | `STACKING_PORT` | `CH-ZRH-ZH4-MGMT01-2::02:49` | Switch Mgmt | — | `USW-M01_2_49` | 12 |
 | 1:51 | `MLAG_CORE01_p5` | `CH-ZRH-ZH4-CORE01::5` | Switch Core | 10000 | `USW-C01_5` | 9 |
 | 1:52 | `MLAG_CORE02_p5` | `CH-ZRH-ZH4-CORE02::5` | Switch Core | 10000 | `USW-C02_5` | 9 |
 
@@ -2438,9 +2438,9 @@ _CH-ZRH-ZH4 · 20 ports_
 | 2:32 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH4-FWGW01::port4` | Firewall | 1000 | `USW-1G-FW01_4` | 13 |
 | 2:33 | `s-fwgw01:lag.0.3` | `CH-ZRH-ZH4-FWGW01::port14` | Firewall | 1000 | `USW-1G-FW01_14` | 14 |
 | 2:34 | `s-fwgw01:lag.0.4` | `CH-ZRH-ZH4-FWGW01::port10` | Firewall | 1000 | `USW-1G-FW01_10` | 14 |
-| 2:49 | `STACKING_PORT` | `CH-ZRH-ZH4-MGMT01-1::01:50` | Switch Mgmt | — | `USW-M01-1_1_50` | 14 |
+| 2:49 | `STACKING_PORT` | `CH-ZRH-ZH4-MGMT01-1::01:50` | Switch Mgmt | — | `USW-M01_1_50` | 12 |
 | 2:5 | `S-fwgw01:mgmt2` | `CH-ZRH-ZH4-FWGW01::port16` | Firewall | 1000 | `USW-1G-FW01_16` | 14 |
-| 2:50 | `STACKING_PORT` | `CH-ZRH-ZH4-MGMT01-1::01:49` | Switch Mgmt | — | `USW-M01-1_1_49` | 14 |
+| 2:50 | `STACKING_PORT` | `CH-ZRH-ZH4-MGMT01-1::01:49` | Switch Mgmt | — | `USW-M01_1_49` | 12 |
 | 2:51 | `MLAG_CORE01_p6` | `CH-ZRH-ZH4-CORE01::6` | Switch Core | 10000 | `USW-C01_6` | 9 |
 | 2:52 | `MLAG_CORE02_p6` | `CH-ZRH-ZH4-CORE02::6` | Switch Core | 10000 | `USW-C02_6` | 9 |
 
@@ -2482,8 +2482,8 @@ _CH-ZRH-ZH5 · 34 ports_
 | 41 | `esx56_ct1_eth2` | `ch-zrh-zh5-esx56.sensirion.lokal::vmnic4` | Server | 10000 | `US-ESX56_VMNIC4` | 15 |
 | 42 | `esx57_ct1_eth2` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX57_VMNIC2` | 15 |
 | 46 | `ZH4-CORE01-P46` | `CH-ZRH-ZH4-CORE01::46` | Switch Core | 10000 | `USW-ZH4-C01_46` | 14 |
-| 5 | `ZRH-ZH5-MGMT02-P` | `CH-ZRH-ZH5-MGMT01-1::01:51` | Switch Mgmt | 10000 | `USW-M01-1_1_51` | 14 |
-| 6 | `ZRH-ZH5-MGMT02-P` | `CH-ZRH-ZH5-MGMT01-1::01:52` | Switch Mgmt | 10000 | `USW-M01-1_1_52` | 14 |
+| 5 | `ZRH-ZH5-MGMT02-P` | `CH-ZRH-ZH5-MGMT01-1::01:51` | Switch Mgmt | 10000 | `USW-M01_1_51` | 12 |
+| 6 | `ZRH-ZH5-MGMT02-P` | `CH-ZRH-ZH5-MGMT01-1::01:52` | Switch Mgmt | 10000 | `USW-M01_1_52` | 12 |
 
 ### CH-ZRH-ZH5-CORE02
 
@@ -2523,8 +2523,8 @@ _CH-ZRH-ZH5 · 34 ports_
 | 41 | `esx56_ct1_eth3` | `ch-zrh-zh5-esx56.sensirion.lokal::vmnic5` | Server | 10000 | `US-ESX56_VMNIC5` | 15 |
 | 42 | `esx57_ct1_eth3` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX57_VMNIC3` | 15 |
 | 46 | `ZH4-CORE02-P46` | `CH-ZRH-ZH4-CORE02::46` | Switch Core | 10000 | `USW-ZH4-C02_46` | 14 |
-| 5 | `ZRH-ZH5-MGMT01-P` | `CH-ZRH-ZH5-MGMT01-2::02:51` | Switch Mgmt | 10000 | `USW-M01-2_2_51` | 14 |
-| 6 | `ZRH-ZH5-MGMT01-P` | `CH-ZRH-ZH5-MGMT01-2::02:52` | Switch Mgmt | 10000 | `USW-M01-2_2_52` | 14 |
+| 5 | `ZRH-ZH5-MGMT01-P` | `CH-ZRH-ZH5-MGMT01-2::02:51` | Switch Mgmt | 10000 | `USW-M01_2_51` | 12 |
+| 6 | `ZRH-ZH5-MGMT01-P` | `CH-ZRH-ZH5-MGMT01-2::02:52` | Switch Mgmt | 10000 | `USW-M01_2_52` | 12 |
 
 ### CH-ZRH-ZH5-MGMT01-1
 
@@ -2544,9 +2544,9 @@ _CH-ZRH-ZH5 · 17 ports_
 | 1:32 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH5-FWGW01::port3` | Firewall | 1000 | `USW-1G-FW01_3` | 13 |
 | 1:33 | `s-fwgw01:lag.0.3` | `CH-ZRH-ZH5-FWGW01::port13` | Firewall | 1000 | `USW-1G-FW01_13` | 14 |
 | 1:34 | `s-fwgw01:lag.0.4` | `CH-ZRH-ZH5-FWGW01::port9` | Firewall | 1000 | `USW-1G-FW01_9` | 13 |
-| 1:49 | `STACKING_PORT` | `CH-ZRH-ZH5-MGMT01-2::02:50` | Switch Mgmt | — | `USW-M01-2_2_50` | 14 |
+| 1:49 | `STACKING_PORT` | `CH-ZRH-ZH5-MGMT01-2::02:50` | Switch Mgmt | — | `USW-M01_2_50` | 12 |
 | 1:5 | `s-fwgw02:mgmt1` | `CH-ZRH-ZH5-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
-| 1:50 | `STACKING_PORT` | `CH-ZRH-ZH5-MGMT01-2::02:49` | Switch Mgmt | — | `USW-M01-2_2_49` | 14 |
+| 1:50 | `STACKING_PORT` | `CH-ZRH-ZH5-MGMT01-2::02:49` | Switch Mgmt | — | `USW-M01_2_49` | 12 |
 | 1:51 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE01::5` | Switch Core | 10000 | `USW-C01_5` | 9 |
 | 1:52 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE01::6` | Switch Core | 10000 | `USW-C01_6` | 9 |
 
@@ -2568,9 +2568,9 @@ _CH-ZRH-ZH5 · 17 ports_
 | 2:32 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH5-FWGW01::port4` | Firewall | 1000 | `USW-1G-FW01_4` | 13 |
 | 2:33 | `s-fwgw01:lag.0.3` | `CH-ZRH-ZH5-FWGW01::port14` | Firewall | 1000 | `USW-1G-FW01_14` | 14 |
 | 2:34 | `s-fwgw01:lag.0.4` | `CH-ZRH-ZH5-FWGW01::port10` | Firewall | 1000 | `USW-1G-FW01_10` | 14 |
-| 2:49 | `STACKING_PORT` | `CH-ZRH-ZH5-MGMT01-1::01:50` | Switch Mgmt | — | `USW-M01-1_1_50` | 14 |
+| 2:49 | `STACKING_PORT` | `CH-ZRH-ZH5-MGMT01-1::01:50` | Switch Mgmt | — | `USW-M01_1_50` | 12 |
 | 2:5 | `s-fwgw02:mgmt2` | `CH-ZRH-ZH5-FWGW01::port16` | Firewall | 1000 | `USW-1G-FW01_16` | 14 |
-| 2:50 | `STACKING_PORT` | `CH-ZRH-ZH5-MGMT01-1::01:49` | Switch Mgmt | — | `USW-M01-1_1_49` | 14 |
+| 2:50 | `STACKING_PORT` | `CH-ZRH-ZH5-MGMT01-1::01:49` | Switch Mgmt | — | `USW-M01_1_49` | 12 |
 | 2:51 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE02::5` | Switch Core | 10000 | `USW-C02_5` | 9 |
 | 2:52 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE02::6` | Switch Core | 10000 | `USW-C02_6` | 9 |
 
@@ -2619,8 +2619,8 @@ _CN-SHA-JIU · 7 ports_
 | 2 | `L02-ACCE02_p47` | `CN-SHA-JIU-L02-ACCE02::47` | Switch Access | 1000 | `USW-1G-L02-A02_47` | 17 |
 | 25 | `ISC_DIST02_p25` | `CN-SHA-JIU-L02-DIST02::25` | Switch Dist | 10000 | `USW-L02-D02_25` | 14 |
 | 26 | `ISC_DIST02_p26` | `CN-SHA-JIU-L02-DIST02::26` | Switch Dist | 10000 | `USW-L02-D02_26` | 14 |
-| 27 | `UPLINK_CORE01_p2` | `CN-SHA-JIU-L03-CORE01-1::01:02` | Switch Core | 10000 | `USW-L03-C01-1_1_2` | 17 |
-| 28 | `UPLINK_CORE03_p2` | `CN-SHA-JIU-L03-CORE03-1::01:02` | Switch Core | 10000 | `USW-L03-C03-1_1_2` | 17 |
+| 27 | `UPLINK_CORE01_p2` | `CN-SHA-JIU-L03-CORE01-1::01:02` | Switch Core | 10000 | `USW-L03-C01_1_2` | 15 |
+| 28 | `UPLINK_CORE03_p2` | `CN-SHA-JIU-L03-CORE03-1::01:02` | Switch Core | 10000 | `USW-L03-C03_1_2` | 15 |
 | 3 | `L02-ACCE03_p47` | `CN-SHA-JIU-L02-ACCE03::47` | Switch Access | 1000 | `USW-1G-L02-A03_47` | 17 |
 
 ### CN-SHA-JIU-L02-DIST02
@@ -2633,8 +2633,8 @@ _CN-SHA-JIU · 7 ports_
 | 2 | `L02-ACCE02_p48` | `CN-SHA-JIU-L02-ACCE02::48` | Switch Access | 1000 | `USW-1G-L02-A02_48` | 17 |
 | 25 | `ISC_DIST01_p25` | `CN-SHA-JIU-L02-DIST01::25` | Switch Dist | 10000 | `USW-L02-D01_25` | 14 |
 | 26 | `ISC_DIST01_p26` | `CN-SHA-JIU-L02-DIST01::26` | Switch Dist | 10000 | `USW-L02-D01_26` | 14 |
-| 27 | `UPLINK_CORE02_p2` | `CN-SHA-JIU-L03-CORE01-2::02:02` | Switch Core | 10000 | `USW-L03-C01-2_2_2` | 17 |
-| 28 | `UPLINK_CORE04_p2` | `CN-SHA-JIU-L03-CORE03-2::02:02` | Switch Core | 10000 | `USW-L03-C03-2_2_2` | 17 |
+| 27 | `UPLINK_CORE02_p2` | `CN-SHA-JIU-L03-CORE01-2::02:02` | Switch Core | 10000 | `USW-L03-C01_2_2` | 15 |
+| 28 | `UPLINK_CORE04_p2` | `CN-SHA-JIU-L03-CORE03-2::02:02` | Switch Core | 10000 | `USW-L03-C03_2_2` | 15 |
 | 3 | `L02-ACCE03_p48` | `CN-SHA-JIU-L02-ACCE03::48` | Switch Access | 1000 | `USW-1G-L02-A03_48` | 17 |
 
 ### CN-SHA-JIU-L03-ACCE01
@@ -2754,10 +2754,10 @@ _CN-SHA-JIU · 14 ports_
 | 1:10 | `ESX13_eth0` | `cn-sha-p-esx13.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX13_VMNIC2` | 17 |
 | 1:11 | `p-stod01_ct1_p1` | `CN-SHA-P-STOD01::A0` | Storage | 10000 | `US-P-STOD01_A0` | 14 |
 | 1:12 | `pure_ct0_eth4` | `cn-sha-san11::ct0.eth4` | Storage | 10000 | `US-SAN11_CT0_4` | 14 |
-| 1:13 | `ISC_alt_CORE03_p` | `CN-SHA-JIU-L03-CORE03-1::01:13` | Switch Core | 10000 | `USW-L03-C03-1_1_13` | 18 |
-| 1:14 | `ISC_CORE03_p14` | `CN-SHA-JIU-L03-CORE03-1::01:14` | Switch Core | 10000 | `USW-L03-C03-1_1_14` | 18 |
-| 1:15 | `STACK_CORE02_p16` | `CN-SHA-JIU-L03-CORE01-2::02:16` | Switch Core | — | `USW-L03-C01-2_2_16` | 18 |
-| 1:16 | `STACK_CORE02_p15` | `CN-SHA-JIU-L03-CORE01-2::02:15` | Switch Core | — | `USW-L03-C01-2_2_15` | 18 |
+| 1:13 | `ISC_alt_CORE03_p` | `CN-SHA-JIU-L03-CORE03-1::01:13` | Switch Core | 10000 | `USW-L03-C03_1_13` | 16 |
+| 1:14 | `ISC_CORE03_p14` | `CN-SHA-JIU-L03-CORE03-1::01:14` | Switch Core | 10000 | `USW-L03-C03_1_14` | 16 |
+| 1:15 | `STACK_CORE02_p16` | `CN-SHA-JIU-L03-CORE01-2::02:16` | Switch Core | — | `USW-L03-C01_2_16` | 16 |
+| 1:16 | `STACK_CORE02_p15` | `CN-SHA-JIU-L03-CORE01-2::02:15` | Switch Core | — | `USW-L03-C01_2_15` | 16 |
 | 1:2 | `MLAG_L02-DIST01_` | `CN-SHA-JIU-L02-DIST01::27` | Switch Dist | 10000 | `USW-L02-D01_27` | 14 |
 | 1:4 | `MLAG_L03-DIST01_` | `CN-SHA-JIU-L03-DIST01::51` | Switch Dist | 10000 | `USW-L03-D01_51` | 14 |
 | 1:5 | `MLAG_L03-DIST03_` | `CN-SHA-JIU-L03-DIST03::27` | Switch Dist | 10000 | `USW-L03-D03_27` | 14 |
@@ -2775,9 +2775,9 @@ _CN-SHA-JIU · 12 ports_
 | 2:10 | `ESX13_eth2` | `cn-sha-p-esx13.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX13_VMNIC4` | 17 |
 | 2:11 | `p-stod01_ct2_p1` | `CN-SHA-P-STOD01::B0` | Storage | 10000 | `US-P-STOD01_B0` | 14 |
 | 2:12 | `pure_ct1_eth4` | `cn-sha-san11::ct1.eth4` | Storage | 10000 | `US-SAN11_CT1_4` | 14 |
-| 2:14 | `ISC_CORE04_p14` | `CN-SHA-JIU-L03-CORE03-2::02:14` | Switch Core | 10000 | `USW-L03-C03-2_2_14` | 18 |
-| 2:15 | `STACK_CORE01_p16` | `CN-SHA-JIU-L03-CORE01-1::01:16` | Switch Core | — | `USW-L03-C01-1_1_16` | 18 |
-| 2:16 | `STACK_CORE01_p15` | `CN-SHA-JIU-L03-CORE01-1::01:15` | Switch Core | — | `USW-L03-C01-1_1_15` | 18 |
+| 2:14 | `ISC_CORE04_p14` | `CN-SHA-JIU-L03-CORE03-2::02:14` | Switch Core | 10000 | `USW-L03-C03_2_14` | 16 |
+| 2:15 | `STACK_CORE01_p16` | `CN-SHA-JIU-L03-CORE01-1::01:16` | Switch Core | — | `USW-L03-C01_1_16` | 16 |
+| 2:16 | `STACK_CORE01_p15` | `CN-SHA-JIU-L03-CORE01-1::01:15` | Switch Core | — | `USW-L03-C01_1_15` | 16 |
 | 2:2 | `MLAG_L02-DIST02_` | `CN-SHA-JIU-L02-DIST02::27` | Switch Dist | 10000 | `USW-L02-D02_27` | 14 |
 | 2:4 | `MLAG_L03-DIST02_` | `CN-SHA-JIU-L03-DIST02::51` | Switch Dist | 10000 | `USW-L03-D02_51` | 14 |
 | 2:5 | `MLAG_L03-DIST04_` | `CN-SHA-JIU-L03-DIST04::27` | Switch Dist | 10000 | `USW-L03-D04_27` | 14 |
@@ -2794,10 +2794,10 @@ _CN-SHA-JIU · 14 ports_
 | 1:10 | `ESX13_eth1` | `cn-sha-p-esx13.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX13_VMNIC3` | 17 |
 | 1:11 | `p-stod01_ct1_p2` | `CN-SHA-P-STOD01::A1` | Storage | 10000 | `US-P-STOD01_A1` | 14 |
 | 1:12 | `pure_ct0_eth5` | `cn-sha-san11::ct0.eth5` | Storage | 10000 | `US-SAN11_CT0_5` | 14 |
-| 1:13 | `ISC_alt_CORE01_p` | `CN-SHA-JIU-L03-CORE01-1::01:13` | Switch Core | 10000 | `USW-L03-C01-1_1_13` | 18 |
-| 1:14 | `ISC_CORE01_p14` | `CN-SHA-JIU-L03-CORE01-1::01:14` | Switch Core | 10000 | `USW-L03-C01-1_1_14` | 18 |
-| 1:15 | `STACK_CORE04_p16` | `CN-SHA-JIU-L03-CORE03-2::02:16` | Switch Core | — | `USW-L03-C03-2_2_16` | 18 |
-| 1:16 | `STACK_CORE04_p15` | `CN-SHA-JIU-L03-CORE03-2::02:15` | Switch Core | — | `USW-L03-C03-2_2_15` | 18 |
+| 1:13 | `ISC_alt_CORE01_p` | `CN-SHA-JIU-L03-CORE01-1::01:13` | Switch Core | 10000 | `USW-L03-C01_1_13` | 16 |
+| 1:14 | `ISC_CORE01_p14` | `CN-SHA-JIU-L03-CORE01-1::01:14` | Switch Core | 10000 | `USW-L03-C01_1_14` | 16 |
+| 1:15 | `STACK_CORE04_p16` | `CN-SHA-JIU-L03-CORE03-2::02:16` | Switch Core | — | `USW-L03-C03_2_16` | 16 |
+| 1:16 | `STACK_CORE04_p15` | `CN-SHA-JIU-L03-CORE03-2::02:15` | Switch Core | — | `USW-L03-C03_2_15` | 16 |
 | 1:2 | `MLAG_L02-DIST01_` | `CN-SHA-JIU-L02-DIST01::28` | Switch Dist | 10000 | `USW-L02-D01_28` | 14 |
 | 1:4 | `MLAG_L03-DIST01_` | `CN-SHA-JIU-L03-DIST01::52` | Switch Dist | 10000 | `USW-L03-D01_52` | 14 |
 | 1:5 | `MLAG_L03-DIST03_` | `CN-SHA-JIU-L03-DIST03::28` | Switch Dist | 10000 | `USW-L03-D03_28` | 14 |
@@ -2815,9 +2815,9 @@ _CN-SHA-JIU · 12 ports_
 | 2:10 | `ESX13_eth3` | `cn-sha-p-esx13.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX13_VMNIC5` | 17 |
 | 2:11 | `p-stod01_ct2_p2` | `CN-SHA-P-STOD01::B1` | Storage | 10000 | `US-P-STOD01_B1` | 14 |
 | 2:12 | `pure_ct1_eth5` | `cn-sha-san11::ct1.eth5` | Storage | 10000 | `US-SAN11_CT1_5` | 14 |
-| 2:14 | `ISC_CORE02_p14` | `CN-SHA-JIU-L03-CORE01-2::02:14` | Switch Core | 10000 | `USW-L03-C01-2_2_14` | 18 |
-| 2:15 | `STACK_CORE03_p16` | `CN-SHA-JIU-L03-CORE03-1::01:16` | Switch Core | — | `USW-L03-C03-1_1_16` | 18 |
-| 2:16 | `STACK_CORE03_p15` | `CN-SHA-JIU-L03-CORE03-1::01:15` | Switch Core | — | `USW-L03-C03-1_1_15` | 18 |
+| 2:14 | `ISC_CORE02_p14` | `CN-SHA-JIU-L03-CORE01-2::02:14` | Switch Core | 10000 | `USW-L03-C01_2_14` | 16 |
+| 2:15 | `STACK_CORE03_p16` | `CN-SHA-JIU-L03-CORE03-1::01:16` | Switch Core | — | `USW-L03-C03_1_16` | 16 |
+| 2:16 | `STACK_CORE03_p15` | `CN-SHA-JIU-L03-CORE03-1::01:15` | Switch Core | — | `USW-L03-C03_1_15` | 16 |
 | 2:2 | `MLAG_L02-DIST02_` | `CN-SHA-JIU-L02-DIST02::28` | Switch Dist | 10000 | `USW-L02-D02_28` | 14 |
 | 2:4 | `MLAG_L03-DIST02_` | `CN-SHA-JIU-L03-DIST02::52` | Switch Dist | 10000 | `USW-L03-D02_52` | 14 |
 | 2:5 | `MLAG_L03-DIST04_` | `CN-SHA-JIU-L03-DIST04::28` | Switch Dist | 10000 | `USW-L03-D04_28` | 14 |
@@ -2848,8 +2848,8 @@ _CN-SHA-JIU · 20 ports_
 | 49 | `ISC` | `CN-SHA-JIU-L03-DIST02::49` | Switch Dist | 10000 | `USW-L03-D02_49` | 14 |
 | 5 | `MLAG_ACCE09_p23` | `CN-SHA-JIU-L03-ACCE09::23` | Switch Access | 1000 | `USW-1G-L03-A09_23` | 17 |
 | 50 | `ISC` | `CN-SHA-JIU-L03-DIST02::50` | Switch Dist | 10000 | `USW-L03-D02_50` | 14 |
-| 51 | `UPLINK:CORE01_P1` | `CN-SHA-JIU-L03-CORE01-1::01:04` | Switch Core | 10000 | `USW-L03-C01-1_1_4` | 17 |
-| 52 | `UPLINK:CORE02_P1` | `CN-SHA-JIU-L03-CORE03-1::01:04` | Switch Core | 10000 | `USW-L03-C03-1_1_4` | 17 |
+| 51 | `UPLINK:CORE01_P1` | `CN-SHA-JIU-L03-CORE01-1::01:04` | Switch Core | 10000 | `USW-L03-C01_1_4` | 15 |
+| 52 | `UPLINK:CORE02_P1` | `CN-SHA-JIU-L03-CORE03-1::01:04` | Switch Core | 10000 | `USW-L03-C03_1_4` | 15 |
 | 6 | `MLAG_ACCE11_p47` | `CN-SHA-JIU-L03-ACCE11::47` | Switch Access | 1000 | `USW-1G-L03-A11_47` | 17 |
 
 ### CN-SHA-JIU-L03-DIST02
@@ -2876,8 +2876,8 @@ _CN-SHA-JIU · 21 ports_
 | 49 | `ISC` | `CN-SHA-JIU-L03-DIST01::49` | Switch Dist | 10000 | `USW-L03-D01_49` | 14 |
 | 5 | `MLAG_ACCE09_p24` | `CN-SHA-JIU-L03-ACCE09::24` | Switch Access | 1000 | `USW-1G-L03-A09_24` | 17 |
 | 50 | `ISC` | `CN-SHA-JIU-L03-DIST01::50` | Switch Dist | 10000 | `USW-L03-D01_50` | 14 |
-| 51 | `UPLINK:CORE01_P2` | `CN-SHA-JIU-L03-CORE01-2::02:04` | Switch Core | 10000 | `USW-L03-C01-2_2_4` | 17 |
-| 52 | `UPLINK:CORE02_P2` | `CN-SHA-JIU-L03-CORE03-2::02:04` | Switch Core | 10000 | `USW-L03-C03-2_2_4` | 17 |
+| 51 | `UPLINK:CORE01_P2` | `CN-SHA-JIU-L03-CORE01-2::02:04` | Switch Core | 10000 | `USW-L03-C01_2_4` | 15 |
+| 52 | `UPLINK:CORE02_P2` | `CN-SHA-JIU-L03-CORE03-2::02:04` | Switch Core | 10000 | `USW-L03-C03_2_4` | 15 |
 | 6 | `MLAG_ACCE11_p48` | `CN-SHA-JIU-L03-ACCE11::48` | Switch Access | 1000 | `USW-1G-L03-A11_48` | 17 |
 
 ### CN-SHA-JIU-L03-DIST03
@@ -2890,8 +2890,8 @@ _CN-SHA-JIU · 9 ports_
 | 2 | `MLAG_ACCE06_p23` | `CN-SHA-JIU-L03-ACCE06::23` | Switch Access | 1000 | `USW-1G-L03-A06_23` | 17 |
 | 25 | `ISC` | `CN-SHA-JIU-L03-DIST04::25` | Switch Dist | 10000 | `USW-L03-D04_25` | 14 |
 | 26 | `ISC` | `CN-SHA-JIU-L03-DIST04::26` | Switch Dist | 10000 | `USW-L03-D04_26` | 14 |
-| 27 | `UPLINK:CORE01_P3` | `CN-SHA-JIU-L03-CORE01-1::01:05` | Switch Core | 10000 | `USW-L03-C01-1_1_5` | 17 |
-| 28 | `UPLINK:CORE02_P3` | `CN-SHA-JIU-L03-CORE03-1::01:05` | Switch Core | 10000 | `USW-L03-C03-1_1_5` | 17 |
+| 27 | `UPLINK:CORE01_P3` | `CN-SHA-JIU-L03-CORE01-1::01:05` | Switch Core | 10000 | `USW-L03-C01_1_5` | 15 |
+| 28 | `UPLINK:CORE02_P3` | `CN-SHA-JIU-L03-CORE03-1::01:05` | Switch Core | 10000 | `USW-L03-C03_1_5` | 15 |
 | 3 | `MLAG_ACCE07_p23` | `CN-SHA-JIU-L03-ACCE07::23` | Switch Access | 1000 | `USW-1G-L03-A07_23` | 17 |
 | 4 | `MLAG_ACCE08_p23` | `CN-SHA-JIU-L03-ACCE08::23` | Switch Access | 1000 | `USW-1G-L03-A08_23` | 17 |
 | 5 | `MLAG_ACCE10_p23` | `CN-SHA-JIU-L03-ACCE10::23` | Switch Access | 1000 | `USW-1G-L03-A10_23` | 17 |
@@ -2906,8 +2906,8 @@ _CN-SHA-JIU · 9 ports_
 | 2 | `MLAG_ACCE06_p24` | `CN-SHA-JIU-L03-ACCE06::24` | Switch Access | 1000 | `USW-1G-L03-A06_24` | 17 |
 | 25 | `ISC` | `CN-SHA-JIU-L03-DIST03::25` | Switch Dist | 10000 | `USW-L03-D03_25` | 14 |
 | 26 | `ISC` | `CN-SHA-JIU-L03-DIST03::26` | Switch Dist | 10000 | `USW-L03-D03_26` | 14 |
-| 27 | `UPLINK:CORE01_P4` | `CN-SHA-JIU-L03-CORE01-2::02:05` | Switch Core | 10000 | `USW-L03-C01-2_2_5` | 17 |
-| 28 | `UPLINK:CORE02_P4` | `CN-SHA-JIU-L03-CORE03-2::02:05` | Switch Core | 10000 | `USW-L03-C03-2_2_5` | 17 |
+| 27 | `UPLINK:CORE01_P4` | `CN-SHA-JIU-L03-CORE01-2::02:05` | Switch Core | 10000 | `USW-L03-C01_2_5` | 15 |
+| 28 | `UPLINK:CORE02_P4` | `CN-SHA-JIU-L03-CORE03-2::02:05` | Switch Core | 10000 | `USW-L03-C03_2_5` | 15 |
 | 3 | `MLAG_ACCE07_p24` | `CN-SHA-JIU-L03-ACCE07::24` | Switch Access | 1000 | `USW-1G-L03-A07_24` | 17 |
 | 4 | `MLAG_ACCE08_p24` | `CN-SHA-JIU-L03-ACCE08::24` | Switch Access | 1000 | `USW-1G-L03-A08_24` | 17 |
 | 5 | `MLAG_ACCE10_p24` | `CN-SHA-JIU-L03-ACCE10::24` | Switch Access | 1000 | `USW-1G-L03-A10_24` | 17 |
@@ -2941,8 +2941,8 @@ _CN-SZX-ECP · 3 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 1:48 | `ACCE01_p11` | `CN-SZX-ECP-L17-ACCE01::11` | Switch Access | 1000 | `USW-1G-L17-A01_11` | 17 |
-| 1:49 | `CORE02_p50` | `CN-SZX-ECP-L17-CORE01-2::02:50` | Switch Core | — | `USW-L17-C01-2_2_50` | 18 |
-| 1:50 | `CORE02_p49` | `CN-SZX-ECP-L17-CORE01-2::02:49` | Switch Core | — | `USW-L17-C01-2_2_49` | 18 |
+| 1:49 | `CORE02_p50` | `CN-SZX-ECP-L17-CORE01-2::02:50` | Switch Core | — | `USW-L17-C01_2_50` | 16 |
+| 1:50 | `CORE02_p49` | `CN-SZX-ECP-L17-CORE01-2::02:49` | Switch Core | — | `USW-L17-C01_2_49` | 16 |
 
 ### CN-SZX-ECP-L17-CORE01-2
 
@@ -2951,8 +2951,8 @@ _CN-SZX-ECP · 3 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 2:48 | `ACCE01_p12` | `CN-SZX-ECP-L17-ACCE01::12` | Switch Access | 1000 | `USW-1G-L17-A01_12` | 17 |
-| 2:49 | `CORE01_p50` | `CN-SZX-ECP-L17-CORE01-1::01:50` | Switch Core | — | `USW-L17-C01-1_1_50` | 18 |
-| 2:50 | `CORE01_p49` | `CN-SZX-ECP-L17-CORE01-1::01:49` | Switch Core | — | `USW-L17-C01-1_1_49` | 18 |
+| 2:49 | `CORE01_p50` | `CN-SZX-ECP-L17-CORE01-1::01:50` | Switch Core | — | `USW-L17-C01_1_50` | 16 |
+| 2:50 | `CORE01_p49` | `CN-SZX-ECP-L17-CORE01-1::01:49` | Switch Core | — | `USW-L17-C01_1_49` | 16 |
 
 ### HU-DEB-NAG-CORE01
 
@@ -2978,7 +2978,7 @@ _HU-DEB-NAG-A · 19 ports_
 | 45 | `san11_ct0_eth4` | `hu-deb-san11::ct0.eth4` | Storage | 10000 | `US-SAN11_CT0_4` | 14 |
 | 46 | `san11_ct1_eth4` | `hu-deb-san11::ct1.eth4` | Storage | 10000 | `US-SAN11_CT1_4` | 14 |
 | 48 | `HU-DEB-NAG-CORE0` | `HU-DEB-NAG-CORE03::36` | Switch Core | 10000 | `USW-C03_36` | 10 |
-| 5 | `MGMT01_p30` | `HU-DEB-NAG-MGMT01-1::01:30` | Switch Mgmt | 10000 | `USW-M01-1_1_30` | 14 |
+| 5 | `MGMT01_p30` | `HU-DEB-NAG-MGMT01-1::01:30` | Switch Mgmt | 10000 | `USW-M01_1_30` | 12 |
 
 ### HU-DEB-NAG-CORE02
 
@@ -3002,7 +3002,7 @@ _HU-DEB-NAG-A · 17 ports_
 | 45 | `san11_ct0_eth5` | `hu-deb-san11::ct0.eth5` | Storage | 10000 | `US-SAN11_CT0_5` | 14 |
 | 46 | `san11_ct1_eth5` | `hu-deb-san11::ct1.eth5` | Storage | 10000 | `US-SAN11_CT1_5` | 14 |
 | 48 | `HU-DEB-NAG-CORE0` | `HU-DEB-NAG-CORE04::36` | Switch Core | 10000 | `USW-C04_36` | 10 |
-| 5 | `L01-MGMT01_p2:23` | `HU-DEB-NAG-MGMT01-2::02:30` | Switch Mgmt | 10000 | `USW-M01-2_2_30` | 14 |
+| 5 | `L01-MGMT01_p2:23` | `HU-DEB-NAG-MGMT01-2::02:30` | Switch Mgmt | 10000 | `USW-M01_2_30` | 12 |
 
 ### HU-DEB-NAG-CORE03
 
@@ -3010,7 +3010,7 @@ _HU-DEB-NAG-B · 13 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 1 | `MGMT03_p1:30` | `HU-DEB-NAG-MGMT03-1::01:30` | Switch Mgmt | 10000 | `USW-M03-1_1_30` | 14 |
+| 1 | `MGMT03_p1:30` | `HU-DEB-NAG-MGMT03-1::01:30` | Switch Mgmt | 10000 | `USW-M03_1_30` | 12 |
 | 10 | `esx12_ct1_eth0` | `hu-deb-p-esx12.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX12_VMNIC2` | 17 |
 | 11 | `esx12_ct1_eth2` | `hu-deb-p-esx12.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX12_VMNIC4` | 17 |
 | 12 | `esx14_ct1_eth0` | `hu-deb-p-esx14.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX14_VMNIC2` | 17 |
@@ -3030,7 +3030,7 @@ _HU-DEB-NAG-B · 13 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 1 | `MGMT03_p2:30` | `HU-DEB-NAG-MGMT03-2::02:30` | Switch Mgmt | 10000 | `USW-M03-2_2_30` | 14 |
+| 1 | `MGMT03_p2:30` | `HU-DEB-NAG-MGMT03-2::02:30` | Switch Mgmt | 10000 | `USW-M03_2_30` | 12 |
 | 10 | `esx12_ct1_eth1` | `hu-deb-p-esx12.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX12_VMNIC3` | 17 |
 | 11 | `esx12_ct1_eth3` | `hu-deb-p-esx12.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX12_VMNIC5` | 17 |
 | 12 | `esx14_ct1_eth1` | `hu-deb-p-esx14.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX14_VMNIC3` | 17 |
@@ -3465,8 +3465,8 @@ _HU-DEB-NAG-A · 13 ports_
 | 1:18 | `ESX13_et0_eth0` | `hu-deb-p-esx13.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX13_VMNIC0` | 20 |
 | 1:20 | `SAN11_ct1_eth0` | `hu-deb-san11::ct0.eth0` | Storage | 1000 | `MON-SAN11_CT0_0` | 15 |
 | 1:30 | `CORE01_p5` | `HU-DEB-NAG-CORE01::5` | Switch Core | 10000 | `USW-C01_5` | 9 |
-| 1:31 | `—` | `HU-DEB-NAG-MGMT01-2::02:32` | Switch Mgmt | — | `USW-M01-2_2_32` | 14 |
-| 1:32 | `—` | `HU-DEB-NAG-MGMT01-2::02:31` | Switch Mgmt | — | `USW-M01-2_2_31` | 14 |
+| 1:31 | `—` | `HU-DEB-NAG-MGMT01-2::02:32` | Switch Mgmt | — | `USW-M01_2_32` | 12 |
+| 1:32 | `—` | `HU-DEB-NAG-MGMT01-2::02:31` | Switch Mgmt | — | `USW-M01_2_31` | 12 |
 | 1:5 | `FWGW01_MGMT1` | `HU-DEB-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
 | 1:6 | `FWGW01_WAN1` | `HU-DEB-FWGW01::wan2` | Firewall | 1000 | `USW-1G-FW01_WAN2` | 16 |
 | 1:7 | `FWGW01_WAN2` | `HU-DEB-FWGW01::wan1` | Firewall | 1000 | `USW-1G-FW01_WAN1` | 16 |
@@ -3483,8 +3483,8 @@ _HU-DEB-NAG-A · 8 ports_
 | 2:18 | `ESX13_et0_eth1` | `hu-deb-p-esx13.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX13_VMNIC1` | 20 |
 | 2:20 | `SAN11_ct0_eth0` | `hu-deb-san11::ct1.eth0` | Storage | 1000 | `MON-SAN11_CT1_0` | 15 |
 | 2:30 | `CORE02_p5` | `HU-DEB-NAG-CORE02::5` | Switch Core | 10000 | `USW-C02_5` | 9 |
-| 2:31 | `—` | `HU-DEB-NAG-MGMT01-1::01:32` | Switch Mgmt | — | `USW-M01-1_1_32` | 14 |
-| 2:32 | `—` | `HU-DEB-NAG-MGMT01-1::01:31` | Switch Mgmt | — | `USW-M01-1_1_31` | 14 |
+| 2:31 | `—` | `HU-DEB-NAG-MGMT01-1::01:32` | Switch Mgmt | — | `USW-M01_1_32` | 12 |
+| 2:32 | `—` | `HU-DEB-NAG-MGMT01-1::01:31` | Switch Mgmt | — | `USW-M01_1_31` | 12 |
 | 2:8 | `FWGW01_HA2` | `HU-DEB-FWGW01::ha2` | Firewall | 1000 | `USW-1G-FW01_HA2` | 15 |
 
 ### HU-DEB-NAG-MGMT03-1
@@ -3500,8 +3500,8 @@ _HU-DEB-NAG-B · 13 ports_
 | 1:21 | `SNAS01_p1` | `HU-DEB-P-SNAS01::LAN1` | Storage | 1000 | `MON-P-SNAS01_LAN1` | 17 |
 | 1:22 | `SNAS01_p2` | `HU-DEB-P-SNAS01::LAN2` | Storage | 1000 | `MON-P-SNAS01_LAN2` | 17 |
 | 1:30 | `CORE03_p30` | `HU-DEB-NAG-CORE03::1` | Switch Core | 10000 | `USW-C03_1` | 9 |
-| 1:31 | `—` | `HU-DEB-NAG-MGMT03-2::02:32` | Switch Mgmt | — | `USW-M03-2_2_32` | 14 |
-| 1:32 | `—` | `HU-DEB-NAG-MGMT03-2::02:31` | Switch Mgmt | — | `USW-M03-2_2_31` | 14 |
+| 1:31 | `—` | `HU-DEB-NAG-MGMT03-2::02:32` | Switch Mgmt | — | `USW-M03_2_32` | 12 |
+| 1:32 | `—` | `HU-DEB-NAG-MGMT03-2::02:31` | Switch Mgmt | — | `USW-M03_2_31` | 12 |
 | 1:5 | `FWGW02_WAN1` | `HU-DEB-FWGW02::wan1` | Firewall | 1000 | `USW-1G-FW02_WAN1` | 16 |
 | 1:6 | `FWGW02_WAN2` | `HU-DEB-FWGW02::wan2` | Firewall | 1000 | `USW-1G-FW02_WAN2` | 16 |
 | 1:7 | `FWGW02_MGMT1` | `HU-DEB-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-FW02_MGMT` | 16 |
@@ -3518,8 +3518,8 @@ _HU-DEB-NAG-B · 8 ports_
 | 2:21 | `SNAS01_p3` | `HU-DEB-P-SNAS01::LAN3` | Storage | 1000 | `MON-P-SNAS01_LAN3` | 17 |
 | 2:22 | `SNAS01_p4` | `HU-DEB-P-SNAS01::LAN4` | Storage | 1000 | `MON-P-SNAS01_LAN4` | 17 |
 | 2:30 | `CORE04_p30` | `HU-DEB-NAG-CORE04::1` | Switch Core | 10000 | `USW-C04_1` | 9 |
-| 2:31 | `—` | `HU-DEB-NAG-MGMT03-1::01:32` | Switch Mgmt | — | `USW-M03-1_1_32` | 14 |
-| 2:32 | `—` | `HU-DEB-NAG-MGMT03-1::01:31` | Switch Mgmt | — | `USW-M03-1_1_31` | 14 |
+| 2:31 | `—` | `HU-DEB-NAG-MGMT03-1::01:32` | Switch Mgmt | — | `USW-M03_1_32` | 12 |
+| 2:32 | `—` | `HU-DEB-NAG-MGMT03-1::01:31` | Switch Mgmt | — | `USW-M03_1_31` | 12 |
 | 2:8 | `FWGW02_HA2` | `HU-DEB-FWGW02::ha2` | Firewall | 1000 | `USW-1G-FW02_HA2` | 15 |
 
 ### JP-YOK-CHO-L06-ACCE01
@@ -3531,7 +3531,7 @@ _JP-YOK-CHO · 4 ports_
 | 1 | `ACPO01` | `JP-YOK-CHO-L06-ACPO01::mgmt0` | Access Point | 1000 | `UP-L06-AP01` | 11 |
 | 2 | `ACPO02` | `JP-YOK-CHO-L06-ACPO02::mgmt0` | Access Point | 1000 | `UP-L06-AP02` | 11 |
 | 3 | `ACPO03` | `JP-YOK-CHO-L06-ACPO03::mgmt0` | Access Point | 1000 | `UP-L06-AP03` | 11 |
-| 7 | `—` | `JP-YOK-CHO-L06-CORE-1::01:48` | Switch Core | 1000 | `USW-1G-L06-C-1_1_48` | 19 |
+| 7 | `—` | `JP-YOK-CHO-L06-CORE-1::01:48` | Switch Core | 1000 | `USW-1G-L06-C_1_48` | 17 |
 
 ### JP-YOK-CHO-L06-CORE-1
 
@@ -3540,8 +3540,8 @@ _JP-YOK-CHO · 3 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 1:48 | `L06-ACCE01_p11` | `JP-YOK-CHO-L06-ACCE01::7` | Switch Access | 1000 | `USW-1G-L06-A01_7` | 16 |
-| 1:49 | `CORE02_p49` | `JP-YOK-CHO-L06-CORE-2::02:50` | Switch Core | — | `USW-L06-C-2_2_50` | 16 |
-| 1:50 | `CORE02_p50` | `JP-YOK-CHO-L06-CORE-2::02:49` | Switch Core | — | `USW-L06-C-2_2_49` | 16 |
+| 1:49 | `CORE02_p49` | `JP-YOK-CHO-L06-CORE-2::02:50` | Switch Core | — | `USW-L06-C_2_50` | 14 |
+| 1:50 | `CORE02_p50` | `JP-YOK-CHO-L06-CORE-2::02:49` | Switch Core | — | `USW-L06-C_2_49` | 14 |
 
 ### JP-YOK-CHO-L06-CORE-2
 
@@ -3549,8 +3549,8 @@ _JP-YOK-CHO · 2 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 2:49 | `CORE01_p49` | `JP-YOK-CHO-L06-CORE-1::01:50` | Switch Core | — | `USW-L06-C-1_1_50` | 16 |
-| 2:50 | `CORE01_p50` | `JP-YOK-CHO-L06-CORE-1::01:49` | Switch Core | — | `USW-L06-C-1_1_49` | 16 |
+| 2:49 | `CORE01_p49` | `JP-YOK-CHO-L06-CORE-1::01:50` | Switch Core | — | `USW-L06-C_1_50` | 14 |
+| 2:50 | `CORE01_p50` | `JP-YOK-CHO-L06-CORE-1::01:49` | Switch Core | — | `USW-L06-C_1_49` | 14 |
 
 ### KR-AYN-KEU-L18-ACCE01
 
@@ -3570,8 +3570,8 @@ _KR-AYN-KEU · 3 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 1:30 | `L18-ACCE01_p11` | `KR-AYN-KEU-L18-ACCE01::11` | Switch Access | 1000 | `USW-1G-L18-A01_11` | 17 |
-| 1:31 | `CORE02_p32` | `KR-AYN-KEU-L18-CORE01-2::02:32` | Switch Core | — | `USW-L18-C01-2_2_32` | 18 |
-| 1:32 | `CORE02_p31` | `KR-AYN-KEU-L18-CORE01-2::02:31` | Switch Core | — | `USW-L18-C01-2_2_31` | 18 |
+| 1:31 | `CORE02_p32` | `KR-AYN-KEU-L18-CORE01-2::02:32` | Switch Core | — | `USW-L18-C01_2_32` | 16 |
+| 1:32 | `CORE02_p31` | `KR-AYN-KEU-L18-CORE01-2::02:31` | Switch Core | — | `USW-L18-C01_2_31` | 16 |
 
 ### KR-AYN-KEU-L18-CORE01-2
 
@@ -3580,8 +3580,8 @@ _KR-AYN-KEU · 3 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 2:30 | `L18-ACCE01_p12` | `KR-AYN-KEU-L18-ACCE01::12` | Switch Access | 1000 | `USW-1G-L18-A01_12` | 17 |
-| 2:31 | `CORE01_p32` | `KR-AYN-KEU-L18-CORE01-1::01:32` | Switch Core | — | `USW-L18-C01-1_1_32` | 18 |
-| 2:32 | `CORE01_p31` | `KR-AYN-KEU-L18-CORE01-1::01:31` | Switch Core | — | `USW-L18-C01-1_1_31` | 18 |
+| 2:31 | `CORE01_p32` | `KR-AYN-KEU-L18-CORE01-1::01:32` | Switch Core | — | `USW-L18-C01_1_32` | 16 |
+| 2:32 | `CORE01_p31` | `KR-AYN-KEU-L18-CORE01-1::01:31` | Switch Core | — | `USW-L18-C01_1_31` | 16 |
 
 ### KR-SEL-HAN-L14-ACCE01
 
@@ -3784,8 +3784,8 @@ _NL-ENS-NEP · 15 ports_
 | 1:22 | `GFL-ACCE02_p23` | `NL-ENS-NEP-GFL-ACCE02::29` | Switch Access | 1000 | `USW-1G-GFL-A02_29` | 17 |
 | 1:23 | `FWGW01_p13` | `NL-ENS-FWGW01::port13` | Firewall | 1000 | `USW-1G-FW01_13` | 14 |
 | 1:24 | `FWGW01_p14` | `NL-ENS-FWGW01::port14` | Firewall | 1000 | `USW-1G-FW01_14` | 14 |
-| 1:27 | `CORE02_p27` | `NL-ENS-NEP-GFL-CORE01-2::02:28` | Switch Core | — | `USW-GFL-C01-2_2_28` | 18 |
-| 1:28 | `CORE02_p28` | `NL-ENS-NEP-GFL-CORE01-2::02:27` | Switch Core | — | `USW-GFL-C01-2_2_27` | 18 |
+| 1:27 | `CORE02_p27` | `NL-ENS-NEP-GFL-CORE01-2::02:28` | Switch Core | — | `USW-GFL-C01_2_28` | 16 |
+| 1:28 | `CORE02_p28` | `NL-ENS-NEP-GFL-CORE01-2::02:27` | Switch Core | — | `USW-GFL-C01_2_27` | 16 |
 | 1:4 | `FWGW01_WAN2` | `NL-ENS-FWGW01::wan2` | Firewall | 1000 | `USW-1G-FW01_WAN2` | 16 |
 | 1:5 | `FWGW02_p1` | `NL-ENS-FWGW01::port1` | Firewall | 1000 | `USW-1G-FW01_1` | 13 |
 | 1:6 | `FWGW01_MGMT` | `NL-ENS-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
@@ -3804,8 +3804,8 @@ _NL-ENS-NEP · 13 ports_
 | 2:22 | `GFL-ACCE02_p24` | `NL-ENS-NEP-GFL-ACCE02::30` | Switch Access | 1000 | `USW-1G-GFL-A02_30` | 17 |
 | 2:23 | `FWGW02_p13` | `NL-ENS-FWGW02::port13` | Firewall | 1000 | `USW-1G-FW02_13` | 14 |
 | 2:24 | `FWGW02_p14` | `NL-ENS-FWGW02::port14` | Firewall | 1000 | `USW-1G-FW02_14` | 14 |
-| 2:27 | `CORE01_p27` | `NL-ENS-NEP-GFL-CORE01-1::01:28` | Switch Core | — | `USW-GFL-C01-1_1_28` | 18 |
-| 2:28 | `CORE01_p28` | `NL-ENS-NEP-GFL-CORE01-1::01:27` | Switch Core | — | `USW-GFL-C01-1_1_27` | 18 |
+| 2:27 | `CORE01_p27` | `NL-ENS-NEP-GFL-CORE01-1::01:28` | Switch Core | — | `USW-GFL-C01_1_28` | 16 |
+| 2:28 | `CORE01_p28` | `NL-ENS-NEP-GFL-CORE01-1::01:27` | Switch Core | — | `USW-GFL-C01_1_27` | 16 |
 | 2:4 | `FWGW02_WAN2` | `NL-ENS-FWGW02::wan2` | Firewall | 1000 | `USW-1G-FW02_WAN2` | 16 |
 | 2:5 | `FWGW01_p1` | `NL-ENS-FWGW02::port1` | Firewall | 1000 | `USW-1G-FW02_1` | 13 |
 | 2:6 | `FWGW02_MGMT` | `NL-ENS-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-FW02_MGMT` | 16 |
@@ -3816,8 +3816,8 @@ _NL-ENS-NEP · 2 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 23 | `LAG-CORE01_p1` | `NL-ENS-NEP-GFL-CORE01-2::02:01` | Switch Core | 1000 | `USW-1G-GFL-C01-2_2_1` | 20 |
-| 24 | `LAG-COREE2_p1` | `NL-ENS-NEP-GFL-CORE01-1::01:01` | Switch Core | 1000 | `USW-1G-GFL-C01-1_1_1` | 20 |
+| 23 | `LAG-CORE01_p1` | `NL-ENS-NEP-GFL-CORE01-2::02:01` | Switch Core | 1000 | `USW-1G-GFL-C01_2_1` | 18 |
+| 24 | `LAG-COREE2_p1` | `NL-ENS-NEP-GFL-CORE01-1::01:01` | Switch Core | 1000 | `USW-1G-GFL-C01_1_1` | 18 |
 
 ### NL-ENS-NEP-L02-ACCE01
 
@@ -3825,8 +3825,8 @@ _NL-ENS-NEP · 2 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 23 | `LAG-CORE01_p2` | `NL-ENS-NEP-GFL-CORE01-1::01:02` | Switch Core | 1000 | `USW-1G-GFL-C01-1_1_2` | 20 |
-| 24 | `LAG-CORE02_p2` | `NL-ENS-NEP-GFL-CORE01-2::02:02` | Switch Core | 1000 | `USW-1G-GFL-C01-2_2_2` | 20 |
+| 23 | `LAG-CORE01_p2` | `NL-ENS-NEP-GFL-CORE01-1::01:02` | Switch Core | 1000 | `USW-1G-GFL-C01_1_2` | 18 |
+| 24 | `LAG-CORE02_p2` | `NL-ENS-NEP-GFL-CORE01-2::02:02` | Switch Core | 1000 | `USW-1G-GFL-C01_2_2` | 18 |
 
 ### US-CHI-EAD-L02-ACCE01
 
@@ -3846,8 +3846,8 @@ _US-CHI-EAD · 3 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 1:30 | `ACCE01_p11` | `US-CHI-EAD-L02-ACCE01::11` | Switch Access | 1000 | `USW-1G-L02-A01_11` | 17 |
-| 1:31 | `STACKING_PORT` | `US-CHI-EAD-L02-CORE01-2::02:32` | Switch Core | — | `USW-L02-C01-2_2_32` | 18 |
-| 1:32 | `STACKING_PORT` | `US-CHI-EAD-L02-CORE01-2::02:31` | Switch Core | — | `USW-L02-C01-2_2_31` | 18 |
+| 1:31 | `STACKING_PORT` | `US-CHI-EAD-L02-CORE01-2::02:32` | Switch Core | — | `USW-L02-C01_2_32` | 16 |
+| 1:32 | `STACKING_PORT` | `US-CHI-EAD-L02-CORE01-2::02:31` | Switch Core | — | `USW-L02-C01_2_31` | 16 |
 
 ### US-CHI-EAD-L02-CORE01-2
 
@@ -3856,5 +3856,5 @@ _US-CHI-EAD · 3 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 2:30 | `ACCE01_p12` | `US-CHI-EAD-L02-ACCE01::12` | Switch Access | 1000 | `USW-1G-L02-A01_12` | 17 |
-| 2:31 | `STACKING_PORT` | `US-CHI-EAD-L02-CORE01-1::01:32` | Switch Core | — | `USW-L02-C01-1_1_32` | 18 |
-| 2:32 | `STACKING_PORT` | `US-CHI-EAD-L02-CORE01-1::01:31` | Switch Core | — | `USW-L02-C01-1_1_31` | 18 |
+| 2:31 | `STACKING_PORT` | `US-CHI-EAD-L02-CORE01-1::01:32` | Switch Core | — | `USW-L02-C01_1_32` | 16 |
+| 2:32 | `STACKING_PORT` | `US-CHI-EAD-L02-CORE01-1::01:31` | Switch Core | — | `USW-L02-C01_1_31` | 16 |

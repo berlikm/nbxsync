@@ -52,8 +52,10 @@ token, not the class.
 
 ID role codes are short **for fabric** so 40G and stack members still fit:
 `CORE→C` `DIST→D` `ACCE→A` `MGMT→M`. Ports have no extra `P` (`_25` not
-`_P25`). Endpoints keep the hostname (`SAN`, `SNAS`, `ESX`).
-`USW-40G-L01-M01_1_20` is 20. CLASS tokens stay `USW`/`US`/`UP`.
+`_P25`). On a slotted stack port the member *is* the first number
+(`2:10` → `_2_10`); do not also emit hostname `-2`. Endpoints keep the
+hostname (`SAN`, `SNAS`, `ESX`). `USW-40G-L01-M01_1_20` is 20. CLASS
+tokens stay `USW`/`US`/`UP`.
 
 **`TMON`:** keep a list of `TMON*` for ops review; reason in NetBox description.
 
