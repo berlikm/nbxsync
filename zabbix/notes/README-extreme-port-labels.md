@@ -29,9 +29,18 @@ single flat file next to the others. On this estate that directory is
 └── extreme_port_labels.py      # this script
 ```
 
-It reuses the CLI runner's session helpers and credential resolution by loading
-the runner **by file path** (`importlib`), because NetBox loads each script
-module in isolation and a plain `import extreme_cli_runner` is not reliable.
+It reuses the CLI runner's **EXOS** session helpers and credential resolution
+by loading the runner **by file path** (`importlib`), because NetBox loads each
+script module in isolation and a plain `import extreme_cli_runner` is not
+reliable.
+
+**VOSS / Fabric Engine SSH does not use those EXOS helpers.** Netmiko's
+default prompt hunt (`(?:\#|>)`) times out on Fabric Engine (`hostname:1#`).
+The labels script opens VOSS the same way `extreme_firmware_upgrade.py` does:
+`ConnectHandler(device_type="extreme_vsp")`, `enable()`,
+`send_command(..., expect_string=r"#|>")`, and `send_command_timing` for
+`save config`. Credentials still come from the runner or
+`NBX_NAPALM_VOSS_*`.
 
 The loader searches, in order: the directory of this file, `…/scripts/` under
 that directory and its parent, Django `SCRIPTS_ROOT` / `BASE_DIR`. That covers
@@ -44,8 +53,9 @@ The loaded module is registered in `sys.modules` **before** `exec_module`.
 Python 3.12 dataclasses look up `cls.__module__` there; skipping that
 registration fails even when the path is correct.
 
-If the runner cannot be loaded the job log prints `runner_loaded False` and
-compliance/remediate refuse to open SSH. Preview still runs (cabling only).
+If the runner cannot be loaded the job log prints `runner_loaded False`.
+EXOS compliance/remediate refuse to open SSH. **VOSS-only** jobs still
+connect (firmware-upgrade path). Preview still runs (cabling only).
 
 Same environment variables as the runner — **no secrets in code**:
 
@@ -371,6 +381,13 @@ is confirmed by doc-o-rag chunk `Fabric_Engine_9_3_User_Guide-3618-4d17c521fd18`
 empty, so do not use it (`zabbix/notes/verified-facts.md`, lab canary on Virtual
 Fabric Engine 9.3.1.0). The fleet still uses the 20-character EXOS budget so one
 label works on both platforms.
+
+SSH: Fabric Engine is not Extreme ERS. Netmiko `extreme_vsp` inherits ERS
+session prep, and the EXOS runner's `_send_exos` hunts `(?:\#|>)` — that is
+the `Pattern not detected: '(?:\\#|>)'` failure after three attempts. This
+script's VOSS path matches Extreme Firmware Upgrade: `extreme_vsp`,
+`expect_string=r"#|>"` (covers `hostname:1#` and `hostname:1(config-if)#`),
+and `send_command_timing` for `save config`. EXOS SSH is unchanged.
 
 > **Corpus gap:** the Fabric Engine *CLI Commands Reference* is not in the
 > doc-to-rag index (only the 9.3 User Guide), which is why the `name` verb is

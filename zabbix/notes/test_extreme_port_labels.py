@@ -1124,6 +1124,19 @@ Device settings: extreme_exos 10.8.30.11:22
 Authentication timeout.
 """
 
+_NETMIKO_VOSS_PROMPT = """\
+SSH failed after 3 attempts: 
+
+Pattern not detected: '(?:\\#|>)' in output.
+
+Things you might try to fix this:
+1. Adjust the regex pattern to better identify the terminating string. Note, in
+many situations the pattern is automatically based on the network device's prompt.
+2. Increase the read_timeout to a larger value.
+
+You can also look at the Netmiko session_log or debug log for more information.
+"""
+
 
 class SshSessionErrorTests(unittest.TestCase):
     """One failed login is copied onto every port — keep the CSV one line."""
@@ -1136,6 +1149,15 @@ class SshSessionErrorTests(unittest.TestCase):
         self.assertNotIn("Invalid username", summary)
         self.assertNotIn("Device settings", summary)
         self.assertNotIn("10.8.30.11", summary)
+        self.assertLessEqual(len(summary), e.SSH_DETAIL_MAX)
+
+    def test_summarize_voss_pattern_not_detected(self):
+        summary = e.summarize_ssh_error(_NETMIKO_VOSS_PROMPT)
+        self.assertIn("Pattern not detected", summary)
+        self.assertIn("3 attempts", summary)
+        self.assertNotIn("Things you might try", summary)
+        self.assertNotIn("session_log", summary)
+        self.assertNotIn("read_timeout", summary)
         self.assertLessEqual(len(summary), e.SSH_DETAIL_MAX)
 
     def test_stamp_marks_every_port_with_one_login_note(self):
@@ -1153,6 +1175,61 @@ class SshSessionErrorTests(unittest.TestCase):
             self.assertEqual(plan.status, "unreachable")
             self.assertEqual(plan.detail, detail)
             self.assertEqual(plan.commands, [])
+
+
+class VossSshTransportTests(unittest.TestCase):
+    """VOSS must match Extreme Firmware Upgrade, not the EXOS runner helper."""
+
+    def setUp(self):
+        e._reset_cli_runner()
+
+    def tearDown(self):
+        e._reset_cli_runner()
+
+    def test_connect_kwargs_match_firmware_upgrade(self):
+        kw = e.voss_connect_kwargs()
+        self.assertEqual(kw["timeout"], 30)
+        self.assertEqual(kw["auth_timeout"], 30)
+        self.assertEqual(kw["banner_timeout"], 30)
+        self.assertIs(kw["fast_cli"], False)
+
+    def test_prompt_is_firmware_expect_string(self):
+        self.assertEqual(e.VOSS_PROMPT_RE, r"#|>")
+
+    def test_send_voss_uses_firmware_expect_string(self):
+        class Fake:
+            def __init__(self):
+                self.calls = []
+
+            def send_command(self, cmd, read_timeout=60, expect_string=None):
+                self.calls.append((cmd, read_timeout, expect_string))
+                return "hostname:1# "
+
+        nc = Fake()
+        out = e._send(nc, "show running-config", read_timeout=180, kind="voss")
+        self.assertEqual(out, "hostname:1# ")
+        self.assertEqual(nc.calls, [("show running-config", 180, r"#|>")])
+
+    def test_send_voss_falls_back_to_timing_on_prompt_miss(self):
+        class Fake:
+            def send_command(self, cmd, read_timeout=60, expect_string=None):
+                raise OSError("Pattern not detected: '(?:\\#|>)' in output.")
+
+            def send_command_timing(self, cmd, read_timeout=60, last_read=2.0):
+                return f"timing:{cmd}"
+
+        out = e._send_voss(Fake(), "save config", read_timeout=60)
+        self.assertEqual(out, "timing:save config")
+
+    def test_exos_send_does_not_use_voss_expect_string(self):
+        class Fake:
+            def send_command_timing(self, cmd, read_timeout=60):
+                return f"exos:{cmd}:{read_timeout}"
+
+        # No runner loaded in this isolated import — EXOS falls back to timing,
+        # never to VOSS expect_string.
+        out = e._send(Fake(), "show configuration vlan", read_timeout=120)
+        self.assertEqual(out, "exos:show configuration vlan:120")
 
 
 if __name__ == "__main__":

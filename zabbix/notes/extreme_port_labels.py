@@ -20,11 +20,15 @@ truncated label silently drops a port out of (or into) monitoring.
 Grammar / length rules: ``zabbix/reference/port-identity-foundation.md``.
 Vendor CLI citations + the ID convention: ``README-extreme-port-labels.md``.
 
-Transport is borrowed from ``extreme_cli_runner.py`` (SCRIPTS_ROOT, also
-searched under BASE_DIR/scripts). This script does not open its own SSH
-stack. The runner module is registered in ``sys.modules`` before exec
-(Python 3.12 dataclasses). Compliance/remediate open **one SSH login per
-switch**; every port on that box is compared (and optionally pushed) on
+EXOS SSH is borrowed from ``extreme_cli_runner.py`` (SCRIPTS_ROOT, also
+searched under BASE_DIR/scripts). VOSS / Fabric Engine SSH does **not** use
+the runner's ``_send_exos`` helper — that hunts Netmiko's default
+``(?:\\#|>)`` prompt and times out on ``hostname:1#``. VOSS uses the same
+``ConnectHandler(device_type="extreme_vsp")`` settings as
+``extreme_firmware_upgrade.py`` (``expect_string=r"#|>"``, timing for
+``save config``). The runner module is registered in ``sys.modules`` before
+exec (Python 3.12 dataclasses). Compliance/remediate open **one SSH login
+per switch**; every port on that box is compared (and optionally pushed) on
 that same session.
 
 Environment variables (identical to the CLI runner):
@@ -266,27 +270,41 @@ def summarize_ssh_error(text: str) -> str:
     if match:
         attempts = f"{match.group(1)} attempts"
     kept: list[str] = []
-    skipping_causes = False
+    skipping_advice = False
     for line in raw.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         low = stripped.lower()
-        if low.startswith("common causes"):
-            skipping_causes = True
+        if (
+            low.startswith("common causes")
+            or low.startswith("things you might try")
+            or low.startswith("you can also look at the netmiko")
+            or low.startswith("device settings")
+            or stripped[:2] in {"1.", "2.", "3."}
+        ):
+            skipping_advice = True
             continue
-        if skipping_causes:
-            if stripped[:2] in {"1.", "2.", "3."} or low.startswith("device settings"):
+        if skipping_advice:
+            if not any(
+                hint in low
+                for hint in (
+                    "pattern not detected",
+                    "timeout",
+                    "authentication",
+                    "permission denied",
+                    "connection refused",
+                )
+            ):
                 continue
-            skipping_causes = False
-        if low.startswith("device settings"):
-            continue
-        if stripped[:2] in {"1.", "2.", "3."}:
-            continue
+            skipping_advice = False
         kept.append(stripped)
     reason = ""
     for line in reversed(kept):
         low = line.lower()
+        if "pattern not detected" in low:
+            reason = line.rstrip(".")
+            break
         if "timeout" in low or (
             "authentication" in low and "failed after" not in low
         ):
@@ -1452,8 +1470,9 @@ def _load_cli_runner(script_path: str | None = None):
     """Load ``extreme_cli_runner.py`` by path (not a plain import).
 
     NetBox loads every script file as an isolated module, so
-    ``import extreme_cli_runner`` is not reliable. We reuse the runner's SSH
-    session helpers and credential resolution rather than a second transport.
+    ``import extreme_cli_runner`` is not reliable. EXOS reuses the runner's
+    SSH session helpers. VOSS uses the firmware-upgrade ConnectHandler path
+    (credentials still come from the runner or the same env vars).
     ``script_path`` is the labels file; unit tests pass a fake location.
     """
     global _RUNNER, _RUNNER_ERROR, _RUNNER_PATH
@@ -1512,8 +1531,32 @@ def _credentials(kind: str) -> tuple[str, str, str]:
     return "extreme_exos", exos_user, exos_pass
 
 
+#: Same ``expect_string`` Extreme Firmware Upgrade uses on VOSS ``send_command``.
+#: Netmiko's default ``(?:\#|>)`` is what failed on Fabric Engine sessions.
+VOSS_PROMPT_RE = r"#|>"
+VOSS_CONNECT_RETRIES = 3
+VOSS_CONNECT_RETRY_DELAY = 5
+
+
+def voss_connect_kwargs() -> dict:
+    """SSH kwargs matching ``extreme_firmware_upgrade.py`` VOSS ``ConnectHandler``.
+
+    Timeouts are the firmware script's 30s. ``fast_cli=False`` is extra:
+    Netmiko 4 ``fast_cli`` races Fabric Engine's ``hostname:1#`` prompt and
+    raises ``Pattern not detected: '(?:\\#|>)'``. EXOS does not use this.
+    """
+    return {
+        "timeout": 30,
+        "auth_timeout": 30,
+        "banner_timeout": 30,
+        "fast_cli": False,
+    }
+
+
 def _connect(device_name: str, device_ip: str, kind: str):
     netmiko_type, username, password = _credentials(kind)
+    if kind == "voss":
+        return _connect_voss(device_name, device_ip, username, password)
     runner = _load_cli_runner()
     if runner is None:
         raise RuntimeError(
@@ -1524,18 +1567,112 @@ def _connect(device_name: str, device_ip: str, kind: str):
                                    username, password)
 
 
-def _send(nc, cmd: str, read_timeout: int = 60) -> str:
-    """Send one command, auto-confirming a y/N prompt (runner behaviour)."""
+def _connect_voss(device_name: str, device_ip: str, username: str, password: str):
+    """Open a Fabric Engine session the way Extreme Firmware Upgrade does.
+
+    The EXOS runner helpers (``_connect_netmiko`` / ``_send_exos``) hunt
+    Netmiko's default ``(?:\\#|>)`` prompt. That is what failed on VOSS.
+    Firmware Upgrade uses ``device_type="extreme_vsp"``, ``enable()``,
+    ``expect_string=r"#|>"``, and ``send_command_timing`` for ``save config``.
+    """
+    from netmiko import ConnectHandler
+
+    secret = os.getenv("EXTREME_ENABLE_PASSWORD", "") or None
+    conn_params = {
+        "device_type": "extreme_vsp",
+        "host": device_ip,
+        "username": username,
+        "password": password,
+        **voss_connect_kwargs(),
+    }
+    if secret:
+        conn_params["secret"] = secret
+
+    last_exc: Exception | None = None
+    for attempt in range(1, VOSS_CONNECT_RETRIES + 1):
+        try:
+            try:
+                nc = ConnectHandler(**conn_params)
+            except TypeError:
+                slim = {key: val for key, val in conn_params.items() if key != "fast_cli"}
+                nc = ConnectHandler(**slim)
+            try:
+                nc.enable()
+            except Exception:
+                pass
+            logger.info(
+                "VOSS SSH connected to %s (%s) attempt %d/%d",
+                device_name, device_ip, attempt, VOSS_CONNECT_RETRIES,
+            )
+            return nc
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt < VOSS_CONNECT_RETRIES:
+                logger.warning(
+                    "VOSS SSH %s attempt %d failed: %s — retrying in %ds",
+                    device_name, attempt, exc, VOSS_CONNECT_RETRY_DELAY,
+                )
+                time.sleep(VOSS_CONNECT_RETRY_DELAY)
+            else:
+                raise
+    raise last_exc  # pragma: no cover
+
+
+def _send(nc, cmd: str, read_timeout: int = 60, *, kind: str | None = None) -> str:
+    """Send one command. VOSS uses firmware-upgrade prompt hunt, not EXOS y/N."""
+    if kind == "voss":
+        return _send_voss(nc, cmd, read_timeout=read_timeout)
     runner = _load_cli_runner()
     if runner is not None:
         return runner._send_exos(nc, cmd, read_timeout=read_timeout)
     return nc.send_command_timing(cmd, read_timeout=read_timeout)
 
 
+def _send_voss(nc, cmd: str, read_timeout: int = 60) -> str:
+    """``send_command(..., expect_string=r"#|>")`` — same as firmware upgrade."""
+    send = getattr(nc, "send_command", None)
+    if callable(send):
+        try:
+            output = send(
+                cmd, read_timeout=read_timeout, expect_string=VOSS_PROMPT_RE,
+            )
+            return "" if output is None else str(output)
+        except TypeError:
+            try:
+                output = send(cmd, expect_string=VOSS_PROMPT_RE)
+                return "" if output is None else str(output)
+            except TypeError:
+                pass
+        except Exception as exc:  # noqa: BLE001
+            err = str(exc).lower()
+            if "pattern not detected" not in err and "timeout" not in err:
+                raise
+            logger.warning(
+                "VOSS send_command prompt hunt failed (%s); using timing for %r",
+                exc, cmd,
+            )
+    return _send_voss_timing(nc, cmd, read_timeout=read_timeout)
+
+
+def _send_voss_timing(nc, cmd: str, read_timeout: int = 60) -> str:
+    """``send_command_timing`` — firmware upgrade uses this for ``save config``."""
+    timing = getattr(nc, "send_command_timing", None)
+    if not callable(timing):
+        raise RuntimeError("VOSS SSH session does not support send_command_timing")
+    try:
+        output = timing(cmd, read_timeout=read_timeout, last_read=2.0)
+    except TypeError:
+        try:
+            output = timing(cmd, last_read=2.0, delay_factor=2)
+        except TypeError:
+            output = timing(cmd, delay_factor=2)
+    return "" if output is None else str(output)
+
+
 def _fetch_live_labels(nc, kind: str) -> tuple[dict[str, str], dict[str, str]]:
     """Read the live labels off an open session. Returns (labels, descriptions)."""
     if kind == "voss":
-        text = _send(nc, "show running-config", read_timeout=180)
+        text = _send(nc, "show running-config", read_timeout=180, kind="voss")
         return parse_voss_labels(text), {}
     text = _send(nc, "show configuration vlan", read_timeout=120)
     display, description = parse_exos_labels(text)
@@ -2061,12 +2198,14 @@ if _NETBOX:
                 f"- **Workers:** {data.get('max_workers', 8)}"
             )
             self.log_info("```\n" + "\n".join(runner_status_lines()) + "\n```")
-            if not preview_only and _RUNNER is None:
+            if not preview_only and _RUNNER is None and wanted != "voss":
                 self.log_failure(
                     "SSH transport unavailable — "
                     f"extreme_cli_runner.py could not be loaded ({_RUNNER_ERROR}). "
                     "Deploy the runner next to this script under SCRIPTS_ROOT "
-                    "(`/opt/netbox/netbox/scripts/extreme_cli_runner.py`)."
+                    "(`/opt/netbox/netbox/scripts/extreme_cli_runner.py`). "
+                    "VOSS-only jobs do not need the runner (they use the same "
+                    "ConnectHandler path as Extreme Firmware Upgrade)."
                 )
                 return
             if preview_only:
@@ -2698,6 +2837,7 @@ if _NETBOX:
         def _apply_on_session(self, nc, kind, plans, save_config):
             """Push labels on an already-open session (no second login)."""
             transcript: list[str] = []
+            voss_config = False
             for plan in plans:
                 if plan.expected and len(plan.expected) > MAX_LABEL_LEN:
                     return (False, "\n".join(transcript),
@@ -2710,12 +2850,28 @@ if _NETBOX:
                             f"refused {plan.ifname}: port name is not a single "
                             "EXOS/VOSS port (no lists, no extra punctuation)")
                 if kind == "voss":
-                    output = nc.send_config_set(plan.commands, read_timeout=90)
-                    transcript.append("> " + " ; ".join(plan.commands))
-                    transcript.append((output or "").strip())
-                    if _looks_rejected(output):
-                        return (False, "\n".join(transcript),
-                                f"command rejected: {plan.commands!r}")
+                    # Do not use send_config_set — it hunts Netmiko's default
+                    # ``(?:\#|>)`` prompt. Firmware Upgrade sends VOSS config
+                    # with expect_string=r"#|>" / send_command_timing.
+                    if not voss_config:
+                        output = _send(
+                            nc, "configure terminal", read_timeout=30, kind="voss",
+                        )
+                        transcript.append("> configure terminal")
+                        if (output or "").strip():
+                            transcript.append(output.strip())
+                        if _looks_rejected(output):
+                            return (False, "\n".join(transcript),
+                                    "command rejected: 'configure terminal'")
+                        voss_config = True
+                    for cmd in plan.commands:
+                        output = _send(nc, cmd, read_timeout=60, kind="voss")
+                        transcript.append(f"> {cmd}")
+                        if (output or "").strip():
+                            transcript.append(output.strip())
+                        if _looks_rejected(output):
+                            return (False, "\n".join(transcript),
+                                    f"command rejected: {cmd!r}")
                 else:
                     for cmd in plan.commands:
                         output = _send(nc, cmd, read_timeout=60)
@@ -2726,10 +2882,18 @@ if _NETBOX:
                             return (False, "\n".join(transcript),
                                     f"command rejected: {cmd!r}")
                 plan.status = "applied"
+            if voss_config:
+                output = _send(nc, "end", read_timeout=30, kind="voss")
+                transcript.append("> end")
+                if (output or "").strip():
+                    transcript.append(output.strip())
             if save_config and plans:
-                cmd = "save config" if kind == "voss" else "save configuration"
-                output = _send(nc, cmd, read_timeout=180)
-                transcript.append(f"> {cmd}")
+                if kind == "voss":
+                    output = _send_voss_timing(nc, "save config", read_timeout=180)
+                    transcript.append("> save config")
+                else:
+                    output = _send(nc, "save configuration", read_timeout=180)
+                    transcript.append("> save configuration")
                 transcript.append((output or "").strip())
             return True, "\n".join(transcript), None
 
