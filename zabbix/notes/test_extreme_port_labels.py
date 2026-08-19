@@ -388,9 +388,36 @@ class LabelUniquenessTests(unittest.TestCase):
             "MON", 1000, "ch-zrh-zh4-esx40.sensirion.lokal",
             "ch-zrh-zh4", "ch-zrh-zh4", "iDRAC 10 (NIC.1)", "Server",
         )
+        self.assertEqual(lab, "MON-ESX40_ILO10_1")
         self.assertTrue(lab.startswith("MON-ESX40"), lab)
-        self.assertIn("IDRAC", lab)
+        self.assertIn("ILO", lab)
+        self.assertNotIn("IDRAC", lab)
         self.assertLessEqual(len(lab), 20)
+
+    def test_idrac_token_renders_as_ilo(self):
+        self.assertEqual(e.normalize_port_token("iDRAC 10 (NIC.1)"), "ILO10_1")
+        self.assertEqual(e.normalize_port_token("iDRAC 9 (NIC.1)"), "ILO9_1")
+        self.assertEqual(e.normalize_port_token("iDRAC"), "ILO")
+        lab = self._label(
+            "MON", 1000, "cn-sha-p-esx13.sensirion.lokal",
+            "cn-sha-jiu", "cn-sha-jiu", "iDRAC 9 (NIC.1)", "Server",
+        )
+        self.assertEqual(lab, "MON-P-ESX13_ILO9_1")
+        self.assertNotIn("IDRAC", lab)
+
+    def test_cohesity_room_prefix_dropped_same_site_and_cross_site(self):
+        """``LR50`` is a lab room, not a floor. Drop it so 10G still fits."""
+        for local in ("ch-sta-l26", "ch-sta-l50"):
+            parts = e.split_device_name(
+                "lr50-san10-n01.sensirion.lokal", "ch-sta-l50", local,
+            )
+            self.assertNotEqual(parts.scope, "LR50", parts)
+            self.assertNotIn("LR50", parts.extra)
+            self.assertEqual(parts.code, "N")
+            self.assertEqual(parts.num, "01")
+            self.assertTrue(
+                parts.scope == "SAN10" or parts.extra == "SAN10", parts,
+            )
 
     def test_cohesity_ilo_uses_far_device_not_description(self):
         """Description says N07; the cable lands on n08."""
@@ -400,9 +427,10 @@ class LabelUniquenessTests(unittest.TestCase):
             "Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)",
             "Cohesity",
         )
-        self.assertEqual(lab, "MON-LR50-SAN10-N08")
+        self.assertEqual(lab, "MON-SAN10-N08")
         self.assertIn("SAN10", lab)
         self.assertIn("N08", lab)
+        self.assertNotIn("LR50", lab)
         self.assertNotIn("CY", lab)
 
     def test_site_slug_not_on_hostname_is_not_invented(self):
@@ -461,16 +489,27 @@ class LabelUniquenessTests(unittest.TestCase):
         self.assertLessEqual(len(a), 20)
 
     def test_cohesity_1g_does_not_invent_10g(self):
-        """NetBox 1000 Mbps stays 1G even when the label is already 20 chars."""
+        """NetBox 1000 Mbps stays 1G. Room prefix LR50 is not in the ID."""
         lab = self._label(
             "US", 1000, "lr50-san10-n01.sensirion.lokal",
             "ch-sta-l50", "ch-sta-l26",
             "",
             "Cohesity",
         )
-        self.assertEqual(lab, "US-1G-LR50-SAN10-N01")
-        self.assertEqual(len(lab), 20)
+        self.assertEqual(lab, "US-1G-SAN10-N01")
+        self.assertNotIn("LR50", lab)
         self.assertNotIn("10G", lab)
+
+    def test_cohesity_10g_fits_without_room_prefix(self):
+        lab = self._label(
+            "MON", 10000, "lr50-san10-n13.sensirion.lokal",
+            "ch-sta-l50", "ch-sta-l26",
+            "Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)",
+            "Cohesity",
+        )
+        self.assertEqual(lab, "MON-10G-SAN10-N13")
+        self.assertLessEqual(len(lab), 20)
+        self.assertNotIn("LR50", lab)
 
     def test_cohesity_embedded_nic_plan_is_mon_from_cable(self):
         """Live Preview has no far_is_mgmt. NIC.Embedded + Cohesity → MON.
@@ -487,8 +526,9 @@ class LabelUniquenessTests(unittest.TestCase):
             link_mbps=1000,
             extra="COH-N07-ILO",
         )
-        self.assertEqual(lab, "MON-LR50-SAN10-N01")
+        self.assertEqual(lab, "MON-SAN10-N01")
         self.assertNotIn("N07", lab)
+        self.assertNotIn("LR50", lab)
         self.assertNotIn("1G", lab)
 
     def test_generated_labels_never_contain_dots(self):

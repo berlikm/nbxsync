@@ -581,6 +581,10 @@ def role_code(far_role: str | None) -> str:
 
 _TAIL_RE = re.compile(r"^(?P<code>[A-Z]+)(?P<num>\d*)$")
 _PORT_PAREN_RE = re.compile(r"\(([^)]+)\)")
+#: Lab-room hostname prefix (``lr50-san10-n01``). Not a floor (``L50``) and
+#: not a building (``B01``). Keeping it in the ID made ``MON-10G-SAN10-N13``
+#: overflow 20.
+_ROOM_PREFIX_RE = re.compile(r"^LR\d+$")
 #: Port-name filler. Whole segments only (``ct0.eth4`` → ``CT0_4``). Never
 #: invented per-vendor — if a segment is not in this set it stays.
 _PORT_NOISE = frozenset({"ETH", "NIC", "NETWORK", "EMBEDDED", "PARTITION", "PORT"})
@@ -612,7 +616,8 @@ def split_device_name(name: str, site_slug: str, local_site_slug: str) -> Device
     Scope is a token that exists on the hostname (or was stripped from it) —
     never a NetBox site tail like ``DC`` that does not appear in the name.
     Leftover middle tokens (``SAN10``) stay as ``extra`` so Cohesity
-    ``lr50-san10-n01`` remains ``LR50-SAN10-N01``, not ``CY01``.
+    ``lr50-san10-n01`` remains ``SAN10-N01``, not ``CY01``. A leading lab-room
+    code (``LR50``) is dropped so a 10G SPEED token still fits.
     """
     clean = (name or "").upper().split(".")[0]
     host = [tok for tok in clean.split("-") if tok]
@@ -634,7 +639,7 @@ def split_device_name(name: str, site_slug: str, local_site_slug: str) -> Device
     tail = rest.pop() if rest else (host[-1] if host else "")
     match = _TAIL_RE.match(tail)
     code, num = (match.group("code"), match.group("num")) if match else (tail, "")
-    leftover = rest
+    leftover = [tok for tok in rest if not _ROOM_PREFIX_RE.fullmatch(tok)]
     site_tail = site[-1] if site else ""
     same_site = bool(site_u) and site_u == local
     local_toks = set(local.split("-")) if local else set()
@@ -656,6 +661,11 @@ def split_device_name(name: str, site_slug: str, local_site_slug: str) -> Device
     else:
         scope = ""
         extra_toks = []
+
+    if _ROOM_PREFIX_RE.fullmatch(scope or ""):
+        scope = extra_toks[0] if extra_toks else ""
+        extra_toks = extra_toks[1:] if extra_toks else []
+    extra_toks = [tok for tok in extra_toks if not _ROOM_PREFIX_RE.fullmatch(tok)]
 
     # Do not repeat the building we are sitting in (ch-zrh-zh4 → ZH4).
     # That was inventing ``DC``'s cousin: a scope that costs the far-port.
@@ -695,7 +705,13 @@ def _clean_port_segments(text: str) -> list[str]:
                 # ``IDRAC10NIC`` → ``IDRAC10``. Not ``VMNIC`` → ``VM``.
                 seg = seg[: -len(noise)]
                 break
-        segs.append(str(int(seg)) if seg.isdigit() else seg)
+        if seg.isdigit():
+            segs.append(str(int(seg)))
+        elif seg.startswith("IDRAC"):
+            # Dell lights-out ifName is long; ILO is the estate word and fits 10G.
+            segs.append("ILO" + seg[5:])
+        else:
+            segs.append(seg)
     kept = [seg for seg in segs if seg not in _PORT_NOISE]
     return kept or segs
 
@@ -711,7 +727,7 @@ def normalize_port_token(port_name: str) -> str:
 
 
 def _port_identity_segments(port_name: str) -> list[str]:
-    """Prefer a rendering that still has letters (``CT0_4``, ``IDRAC_1``)."""
+    """Prefer a rendering that still has letters (``CT0_4``, ``ILO_1``)."""
     raw = port_name or ""
     candidates = [raw]
     match = _PORT_PAREN_RE.search(raw)

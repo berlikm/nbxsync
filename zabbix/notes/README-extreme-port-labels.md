@@ -249,16 +249,19 @@ Link speed = `min(local, far)` from NetBox **interface type first**
 differs from the class default (`USW`/`US` → 10G, `UP`/`MON` → 1G). A 1G
 **server** NIC is `US-1G-…`, not `MON-…`. A 1G **firewall** is `USW-1G-…`.
 `UW` never gets a PHY token. Do **not** invent 10G when NetBox says 1G —
-`US-1G-LR50-SAN10-N01` is already 20 characters; fixing the iftype in NetBox
-is what drops the `1G` token.
+`US-1G-SAN10-N01` keeps the `1G` token because US defaults to 10G; fixing
+the iftype in NetBox is what drops it.
 
 Do **not** treat “device has no primary_ip in NetBox” as management — Pure/SAN
 often only have `oob_ip` recorded while the cable is a production data port.
 Cohesity **iLO** is the dedicated LOM named
 `Embedded NIC … (NIC.Embedded.1-1)` (and/or a local description `COH-N01-ILO`).
-That is `MON-LR50-SAN10-N01`, not `US-1G-…`. A Cohesity **data** NIC stays
-`US`. The description is a CLASS hint only — ID still comes from the far
-hostname (`n08` on the cable, even if the description says `N07`).
+That is `MON-SAN10-N01`, not `US-1G-…`. The lab-room hostname prefix `LR50`
+is omitted so 10G still fits (`MON-10G-SAN10-N13`). A Cohesity **data** NIC
+stays `US`. The description is a CLASS hint only — ID still comes from the
+far hostname (`n08` on the cable, even if the description says `N07`).
+Dell iDRAC ifNames render as `ILO` in the port token (`iDRAC 10` → `_ILO10`);
+CLASS still matches the raw ifName (`idrac` in `BMC_PORT_TOKENS`).
 
 `X` is **policy, not inference.** Use it for SPAN / lab / operator mute. **Stack,
 ISC, and MLAG peer-links are ordinary switch↔switch cables** — the script
@@ -277,7 +280,7 @@ someone encoded *this estate’s inventory* instead of *the grammar*.
 |---|---|
 | Hostname ID | Keep the words on the name (`SAN`, `SNAS`, `ESX`, `SAN10-N01`). Shorten the prefix only if 20 characters force it. |
 | Site strip | Token-wise shared prefix with the far-site slug. Never invent a site tail (`DC`) that is not on the hostname. |
-| Port token | Split on `:` `/` `.`; drop generic filler (`ETH`, `NIC`, `PORT`); no extra `P`. |
+| Port token | Split on `:` `/` `.`; drop generic filler (`ETH`, `NIC`, `PORT`); no extra `P`. Dell `iDRAC` renders `ILO`. |
 | Length | Longest ID that fits the *emitted* SPEED token. Refuse rather than truncate. |
 | Unknown CLASS | Anything that is not switch/firewall/AP/SD-WAN/server/storage/cohesity/hypervisor is `MON`. |
 | SPEED token | `Mbps → NG` / `2G5`. 50G / 200G / 800G do not need a table row. |
@@ -479,9 +482,9 @@ Reading it:
 - Live on-box strings (`L02-ACCE03_p23`, `L42-Co01:1:14`) stay in the Live
   column. Compliance lists them; it does not wipe them to look tidy.
 - Endpoint IDs keep hostname words: Cohesity `lr50-san10-n08` →
-  `MON-LR50-SAN10-N08` (not `CY08`). `SNAS01` stays `SNAS`, `san11` stays `SAN`.
-  A NetBox site slug that is not on the hostname (`ch-zrh-dc`) is not invented
-  as `DC`.
+  `MON-SAN10-N08` (not `CY08`, not `LR50-…`). `SNAS01` stays `SNAS`, `san11`
+  stays `SAN`. A NetBox site slug that is not on the hostname (`ch-zrh-dc`)
+  is not invented as `DC`. Dell iDRAC is `_ILO10`, not `_IDRAC10`.
 
 ---
 

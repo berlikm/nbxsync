@@ -94,29 +94,29 @@ _CH-STA-L26 · 23 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 1/1 | `COH-N01-ILO` | `lr50-san10-n01.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N01` | 18 |
-| 1/10 | `COH-N10-ILO` | `lr50-san10-n11.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N11` | 18 |
-| 1/11 | `COH-N11-ILO` | `lr50-san10-n10.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N10` | 18 |
-| 1/12 | `COH-N12-ILO` | `lr50-san10-n12.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N12` | 18 |
-| 1/13 | `COH-N13-ILO` | `lr50-san10-n13.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N13` | 18 |
-| 1/14 | `COH-N14-ILO` | `lr50-san10-n14.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N14` | 18 |
-| 1/15 | `COH-N15-ILO` | `lr50-san10-n15.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N15` | 18 |
-| 1/16 | `COH-N16-ILO` | `lr50-san10-n16.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N16` | 18 |
+| 1/1 | `COH-N01-ILO` | `lr50-san10-n01.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N01` | 13 |
+| 1/10 | `COH-N10-ILO` | `lr50-san10-n11.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N11` | 13 |
+| 1/11 | `COH-N11-ILO` | `lr50-san10-n10.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N10` | 13 |
+| 1/12 | `COH-N12-ILO` | `lr50-san10-n12.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N12` | 13 |
+| 1/13 | `COH-N13-ILO` | `lr50-san10-n13.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N13` | 13 |
+| 1/14 | `COH-N14-ILO` | `lr50-san10-n14.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N14` | 13 |
+| 1/15 | `COH-N15-ILO` | `lr50-san10-n15.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N15` | 13 |
+| 1/16 | `COH-N16-ILO` | `lr50-san10-n16.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N16` | 13 |
 | 1/18 | `FWZone-MGMT` | `CH-STA-L26-FWZone01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
 | 1/19 | `S-FWZONE_p13` | `CH-STA-L26-FWZone01::port13` | Firewall | 1000 | `USW-1G-FW01_13` | 14 |
-| 1/2 | `COH-N02-ILO` | `lr50-san10-n02.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N02` | 18 |
+| 1/2 | `COH-N02-ILO` | `lr50-san10-n02.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N02` | 13 |
 | 1/20 | `S-FWZONE_p14` | `CH-STA-L26-FWZone01::port14` | Firewall | 1000 | `USW-1G-FW01_14` | 14 |
 | 1/21 | `S-FWZONE_p15` | `CH-STA-L26-FWZone01::port15` | Firewall | 1000 | `USW-1G-FW01_15` | 14 |
 | 1/22 | `S-FWZONE_p16` | `CH-STA-L26-FWZone01::port16` | Firewall | 1000 | `USW-1G-FW01_16` | 14 |
 | 1/29 | `NNI-port` | `CH-STA-L26-L02-CORE01::1:7` | Switch Core | 10000 | `USW-L02-C01_1_7` | 15 |
-| 1/3 | `COH-N03-ILO` | `lr50-san10-n03.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N03` | 18 |
+| 1/3 | `COH-N03-ILO` | `lr50-san10-n03.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N03` | 13 |
 | 1/30 | `NNI-port` | `CH-STA-L26-L02-CORE02::1:7` | Switch Core | 10000 | `USW-L02-C02_1_7` | 15 |
-| 1/4 | `COH-N04-ILO` | `lr50-san10-n04.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N04` | 18 |
-| 1/5 | `COH-N05-ILO` | `lr50-san10-n05.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N05` | 18 |
-| 1/6 | `COH-N06-ILO` | `lr50-san10-n06.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N06` | 18 |
-| 1/7 | `COH-N07-ILO` | `lr50-san10-n08.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N08` | 18 |
-| 1/8 | `COH-N08-ILO` | `lr50-san10-n07.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N07` | 18 |
-| 1/9 | `COH-N09-ILO` | `lr50-san10-n09.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-LR50-SAN10-N09` | 18 |
+| 1/4 | `COH-N04-ILO` | `lr50-san10-n04.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N04` | 13 |
+| 1/5 | `COH-N05-ILO` | `lr50-san10-n05.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N05` | 13 |
+| 1/6 | `COH-N06-ILO` | `lr50-san10-n06.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N06` | 13 |
+| 1/7 | `COH-N07-ILO` | `lr50-san10-n08.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N08` | 13 |
+| 1/8 | `COH-N08-ILO` | `lr50-san10-n07.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N07` | 13 |
+| 1/9 | `COH-N09-ILO` | `lr50-san10-n09.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N09` | 13 |
 
 ### KR-SEL-HAN-L14-CORE02
 
@@ -2396,10 +2396,10 @@ _CH-ZRH-ZH4 · 22 ports_
 |---|---|---|---|---|---|---|
 | 1:1 | `s-fwgw01:13_HA` | `CH-ZRH-ZH4-FWGW01::ha` | Firewall | 1000 | `USW-1G-FW01_HA` | 14 |
 | 1:15 | `ZH4-SAN04-N01_CT` | `ch-zrh-zh4-san01::ct1.eth4` | Storage | 1000 | `MON-SAN01_CT1_4` | 15 |
-| 1:16 | `esx40_ct0_ilo` | `ch-zrh-zh4-esx40.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX40_IDRAC10_1` | 19 |
-| 1:17 | `esx41_ct0_ilo` | `ch-zrh-zh4-esx41.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX41_IDRAC10_1` | 19 |
-| 1:18 | `esx42_ct0_ilo` | `ch-zrh-zh4-esx42.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX42_IDRAC10_1` | 19 |
-| 1:19 | `esx43_ct0_ilo` | `ch-zrh-zh4-esx43.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX43_IDRAC10_1` | 19 |
+| 1:16 | `esx40_ct0_ilo` | `ch-zrh-zh4-esx40.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX40_ILO10_1` | 17 |
+| 1:17 | `esx41_ct0_ilo` | `ch-zrh-zh4-esx41.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX41_ILO10_1` | 17 |
+| 1:18 | `esx42_ct0_ilo` | `ch-zrh-zh4-esx42.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX42_ILO10_1` | 17 |
+| 1:19 | `esx43_ct0_ilo` | `ch-zrh-zh4-esx43.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX43_ILO10_1` | 17 |
 | 1:21 | `esx40_ct0_eth0` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX40_VMNIC4` | 18 |
 | 1:22 | `esx41_ct0_eth0` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX41_VMNIC4` | 18 |
 | 1:23 | `esx42_ct0_eth0` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX42_VMNIC4` | 18 |
@@ -2425,8 +2425,8 @@ _CH-ZRH-ZH4 · 20 ports_
 |---|---|---|---|---|---|---|
 | 2:1 | `s-fwgw01:29_HA` | `CH-ZRH-ZH4-FWGW01::port15` | Firewall | 1000 | `USW-1G-FW01_15` | 14 |
 | 2:15 | `ZH4-SAN04-N01_CT` | `ch-zrh-zh4-san01::ct0.eth4` | Storage | 1000 | `MON-SAN01_CT0_4` | 15 |
-| 2:16 | `esx44_ct0_ilo` | `ch-zrh-zh4-esx44.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX44_IDRAC10_1` | 19 |
-| 2:19 | `esx47_ct0_ilo` | `ch-zrh-zh4-esx47.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX47_IDRAC10_1` | 19 |
+| 2:16 | `esx44_ct0_ilo` | `ch-zrh-zh4-esx44.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX44_ILO10_1` | 17 |
+| 2:19 | `esx47_ct0_ilo` | `ch-zrh-zh4-esx47.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX47_ILO10_1` | 17 |
 | 2:21 | `esx40_ct0_eth1` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX40_VMNIC5` | 18 |
 | 2:22 | `esx41_ct0_eth1` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX41_VMNIC5` | 18 |
 | 2:23 | `esx42_ct0_eth1` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX42_VMNIC5` | 18 |
@@ -2534,10 +2534,10 @@ _CH-ZRH-ZH5 · 17 ports_
 |---|---|---|---|---|---|---|
 | 1:1 | `s-fwgw01:13_HA` | `CH-ZRH-ZH5-FWGW01::ha` | Firewall | 1000 | `USW-1G-FW01_HA` | 14 |
 | 1:15 | `SAN01_ctl0_mgmt` | `ch-zrh-zh5-san01::ct0.eth4` | Storage | 1000 | `MON-SAN01_CT0_4` | 15 |
-| 1:16 | `esx50_ct0_ilo` | `ch-zrh-zh5-esx50.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX50_IDRAC10_1` | 19 |
-| 1:17 | `esx51_ct0_ilo` | `ch-zrh-zh5-esx51.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX51_IDRAC10_1` | 19 |
-| 1:18 | `esx52_ct0_ilo` | `ch-zrh-zh5-esx52.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX52_IDRAC10_1` | 19 |
-| 1:19 | `esx53_ct0_ilo` | `ch-zrh-zh5-esx53.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX53_IDRAC10_1` | 19 |
+| 1:16 | `esx50_ct0_ilo` | `ch-zrh-zh5-esx50.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX50_ILO10_1` | 17 |
+| 1:17 | `esx51_ct0_ilo` | `ch-zrh-zh5-esx51.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX51_ILO10_1` | 17 |
+| 1:18 | `esx52_ct0_ilo` | `ch-zrh-zh5-esx52.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX52_ILO10_1` | 17 |
+| 1:19 | `esx53_ct0_ilo` | `ch-zrh-zh5-esx53.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX53_ILO10_1` | 17 |
 | 1:25 | `SAN02_ctl0_mgmt` | `ch-zrh-zh5-san02::ct0.eth0` | Storage | 1000 | `MON-SAN02_CT0_0` | 15 |
 | 1:29 | `esx57_ct0_eth0` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX57_VMNIC4` | 18 |
 | 1:31 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH5-FWGW01::port1` | Firewall | 1000 | `USW-1G-FW01_1` | 13 |
@@ -2558,10 +2558,10 @@ _CH-ZRH-ZH5 · 17 ports_
 |---|---|---|---|---|---|---|
 | 2:1 | `s-fwgw01:29_HA` | `CH-ZRH-ZH5-FWGW01::port15` | Firewall | 1000 | `USW-1G-FW01_15` | 14 |
 | 2:15 | `SAN01_ctl1_mgmt` | `ch-zrh-zh5-san01::ct1.eth4` | Storage | 1000 | `MON-SAN01_CT1_4` | 15 |
-| 2:16 | `esx54_ct0_ilo` | `ch-zrh-zh5-esx54.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX54_IDRAC10_1` | 19 |
-| 2:17 | `esx55_ct0_ilo` | `ch-zrh-zh5-esx55.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX55_IDRAC10_1` | 19 |
-| 2:18 | `esx56_ct0_ilo` | `ch-zrh-zh5-esx56.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX56_IDRAC10_1` | 19 |
-| 2:19 | `esx57_ct0_ilo` | `ch-zrh-zh5-esx57.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX57_IDRAC10_1` | 19 |
+| 2:16 | `esx54_ct0_ilo` | `ch-zrh-zh5-esx54.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX54_ILO10_1` | 17 |
+| 2:17 | `esx55_ct0_ilo` | `ch-zrh-zh5-esx55.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX55_ILO10_1` | 17 |
+| 2:18 | `esx56_ct0_ilo` | `ch-zrh-zh5-esx56.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX56_ILO10_1` | 17 |
+| 2:19 | `esx57_ct0_ilo` | `ch-zrh-zh5-esx57.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX57_ILO10_1` | 17 |
 | 2:25 | `SAN02_ctl1_mgmt` | `ch-zrh-zh5-san02::ct1.eth0` | Storage | 1000 | `MON-SAN02_CT1_0` | 15 |
 | 2:29 | `esx57_ct0_eth1` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX57_VMNIC5` | 18 |
 | 2:31 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH5-FWGW01::port2` | Firewall | 1000 | `USW-1G-FW01_2` | 13 |
@@ -2841,7 +2841,7 @@ _CN-SHA-JIU · 20 ports_
 | 3 | `MLAG_ACCE03_p23` | `CN-SHA-JIU-L03-ACCE03::23` | Switch Access | 1000 | `USW-1G-L03-A03_23` | 17 |
 | 36 | `CN-SHA-P-SNAS01_` | `CN-SHA-P-SNAS01::LAN1` | Storage | 1000 | `MON-P-SNAS01_LAN1` | 17 |
 | 37 | `CN-SHA-P-SNAS02_` | `CN-SHA-P-SNAS01::LAN3` | Storage | 1000 | `MON-P-SNAS01_LAN3` | 17 |
-| 38 | `—` | `cn-sha-p-esx13.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX13_IDRAC9_1` | 20 |
+| 38 | `—` | `cn-sha-p-esx13.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX13_ILO9_1` | 18 |
 | 39 | `—` | `cn-sha-san11::ct0.eth0` | Storage | 1000 | `MON-SAN11_CT0_0` | 15 |
 | 4 | `MLAG_ACCE04_p23` | `CN-SHA-JIU-L03-ACCE04::23` | Switch Access | 1000 | `USW-1G-L03-A04_23` | 17 |
 | 45 | `MLAG_L4_ACCE01_P` | `CN-SHA-JIU-L04-ACCE01::23` | Switch Access | 1000 | `USW-1G-L04-A01_23` | 17 |
@@ -2866,10 +2866,10 @@ _CN-SHA-JIU · 21 ports_
 | 26 | `FWGW02_p13` | `CN-SHA-JIUX-L3-FWGW02::port13` | Firewall | 1000 | `USW-1G-L3-FW02_13` | 17 |
 | 29 | `fortigate-mgmt` | `CN-SHA-JIUX-L3-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-L3-FW02_MGMT` | 19 |
 | 3 | `MLAG_ACCE03_p24` | `CN-SHA-JIU-L03-ACCE03::24` | Switch Access | 1000 | `USW-1G-L03-A03_24` | 17 |
-| 31 | `—` | `cn-sha-p-esx11.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX11_IDRAC9_1` | 20 |
+| 31 | `—` | `cn-sha-p-esx11.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX11_ILO9_1` | 18 |
 | 36 | `CN-SHA-P-SNAS01_` | `CN-SHA-P-SNAS01::LAN2` | Storage | 1000 | `MON-P-SNAS01_LAN2` | 17 |
 | 37 | `CN-SHA-P-SNAS02_` | `CN-SHA-P-SNAS01::LAN4` | Storage | 1000 | `MON-P-SNAS01_LAN4` | 17 |
-| 38 | `—` | `cn-sha-p-esx12.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX12_IDRAC9_1` | 20 |
+| 38 | `—` | `cn-sha-p-esx12.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX12_ILO9_1` | 18 |
 | 39 | `—` | `cn-sha-san11::ct1.eth0` | Storage | 1000 | `MON-SAN11_CT1_0` | 15 |
 | 4 | `MLAG_ACCE04_p24` | `CN-SHA-JIU-L03-ACCE04::24` | Switch Access | 1000 | `USW-1G-L03-A04_24` | 17 |
 | 45 | `MLAG_L4_ACCE01_P` | `CN-SHA-JIU-L04-ACCE01::24` | Switch Access | 1000 | `USW-1G-L04-A01_24` | 17 |
@@ -3459,8 +3459,8 @@ _HU-DEB-NAG-A · 13 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 1:12 | `SAN_ctrlA_LAN` | `HU-DEB-SAN01::CTE0.A.MGMT` | Storage | 1000 | `MON-SAN01_CTE0AMGMT` | 19 |
-| 1:14 | `ESX11_ILO` | `hu-deb-p-esx11.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX11_IDRAC9_1` | 20 |
-| 1:15 | `ESX13_ILO` | `hu-deb-p-esx13.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX13_IDRAC9_1` | 20 |
+| 1:14 | `ESX11_ILO` | `hu-deb-p-esx11.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX11_ILO9_1` | 18 |
+| 1:15 | `ESX13_ILO` | `hu-deb-p-esx13.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX13_ILO9_1` | 18 |
 | 1:16 | `ESX11_ct0_eth0` | `hu-deb-p-esx11.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX11_VMNIC0` | 20 |
 | 1:18 | `ESX13_et0_eth0` | `hu-deb-p-esx13.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX13_VMNIC0` | 20 |
 | 1:20 | `SAN11_ct1_eth0` | `hu-deb-san11::ct0.eth0` | Storage | 1000 | `MON-SAN11_CT0_0` | 15 |
@@ -3493,8 +3493,8 @@ _HU-DEB-NAG-B · 13 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 1:13 | `ESX12_ILO` | `hu-deb-p-esx12.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX12_IDRAC9_1` | 20 |
-| 1:14 | `ESX14_ILO` | `hu-deb-p-esx14.sensirion.lokal::iDRAC` | Server | 1000 | `MON-P-ESX14_IDRAC` | 17 |
+| 1:13 | `ESX12_ILO` | `hu-deb-p-esx12.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX12_ILO9_1` | 18 |
+| 1:14 | `ESX14_ILO` | `hu-deb-p-esx14.sensirion.lokal::iDRAC` | Server | 1000 | `MON-P-ESX14_ILO` | 15 |
 | 1:16 | `ESX12_ct0_eth0` | `hu-deb-p-esx12.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX12_VMNIC0` | 20 |
 | 1:17 | `ESX14_ct0_eth0` | `hu-deb-p-esx14.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX14_VMNIC0` | 20 |
 | 1:21 | `SNAS01_p1` | `HU-DEB-P-SNAS01::LAN1` | Storage | 1000 | `MON-P-SNAS01_LAN1` | 17 |
@@ -3691,8 +3691,8 @@ _KR-SEL-HAN · 23 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 10 | `esx11_ILO` | `kr-sel-p-esx11.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX11_IDRAC9_1` | 20 |
-| 11 | `SCCM-Staging` | `kr-sel-p-esx13.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX13_IDRAC9_1` | 20 |
+| 10 | `esx11_ILO` | `kr-sel-p-esx11.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX11_ILO9_1` | 18 |
+| 11 | `SCCM-Staging` | `kr-sel-p-esx13.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX13_ILO9_1` | 18 |
 | 12 | `esx11_CT0_eth0` | `kr-sel-p-esx11.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX11_VMNIC1` | 20 |
 | 13 | `esx12_CT0_eth0` | `kr-sel-p-esx12.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX12_VMNIC1` | 20 |
 | 14 | `esx13_CT0_eth0` | `kr-sel-p-esx13.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX13_VMNIC1` | 20 |
@@ -3721,7 +3721,7 @@ _KR-SEL-HAN · 22 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 10 | `esx12_ILO` | `kr-sel-p-esx12.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX12_IDRAC9_1` | 20 |
+| 10 | `esx12_ILO` | `kr-sel-p-esx12.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX12_ILO9_1` | 18 |
 | 12 | `esx11_CT0_eth1` | `kr-sel-p-esx11.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX11_VMNIC0` | 20 |
 | 13 | `esx12_CT0_eth1` | `kr-sel-p-esx12.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX12_VMNIC0` | 20 |
 | 14 | `esx13_CT0_eth1` | `kr-sel-p-esx13.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX13_VMNIC0` | 20 |

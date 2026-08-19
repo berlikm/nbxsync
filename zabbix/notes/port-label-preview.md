@@ -15,7 +15,7 @@ live vs expected compliance diff.
 - Too long: **0**
 - Labels with `.`: **0** (must be 0)
 - Duplicate label on the same device: **0** (must be 0)
-- Exactly 20 characters: **25**
+- Exactly 20 characters: **16**
 - Concatenated slot+port (`_120` style): **0**
 - ISC (from NetBox description): **42** — all must be `USW`
 - Stack (`extreme-summitstack`): **56** — all must be `USW`
@@ -136,27 +136,18 @@ _26 more in `port_label_preview.tsv`._
 
 | Device | Port | Far device | Far port | Expected | Len | Note |
 |---|---|---|---|---|---|---|
-| CN-SHA-JIU-L03-DIST01 | 38 | cn-sha-p-esx13.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX13_IDRAC9_1` | 20 | at-20 |
-| CN-SHA-JIU-L03-DIST02 | 31 | cn-sha-p-esx11.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX11_IDRAC9_1` | 20 | at-20 |
-| CN-SHA-JIU-L03-DIST02 | 38 | cn-sha-p-esx12.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX12_IDRAC9_1` | 20 | at-20 |
-| HU-DEB-NAG-MGMT01-1 | 1:14 | hu-deb-p-esx11.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX11_IDRAC9_1` | 20 | at-20 |
-| HU-DEB-NAG-MGMT01-1 | 1:15 | hu-deb-p-esx13.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX13_IDRAC9_1` | 20 | at-20 |
 | HU-DEB-NAG-MGMT01-1 | 1:16 | hu-deb-p-esx11.sensirion.lokal | vmnic0 | `US-1G-P-ESX11_VMNIC0` | 20 | at-20 |
 | HU-DEB-NAG-MGMT01-1 | 1:18 | hu-deb-p-esx13.sensirion.lokal | vmnic0 | `US-1G-P-ESX13_VMNIC0` | 20 | at-20 |
 | HU-DEB-NAG-MGMT01-2 | 2:16 | hu-deb-p-esx11.sensirion.lokal | vmnic1 | `US-1G-P-ESX11_VMNIC1` | 20 | at-20 |
 | HU-DEB-NAG-MGMT01-2 | 2:18 | hu-deb-p-esx13.sensirion.lokal | vmnic1 | `US-1G-P-ESX13_VMNIC1` | 20 | at-20 |
-| HU-DEB-NAG-MGMT03-1 | 1:13 | hu-deb-p-esx12.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX12_IDRAC9_1` | 20 | at-20 |
 | HU-DEB-NAG-MGMT03-1 | 1:16 | hu-deb-p-esx12.sensirion.lokal | vmnic0 | `US-1G-P-ESX12_VMNIC0` | 20 | at-20 |
 | HU-DEB-NAG-MGMT03-1 | 1:17 | hu-deb-p-esx14.sensirion.lokal | vmnic0 | `US-1G-P-ESX14_VMNIC0` | 20 | at-20 |
 | HU-DEB-NAG-MGMT03-2 | 2:16 | hu-deb-p-esx12.sensirion.lokal | vmnic1 | `US-1G-P-ESX12_VMNIC1` | 20 | at-20 |
 | HU-DEB-NAG-MGMT03-2 | 2:17 | hu-deb-p-esx14.sensirion.lokal | vmnic1 | `US-1G-P-ESX14_VMNIC1` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST01 | 10 | kr-sel-p-esx11.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX11_IDRAC9_1` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST01 | 11 | kr-sel-p-esx13.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX13_IDRAC9_1` | 20 | at-20 |
 | KR-SEL-HAN-L14-DIST01 | 12 | kr-sel-p-esx11.sensirion.lokal | vmnic1 | `US-1G-P-ESX11_VMNIC1` | 20 | at-20 |
 | KR-SEL-HAN-L14-DIST01 | 13 | kr-sel-p-esx12.sensirion.lokal | vmnic1 | `US-1G-P-ESX12_VMNIC1` | 20 | at-20 |
 | KR-SEL-HAN-L14-DIST01 | 14 | kr-sel-p-esx13.sensirion.lokal | vmnic1 | `US-1G-P-ESX13_VMNIC1` | 20 | at-20 |
 | KR-SEL-HAN-L14-DIST01 | 21 | KR-SEL-HAN-L14-FWGW01 | mgmt | `USW-1G-L14-FW01_MGMT` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST02 | 10 | kr-sel-p-esx12.sensirion.lokal | iDRAC 9 (NIC.1) | `MON-P-ESX12_IDRAC9_1` | 20 | at-20 |
 | KR-SEL-HAN-L14-DIST02 | 12 | kr-sel-p-esx11.sensirion.lokal | vmnic0 | `US-1G-P-ESX11_VMNIC0` | 20 | at-20 |
 | KR-SEL-HAN-L14-DIST02 | 13 | kr-sel-p-esx12.sensirion.lokal | vmnic0 | `US-1G-P-ESX12_VMNIC0` | 20 | at-20 |
 | KR-SEL-HAN-L14-DIST02 | 14 | kr-sel-p-esx13.sensirion.lokal | vmnic0 | `US-1G-P-ESX13_VMNIC0` | 20 | at-20 |
@@ -219,4 +210,4 @@ _26 more in `port_label_preview.tsv`._
 | MLAG | 70 |
 | stack | 56 |
 | ISC | 42 |
-| at-20 | 25 |
+| at-20 | 16 |
