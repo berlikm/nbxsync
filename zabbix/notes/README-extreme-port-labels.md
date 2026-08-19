@@ -19,20 +19,33 @@ compliance job**.
 ## 1. Install
 
 NetBox loads every `.py` in `SCRIPTS_ROOT` as a script module, so this is a
-single flat file next to the others:
+single flat file next to the others. On this estate that directory is
+`/opt/netbox/netbox/scripts/`:
 
 ```
-Netbox-scripts/
+/opt/netbox/netbox/scripts/
 ├── extreme_cli_runner.py       # SSH transport — reused, not forked
 ├── extreme_firmware_upgrade.py
 └── extreme_port_labels.py      # this script
 ```
 
 It reuses the CLI runner's session helpers and credential resolution by loading
-the sibling file by path (`importlib`), because NetBox loads each script module
-in isolation and a plain `import extreme_cli_runner` is not reliable. If the
-runner cannot be loaded the script says so and refuses to open its own SSH
-stack.
+the runner **by file path** (`importlib`), because NetBox loads each script
+module in isolation and a plain `import extreme_cli_runner` is not reliable.
+
+The loader searches, in order: the directory of this file, `…/scripts/` under
+that directory and its parent, Django `SCRIPTS_ROOT` / `BASE_DIR`. That covers
+both “both files in `scripts/`” and an older copy sitting at
+`/opt/netbox/netbox/` while the runner stayed in `scripts/`. A compatibility
+symlink `BASE_DIR/extreme_cli_runner.py → scripts/extreme_cli_runner.py` is
+optional once this search is deployed.
+
+The loaded module is registered in `sys.modules` **before** `exec_module`.
+Python 3.12 dataclasses look up `cls.__module__` there; skipping that
+registration fails even when the path is correct.
+
+If the runner cannot be loaded the job log prints `runner_loaded False` and
+compliance/remediate refuse to open SSH. Preview still runs (cabling only).
 
 Same environment variables as the runner — **no secrets in code**:
 

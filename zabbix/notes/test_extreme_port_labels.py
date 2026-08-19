@@ -3,7 +3,11 @@
 
 from __future__ import annotations
 
+import os
 import re
+import sys
+import tempfile
+import textwrap
 import unittest
 from dataclasses import replace
 
@@ -984,6 +988,99 @@ class MgmtHeuristicTests(unittest.TestCase):
 
         self.assertTrue(e._is_management_interface(_Iface(), extra="COH-N01-ILO"))
         self.assertFalse(e._is_management_interface(_Iface()))
+
+
+_DATACLASS_RUNNER = textwrap.dedent(
+    """
+    from dataclasses import dataclass
+
+    @dataclass
+    class Session:
+        name: str
+
+    _EXOS_USERNAME = "exos-user"
+    _EXOS_PASSWORD = "x"
+    _VOSS_USERNAME = "voss-user"
+    _VOSS_PASSWORD = "y"
+    PROBE = Session("ok")
+    """
+).lstrip()
+
+
+class CliRunnerLoadTests(unittest.TestCase):
+    def setUp(self):
+        e._reset_cli_runner()
+
+    def tearDown(self):
+        e._reset_cli_runner()
+
+    def test_search_finds_runner_under_scripts_when_labels_sit_at_base_dir(self):
+        """Prod miss: labels at BASE_DIR, runner in BASE_DIR/scripts."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts = os.path.join(tmp, "scripts")
+            os.makedirs(scripts)
+            runner = os.path.join(scripts, "extreme_cli_runner.py")
+            with open(runner, "w", encoding="utf-8") as handle:
+                handle.write("VALUE = 1\n")
+            labels = os.path.join(tmp, "extreme_port_labels.py")
+            found = e._runner_candidate_paths(labels)
+            self.assertEqual(
+                [os.path.realpath(p) for p in found],
+                [os.path.realpath(runner)],
+            )
+
+    def test_search_prefers_sibling_over_parent_scripts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts = os.path.join(tmp, "scripts")
+            os.makedirs(scripts)
+            sibling = os.path.join(scripts, "extreme_cli_runner.py")
+            parent = os.path.join(tmp, "extreme_cli_runner.py")
+            with open(sibling, "w", encoding="utf-8") as handle:
+                handle.write("WHERE = 'scripts'\n")
+            with open(parent, "w", encoding="utf-8") as handle:
+                handle.write("WHERE = 'base'\n")
+            labels = os.path.join(scripts, "extreme_port_labels.py")
+            found = e._runner_candidate_paths(labels)
+            self.assertEqual(os.path.realpath(found[0]), os.path.realpath(sibling))
+
+    def test_exec_registers_module_before_dataclasses_run(self):
+        """Python 3.12 dataclasses fail if the module is not in sys.modules."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "extreme_cli_runner.py")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(_DATACLASS_RUNNER)
+            module = e._exec_cli_runner(path)
+            self.assertIs(sys.modules[e._RUNNER_MODULE_NAME], module)
+            self.assertEqual(module.PROBE.name, "ok")
+            self.assertEqual(module._EXOS_USERNAME, "exos-user")
+
+    def test_load_from_scripts_subdir_and_status_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts = os.path.join(tmp, "scripts")
+            os.makedirs(scripts)
+            path = os.path.join(scripts, "extreme_cli_runner.py")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(_DATACLASS_RUNNER)
+            labels = os.path.join(tmp, "extreme_port_labels.py")
+            loaded = e._load_cli_runner(labels)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(os.path.realpath(e._RUNNER_PATH), os.path.realpath(path))
+            lines = e.runner_status_lines()
+            self.assertEqual(lines[0], "runner_loaded True")
+            self.assertEqual(lines[1], "runner_error None")
+            self.assertIn(os.path.realpath(path), lines[2])
+            self.assertEqual(lines[3], "credentials extreme_exos extreme_vsp")
+
+    def test_status_when_runner_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            labels = os.path.join(tmp, "extreme_port_labels.py")
+            self.assertIsNone(e._load_cli_runner(labels))
+            lines = e.runner_status_lines()
+            self.assertEqual(lines[0], "runner_loaded False")
+            self.assertTrue(lines[1].startswith("runner_error "))
+            self.assertNotEqual(lines[1], "runner_error None")
+            self.assertEqual(lines[2], "runner_path None")
+            self.assertEqual(lines[3], "credentials unavailable")
 
 
 if __name__ == "__main__":

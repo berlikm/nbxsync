@@ -20,8 +20,10 @@ truncated label silently drops a port out of (or into) monitoring.
 Grammar / length rules: ``zabbix/reference/port-identity-foundation.md``.
 Vendor CLI citations + the ID convention: ``README-extreme-port-labels.md``.
 
-Transport is borrowed from ``extreme_cli_runner.py`` (same directory) — this
-script does not open its own SSH stack.
+Transport is borrowed from ``extreme_cli_runner.py`` (SCRIPTS_ROOT, also
+searched under BASE_DIR/scripts). This script does not open its own SSH
+stack. The runner module is registered in ``sys.modules`` before exec
+(Python 3.12 dataclasses).
 
 Environment variables (identical to the CLI runner):
   EXTREME_VENV_PATH                                   — venv holding netmiko
@@ -1284,32 +1286,145 @@ def voss_apply_commands(port: str, label: str) -> list[str]:
 
 _RUNNER = None
 _RUNNER_ERROR: str | None = None
+_RUNNER_PATH: str | None = None
+_RUNNER_MODULE_NAME = "_extreme_cli_runner_shared"
 
 
-def _load_cli_runner():
-    """Load the sibling ``extreme_cli_runner.py`` by path.
+def _runner_search_dirs(script_path: str | None = None) -> list[str]:
+    """Directories that may hold ``extreme_cli_runner.py``.
 
-    NetBox loads every script file as an isolated module, so a plain
-    ``import extreme_cli_runner`` is not reliable; loading by file location is.
-    We reuse its SSH session helpers and credential resolution rather than
-    standing up a second transport stack.
+    Prod SCRIPTS_ROOT is ``/opt/netbox/netbox/scripts``. An older copy of this
+    file lived at BASE_DIR (``/opt/netbox/netbox``), so a sibling lookup there
+    missed ``scripts/extreme_cli_runner.py``. Search both, plus Django
+    ``SCRIPTS_ROOT`` / ``BASE_DIR`` when they exist. A compatibility symlink
+    at BASE_DIR is optional once this search is in the deployed file.
     """
-    global _RUNNER, _RUNNER_ERROR
+    here = os.path.dirname(os.path.abspath(script_path or __file__))
+    parent = os.path.dirname(here)
+    dirs = [
+        here,
+        os.path.join(here, "scripts"),
+        os.path.join(parent, "scripts"),
+        parent,
+    ]
+    try:
+        from django.conf import settings
+        scripts_root = str(getattr(settings, "SCRIPTS_ROOT", "") or "")
+        base_dir = str(getattr(settings, "BASE_DIR", "") or "")
+        if scripts_root:
+            dirs.append(scripts_root)
+        if base_dir:
+            dirs.append(base_dir)
+            dirs.append(os.path.join(base_dir, "scripts"))
+    except Exception:  # noqa: BLE001 — Django may be unconfigured in unit tests
+        pass
+    seen: set[str] = set()
+    out: list[str] = []
+    for directory in dirs:
+        if not directory:
+            continue
+        key = os.path.normpath(directory)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(directory)
+    return out
+
+
+def _runner_candidate_paths(script_path: str | None = None) -> list[str]:
+    """Existing ``extreme_cli_runner.py`` files, first match preferred.
+
+    Symlink and target are the same real path — keep one.
+    """
+    found: list[str] = []
+    seen: set[str] = set()
+    for directory in _runner_search_dirs(script_path):
+        path = os.path.join(directory, "extreme_cli_runner.py")
+        if not os.path.isfile(path):
+            continue
+        real = os.path.realpath(path)
+        if real in seen:
+            continue
+        seen.add(real)
+        found.append(path)
+    return found
+
+
+def _exec_cli_runner(path: str):
+    """Import the runner file. Register in ``sys.modules`` *before* exec.
+
+    Python 3.12 dataclasses look up ``cls.__module__`` in ``sys.modules``
+    while the file is executing. ``module_from_spec`` + ``exec_module``
+    without that insert fails even when the path is correct.
+    """
+    spec = importlib.util.spec_from_file_location(_RUNNER_MODULE_NAME, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"no loader for {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[_RUNNER_MODULE_NAME] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        if sys.modules.get(_RUNNER_MODULE_NAME) is module:
+            del sys.modules[_RUNNER_MODULE_NAME]
+        raise
+    return module
+
+
+def _reset_cli_runner() -> None:
+    """Test helper. Production jobs never call this."""
+    global _RUNNER, _RUNNER_ERROR, _RUNNER_PATH
+    _RUNNER = None
+    _RUNNER_ERROR = None
+    _RUNNER_PATH = None
+    sys.modules.pop(_RUNNER_MODULE_NAME, None)
+
+
+def _load_cli_runner(script_path: str | None = None):
+    """Load ``extreme_cli_runner.py`` by path (not a plain import).
+
+    NetBox loads every script file as an isolated module, so
+    ``import extreme_cli_runner`` is not reliable. We reuse the runner's SSH
+    session helpers and credential resolution rather than a second transport.
+    ``script_path`` is the labels file; unit tests pass a fake location.
+    """
+    global _RUNNER, _RUNNER_ERROR, _RUNNER_PATH
     if _RUNNER is not None or _RUNNER_ERROR is not None:
         return _RUNNER
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "extreme_cli_runner.py")
-    try:
-        spec = importlib.util.spec_from_file_location("_extreme_cli_runner_shared", path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"no loader for {path}")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        _RUNNER = module
-    except Exception as exc:  # noqa: BLE001 — never break script discovery
-        _RUNNER_ERROR = str(exc)
-        logger.warning("could not load extreme_cli_runner.py (%s)", exc)
+    errors: list[str] = []
+    for path in _runner_candidate_paths(script_path):
+        try:
+            _RUNNER = _exec_cli_runner(path)
+            _RUNNER_PATH = os.path.realpath(path)
+            return _RUNNER
+        except Exception as exc:  # noqa: BLE001 — try the next location
+            errors.append(f"{path}: {exc}")
+    if errors:
+        _RUNNER_ERROR = "; ".join(errors)
+    else:
+        searched = ", ".join(_runner_search_dirs(script_path))
+        _RUNNER_ERROR = (
+            "extreme_cli_runner.py not found (searched: "
+            f"{searched})"
+        )
+    logger.warning("could not load extreme_cli_runner.py (%s)", _RUNNER_ERROR)
     return _RUNNER
+
+
+def runner_status_lines() -> list[str]:
+    """Operator-facing transport probe (no secrets)."""
+    _load_cli_runner()
+    cred = "unavailable"
+    if _RUNNER is not None:
+        exos_type, _, _ = _credentials("exos")
+        voss_type, _, _ = _credentials("voss")
+        cred = f"{exos_type} {voss_type}"
+    return [
+        f"runner_loaded {bool(_RUNNER)}",
+        f"runner_error {_RUNNER_ERROR or 'None'}",
+        f"runner_path {_RUNNER_PATH or 'None'}",
+        f"credentials {cred}",
+    ]
 
 
 def _credentials(kind: str) -> tuple[str, str, str]:
@@ -1802,6 +1917,15 @@ if _NETBOX:
                 f"- **Max label length:** {MAX_LABEL_LEN}\n"
                 f"- **Workers:** {data.get('max_workers', 8)}"
             )
+            self.log_info("```\n" + "\n".join(runner_status_lines()) + "\n```")
+            if not preview_only and _RUNNER is None:
+                self.log_failure(
+                    "SSH transport unavailable — "
+                    f"extreme_cli_runner.py could not be loaded ({_RUNNER_ERROR}). "
+                    "Deploy the runner next to this script under SCRIPTS_ROOT "
+                    "(`/opt/netbox/netbox/scripts/extreme_cli_runner.py`)."
+                )
+                return
             if preview_only:
                 self.log_info(
                     "Preview reads **NetBox cabling only** (site / role / "

@@ -186,7 +186,9 @@ The script is the right shape for NetBox: a **flat file** next to
 
 ## 5. First live run (checklist)
 
-1. Copy `extreme_port_labels.py` next to `extreme_cli_runner.py` in `SCRIPTS_ROOT`.
+1. Copy `extreme_port_labels.py` into `SCRIPTS_ROOT` next to
+   `extreme_cli_runner.py` (`/opt/netbox/netbox/scripts/` here). A BASE_DIR
+   symlink is optional; the loader also searches `scripts/` under BASE_DIR.
 2. NetBox → Customization → Scripts → **Extreme Port Labels**.
 3. Mode **Preview**, pick **Scope** (one site or a few devices). Leave canary empty — it is ignored. **No Commit**. Copy CSV from Output.
 4. Eyeball ISC / stack / SAN / AP rows. Floor tokens (`GFL`, `L02`) must still
