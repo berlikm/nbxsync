@@ -261,6 +261,11 @@ BLOCKING_STATUSES = frozenset({
 #: a 1500-row first-run dump is truncated by NetBox and unreadable anyway.
 LOG_TABLE_LIMIT = 40
 
+#: One log_info per this many scorecard rows. A fleet preview is ~300 switches;
+#: a single markdown table that large is truncated, so the job looks like it
+#: printed "Per-device scorecard" twice. Titles include 1/N when split.
+SCORECARD_LOG_CHUNK = 200
+
 CSV_COLUMNS = (
     "site", "device", "port", "kind",
     "class", "speed", "link_mbps", "speed_source",
@@ -405,6 +410,34 @@ def markdown_table(
         lines.append("")
         lines.append(f"_… {omitted} more rows in the CSV Output tab._")
     return "\n".join(lines)
+
+
+def scorecard_log_chunks(
+    header_lines: list[str],
+    body: list[str],
+    *,
+    chunk: int = SCORECARD_LOG_CHUNK,
+) -> list[tuple[str, list[str]]]:
+    """Split the per-device table so NetBox does not truncate one log line.
+
+    Returns ``(title, markdown_lines)``. A scope with ≤ ``chunk`` devices is
+    one entry titled ``Per-device scorecard``. Wider scopes are ``1/N``.
+    """
+    if not body:
+        return []
+    size = max(1, int(chunk or SCORECARD_LOG_CHUNK))
+    total = len(body)
+    nchunks = (total + size - 1) // size
+    out: list[tuple[str, list[str]]] = []
+    for index, start in enumerate(range(0, total, size), 1):
+        rows = body[start:start + size]
+        if nchunks == 1:
+            title = "Per-device scorecard"
+        else:
+            lo, hi = start + 1, start + len(rows)
+            title = f"Per-device scorecard ({index}/{nchunks}, devices {lo}–{hi})"
+        out.append((title, header_lines + rows))
+    return out
 
 
 def plans_to_csv(plans: list) -> str:
@@ -2043,7 +2076,10 @@ if _NETBOX:
                 "and filter `blocking`, `status`, `class`, `ifalias_source`. "
                 "Preview has no SSH: `netbox_description` is the current NetBox "
                 "interface description; `speed_source` is iftype vs "
-                "`Interface.speed` (Kbps)."
+                "`Interface.speed` (Kbps).\n\n"
+                "The per-device scorecard is split across log entries if the "
+                "scope is larger than "
+                f"{SCORECARD_LOG_CHUNK} switches (NetBox truncates one huge table)."
             )
 
             def _dev_cell(name: str) -> str:
@@ -2077,11 +2113,8 @@ if _NETBOX:
                     "| " + " | ".join(row) + " |"
                     for row in score_rows
                 ]
-                for start in range(0, len(body), 200):
-                    chunk = header_lines + body[start:start + 200]
-                    self.log_info(
-                        "\n### Per-device scorecard\n\n" + "\n".join(chunk)
-                    )
+                for title, chunk in scorecard_log_chunks(header_lines, body):
+                    self.log_info("\n### " + title + "\n\n" + "\n".join(chunk))
 
             if preview_only:
                 too_long = [p for p in plans if p.status == "too_long"]

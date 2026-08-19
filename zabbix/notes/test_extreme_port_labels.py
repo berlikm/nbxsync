@@ -692,6 +692,20 @@ class CliSafetyTests(unittest.TestCase):
         data_lines = [ln for ln in text.splitlines() if ln.startswith("| ") and "N" not in ln]
         self.assertEqual(len(data_lines), 5)
 
+    def test_scorecard_log_chunks_title_parts_when_split(self):
+        header = ["| Device |", "|--------|"]
+        body = [f"| sw{i} |" for i in range(1, 6)]
+        one = e.scorecard_log_chunks(header, body, chunk=10)
+        self.assertEqual(len(one), 1)
+        self.assertEqual(one[0][0], "Per-device scorecard")
+        parts = e.scorecard_log_chunks(header, body, chunk=2)
+        self.assertEqual([p[0] for p in parts], [
+            "Per-device scorecard (1/3, devices 1–2)",
+            "Per-device scorecard (2/3, devices 3–4)",
+            "Per-device scorecard (3/3, devices 5–5)",
+        ])
+        self.assertEqual(len(parts[0][1]), 4)  # header + 2 rows
+
 
     def test_semicolon_is_forbidden(self):
         self.assertIn(";", e.FORBIDDEN_CHARS)

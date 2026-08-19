@@ -51,7 +51,9 @@ Three modes, same script. **Do them in this order.**
 
 1. **Log — scorecard.** Status counts, CLASS mix, blocking / hijacked /
    collision totals, then **one line per switch** (`ok`, `blocking`, `diff`,
-   `miss`, `hijack`, `kept`, `unreach`, `coll`, `long`). Blocking tables are
+   `miss`, `hijack`, `kept`, `unreach`, `coll`, `long`). A fleet-wide table
+   is split across log entries of 200 switches so NetBox does not truncate
+   it (`Per-device scorecard (1/2, …)` then `(2/2, …)`). Blocking tables are
    capped at 40 rows. This is for scanning, not for 1500 diffs.
 2. **Output — CSV.** Every evaluated port. Copy → Excel. This is the sheet you
    keep. First line is `sep=,` (Excel delimiter) plus a UTF-8 BOM. VOSS

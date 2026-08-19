@@ -338,8 +338,10 @@ A Custom Script is not a dashboard. The best report we can ship without a
 plugin is:
 
 1. **Job log** — counts, CLASS mix, **per-device scorecard**, then at most 40
-   blocking / kept rows. NetBox truncates long logs; do not treat this as the
-   archive.
+   blocking / kept rows. NetBox truncates one huge markdown table, so a
+   fleet-wide scorecard is split into log entries of 200 switches (`1/2`,
+   `2/2`) — that is the same table, not a second run. Do not treat the log
+   as the archive.
 2. **Output tab CSV** — every evaluated port. Copy into Excel. First line is
    `sep=,` plus a UTF-8 BOM so Excel keeps commas and encoding. VOSS `1/17` is
    written as a text formula so Excel does not turn it into a date.
