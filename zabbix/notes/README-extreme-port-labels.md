@@ -174,9 +174,9 @@ ID = [<SCOPE>-]<CODE><NN>[-<STACK>][_FARPORT]
 | `SCOPE` | a token that exists on the **hostname** (or was stripped from it) — never a NetBox site tail like `DC` that is not in the name | `B01`, `L01`, `GFL`, `L50` |
 | `CODE<NN>` | **Fabric** (switch/firewall/AP): short codes (`CORE→C`, `DIST→D`, `ACCE→A`, `MGMT→M`; unknown `SPINE→SP`). **Endpoints**: the hostname word (`SAN`, `SNAS`, `ESX`) | `D01`, `A03`, `SAN11`, `SNAS01` |
 | `-STACK` | hostname `-1`/`-2`, **only when the far port does not already start with that member** | omitted on `2:10` (the slot *is* the member → `_2_10`); kept on unslotted `48` → `-2_48` |
-| `_FARPORT` | far-end interface; `:`/`/`/`.` → `_`, leading zeros stripped | `_29`, `_1_24`. If that overflows, concatenate: `_120`. No extra `P`. Filler `ETH`/`NIC`/`PORT` drops (`ct0.eth4` → `_CT0_4`). |
+| `_FARPORT` | far-end interface; `:`/`/`/`.` → `_`, leading zeros stripped | `_29`, `_1_24`. If that overflows, concatenate: `_120`. No extra `P`. Filler `ETH`/`NIC`/`PORT` drops (`ct0.eth4` → `_CT0_4`). ESXi `vmnic1` → `_NIC1`. Lights-out `MGMT` → `_MG`. |
 
-Non-numeric far ports use a bare `_` (`_LOM1`, `_X1`, `_VMNIC0`).
+Non-numeric far ports use a bare `_` (`_LOM1`, `_X1`, `_NIC0`).
 `UP` (access point) omits the far port entirely — an AP has one uplink, so the
 port number is noise.
 
@@ -262,6 +262,9 @@ stays `US`. The description is a CLASS hint only — ID still comes from the
 far hostname (`n08` on the cable, even if the description says `N07`).
 Dell iDRAC ifNames render as `ILO` in the port token (`iDRAC 10` → `_ILO10`);
 CLASS still matches the raw ifName (`idrac` in `BMC_PORT_TOKENS`).
+ESXi `vmnic1` is `_NIC1` (not `_VMNIC1`). A SAN/firewall `MGMT` port is `_MG`,
+so `CTE0.B.MGMT` is `MON-SAN01_CTE0_B_MG` at 1G and `MON-10G-SAN01_B_MG`
+when SPEED is needed — not the concatenated `CTE0BMGMT`.
 
 `X` is **policy, not inference.** Use it for SPAN / lab / operator mute. **Stack,
 ISC, and MLAG peer-links are ordinary switch↔switch cables** — the script
@@ -280,7 +283,7 @@ someone encoded *this estate’s inventory* instead of *the grammar*.
 |---|---|
 | Hostname ID | Keep the words on the name (`SAN`, `SNAS`, `ESX`, `SAN10-N01`). Shorten the prefix only if 20 characters force it. |
 | Site strip | Token-wise shared prefix with the far-site slug. Never invent a site tail (`DC`) that is not on the hostname. |
-| Port token | Split on `:` `/` `.`; drop generic filler (`ETH`, `NIC`, `PORT`); no extra `P`. Dell `iDRAC` renders `ILO`. |
+| Port token | Split on `:` `/` `.`; drop generic filler (`ETH`, `NIC`, `PORT`); no extra `P`. Dell `iDRAC` → `ILO`, ESXi `vmnic` → `NIC`, `MGMT` → `MG`. |
 | Length | Longest ID that fits the *emitted* SPEED token. Refuse rather than truncate. |
 | Unknown CLASS | Anything that is not switch/firewall/AP/SD-WAN/server/storage/cohesity/hypervisor is `MON`. |
 | SPEED token | `Mbps → NG` / `2G5`. 50G / 200G / 800G do not need a table row. |
@@ -420,7 +423,7 @@ emits (hostname identity, no extra `P`, SPEED only when not the class default).
 |---|---|---|---|---|---|
 | 1 | CH-ZRH-ZH4-CORE02::1 [Switch Core] | `USW-C02_1` | `ISC` | 9 | diff |
 | 5 | CH-ZRH-ZH4-MGMT01-1::1:51 [Switch Mgmt] | `USW-M01_1_51` | `MLAG_MGMT01_p51` | 12 | diff |
-| 12 | ch-zrh-zh4-esx40…::vmnic0 [Server] | `US-ESX40_VMNIC0` | `esx40_ct1_eth0` | 15 | diff |
+| 12 | ch-zrh-zh4-esx40…::vmnic0 [Server] | `US-ESX40_NIC0` | `esx40_ct1_eth0` | 13 | diff |
 | 15 | CH-ZRH-ZH4-FWGW01::x1 [Firewall] | `USW-FW01_X1` | `ZRH-FWGW01_x1` | 11 | diff |
 | 20 | — | `—` | `esx45_ct1_eth0` | — | kept |
 | 23 | ch-zrh-zh4-san02::ct0.eth10 [Storage] | `US-SAN02_CT0_10` | `SAN02_ctl0_eth10` | 15 | diff |
@@ -484,7 +487,8 @@ Reading it:
 - Endpoint IDs keep hostname words: Cohesity `lr50-san10-n08` →
   `MON-SAN10-N08` (not `CY08`, not `LR50-…`). `SNAS01` stays `SNAS`, `san11`
   stays `SAN`. A NetBox site slug that is not on the hostname (`ch-zrh-dc`)
-  is not invented as `DC`. Dell iDRAC is `_ILO10`, not `_IDRAC10`.
+  is not invented as `DC`. Dell iDRAC is `_ILO10`, not `_IDRAC10`. ESXi
+  `vmnic` is `_NIC3`. `MGMT` is `_MG`.
 
 ---
 

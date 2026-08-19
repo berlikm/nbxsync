@@ -53,7 +53,7 @@ class ClassifyTests(unittest.TestCase):
 
     def test_unknown_10g_emits_mon_with_speed_token(self):
         self.assertEqual(e.build_label("MON", 10000, "PRN01"), "MON-10G-PRN01")
-        self.assertEqual(e.build_label("US", 1000, "ES40_VMNIC0"), "US-1G-ES40_VMNIC0")
+        self.assertEqual(e.build_label("US", 1000, "ES40_NIC0"), "US-1G-ES40_NIC0")
 
     def test_new_switch_role_is_usw_without_a_table_row(self):
         self.assertEqual(e.classify("Switch Spine", 40000, "1"), "USW")
@@ -398,12 +398,91 @@ class LabelUniquenessTests(unittest.TestCase):
         self.assertEqual(e.normalize_port_token("iDRAC 10 (NIC.1)"), "ILO10_1")
         self.assertEqual(e.normalize_port_token("iDRAC 9 (NIC.1)"), "ILO9_1")
         self.assertEqual(e.normalize_port_token("iDRAC"), "ILO")
+        self.assertEqual(e.normalize_port_token("vmnic1"), "NIC1")
+        self.assertEqual(e.normalize_port_token("vmnic0"), "NIC0")
+        self.assertEqual(e.normalize_port_token("mgmt"), "MG")
+        self.assertEqual(e.normalize_port_token("CTE0.B.MGMT"), "CTE0_B_MG")
         lab = self._label(
             "MON", 1000, "cn-sha-p-esx13.sensirion.lokal",
             "cn-sha-jiu", "cn-sha-jiu", "iDRAC 9 (NIC.1)", "Server",
         )
         self.assertEqual(lab, "MON-P-ESX13_ILO9_1")
         self.assertNotIn("IDRAC", lab)
+
+    def test_vmnic_renders_nic_so_1g_and_40g_fit(self):
+        lab = self._label(
+            "US", 1000, "hu-deb-p-esx13.sensirion.lokal",
+            "hu-deb-nag-a", "hu-deb-nag-a", "vmnic0", "Server",
+        )
+        self.assertEqual(lab, "US-1G-P-ESX13_NIC0")
+        self.assertLessEqual(len(lab), 20)
+        self.assertEqual(
+            self._label(
+                "US", 40000, "hu-deb-p-esx13.sensirion.lokal",
+                "hu-deb-nag-a", "hu-deb-nag-a", "vmnic0", "Server",
+            ),
+            "US-40G-P-ESX13_NIC0",
+        )
+
+    def test_san_cte_mgmt_shortens_to_mg_so_10g_fits(self):
+        """``CTE0.B.MGMT`` used to concatenate to ``CTE0BMGMT`` (19)."""
+        a = e.plan_label(
+            local_site="hu-deb-nag-a",
+            far_name="HU-DEB-SAN01",
+            far_site="hu-deb-nag-a",
+            far_port="CTE0.A.MGMT",
+            far_role="Storage",
+            far_is_mgmt=False,
+            link_mbps=1000,
+        )
+        b = e.plan_label(
+            local_site="hu-deb-nag-a",
+            far_name="HU-DEB-SAN01",
+            far_site="hu-deb-nag-a",
+            far_port="CTE0.B.MGMT",
+            far_role="Storage",
+            far_is_mgmt=False,
+            link_mbps=1000,
+        )
+        self.assertEqual(a, "MON-SAN01_CTE0_A_MG")
+        self.assertEqual(b, "MON-SAN01_CTE0_B_MG")
+        ten = e.plan_label(
+            local_site="hu-deb-nag-a",
+            far_name="HU-DEB-SAN01",
+            far_site="hu-deb-nag-a",
+            far_port="CTE0.B.MGMT",
+            far_role="Storage",
+            far_is_mgmt=False,
+            link_mbps=10000,
+        )
+        self.assertEqual(ten, "MON-10G-SAN01_B_MG")
+        self.assertLessEqual(len(ten), 20)
+        self.assertNotEqual(a, b)
+        ten_a = e.plan_label(
+            local_site="hu-deb-nag-a",
+            far_name="HU-DEB-SAN01",
+            far_site="hu-deb-nag-a",
+            far_port="CTE0.A.MGMT",
+            far_role="Storage",
+            far_is_mgmt=False,
+            link_mbps=10000,
+        )
+        self.assertEqual(ten_a, "MON-10G-SAN01_A_MG")
+        self.assertNotEqual(ten, ten_a)
+
+    def test_firewall_mgmt_port_renders_mg(self):
+        lab = self._label(
+            "USW", 1000, "KR-SEL-HAN-L14-FWGW01",
+            "kr-sel-han", "kr-sel-han", "mgmt", "Firewall",
+        )
+        self.assertEqual(lab, "USW-1G-L14-FW01_MG")
+        self.assertEqual(
+            self._label(
+                "USW", 10000, "KR-SEL-HAN-L14-FWGW01",
+                "kr-sel-han", "kr-sel-han", "mgmt", "Firewall",
+            ),
+            "USW-L14-FW01_MG",
+        )
 
     def test_cohesity_room_prefix_dropped_same_site_and_cross_site(self):
         """``LR50`` is a lab room, not a floor. Drop it so 10G still fits."""
@@ -439,7 +518,7 @@ class LabelUniquenessTests(unittest.TestCase):
             "US", 1000, "ch-zrh-zh4-esx47.sensirion.lokal",
             "ch-zrh-dc", "ch-zrh-zh4", "vmnic4", "Server",
         )
-        self.assertEqual(lab, "US-1G-ESX47_VMNIC4")
+        self.assertEqual(lab, "US-1G-ESX47_NIC4")
         self.assertNotIn("DC", lab)
 
     def test_endpoint_codes_keep_hostname_words(self):
@@ -463,8 +542,8 @@ class LabelUniquenessTests(unittest.TestCase):
             "US-40G-SAN11_CT0_4",
         )
 
-    def test_esxi_hypervisor_data_nic_is_us_and_keeps_vmnic(self):
-        """Role ESXi Hypervisor is US. 10G is the US default, so vmnic fits."""
+    def test_esxi_hypervisor_data_nic_is_us_and_keeps_nic_index(self):
+        """Role ESXi Hypervisor is US. ``vmnic`` renders ``NIC`` so 10G fits."""
         a = e.plan_label(
             local_site="kr-sel-han",
             far_name="kr-sel-p-esx13.sensirion.lokal",
@@ -483,9 +562,10 @@ class LabelUniquenessTests(unittest.TestCase):
             far_is_mgmt=False,
             link_mbps=10000,
         )
-        self.assertEqual(a, "US-P-ESX13_VMNIC3")
-        self.assertEqual(b, "US-P-ESX13_VMNIC5")
+        self.assertEqual(a, "US-P-ESX13_NIC3")
+        self.assertEqual(b, "US-P-ESX13_NIC5")
         self.assertNotEqual(a, b)
+        self.assertNotIn("VMNIC", a)
         self.assertLessEqual(len(a), 20)
 
     def test_cohesity_1g_does_not_invent_10g(self):

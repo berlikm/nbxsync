@@ -710,6 +710,13 @@ def _clean_port_segments(text: str) -> list[str]:
         elif seg.startswith("IDRAC"):
             # Dell lights-out ifName is long; ILO is the estate word and fits 10G.
             segs.append("ILO" + seg[5:])
+        elif seg == "VMNIC" or (seg.startswith("VMNIC") and seg[5:].isdigit()):
+            # ESXi ``vmnic1`` → ``NIC1``. The VM prefix burns the 10G slot.
+            segs.append("NIC" + seg[5:])
+        elif seg == "MGMT" or (seg.startswith("MGMT") and seg[4:].isdigit()):
+            # ``CTE0.B.MGMT`` was concatenating to ``CTE0BMGMT`` (19) with no
+            # room for 10G. ``MG`` keeps controller A/B and fits ``10G-``.
+            segs.append("MG" + seg[4:])
         else:
             segs.append(seg)
     kept = [seg for seg in segs if seg not in _PORT_NOISE]
@@ -756,6 +763,8 @@ def _port_suffix_candidates(port_name: str) -> list[str]:
     character 40G does not have. Vendor NIC names shed trailing segments so a
     tight budget costs detail rather than the whole port. Numeric slot+port is
     never shortened to the slot only (``2_14`` → ``2`` would name the slot).
+    Letter tails (``B_MG``) are tried before chopping the function off
+    (``CTE0B``) so 10G still says MG, not just the enclosure.
     """
     token = normalize_port_token(port_name)
     if not token:
@@ -765,7 +774,11 @@ def _port_suffix_candidates(port_name: str) -> list[str]:
 
     segments = token.split("_")
     forms = [token, token.replace("_", "")]
-    forms += ["".join(segments[:n]) for n in range(len(segments) - 1, 0, -1)]
+    if len(segments) > 1:
+        tails = ["_".join(segments[n:]) for n in range(1, len(segments))]
+        tails += ["".join(segments[n:]) for n in range(1, len(segments))]
+        forms += [tail for tail in tails if tail and tail[0].isalpha()]
+        forms += ["".join(segments[:n]) for n in range(len(segments) - 1, 0, -1)]
     return [f"_{form}" for form in _uniq(forms)]
 
 

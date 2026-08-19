@@ -306,7 +306,7 @@ CH-STA-L26	CH-STA-L26-L02-MGMT03	1/6	1000base-t	COH-N06-ILO	lr50-san10-n06.sensi
 CH-STA-L26	CH-STA-L26-L02-MGMT03	1/7	1000base-t	COH-N07-ILO	lr50-san10-n08.sensirion.lokal	Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)	Cohesity	MON	1000	MON-SAN10-N08	13	
 CH-STA-L26	CH-STA-L26-L02-MGMT03	1/8	1000base-t	COH-N08-ILO	lr50-san10-n07.sensirion.lokal	Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)	Cohesity	MON	1000	MON-SAN10-N07	13	
 CH-STA-L26	CH-STA-L26-L02-MGMT03	1/9	1000base-t	COH-N09-ILO	lr50-san10-n09.sensirion.lokal	Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)	Cohesity	MON	1000	MON-SAN10-N09	13	
-CH-STA-L26	CH-STA-L26-L02-MGMT03	1/18	1000base-t	FWZone-MGMT	CH-STA-L26-FWZone01	mgmt	Firewall	USW	1000	USW-1G-FW01_MGMT	16	
+CH-STA-L26	CH-STA-L26-L02-MGMT03	1/18	1000base-t	FWZone-MGMT	CH-STA-L26-FWZone01	mgmt	Firewall	USW	1000	USW-1G-FW01_MG	14	
 CH-STA-L26	CH-STA-L26-L02-MGMT03	1/19	1000base-t	S-FWZONE_p13	CH-STA-L26-FWZone01	port13	Firewall	USW	1000	USW-1G-FW01_13	14	
 CH-STA-L26	CH-STA-L26-L02-MGMT03	1/20	1000base-t	S-FWZONE_p14	CH-STA-L26-FWZone01	port14	Firewall	USW	1000	USW-1G-FW01_14	14	
 CH-STA-L26	CH-STA-L26-L02-MGMT03	1/21	1000base-t	S-FWZONE_p15	CH-STA-L26-FWZone01	port15	Firewall	USW	1000	USW-1G-FW01_15	14	
@@ -661,7 +661,7 @@ CH-STA-L50	CH-STA-L50-L01-MGMT01	1/29	10gbase-x-sfpp	NNI-port	CH-STA-L50-L01-COR
 CH-STA-L50	CH-STA-L50-L01-MGMT01	1/3	1000base-t	S-FWZONE_p15	CH-STA-L50-FWZone01	port15	Firewall	USW	1000	USW-1G-FW01_15	14	
 CH-STA-L50	CH-STA-L50-L01-MGMT01	1/30	10gbase-x-sfpp	NNI-port	CH-STA-L50-L01-CORE02	1:7	Switch Core	USW	10000	USW-L01-C02_1_7	15	
 CH-STA-L50	CH-STA-L50-L01-MGMT01	1/4	1000base-t	S-FWZONE_p16	CH-STA-L50-FWZone01	port16	Firewall	USW	1000	USW-1G-FW01_16	14	
-CH-STA-L50	CH-STA-L50-L01-MGMT01	1/9	1000base-t	FWZONE-MGMT	CH-STA-L50-FWZone01	mgmt	Firewall	USW	1000	USW-1G-FW01_MGMT	16	
+CH-STA-L50	CH-STA-L50-L01-MGMT01	1/9	1000base-t	FWZONE-MGMT	CH-STA-L50-FWZone01	mgmt	Firewall	USW	1000	USW-1G-FW01_MG	14	
 CH-STA-L52	CH-STA-L52-L02-ACCE01	1	1000base-t		CH-STA-L52-L02-ACPO01	mgmt0	Access Point	UP	1000	UP-L02-AP01	11	
 CH-STA-L52	CH-STA-L52-L02-ACCE01	25	1000base-x-sfp	UPLINK	CH-STA-L50-L01-DIST01	25	Switch Dist	USW	1000	USW-1G-L50-D01_25	17	
 CH-STA-L50	CH-STA-L50-L02-ACCE01	1	1000base-t	L02-ACPO01	CH-STA-L50-L02-ACPO01	mgmt0	Access Point	UP	1000	UP-L02-AP01	11	
@@ -732,15 +732,15 @@ CH-STA-L50	CH-STA-L50-L02-DIST01	8	1000base-t	L02-ACCE08_p24	CH-STA-L50-L02-ACCE
 CH-STA-L50	CH-STA-L50-L02-DIST01	9	1000base-t	L02-ACCE09_p24	CH-STA-L50-L02-ACCE09	24	Switch Access	USW	1000	USW-1G-L02-A09_24	17	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	1	10gbase-x-sfpp	ISC	CH-ZRH-ZH4-CORE02	1	Switch Core	USW	10000	USW-C02_1	9	ISC
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	11	10gbase-x-sfpp	Alternative_ISC	CH-ZRH-ZH4-CORE02	11	Switch Core	USW	10000	USW-C02_11	10	ISC
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	12	10gbase-x-sfpp	esx40_ct1_eth0	ch-zrh-zh4-esx40.sensirion.lokal	vmnic0	Server	US	10000	US-ESX40_VMNIC0	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	13	10gbase-x-sfpp	esx41_ct1_eth0	ch-zrh-zh4-esx41.sensirion.lokal	vmnic0	Server	US	10000	US-ESX41_VMNIC0	15	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	12	10gbase-x-sfpp	esx40_ct1_eth0	ch-zrh-zh4-esx40.sensirion.lokal	vmnic0	Server	US	10000	US-ESX40_NIC0	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	13	10gbase-x-sfpp	esx41_ct1_eth0	ch-zrh-zh4-esx41.sensirion.lokal	vmnic0	Server	US	10000	US-ESX41_NIC0	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	15	10gbase-x-sfpp	ZRH-FWGW01_x1	CH-ZRH-ZH4-FWGW01	x1	Firewall	USW	10000	USW-FW01_X1	11	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	16	10gbase-x-sfpp	ZRH-FWGW01_x3	CH-ZRH-ZH4-FWGW01	x3	Firewall	USW	10000	USW-FW01_X3	11	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	17	10gbase-x-sfpp	esx42_ct1_eth0	ch-zrh-zh4-esx42.sensirion.lokal	vmnic0	Server	US	10000	US-ESX42_VMNIC0	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	18	10gbase-x-sfpp	esx43_ct1_eth0	ch-zrh-zh4-esx43.sensirion.lokal	vmnic0	Server	US	10000	US-ESX43_VMNIC0	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	19	10gbase-x-sfpp	esx44_ct1_eth0	ch-zrh-zh4-esx44.sensirion.lokal	vmnic0	Server	US	10000	US-ESX44_VMNIC0	15	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	17	10gbase-x-sfpp	esx42_ct1_eth0	ch-zrh-zh4-esx42.sensirion.lokal	vmnic0	Server	US	10000	US-ESX42_NIC0	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	18	10gbase-x-sfpp	esx43_ct1_eth0	ch-zrh-zh4-esx43.sensirion.lokal	vmnic0	Server	US	10000	US-ESX43_NIC0	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	19	10gbase-x-sfpp	esx44_ct1_eth0	ch-zrh-zh4-esx44.sensirion.lokal	vmnic0	Server	US	10000	US-ESX44_NIC0	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	2	10gbase-x-sfpp	ISC	CH-ZRH-ZH4-CORE02	2	Switch Core	USW	10000	USW-C02_2	9	ISC
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	22	10gbase-x-sfpp	esx47_ct1_eth0	ch-zrh-zh4-esx47.sensirion.lokal	vmnic0	Server	US	10000	US-ESX47_VMNIC0	15	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	22	10gbase-x-sfpp	esx47_ct1_eth0	ch-zrh-zh4-esx47.sensirion.lokal	vmnic0	Server	US	10000	US-ESX47_NIC0	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	23	10gbase-x-sfpp	SAN02_ctl0_eth10	ch-zrh-zh4-san02	ct0.eth10	Storage	US	10000	US-SAN02_CT0_10	15	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	24	10gbase-x-sfpp	SAN02_ctl1_eth10	ch-zrh-zh4-san02	ct1.eth10	Storage	US	10000	US-SAN02_CT1_10	15	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	25	10gbase-x-sfpp	SAN02_ctl0_eth2	ch-zrh-zh4-san02	ct0.eth2	Storage	US	10000	US-SAN02_CT0_2	14	
@@ -750,27 +750,27 @@ CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	28	10gbase-x-sfpp	SAN02_ctl1_eth4	ch-zrh-zh4-san02	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	29	10gbase-x-sfpp	ZH4-SAN04-N01_CT	ch-zrh-zh4-san01	ct0.eth10	Storage	US	10000	US-SAN01_CT0_10	15	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	3	10gbase-x-sfpp	ISC	CH-ZRH-ZH4-CORE02	3	Switch Core	USW	10000	USW-C02_3	9	ISC
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	30	10gbase-x-sfpp	ZH4-SAN04-N01_CT	ch-zrh-zh4-san01	ct1.eth10	Storage	US	10000	US-SAN01_CT1_10	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	32	10gbase-x-sfpp	esx40_ct1_eth2	ch-zrh-zh4-esx40.sensirion.lokal	vmnic2	Server	US	10000	US-ESX40_VMNIC2	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	33	10gbase-x-sfpp	esx41_ct1_eth2	ch-zrh-zh4-esx41.sensirion.lokal	vmnic2	Server	US	10000	US-ESX41_VMNIC2	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	37	10gbase-x-sfpp	esx42_ct1_eth2	ch-zrh-zh4-esx42.sensirion.lokal	vmnic2	Server	US	10000	US-ESX42_VMNIC2	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	38	10gbase-x-sfpp	esx43_ct1_eth2	ch-zrh-zh4-esx43.sensirion.lokal	vmnic2	Server	US	10000	US-ESX43_VMNIC2	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	39	10gbase-x-sfpp	esx44_ct1_eth2	ch-zrh-zh4-esx44.sensirion.lokal	vmnic2	Server	US	10000	US-ESX44_VMNIC2	15	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	32	10gbase-x-sfpp	esx40_ct1_eth2	ch-zrh-zh4-esx40.sensirion.lokal	vmnic2	Server	US	10000	US-ESX40_NIC2	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	33	10gbase-x-sfpp	esx41_ct1_eth2	ch-zrh-zh4-esx41.sensirion.lokal	vmnic2	Server	US	10000	US-ESX41_NIC2	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	37	10gbase-x-sfpp	esx42_ct1_eth2	ch-zrh-zh4-esx42.sensirion.lokal	vmnic2	Server	US	10000	US-ESX42_NIC2	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	38	10gbase-x-sfpp	esx43_ct1_eth2	ch-zrh-zh4-esx43.sensirion.lokal	vmnic2	Server	US	10000	US-ESX43_NIC2	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	39	10gbase-x-sfpp	esx44_ct1_eth2	ch-zrh-zh4-esx44.sensirion.lokal	vmnic2	Server	US	10000	US-ESX44_NIC2	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	4	10gbase-x-sfpp	ISC	CH-ZRH-ZH4-CORE02	4	Switch Core	USW	10000	USW-C02_4	9	ISC
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	42	10gbase-x-sfpp	esx47_ct1_eth2	ch-zrh-zh4-esx47.sensirion.lokal	vmnic2	Server	US	10000	US-ESX47_VMNIC2	15	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	42	10gbase-x-sfpp	esx47_ct1_eth2	ch-zrh-zh4-esx47.sensirion.lokal	vmnic2	Server	US	10000	US-ESX47_NIC2	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	46	10gbase-x-sfpp	ZH5-CORE01-P46	CH-ZRH-ZH5-CORE01	46	Switch Core	USW	10000	USW-ZH5-C01_46	14	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	5	10gbase-x-sfpp	MLAG_MGMT01_p51	CH-ZRH-ZH4-MGMT01-1	01:51	Switch Mgmt	USW	10000	USW-M01_1_51	12	MLAG
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE01	6	10gbase-x-sfpp	MLAG_MGMT02_p51	CH-ZRH-ZH4-MGMT01-2	02:51	Switch Mgmt	USW	10000	USW-M01_2_51	12	MLAG
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	1	10gbase-x-sfpp	ISC	CH-ZRH-ZH4-CORE01	1	Switch Core	USW	10000	USW-C01_1	9	ISC
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	11	10gbase-x-sfpp	Alternative_ISC	CH-ZRH-ZH4-CORE01	11	Switch Core	USW	10000	USW-C01_11	10	ISC
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	12	10gbase-x-sfpp	esx40_ct1_eth1	ch-zrh-zh4-esx40.sensirion.lokal	vmnic1	Server	US	10000	US-ESX40_VMNIC1	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	13	10gbase-x-sfpp	esx41_ct1_eth1	ch-zrh-zh4-esx41.sensirion.lokal	vmnic1	Server	US	10000	US-ESX41_VMNIC1	15	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	12	10gbase-x-sfpp	esx40_ct1_eth1	ch-zrh-zh4-esx40.sensirion.lokal	vmnic1	Server	US	10000	US-ESX40_NIC1	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	13	10gbase-x-sfpp	esx41_ct1_eth1	ch-zrh-zh4-esx41.sensirion.lokal	vmnic1	Server	US	10000	US-ESX41_NIC1	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	15	10gbase-x-sfpp	ZRH-FWGW01_x2	CH-ZRH-ZH4-FWGW01	x2	Firewall	USW	10000	USW-FW01_X2	11	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	16	10gbase-x-sfpp	ZRH-FWGW01_x4	CH-ZRH-ZH4-FWGW01	x4	Firewall	USW	10000	USW-FW01_X4	11	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	17	10gbase-x-sfpp	esx42_ct1_eth1	ch-zrh-zh4-esx42.sensirion.lokal	vmnic1	Server	US	10000	US-ESX42_VMNIC1	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	18	10gbase-x-sfpp	esx43_ct1_eth1	ch-zrh-zh4-esx43.sensirion.lokal	vmnic1	Server	US	10000	US-ESX43_VMNIC1	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	19	10gbase-x-sfpp	esx44_ct1_eth1	ch-zrh-zh4-esx44.sensirion.lokal	vmnic1	Server	US	10000	US-ESX44_VMNIC1	15	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	17	10gbase-x-sfpp	esx42_ct1_eth1	ch-zrh-zh4-esx42.sensirion.lokal	vmnic1	Server	US	10000	US-ESX42_NIC1	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	18	10gbase-x-sfpp	esx43_ct1_eth1	ch-zrh-zh4-esx43.sensirion.lokal	vmnic1	Server	US	10000	US-ESX43_NIC1	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	19	10gbase-x-sfpp	esx44_ct1_eth1	ch-zrh-zh4-esx44.sensirion.lokal	vmnic1	Server	US	10000	US-ESX44_NIC1	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	2	10gbase-x-sfpp	ISC	CH-ZRH-ZH4-CORE01	2	Switch Core	USW	10000	USW-C01_2	9	ISC
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	22	10gbase-x-sfpp	esx47_ct1_eth1	ch-zrh-zh4-esx47.sensirion.lokal	vmnic1	Server	US	10000	US-ESX47_VMNIC1	15	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	22	10gbase-x-sfpp	esx47_ct1_eth1	ch-zrh-zh4-esx47.sensirion.lokal	vmnic1	Server	US	10000	US-ESX47_NIC1	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	23	10gbase-x-sfpp	SAN02_ctl0_eth11	ch-zrh-zh4-san02	ct0.eth11	Storage	US	10000	US-SAN02_CT0_11	15	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	24	10gbase-x-sfpp	SAN02_ctl1_eth11	ch-zrh-zh4-san02	ct1.eth11	Storage	US	10000	US-SAN02_CT1_11	15	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	25	10gbase-x-sfpp	SAN02_ctl0_eth3	ch-zrh-zh4-san02	ct0.eth3	Storage	US	10000	US-SAN02_CT0_3	14	
@@ -780,13 +780,13 @@ CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	28	10gbase-x-sfpp	SAN02_ctl1_eth5	ch-zrh-zh4-san02	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	29	10gbase-x-sfpp	ZH4-SAN04-N01_CT	ch-zrh-zh4-san01	ct0.eth11	Storage	US	10000	US-SAN01_CT0_11	15	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	3	10gbase-x-sfpp	ISC	CH-ZRH-ZH4-CORE01	3	Switch Core	USW	10000	USW-C01_3	9	ISC
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	30	10gbase-x-sfpp	ZH4-SAN04-N01_CT	ch-zrh-zh4-san01	ct1.eth11	Storage	US	10000	US-SAN01_CT1_11	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	32	10gbase-x-sfpp	esx40_ct1_eth3	ch-zrh-zh4-esx40.sensirion.lokal	vmnic3	Server	US	10000	US-ESX40_VMNIC3	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	33	10gbase-x-sfpp	esx41_ct1_eth3	ch-zrh-zh4-esx41.sensirion.lokal	vmnic3	Server	US	10000	US-ESX41_VMNIC3	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	37	10gbase-x-sfpp	esx42_ct1_eth3	ch-zrh-zh4-esx42.sensirion.lokal	vmnic3	Server	US	10000	US-ESX42_VMNIC3	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	38	10gbase-x-sfpp	esx43_ct1_eth3	ch-zrh-zh4-esx43.sensirion.lokal	vmnic3	Server	US	10000	US-ESX43_VMNIC3	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	39	10gbase-x-sfpp	esx44_ct1_eth3	ch-zrh-zh4-esx44.sensirion.lokal	vmnic3	Server	US	10000	US-ESX44_VMNIC3	15	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	32	10gbase-x-sfpp	esx40_ct1_eth3	ch-zrh-zh4-esx40.sensirion.lokal	vmnic3	Server	US	10000	US-ESX40_NIC3	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	33	10gbase-x-sfpp	esx41_ct1_eth3	ch-zrh-zh4-esx41.sensirion.lokal	vmnic3	Server	US	10000	US-ESX41_NIC3	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	37	10gbase-x-sfpp	esx42_ct1_eth3	ch-zrh-zh4-esx42.sensirion.lokal	vmnic3	Server	US	10000	US-ESX42_NIC3	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	38	10gbase-x-sfpp	esx43_ct1_eth3	ch-zrh-zh4-esx43.sensirion.lokal	vmnic3	Server	US	10000	US-ESX43_NIC3	13	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	39	10gbase-x-sfpp	esx44_ct1_eth3	ch-zrh-zh4-esx44.sensirion.lokal	vmnic3	Server	US	10000	US-ESX44_NIC3	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	4	10gbase-x-sfpp	ISC	CH-ZRH-ZH4-CORE01	4	Switch Core	USW	10000	USW-C01_4	9	ISC
-CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	42	10gbase-x-sfpp	esx47_ct1_eth3	ch-zrh-zh4-esx47.sensirion.lokal	vmnic3	Server	US	10000	US-ESX47_VMNIC3	15	
+CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	42	10gbase-x-sfpp	esx47_ct1_eth3	ch-zrh-zh4-esx47.sensirion.lokal	vmnic3	Server	US	10000	US-ESX47_NIC3	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	46	10gbase-x-sfpp	ZH5-CORE02-P46	CH-ZRH-ZH5-CORE02	46	Switch Core	USW	10000	USW-ZH5-C02_46	14	
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	5	10gbase-x-sfpp	MLAG_MGMT01_p52	CH-ZRH-ZH4-MGMT01-1	01:52	Switch Mgmt	USW	10000	USW-M01_1_52	12	MLAG
 CH-ZRH-ZH4	CH-ZRH-ZH4-CORE02	6	10gbase-x-sfpp	MLAG_MGMT02_p52	CH-ZRH-ZH4-MGMT01-2	02:52	Switch Mgmt	USW	10000	USW-M01_2_52	12	MLAG
@@ -796,19 +796,19 @@ CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:16	1000base-t	esx40_ct0_ilo	ch-zrh-zh4-esx40.se
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:17	1000base-t	esx41_ct0_ilo	ch-zrh-zh4-esx41.sensirion.lokal	iDRAC 10 (NIC.1)	Server	MON	1000	MON-ESX41_ILO10_1	17	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:18	1000base-t	esx42_ct0_ilo	ch-zrh-zh4-esx42.sensirion.lokal	iDRAC 10 (NIC.1)	Server	MON	1000	MON-ESX42_ILO10_1	17	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:19	1000base-t	esx43_ct0_ilo	ch-zrh-zh4-esx43.sensirion.lokal	iDRAC 10 (NIC.1)	Server	MON	1000	MON-ESX43_ILO10_1	17	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:21	1000base-t	esx40_ct0_eth0	ch-zrh-zh4-esx40.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX40_VMNIC4	18	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:22	1000base-t	esx41_ct0_eth0	ch-zrh-zh4-esx41.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX41_VMNIC4	18	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:23	1000base-t	esx42_ct0_eth0	ch-zrh-zh4-esx42.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX42_VMNIC4	18	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:24	1000base-t	esx43_ct0_eth0	ch-zrh-zh4-esx43.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX43_VMNIC4	18	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:21	1000base-t	esx40_ct0_eth0	ch-zrh-zh4-esx40.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX40_NIC4	16	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:22	1000base-t	esx41_ct0_eth0	ch-zrh-zh4-esx41.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX41_NIC4	16	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:23	1000base-t	esx42_ct0_eth0	ch-zrh-zh4-esx42.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX42_NIC4	16	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:24	1000base-t	esx43_ct0_eth0	ch-zrh-zh4-esx43.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX43_NIC4	16	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:25	1000base-t	SAN02_ctl0_mgmt	ch-zrh-zh4-san02	ct0.eth0	Storage	MON	1000	MON-SAN02_CT0_0	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:26	1000base-t	esx44_ct0_eth0	ch-zrh-zh4-esx44.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX44_VMNIC4	18	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:29	1000base-t	esx47_ct0_eth0	ch-zrh-zh4-esx47.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX47_VMNIC4	18	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:26	1000base-t	esx44_ct0_eth0	ch-zrh-zh4-esx44.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX44_NIC4	16	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:29	1000base-t	esx47_ct0_eth0	ch-zrh-zh4-esx47.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX47_NIC4	16	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:31	1000base-t	s-fwgw01:lag.0.2	CH-ZRH-ZH4-FWGW01	port1	Firewall	USW	1000	USW-1G-FW01_1	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:32	1000base-t	s-fwgw01:lag.0.2	CH-ZRH-ZH4-FWGW01	port3	Firewall	USW	1000	USW-1G-FW01_3	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:33	1000base-t	s-fwgw01:lag.0.3	CH-ZRH-ZH4-FWGW01	port13	Firewall	USW	1000	USW-1G-FW01_13	14	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:34	1000base-t	s-fwgw01:lag.0.4	CH-ZRH-ZH4-FWGW01	port9	Firewall	USW	1000	USW-1G-FW01_9	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:49	extreme-summitstack	STACKING_PORT	CH-ZRH-ZH4-MGMT01-2	02:50	Switch Mgmt	USW		USW-M01_2_50	12	stack
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:5	1000base-t	S-fwgw01:mgmt1	CH-ZRH-ZH4-FWGW01	mgmt	Firewall	USW	1000	USW-1G-FW01_MGMT	16	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:5	1000base-t	S-fwgw01:mgmt1	CH-ZRH-ZH4-FWGW01	mgmt	Firewall	USW	1000	USW-1G-FW01_MG	14	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:50	extreme-summitstack	STACKING_PORT	CH-ZRH-ZH4-MGMT01-2	02:49	Switch Mgmt	USW		USW-M01_2_49	12	stack
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:51	10gbase-x-sfpp	MLAG_CORE01_p5	CH-ZRH-ZH4-CORE01	5	Switch Core	USW	10000	USW-C01_5	9	MLAG
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-1	1:52	10gbase-x-sfpp	MLAG_CORE02_p5	CH-ZRH-ZH4-CORE02	5	Switch Core	USW	10000	USW-C02_5	9	MLAG
@@ -816,13 +816,13 @@ CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:1	1000base-t	s-fwgw01:29_HA	CH-ZRH-ZH4-FWGW01	p
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:15	1000base-t	ZH4-SAN04-N01_CT	ch-zrh-zh4-san01	ct0.eth4	Storage	MON	1000	MON-SAN01_CT0_4	15	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:16	1000base-t	esx44_ct0_ilo	ch-zrh-zh4-esx44.sensirion.lokal	iDRAC 10 (NIC.1)	Server	MON	1000	MON-ESX44_ILO10_1	17	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:19	1000base-t	esx47_ct0_ilo	ch-zrh-zh4-esx47.sensirion.lokal	iDRAC 10 (NIC.1)	Server	MON	1000	MON-ESX47_ILO10_1	17	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:21	1000base-t	esx40_ct0_eth1	ch-zrh-zh4-esx40.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX40_VMNIC5	18	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:22	1000base-t	esx41_ct0_eth1	ch-zrh-zh4-esx41.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX41_VMNIC5	18	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:23	1000base-t	esx42_ct0_eth1	ch-zrh-zh4-esx42.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX42_VMNIC5	18	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:24	1000base-t	esx43_ct0_eth1	ch-zrh-zh4-esx43.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX43_VMNIC5	18	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:21	1000base-t	esx40_ct0_eth1	ch-zrh-zh4-esx40.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX40_NIC5	16	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:22	1000base-t	esx41_ct0_eth1	ch-zrh-zh4-esx41.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX41_NIC5	16	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:23	1000base-t	esx42_ct0_eth1	ch-zrh-zh4-esx42.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX42_NIC5	16	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:24	1000base-t	esx43_ct0_eth1	ch-zrh-zh4-esx43.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX43_NIC5	16	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:25	1000base-t	SAN02_ctl1_mgmt	ch-zrh-zh4-san02	ct1.eth0	Storage	MON	1000	MON-SAN02_CT1_0	15	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:26	1000base-t	esx44_ct0_eth1	ch-zrh-zh4-esx44.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX44_VMNIC5	18	
-CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:29	1000base-t	esx47_ct0_eth1	ch-zrh-zh4-esx47.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX47_VMNIC5	18	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:26	1000base-t	esx44_ct0_eth1	ch-zrh-zh4-esx44.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX44_NIC5	16	
+CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:29	1000base-t	esx47_ct0_eth1	ch-zrh-zh4-esx47.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX47_NIC5	16	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:31	1000base-t	s-fwgw01:lag.0.2	CH-ZRH-ZH4-FWGW01	port2	Firewall	USW	1000	USW-1G-FW01_2	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:32	1000base-t	s-fwgw01:lag.0.2	CH-ZRH-ZH4-FWGW01	port4	Firewall	USW	1000	USW-1G-FW01_4	13	
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:33	1000base-t	s-fwgw01:lag.0.3	CH-ZRH-ZH4-FWGW01	port14	Firewall	USW	1000	USW-1G-FW01_14	14	
@@ -834,17 +834,17 @@ CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:51	10gbase-x-sfpp	MLAG_CORE01_p6	CH-ZRH-ZH4-COR
 CH-ZRH-ZH4	CH-ZRH-ZH4-MGMT01-2	2:52	10gbase-x-sfpp	MLAG_CORE02_p6	CH-ZRH-ZH4-CORE02	6	Switch Core	USW	10000	USW-C02_6	9	MLAG
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	1	10gbase-x-sfpp	CH-ZRH-ZH5-CORE0	CH-ZRH-ZH5-CORE02	1	Switch Core	USW	10000	USW-C02_1	9	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	11	10gbase-x-sfpp	CH-ZRH-ZH5-CORE0	CH-ZRH-ZH5-CORE02	11	Switch Core	USW	10000	USW-C02_11	10	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	12	10gbase-x-sfpp	esx50_ct1_eth0	ch-zrh-zh5-esx50.sensirion.lokal	vmnic0	Server	US	10000	US-ESX50_VMNIC0	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	13	10gbase-x-sfpp	esx51_ct1_eth0	ch-zrh-zh5-esx51.sensirion.lokal	vmnic0	Server	US	10000	US-ESX51_VMNIC0	15	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	12	10gbase-x-sfpp	esx50_ct1_eth0	ch-zrh-zh5-esx50.sensirion.lokal	vmnic0	Server	US	10000	US-ESX50_NIC0	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	13	10gbase-x-sfpp	esx51_ct1_eth0	ch-zrh-zh5-esx51.sensirion.lokal	vmnic0	Server	US	10000	US-ESX51_NIC0	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	15	10gbase-x-sfpp	ZRH-FWGW01_x1	CH-ZRH-ZH5-FWGW01	x1	Firewall	USW	10000	USW-FW01_X1	11	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	16	10gbase-x-sfpp	ZRH-FWGW01_x4	CH-ZRH-ZH5-FWGW01	x4	Firewall	USW	10000	USW-FW01_X4	11	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	17	10gbase-x-sfpp	esx52_ct1_eth0	ch-zrh-zh5-esx52.sensirion.lokal	vmnic0	Server	US	10000	US-ESX52_VMNIC0	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	18	10gbase-x-sfpp	esx53_ct1_eth0	ch-zrh-zh5-esx53.sensirion.lokal	vmnic0	Server	US	10000	US-ESX53_VMNIC0	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	19	10gbase-x-sfpp	esx54_ct1_eth0	ch-zrh-zh5-esx54.sensirion.lokal	vmnic0	Server	US	10000	US-ESX54_VMNIC0	15	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	17	10gbase-x-sfpp	esx52_ct1_eth0	ch-zrh-zh5-esx52.sensirion.lokal	vmnic0	Server	US	10000	US-ESX52_NIC0	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	18	10gbase-x-sfpp	esx53_ct1_eth0	ch-zrh-zh5-esx53.sensirion.lokal	vmnic0	Server	US	10000	US-ESX53_NIC0	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	19	10gbase-x-sfpp	esx54_ct1_eth0	ch-zrh-zh5-esx54.sensirion.lokal	vmnic0	Server	US	10000	US-ESX54_NIC0	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	2	10gbase-x-sfpp	CH-ZRH-ZH5-CORE0	CH-ZRH-ZH5-CORE02	2	Switch Core	USW	10000	USW-C02_2	9	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	20	10gbase-x-sfpp	esx55_ct1_eth0	ch-zrh-zh5-esx55.sensirion.lokal	vmnic2	Server	US	10000	US-ESX55_VMNIC2	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	21	10gbase-x-sfpp	esx56_ct1_eth0	ch-zrh-zh5-esx56.sensirion.lokal	vmnic2	Server	US	10000	US-ESX56_VMNIC2	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	22	10gbase-x-sfpp	esx57_ct1_eth0	ch-zrh-zh5-esx57.sensirion.lokal	vmnic0	Server	US	10000	US-ESX57_VMNIC0	15	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	20	10gbase-x-sfpp	esx55_ct1_eth0	ch-zrh-zh5-esx55.sensirion.lokal	vmnic2	Server	US	10000	US-ESX55_NIC2	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	21	10gbase-x-sfpp	esx56_ct1_eth0	ch-zrh-zh5-esx56.sensirion.lokal	vmnic2	Server	US	10000	US-ESX56_NIC2	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	22	10gbase-x-sfpp	esx57_ct1_eth0	ch-zrh-zh5-esx57.sensirion.lokal	vmnic0	Server	US	10000	US-ESX57_NIC0	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	23	10gbase-x-sfpp	SAN02_ctl0_eth10	ch-zrh-zh5-san02	ct0.eth10	Storage	US	10000	US-SAN02_CT0_10	15	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	24	10gbase-x-sfpp	SAN02_ctl1_eth10	ch-zrh-zh5-san02	ct1.eth10	Storage	US	10000	US-SAN02_CT1_10	15	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	25	10gbase-x-sfpp	SAN02_ctl0_eth2	ch-zrh-zh5-san02	ct0.eth2	Storage	US	10000	US-SAN02_CT0_2	14	
@@ -854,31 +854,31 @@ CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	28	10gbase-x-sfpp	SAN02_ctl1_eth4	ch-zrh-zh5-san02	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	29	10gbase-x-sfpp	ZH5-SAN04-N01_CT	ch-zrh-zh5-san01	ct0.eth10	Storage	US	10000	US-SAN01_CT0_10	15	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	3	10gbase-x-sfpp	CH-ZRH-ZH5-CORE0	CH-ZRH-ZH5-CORE02	3	Switch Core	USW	10000	USW-C02_3	9	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	30	10gbase-x-sfpp	ZH5-SAN04-N01_CT	ch-zrh-zh5-san01	ct1.eth10	Storage	US	10000	US-SAN01_CT1_10	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	32	10gbase-x-sfpp	esx50_ct1_eth2	ch-zrh-zh5-esx50.sensirion.lokal	vmnic2	Server	US	10000	US-ESX50_VMNIC2	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	33	10gbase-x-sfpp	esx51_ct1_eth2	ch-zrh-zh5-esx51.sensirion.lokal	vmnic2	Server	US	10000	US-ESX51_VMNIC2	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	37	10gbase-x-sfpp	esx52_ct1_eth2	ch-zrh-zh5-esx52.sensirion.lokal	vmnic2	Server	US	10000	US-ESX52_VMNIC2	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	38	10gbase-x-sfpp	esx53_ct1_eth2	ch-zrh-zh5-esx53.sensirion.lokal	vmnic2	Server	US	10000	US-ESX53_VMNIC2	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	39	10gbase-x-sfpp	esx54_ct1_eth2	ch-zrh-zh5-esx54.sensirion.lokal	vmnic2	Server	US	10000	US-ESX54_VMNIC2	15	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	32	10gbase-x-sfpp	esx50_ct1_eth2	ch-zrh-zh5-esx50.sensirion.lokal	vmnic2	Server	US	10000	US-ESX50_NIC2	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	33	10gbase-x-sfpp	esx51_ct1_eth2	ch-zrh-zh5-esx51.sensirion.lokal	vmnic2	Server	US	10000	US-ESX51_NIC2	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	37	10gbase-x-sfpp	esx52_ct1_eth2	ch-zrh-zh5-esx52.sensirion.lokal	vmnic2	Server	US	10000	US-ESX52_NIC2	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	38	10gbase-x-sfpp	esx53_ct1_eth2	ch-zrh-zh5-esx53.sensirion.lokal	vmnic2	Server	US	10000	US-ESX53_NIC2	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	39	10gbase-x-sfpp	esx54_ct1_eth2	ch-zrh-zh5-esx54.sensirion.lokal	vmnic2	Server	US	10000	US-ESX54_NIC2	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	4	10gbase-x-sfpp	CH-ZRH-ZH5-CORE0	CH-ZRH-ZH5-CORE02	4	Switch Core	USW	10000	USW-C02_4	9	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	40	10gbase-x-sfpp	esx55_ct1_eth2	ch-zrh-zh5-esx55.sensirion.lokal	vmnic4	Server	US	10000	US-ESX55_VMNIC4	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	41	10gbase-x-sfpp	esx56_ct1_eth2	ch-zrh-zh5-esx56.sensirion.lokal	vmnic4	Server	US	10000	US-ESX56_VMNIC4	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	42	10gbase-x-sfpp	esx57_ct1_eth2	ch-zrh-zh5-esx57.sensirion.lokal	vmnic2	Server	US	10000	US-ESX57_VMNIC2	15	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	40	10gbase-x-sfpp	esx55_ct1_eth2	ch-zrh-zh5-esx55.sensirion.lokal	vmnic4	Server	US	10000	US-ESX55_NIC4	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	41	10gbase-x-sfpp	esx56_ct1_eth2	ch-zrh-zh5-esx56.sensirion.lokal	vmnic4	Server	US	10000	US-ESX56_NIC4	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	42	10gbase-x-sfpp	esx57_ct1_eth2	ch-zrh-zh5-esx57.sensirion.lokal	vmnic2	Server	US	10000	US-ESX57_NIC2	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	46	10gbase-x-sfpp	ZH4-CORE01-P46	CH-ZRH-ZH4-CORE01	46	Switch Core	USW	10000	USW-ZH4-C01_46	14	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	5	10gbase-x-sfpp	ZRH-ZH5-MGMT02-P	CH-ZRH-ZH5-MGMT01-1	01:51	Switch Mgmt	USW	10000	USW-M01_1_51	12	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE01	6	10gbase-x-sfpp	ZRH-ZH5-MGMT02-P	CH-ZRH-ZH5-MGMT01-1	01:52	Switch Mgmt	USW	10000	USW-M01_1_52	12	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	1	10gbase-x-sfpp	CH-ZRH-ZH5-CORE1	CH-ZRH-ZH5-CORE01	1	Switch Core	USW	10000	USW-C01_1	9	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	11	10gbase-x-sfpp	CH-ZRH-ZH5-CORE1	CH-ZRH-ZH5-CORE01	11	Switch Core	USW	10000	USW-C01_11	10	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	12	10gbase-x-sfpp	esx50_ct1_eth1	ch-zrh-zh5-esx50.sensirion.lokal	vmnic1	Server	US	10000	US-ESX50_VMNIC1	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	13	10gbase-x-sfpp	esx51_ct1_eth1	ch-zrh-zh5-esx51.sensirion.lokal	vmnic1	Server	US	10000	US-ESX51_VMNIC1	15	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	12	10gbase-x-sfpp	esx50_ct1_eth1	ch-zrh-zh5-esx50.sensirion.lokal	vmnic1	Server	US	10000	US-ESX50_NIC1	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	13	10gbase-x-sfpp	esx51_ct1_eth1	ch-zrh-zh5-esx51.sensirion.lokal	vmnic1	Server	US	10000	US-ESX51_NIC1	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	15	10gbase-x-sfpp	ZRH-FWGW01_x2	CH-ZRH-ZH5-FWGW01	x2	Firewall	USW	10000	USW-FW01_X2	11	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	16	10gbase-x-sfpp	ZRH-FWGW01_x3	CH-ZRH-ZH5-FWGW01	x3	Firewall	USW	10000	USW-FW01_X3	11	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	17	10gbase-x-sfpp	esx52_ct1_eth1	ch-zrh-zh5-esx52.sensirion.lokal	vmnic1	Server	US	10000	US-ESX52_VMNIC1	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	18	10gbase-x-sfpp	esx53_ct1_eth1	ch-zrh-zh5-esx53.sensirion.lokal	vmnic1	Server	US	10000	US-ESX53_VMNIC1	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	19	10gbase-x-sfpp	esx54_ct1_eth1	ch-zrh-zh5-esx54.sensirion.lokal	vmnic1	Server	US	10000	US-ESX54_VMNIC1	15	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	17	10gbase-x-sfpp	esx52_ct1_eth1	ch-zrh-zh5-esx52.sensirion.lokal	vmnic1	Server	US	10000	US-ESX52_NIC1	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	18	10gbase-x-sfpp	esx53_ct1_eth1	ch-zrh-zh5-esx53.sensirion.lokal	vmnic1	Server	US	10000	US-ESX53_NIC1	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	19	10gbase-x-sfpp	esx54_ct1_eth1	ch-zrh-zh5-esx54.sensirion.lokal	vmnic1	Server	US	10000	US-ESX54_NIC1	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	2	10gbase-x-sfpp	CH-ZRH-ZH5-CORE1	CH-ZRH-ZH5-CORE01	2	Switch Core	USW	10000	USW-C01_2	9	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	20	10gbase-x-sfpp	esx55_ct1_eth1	ch-zrh-zh5-esx55.sensirion.lokal	vmnic3	Server	US	10000	US-ESX55_VMNIC3	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	21	10gbase-x-sfpp	esx56_ct1_eth1	ch-zrh-zh5-esx56.sensirion.lokal	vmnic3	Server	US	10000	US-ESX56_VMNIC3	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	22	10gbase-x-sfpp	esx57_ct1_eth1	ch-zrh-zh5-esx57.sensirion.lokal	vmnic1	Server	US	10000	US-ESX57_VMNIC1	15	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	20	10gbase-x-sfpp	esx55_ct1_eth1	ch-zrh-zh5-esx55.sensirion.lokal	vmnic3	Server	US	10000	US-ESX55_NIC3	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	21	10gbase-x-sfpp	esx56_ct1_eth1	ch-zrh-zh5-esx56.sensirion.lokal	vmnic3	Server	US	10000	US-ESX56_NIC3	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	22	10gbase-x-sfpp	esx57_ct1_eth1	ch-zrh-zh5-esx57.sensirion.lokal	vmnic1	Server	US	10000	US-ESX57_NIC1	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	23	10gbase-x-sfpp	SAN02_ctl0_eth11	ch-zrh-zh5-san02	ct0.eth11	Storage	US	10000	US-SAN02_CT0_11	15	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	24	10gbase-x-sfpp	SAN02_ctl1_eth11	ch-zrh-zh5-san02	ct1.eth11	Storage	US	10000	US-SAN02_CT1_11	15	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	25	10gbase-x-sfpp	SAN02_ctl0_eth3	ch-zrh-zh5-san02	ct0.eth3	Storage	US	10000	US-SAN02_CT0_3	14	
@@ -888,15 +888,15 @@ CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	28	10gbase-x-sfpp	SAN02_ctl1_eth5	ch-zrh-zh5-san02	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	29	10gbase-x-sfpp	ZH5-SAN04-N01_CT	ch-zrh-zh5-san01	ct0.eth11	Storage	US	10000	US-SAN01_CT0_11	15	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	3	10gbase-x-sfpp	CH-ZRH-ZH5-CORE1	CH-ZRH-ZH5-CORE01	3	Switch Core	USW	10000	USW-C01_3	9	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	30	10gbase-x-sfpp	ZH5-SAN04-N01_CT	ch-zrh-zh5-san01	ct1.eth11	Storage	US	10000	US-SAN01_CT1_11	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	32	10gbase-x-sfpp	esx50_ct1_eth3	ch-zrh-zh5-esx50.sensirion.lokal	vmnic3	Server	US	10000	US-ESX50_VMNIC3	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	33	10gbase-x-sfpp	esx51_ct1_eth3	ch-zrh-zh5-esx51.sensirion.lokal	vmnic3	Server	US	10000	US-ESX51_VMNIC3	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	37	10gbase-x-sfpp	esx52_ct1_eth3	ch-zrh-zh5-esx52.sensirion.lokal	vmnic3	Server	US	10000	US-ESX52_VMNIC3	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	38	10gbase-x-sfpp	esx53_ct1_eth3	ch-zrh-zh5-esx53.sensirion.lokal	vmnic3	Server	US	10000	US-ESX53_VMNIC3	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	39	10gbase-x-sfpp	esx54_ct1_eth3	ch-zrh-zh5-esx54.sensirion.lokal	vmnic3	Server	US	10000	US-ESX54_VMNIC3	15	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	32	10gbase-x-sfpp	esx50_ct1_eth3	ch-zrh-zh5-esx50.sensirion.lokal	vmnic3	Server	US	10000	US-ESX50_NIC3	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	33	10gbase-x-sfpp	esx51_ct1_eth3	ch-zrh-zh5-esx51.sensirion.lokal	vmnic3	Server	US	10000	US-ESX51_NIC3	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	37	10gbase-x-sfpp	esx52_ct1_eth3	ch-zrh-zh5-esx52.sensirion.lokal	vmnic3	Server	US	10000	US-ESX52_NIC3	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	38	10gbase-x-sfpp	esx53_ct1_eth3	ch-zrh-zh5-esx53.sensirion.lokal	vmnic3	Server	US	10000	US-ESX53_NIC3	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	39	10gbase-x-sfpp	esx54_ct1_eth3	ch-zrh-zh5-esx54.sensirion.lokal	vmnic3	Server	US	10000	US-ESX54_NIC3	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	4	10gbase-x-sfpp	CH-ZRH-ZH5-CORE1	CH-ZRH-ZH5-CORE01	4	Switch Core	USW	10000	USW-C01_4	9	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	40	10gbase-x-sfpp	esx55_ct1_eth3	ch-zrh-zh5-esx55.sensirion.lokal	vmnic5	Server	US	10000	US-ESX55_VMNIC5	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	41	10gbase-x-sfpp	esx56_ct1_eth3	ch-zrh-zh5-esx56.sensirion.lokal	vmnic5	Server	US	10000	US-ESX56_VMNIC5	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	42	10gbase-x-sfpp	esx57_ct1_eth3	ch-zrh-zh5-esx57.sensirion.lokal	vmnic3	Server	US	10000	US-ESX57_VMNIC3	15	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	40	10gbase-x-sfpp	esx55_ct1_eth3	ch-zrh-zh5-esx55.sensirion.lokal	vmnic5	Server	US	10000	US-ESX55_NIC5	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	41	10gbase-x-sfpp	esx56_ct1_eth3	ch-zrh-zh5-esx56.sensirion.lokal	vmnic5	Server	US	10000	US-ESX56_NIC5	13	
+CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	42	10gbase-x-sfpp	esx57_ct1_eth3	ch-zrh-zh5-esx57.sensirion.lokal	vmnic3	Server	US	10000	US-ESX57_NIC3	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	46	10gbase-x-sfpp	ZH4-CORE02-P46	CH-ZRH-ZH4-CORE02	46	Switch Core	USW	10000	USW-ZH4-C02_46	14	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	5	10gbase-x-sfpp	ZRH-ZH5-MGMT01-P	CH-ZRH-ZH5-MGMT01-2	02:51	Switch Mgmt	USW	10000	USW-M01_2_51	12	
 CH-ZRH-ZH5	CH-ZRH-ZH5-CORE02	6	10gbase-x-sfpp	ZRH-ZH5-MGMT01-P	CH-ZRH-ZH5-MGMT01-2	02:52	Switch Mgmt	USW	10000	USW-M01_2_52	12	
@@ -907,13 +907,13 @@ CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:17	1000base-t	esx51_ct0_ilo	ch-zrh-zh5-esx51.se
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:18	1000base-t	esx52_ct0_ilo	ch-zrh-zh5-esx52.sensirion.lokal	iDRAC 10 (NIC.1)	Server	MON	1000	MON-ESX52_ILO10_1	17	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:19	1000base-t	esx53_ct0_ilo	ch-zrh-zh5-esx53.sensirion.lokal	iDRAC 10 (NIC.1)	Server	MON	1000	MON-ESX53_ILO10_1	17	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:25	1000base-t	SAN02_ctl0_mgmt	ch-zrh-zh5-san02	ct0.eth0	Storage	MON	1000	MON-SAN02_CT0_0	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:29	1000base-t	esx57_ct0_eth0	ch-zrh-zh5-esx57.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX57_VMNIC4	18	
+CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:29	1000base-t	esx57_ct0_eth0	ch-zrh-zh5-esx57.sensirion.lokal	vmnic4	Server	US	1000	US-1G-ESX57_NIC4	16	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:31	1000base-t	s-fwgw01:lag.0.2	CH-ZRH-ZH5-FWGW01	port1	Firewall	USW	1000	USW-1G-FW01_1	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:32	1000base-t	s-fwgw01:lag.0.2	CH-ZRH-ZH5-FWGW01	port3	Firewall	USW	1000	USW-1G-FW01_3	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:33	1000base-t	s-fwgw01:lag.0.3	CH-ZRH-ZH5-FWGW01	port13	Firewall	USW	1000	USW-1G-FW01_13	14	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:34	1000base-t	s-fwgw01:lag.0.4	CH-ZRH-ZH5-FWGW01	port9	Firewall	USW	1000	USW-1G-FW01_9	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:49	extreme-summitstack	STACKING_PORT	CH-ZRH-ZH5-MGMT01-2	02:50	Switch Mgmt	USW		USW-M01_2_50	12	stack
-CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:5	1000base-t	s-fwgw02:mgmt1	CH-ZRH-ZH5-FWGW01	mgmt	Firewall	USW	1000	USW-1G-FW01_MGMT	16	
+CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:5	1000base-t	s-fwgw02:mgmt1	CH-ZRH-ZH5-FWGW01	mgmt	Firewall	USW	1000	USW-1G-FW01_MG	14	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:50	extreme-summitstack	STACKING_PORT	CH-ZRH-ZH5-MGMT01-2	02:49	Switch Mgmt	USW		USW-M01_2_49	12	stack
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:51	10gbase-x-sfpp	CH-ZRH-ZH5-CORE0	CH-ZRH-ZH5-CORE01	5	Switch Core	USW	10000	USW-C01_5	9	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-1	1:52	10gbase-x-sfpp	CH-ZRH-ZH5-CORE0	CH-ZRH-ZH5-CORE01	6	Switch Core	USW	10000	USW-C01_6	9	
@@ -924,7 +924,7 @@ CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-2	2:17	1000base-t	esx55_ct0_ilo	ch-zrh-zh5-esx55.se
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-2	2:18	1000base-t	esx56_ct0_ilo	ch-zrh-zh5-esx56.sensirion.lokal	iDRAC 10 (NIC.1)	Server	MON	1000	MON-ESX56_ILO10_1	17	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-2	2:19	1000base-t	esx57_ct0_ilo	ch-zrh-zh5-esx57.sensirion.lokal	iDRAC 10 (NIC.1)	Server	MON	1000	MON-ESX57_ILO10_1	17	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-2	2:25	1000base-t	SAN02_ctl1_mgmt	ch-zrh-zh5-san02	ct1.eth0	Storage	MON	1000	MON-SAN02_CT1_0	15	
-CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-2	2:29	1000base-t	esx57_ct0_eth1	ch-zrh-zh5-esx57.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX57_VMNIC5	18	
+CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-2	2:29	1000base-t	esx57_ct0_eth1	ch-zrh-zh5-esx57.sensirion.lokal	vmnic5	Server	US	1000	US-1G-ESX57_NIC5	16	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-2	2:31	1000base-t	s-fwgw01:lag.0.2	CH-ZRH-ZH5-FWGW01	port2	Firewall	USW	1000	USW-1G-FW01_2	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-2	2:32	1000base-t	s-fwgw01:lag.0.2	CH-ZRH-ZH5-FWGW01	port4	Firewall	USW	1000	USW-1G-FW01_4	13	
 CH-ZRH-ZH5	CH-ZRH-ZH5-MGMT01-2	2:33	1000base-t	s-fwgw01:lag.0.3	CH-ZRH-ZH5-FWGW01	port14	Firewall	USW	1000	USW-1G-FW01_14	14	
@@ -997,7 +997,7 @@ CN-SHA-JIU	CN-SHA-JIU-L04-ACCE01	1	1000base-t	ACCESS_POINT	CN-SHA-JIU-L03-ACPO01
 CN-SHA-JIU	CN-SHA-JIU-L04-ACCE01	19	1000base-t	ACCESS_POINT	CN-SHA-JIU-L04-ACPO01	mgmt0	Access Point	UP	1000	UP-L04-AP01	11	
 CN-SHA-JIU	CN-SHA-JIU-L04-ACCE01	23	1000base-x-sfp	UPLINK	CN-SHA-JIU-L03-DIST01	45	Switch Dist	USW	1000	USW-1G-L03-D01_45	17	
 CN-SHA-JIU	CN-SHA-JIU-L04-ACCE01	24	1000base-x-sfp	UPLINK	CN-SHA-JIU-L03-DIST02	45	Switch Dist	USW	1000	USW-1G-L03-D02_45	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:10	10gbase-x-sfpp	ESX13_eth0	cn-sha-p-esx13.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX13_VMNIC2	17	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:10	10gbase-x-sfpp	ESX13_eth0	cn-sha-p-esx13.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX13_NIC2	15	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:11	10gbase-x-sfpp	p-stod01_ct1_p1	CN-SHA-P-STOD01	A0	Storage	US	10000	US-P-STOD01_A0	14	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:12	10gbase-x-sfpp	pure_ct0_eth4	cn-sha-san11	ct0.eth4	Storage	US	10000	US-SAN11_CT0_4	14	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:13	10gbase-x-sfpp	ISC_alt_CORE03_p	CN-SHA-JIU-L03-CORE03-1	01:13	Switch Core	USW	10000	USW-L03-C03_1_13	16	ISC
@@ -1009,9 +1009,9 @@ CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:4	10gbase-x-sfpp	MLAG_L03-DIST01_	CN-SHA-JI
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:5	10gbase-x-sfpp	MLAG_L03-DIST03_	CN-SHA-JIU-L03-DIST03	27	Switch Dist	USW	10000	USW-L03-D03_27	14	MLAG
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:6	10gbase-x-sfpp	CN-SHA-P-SNAS01_	CN-SHA-P-SNAS01	LAN5	Storage	US	10000	US-P-SNAS01_LAN5	16	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:7	1000base-x-sfp	FWGW01_p15	CN-SHA-JIUX-L3-FWGW01	port15	Firewall	USW	1000	USW-1G-L3-FW01_15	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:8	10gbase-x-sfpp	ESX11_eth0	cn-sha-p-esx11.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX11_VMNIC2	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:9	10gbase-x-sfpp	ESX12_eth0	cn-sha-p-esx12.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX12_VMNIC2	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:10	10gbase-x-sfpp	ESX13_eth2	cn-sha-p-esx13.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX13_VMNIC4	17	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:8	10gbase-x-sfpp	ESX11_eth0	cn-sha-p-esx11.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX11_NIC2	15	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-1	1:9	10gbase-x-sfpp	ESX12_eth0	cn-sha-p-esx12.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX12_NIC2	15	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:10	10gbase-x-sfpp	ESX13_eth2	cn-sha-p-esx13.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX13_NIC4	15	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:11	10gbase-x-sfpp	p-stod01_ct2_p1	CN-SHA-P-STOD01	B0	Storage	US	10000	US-P-STOD01_B0	14	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:12	10gbase-x-sfpp	pure_ct1_eth4	cn-sha-san11	ct1.eth4	Storage	US	10000	US-SAN11_CT1_4	14	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:14	10gbase-x-sfpp	ISC_CORE04_p14	CN-SHA-JIU-L03-CORE03-2	02:14	Switch Core	USW	10000	USW-L03-C03_2_14	16	ISC
@@ -1021,9 +1021,9 @@ CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:2	10gbase-x-sfpp	MLAG_L02-DIST02_	CN-SHA-JI
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:4	10gbase-x-sfpp	MLAG_L03-DIST02_	CN-SHA-JIU-L03-DIST02	51	Switch Dist	USW	10000	USW-L03-D02_51	14	MLAG
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:5	10gbase-x-sfpp	MLAG_L03-DIST04_	CN-SHA-JIU-L03-DIST04	27	Switch Dist	USW	10000	USW-L03-D04_27	14	MLAG
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:7	1000base-x-sfp	FWGW02_p15	CN-SHA-JIUX-L3-FWGW01	port16	Firewall	USW	1000	USW-1G-L3-FW01_16	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:8	10gbase-x-sfpp	ESX11_eth2	cn-sha-p-esx11.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX11_VMNIC4	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:9	10gbase-x-sfpp	ESX12_eth2	cn-sha-p-esx12.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX12_VMNIC4	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:10	10gbase-x-sfpp	ESX13_eth1	cn-sha-p-esx13.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX13_VMNIC3	17	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:8	10gbase-x-sfpp	ESX11_eth2	cn-sha-p-esx11.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX11_NIC4	15	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE01-2	2:9	10gbase-x-sfpp	ESX12_eth2	cn-sha-p-esx12.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX12_NIC4	15	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:10	10gbase-x-sfpp	ESX13_eth1	cn-sha-p-esx13.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX13_NIC3	15	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:11	10gbase-x-sfpp	p-stod01_ct1_p2	CN-SHA-P-STOD01	A1	Storage	US	10000	US-P-STOD01_A1	14	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:12	10gbase-x-sfpp	pure_ct0_eth5	cn-sha-san11	ct0.eth5	Storage	US	10000	US-SAN11_CT0_5	14	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:13	10gbase-x-sfpp	ISC_alt_CORE01_p	CN-SHA-JIU-L03-CORE01-1	01:13	Switch Core	USW	10000	USW-L03-C01_1_13	16	ISC
@@ -1035,9 +1035,9 @@ CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:4	10gbase-x-sfpp	MLAG_L03-DIST01_	CN-SHA-JI
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:5	10gbase-x-sfpp	MLAG_L03-DIST03_	CN-SHA-JIU-L03-DIST03	28	Switch Dist	USW	10000	USW-L03-D03_28	14	MLAG
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:6	10gbase-x-sfpp	CN-SHA-P-SNAS01_	CN-SHA-P-SNAS01	LAN6	Storage	US	10000	US-P-SNAS01_LAN6	16	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:7	1000base-x-sfp	FWGW01_p16	CN-SHA-JIUX-L3-FWGW02	port15	Firewall	USW	1000	USW-1G-L3-FW02_15	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:8	10gbase-x-sfpp	ESX11_eth1	cn-sha-p-esx11.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX11_VMNIC3	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:9	10gbase-x-sfpp	ESX12_eth1	cn-sha-p-esx12.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX12_VMNIC3	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:10	10gbase-x-sfpp	ESX13_eth3	cn-sha-p-esx13.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX13_VMNIC5	17	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:8	10gbase-x-sfpp	ESX11_eth1	cn-sha-p-esx11.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX11_NIC3	15	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-1	1:9	10gbase-x-sfpp	ESX12_eth1	cn-sha-p-esx12.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX12_NIC3	15	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:10	10gbase-x-sfpp	ESX13_eth3	cn-sha-p-esx13.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX13_NIC5	15	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:11	10gbase-x-sfpp	p-stod01_ct2_p2	CN-SHA-P-STOD01	B1	Storage	US	10000	US-P-STOD01_B1	14	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:12	10gbase-x-sfpp	pure_ct1_eth5	cn-sha-san11	ct1.eth5	Storage	US	10000	US-SAN11_CT1_5	14	
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:14	10gbase-x-sfpp	ISC_CORE02_p14	CN-SHA-JIU-L03-CORE01-2	02:14	Switch Core	USW	10000	USW-L03-C01_2_14	16	ISC
@@ -1047,15 +1047,15 @@ CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:2	10gbase-x-sfpp	MLAG_L02-DIST02_	CN-SHA-JI
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:4	10gbase-x-sfpp	MLAG_L03-DIST02_	CN-SHA-JIU-L03-DIST02	52	Switch Dist	USW	10000	USW-L03-D02_52	14	MLAG
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:5	10gbase-x-sfpp	MLAG_L03-DIST04_	CN-SHA-JIU-L03-DIST04	28	Switch Dist	USW	10000	USW-L03-D04_28	14	MLAG
 CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:7	1000base-x-sfp	FWGW02_p16	CN-SHA-JIUX-L3-FWGW02	port16	Firewall	USW	1000	USW-1G-L3-FW02_16	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:8	10gbase-x-sfpp	ESX11_eth3	cn-sha-p-esx11.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX11_VMNIC5	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:9	10gbase-x-sfpp	ESX12_eth3	cn-sha-p-esx12.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX12_VMNIC5	17	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:8	10gbase-x-sfpp	ESX11_eth3	cn-sha-p-esx11.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX11_NIC5	15	
+CN-SHA-JIU	CN-SHA-JIU-L03-CORE03-2	2:9	10gbase-x-sfpp	ESX12_eth3	cn-sha-p-esx12.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX12_NIC5	15	
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	1	1000base-t	MLAG_ACCE01_p23	CN-SHA-JIU-L03-ACCE01	23	Switch Access	USW	1000	USW-1G-L03-A01_23	17	MLAG
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	2	1000base-t	MLAG_ACCE02_p23	CN-SHA-JIU-L03-ACCE02	23	Switch Access	USW	1000	USW-1G-L03-A02_23	17	MLAG
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	22	1000base-t	p-stod01_mgmt1	CN-SHA-P-STOD01	A.Network	Storage	MON	1000	MON-P-STOD01_A	14	
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	24	1000base-t	FWGW01_p14	CN-SHA-JIUX-L3-FWGW01	port14	Firewall	USW	1000	USW-1G-L3-FW01_14	17	
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	25	1000base-t	FWGW01_p10	CN-SHA-JIUX-L3-FWGW01	port10	Firewall	USW	1000	USW-1G-L3-FW01_10	17	
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	26	1000base-t	FWGW01_p13	CN-SHA-JIUX-L3-FWGW01	port13	Firewall	USW	1000	USW-1G-L3-FW01_13	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	29	1000base-t	fortigate-mgmt	CN-SHA-JIUX-L3-FWGW01	mgmt	Firewall	USW	1000	USW-1G-L3-FW01_MGMT	19	
+CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	29	1000base-t	fortigate-mgmt	CN-SHA-JIUX-L3-FWGW01	mgmt	Firewall	USW	1000	USW-1G-L3-FW01_MG	17	
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	3	1000base-t	MLAG_ACCE03_p23	CN-SHA-JIU-L03-ACCE03	23	Switch Access	USW	1000	USW-1G-L03-A03_23	17	MLAG
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	36	1000base-t	CN-SHA-P-SNAS01_	CN-SHA-P-SNAS01	LAN1	Storage	MON	1000	MON-P-SNAS01_LAN1	17	
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST01	37	1000base-t	CN-SHA-P-SNAS02_	CN-SHA-P-SNAS01	LAN3	Storage	MON	1000	MON-P-SNAS01_LAN3	17	
@@ -1075,7 +1075,7 @@ CN-SHA-JIU	CN-SHA-JIU-L03-DIST02	22	1000base-t	p-stod01_mgmt2	CN-SHA-P-STOD01	B.
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST02	24	1000base-t	FWGW02_p14	CN-SHA-JIUX-L3-FWGW02	port14	Firewall	USW	1000	USW-1G-L3-FW02_14	17	
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST02	25	1000base-t	FWGW02_p10	CN-SHA-JIUX-L3-FWGW02	port10	Firewall	USW	1000	USW-1G-L3-FW02_10	17	
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST02	26	1000base-t	FWGW02_p13	CN-SHA-JIUX-L3-FWGW02	port13	Firewall	USW	1000	USW-1G-L3-FW02_13	17	
-CN-SHA-JIU	CN-SHA-JIU-L03-DIST02	29	1000base-t	fortigate-mgmt	CN-SHA-JIUX-L3-FWGW02	mgmt	Firewall	USW	1000	USW-1G-L3-FW02_MGMT	19	
+CN-SHA-JIU	CN-SHA-JIU-L03-DIST02	29	1000base-t	fortigate-mgmt	CN-SHA-JIUX-L3-FWGW02	mgmt	Firewall	USW	1000	USW-1G-L3-FW02_MG	17	
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST02	3	1000base-t	MLAG_ACCE03_p24	CN-SHA-JIU-L03-ACCE03	24	Switch Access	USW	1000	USW-1G-L03-A03_24	17	MLAG
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST02	31	1000base-t		cn-sha-p-esx11.sensirion.lokal	iDRAC 9 (NIC.1)	Server	MON	1000	MON-P-ESX11_ILO9_1	18	
 CN-SHA-JIU	CN-SHA-JIU-L03-DIST02	36	1000base-t	CN-SHA-P-SNAS01_	CN-SHA-P-SNAS01	LAN2	Storage	MON	1000	MON-P-SNAS01_LAN2	17	
@@ -1118,11 +1118,11 @@ HU-DEB-NAG-A	HU-DEB-NAG-CORE01	26	10gbase-x-sfpp	SAN01-ctlB-p2	HU-DEB-SAN01	CTE0
 HU-DEB-NAG-A	HU-DEB-NAG-CORE01	3	10gbase-x-sfpp	CORE02_p3	HU-DEB-NAG-CORE02	3	Switch Core	USW	10000	USW-C02_3	9	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE01	30	10gbase-x-sfpp	GFL-DIST01_p29	HU-DEB-NAG-GFL-DIST01	29	Switch Dist	USW	10000	USW-GFL-D01_29	14	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE01	35	10gbase-x-sfpp	L01-DIST01_p29	HU-DEB-NAG-L01-DIST01	29	Switch Dist	USW	10000	USW-L01-D01_29	14	
-HU-DEB-NAG-A	HU-DEB-NAG-CORE01	37	10gbase-x-sfpp	esx11_ct1_eth0	hu-deb-p-esx11.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX11_VMNIC2	17	
-HU-DEB-NAG-A	HU-DEB-NAG-CORE01	39	10gbase-x-sfpp	esx13_ct1_eth0	hu-deb-p-esx13.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX13_VMNIC2	17	
+HU-DEB-NAG-A	HU-DEB-NAG-CORE01	37	10gbase-x-sfpp	esx11_ct1_eth0	hu-deb-p-esx11.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX11_NIC2	15	
+HU-DEB-NAG-A	HU-DEB-NAG-CORE01	39	10gbase-x-sfpp	esx13_ct1_eth0	hu-deb-p-esx13.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX13_NIC2	15	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE01	4	10gbase-x-sfpp	CORE02_p4	HU-DEB-NAG-CORE02	4	Switch Core	USW	10000	USW-C02_4	9	
-HU-DEB-NAG-A	HU-DEB-NAG-CORE01	41	10gbase-x-sfpp	esx11_ct1_eth2	hu-deb-p-esx11.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX11_VMNIC4	17	
-HU-DEB-NAG-A	HU-DEB-NAG-CORE01	43	10gbase-x-sfpp	esx13_ct1_eth2	hu-deb-p-esx13.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX13_VMNIC4	17	
+HU-DEB-NAG-A	HU-DEB-NAG-CORE01	41	10gbase-x-sfpp	esx11_ct1_eth2	hu-deb-p-esx11.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX11_NIC4	15	
+HU-DEB-NAG-A	HU-DEB-NAG-CORE01	43	10gbase-x-sfpp	esx13_ct1_eth2	hu-deb-p-esx13.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX13_NIC4	15	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE01	45	10gbase-x-sfpp	san11_ct0_eth4	hu-deb-san11	ct0.eth4	Storage	US	10000	US-SAN11_CT0_4	14	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE01	46	10gbase-x-sfpp	san11_ct1_eth4	hu-deb-san11	ct1.eth4	Storage	US	10000	US-SAN11_CT1_4	14	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE01	48	10gbase-x-sfpp	HU-DEB-NAG-CORE0	HU-DEB-NAG-CORE03	36	Switch Core	USW	10000	USW-C03_36	10	
@@ -1135,11 +1135,11 @@ HU-DEB-NAG-A	HU-DEB-NAG-CORE02	26	10gbase-x-sfpp	SAN01-ctlB-p3	HU-DEB-SAN01	CTE0
 HU-DEB-NAG-A	HU-DEB-NAG-CORE02	3	10gbase-x-sfpp	CORE01_p3	HU-DEB-NAG-CORE01	3	Switch Core	USW	10000	USW-C01_3	9	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE02	30	10gbase-x-sfpp	GFL-DIST01_p30	HU-DEB-NAG-GFL-DIST01	30	Switch Dist	USW	10000	USW-GFL-D01_30	14	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE02	35	10gbase-x-sfpp	L01-DIST01_p30	HU-DEB-NAG-L01-DIST01	30	Switch Dist	USW	10000	USW-L01-D01_30	14	
-HU-DEB-NAG-A	HU-DEB-NAG-CORE02	37	10gbase-x-sfpp	esx11_ct1_eth1	hu-deb-p-esx11.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX11_VMNIC3	17	
-HU-DEB-NAG-A	HU-DEB-NAG-CORE02	39	10gbase-x-sfpp	esx13_ct1_eth1	hu-deb-p-esx13.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX13_VMNIC3	17	
+HU-DEB-NAG-A	HU-DEB-NAG-CORE02	37	10gbase-x-sfpp	esx11_ct1_eth1	hu-deb-p-esx11.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX11_NIC3	15	
+HU-DEB-NAG-A	HU-DEB-NAG-CORE02	39	10gbase-x-sfpp	esx13_ct1_eth1	hu-deb-p-esx13.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX13_NIC3	15	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE02	4	10gbase-x-sfpp	CORE01_p4	HU-DEB-NAG-CORE01	4	Switch Core	USW	10000	USW-C01_4	9	
-HU-DEB-NAG-A	HU-DEB-NAG-CORE02	41	10gbase-x-sfpp	esx11_ct1_eth3	hu-deb-p-esx11.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX11_VMNIC5	17	
-HU-DEB-NAG-A	HU-DEB-NAG-CORE02	43	10gbase-x-sfpp	esx13_ct1_eth3	hu-deb-p-esx13.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX13_VMNIC5	17	
+HU-DEB-NAG-A	HU-DEB-NAG-CORE02	41	10gbase-x-sfpp	esx11_ct1_eth3	hu-deb-p-esx11.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX11_NIC5	15	
+HU-DEB-NAG-A	HU-DEB-NAG-CORE02	43	10gbase-x-sfpp	esx13_ct1_eth3	hu-deb-p-esx13.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX13_NIC5	15	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE02	45	10gbase-x-sfpp	san11_ct0_eth5	hu-deb-san11	ct0.eth5	Storage	US	10000	US-SAN11_CT0_5	14	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE02	46	10gbase-x-sfpp	san11_ct1_eth5	hu-deb-san11	ct1.eth5	Storage	US	10000	US-SAN11_CT1_5	14	
 HU-DEB-NAG-A	HU-DEB-NAG-CORE02	48	10gbase-x-sfpp	HU-DEB-NAG-CORE0	HU-DEB-NAG-CORE04	36	Switch Core	USW	10000	USW-C04_36	10	
@@ -1205,32 +1205,32 @@ HU-DEB-NAG-A	HU-DEB-NAG-L01-DIST01	5	1000base-t	L01-ACCE05	HU-DEB-NAG-L01-ACCE05
 HU-DEB-NAG-A	HU-DEB-NAG-L01-DIST01	6	1000base-t	L01-ACCE06	HU-DEB-NAG-L01-ACCE06	24	Switch Access	USW	1000	USW-1G-L01-A06_24	17	
 HU-DEB-NAG-A	HU-DEB-NAG-L01-DIST01	7	1000base-t	L01-ACCE07	HU-DEB-NAG-L01-ACCE07	24	Switch Access	USW	1000	USW-1G-L01-A07_24	17	
 HU-DEB-NAG-A	HU-DEB-NAG-L01-DIST01	8	1000base-t	L01-ACCE08	HU-DEB-NAG-L01-ACCE08	24	Switch Access	USW	1000	USW-1G-L01-A08_24	17	
-HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:12	1000base-t	SAN_ctrlA_LAN	HU-DEB-SAN01	CTE0.A.MGMT	Storage	MON	1000	MON-SAN01_CTE0AMGMT	19	
+HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:12	1000base-t	SAN_ctrlA_LAN	HU-DEB-SAN01	CTE0.A.MGMT	Storage	MON	1000	MON-SAN01_CTE0_A_MG	19	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:14	1000base-t	ESX11_ILO	hu-deb-p-esx11.sensirion.lokal	iDRAC 9 (NIC.1)	Server	MON	1000	MON-P-ESX11_ILO9_1	18	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:15	1000base-t	ESX13_ILO	hu-deb-p-esx13.sensirion.lokal	iDRAC 9 (NIC.1)	Server	MON	1000	MON-P-ESX13_ILO9_1	18	
-HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:16	1000base-t	ESX11_ct0_eth0	hu-deb-p-esx11.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX11_VMNIC0	20	at-20
-HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:18	1000base-t	ESX13_et0_eth0	hu-deb-p-esx13.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX13_VMNIC0	20	at-20
+HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:16	1000base-t	ESX11_ct0_eth0	hu-deb-p-esx11.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX11_NIC0	18	
+HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:18	1000base-t	ESX13_et0_eth0	hu-deb-p-esx13.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX13_NIC0	18	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:20	1000base-t	SAN11_ct1_eth0	hu-deb-san11	ct0.eth0	Storage	MON	1000	MON-SAN11_CT0_0	15	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:30	10gbase-x-sfpp	CORE01_p5	HU-DEB-NAG-CORE01	5	Switch Core	USW	10000	USW-C01_5	9	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:31	extreme-summitstack		HU-DEB-NAG-MGMT01-2	02:32	Switch Mgmt	USW		USW-M01_2_32	12	stack
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:32	extreme-summitstack		HU-DEB-NAG-MGMT01-2	02:31	Switch Mgmt	USW		USW-M01_2_31	12	stack
-HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:5	1000base-t	FWGW01_MGMT1	HU-DEB-FWGW01	mgmt	Firewall	USW	1000	USW-1G-FW01_MGMT	16	
+HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:5	1000base-t	FWGW01_MGMT1	HU-DEB-FWGW01	mgmt	Firewall	USW	1000	USW-1G-FW01_MG	14	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:6	1000base-t	FWGW01_WAN1	HU-DEB-FWGW01	wan2	Firewall	USW	1000	USW-1G-FW01_WAN2	16	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:7	1000base-t	FWGW01_WAN2	HU-DEB-FWGW01	wan1	Firewall	USW	1000	USW-1G-FW01_WAN1	16	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-1	1:8	1000base-t	FWGW01_HA1	HU-DEB-FWGW01	ha1	Firewall	USW	1000	USW-1G-FW01_HA1	15	
-HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:12	1000base-t	SAN_ctrlB_LAN	HU-DEB-SAN01	CTE0.B.MGMT	Storage	MON	1000	MON-SAN01_CTE0BMGMT	19	
-HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:16	1000base-t	ESX11_ct0_eth1	hu-deb-p-esx11.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX11_VMNIC1	20	at-20
-HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:18	1000base-t	ESX13_et0_eth1	hu-deb-p-esx13.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX13_VMNIC1	20	at-20
+HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:12	1000base-t	SAN_ctrlB_LAN	HU-DEB-SAN01	CTE0.B.MGMT	Storage	MON	1000	MON-SAN01_CTE0_B_MG	19	
+HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:16	1000base-t	ESX11_ct0_eth1	hu-deb-p-esx11.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX11_NIC1	18	
+HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:18	1000base-t	ESX13_et0_eth1	hu-deb-p-esx13.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX13_NIC1	18	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:20	1000base-t	SAN11_ct0_eth0	hu-deb-san11	ct1.eth0	Storage	MON	1000	MON-SAN11_CT1_0	15	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:30	10gbase-x-sfpp	CORE02_p5	HU-DEB-NAG-CORE02	5	Switch Core	USW	10000	USW-C02_5	9	
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:31	extreme-summitstack		HU-DEB-NAG-MGMT01-1	01:32	Switch Mgmt	USW		USW-M01_1_32	12	stack
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:32	extreme-summitstack		HU-DEB-NAG-MGMT01-1	01:31	Switch Mgmt	USW		USW-M01_1_31	12	stack
 HU-DEB-NAG-A	HU-DEB-NAG-MGMT01-2	2:8	1000base-t	FWGW01_HA2	HU-DEB-FWGW01	ha2	Firewall	USW	1000	USW-1G-FW01_HA2	15	
 HU-DEB-NAG-B	HU-DEB-NAG-CORE03	1	10gbase-x-sfpp	MGMT03_p1:30	HU-DEB-NAG-MGMT03-1	01:30	Switch Mgmt	USW	10000	USW-M03_1_30	12	
-HU-DEB-NAG-B	HU-DEB-NAG-CORE03	10	10gbase-x-sfpp	esx12_ct1_eth0	hu-deb-p-esx12.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX12_VMNIC2	17	
-HU-DEB-NAG-B	HU-DEB-NAG-CORE03	11	10gbase-x-sfpp	esx12_ct1_eth2	hu-deb-p-esx12.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX12_VMNIC4	17	
-HU-DEB-NAG-B	HU-DEB-NAG-CORE03	12	10gbase-x-sfpp	esx14_ct1_eth0	hu-deb-p-esx14.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX14_VMNIC2	17	
-HU-DEB-NAG-B	HU-DEB-NAG-CORE03	13	10gbase-x-sfpp	esx14_ct1_eth2	hu-deb-p-esx14.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX14_VMNIC4	17	
+HU-DEB-NAG-B	HU-DEB-NAG-CORE03	10	10gbase-x-sfpp	esx12_ct1_eth0	hu-deb-p-esx12.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX12_NIC2	15	
+HU-DEB-NAG-B	HU-DEB-NAG-CORE03	11	10gbase-x-sfpp	esx12_ct1_eth2	hu-deb-p-esx12.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX12_NIC4	15	
+HU-DEB-NAG-B	HU-DEB-NAG-CORE03	12	10gbase-x-sfpp	esx14_ct1_eth0	hu-deb-p-esx14.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX14_NIC2	15	
+HU-DEB-NAG-B	HU-DEB-NAG-CORE03	13	10gbase-x-sfpp	esx14_ct1_eth2	hu-deb-p-esx14.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX14_NIC4	15	
 HU-DEB-NAG-B	HU-DEB-NAG-CORE03	24	10gbase-x-sfpp	SNAS01_p5	HU-DEB-P-SNAS01	LAN6	Storage	US	10000	US-P-SNAS01_LAN6	16	
 HU-DEB-NAG-B	HU-DEB-NAG-CORE03	25	40gbase-x-qsfpp	CORE04_ISC	HU-DEB-NAG-CORE04	25	Switch Core	USW	40000	USW-40G-C04_25	14	ISC
 HU-DEB-NAG-B	HU-DEB-NAG-CORE03	29	40gbase-x-qsfpp	CORE04_ISC	HU-DEB-NAG-CORE04	29	Switch Core	USW	40000	USW-40G-C04_29	14	ISC
@@ -1240,10 +1240,10 @@ HU-DEB-NAG-B	HU-DEB-NAG-CORE03	36	10gbase-x-sfpp	CORE01_p48	HU-DEB-NAG-CORE01	48
 HU-DEB-NAG-B	HU-DEB-NAG-CORE03	4	10gbase-x-sfpp	L01-DIST30_p30	HU-DEB-NAG-L01-DIST30	30	Switch Dist	USW	10000	USW-L01-D30_30	14	
 HU-DEB-NAG-B	HU-DEB-NAG-CORE03	7	10gbase-x-sfpp	FWGW02_x1	HU-DEB-FWGW02	x1	Firewall	USW	10000	USW-FW02_X1	11	
 HU-DEB-NAG-B	HU-DEB-NAG-CORE04	1	10gbase-x-sfpp	MGMT03_p2:30	HU-DEB-NAG-MGMT03-2	02:30	Switch Mgmt	USW	10000	USW-M03_2_30	12	
-HU-DEB-NAG-B	HU-DEB-NAG-CORE04	10	10gbase-x-sfpp	esx12_ct1_eth1	hu-deb-p-esx12.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX12_VMNIC3	17	
-HU-DEB-NAG-B	HU-DEB-NAG-CORE04	11	10gbase-x-sfpp	esx12_ct1_eth3	hu-deb-p-esx12.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX12_VMNIC5	17	
-HU-DEB-NAG-B	HU-DEB-NAG-CORE04	12	10gbase-x-sfpp	esx14_ct1_eth1	hu-deb-p-esx14.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX14_VMNIC3	17	
-HU-DEB-NAG-B	HU-DEB-NAG-CORE04	13	10gbase-x-sfpp	esx14_ct1_eth3	hu-deb-p-esx14.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX14_VMNIC5	17	
+HU-DEB-NAG-B	HU-DEB-NAG-CORE04	10	10gbase-x-sfpp	esx12_ct1_eth1	hu-deb-p-esx12.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX12_NIC3	15	
+HU-DEB-NAG-B	HU-DEB-NAG-CORE04	11	10gbase-x-sfpp	esx12_ct1_eth3	hu-deb-p-esx12.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX12_NIC5	15	
+HU-DEB-NAG-B	HU-DEB-NAG-CORE04	12	10gbase-x-sfpp	esx14_ct1_eth1	hu-deb-p-esx14.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX14_NIC3	15	
+HU-DEB-NAG-B	HU-DEB-NAG-CORE04	13	10gbase-x-sfpp	esx14_ct1_eth3	hu-deb-p-esx14.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX14_NIC5	15	
 HU-DEB-NAG-B	HU-DEB-NAG-CORE04	24	10gbase-x-sfpp	SNAS01_p6	HU-DEB-P-SNAS01	LAN5	Storage	US	10000	US-P-SNAS01_LAN5	16	
 HU-DEB-NAG-B	HU-DEB-NAG-CORE04	25	40gbase-x-qsfpp	CORE03_ISC	HU-DEB-NAG-CORE03	25	Switch Core	USW	40000	USW-40G-C03_25	14	ISC
 HU-DEB-NAG-B	HU-DEB-NAG-CORE04	29	40gbase-x-qsfpp	CORE03_ISC	HU-DEB-NAG-CORE03	29	Switch Core	USW	40000	USW-40G-C03_29	14	ISC
@@ -1335,8 +1335,8 @@ HU-DEB-NAG-B	HU-DEB-NAG-L01-DIST30	4	1000base-t	L01-ACCE31_p15	HU-DEB-NAG-L01-AC
 HU-DEB-NAG-B	HU-DEB-NAG-L01-DIST30	6	1000base-t	L01-ACCE33_p24	HU-DEB-NAG-L01-ACCE33	24	Switch Access	USW	1000	USW-1G-L01-A33_24	17	
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:13	1000base-t	ESX12_ILO	hu-deb-p-esx12.sensirion.lokal	iDRAC 9 (NIC.1)	Server	MON	1000	MON-P-ESX12_ILO9_1	18	
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:14	1000base-t	ESX14_ILO	hu-deb-p-esx14.sensirion.lokal	iDRAC	Server	MON	1000	MON-P-ESX14_ILO	15	
-HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:16	1000base-t	ESX12_ct0_eth0	hu-deb-p-esx12.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX12_VMNIC0	20	at-20
-HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:17	1000base-t	ESX14_ct0_eth0	hu-deb-p-esx14.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX14_VMNIC0	20	at-20
+HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:16	1000base-t	ESX12_ct0_eth0	hu-deb-p-esx12.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX12_NIC0	18	
+HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:17	1000base-t	ESX14_ct0_eth0	hu-deb-p-esx14.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX14_NIC0	18	
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:21	1000base-t	SNAS01_p1	HU-DEB-P-SNAS01	LAN1	Storage	MON	1000	MON-P-SNAS01_LAN1	17	
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:22	1000base-t	SNAS01_p2	HU-DEB-P-SNAS01	LAN2	Storage	MON	1000	MON-P-SNAS01_LAN2	17	
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:30	10gbase-x-sfpp	CORE03_p30	HU-DEB-NAG-CORE03	1	Switch Core	USW	10000	USW-C03_1	9	
@@ -1344,10 +1344,10 @@ HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:31	extreme-summitstack		HU-DEB-NAG-MGMT03-2	0
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:32	extreme-summitstack		HU-DEB-NAG-MGMT03-2	02:31	Switch Mgmt	USW		USW-M03_2_31	12	stack
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:5	1000base-t	FWGW02_WAN1	HU-DEB-FWGW02	wan1	Firewall	USW	1000	USW-1G-FW02_WAN1	16	
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:6	1000base-t	FWGW02_WAN2	HU-DEB-FWGW02	wan2	Firewall	USW	1000	USW-1G-FW02_WAN2	16	
-HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:7	1000base-t	FWGW02_MGMT1	HU-DEB-FWGW02	mgmt	Firewall	USW	1000	USW-1G-FW02_MGMT	16	
+HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:7	1000base-t	FWGW02_MGMT1	HU-DEB-FWGW02	mgmt	Firewall	USW	1000	USW-1G-FW02_MG	14	
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-1	1:8	1000base-t	FWGW02_HA1	HU-DEB-FWGW02	ha1	Firewall	USW	1000	USW-1G-FW02_HA1	15	
-HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-2	2:16	1000base-t	ESX12_ct0_eth1	hu-deb-p-esx12.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX12_VMNIC1	20	at-20
-HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-2	2:17	1000base-t	ESX14_ct0_eth1	hu-deb-p-esx14.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX14_VMNIC1	20	at-20
+HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-2	2:16	1000base-t	ESX12_ct0_eth1	hu-deb-p-esx12.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX12_NIC1	18	
+HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-2	2:17	1000base-t	ESX14_ct0_eth1	hu-deb-p-esx14.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX14_NIC1	18	
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-2	2:21	1000base-t	SNAS01_p3	HU-DEB-P-SNAS01	LAN3	Storage	MON	1000	MON-P-SNAS01_LAN3	17	
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-2	2:22	1000base-t	SNAS01_p4	HU-DEB-P-SNAS01	LAN4	Storage	MON	1000	MON-P-SNAS01_LAN4	17	
 HU-DEB-NAG-B	HU-DEB-NAG-MGMT03-2	2:30	10gbase-x-sfpp	CORE04_p30	HU-DEB-NAG-CORE04	1	Switch Core	USW	10000	USW-C04_1	9	
@@ -1416,12 +1416,12 @@ KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	14	10gbase-x-sfpp	ISC	KR-SEL-HAN-L14-CORE02	14	
 KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	15	10gbase-x-sfpp	FWGW01_lag.0.1_x	KR-SEL-HAN-L14-FWGW01	x1	Firewall	USW	10000	USW-L14-FW01_X1	15	
 KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	16	10gbase-x-sfpp	FWGW02_lag.0.1_x	KR-SEL-HAN-L14-FWGW02	x1	Firewall	USW	10000	USW-L14-FW02_X1	15	
 KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	2	10gbase-x-sfpp	MLAG_DIST02_p27	KR-SEL-HAN-L14-DIST02	27	Switch Dist	USW	10000	USW-L14-D02_27	14	MLAG
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	3	10gbase-x-sfpp	esx11_eth0	kr-sel-p-esx11.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX11_VMNIC2	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	4	10gbase-x-sfpp	esx12_eth0	kr-sel-p-esx12.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX12_VMNIC2	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	5	10gbase-x-sfpp	esx13_eth0	kr-sel-p-esx13.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX13_VMNIC2	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	7	10gbase-x-sfpp	esx11_eth2	kr-sel-p-esx11.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX11_VMNIC4	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	8	10gbase-x-sfpp	esx12_eth2	kr-sel-p-esx12.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX12_VMNIC4	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	9	10gbase-x-sfpp	esx13_eth2	kr-sel-p-esx13.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX13_VMNIC4	17	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	3	10gbase-x-sfpp	esx11_eth0	kr-sel-p-esx11.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX11_NIC2	15	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	4	10gbase-x-sfpp	esx12_eth0	kr-sel-p-esx12.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX12_NIC2	15	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	5	10gbase-x-sfpp	esx13_eth0	kr-sel-p-esx13.sensirion.lokal	vmnic2	Server	US	10000	US-P-ESX13_NIC2	15	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	7	10gbase-x-sfpp	esx11_eth2	kr-sel-p-esx11.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX11_NIC4	15	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	8	10gbase-x-sfpp	esx12_eth2	kr-sel-p-esx12.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX12_NIC4	15	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE01	9	10gbase-x-sfpp	esx13_eth2	kr-sel-p-esx13.sensirion.lokal	vmnic4	Server	US	10000	US-P-ESX13_NIC4	15	
 KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	1	10gbase-x-sfpp	MLAG_DIST01_p28	KR-SEL-HAN-L14-DIST01	28	Switch Dist	USW	10000	USW-L14-D01_28	14	MLAG
 KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	10	10gbase-x-sfpp	p-stod01_ct2_p2	KR-SEL-P-SNAS02	LAN6	Storage	US	10000	US-P-SNAS02_LAN6	16	
 KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	11	10gbase-x-sfpp	san11_ct1_eth4	kr-sel-san11	ct1.eth4	Storage	US	10000	US-SAN11_CT1_4	14	
@@ -1431,23 +1431,23 @@ KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	14	10gbase-x-sfpp	ISC	KR-SEL-HAN-L14-CORE01	14	
 KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	15	10gbase-x-sfpp	FWGW01_lag.0.1_x	KR-SEL-HAN-L14-FWGW01	x2	Firewall	USW	10000	USW-L14-FW01_X2	15	
 KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	16	10gbase-x-sfpp	FWGW02_lag.0.1_x	KR-SEL-HAN-L14-FWGW02	x2	Firewall	USW	10000	USW-L14-FW02_X2	15	
 KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	2	10gbase-x-sfpp	MLAG_DIST02_p28	KR-SEL-HAN-L14-DIST02	28	Switch Dist	USW	10000	USW-L14-D02_28	14	MLAG
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	3	10gbase-x-sfpp	esx11_eth1	kr-sel-p-esx11.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX11_VMNIC3	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	4	10gbase-x-sfpp	esx12_eth1	kr-sel-p-esx12.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX12_VMNIC3	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	5	10gbase-x-sfpp	esx13_eth1	kr-sel-p-esx13.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX13_VMNIC3	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	7	10gbase-x-sfpp	esx11_eth3	kr-sel-p-esx11.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX11_VMNIC5	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	8	10gbase-x-sfpp	esx12_eth3	kr-sel-p-esx12.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX12_VMNIC5	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	9	10gbase-x-sfpp	esx13_eth3	kr-sel-p-esx13.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX13_VMNIC5	17	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	3	10gbase-x-sfpp	esx11_eth1	kr-sel-p-esx11.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX11_NIC3	15	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	4	10gbase-x-sfpp	esx12_eth1	kr-sel-p-esx12.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX12_NIC3	15	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	5	10gbase-x-sfpp	esx13_eth1	kr-sel-p-esx13.sensirion.lokal	vmnic3	Server	US	10000	US-P-ESX13_NIC3	15	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	7	10gbase-x-sfpp	esx11_eth3	kr-sel-p-esx11.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX11_NIC5	15	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	8	10gbase-x-sfpp	esx12_eth3	kr-sel-p-esx12.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX12_NIC5	15	
+KR-SEL-HAN	KR-SEL-HAN-L14-CORE02	9	10gbase-x-sfpp	esx13_eth3	kr-sel-p-esx13.sensirion.lokal	vmnic5	Server	US	10000	US-P-ESX13_NIC5	15	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	10	1000base-t	esx11_ILO	kr-sel-p-esx11.sensirion.lokal	iDRAC 9 (NIC.1)	Server	MON	1000	MON-P-ESX11_ILO9_1	18	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	11	1000base-t	SCCM-Staging	kr-sel-p-esx13.sensirion.lokal	iDRAC 9 (NIC.1)	Server	MON	1000	MON-P-ESX13_ILO9_1	18	
-KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	12	1000base-t	esx11_CT0_eth0	kr-sel-p-esx11.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX11_VMNIC1	20	at-20
-KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	13	1000base-t	esx12_CT0_eth0	kr-sel-p-esx12.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX12_VMNIC1	20	at-20
-KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	14	1000base-t	esx13_CT0_eth0	kr-sel-p-esx13.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX13_VMNIC1	20	at-20
+KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	12	1000base-t	esx11_CT0_eth0	kr-sel-p-esx11.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX11_NIC1	18	
+KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	13	1000base-t	esx12_CT0_eth0	kr-sel-p-esx12.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX12_NIC1	18	
+KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	14	1000base-t	esx13_CT0_eth0	kr-sel-p-esx13.sensirion.lokal	vmnic1	Server	US	1000	US-1G-P-ESX13_NIC1	18	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	15	1000base-t	MLAG_ACCE08_p23	KR-SEL-HAN-L14-ACCE08	23	Switch Access	USW	1000	USW-1G-L14-A08_23	17	MLAG
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	17	1000base-t	KR-SEL-P-SNAS02_	KR-SEL-P-SNAS02	LAN3	Storage	MON	1000	MON-P-SNAS02_LAN3	17	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	18	1000base-t	san11_CT0_eth0	kr-sel-san11	ct0.eth0	Storage	MON	1000	MON-SAN11_CT0_0	15	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	2	1000base-t	FWGW01_p10	KR-SEL-HAN-L14-FWGW01	port10	Firewall	USW	1000	USW-1G-L14-FW01_10	18	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	20	1000base-t	KR-SEL-P-SNAS02_	KR-SEL-P-SNAS02	LAN1	Storage	MON	1000	MON-P-SNAS02_LAN1	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	21	1000base-t	fortigate_mgmt	KR-SEL-HAN-L14-FWGW01	mgmt	Firewall	USW	1000	USW-1G-L14-FW01_MGMT	20	at-20
+KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	21	1000base-t	fortigate_mgmt	KR-SEL-HAN-L14-FWGW01	mgmt	Firewall	USW	1000	USW-1G-L14-FW01_MG	18	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	23	1000base-t	FWGW01_p11	KR-SEL-HAN-L14-FWGW01	port11	Firewall	USW	1000	USW-1G-L14-FW01_11	18	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	25	10gbase-x-sfpp	ISC	KR-SEL-HAN-L14-DIST02	25	Switch Dist	USW	10000	USW-L14-D02_25	14	ISC
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	26	10gbase-x-sfpp	ISC	KR-SEL-HAN-L14-DIST02	26	Switch Dist	USW	10000	USW-L14-D02_26	14	ISC
@@ -1461,15 +1461,15 @@ KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	7	1000base-t	MLAG_ACCE05_p23	KR-SEL-HAN-L14-ACC
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	8	1000base-t	MLAG_ACCE06_p23	KR-SEL-HAN-L14-ACCE06	23	Switch Access	USW	1000	USW-1G-L14-A06_23	17	MLAG
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST01	9	1000base-t	MLAG_ACCE07_p23	KR-SEL-HAN-L14-ACCE07	23	Switch Access	USW	1000	USW-1G-L14-A07_23	17	MLAG
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	10	1000base-t	esx12_ILO	kr-sel-p-esx12.sensirion.lokal	iDRAC 9 (NIC.1)	Server	MON	1000	MON-P-ESX12_ILO9_1	18	
-KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	12	1000base-t	esx11_CT0_eth1	kr-sel-p-esx11.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX11_VMNIC0	20	at-20
-KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	13	1000base-t	esx12_CT0_eth1	kr-sel-p-esx12.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX12_VMNIC0	20	at-20
-KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	14	1000base-t	esx13_CT0_eth1	kr-sel-p-esx13.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX13_VMNIC0	20	at-20
+KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	12	1000base-t	esx11_CT0_eth1	kr-sel-p-esx11.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX11_NIC0	18	
+KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	13	1000base-t	esx12_CT0_eth1	kr-sel-p-esx12.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX12_NIC0	18	
+KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	14	1000base-t	esx13_CT0_eth1	kr-sel-p-esx13.sensirion.lokal	vmnic0	Server	US	1000	US-1G-P-ESX13_NIC0	18	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	15	1000base-t	MLAG_ACCE08_p24	KR-SEL-HAN-L14-ACCE08	24	Switch Access	USW	1000	USW-1G-L14-A08_24	17	MLAG
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	17	1000base-t	KR-SEL-P-SNAS02_	KR-SEL-P-SNAS02	LAN4	Storage	MON	1000	MON-P-SNAS02_LAN4	17	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	18	1000base-t	san11_ct1_eth0	kr-sel-san11	ct1.eth0	Storage	MON	1000	MON-SAN11_CT1_0	15	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	2	1000base-t	FWGW02_p10	KR-SEL-HAN-L14-FWGW02	port10	Firewall	USW	1000	USW-1G-L14-FW02_10	18	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	20	1000base-t	KR-SEL-P-SNAS02_	KR-SEL-P-SNAS02	LAN2	Storage	MON	1000	MON-P-SNAS02_LAN2	17	
-KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	21	1000base-t	fortigate_mgmt	KR-SEL-HAN-L14-FWGW02	mgmt	Firewall	USW	1000	USW-1G-L14-FW02_MGMT	20	at-20
+KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	21	1000base-t	fortigate_mgmt	KR-SEL-HAN-L14-FWGW02	mgmt	Firewall	USW	1000	USW-1G-L14-FW02_MG	18	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	23	1000base-t	FWGW01_p11	KR-SEL-HAN-L14-FWGW02	port11	Firewall	USW	1000	USW-1G-L14-FW02_11	18	
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	25	10gbase-x-sfpp	ISC	KR-SEL-HAN-L14-DIST01	25	Switch Dist	USW	10000	USW-L14-D01_25	14	ISC
 KR-SEL-HAN	KR-SEL-HAN-L14-DIST02	26	10gbase-x-sfpp	ISC	KR-SEL-HAN-L14-DIST01	26	Switch Dist	USW	10000	USW-L14-D01_26	14	ISC
@@ -1506,7 +1506,7 @@ NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-1	1:27	extreme-summitstack	CORE02_p27	NL-ENS-NE
 NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-1	1:28	extreme-summitstack	CORE02_p28	NL-ENS-NEP-GFL-CORE01-2	02:27	Switch Core	USW		USW-GFL-C01_2_27	16	stack
 NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-1	1:4	1000base-t	FWGW01_WAN2	NL-ENS-FWGW01	wan2	Firewall	USW	1000	USW-1G-FW01_WAN2	16	
 NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-1	1:5	1000base-t	FWGW02_p1	NL-ENS-FWGW01	port1	Firewall	USW	1000	USW-1G-FW01_1	13	
-NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-1	1:6	1000base-t	FWGW01_MGMT	NL-ENS-FWGW01	mgmt	Firewall	USW	1000	USW-1G-FW01_MGMT	16	
+NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-1	1:6	1000base-t	FWGW01_MGMT	NL-ENS-FWGW01	mgmt	Firewall	USW	1000	USW-1G-FW01_MG	14	
 NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-2	2:1	1000base-t	L01-ACCE01_p24	NL-ENS-NEP-L01-ACCE01	23	Switch Access	USW	1000	USW-1G-L01-A01_23	17	
 NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-2	2:19	1000base-t	FWGW02_p11	NL-ENS-FWGW02	port11	Firewall	USW	1000	USW-1G-FW02_11	14	
 NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-2	2:2	1000base-t	L02-ACCE01_p24	NL-ENS-NEP-L02-ACCE01	24	Switch Access	USW	1000	USW-1G-L02-A01_24	17	
@@ -1519,7 +1519,7 @@ NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-2	2:27	extreme-summitstack	CORE01_p27	NL-ENS-NE
 NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-2	2:28	extreme-summitstack	CORE01_p28	NL-ENS-NEP-GFL-CORE01-1	01:27	Switch Core	USW		USW-GFL-C01_1_27	16	stack
 NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-2	2:4	1000base-t	FWGW02_WAN2	NL-ENS-FWGW02	wan2	Firewall	USW	1000	USW-1G-FW02_WAN2	16	
 NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-2	2:5	1000base-t	FWGW01_p1	NL-ENS-FWGW02	port1	Firewall	USW	1000	USW-1G-FW02_1	13	
-NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-2	2:6	1000base-t	FWGW02_MGMT	NL-ENS-FWGW02	mgmt	Firewall	USW	1000	USW-1G-FW02_MGMT	16	
+NL-ENS-NEP	NL-ENS-NEP-GFL-CORE01-2	2:6	1000base-t	FWGW02_MGMT	NL-ENS-FWGW02	mgmt	Firewall	USW	1000	USW-1G-FW02_MG	14	
 NL-ENS-NEP	NL-ENS-NEP-L01-ACCE01	23	1000base-t	LAG-CORE01_p1	NL-ENS-NEP-GFL-CORE01-2	02:01	Switch Core	USW	1000	USW-1G-GFL-C01_2_1	18	
 NL-ENS-NEP	NL-ENS-NEP-L01-ACCE01	24	1000base-t	LAG-COREE2_p1	NL-ENS-NEP-GFL-CORE01-1	01:01	Switch Core	USW	1000	USW-1G-GFL-C01_1_1	18	
 NL-ENS-NEP	NL-ENS-NEP-L02-ACCE01	23	1000base-t	LAG-CORE01_p2	NL-ENS-NEP-GFL-CORE01-1	01:02	Switch Core	USW	1000	USW-1G-GFL-C01_1_2	18	

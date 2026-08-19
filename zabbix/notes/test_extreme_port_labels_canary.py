@@ -171,7 +171,7 @@ class FleetCanaryTests(unittest.TestCase):
         self.assertGreater(seen, 20, "canary has no ISC/stack rows to check")
         self.assertEqual(failures, [], "\n".join(failures[:40]))
 
-    def test_han_esx_data_nics_keep_vmnic(self):
+    def test_han_esx_data_nics_keep_nic_index(self):
         got = {
             row.canary_key: label
             for row, _s, label in self.planned
@@ -186,7 +186,8 @@ class FleetCanaryTests(unittest.TestCase):
             parsed = e.parse_label(label)
             self.assertIsNotNone(parsed)
             self.assertEqual(parsed.cls, "US", f"{key}: {label}")
-            self.assertIn("VMNIC", label, f"{key}: {label}")
+            self.assertRegex(label, r"_NIC\d", f"{key}: {label}")
+            self.assertNotIn("VMNIC", label)
 
     def test_cohesity_embedded_nic_is_mon_without_mgmt_flag(self):
         """Live Preview often has oob_ip unset. NIC.Embedded + Cohesity is iLO."""

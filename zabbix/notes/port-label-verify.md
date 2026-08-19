@@ -36,15 +36,15 @@ _CH-ZRH-ZH4 · 30 ports_
 |---|---|---|---|---|---|---|
 | 1 | `ISC` | `CH-ZRH-ZH4-CORE02::1` | Switch Core | 10000 | `USW-C02_1` | 9 |
 | 11 | `Alternative_ISC` | `CH-ZRH-ZH4-CORE02::11` | Switch Core | 10000 | `USW-C02_11` | 10 |
-| 12 | `esx40_ct1_eth0` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX40_VMNIC0` | 15 |
-| 13 | `esx41_ct1_eth0` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX41_VMNIC0` | 15 |
+| 12 | `esx40_ct1_eth0` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX40_NIC0` | 13 |
+| 13 | `esx41_ct1_eth0` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX41_NIC0` | 13 |
 | 15 | `ZRH-FWGW01_x1` | `CH-ZRH-ZH4-FWGW01::x1` | Firewall | 10000 | `USW-FW01_X1` | 11 |
 | 16 | `ZRH-FWGW01_x3` | `CH-ZRH-ZH4-FWGW01::x3` | Firewall | 10000 | `USW-FW01_X3` | 11 |
-| 17 | `esx42_ct1_eth0` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX42_VMNIC0` | 15 |
-| 18 | `esx43_ct1_eth0` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX43_VMNIC0` | 15 |
-| 19 | `esx44_ct1_eth0` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX44_VMNIC0` | 15 |
+| 17 | `esx42_ct1_eth0` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX42_NIC0` | 13 |
+| 18 | `esx43_ct1_eth0` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX43_NIC0` | 13 |
+| 19 | `esx44_ct1_eth0` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX44_NIC0` | 13 |
 | 2 | `ISC` | `CH-ZRH-ZH4-CORE02::2` | Switch Core | 10000 | `USW-C02_2` | 9 |
-| 22 | `esx47_ct1_eth0` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX47_VMNIC0` | 15 |
+| 22 | `esx47_ct1_eth0` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX47_NIC0` | 13 |
 | 23 | `SAN02_ctl0_eth10` | `ch-zrh-zh4-san02::ct0.eth10` | Storage | 10000 | `US-SAN02_CT0_10` | 15 |
 | 24 | `SAN02_ctl1_eth10` | `ch-zrh-zh4-san02::ct1.eth10` | Storage | 10000 | `US-SAN02_CT1_10` | 15 |
 | 25 | `SAN02_ctl0_eth2` | `ch-zrh-zh4-san02::ct0.eth2` | Storage | 10000 | `US-SAN02_CT0_2` | 14 |
@@ -54,13 +54,13 @@ _CH-ZRH-ZH4 · 30 ports_
 | 29 | `ZH4-SAN04-N01_CT` | `ch-zrh-zh4-san01::ct0.eth10` | Storage | 10000 | `US-SAN01_CT0_10` | 15 |
 | 3 | `ISC` | `CH-ZRH-ZH4-CORE02::3` | Switch Core | 10000 | `USW-C02_3` | 9 |
 | 30 | `ZH4-SAN04-N01_CT` | `ch-zrh-zh4-san01::ct1.eth10` | Storage | 10000 | `US-SAN01_CT1_10` | 15 |
-| 32 | `esx40_ct1_eth2` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX40_VMNIC2` | 15 |
-| 33 | `esx41_ct1_eth2` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX41_VMNIC2` | 15 |
-| 37 | `esx42_ct1_eth2` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX42_VMNIC2` | 15 |
-| 38 | `esx43_ct1_eth2` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX43_VMNIC2` | 15 |
-| 39 | `esx44_ct1_eth2` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX44_VMNIC2` | 15 |
+| 32 | `esx40_ct1_eth2` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX40_NIC2` | 13 |
+| 33 | `esx41_ct1_eth2` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX41_NIC2` | 13 |
+| 37 | `esx42_ct1_eth2` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX42_NIC2` | 13 |
+| 38 | `esx43_ct1_eth2` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX43_NIC2` | 13 |
+| 39 | `esx44_ct1_eth2` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX44_NIC2` | 13 |
 | 4 | `ISC` | `CH-ZRH-ZH4-CORE02::4` | Switch Core | 10000 | `USW-C02_4` | 9 |
-| 42 | `esx47_ct1_eth2` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX47_VMNIC2` | 15 |
+| 42 | `esx47_ct1_eth2` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX47_NIC2` | 13 |
 | 46 | `ZH5-CORE01-P46` | `CH-ZRH-ZH5-CORE01::46` | Switch Core | 10000 | `USW-ZH5-C01_46` | 14 |
 | 5 | `MLAG_MGMT01_p51` | `CH-ZRH-ZH4-MGMT01-1::01:51` | Switch Mgmt | 10000 | `USW-M01_1_51` | 12 |
 | 6 | `MLAG_MGMT02_p51` | `CH-ZRH-ZH4-MGMT01-2::02:51` | Switch Mgmt | 10000 | `USW-M01_2_51` | 12 |
@@ -102,7 +102,7 @@ _CH-STA-L26 · 23 ports_
 | 1/14 | `COH-N14-ILO` | `lr50-san10-n14.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N14` | 13 |
 | 1/15 | `COH-N15-ILO` | `lr50-san10-n15.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N15` | 13 |
 | 1/16 | `COH-N16-ILO` | `lr50-san10-n16.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N16` | 13 |
-| 1/18 | `FWZone-MGMT` | `CH-STA-L26-FWZone01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
+| 1/18 | `FWZone-MGMT` | `CH-STA-L26-FWZone01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MG` | 14 |
 | 1/19 | `S-FWZONE_p13` | `CH-STA-L26-FWZone01::port13` | Firewall | 1000 | `USW-1G-FW01_13` | 14 |
 | 1/2 | `COH-N02-ILO` | `lr50-san10-n02.sensirion.lokal::Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)` | Cohesity | 1000 | `MON-SAN10-N02` | 13 |
 | 1/20 | `S-FWZONE_p14` | `CH-STA-L26-FWZone01::port14` | Firewall | 1000 | `USW-1G-FW01_14` | 14 |
@@ -133,12 +133,12 @@ _KR-SEL-HAN · 15 ports_
 | 15 | `FWGW01_lag.0.1_x` | `KR-SEL-HAN-L14-FWGW01::x2` | Firewall | 10000 | `USW-L14-FW01_X2` | 15 |
 | 16 | `FWGW02_lag.0.1_x` | `KR-SEL-HAN-L14-FWGW02::x2` | Firewall | 10000 | `USW-L14-FW02_X2` | 15 |
 | 2 | `MLAG_DIST02_p28` | `KR-SEL-HAN-L14-DIST02::28` | Switch Dist | 10000 | `USW-L14-D02_28` | 14 |
-| 3 | `esx11_eth1` | `kr-sel-p-esx11.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX11_VMNIC3` | 17 |
-| 4 | `esx12_eth1` | `kr-sel-p-esx12.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX12_VMNIC3` | 17 |
-| 5 | `esx13_eth1` | `kr-sel-p-esx13.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX13_VMNIC3` | 17 |
-| 7 | `esx11_eth3` | `kr-sel-p-esx11.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX11_VMNIC5` | 17 |
-| 8 | `esx12_eth3` | `kr-sel-p-esx12.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX12_VMNIC5` | 17 |
-| 9 | `esx13_eth3` | `kr-sel-p-esx13.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX13_VMNIC5` | 17 |
+| 3 | `esx11_eth1` | `kr-sel-p-esx11.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX11_NIC3` | 15 |
+| 4 | `esx12_eth1` | `kr-sel-p-esx12.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX12_NIC3` | 15 |
+| 5 | `esx13_eth1` | `kr-sel-p-esx13.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX13_NIC3` | 15 |
+| 7 | `esx11_eth3` | `kr-sel-p-esx11.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX11_NIC5` | 15 |
+| 8 | `esx12_eth3` | `kr-sel-p-esx12.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX12_NIC5` | 15 |
+| 9 | `esx13_eth3` | `kr-sel-p-esx13.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX13_NIC5` | 15 |
 
 ### CH-NKN-G08-L02-CORE01-1
 
@@ -2085,7 +2085,7 @@ _CH-STA-L50 · 9 ports_
 | 1/3 | `S-FWZONE_p15` | `CH-STA-L50-FWZone01::port15` | Firewall | 1000 | `USW-1G-FW01_15` | 14 |
 | 1/30 | `NNI-port` | `CH-STA-L50-L01-CORE02::1:7` | Switch Core | 10000 | `USW-L01-C02_1_7` | 15 |
 | 1/4 | `S-FWZONE_p16` | `CH-STA-L50-FWZone01::port16` | Firewall | 1000 | `USW-1G-FW01_16` | 14 |
-| 1/9 | `FWZONE-MGMT` | `CH-STA-L50-FWZone01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
+| 1/9 | `FWZONE-MGMT` | `CH-STA-L50-FWZone01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MG` | 14 |
 
 ### CH-STA-L50-L02-ACCE01
 
@@ -2359,15 +2359,15 @@ _CH-ZRH-ZH4 · 30 ports_
 |---|---|---|---|---|---|---|
 | 1 | `ISC` | `CH-ZRH-ZH4-CORE01::1` | Switch Core | 10000 | `USW-C01_1` | 9 |
 | 11 | `Alternative_ISC` | `CH-ZRH-ZH4-CORE01::11` | Switch Core | 10000 | `USW-C01_11` | 10 |
-| 12 | `esx40_ct1_eth1` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX40_VMNIC1` | 15 |
-| 13 | `esx41_ct1_eth1` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX41_VMNIC1` | 15 |
+| 12 | `esx40_ct1_eth1` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX40_NIC1` | 13 |
+| 13 | `esx41_ct1_eth1` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX41_NIC1` | 13 |
 | 15 | `ZRH-FWGW01_x2` | `CH-ZRH-ZH4-FWGW01::x2` | Firewall | 10000 | `USW-FW01_X2` | 11 |
 | 16 | `ZRH-FWGW01_x4` | `CH-ZRH-ZH4-FWGW01::x4` | Firewall | 10000 | `USW-FW01_X4` | 11 |
-| 17 | `esx42_ct1_eth1` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX42_VMNIC1` | 15 |
-| 18 | `esx43_ct1_eth1` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX43_VMNIC1` | 15 |
-| 19 | `esx44_ct1_eth1` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX44_VMNIC1` | 15 |
+| 17 | `esx42_ct1_eth1` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX42_NIC1` | 13 |
+| 18 | `esx43_ct1_eth1` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX43_NIC1` | 13 |
+| 19 | `esx44_ct1_eth1` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX44_NIC1` | 13 |
 | 2 | `ISC` | `CH-ZRH-ZH4-CORE01::2` | Switch Core | 10000 | `USW-C01_2` | 9 |
-| 22 | `esx47_ct1_eth1` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX47_VMNIC1` | 15 |
+| 22 | `esx47_ct1_eth1` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX47_NIC1` | 13 |
 | 23 | `SAN02_ctl0_eth11` | `ch-zrh-zh4-san02::ct0.eth11` | Storage | 10000 | `US-SAN02_CT0_11` | 15 |
 | 24 | `SAN02_ctl1_eth11` | `ch-zrh-zh4-san02::ct1.eth11` | Storage | 10000 | `US-SAN02_CT1_11` | 15 |
 | 25 | `SAN02_ctl0_eth3` | `ch-zrh-zh4-san02::ct0.eth3` | Storage | 10000 | `US-SAN02_CT0_3` | 14 |
@@ -2377,13 +2377,13 @@ _CH-ZRH-ZH4 · 30 ports_
 | 29 | `ZH4-SAN04-N01_CT` | `ch-zrh-zh4-san01::ct0.eth11` | Storage | 10000 | `US-SAN01_CT0_11` | 15 |
 | 3 | `ISC` | `CH-ZRH-ZH4-CORE01::3` | Switch Core | 10000 | `USW-C01_3` | 9 |
 | 30 | `ZH4-SAN04-N01_CT` | `ch-zrh-zh4-san01::ct1.eth11` | Storage | 10000 | `US-SAN01_CT1_11` | 15 |
-| 32 | `esx40_ct1_eth3` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX40_VMNIC3` | 15 |
-| 33 | `esx41_ct1_eth3` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX41_VMNIC3` | 15 |
-| 37 | `esx42_ct1_eth3` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX42_VMNIC3` | 15 |
-| 38 | `esx43_ct1_eth3` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX43_VMNIC3` | 15 |
-| 39 | `esx44_ct1_eth3` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX44_VMNIC3` | 15 |
+| 32 | `esx40_ct1_eth3` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX40_NIC3` | 13 |
+| 33 | `esx41_ct1_eth3` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX41_NIC3` | 13 |
+| 37 | `esx42_ct1_eth3` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX42_NIC3` | 13 |
+| 38 | `esx43_ct1_eth3` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX43_NIC3` | 13 |
+| 39 | `esx44_ct1_eth3` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX44_NIC3` | 13 |
 | 4 | `ISC` | `CH-ZRH-ZH4-CORE01::4` | Switch Core | 10000 | `USW-C01_4` | 9 |
-| 42 | `esx47_ct1_eth3` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX47_VMNIC3` | 15 |
+| 42 | `esx47_ct1_eth3` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX47_NIC3` | 13 |
 | 46 | `ZH5-CORE02-P46` | `CH-ZRH-ZH5-CORE02::46` | Switch Core | 10000 | `USW-ZH5-C02_46` | 14 |
 | 5 | `MLAG_MGMT01_p52` | `CH-ZRH-ZH4-MGMT01-1::01:52` | Switch Mgmt | 10000 | `USW-M01_1_52` | 12 |
 | 6 | `MLAG_MGMT02_p52` | `CH-ZRH-ZH4-MGMT01-2::02:52` | Switch Mgmt | 10000 | `USW-M01_2_52` | 12 |
@@ -2400,19 +2400,19 @@ _CH-ZRH-ZH4 · 22 ports_
 | 1:17 | `esx41_ct0_ilo` | `ch-zrh-zh4-esx41.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX41_ILO10_1` | 17 |
 | 1:18 | `esx42_ct0_ilo` | `ch-zrh-zh4-esx42.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX42_ILO10_1` | 17 |
 | 1:19 | `esx43_ct0_ilo` | `ch-zrh-zh4-esx43.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX43_ILO10_1` | 17 |
-| 1:21 | `esx40_ct0_eth0` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX40_VMNIC4` | 18 |
-| 1:22 | `esx41_ct0_eth0` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX41_VMNIC4` | 18 |
-| 1:23 | `esx42_ct0_eth0` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX42_VMNIC4` | 18 |
-| 1:24 | `esx43_ct0_eth0` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX43_VMNIC4` | 18 |
+| 1:21 | `esx40_ct0_eth0` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX40_NIC4` | 16 |
+| 1:22 | `esx41_ct0_eth0` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX41_NIC4` | 16 |
+| 1:23 | `esx42_ct0_eth0` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX42_NIC4` | 16 |
+| 1:24 | `esx43_ct0_eth0` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX43_NIC4` | 16 |
 | 1:25 | `SAN02_ctl0_mgmt` | `ch-zrh-zh4-san02::ct0.eth0` | Storage | 1000 | `MON-SAN02_CT0_0` | 15 |
-| 1:26 | `esx44_ct0_eth0` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX44_VMNIC4` | 18 |
-| 1:29 | `esx47_ct0_eth0` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX47_VMNIC4` | 18 |
+| 1:26 | `esx44_ct0_eth0` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX44_NIC4` | 16 |
+| 1:29 | `esx47_ct0_eth0` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX47_NIC4` | 16 |
 | 1:31 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH4-FWGW01::port1` | Firewall | 1000 | `USW-1G-FW01_1` | 13 |
 | 1:32 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH4-FWGW01::port3` | Firewall | 1000 | `USW-1G-FW01_3` | 13 |
 | 1:33 | `s-fwgw01:lag.0.3` | `CH-ZRH-ZH4-FWGW01::port13` | Firewall | 1000 | `USW-1G-FW01_13` | 14 |
 | 1:34 | `s-fwgw01:lag.0.4` | `CH-ZRH-ZH4-FWGW01::port9` | Firewall | 1000 | `USW-1G-FW01_9` | 13 |
 | 1:49 | `STACKING_PORT` | `CH-ZRH-ZH4-MGMT01-2::02:50` | Switch Mgmt | — | `USW-M01_2_50` | 12 |
-| 1:5 | `S-fwgw01:mgmt1` | `CH-ZRH-ZH4-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
+| 1:5 | `S-fwgw01:mgmt1` | `CH-ZRH-ZH4-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MG` | 14 |
 | 1:50 | `STACKING_PORT` | `CH-ZRH-ZH4-MGMT01-2::02:49` | Switch Mgmt | — | `USW-M01_2_49` | 12 |
 | 1:51 | `MLAG_CORE01_p5` | `CH-ZRH-ZH4-CORE01::5` | Switch Core | 10000 | `USW-C01_5` | 9 |
 | 1:52 | `MLAG_CORE02_p5` | `CH-ZRH-ZH4-CORE02::5` | Switch Core | 10000 | `USW-C02_5` | 9 |
@@ -2427,13 +2427,13 @@ _CH-ZRH-ZH4 · 20 ports_
 | 2:15 | `ZH4-SAN04-N01_CT` | `ch-zrh-zh4-san01::ct0.eth4` | Storage | 1000 | `MON-SAN01_CT0_4` | 15 |
 | 2:16 | `esx44_ct0_ilo` | `ch-zrh-zh4-esx44.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX44_ILO10_1` | 17 |
 | 2:19 | `esx47_ct0_ilo` | `ch-zrh-zh4-esx47.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX47_ILO10_1` | 17 |
-| 2:21 | `esx40_ct0_eth1` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX40_VMNIC5` | 18 |
-| 2:22 | `esx41_ct0_eth1` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX41_VMNIC5` | 18 |
-| 2:23 | `esx42_ct0_eth1` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX42_VMNIC5` | 18 |
-| 2:24 | `esx43_ct0_eth1` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX43_VMNIC5` | 18 |
+| 2:21 | `esx40_ct0_eth1` | `ch-zrh-zh4-esx40.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX40_NIC5` | 16 |
+| 2:22 | `esx41_ct0_eth1` | `ch-zrh-zh4-esx41.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX41_NIC5` | 16 |
+| 2:23 | `esx42_ct0_eth1` | `ch-zrh-zh4-esx42.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX42_NIC5` | 16 |
+| 2:24 | `esx43_ct0_eth1` | `ch-zrh-zh4-esx43.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX43_NIC5` | 16 |
 | 2:25 | `SAN02_ctl1_mgmt` | `ch-zrh-zh4-san02::ct1.eth0` | Storage | 1000 | `MON-SAN02_CT1_0` | 15 |
-| 2:26 | `esx44_ct0_eth1` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX44_VMNIC5` | 18 |
-| 2:29 | `esx47_ct0_eth1` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX47_VMNIC5` | 18 |
+| 2:26 | `esx44_ct0_eth1` | `ch-zrh-zh4-esx44.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX44_NIC5` | 16 |
+| 2:29 | `esx47_ct0_eth1` | `ch-zrh-zh4-esx47.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX47_NIC5` | 16 |
 | 2:31 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH4-FWGW01::port2` | Firewall | 1000 | `USW-1G-FW01_2` | 13 |
 | 2:32 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH4-FWGW01::port4` | Firewall | 1000 | `USW-1G-FW01_4` | 13 |
 | 2:33 | `s-fwgw01:lag.0.3` | `CH-ZRH-ZH4-FWGW01::port14` | Firewall | 1000 | `USW-1G-FW01_14` | 14 |
@@ -2452,17 +2452,17 @@ _CH-ZRH-ZH5 · 34 ports_
 |---|---|---|---|---|---|---|
 | 1 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE02::1` | Switch Core | 10000 | `USW-C02_1` | 9 |
 | 11 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE02::11` | Switch Core | 10000 | `USW-C02_11` | 10 |
-| 12 | `esx50_ct1_eth0` | `ch-zrh-zh5-esx50.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX50_VMNIC0` | 15 |
-| 13 | `esx51_ct1_eth0` | `ch-zrh-zh5-esx51.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX51_VMNIC0` | 15 |
+| 12 | `esx50_ct1_eth0` | `ch-zrh-zh5-esx50.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX50_NIC0` | 13 |
+| 13 | `esx51_ct1_eth0` | `ch-zrh-zh5-esx51.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX51_NIC0` | 13 |
 | 15 | `ZRH-FWGW01_x1` | `CH-ZRH-ZH5-FWGW01::x1` | Firewall | 10000 | `USW-FW01_X1` | 11 |
 | 16 | `ZRH-FWGW01_x4` | `CH-ZRH-ZH5-FWGW01::x4` | Firewall | 10000 | `USW-FW01_X4` | 11 |
-| 17 | `esx52_ct1_eth0` | `ch-zrh-zh5-esx52.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX52_VMNIC0` | 15 |
-| 18 | `esx53_ct1_eth0` | `ch-zrh-zh5-esx53.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX53_VMNIC0` | 15 |
-| 19 | `esx54_ct1_eth0` | `ch-zrh-zh5-esx54.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX54_VMNIC0` | 15 |
+| 17 | `esx52_ct1_eth0` | `ch-zrh-zh5-esx52.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX52_NIC0` | 13 |
+| 18 | `esx53_ct1_eth0` | `ch-zrh-zh5-esx53.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX53_NIC0` | 13 |
+| 19 | `esx54_ct1_eth0` | `ch-zrh-zh5-esx54.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX54_NIC0` | 13 |
 | 2 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE02::2` | Switch Core | 10000 | `USW-C02_2` | 9 |
-| 20 | `esx55_ct1_eth0` | `ch-zrh-zh5-esx55.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX55_VMNIC2` | 15 |
-| 21 | `esx56_ct1_eth0` | `ch-zrh-zh5-esx56.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX56_VMNIC2` | 15 |
-| 22 | `esx57_ct1_eth0` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX57_VMNIC0` | 15 |
+| 20 | `esx55_ct1_eth0` | `ch-zrh-zh5-esx55.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX55_NIC2` | 13 |
+| 21 | `esx56_ct1_eth0` | `ch-zrh-zh5-esx56.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX56_NIC2` | 13 |
+| 22 | `esx57_ct1_eth0` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic0` | Server | 10000 | `US-ESX57_NIC0` | 13 |
 | 23 | `SAN02_ctl0_eth10` | `ch-zrh-zh5-san02::ct0.eth10` | Storage | 10000 | `US-SAN02_CT0_10` | 15 |
 | 24 | `SAN02_ctl1_eth10` | `ch-zrh-zh5-san02::ct1.eth10` | Storage | 10000 | `US-SAN02_CT1_10` | 15 |
 | 25 | `SAN02_ctl0_eth2` | `ch-zrh-zh5-san02::ct0.eth2` | Storage | 10000 | `US-SAN02_CT0_2` | 14 |
@@ -2472,15 +2472,15 @@ _CH-ZRH-ZH5 · 34 ports_
 | 29 | `ZH5-SAN04-N01_CT` | `ch-zrh-zh5-san01::ct0.eth10` | Storage | 10000 | `US-SAN01_CT0_10` | 15 |
 | 3 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE02::3` | Switch Core | 10000 | `USW-C02_3` | 9 |
 | 30 | `ZH5-SAN04-N01_CT` | `ch-zrh-zh5-san01::ct1.eth10` | Storage | 10000 | `US-SAN01_CT1_10` | 15 |
-| 32 | `esx50_ct1_eth2` | `ch-zrh-zh5-esx50.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX50_VMNIC2` | 15 |
-| 33 | `esx51_ct1_eth2` | `ch-zrh-zh5-esx51.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX51_VMNIC2` | 15 |
-| 37 | `esx52_ct1_eth2` | `ch-zrh-zh5-esx52.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX52_VMNIC2` | 15 |
-| 38 | `esx53_ct1_eth2` | `ch-zrh-zh5-esx53.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX53_VMNIC2` | 15 |
-| 39 | `esx54_ct1_eth2` | `ch-zrh-zh5-esx54.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX54_VMNIC2` | 15 |
+| 32 | `esx50_ct1_eth2` | `ch-zrh-zh5-esx50.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX50_NIC2` | 13 |
+| 33 | `esx51_ct1_eth2` | `ch-zrh-zh5-esx51.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX51_NIC2` | 13 |
+| 37 | `esx52_ct1_eth2` | `ch-zrh-zh5-esx52.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX52_NIC2` | 13 |
+| 38 | `esx53_ct1_eth2` | `ch-zrh-zh5-esx53.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX53_NIC2` | 13 |
+| 39 | `esx54_ct1_eth2` | `ch-zrh-zh5-esx54.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX54_NIC2` | 13 |
 | 4 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE02::4` | Switch Core | 10000 | `USW-C02_4` | 9 |
-| 40 | `esx55_ct1_eth2` | `ch-zrh-zh5-esx55.sensirion.lokal::vmnic4` | Server | 10000 | `US-ESX55_VMNIC4` | 15 |
-| 41 | `esx56_ct1_eth2` | `ch-zrh-zh5-esx56.sensirion.lokal::vmnic4` | Server | 10000 | `US-ESX56_VMNIC4` | 15 |
-| 42 | `esx57_ct1_eth2` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX57_VMNIC2` | 15 |
+| 40 | `esx55_ct1_eth2` | `ch-zrh-zh5-esx55.sensirion.lokal::vmnic4` | Server | 10000 | `US-ESX55_NIC4` | 13 |
+| 41 | `esx56_ct1_eth2` | `ch-zrh-zh5-esx56.sensirion.lokal::vmnic4` | Server | 10000 | `US-ESX56_NIC4` | 13 |
+| 42 | `esx57_ct1_eth2` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic2` | Server | 10000 | `US-ESX57_NIC2` | 13 |
 | 46 | `ZH4-CORE01-P46` | `CH-ZRH-ZH4-CORE01::46` | Switch Core | 10000 | `USW-ZH4-C01_46` | 14 |
 | 5 | `ZRH-ZH5-MGMT02-P` | `CH-ZRH-ZH5-MGMT01-1::01:51` | Switch Mgmt | 10000 | `USW-M01_1_51` | 12 |
 | 6 | `ZRH-ZH5-MGMT02-P` | `CH-ZRH-ZH5-MGMT01-1::01:52` | Switch Mgmt | 10000 | `USW-M01_1_52` | 12 |
@@ -2493,17 +2493,17 @@ _CH-ZRH-ZH5 · 34 ports_
 |---|---|---|---|---|---|---|
 | 1 | `CH-ZRH-ZH5-CORE1` | `CH-ZRH-ZH5-CORE01::1` | Switch Core | 10000 | `USW-C01_1` | 9 |
 | 11 | `CH-ZRH-ZH5-CORE1` | `CH-ZRH-ZH5-CORE01::11` | Switch Core | 10000 | `USW-C01_11` | 10 |
-| 12 | `esx50_ct1_eth1` | `ch-zrh-zh5-esx50.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX50_VMNIC1` | 15 |
-| 13 | `esx51_ct1_eth1` | `ch-zrh-zh5-esx51.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX51_VMNIC1` | 15 |
+| 12 | `esx50_ct1_eth1` | `ch-zrh-zh5-esx50.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX50_NIC1` | 13 |
+| 13 | `esx51_ct1_eth1` | `ch-zrh-zh5-esx51.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX51_NIC1` | 13 |
 | 15 | `ZRH-FWGW01_x2` | `CH-ZRH-ZH5-FWGW01::x2` | Firewall | 10000 | `USW-FW01_X2` | 11 |
 | 16 | `ZRH-FWGW01_x3` | `CH-ZRH-ZH5-FWGW01::x3` | Firewall | 10000 | `USW-FW01_X3` | 11 |
-| 17 | `esx52_ct1_eth1` | `ch-zrh-zh5-esx52.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX52_VMNIC1` | 15 |
-| 18 | `esx53_ct1_eth1` | `ch-zrh-zh5-esx53.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX53_VMNIC1` | 15 |
-| 19 | `esx54_ct1_eth1` | `ch-zrh-zh5-esx54.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX54_VMNIC1` | 15 |
+| 17 | `esx52_ct1_eth1` | `ch-zrh-zh5-esx52.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX52_NIC1` | 13 |
+| 18 | `esx53_ct1_eth1` | `ch-zrh-zh5-esx53.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX53_NIC1` | 13 |
+| 19 | `esx54_ct1_eth1` | `ch-zrh-zh5-esx54.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX54_NIC1` | 13 |
 | 2 | `CH-ZRH-ZH5-CORE1` | `CH-ZRH-ZH5-CORE01::2` | Switch Core | 10000 | `USW-C01_2` | 9 |
-| 20 | `esx55_ct1_eth1` | `ch-zrh-zh5-esx55.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX55_VMNIC3` | 15 |
-| 21 | `esx56_ct1_eth1` | `ch-zrh-zh5-esx56.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX56_VMNIC3` | 15 |
-| 22 | `esx57_ct1_eth1` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX57_VMNIC1` | 15 |
+| 20 | `esx55_ct1_eth1` | `ch-zrh-zh5-esx55.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX55_NIC3` | 13 |
+| 21 | `esx56_ct1_eth1` | `ch-zrh-zh5-esx56.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX56_NIC3` | 13 |
+| 22 | `esx57_ct1_eth1` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic1` | Server | 10000 | `US-ESX57_NIC1` | 13 |
 | 23 | `SAN02_ctl0_eth11` | `ch-zrh-zh5-san02::ct0.eth11` | Storage | 10000 | `US-SAN02_CT0_11` | 15 |
 | 24 | `SAN02_ctl1_eth11` | `ch-zrh-zh5-san02::ct1.eth11` | Storage | 10000 | `US-SAN02_CT1_11` | 15 |
 | 25 | `SAN02_ctl0_eth3` | `ch-zrh-zh5-san02::ct0.eth3` | Storage | 10000 | `US-SAN02_CT0_3` | 14 |
@@ -2513,15 +2513,15 @@ _CH-ZRH-ZH5 · 34 ports_
 | 29 | `ZH5-SAN04-N01_CT` | `ch-zrh-zh5-san01::ct0.eth11` | Storage | 10000 | `US-SAN01_CT0_11` | 15 |
 | 3 | `CH-ZRH-ZH5-CORE1` | `CH-ZRH-ZH5-CORE01::3` | Switch Core | 10000 | `USW-C01_3` | 9 |
 | 30 | `ZH5-SAN04-N01_CT` | `ch-zrh-zh5-san01::ct1.eth11` | Storage | 10000 | `US-SAN01_CT1_11` | 15 |
-| 32 | `esx50_ct1_eth3` | `ch-zrh-zh5-esx50.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX50_VMNIC3` | 15 |
-| 33 | `esx51_ct1_eth3` | `ch-zrh-zh5-esx51.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX51_VMNIC3` | 15 |
-| 37 | `esx52_ct1_eth3` | `ch-zrh-zh5-esx52.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX52_VMNIC3` | 15 |
-| 38 | `esx53_ct1_eth3` | `ch-zrh-zh5-esx53.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX53_VMNIC3` | 15 |
-| 39 | `esx54_ct1_eth3` | `ch-zrh-zh5-esx54.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX54_VMNIC3` | 15 |
+| 32 | `esx50_ct1_eth3` | `ch-zrh-zh5-esx50.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX50_NIC3` | 13 |
+| 33 | `esx51_ct1_eth3` | `ch-zrh-zh5-esx51.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX51_NIC3` | 13 |
+| 37 | `esx52_ct1_eth3` | `ch-zrh-zh5-esx52.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX52_NIC3` | 13 |
+| 38 | `esx53_ct1_eth3` | `ch-zrh-zh5-esx53.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX53_NIC3` | 13 |
+| 39 | `esx54_ct1_eth3` | `ch-zrh-zh5-esx54.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX54_NIC3` | 13 |
 | 4 | `CH-ZRH-ZH5-CORE1` | `CH-ZRH-ZH5-CORE01::4` | Switch Core | 10000 | `USW-C01_4` | 9 |
-| 40 | `esx55_ct1_eth3` | `ch-zrh-zh5-esx55.sensirion.lokal::vmnic5` | Server | 10000 | `US-ESX55_VMNIC5` | 15 |
-| 41 | `esx56_ct1_eth3` | `ch-zrh-zh5-esx56.sensirion.lokal::vmnic5` | Server | 10000 | `US-ESX56_VMNIC5` | 15 |
-| 42 | `esx57_ct1_eth3` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX57_VMNIC3` | 15 |
+| 40 | `esx55_ct1_eth3` | `ch-zrh-zh5-esx55.sensirion.lokal::vmnic5` | Server | 10000 | `US-ESX55_NIC5` | 13 |
+| 41 | `esx56_ct1_eth3` | `ch-zrh-zh5-esx56.sensirion.lokal::vmnic5` | Server | 10000 | `US-ESX56_NIC5` | 13 |
+| 42 | `esx57_ct1_eth3` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic3` | Server | 10000 | `US-ESX57_NIC3` | 13 |
 | 46 | `ZH4-CORE02-P46` | `CH-ZRH-ZH4-CORE02::46` | Switch Core | 10000 | `USW-ZH4-C02_46` | 14 |
 | 5 | `ZRH-ZH5-MGMT01-P` | `CH-ZRH-ZH5-MGMT01-2::02:51` | Switch Mgmt | 10000 | `USW-M01_2_51` | 12 |
 | 6 | `ZRH-ZH5-MGMT01-P` | `CH-ZRH-ZH5-MGMT01-2::02:52` | Switch Mgmt | 10000 | `USW-M01_2_52` | 12 |
@@ -2539,13 +2539,13 @@ _CH-ZRH-ZH5 · 17 ports_
 | 1:18 | `esx52_ct0_ilo` | `ch-zrh-zh5-esx52.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX52_ILO10_1` | 17 |
 | 1:19 | `esx53_ct0_ilo` | `ch-zrh-zh5-esx53.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX53_ILO10_1` | 17 |
 | 1:25 | `SAN02_ctl0_mgmt` | `ch-zrh-zh5-san02::ct0.eth0` | Storage | 1000 | `MON-SAN02_CT0_0` | 15 |
-| 1:29 | `esx57_ct0_eth0` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX57_VMNIC4` | 18 |
+| 1:29 | `esx57_ct0_eth0` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic4` | Server | 1000 | `US-1G-ESX57_NIC4` | 16 |
 | 1:31 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH5-FWGW01::port1` | Firewall | 1000 | `USW-1G-FW01_1` | 13 |
 | 1:32 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH5-FWGW01::port3` | Firewall | 1000 | `USW-1G-FW01_3` | 13 |
 | 1:33 | `s-fwgw01:lag.0.3` | `CH-ZRH-ZH5-FWGW01::port13` | Firewall | 1000 | `USW-1G-FW01_13` | 14 |
 | 1:34 | `s-fwgw01:lag.0.4` | `CH-ZRH-ZH5-FWGW01::port9` | Firewall | 1000 | `USW-1G-FW01_9` | 13 |
 | 1:49 | `STACKING_PORT` | `CH-ZRH-ZH5-MGMT01-2::02:50` | Switch Mgmt | — | `USW-M01_2_50` | 12 |
-| 1:5 | `s-fwgw02:mgmt1` | `CH-ZRH-ZH5-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
+| 1:5 | `s-fwgw02:mgmt1` | `CH-ZRH-ZH5-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MG` | 14 |
 | 1:50 | `STACKING_PORT` | `CH-ZRH-ZH5-MGMT01-2::02:49` | Switch Mgmt | — | `USW-M01_2_49` | 12 |
 | 1:51 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE01::5` | Switch Core | 10000 | `USW-C01_5` | 9 |
 | 1:52 | `CH-ZRH-ZH5-CORE0` | `CH-ZRH-ZH5-CORE01::6` | Switch Core | 10000 | `USW-C01_6` | 9 |
@@ -2563,7 +2563,7 @@ _CH-ZRH-ZH5 · 17 ports_
 | 2:18 | `esx56_ct0_ilo` | `ch-zrh-zh5-esx56.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX56_ILO10_1` | 17 |
 | 2:19 | `esx57_ct0_ilo` | `ch-zrh-zh5-esx57.sensirion.lokal::iDRAC 10 (NIC.1)` | Server | 1000 | `MON-ESX57_ILO10_1` | 17 |
 | 2:25 | `SAN02_ctl1_mgmt` | `ch-zrh-zh5-san02::ct1.eth0` | Storage | 1000 | `MON-SAN02_CT1_0` | 15 |
-| 2:29 | `esx57_ct0_eth1` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX57_VMNIC5` | 18 |
+| 2:29 | `esx57_ct0_eth1` | `ch-zrh-zh5-esx57.sensirion.lokal::vmnic5` | Server | 1000 | `US-1G-ESX57_NIC5` | 16 |
 | 2:31 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH5-FWGW01::port2` | Firewall | 1000 | `USW-1G-FW01_2` | 13 |
 | 2:32 | `s-fwgw01:lag.0.2` | `CH-ZRH-ZH5-FWGW01::port4` | Firewall | 1000 | `USW-1G-FW01_4` | 13 |
 | 2:33 | `s-fwgw01:lag.0.3` | `CH-ZRH-ZH5-FWGW01::port14` | Firewall | 1000 | `USW-1G-FW01_14` | 14 |
@@ -2751,7 +2751,7 @@ _CN-SHA-JIU · 14 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 1:10 | `ESX13_eth0` | `cn-sha-p-esx13.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX13_VMNIC2` | 17 |
+| 1:10 | `ESX13_eth0` | `cn-sha-p-esx13.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX13_NIC2` | 15 |
 | 1:11 | `p-stod01_ct1_p1` | `CN-SHA-P-STOD01::A0` | Storage | 10000 | `US-P-STOD01_A0` | 14 |
 | 1:12 | `pure_ct0_eth4` | `cn-sha-san11::ct0.eth4` | Storage | 10000 | `US-SAN11_CT0_4` | 14 |
 | 1:13 | `ISC_alt_CORE03_p` | `CN-SHA-JIU-L03-CORE03-1::01:13` | Switch Core | 10000 | `USW-L03-C03_1_13` | 16 |
@@ -2763,8 +2763,8 @@ _CN-SHA-JIU · 14 ports_
 | 1:5 | `MLAG_L03-DIST03_` | `CN-SHA-JIU-L03-DIST03::27` | Switch Dist | 10000 | `USW-L03-D03_27` | 14 |
 | 1:6 | `CN-SHA-P-SNAS01_` | `CN-SHA-P-SNAS01::LAN5` | Storage | 10000 | `US-P-SNAS01_LAN5` | 16 |
 | 1:7 | `FWGW01_p15` | `CN-SHA-JIUX-L3-FWGW01::port15` | Firewall | 1000 | `USW-1G-L3-FW01_15` | 17 |
-| 1:8 | `ESX11_eth0` | `cn-sha-p-esx11.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX11_VMNIC2` | 17 |
-| 1:9 | `ESX12_eth0` | `cn-sha-p-esx12.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX12_VMNIC2` | 17 |
+| 1:8 | `ESX11_eth0` | `cn-sha-p-esx11.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX11_NIC2` | 15 |
+| 1:9 | `ESX12_eth0` | `cn-sha-p-esx12.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX12_NIC2` | 15 |
 
 ### CN-SHA-JIU-L03-CORE01-2
 
@@ -2772,7 +2772,7 @@ _CN-SHA-JIU · 12 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 2:10 | `ESX13_eth2` | `cn-sha-p-esx13.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX13_VMNIC4` | 17 |
+| 2:10 | `ESX13_eth2` | `cn-sha-p-esx13.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX13_NIC4` | 15 |
 | 2:11 | `p-stod01_ct2_p1` | `CN-SHA-P-STOD01::B0` | Storage | 10000 | `US-P-STOD01_B0` | 14 |
 | 2:12 | `pure_ct1_eth4` | `cn-sha-san11::ct1.eth4` | Storage | 10000 | `US-SAN11_CT1_4` | 14 |
 | 2:14 | `ISC_CORE04_p14` | `CN-SHA-JIU-L03-CORE03-2::02:14` | Switch Core | 10000 | `USW-L03-C03_2_14` | 16 |
@@ -2782,8 +2782,8 @@ _CN-SHA-JIU · 12 ports_
 | 2:4 | `MLAG_L03-DIST02_` | `CN-SHA-JIU-L03-DIST02::51` | Switch Dist | 10000 | `USW-L03-D02_51` | 14 |
 | 2:5 | `MLAG_L03-DIST04_` | `CN-SHA-JIU-L03-DIST04::27` | Switch Dist | 10000 | `USW-L03-D04_27` | 14 |
 | 2:7 | `FWGW02_p15` | `CN-SHA-JIUX-L3-FWGW01::port16` | Firewall | 1000 | `USW-1G-L3-FW01_16` | 17 |
-| 2:8 | `ESX11_eth2` | `cn-sha-p-esx11.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX11_VMNIC4` | 17 |
-| 2:9 | `ESX12_eth2` | `cn-sha-p-esx12.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX12_VMNIC4` | 17 |
+| 2:8 | `ESX11_eth2` | `cn-sha-p-esx11.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX11_NIC4` | 15 |
+| 2:9 | `ESX12_eth2` | `cn-sha-p-esx12.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX12_NIC4` | 15 |
 
 ### CN-SHA-JIU-L03-CORE03-1
 
@@ -2791,7 +2791,7 @@ _CN-SHA-JIU · 14 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 1:10 | `ESX13_eth1` | `cn-sha-p-esx13.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX13_VMNIC3` | 17 |
+| 1:10 | `ESX13_eth1` | `cn-sha-p-esx13.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX13_NIC3` | 15 |
 | 1:11 | `p-stod01_ct1_p2` | `CN-SHA-P-STOD01::A1` | Storage | 10000 | `US-P-STOD01_A1` | 14 |
 | 1:12 | `pure_ct0_eth5` | `cn-sha-san11::ct0.eth5` | Storage | 10000 | `US-SAN11_CT0_5` | 14 |
 | 1:13 | `ISC_alt_CORE01_p` | `CN-SHA-JIU-L03-CORE01-1::01:13` | Switch Core | 10000 | `USW-L03-C01_1_13` | 16 |
@@ -2803,8 +2803,8 @@ _CN-SHA-JIU · 14 ports_
 | 1:5 | `MLAG_L03-DIST03_` | `CN-SHA-JIU-L03-DIST03::28` | Switch Dist | 10000 | `USW-L03-D03_28` | 14 |
 | 1:6 | `CN-SHA-P-SNAS01_` | `CN-SHA-P-SNAS01::LAN6` | Storage | 10000 | `US-P-SNAS01_LAN6` | 16 |
 | 1:7 | `FWGW01_p16` | `CN-SHA-JIUX-L3-FWGW02::port15` | Firewall | 1000 | `USW-1G-L3-FW02_15` | 17 |
-| 1:8 | `ESX11_eth1` | `cn-sha-p-esx11.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX11_VMNIC3` | 17 |
-| 1:9 | `ESX12_eth1` | `cn-sha-p-esx12.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX12_VMNIC3` | 17 |
+| 1:8 | `ESX11_eth1` | `cn-sha-p-esx11.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX11_NIC3` | 15 |
+| 1:9 | `ESX12_eth1` | `cn-sha-p-esx12.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX12_NIC3` | 15 |
 
 ### CN-SHA-JIU-L03-CORE03-2
 
@@ -2812,7 +2812,7 @@ _CN-SHA-JIU · 12 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 2:10 | `ESX13_eth3` | `cn-sha-p-esx13.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX13_VMNIC5` | 17 |
+| 2:10 | `ESX13_eth3` | `cn-sha-p-esx13.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX13_NIC5` | 15 |
 | 2:11 | `p-stod01_ct2_p2` | `CN-SHA-P-STOD01::B1` | Storage | 10000 | `US-P-STOD01_B1` | 14 |
 | 2:12 | `pure_ct1_eth5` | `cn-sha-san11::ct1.eth5` | Storage | 10000 | `US-SAN11_CT1_5` | 14 |
 | 2:14 | `ISC_CORE02_p14` | `CN-SHA-JIU-L03-CORE01-2::02:14` | Switch Core | 10000 | `USW-L03-C01_2_14` | 16 |
@@ -2822,8 +2822,8 @@ _CN-SHA-JIU · 12 ports_
 | 2:4 | `MLAG_L03-DIST02_` | `CN-SHA-JIU-L03-DIST02::52` | Switch Dist | 10000 | `USW-L03-D02_52` | 14 |
 | 2:5 | `MLAG_L03-DIST04_` | `CN-SHA-JIU-L03-DIST04::28` | Switch Dist | 10000 | `USW-L03-D04_28` | 14 |
 | 2:7 | `FWGW02_p16` | `CN-SHA-JIUX-L3-FWGW02::port16` | Firewall | 1000 | `USW-1G-L3-FW02_16` | 17 |
-| 2:8 | `ESX11_eth3` | `cn-sha-p-esx11.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX11_VMNIC5` | 17 |
-| 2:9 | `ESX12_eth3` | `cn-sha-p-esx12.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX12_VMNIC5` | 17 |
+| 2:8 | `ESX11_eth3` | `cn-sha-p-esx11.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX11_NIC5` | 15 |
+| 2:9 | `ESX12_eth3` | `cn-sha-p-esx12.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX12_NIC5` | 15 |
 
 ### CN-SHA-JIU-L03-DIST01
 
@@ -2837,7 +2837,7 @@ _CN-SHA-JIU · 20 ports_
 | 24 | `FWGW01_p14` | `CN-SHA-JIUX-L3-FWGW01::port14` | Firewall | 1000 | `USW-1G-L3-FW01_14` | 17 |
 | 25 | `FWGW01_p10` | `CN-SHA-JIUX-L3-FWGW01::port10` | Firewall | 1000 | `USW-1G-L3-FW01_10` | 17 |
 | 26 | `FWGW01_p13` | `CN-SHA-JIUX-L3-FWGW01::port13` | Firewall | 1000 | `USW-1G-L3-FW01_13` | 17 |
-| 29 | `fortigate-mgmt` | `CN-SHA-JIUX-L3-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-L3-FW01_MGMT` | 19 |
+| 29 | `fortigate-mgmt` | `CN-SHA-JIUX-L3-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-L3-FW01_MG` | 17 |
 | 3 | `MLAG_ACCE03_p23` | `CN-SHA-JIU-L03-ACCE03::23` | Switch Access | 1000 | `USW-1G-L03-A03_23` | 17 |
 | 36 | `CN-SHA-P-SNAS01_` | `CN-SHA-P-SNAS01::LAN1` | Storage | 1000 | `MON-P-SNAS01_LAN1` | 17 |
 | 37 | `CN-SHA-P-SNAS02_` | `CN-SHA-P-SNAS01::LAN3` | Storage | 1000 | `MON-P-SNAS01_LAN3` | 17 |
@@ -2864,7 +2864,7 @@ _CN-SHA-JIU · 21 ports_
 | 24 | `FWGW02_p14` | `CN-SHA-JIUX-L3-FWGW02::port14` | Firewall | 1000 | `USW-1G-L3-FW02_14` | 17 |
 | 25 | `FWGW02_p10` | `CN-SHA-JIUX-L3-FWGW02::port10` | Firewall | 1000 | `USW-1G-L3-FW02_10` | 17 |
 | 26 | `FWGW02_p13` | `CN-SHA-JIUX-L3-FWGW02::port13` | Firewall | 1000 | `USW-1G-L3-FW02_13` | 17 |
-| 29 | `fortigate-mgmt` | `CN-SHA-JIUX-L3-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-L3-FW02_MGMT` | 19 |
+| 29 | `fortigate-mgmt` | `CN-SHA-JIUX-L3-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-L3-FW02_MG` | 17 |
 | 3 | `MLAG_ACCE03_p24` | `CN-SHA-JIU-L03-ACCE03::24` | Switch Access | 1000 | `USW-1G-L03-A03_24` | 17 |
 | 31 | `—` | `cn-sha-p-esx11.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX11_ILO9_1` | 18 |
 | 36 | `CN-SHA-P-SNAS01_` | `CN-SHA-P-SNAS01::LAN2` | Storage | 1000 | `MON-P-SNAS01_LAN2` | 17 |
@@ -2970,11 +2970,11 @@ _HU-DEB-NAG-A · 19 ports_
 | 3 | `CORE02_p3` | `HU-DEB-NAG-CORE02::3` | Switch Core | 10000 | `USW-C02_3` | 9 |
 | 30 | `GFL-DIST01_p29` | `HU-DEB-NAG-GFL-DIST01::29` | Switch Dist | 10000 | `USW-GFL-D01_29` | 14 |
 | 35 | `L01-DIST01_p29` | `HU-DEB-NAG-L01-DIST01::29` | Switch Dist | 10000 | `USW-L01-D01_29` | 14 |
-| 37 | `esx11_ct1_eth0` | `hu-deb-p-esx11.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX11_VMNIC2` | 17 |
-| 39 | `esx13_ct1_eth0` | `hu-deb-p-esx13.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX13_VMNIC2` | 17 |
+| 37 | `esx11_ct1_eth0` | `hu-deb-p-esx11.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX11_NIC2` | 15 |
+| 39 | `esx13_ct1_eth0` | `hu-deb-p-esx13.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX13_NIC2` | 15 |
 | 4 | `CORE02_p4` | `HU-DEB-NAG-CORE02::4` | Switch Core | 10000 | `USW-C02_4` | 9 |
-| 41 | `esx11_ct1_eth2` | `hu-deb-p-esx11.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX11_VMNIC4` | 17 |
-| 43 | `esx13_ct1_eth2` | `hu-deb-p-esx13.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX13_VMNIC4` | 17 |
+| 41 | `esx11_ct1_eth2` | `hu-deb-p-esx11.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX11_NIC4` | 15 |
+| 43 | `esx13_ct1_eth2` | `hu-deb-p-esx13.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX13_NIC4` | 15 |
 | 45 | `san11_ct0_eth4` | `hu-deb-san11::ct0.eth4` | Storage | 10000 | `US-SAN11_CT0_4` | 14 |
 | 46 | `san11_ct1_eth4` | `hu-deb-san11::ct1.eth4` | Storage | 10000 | `US-SAN11_CT1_4` | 14 |
 | 48 | `HU-DEB-NAG-CORE0` | `HU-DEB-NAG-CORE03::36` | Switch Core | 10000 | `USW-C03_36` | 10 |
@@ -2994,11 +2994,11 @@ _HU-DEB-NAG-A · 17 ports_
 | 3 | `CORE01_p3` | `HU-DEB-NAG-CORE01::3` | Switch Core | 10000 | `USW-C01_3` | 9 |
 | 30 | `GFL-DIST01_p30` | `HU-DEB-NAG-GFL-DIST01::30` | Switch Dist | 10000 | `USW-GFL-D01_30` | 14 |
 | 35 | `L01-DIST01_p30` | `HU-DEB-NAG-L01-DIST01::30` | Switch Dist | 10000 | `USW-L01-D01_30` | 14 |
-| 37 | `esx11_ct1_eth1` | `hu-deb-p-esx11.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX11_VMNIC3` | 17 |
-| 39 | `esx13_ct1_eth1` | `hu-deb-p-esx13.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX13_VMNIC3` | 17 |
+| 37 | `esx11_ct1_eth1` | `hu-deb-p-esx11.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX11_NIC3` | 15 |
+| 39 | `esx13_ct1_eth1` | `hu-deb-p-esx13.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX13_NIC3` | 15 |
 | 4 | `CORE01_p4` | `HU-DEB-NAG-CORE01::4` | Switch Core | 10000 | `USW-C01_4` | 9 |
-| 41 | `esx11_ct1_eth3` | `hu-deb-p-esx11.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX11_VMNIC5` | 17 |
-| 43 | `esx13_ct1_eth3` | `hu-deb-p-esx13.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX13_VMNIC5` | 17 |
+| 41 | `esx11_ct1_eth3` | `hu-deb-p-esx11.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX11_NIC5` | 15 |
+| 43 | `esx13_ct1_eth3` | `hu-deb-p-esx13.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX13_NIC5` | 15 |
 | 45 | `san11_ct0_eth5` | `hu-deb-san11::ct0.eth5` | Storage | 10000 | `US-SAN11_CT0_5` | 14 |
 | 46 | `san11_ct1_eth5` | `hu-deb-san11::ct1.eth5` | Storage | 10000 | `US-SAN11_CT1_5` | 14 |
 | 48 | `HU-DEB-NAG-CORE0` | `HU-DEB-NAG-CORE04::36` | Switch Core | 10000 | `USW-C04_36` | 10 |
@@ -3011,10 +3011,10 @@ _HU-DEB-NAG-B · 13 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 1 | `MGMT03_p1:30` | `HU-DEB-NAG-MGMT03-1::01:30` | Switch Mgmt | 10000 | `USW-M03_1_30` | 12 |
-| 10 | `esx12_ct1_eth0` | `hu-deb-p-esx12.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX12_VMNIC2` | 17 |
-| 11 | `esx12_ct1_eth2` | `hu-deb-p-esx12.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX12_VMNIC4` | 17 |
-| 12 | `esx14_ct1_eth0` | `hu-deb-p-esx14.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX14_VMNIC2` | 17 |
-| 13 | `esx14_ct1_eth2` | `hu-deb-p-esx14.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX14_VMNIC4` | 17 |
+| 10 | `esx12_ct1_eth0` | `hu-deb-p-esx12.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX12_NIC2` | 15 |
+| 11 | `esx12_ct1_eth2` | `hu-deb-p-esx12.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX12_NIC4` | 15 |
+| 12 | `esx14_ct1_eth0` | `hu-deb-p-esx14.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX14_NIC2` | 15 |
+| 13 | `esx14_ct1_eth2` | `hu-deb-p-esx14.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX14_NIC4` | 15 |
 | 24 | `SNAS01_p5` | `HU-DEB-P-SNAS01::LAN6` | Storage | 10000 | `US-P-SNAS01_LAN6` | 16 |
 | 25 | `CORE04_ISC` | `HU-DEB-NAG-CORE04::25` | Switch Core | 40000 | `USW-40G-C04_25` | 14 |
 | 29 | `CORE04_ISC` | `HU-DEB-NAG-CORE04::29` | Switch Core | 40000 | `USW-40G-C04_29` | 14 |
@@ -3031,10 +3031,10 @@ _HU-DEB-NAG-B · 13 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 1 | `MGMT03_p2:30` | `HU-DEB-NAG-MGMT03-2::02:30` | Switch Mgmt | 10000 | `USW-M03_2_30` | 12 |
-| 10 | `esx12_ct1_eth1` | `hu-deb-p-esx12.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX12_VMNIC3` | 17 |
-| 11 | `esx12_ct1_eth3` | `hu-deb-p-esx12.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX12_VMNIC5` | 17 |
-| 12 | `esx14_ct1_eth1` | `hu-deb-p-esx14.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX14_VMNIC3` | 17 |
-| 13 | `esx14_ct1_eth3` | `hu-deb-p-esx14.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX14_VMNIC5` | 17 |
+| 10 | `esx12_ct1_eth1` | `hu-deb-p-esx12.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX12_NIC3` | 15 |
+| 11 | `esx12_ct1_eth3` | `hu-deb-p-esx12.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX12_NIC5` | 15 |
+| 12 | `esx14_ct1_eth1` | `hu-deb-p-esx14.sensirion.lokal::vmnic3` | Server | 10000 | `US-P-ESX14_NIC3` | 15 |
+| 13 | `esx14_ct1_eth3` | `hu-deb-p-esx14.sensirion.lokal::vmnic5` | Server | 10000 | `US-P-ESX14_NIC5` | 15 |
 | 24 | `SNAS01_p6` | `HU-DEB-P-SNAS01::LAN5` | Storage | 10000 | `US-P-SNAS01_LAN5` | 16 |
 | 25 | `CORE03_ISC` | `HU-DEB-NAG-CORE03::25` | Switch Core | 40000 | `USW-40G-C03_25` | 14 |
 | 29 | `CORE03_ISC` | `HU-DEB-NAG-CORE03::29` | Switch Core | 40000 | `USW-40G-C03_29` | 14 |
@@ -3458,16 +3458,16 @@ _HU-DEB-NAG-A · 13 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 1:12 | `SAN_ctrlA_LAN` | `HU-DEB-SAN01::CTE0.A.MGMT` | Storage | 1000 | `MON-SAN01_CTE0AMGMT` | 19 |
+| 1:12 | `SAN_ctrlA_LAN` | `HU-DEB-SAN01::CTE0.A.MGMT` | Storage | 1000 | `MON-SAN01_CTE0_A_MG` | 19 |
 | 1:14 | `ESX11_ILO` | `hu-deb-p-esx11.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX11_ILO9_1` | 18 |
 | 1:15 | `ESX13_ILO` | `hu-deb-p-esx13.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX13_ILO9_1` | 18 |
-| 1:16 | `ESX11_ct0_eth0` | `hu-deb-p-esx11.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX11_VMNIC0` | 20 |
-| 1:18 | `ESX13_et0_eth0` | `hu-deb-p-esx13.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX13_VMNIC0` | 20 |
+| 1:16 | `ESX11_ct0_eth0` | `hu-deb-p-esx11.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX11_NIC0` | 18 |
+| 1:18 | `ESX13_et0_eth0` | `hu-deb-p-esx13.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX13_NIC0` | 18 |
 | 1:20 | `SAN11_ct1_eth0` | `hu-deb-san11::ct0.eth0` | Storage | 1000 | `MON-SAN11_CT0_0` | 15 |
 | 1:30 | `CORE01_p5` | `HU-DEB-NAG-CORE01::5` | Switch Core | 10000 | `USW-C01_5` | 9 |
 | 1:31 | `—` | `HU-DEB-NAG-MGMT01-2::02:32` | Switch Mgmt | — | `USW-M01_2_32` | 12 |
 | 1:32 | `—` | `HU-DEB-NAG-MGMT01-2::02:31` | Switch Mgmt | — | `USW-M01_2_31` | 12 |
-| 1:5 | `FWGW01_MGMT1` | `HU-DEB-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
+| 1:5 | `FWGW01_MGMT1` | `HU-DEB-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MG` | 14 |
 | 1:6 | `FWGW01_WAN1` | `HU-DEB-FWGW01::wan2` | Firewall | 1000 | `USW-1G-FW01_WAN2` | 16 |
 | 1:7 | `FWGW01_WAN2` | `HU-DEB-FWGW01::wan1` | Firewall | 1000 | `USW-1G-FW01_WAN1` | 16 |
 | 1:8 | `FWGW01_HA1` | `HU-DEB-FWGW01::ha1` | Firewall | 1000 | `USW-1G-FW01_HA1` | 15 |
@@ -3478,9 +3478,9 @@ _HU-DEB-NAG-A · 8 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 2:12 | `SAN_ctrlB_LAN` | `HU-DEB-SAN01::CTE0.B.MGMT` | Storage | 1000 | `MON-SAN01_CTE0BMGMT` | 19 |
-| 2:16 | `ESX11_ct0_eth1` | `hu-deb-p-esx11.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX11_VMNIC1` | 20 |
-| 2:18 | `ESX13_et0_eth1` | `hu-deb-p-esx13.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX13_VMNIC1` | 20 |
+| 2:12 | `SAN_ctrlB_LAN` | `HU-DEB-SAN01::CTE0.B.MGMT` | Storage | 1000 | `MON-SAN01_CTE0_B_MG` | 19 |
+| 2:16 | `ESX11_ct0_eth1` | `hu-deb-p-esx11.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX11_NIC1` | 18 |
+| 2:18 | `ESX13_et0_eth1` | `hu-deb-p-esx13.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX13_NIC1` | 18 |
 | 2:20 | `SAN11_ct0_eth0` | `hu-deb-san11::ct1.eth0` | Storage | 1000 | `MON-SAN11_CT1_0` | 15 |
 | 2:30 | `CORE02_p5` | `HU-DEB-NAG-CORE02::5` | Switch Core | 10000 | `USW-C02_5` | 9 |
 | 2:31 | `—` | `HU-DEB-NAG-MGMT01-1::01:32` | Switch Mgmt | — | `USW-M01_1_32` | 12 |
@@ -3495,8 +3495,8 @@ _HU-DEB-NAG-B · 13 ports_
 |---|---|---|---|---|---|---|
 | 1:13 | `ESX12_ILO` | `hu-deb-p-esx12.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX12_ILO9_1` | 18 |
 | 1:14 | `ESX14_ILO` | `hu-deb-p-esx14.sensirion.lokal::iDRAC` | Server | 1000 | `MON-P-ESX14_ILO` | 15 |
-| 1:16 | `ESX12_ct0_eth0` | `hu-deb-p-esx12.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX12_VMNIC0` | 20 |
-| 1:17 | `ESX14_ct0_eth0` | `hu-deb-p-esx14.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX14_VMNIC0` | 20 |
+| 1:16 | `ESX12_ct0_eth0` | `hu-deb-p-esx12.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX12_NIC0` | 18 |
+| 1:17 | `ESX14_ct0_eth0` | `hu-deb-p-esx14.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX14_NIC0` | 18 |
 | 1:21 | `SNAS01_p1` | `HU-DEB-P-SNAS01::LAN1` | Storage | 1000 | `MON-P-SNAS01_LAN1` | 17 |
 | 1:22 | `SNAS01_p2` | `HU-DEB-P-SNAS01::LAN2` | Storage | 1000 | `MON-P-SNAS01_LAN2` | 17 |
 | 1:30 | `CORE03_p30` | `HU-DEB-NAG-CORE03::1` | Switch Core | 10000 | `USW-C03_1` | 9 |
@@ -3504,7 +3504,7 @@ _HU-DEB-NAG-B · 13 ports_
 | 1:32 | `—` | `HU-DEB-NAG-MGMT03-2::02:31` | Switch Mgmt | — | `USW-M03_2_31` | 12 |
 | 1:5 | `FWGW02_WAN1` | `HU-DEB-FWGW02::wan1` | Firewall | 1000 | `USW-1G-FW02_WAN1` | 16 |
 | 1:6 | `FWGW02_WAN2` | `HU-DEB-FWGW02::wan2` | Firewall | 1000 | `USW-1G-FW02_WAN2` | 16 |
-| 1:7 | `FWGW02_MGMT1` | `HU-DEB-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-FW02_MGMT` | 16 |
+| 1:7 | `FWGW02_MGMT1` | `HU-DEB-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-FW02_MG` | 14 |
 | 1:8 | `FWGW02_HA1` | `HU-DEB-FWGW02::ha1` | Firewall | 1000 | `USW-1G-FW02_HA1` | 15 |
 
 ### HU-DEB-NAG-MGMT03-2
@@ -3513,8 +3513,8 @@ _HU-DEB-NAG-B · 8 ports_
 
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
-| 2:16 | `ESX12_ct0_eth1` | `hu-deb-p-esx12.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX12_VMNIC1` | 20 |
-| 2:17 | `ESX14_ct0_eth1` | `hu-deb-p-esx14.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX14_VMNIC1` | 20 |
+| 2:16 | `ESX12_ct0_eth1` | `hu-deb-p-esx12.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX12_NIC1` | 18 |
+| 2:17 | `ESX14_ct0_eth1` | `hu-deb-p-esx14.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX14_NIC1` | 18 |
 | 2:21 | `SNAS01_p3` | `HU-DEB-P-SNAS01::LAN3` | Storage | 1000 | `MON-P-SNAS01_LAN3` | 17 |
 | 2:22 | `SNAS01_p4` | `HU-DEB-P-SNAS01::LAN4` | Storage | 1000 | `MON-P-SNAS01_LAN4` | 17 |
 | 2:30 | `CORE04_p30` | `HU-DEB-NAG-CORE04::1` | Switch Core | 10000 | `USW-C04_1` | 9 |
@@ -3678,12 +3678,12 @@ _KR-SEL-HAN · 15 ports_
 | 15 | `FWGW01_lag.0.1_x` | `KR-SEL-HAN-L14-FWGW01::x1` | Firewall | 10000 | `USW-L14-FW01_X1` | 15 |
 | 16 | `FWGW02_lag.0.1_x` | `KR-SEL-HAN-L14-FWGW02::x1` | Firewall | 10000 | `USW-L14-FW02_X1` | 15 |
 | 2 | `MLAG_DIST02_p27` | `KR-SEL-HAN-L14-DIST02::27` | Switch Dist | 10000 | `USW-L14-D02_27` | 14 |
-| 3 | `esx11_eth0` | `kr-sel-p-esx11.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX11_VMNIC2` | 17 |
-| 4 | `esx12_eth0` | `kr-sel-p-esx12.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX12_VMNIC2` | 17 |
-| 5 | `esx13_eth0` | `kr-sel-p-esx13.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX13_VMNIC2` | 17 |
-| 7 | `esx11_eth2` | `kr-sel-p-esx11.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX11_VMNIC4` | 17 |
-| 8 | `esx12_eth2` | `kr-sel-p-esx12.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX12_VMNIC4` | 17 |
-| 9 | `esx13_eth2` | `kr-sel-p-esx13.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX13_VMNIC4` | 17 |
+| 3 | `esx11_eth0` | `kr-sel-p-esx11.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX11_NIC2` | 15 |
+| 4 | `esx12_eth0` | `kr-sel-p-esx12.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX12_NIC2` | 15 |
+| 5 | `esx13_eth0` | `kr-sel-p-esx13.sensirion.lokal::vmnic2` | Server | 10000 | `US-P-ESX13_NIC2` | 15 |
+| 7 | `esx11_eth2` | `kr-sel-p-esx11.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX11_NIC4` | 15 |
+| 8 | `esx12_eth2` | `kr-sel-p-esx12.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX12_NIC4` | 15 |
+| 9 | `esx13_eth2` | `kr-sel-p-esx13.sensirion.lokal::vmnic4` | Server | 10000 | `US-P-ESX13_NIC4` | 15 |
 
 ### KR-SEL-HAN-L14-DIST01
 
@@ -3693,15 +3693,15 @@ _KR-SEL-HAN · 23 ports_
 |---|---|---|---|---|---|---|
 | 10 | `esx11_ILO` | `kr-sel-p-esx11.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX11_ILO9_1` | 18 |
 | 11 | `SCCM-Staging` | `kr-sel-p-esx13.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX13_ILO9_1` | 18 |
-| 12 | `esx11_CT0_eth0` | `kr-sel-p-esx11.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX11_VMNIC1` | 20 |
-| 13 | `esx12_CT0_eth0` | `kr-sel-p-esx12.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX12_VMNIC1` | 20 |
-| 14 | `esx13_CT0_eth0` | `kr-sel-p-esx13.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX13_VMNIC1` | 20 |
+| 12 | `esx11_CT0_eth0` | `kr-sel-p-esx11.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX11_NIC1` | 18 |
+| 13 | `esx12_CT0_eth0` | `kr-sel-p-esx12.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX12_NIC1` | 18 |
+| 14 | `esx13_CT0_eth0` | `kr-sel-p-esx13.sensirion.lokal::vmnic1` | Server | 1000 | `US-1G-P-ESX13_NIC1` | 18 |
 | 15 | `MLAG_ACCE08_p23` | `KR-SEL-HAN-L14-ACCE08::23` | Switch Access | 1000 | `USW-1G-L14-A08_23` | 17 |
 | 17 | `KR-SEL-P-SNAS02_` | `KR-SEL-P-SNAS02::LAN3` | Storage | 1000 | `MON-P-SNAS02_LAN3` | 17 |
 | 18 | `san11_CT0_eth0` | `kr-sel-san11::ct0.eth0` | Storage | 1000 | `MON-SAN11_CT0_0` | 15 |
 | 2 | `FWGW01_p10` | `KR-SEL-HAN-L14-FWGW01::port10` | Firewall | 1000 | `USW-1G-L14-FW01_10` | 18 |
 | 20 | `KR-SEL-P-SNAS02_` | `KR-SEL-P-SNAS02::LAN1` | Storage | 1000 | `MON-P-SNAS02_LAN1` | 17 |
-| 21 | `fortigate_mgmt` | `KR-SEL-HAN-L14-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-L14-FW01_MGMT` | 20 |
+| 21 | `fortigate_mgmt` | `KR-SEL-HAN-L14-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-L14-FW01_MG` | 18 |
 | 23 | `FWGW01_p11` | `KR-SEL-HAN-L14-FWGW01::port11` | Firewall | 1000 | `USW-1G-L14-FW01_11` | 18 |
 | 25 | `ISC` | `KR-SEL-HAN-L14-DIST02::25` | Switch Dist | 10000 | `USW-L14-D02_25` | 14 |
 | 26 | `ISC` | `KR-SEL-HAN-L14-DIST02::26` | Switch Dist | 10000 | `USW-L14-D02_26` | 14 |
@@ -3722,15 +3722,15 @@ _KR-SEL-HAN · 22 ports_
 | Port | Today | Far | Role | Mbps | Expected | Len |
 |---|---|---|---|---|---|---|
 | 10 | `esx12_ILO` | `kr-sel-p-esx12.sensirion.lokal::iDRAC 9 (NIC.1)` | Server | 1000 | `MON-P-ESX12_ILO9_1` | 18 |
-| 12 | `esx11_CT0_eth1` | `kr-sel-p-esx11.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX11_VMNIC0` | 20 |
-| 13 | `esx12_CT0_eth1` | `kr-sel-p-esx12.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX12_VMNIC0` | 20 |
-| 14 | `esx13_CT0_eth1` | `kr-sel-p-esx13.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX13_VMNIC0` | 20 |
+| 12 | `esx11_CT0_eth1` | `kr-sel-p-esx11.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX11_NIC0` | 18 |
+| 13 | `esx12_CT0_eth1` | `kr-sel-p-esx12.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX12_NIC0` | 18 |
+| 14 | `esx13_CT0_eth1` | `kr-sel-p-esx13.sensirion.lokal::vmnic0` | Server | 1000 | `US-1G-P-ESX13_NIC0` | 18 |
 | 15 | `MLAG_ACCE08_p24` | `KR-SEL-HAN-L14-ACCE08::24` | Switch Access | 1000 | `USW-1G-L14-A08_24` | 17 |
 | 17 | `KR-SEL-P-SNAS02_` | `KR-SEL-P-SNAS02::LAN4` | Storage | 1000 | `MON-P-SNAS02_LAN4` | 17 |
 | 18 | `san11_ct1_eth0` | `kr-sel-san11::ct1.eth0` | Storage | 1000 | `MON-SAN11_CT1_0` | 15 |
 | 2 | `FWGW02_p10` | `KR-SEL-HAN-L14-FWGW02::port10` | Firewall | 1000 | `USW-1G-L14-FW02_10` | 18 |
 | 20 | `KR-SEL-P-SNAS02_` | `KR-SEL-P-SNAS02::LAN2` | Storage | 1000 | `MON-P-SNAS02_LAN2` | 17 |
-| 21 | `fortigate_mgmt` | `KR-SEL-HAN-L14-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-L14-FW02_MGMT` | 20 |
+| 21 | `fortigate_mgmt` | `KR-SEL-HAN-L14-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-L14-FW02_MG` | 18 |
 | 23 | `FWGW01_p11` | `KR-SEL-HAN-L14-FWGW02::port11` | Firewall | 1000 | `USW-1G-L14-FW02_11` | 18 |
 | 25 | `ISC` | `KR-SEL-HAN-L14-DIST01::25` | Switch Dist | 10000 | `USW-L14-D01_25` | 14 |
 | 26 | `ISC` | `KR-SEL-HAN-L14-DIST01::26` | Switch Dist | 10000 | `USW-L14-D01_26` | 14 |
@@ -3788,7 +3788,7 @@ _NL-ENS-NEP · 15 ports_
 | 1:28 | `CORE02_p28` | `NL-ENS-NEP-GFL-CORE01-2::02:27` | Switch Core | — | `USW-GFL-C01_2_27` | 16 |
 | 1:4 | `FWGW01_WAN2` | `NL-ENS-FWGW01::wan2` | Firewall | 1000 | `USW-1G-FW01_WAN2` | 16 |
 | 1:5 | `FWGW02_p1` | `NL-ENS-FWGW01::port1` | Firewall | 1000 | `USW-1G-FW01_1` | 13 |
-| 1:6 | `FWGW01_MGMT` | `NL-ENS-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MGMT` | 16 |
+| 1:6 | `FWGW01_MGMT` | `NL-ENS-FWGW01::mgmt` | Firewall | 1000 | `USW-1G-FW01_MG` | 14 |
 
 ### NL-ENS-NEP-GFL-CORE01-2
 
@@ -3808,7 +3808,7 @@ _NL-ENS-NEP · 13 ports_
 | 2:28 | `CORE01_p28` | `NL-ENS-NEP-GFL-CORE01-1::01:27` | Switch Core | — | `USW-GFL-C01_1_27` | 16 |
 | 2:4 | `FWGW02_WAN2` | `NL-ENS-FWGW02::wan2` | Firewall | 1000 | `USW-1G-FW02_WAN2` | 16 |
 | 2:5 | `FWGW01_p1` | `NL-ENS-FWGW02::port1` | Firewall | 1000 | `USW-1G-FW02_1` | 13 |
-| 2:6 | `FWGW02_MGMT` | `NL-ENS-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-FW02_MGMT` | 16 |
+| 2:6 | `FWGW02_MGMT` | `NL-ENS-FWGW02::mgmt` | Firewall | 1000 | `USW-1G-FW02_MG` | 14 |
 
 ### NL-ENS-NEP-L01-ACCE01
 

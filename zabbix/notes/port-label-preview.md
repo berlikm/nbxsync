@@ -15,7 +15,7 @@ live vs expected compliance diff.
 - Too long: **0**
 - Labels with `.`: **0** (must be 0)
 - Duplicate label on the same device: **0** (must be 0)
-- Exactly 20 characters: **16**
+- Exactly 20 characters: **0**
 - Concatenated slot+port (`_120` style): **0**
 - ISC (from NetBox description): **42** — all must be `USW`
 - Stack (`extreme-summitstack`): **56** — all must be `USW`
@@ -136,22 +136,6 @@ _26 more in `port_label_preview.tsv`._
 
 | Device | Port | Far device | Far port | Expected | Len | Note |
 |---|---|---|---|---|---|---|
-| HU-DEB-NAG-MGMT01-1 | 1:16 | hu-deb-p-esx11.sensirion.lokal | vmnic0 | `US-1G-P-ESX11_VMNIC0` | 20 | at-20 |
-| HU-DEB-NAG-MGMT01-1 | 1:18 | hu-deb-p-esx13.sensirion.lokal | vmnic0 | `US-1G-P-ESX13_VMNIC0` | 20 | at-20 |
-| HU-DEB-NAG-MGMT01-2 | 2:16 | hu-deb-p-esx11.sensirion.lokal | vmnic1 | `US-1G-P-ESX11_VMNIC1` | 20 | at-20 |
-| HU-DEB-NAG-MGMT01-2 | 2:18 | hu-deb-p-esx13.sensirion.lokal | vmnic1 | `US-1G-P-ESX13_VMNIC1` | 20 | at-20 |
-| HU-DEB-NAG-MGMT03-1 | 1:16 | hu-deb-p-esx12.sensirion.lokal | vmnic0 | `US-1G-P-ESX12_VMNIC0` | 20 | at-20 |
-| HU-DEB-NAG-MGMT03-1 | 1:17 | hu-deb-p-esx14.sensirion.lokal | vmnic0 | `US-1G-P-ESX14_VMNIC0` | 20 | at-20 |
-| HU-DEB-NAG-MGMT03-2 | 2:16 | hu-deb-p-esx12.sensirion.lokal | vmnic1 | `US-1G-P-ESX12_VMNIC1` | 20 | at-20 |
-| HU-DEB-NAG-MGMT03-2 | 2:17 | hu-deb-p-esx14.sensirion.lokal | vmnic1 | `US-1G-P-ESX14_VMNIC1` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST01 | 12 | kr-sel-p-esx11.sensirion.lokal | vmnic1 | `US-1G-P-ESX11_VMNIC1` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST01 | 13 | kr-sel-p-esx12.sensirion.lokal | vmnic1 | `US-1G-P-ESX12_VMNIC1` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST01 | 14 | kr-sel-p-esx13.sensirion.lokal | vmnic1 | `US-1G-P-ESX13_VMNIC1` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST01 | 21 | KR-SEL-HAN-L14-FWGW01 | mgmt | `USW-1G-L14-FW01_MGMT` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST02 | 12 | kr-sel-p-esx11.sensirion.lokal | vmnic0 | `US-1G-P-ESX11_VMNIC0` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST02 | 13 | kr-sel-p-esx12.sensirion.lokal | vmnic0 | `US-1G-P-ESX12_VMNIC0` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST02 | 14 | kr-sel-p-esx13.sensirion.lokal | vmnic0 | `US-1G-P-ESX13_VMNIC0` | 20 | at-20 |
-| KR-SEL-HAN-L14-DIST02 | 21 | KR-SEL-HAN-L14-FWGW02 | mgmt | `USW-1G-L14-FW02_MGMT` | 20 | at-20 |
 
 ## Sample devices
 
@@ -161,15 +145,15 @@ _26 more in `port_label_preview.tsv`._
 |---|---|---|---|---|---|---|
 | CH-ZRH-ZH4-CORE01 | 1 | CH-ZRH-ZH4-CORE02 | 1 | `USW-C02_1` | 9 | ISC |
 | CH-ZRH-ZH4-CORE01 | 11 | CH-ZRH-ZH4-CORE02 | 11 | `USW-C02_11` | 10 | ISC |
-| CH-ZRH-ZH4-CORE01 | 12 | ch-zrh-zh4-esx40.sensirion.lokal | vmnic0 | `US-ESX40_VMNIC0` | 15 |  |
-| CH-ZRH-ZH4-CORE01 | 13 | ch-zrh-zh4-esx41.sensirion.lokal | vmnic0 | `US-ESX41_VMNIC0` | 15 |  |
+| CH-ZRH-ZH4-CORE01 | 12 | ch-zrh-zh4-esx40.sensirion.lokal | vmnic0 | `US-ESX40_NIC0` | 13 |  |
+| CH-ZRH-ZH4-CORE01 | 13 | ch-zrh-zh4-esx41.sensirion.lokal | vmnic0 | `US-ESX41_NIC0` | 13 |  |
 | CH-ZRH-ZH4-CORE01 | 15 | CH-ZRH-ZH4-FWGW01 | x1 | `USW-FW01_X1` | 11 |  |
 | CH-ZRH-ZH4-CORE01 | 16 | CH-ZRH-ZH4-FWGW01 | x3 | `USW-FW01_X3` | 11 |  |
-| CH-ZRH-ZH4-CORE01 | 17 | ch-zrh-zh4-esx42.sensirion.lokal | vmnic0 | `US-ESX42_VMNIC0` | 15 |  |
-| CH-ZRH-ZH4-CORE01 | 18 | ch-zrh-zh4-esx43.sensirion.lokal | vmnic0 | `US-ESX43_VMNIC0` | 15 |  |
-| CH-ZRH-ZH4-CORE01 | 19 | ch-zrh-zh4-esx44.sensirion.lokal | vmnic0 | `US-ESX44_VMNIC0` | 15 |  |
+| CH-ZRH-ZH4-CORE01 | 17 | ch-zrh-zh4-esx42.sensirion.lokal | vmnic0 | `US-ESX42_NIC0` | 13 |  |
+| CH-ZRH-ZH4-CORE01 | 18 | ch-zrh-zh4-esx43.sensirion.lokal | vmnic0 | `US-ESX43_NIC0` | 13 |  |
+| CH-ZRH-ZH4-CORE01 | 19 | ch-zrh-zh4-esx44.sensirion.lokal | vmnic0 | `US-ESX44_NIC0` | 13 |  |
 | CH-ZRH-ZH4-CORE01 | 2 | CH-ZRH-ZH4-CORE02 | 2 | `USW-C02_2` | 9 | ISC |
-| CH-ZRH-ZH4-CORE01 | 22 | ch-zrh-zh4-esx47.sensirion.lokal | vmnic0 | `US-ESX47_VMNIC0` | 15 |  |
+| CH-ZRH-ZH4-CORE01 | 22 | ch-zrh-zh4-esx47.sensirion.lokal | vmnic0 | `US-ESX47_NIC0` | 13 |  |
 | CH-ZRH-ZH4-CORE01 | 23 | ch-zrh-zh4-san02 | ct0.eth10 | `US-SAN02_CT0_10` | 15 |  |
 | CH-ZRH-ZH4-CORE01 | 24 | ch-zrh-zh4-san02 | ct1.eth10 | `US-SAN02_CT1_10` | 15 |  |
 | CH-ZRH-ZH4-CORE01 | 25 | ch-zrh-zh4-san02 | ct0.eth2 | `US-SAN02_CT0_2` | 14 |  |
@@ -179,13 +163,13 @@ _26 more in `port_label_preview.tsv`._
 | CH-ZRH-ZH4-CORE01 | 29 | ch-zrh-zh4-san01 | ct0.eth10 | `US-SAN01_CT0_10` | 15 |  |
 | CH-ZRH-ZH4-CORE01 | 3 | CH-ZRH-ZH4-CORE02 | 3 | `USW-C02_3` | 9 | ISC |
 | CH-ZRH-ZH4-CORE01 | 30 | ch-zrh-zh4-san01 | ct1.eth10 | `US-SAN01_CT1_10` | 15 |  |
-| CH-ZRH-ZH4-CORE01 | 32 | ch-zrh-zh4-esx40.sensirion.lokal | vmnic2 | `US-ESX40_VMNIC2` | 15 |  |
-| CH-ZRH-ZH4-CORE01 | 33 | ch-zrh-zh4-esx41.sensirion.lokal | vmnic2 | `US-ESX41_VMNIC2` | 15 |  |
-| CH-ZRH-ZH4-CORE01 | 37 | ch-zrh-zh4-esx42.sensirion.lokal | vmnic2 | `US-ESX42_VMNIC2` | 15 |  |
-| CH-ZRH-ZH4-CORE01 | 38 | ch-zrh-zh4-esx43.sensirion.lokal | vmnic2 | `US-ESX43_VMNIC2` | 15 |  |
-| CH-ZRH-ZH4-CORE01 | 39 | ch-zrh-zh4-esx44.sensirion.lokal | vmnic2 | `US-ESX44_VMNIC2` | 15 |  |
+| CH-ZRH-ZH4-CORE01 | 32 | ch-zrh-zh4-esx40.sensirion.lokal | vmnic2 | `US-ESX40_NIC2` | 13 |  |
+| CH-ZRH-ZH4-CORE01 | 33 | ch-zrh-zh4-esx41.sensirion.lokal | vmnic2 | `US-ESX41_NIC2` | 13 |  |
+| CH-ZRH-ZH4-CORE01 | 37 | ch-zrh-zh4-esx42.sensirion.lokal | vmnic2 | `US-ESX42_NIC2` | 13 |  |
+| CH-ZRH-ZH4-CORE01 | 38 | ch-zrh-zh4-esx43.sensirion.lokal | vmnic2 | `US-ESX43_NIC2` | 13 |  |
+| CH-ZRH-ZH4-CORE01 | 39 | ch-zrh-zh4-esx44.sensirion.lokal | vmnic2 | `US-ESX44_NIC2` | 13 |  |
 | CH-ZRH-ZH4-CORE01 | 4 | CH-ZRH-ZH4-CORE02 | 4 | `USW-C02_4` | 9 | ISC |
-| CH-ZRH-ZH4-CORE01 | 42 | ch-zrh-zh4-esx47.sensirion.lokal | vmnic2 | `US-ESX47_VMNIC2` | 15 |  |
+| CH-ZRH-ZH4-CORE01 | 42 | ch-zrh-zh4-esx47.sensirion.lokal | vmnic2 | `US-ESX47_NIC2` | 13 |  |
 | CH-ZRH-ZH4-CORE01 | 46 | CH-ZRH-ZH5-CORE01 | 46 | `USW-ZH5-C01_46` | 14 |  |
 | CH-ZRH-ZH4-CORE01 | 5 | CH-ZRH-ZH4-MGMT01-1 | 01:51 | `USW-M01_1_51` | 12 | MLAG |
 | CH-ZRH-ZH4-CORE01 | 6 | CH-ZRH-ZH4-MGMT01-2 | 02:51 | `USW-M01_2_51` | 12 | MLAG |
@@ -210,4 +194,3 @@ _26 more in `port_label_preview.tsv`._
 | MLAG | 70 |
 | stack | 56 |
 | ISC | 42 |
-| at-20 | 16 |
