@@ -28,6 +28,7 @@ Sanity on that sheet today:
 - 0 labels contain a `.`
 - 0 duplicate labels on the same device
 - 0 labels over 20 characters
+- Concatenated slot+port (`_120` style): **0** (short `C`/`D`/`A`/`M` codes freed the underscore form)
 - ISC (42) and stack (56) are **`USW`**, not `X`
 - CLASS mix: USW 1036 · UP 243 · US 186 · MON 70
 
@@ -74,6 +75,8 @@ row is `alias_hijacked` and **blocking** until you tick clear.
 | `status = kept` | Label on the box, no complete cable. **Listed, never wiped.** Often still useful (ISP, leftover NIC) |
 | `collision = yes` | Two ports on this switch share `expected`. Generator cannot pick a winner |
 | `class` | `USW` / `US` / `UP` / `MON` / `UW` / `X` — own column, do not parse `expected` |
+| `netbox_description` | Current NetBox interface description (preview has no SSH `live`) |
+| `speed_source` | `iftype:<slug>` or `speed:<kbps>kbps` from the slower of local/far; empty when neither is set |
 | `ifalias_source = description-string` | Zabbix is not looking at display-string |
 | `far_role` contains Core / Dist | Fabric |
 | `len = 20` | At the EXOS budget; check it still reads |

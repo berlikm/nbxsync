@@ -4,11 +4,13 @@
 Produces:
   fixtures/port_label_preview.tsv  — every cabled Extreme port, Excel-friendly
   port-label-preview.md            — counts and the rows a human should eyeball
+  port-label-verify.md             — every port, grouped by switch (Today vs expected)
 """
 
 from __future__ import annotations
 
 import csv
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -18,6 +20,7 @@ import port_label_canary as canary
 HERE = Path(__file__).resolve().parent
 TSV = HERE / "fixtures" / "port_label_preview.tsv"
 MD = HERE / "port-label-preview.md"
+VERIFY = HERE / "port-label-verify.md"
 
 HEADER = [
     "site",
@@ -233,12 +236,121 @@ def write_markdown(records: list[dict[str, str]], errors: list[str]) -> None:
     MD.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _md_cell(value: str) -> str:
+    raw = (value or "").strip() or "—"
+    return raw.replace("|", "/").replace("\n", " ").replace("`", "'")
+
+
+def write_verify(records: list[dict[str, str]], errors: list[str]) -> None:
+    """Full per-switch sheet: NetBox description (Today) vs expected grammar."""
+    by_class = Counter(r["class"] for r in records)
+    by_device: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for rec in records:
+        by_device[rec["device"]].append(rec)
+    meaning = {
+        "USW": "switch / firewall (ISC and stack stay here)",
+        "UP": "access point",
+        "US": "server / storage / Cohesity / hypervisor **data** NIC",
+        "MON": "BMC/iDRAC, and anything else",
+        "UW": "WAN / circuit",
+        "X": "structural / never-alert",
+    }
+    highlight = [
+        "CH-ZRH-ZH4-CORE01",
+        "CH-STA-L50-L01-CORE01",
+        "CH-STA-L26-L02-MGMT03",
+        "KR-SEL-HAN-L14-CORE02",
+        "CH-NKN-G08-L02-CORE01-1",
+    ]
+    rest = sorted(name for name in by_device if name not in highlight)
+    order = [name for name in highlight if name in by_device] + rest
+
+    lines = [
+        "# Port-label verification list (current generator)",
+        "",
+        f"Plan-only replay of **{len(records)}** cabled Extreme ports from the NetBox canary.",
+        "This is what the script would **write** as `display-string` / VOSS `name`.",
+        "It is **not** a live compliance diff — live labels stay on the box until you remediate.",
+        "",
+        "How to read a row: **Port** on this switch → **Far** (role) → **Expected** (≤20, no dots).",
+        "`Today` is the NetBox interface description (often the old on-box string).",
+        "",
+        "## CLASS mix",
+        "",
+        "| CLASS | Count | Meaning |",
+        "|---|---|---|",
+    ]
+    for cls in ("USW", "UP", "US", "MON", "UW", "X"):
+        if cls in by_class:
+            lines.append(f"| {cls} | {by_class[cls]} | {meaning.get(cls, '')} |")
+    extra = [cls for cls in sorted(by_class) if cls not in meaning]
+    for cls in extra:
+        lines.append(f"| {cls} | {by_class[cls]} | |")
+    role_words_in_id = sum(
+        1
+        for r in records
+        if re.search(r"(?:^|-)(CORE|DIST|ACCE|MGMT)\d", r["expected"] or "")
+    )
+    dots = sum(1 for r in records if "." in (r["expected"] or ""))
+    lines += [
+        "",
+        "Fabric codes: `C` `D` `A` `M` (`AP`/`FW`/`CT` unchanged). Endpoints keep hostname words (`SAN`, `SNAS`, `ESX`, `SAN10-N01`).",
+        "CLASS tokens stay `USW`/`UP`/`US`. No extra `P` on ports. `ETH`/`NIC` filler is dropped.",
+        "Scope is a token from the hostname, never an invented site tail.",
+        "",
+        "## Sanity (must all be 0)",
+        "",
+        f"- Dots in expected: **{dots}**",
+        f"- Longer than 20: **{len(errors)}**",
+        f"- Full CORE/DIST/ACCE/MGMT in ID: **{role_words_in_id}**",
+        "",
+        "## Start here",
+        "",
+    ]
+
+    def _device_section(name: str) -> list[str]:
+        rows = sorted(by_device[name], key=lambda r: r["port"])
+        site = rows[0]["site"] if rows else ""
+        body = [
+            f"### {name}",
+            "",
+            f"_{site} · {len(rows)} ports_",
+            "",
+            "| Port | Today | Far | Role | Mbps | Expected | Len |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for rec in rows:
+            far = rec["far_device"]
+            if rec["far_port"]:
+                far = f"{far}::{rec['far_port']}"
+            expected = rec["expected"] or "—"
+            body.append(
+                "| {port} | `{today}` | `{far}` | {role} | {mbps} | `{expected}` | {ln} |".format(
+                    port=_md_cell(rec["port"]),
+                    today=_md_cell(rec["netbox_description"]),
+                    far=_md_cell(far),
+                    role=_md_cell(rec["far_role"]),
+                    mbps=_md_cell(rec["mbps"]),
+                    expected=_md_cell(expected),
+                    ln=_md_cell(rec["len"]),
+                )
+            )
+        body.append("")
+        return body
+
+    for name in order:
+        lines.extend(_device_section(name))
+    VERIFY.write_text("\n".join(lines), encoding="utf-8")
+
+
 def main() -> int:
     records, errors = replay_all()
     write_tsv(records)
     write_markdown(records, errors)
+    write_verify(records, errors)
     print(f"wrote {TSV} ({len(records)} rows)")
     print(f"wrote {MD}")
+    print(f"wrote {VERIFY}")
     if errors:
         print(f"{len(errors)} too-long")
         return 1

@@ -110,6 +110,12 @@ share an expected grammar label. Policy labels `X` / `N` are excluded (every
 SPAN port is supposed to be `X`). The generator still emits both colliding
 rows (it cannot know which cable is wrong); the job must not look clean.
 
+Preview has no SSH, so `live` / `description_string` are empty. CSV
+`netbox_description` is the current NetBox interface description (what is
+on the port today). `speed_source` is `iftype:<slug>` or `speed:<kbps>kbps`
+from the slower of local/far — empty when neither NetBox field has a rate
+(`extreme-summitstack`).
+
 How to read a job: log is the **scorecard** (truncated tables). CSV in the
 **Output** tab is the archive. Details:
 [`port-label-compliance-review.md`](port-label-compliance-review.md).
@@ -159,7 +165,7 @@ ID = [<SCOPE>-]<CODE><NN>[-<STACK>][_FARPORT]
 | Piece | Source | Example |
 |---|---|---|
 | `SCOPE` | a token that exists on the **hostname** (or was stripped from it) — never a NetBox site tail like `DC` that is not in the name | `B01`, `L01`, `GFL`, `L50` |
-| `CODE<NN>` | **Fabric** (switch/firewall/AP): 2 letters (`CORE→CO`, unknown `SPINE→SP`). **Endpoints**: the hostname word (`SAN`, `SNAS`, `ESX`) | `DI01`, `AC03`, `SAN11`, `SNAS01` |
+| `CODE<NN>` | **Fabric** (switch/firewall/AP): short codes (`CORE→C`, `DIST→D`, `ACCE→A`, `MGMT→M`; unknown `SPINE→SP`). **Endpoints**: the hostname word (`SAN`, `SNAS`, `ESX`) | `D01`, `A03`, `SAN11`, `SNAS01` |
 | `-STACK` | stack member suffix, when present | `-1`, `-2` |
 | `_FARPORT` | far-end interface; `:`/`/`/`.` → `_`, leading zeros stripped | `_29`, `_1_24`. If that overflows, concatenate: `_120`. No extra `P`. Filler `ETH`/`NIC`/`PORT` drops (`ct0.eth4` → `_CT0_4`). |
 
@@ -172,13 +178,15 @@ port number is noise.
 A SPEED token is reserved **only for the token that will actually be emitted**
 (`1G-` is 3, `40G-` is 4). We do **not** leave a blank 5-character `400G-` hole
 on a 1G link — that is what dropped floors. Room for `40G` / `100G` comes from
-**short fabric codes** (`CORE→CO` …) **and** dropping the extra `P` on ports
-(`_1_20` not `_P1_20`). `USW-40G-L01-MG01_120` is 20; spelling CORE or keeping
-`P` would overflow. Endpoint names stay readable (`SAN`, `SNAS`, `ESX`) — we
+**short fabric codes** (`CORE→C` `DIST→D` `ACCE→A` `MGMT→M`) **and** dropping the extra `P` on ports
+(`_1_20` not `_P1_20`). `USW-40G-L01-M01_1_20` is 20; spelling CORE or keeping
+`P` would overflow. CLASS tokens stay `USW`/`UP`/`US` — renaming them to
+`SW`/`AP`/`S` would miss live Access LLD until zerotouch is rewritten.
+Endpoint names stay readable (`SAN`, `SNAS`, `ESX`) — we
 do not invent `SN`/`NS`/`CY`/`DC`.
 
 Reserving 5 characters on a 1G USW link dropped the floor on Dist→Access, so
-`USW-1G-GFL-AC01_23` (18, fits) became `USW-1G-AC01_23`. NKN G08 has both
+`USW-1G-GFL-A01_23` (17, fits) became `USW-1G-A01_23`. NKN G08 has both
 `GFL-ACCE01` and `L02-ACCE01`; without the floor those are the same label on
 Core.
 
@@ -186,15 +194,16 @@ The abbreviator walks a fixed ladder and takes the **first form that fits**:
 
 | # | Form | Example |
 |---|---|---|
-| 1 | `SCOPE-CODE-STACK _PORT` | `GFL-AC01_23` |
-| 2 | drop stack, keep floor + underscored port | `L02-CO01_1_1` |
-| 3 | concatenate slot+port (`1_20` → `_120`) | `L01-MG01_120` |
-| 4 | drop the far port, keep the floor | `L17-CO01-1` |
-| 5 | drop the scope, keep the port | `AC01_23` |
-| 6 | code + stack only | `AC01` |
+| 1 | `SCOPE-CODE-STACK _PORT` | `GFL-A01_23` |
+| 2 | drop stack, keep floor + underscored port | `L02-C01_1_1` |
+| 3 | concatenate slot+port (`1_20` → `_120`) | `L01-M01_120` |
+| 4 | drop the far port, keep the floor | `L17-C01-1` |
+| 5 | drop the scope, keep the port | `A01_23` |
+| 6 | code + stack only | `A01` |
 
-**Fabric** codes are two letters (`CORE→CO` `DIST→DI` `ACCE→AC` `ACPO→AP`
-`MGMT→MG` `FWGW/FWZONE→FW`, unknown `SPINE→SP`). **Endpoints keep the hostname
+**Fabric** codes: `CORE→C` `DIST→D` `ACCE→A` `ACPO→AP`
+`MGMT→M` `FWGW/FWZONE→FW`, unknown `SPINE→SP`. A 1G stack uplink
+`USW-1G-L02-C01-1_1_1` is 20 — the `-1` member stays. **Endpoints keep the hostname
 word** (`SAN`, `SNAS`, `ESX`) and only shorten that word if 20 characters force
 it. Scope (building or a site token that is actually on the hostname) is kept
 whenever it fits — that is what tells `GFL-ACCE01` from `L02-ACCE01`.
@@ -215,16 +224,22 @@ CLASS comes from the far-end NetBox **device role** (identity, not speed):
 | `Firewall` | `USW` |
 | `Access Point` | `UP` |
 | `Sd Wan Socket` or a **circuit termination** | `UW` |
-| `Server` / `Storage` / `Cohesity` data NIC | `US` |
+| `Server` / `Storage` / `Cohesity` / `ESXi Hypervisor` data NIC | `US` |
 | same roles, lights-out port (`mgmt_only`, `oob_ip` on that iface, or `idrac`/`ilo`/`bmc`) | `MON` |
 | **anything else** (printer, camera, generic “Network Device”, …) | `MON` |
 | interface carries a configured *structural* tag | `X` |
 
-Link speed = `min(local interface type, far interface type)` from the NetBox
-interface types. The SPEED token is emitted **only** when that differs from the
-class default (`USW`/`US` → 10G, `UP`/`MON` → 1G). A 1G **server** NIC is
-`US-1G-…`, not `MON-…`. A 1G **firewall** is `USW-1G-…`. `UW` never gets a PHY
-token.
+Link speed = `min(local, far)` from NetBox **interface type first**
+(`10gbase-x-sfpp` → 10000 Mbps), falling back to `Interface.speed` **in Kbps**
+(`/1000`). Preview CSV `speed_source` says which field won
+(`local:iftype:1000base-t`, `far:speed:10000000kbps`, or empty).
+`extreme-summitstack` has no PHY rate — SPEED is omitted (stack rows look
+`ok` with an empty speed). The SPEED token is emitted **only** when that
+differs from the class default (`USW`/`US` → 10G, `UP`/`MON` → 1G). A 1G
+**server** NIC is `US-1G-…`, not `MON-…`. A 1G **firewall** is `USW-1G-…`.
+`UW` never gets a PHY token. Do **not** invent 10G when NetBox says 1G —
+`US-1G-LR50-SAN10-N01` is already 20 characters; fixing the iftype in NetBox
+is what drops the `1G` token.
 
 Do **not** treat “device has no primary_ip in NetBox” as management — Pure/SAN
 often only have `oob_ip` recorded while the cable is a production data port.
@@ -248,9 +263,9 @@ someone encoded *this estate’s inventory* instead of *the grammar*.
 | Site strip | Token-wise shared prefix with the far-site slug. Never invent a site tail (`DC`) that is not on the hostname. |
 | Port token | Split on `:` `/` `.`; drop generic filler (`ETH`, `NIC`, `PORT`); no extra `P`. |
 | Length | Longest ID that fits the *emitted* SPEED token. Refuse rather than truncate. |
-| Unknown CLASS | Anything that is not switch/firewall/AP/SD-WAN/server/storage/cohesity is `MON`. |
+| Unknown CLASS | Anything that is not switch/firewall/AP/SD-WAN/server/storage/cohesity/hypervisor is `MON`. |
 | SPEED token | `Mbps → NG` / `2G5`. 50G / 200G / 800G do not need a table row. |
-| New USW role-word | `Switch Spine` / hostname `SPINE01` → `SP` (two letters, same physics as `CORE→CO`). |
+| New USW role-word | `Switch Spine` / hostname `SPINE01` → `SP` (two letters, same physics as `CORE→C`). |
 
 **Closed — a small policy table, edited when the *taxonomy* changes**
 
@@ -262,9 +277,9 @@ someone encoded *this estate’s inventory* instead of *the grammar*.
 | `_PORT_NOISE` | A new filler word in vendor ifNames (`QSFP`, `SLOT`) that burns the 40G budget. |
 
 Operational contract that keeps the script stable: **reuse NetBox roles**. A
-hypervisor is a Server. A NAS is Storage. A new leaf switch is still Switch \*.
-The day you add “Hypervisor” as a role, data NICs become `MON` until you add
-one token — that is the safe default, not a silent mis-class as `US`.
+NAS is Storage. A new leaf switch is still Switch \*. `ESXi Hypervisor` is
+treated as a data-path role (`US` on vmnic, `MON` on iDRAC). Inventing
+“HCI” / “Tape” without adding a token still labels those NICs `MON`.
 
 ---
 
@@ -378,14 +393,14 @@ emits (hostname identity, no extra `P`, SPEED only when not the class default).
 
 | ifName | Far end (NetBox) | Expected | Live | Len | Status |
 |---|---|---|---|---|---|
-| 1 | CH-ZRH-ZH4-CORE02::1 [Switch Core] | `USW-CO02_1` | `ISC` | 10 | diff |
-| 5 | CH-ZRH-ZH4-MGMT01-1::1:51 [Switch Mgmt] | `USW-MG01-1_1_51` | `MLAG_MGMT01_p51` | 15 | diff |
+| 1 | CH-ZRH-ZH4-CORE02::1 [Switch Core] | `USW-C02_1` | `ISC` | 9 | diff |
+| 5 | CH-ZRH-ZH4-MGMT01-1::1:51 [Switch Mgmt] | `USW-M01-1_1_51` | `MLAG_MGMT01_p51` | 14 | diff |
 | 12 | ch-zrh-zh4-esx40…::vmnic0 [Server] | `US-ESX40_VMNIC0` | `esx40_ct1_eth0` | 15 | diff |
 | 15 | CH-ZRH-ZH4-FWGW01::x1 [Firewall] | `USW-FW01_X1` | `ZRH-FWGW01_x1` | 11 | diff |
 | 20 | — | `—` | `esx45_ct1_eth0` | — | kept |
 | 23 | ch-zrh-zh4-san02::ct0.eth10 [Storage] | `US-SAN02_CT0_10` | `SAN02_ctl0_eth10` | 15 | diff |
 | 29 | ch-zrh-zh4-san01::ct0.eth10 [Storage] | `US-SAN01_CT0_10` | `ZH4-SAN04-N01_CT0_e4` | 15 | diff |
-| 46 | CH-ZRH-ZH5-CORE01::46 [Switch Core] | `USW-ZH5-CO01_46` | `ZH5-CORE01-P46` | 15 | diff |
+| 46 | CH-ZRH-ZH5-CORE01::46 [Switch Core] | `USW-ZH5-C01_46` | `ZH5-CORE01-P46` | 14 | diff |
 | 48 | — | `—` | `ISP_Netrics` | — | kept |
 
 Reading it:
@@ -407,13 +422,13 @@ Reading it:
 |---|---|---|---|---|---|
 | 1/2 | CH-STA-L50-FWZone01::x1 [Firewall] | `USW-FW01_X1` | `S-FWZONE:X1` | 11 | diff |
 | 1/4 | CH-STA-L50-FWZone01::ha [Firewall] | `USW-1G-FW01_HA` | `FWZONE-HA1` | 14 | diff |
-| 1/7 | CH-STA-L50-L01-MGMT01::1/29 [Switch Mgmt] | `USW-L01-MG01_1_29` | `NNI:L50-L01-MGMT01_1/29` | 17 | diff |
-| 1/17 | CH-STA-L50-B01-DIST01::29 [Switch Dist] | `USW-B01-DI01_29` | `L50-B01-Di01:29` | 15 | diff |
-| 1/20 | CH-STA-L50-L01-DIST01::29 [Switch Dist] | `USW-L01-DI01_29` | `L50-L02-Di02:54` | 15 | diff |
-| 1/21 | CH-STA-L50-L02-DIST01::54 [Switch Dist] | `USW-L02-DI01_54` | `L50-L01-Di01:29` | 15 | diff |
-| 1/22 | CH-STA-L42-CORE01-2::2:14 [Switch Core] | `USW-L42-CO01-2_2_14` | `L42-Co01:1:14` | 19 | diff |
-| 1/24 | CH-STA-L50-L01-CORE02::1/24 [Switch Core] | `USW-L01-CO02_1_24` | `NNI:L50-Co02:1/24` | 17 | diff |
-| 2/2 | CH-STA-L26-L02-CORE01::2/2 [Switch Core] | `USW-L26-CO01_2_2` | `NNI:L26-Co01:2/2` | 16 | diff |
+| 1/7 | CH-STA-L50-L01-MGMT01::1/29 [Switch Mgmt] | `USW-L01-M01_1_29` | `NNI:L50-L01-MGMT01_1/29` | 16 | diff |
+| 1/17 | CH-STA-L50-B01-DIST01::29 [Switch Dist] | `USW-B01-D01_29` | `L50-B01-Di01:29` | 14 | diff |
+| 1/20 | CH-STA-L50-L01-DIST01::29 [Switch Dist] | `USW-L01-D01_29` | `L50-L02-Di02:54` | 14 | diff |
+| 1/21 | CH-STA-L50-L02-DIST01::54 [Switch Dist] | `USW-L02-D01_54` | `L50-L01-Di01:29` | 14 | diff |
+| 1/22 | CH-STA-L42-CORE01-2::2:14 [Switch Core] | `USW-L42-C01-2_2_14` | `L42-Co01:1:14` | 18 | diff |
+| 1/24 | CH-STA-L50-L01-CORE02::1/24 [Switch Core] | `USW-L01-C02_1_24` | `NNI:L50-Co02:1/24` | 16 | diff |
+| 2/2 | CH-STA-L26-L02-CORE01::2/2 [Switch Core] | `USW-L26-C01_2_2` | `NNI:L26-Co01:2/2` | 15 | diff |
 
 Reading it:
 
@@ -421,7 +436,7 @@ Reading it:
   legal on VOSS but **forbidden by the fleet grammar** and would be rejected by
   EXOS — one reason to normalise both platforms onto the same generator.
 - `1/7` live label is **23 characters** — fine on VOSS (`WORD<0-64>`), but EXOS
-  would truncate it. The generated form `USW-L01-MG01_1_29` is 17 (`MG` not
+  would truncate it. The generated form `USW-L01-M01_1_29` is 16 (`M` not
   `MGMT`; `_` not `.`; no extra `P`).
 - `1/20` / `1/21` are **swapped** between the on-box labels and the NetBox
   cabling — precisely the class of error this script exists to surface.
@@ -433,9 +448,9 @@ Reading it:
 
 - SPEED is omitted at the class default. The 1G firewall HA is the exception
   (`USW-1G-FW01_HA`) because `USW` defaults to 10G.
-- Cross-site `1/22` is `USW-L42-CO01-2_2_14` (19). Spelling `CORE` would overflow.
-  Fabric codes stay `CO`/`DI`/`AC`/`MG`. 40G on a slotted mgmt uplink is
-  `USW-40G-L01-MG01_120` (20) — that only fits because there is no extra `P`.
+- Cross-site `1/22` is `USW-L42-C01-2_2_14` (18). Spelling `CORE` would overflow.
+  Fabric codes stay `C`/`D`/`A`/`M`. 40G on a slotted mgmt uplink is
+  `USW-40G-L01-M01_1_20` (20) — that only fits because there is no extra `P`.
 - Dots are forbidden. Slot/port uses `_` (`_2_14`, never `_p2.14`).
 - Live on-box strings (`L02-ACCE03_p23`, `L42-Co01:1:14`) stay in the Live
   column. Compliance lists them; it does not wipe them to look tidy.
@@ -455,12 +470,12 @@ Per port it pushes only what is non-compliant:
 
 ```
 # EXOS
-configure ports 1:8 display-string USW-1G-L02-AC03_23
+configure ports 1:8 display-string USW-1G-L02-A03_23
 unconfigure port 1:8 description-string      # only if explicitly ticked
 
 # VOSS
 interface GigabitEthernet 1/17
-name "USW-B01-DI01_29"
+name "USW-B01-D01_29"
 exit
 ```
 

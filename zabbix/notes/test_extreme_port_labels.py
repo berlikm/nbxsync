@@ -20,6 +20,8 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(e.classify("Server", 1000, "eth0"), "US")
         self.assertEqual(e.classify("Storage", 25000, "ct0.eth10"), "US")
         self.assertEqual(e.classify("Cohesity", 10000, "eth0"), "US")
+        self.assertEqual(e.classify("ESXi Hypervisor", 10000, "vmnic3"), "US")
+        self.assertEqual(e.classify("ESXi Hypervisor", 1000, "iDRAC"), "MON")
 
     def test_idrac_is_mon(self):
         self.assertEqual(e.classify("Server", 1000, "iDRAC", True), "MON")
@@ -45,6 +47,10 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(e.classify("Switch Leaf", 10000, "1"), "USW")
         self.assertEqual(e.role_code("Switch Spine"), "SP")
         self.assertEqual(e.role_code("Switch Leaf"), "LE")
+        self.assertEqual(e.role_code("Switch Core"), "C")
+        self.assertEqual(e.role_code("Switch Dist"), "D")
+        self.assertEqual(e.role_code("Switch Access"), "A")
+        self.assertEqual(e.role_code("Switch Mgmt"), "M")
 
 
 class FutureProofTests(unittest.TestCase):
@@ -76,7 +82,8 @@ class FutureProofTests(unittest.TestCase):
         """USW role-words not in FABRIC_CODE_SHORT still get 2 letters.
 
         ``USW-40G-L01-SP01_1_20`` is 21, so the ladder concatenates slot+port
-        the same way it does for MG01 — ``_120`` — instead of dropping the floor.
+        the same way it does for a tight M01 — ``_120`` — instead of dropping
+        the floor.
         """
         lab = e.plan_label(
             local_site="ch-sta-l50",
@@ -149,7 +156,7 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", 1000, "CH-NKN-G08-GFL-ACCE01",
             "ch-nkn-g08", "ch-nkn-g08", "23", "Switch Access",
         )
-        self.assertEqual(lab, "USW-1G-GFL-AC01_23")
+        self.assertEqual(lab, "USW-1G-GFL-A01_23")
         self.assertLessEqual(len(lab), 20)
 
     def test_nkn_gfl_vs_l02_access_do_not_collide_on_core(self):
@@ -162,8 +169,8 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", 1000, "CH-NKN-G08-L02-ACCE01",
             "ch-nkn-g08", "ch-nkn-g08", "23", "Switch Access",
         )
-        self.assertEqual(gfl, "USW-1G-GFL-AC01_23")
-        self.assertEqual(l02, "USW-1G-L02-AC01_23")
+        self.assertEqual(gfl, "USW-1G-GFL-A01_23")
+        self.assertEqual(l02, "USW-1G-L02-A01_23")
         self.assertNotEqual(gfl, l02)
 
     def test_nkn_gfl_ap_keeps_floor_without_far_port(self):
@@ -178,21 +185,21 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", 1000, "CH-NKN-G08-GFL-DIST01",
             "ch-nkn-g08", "ch-nkn-g08", "1", "Switch Dist",
         )
-        self.assertEqual(lab, "USW-1G-GFL-DI01_1")
+        self.assertEqual(lab, "USW-1G-GFL-D01_1")
 
-    def test_nkn_dist_to_core_keeps_floor_and_port_by_dropping_stack(self):
-        """USW-1G-L02-CO01-1_1_1 is 21. Drop stack; VOSS slot 01: vs 02: remains."""
+    def test_nkn_dist_to_core_keeps_stack_floor_and_port(self):
+        """USW-1G-L02-C01-1_1_1 is 20. Short C keeps the stack member."""
         lab = self._label(
             "USW", 1000, "CH-NKN-G08-L02-CORE01-1",
             "ch-nkn-g08", "ch-nkn-g08", "01:01", "Switch Core",
         )
-        self.assertEqual(lab, "USW-1G-L02-CO01_1_1")
+        self.assertEqual(lab, "USW-1G-L02-C01-1_1_1")
         self.assertEqual(
             self._label(
                 "USW", 40000, "CH-NKN-G08-L02-CORE01-1",
                 "ch-nkn-g08", "ch-nkn-g08", "01:01", "Switch Core",
             ),
-            "USW-40G-L02-CO01_1_1",
+            "USW-40G-L02-C01_1_1",
         )
         self.assertLessEqual(len(lab), 20)
 
@@ -206,10 +213,10 @@ class LabelUniquenessTests(unittest.TestCase):
             "ch-nkn-g08", "ch-nkn-g08", "1:5", "Switch Core",
         )
         self.assertEqual(a, b)
-        self.assertEqual(a, "USW-1G-L02-CO01_1_5")
+        self.assertEqual(a, "USW-1G-L02-C01-1_1_5")
 
     def test_szx_1g_access_to_stacked_core_keeps_floor_and_concat_port(self):
-        """Dropping P frees the underscored slot+port; concat is only for 40G."""
+        """Dropping P frees the underscored slot+port; 40G still fits ``_1_48``."""
         a = self._label(
             "USW", 1000, "CN-SZX-ECP-L17-CORE01-1",
             "cn-szx-ecp", "cn-szx-ecp", "01:48", "Switch Core",
@@ -218,19 +225,19 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", 1000, "CN-SZX-ECP-L17-CORE01-2",
             "cn-szx-ecp", "cn-szx-ecp", "02:48", "Switch Core",
         )
-        self.assertEqual(a, "USW-1G-L17-CO01_1_48")
-        self.assertEqual(b, "USW-1G-L17-CO01_2_48")
+        self.assertEqual(a, "USW-1G-L17-C01_1_48")
+        self.assertEqual(b, "USW-1G-L17-C01_2_48")
         self.assertEqual(
             self._label(
                 "USW", 40000, "CN-SZX-ECP-L17-CORE01-1",
                 "cn-szx-ecp", "cn-szx-ecp", "01:48", "Switch Core",
             ),
-            "USW-40G-L17-CO01_148",
+            "USW-40G-L17-C01_1_48",
         )
         self.assertLessEqual(len(a), 20)
 
     def test_l50_1g_mgmt_slotted_ports_keep_floor(self):
-        """Without P, ``_1_20`` fits at 1G; 40G concatenates to ``_120``."""
+        """Without P, ``_1_20`` fits at 1G; 40G still keeps the underscore."""
         a = self._label(
             "USW", 1000, "CH-STA-L50-L01-MGMT01",
             "ch-sta-l50", "ch-sta-l50", "1:20", "Switch Mgmt",
@@ -239,14 +246,14 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", 1000, "CH-STA-L50-L01-MGMT01",
             "ch-sta-l50", "ch-sta-l50", "1:21", "Switch Mgmt",
         )
-        self.assertEqual(a, "USW-1G-L01-MG01_1_20")
-        self.assertEqual(b, "USW-1G-L01-MG01_1_21")
+        self.assertEqual(a, "USW-1G-L01-M01_1_20")
+        self.assertEqual(b, "USW-1G-L01-M01_1_21")
         self.assertEqual(
             self._label(
                 "USW", 40000, "CH-STA-L50-L01-MGMT01",
                 "ch-sta-l50", "ch-sta-l50", "1:20", "Switch Mgmt",
             ),
-            "USW-40G-L01-MG01_120",
+            "USW-40G-L01-M01_1_20",
         )
         self.assertNotEqual(a, b)
 
@@ -256,7 +263,7 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", 1000, "JP-YOK-CHO-L06-CORE-1",
             "jp-yok-cho", "jp-yok-cho", "01:48", "Switch Core",
         )
-        self.assertEqual(lab, "USW-1G-L06-CO-1_1_48")
+        self.assertEqual(lab, "USW-1G-L06-C-1_1_48")
         self.assertLessEqual(len(lab), 20)
 
     def test_l44_gfl_and_b01_access_do_not_collide_on_dist(self):
@@ -268,8 +275,8 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", 1000, "CH-STA-L44-B01-ACCE02",
             "ch-sta-l44", "ch-sta-l44", "24", "Switch Access",
         )
-        self.assertEqual(gfl, "USW-1G-GFL-AC02_24")
-        self.assertEqual(b01, "USW-1G-B01-AC02_24")
+        self.assertEqual(gfl, "USW-1G-GFL-A02_24")
+        self.assertEqual(b01, "USW-1G-B01-A02_24")
 
     def test_l50_core_dist_floors_stay_distinct(self):
         labels = [
@@ -282,10 +289,10 @@ class LabelUniquenessTests(unittest.TestCase):
             )
         ]
         self.assertEqual(labels, [
-            "USW-B01-DI01_29",
-            "USW-GFL-DI01_29",
-            "USW-L01-DI01_29",
-            "USW-L02-DI01_54",
+            "USW-B01-D01_29",
+            "USW-GFL-D01_29",
+            "USW-L01-D01_29",
+            "USW-L02-D01_54",
         ])
         self.assertEqual(len(set(labels)), 4)
 
@@ -298,8 +305,8 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", None, "CH-NKN-G08-L02-CORE01-2",
             "ch-nkn-g08", "ch-nkn-g08", "02:15", "Switch Core",
         )
-        self.assertEqual(a, "USW-L02-CO01-2_2_16")
-        self.assertEqual(b, "USW-L02-CO01-2_2_15")
+        self.assertEqual(a, "USW-L02-C01-2_2_16")
+        self.assertEqual(b, "USW-L02-C01-2_2_15")
 
     def test_san_eth10_and_eth2_stay_distinct(self):
         a = self._label(
@@ -328,7 +335,7 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", 40000, "HU-DEB-NAG-CORE04",
             "hu-deb-nag-b", "hu-deb-nag-b", "25", "Switch Core",
         )
-        self.assertEqual(lab, "USW-40G-CO04_25")
+        self.assertEqual(lab, "USW-40G-C04_25")
         self.assertNotIn("CORE", lab)
         self.assertLessEqual(len(lab), 20)
 
@@ -337,7 +344,7 @@ class LabelUniquenessTests(unittest.TestCase):
             "USW", 10000, "CH-ZRH-ZH5-CORE01",
             "ch-zrh-zh5", "ch-zrh-zh4", "46", "Switch Core",
         )
-        self.assertEqual(lab, "USW-ZH5-CO01_46")
+        self.assertEqual(lab, "USW-ZH5-C01_46")
 
     def test_jiux_l3_firewall_keeps_l3_scope(self):
         lab = self._label(
@@ -398,6 +405,43 @@ class LabelUniquenessTests(unittest.TestCase):
             "US-40G-SAN11_CT0_4",
         )
 
+    def test_esxi_hypervisor_data_nic_is_us_and_keeps_vmnic(self):
+        """Role ESXi Hypervisor is US. 10G is the US default, so vmnic fits."""
+        a = e.plan_label(
+            local_site="kr-sel-han",
+            far_name="kr-sel-p-esx13.sensirion.lokal",
+            far_site="kr-sel-han",
+            far_port="vmnic3",
+            far_role="ESXi Hypervisor",
+            far_is_mgmt=False,
+            link_mbps=10000,
+        )
+        b = e.plan_label(
+            local_site="kr-sel-han",
+            far_name="kr-sel-p-esx13.sensirion.lokal",
+            far_site="kr-sel-han",
+            far_port="vmnic5",
+            far_role="ESXi Hypervisor",
+            far_is_mgmt=False,
+            link_mbps=10000,
+        )
+        self.assertEqual(a, "US-P-ESX13_VMNIC3")
+        self.assertEqual(b, "US-P-ESX13_VMNIC5")
+        self.assertNotEqual(a, b)
+        self.assertLessEqual(len(a), 20)
+
+    def test_cohesity_1g_does_not_invent_10g(self):
+        """NetBox 1000 Mbps stays 1G even when the label is already 20 chars."""
+        lab = self._label(
+            "US", 1000, "lr50-san10-n01.sensirion.lokal",
+            "ch-sta-l50", "ch-sta-l26",
+            "Embedded NIC 1 Port 1 Partition 1 (NIC.Embedded.1-1)",
+            "Cohesity",
+        )
+        self.assertEqual(lab, "US-1G-LR50-SAN10-N01")
+        self.assertEqual(len(lab), 20)
+        self.assertNotIn("10G", lab)
+
     def test_generated_labels_never_contain_dots(self):
         samples = [
             ("USW", 1000, "CH-NKN-G08-L02-CORE01-1", "ch-nkn-g08", "ch-nkn-g08", "01:01", "Switch Core"),
@@ -444,7 +488,7 @@ class LabelUniquenessTests(unittest.TestCase):
 
 class CliSafetyTests(unittest.TestCase):
     def test_safe_label_accepts_grammar(self):
-        self.assertTrue(e.is_safe_cli_label("USW-1G-L02-CO01_1_1"))
+        self.assertTrue(e.is_safe_cli_label("USW-1G-L02-C01-1_1_1"))
         self.assertTrue(e.is_safe_cli_label("US-SAN02_CT0_10"))
 
     def test_safe_label_rejects_injection(self):
@@ -467,7 +511,9 @@ class CliSafetyTests(unittest.TestCase):
     def test_csv_has_header_and_row(self):
         plan = e.PortPlan(
             device="SW1", site="lab", kind="exos", ifname="1:1",
-            expected="USW-DI01_23", status="ok", far_device="DIST01",
+            expected="USW-D01_23", status="ok", far_device="DIST01",
+            netbox_description="Stack-CORE02_p16",
+            speed_source="local:iftype:10gbase-x-sfpp",
         )
         text = e.plans_to_csv([plan])
         body = text.lstrip("\ufeff")
@@ -476,13 +522,16 @@ class CliSafetyTests(unittest.TestCase):
         header = lines[1]
         self.assertTrue(header.startswith("site,device,port,"), header)
         for col in (
-            "class", "speed", "link_mbps", "far_site", "ifalias_source",
+            "class", "speed", "link_mbps", "speed_source", "far_site",
+            "netbox_description", "ifalias_source",
             "blocking", "collision", "description_string",
         ):
             self.assertIn(col, header.split(","), header)
         self.assertIn("SW1", text)
-        self.assertIn("USW-DI01_23", text)
+        self.assertIn("USW-D01_23", text)
         self.assertIn("USW", text)
+        self.assertIn("Stack-CORE02_p16", text)
+        self.assertIn("iftype:10gbase-x-sfpp", text)
 
     def test_csv_protects_voss_port_from_excel_dates(self):
         plan = e.PortPlan(
@@ -564,6 +613,16 @@ class CliSafetyTests(unittest.TestCase):
         self.assertEqual(e.iface_speed_mbps(iface), 10000)
         typed = type("I", (), {"type": "10gbase-x-sfpp", "speed": 1000})()
         self.assertEqual(e.iface_speed_mbps(typed), 10000)
+        self.assertEqual(e.iface_speed_source(typed), "iftype:10gbase-x-sfpp")
+        stack = type("I", (), {"type": "extreme-summitstack", "speed": None})()
+        self.assertIsNone(e.iface_speed_mbps(stack))
+        self.assertEqual(e.iface_speed_source(stack), "")
+        kbps = type("I", (), {"type": None, "speed": 1_000_000})()
+        self.assertEqual(e.iface_speed_source(kbps), "speed:1000000kbps")
+        far = type("I", (), {"type": "1000base-t", "speed": None})()
+        mbps, src = e.link_mbps_and_source(typed, far)
+        self.assertEqual(mbps, 1000)
+        self.assertEqual(src, "far:iftype:1000base-t")
 
     def test_empty_far_name_raises_label_too_long_not_index_error(self):
         parts = e.split_device_name("", "", "")

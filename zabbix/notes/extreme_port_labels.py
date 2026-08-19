@@ -154,8 +154,8 @@ def speed_token_to_mbps(token: str | None) -> int | None:
     return None
 
 #: Do not size the ID against a worst-case SPEED token. Reserving ``400G-`` (5)
-#: on a 1G USW link forced Dist→Access ``USW-1G-GFL-AC01_23`` (18) to drop
-#: the floor, so GFL-ACCE01 and L02-ACCE01 both became ``USW-1G-AC01_23``
+#: on a 1G USW link forced Dist→Access ``USW-1G-GFL-A01_23`` (17) to drop
+#: the floor, so GFL-ACCE01 and L02-ACCE01 both became ``USW-1G-A01_23``
 #: on Core. Reserve ``len(token)+1`` of the token that will actually be emitted.
 
 
@@ -263,9 +263,10 @@ LOG_TABLE_LIMIT = 40
 
 CSV_COLUMNS = (
     "site", "device", "port", "kind",
-    "class", "speed", "link_mbps",
+    "class", "speed", "link_mbps", "speed_source",
     "far_site", "far_device", "far_port", "far_role",
-    "expected", "live", "description_string", "ifalias_source",
+    "netbox_description", "expected", "live", "description_string",
+    "ifalias_source",
     "status", "blocking", "collision", "len", "detail",
 )
 
@@ -427,10 +428,12 @@ def plans_to_csv(plans: list) -> str:
             "class": parsed.cls if parsed else "",
             "speed": (parsed.speed_token or "") if parsed else "",
             "link_mbps": "" if link_mbps is None else str(link_mbps),
+            "speed_source": getattr(plan, "speed_source", "") or "",
             "far_site": getattr(plan, "far_site", "") or "",
             "far_device": getattr(plan, "far_device", "") or "",
             "far_port": getattr(plan, "far_port", "") or "",
             "far_role": getattr(plan, "far_role", "") or "",
+            "netbox_description": getattr(plan, "netbox_description", "") or "",
             "expected": plan.expected,
             "live": plan.live,
             "description_string": getattr(plan, "description_string", "") or "",
@@ -474,16 +477,16 @@ def build_label(cls: str, link_mbps: int | None, ident: str) -> str:
 # Validated against real device names in this estate:
 #   CH-STA-L50-B01-ACCE01   CH-STA-L50-L01-CORE01   CH-NKN-G08-L02-CORE01-1
 #   CH-STA-L50-B01-ACPO03   CH-STA-L42-CORE01-2     CH-STA-P-BACK02
-# Two-letter codes are **fabric only** (the estate already writes Co/Di on
-# the box). Endpoints keep the hostname token (SAN, SNAS, ESX, BACK) — a
-# made-up SN/NS/CY/DC does not tell an engineer what they are looking at.
+# Fabric codes are **short** (CORE→C, DIST→D) so a stack member ``-1`` still
+# fits at 1G. CLASS tokens stay USW/UP/US — renaming those would miss live
+# Zabbix Access LLD. Endpoints keep the hostname token (SAN, SNAS, ESX).
 
 FABRIC_CODE_SHORT = {
-    "CORE": "CO",
-    "DIST": "DI",
-    "ACCE": "AC",
+    "CORE": "C",
+    "DIST": "D",
+    "ACCE": "A",
     "ACPO": "AP",
-    "MGMT": "MG",
+    "MGMT": "M",
     "FWGW": "FW",
     "FWZONE": "FW",
     "CATO": "CT",
@@ -494,10 +497,10 @@ ROLE_CODE_SHORT = FABRIC_CODE_SHORT  # used by the fabric ladder only
 #: varies. Server / storage / cohesity names (ESX, SAN, SNAS, SAN10-N01) are
 #: left alone — flattening them to ES/SN/CY is how labels stopped making sense.
 ROLE_TO_CODE = {
-    "switch core": "CO",
-    "switch dist": "DI",
-    "switch access": "AC",
-    "switch mgmt": "MG",
+    "switch core": "C",
+    "switch dist": "D",
+    "switch access": "A",
+    "switch mgmt": "M",
     "access point": "AP",
     "firewall": "FW",
     "sd wan socket": "WA",
@@ -505,7 +508,7 @@ ROLE_TO_CODE = {
 
 
 def role_code(far_role: str | None) -> str:
-    """Two-letter fabric code, or '' so the hostname token is kept.
+    """Short fabric code, or '' so the hostname token is kept.
 
     Exact role names from this estate win. A new ``Switch Spine`` / ``Switch
     Leaf`` role still shortens (SPINE→SP, LEAF→LE) without a table row —
@@ -591,7 +594,7 @@ def split_device_name(name: str, site_slug: str, local_site_slug: str) -> Device
         extra_toks = leftover[:-1] if leftover else []
     elif site_tail and site_tail in host:
         # Building/site token really is on the hostname (L50, ZH5). Floor leftover
-        # is dropped — L50-CO01 from L26 is the useful identity, not L01-CO01.
+        # is dropped — L50-C01 from L26 is the useful identity, not L01-C01.
         scope = site_tail
         extra_toks = []
     elif leftover:
@@ -709,7 +712,7 @@ def _compact_port_suffixes(port_name: str) -> list[str]:
     """One-character-tighter numeric ports: ``1_20`` -> ``_120``.
 
     Used only when the underscored form cannot fit. Dropping the floor collides
-    two floors' MG01; dropping the port collides ``1:20`` with ``1:21``.
+    two floors' M01; dropping the port collides ``1:20`` with ``1:21``.
     """
     token = normalize_port_token(port_name)
     if token and token[0].isdigit() and "_" in token:
@@ -720,11 +723,11 @@ def _compact_port_suffixes(port_name: str) -> list[str]:
 
 
 def _code_bases(parts: DeviceNameParts, short_fabric: bool = False) -> list[str]:
-    """Fabric → 2 letters. Everything else keeps the hostname word, then shortens.
+    """Fabric → short code. Everything else keeps the hostname word, then shortens.
 
     ``short_fabric`` is True for USW (switch/firewall). Unknown role-words
     (``SPINE``, ``LEAF``, ``BORDER``) take the first two letters so a 40G
-    token still has room for floor + port — the same reason CORE is CO.
+    token still has room for floor + port — the same reason CORE is C.
     Endpoints must NOT use this: SNAS→SN is how labels stopped making sense.
     """
     word = parts.code or ""
@@ -743,7 +746,7 @@ def _code_bases(parts: DeviceNameParts, short_fabric: bool = False) -> list[str]
 
 
 def _code_forms(parts: DeviceNameParts, short_fabric: bool = False) -> list[str]:
-    """Longest identity first: ``SAN10-N01``, then ``N01``; ``CO01-1``, then ``CO01``."""
+    """Longest identity first: ``SAN10-N01``, then ``N01``; ``C01-1``, then ``C01``."""
     numbered = [f"{base}{parts.num}" for base in _code_bases(parts, short_fabric) if base or parts.num]
     extras = [parts.extra] if parts.extra else [""]
     if parts.extra:
@@ -765,13 +768,14 @@ def id_candidates(
 ) -> list[str]:
     """Longest-first ID forms. ``build_label_for_far_end`` takes the first that fits.
 
-    Fabric codes are two letters so 40G still fits. Endpoint codes stay as
-    they appear on the hostname until the budget forces a shorter prefix.
+    Fabric codes are short (``C``/``D``/``A``/``M``) so 40G and a stack
+    member still fit. Endpoint codes stay as they appear on the hostname
+    until the budget forces a shorter prefix.
 
     Keep the floor (SCOPE) whenever physics allow. Stack is dropped before
-    SCOPE or the far port: on this estate ``CORE01-1`` / ``CORE01-2`` already
-    differ by the VOSS slot (``01:01`` vs ``02:01``), so
-    ``USW-1G-L02-CO01_1_1`` (18) keeps both floor and port.
+    SCOPE or the far port only when the budget forces it. At 1G,
+    ``USW-1G-L02-C01-1_1_1`` (20) keeps stack, floor, and port; the VOSS
+    slot (``01:01`` vs ``02:01``) still distinguishes the peer.
     """
     codes = _code_forms(parts, short_fabric)
     scope = f"{parts.scope}-" if parts.scope else ""
@@ -809,7 +813,7 @@ def build_label_for_far_end(
     Reserve the SPEED slot only for the token that will actually be emitted
     (``1G-`` is 3, ``40G-`` is 4). Do not reserve a phantom ``400G-`` on a 1G
     link — that dropped floor tokens. Room for ``40G`` comes from **short
-    codes** (``CO`` ``DI`` ``AC`` ``MG``), not from leaving the ID blank.
+    codes** (``C`` ``D`` ``A`` ``M``), not from leaving the ID blank.
     """
     token_needed = (
         cls not in NO_SPEED_CLASSES
@@ -875,7 +879,12 @@ def iftype_to_mbps(iface_type: str | None) -> int | None:
 
 
 def iface_speed_mbps(iface) -> int | None:
-    """Designed speed from NetBox ifType, falling back to ``Interface.speed`` (Kbps)."""
+    """Designed speed from NetBox ifType, falling back to ``Interface.speed`` (Kbps).
+
+    ``extreme-summitstack`` and other non-``Ngbase*`` types have no PHY rate —
+    they return None unless ``Interface.speed`` is set. The generator never
+    invents 10G when NetBox says 1G (or nothing).
+    """
     parsed = iftype_to_mbps(getattr(iface, "type", None))
     if parsed:
         return parsed
@@ -889,13 +898,51 @@ def iface_speed_mbps(iface) -> int | None:
     return kbps // 1000
 
 
+def iface_speed_source(iface) -> str:
+    """How ``iface_speed_mbps`` got a number. Empty when neither source is set."""
+    raw_type = (getattr(iface, "type", None) or "").strip()
+    if iftype_to_mbps(raw_type):
+        return f"iftype:{raw_type}"
+    raw = getattr(iface, "speed", None)
+    try:
+        kbps = int(raw) if raw else 0
+    except (TypeError, ValueError):
+        kbps = 0
+    if kbps > 0:
+        return f"speed:{kbps}kbps"
+    return ""
+
+
+def link_mbps_and_source(local, far=None) -> tuple[int | None, str]:
+    """``min(local, far)`` plus which NetBox field produced the winner.
+
+    Preview CSV ``speed_source`` is this string so a 1G Cohesity row can be
+    traced to ``iftype:1000base-t`` rather than guessed as 10G.
+    """
+    local_m = iface_speed_mbps(local)
+    far_m = iface_speed_mbps(far) if far is not None else None
+    if local_m and far_m:
+        if local_m <= far_m:
+            src = iface_speed_source(local)
+            return local_m, f"local:{src}" if src else "local"
+        src = iface_speed_source(far)
+        return far_m, f"far:{src}" if src else "far"
+    if local_m:
+        src = iface_speed_source(local)
+        return local_m, f"local:{src}" if src else "local"
+    if far_m:
+        src = iface_speed_source(far)
+        return far_m, f"far:{src}" if src else "far"
+    return None, ""
+
+
 # ---- Far-end role -> CLASS -----------------------------------------------
 #
 # This is the *closed* policy table. The ID abbreviator is open (it follows
 # whatever hostname NetBox has). CLASS cannot be open: a new "Camera" at 10G
 # must stay MON, not become US. Operational contract: reuse the NetBox roles
-# below. Inventing "Hypervisor" / "HCI" / "Tape" without adding a token here
-# labels those data NICs MON (safe default, not silent US).
+# below. ``ESXi Hypervisor`` is a data-path role (US). Inventing "HCI" /
+# "Tape" without adding a token here still labels those NICs MON.
 
 #: Far-end roles that are network infrastructure rather than an endpoint. A
 #: firewall link carries the same operational weight as a switch uplink, so it
@@ -904,7 +951,10 @@ INFRA_ROLE_TOKENS = frozenset({"switch", "firewall"})
 
 #: Far-end roles whose data NICs are production data path -> US regardless of
 #: negotiated speed. Their out-of-band management ports are still MON.
-DATA_ENDPOINT_ROLE_TOKENS = frozenset({"server", "storage", "cohesity"})
+#: ``hypervisor`` / ``esxi`` cover NetBox role ``ESXi Hypervisor`` (not Server).
+DATA_ENDPOINT_ROLE_TOKENS = frozenset({
+    "server", "storage", "cohesity", "hypervisor", "esxi",
+})
 
 #: Fallback only. The authoritative out-of-band signal is the far device's
 #: NetBox ``oob_ip`` being assigned to that interface; these name tokens cover
@@ -1240,6 +1290,8 @@ class PortPlan:
     link_mbps: int | None = None
     ifalias_source: str = ""
     collision: bool = False
+    netbox_description: str = ""
+    speed_source: str = ""
 
     @property
     def blocking(self) -> bool:
@@ -1414,10 +1466,7 @@ def expected_label_for(iface, structural_tag_ids: set[int]) -> tuple[str, str]:
         except LabelTooLong as exc:
             return exc.suggestion, "too_long"
 
-    local_mbps = iface_speed_mbps(iface)
-    far_mbps = iface_speed_mbps(far)
-    speeds = [s for s in (local_mbps, far_mbps) if s]
-    link_mbps = min(speeds) if speeds else None
+    link_mbps, _speed_source = link_mbps_and_source(iface, far)
 
     far_device = far.device
     far_role = getattr(getattr(far_device, "role", None), "name", "") or ""
@@ -1876,14 +1925,9 @@ if _NETBOX:
                 far_device, far_port, far_role, far_site = self._far_bits(iface)
                 far = _far_endpoint(iface)
                 link_mbps = None
+                speed_source = ""
                 if far is not None and type(far).__name__ != "CircuitTermination":
-                    speeds = [
-                        s for s in (
-                            iface_speed_mbps(iface),
-                            iface_speed_mbps(far),
-                        ) if s
-                    ]
-                    link_mbps = min(speeds) if speeds else None
+                    link_mbps, speed_source = link_mbps_and_source(iface, far)
                 plan = PortPlan(
                     device=device.name,
                     site=getattr(device.site, "slug", "") or "",
@@ -1895,6 +1939,8 @@ if _NETBOX:
                     far_role=far_role,
                     far_site=far_site,
                     link_mbps=link_mbps,
+                    netbox_description=(getattr(iface, "description", None) or "").strip(),
+                    speed_source=speed_source,
                 )
                 if status == "too_long":
                     plan.status = "too_long"
@@ -1994,7 +2040,10 @@ if _NETBOX:
                 "`alias_hijacked` means display-string matches but EXOS "
                 "description-string still owns ifAlias.\n\n"
                 "Full sheet is the **CSV in the Output tab** — copy into Excel "
-                "and filter `blocking`, `status`, `class`, `ifalias_source`."
+                "and filter `blocking`, `status`, `class`, `ifalias_source`. "
+                "Preview has no SSH: `netbox_description` is the current NetBox "
+                "interface description; `speed_source` is iftype vs "
+                "`Interface.speed` (Kbps)."
             )
 
             def _dev_cell(name: str) -> str:

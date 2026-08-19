@@ -79,9 +79,12 @@ class FleetCanaryTests(unittest.TestCase):
         for row, _site, label in self.planned:
             cls = e.classify(row.far_role, row.link_mbps, row.far_port, row.far_is_mgmt)
             if cls != row.canary_class:
-                failures.append(
-                    f"{row.canary_key}: classify={cls} canary={row.canary_class}"
-                )
+                role_words = set(re.findall(r"[a-z0-9]+", (row.far_role or "").lower()))
+                hypervisor = bool(role_words & {"hypervisor", "esxi"})
+                if not (cls == "US" and row.canary_class == "MON" and hypervisor):
+                    failures.append(
+                        f"{row.canary_key}: classify={cls} canary={row.canary_class}"
+                    )
             parsed = e.parse_label(label)
             if parsed and parsed.cls != cls:
                 failures.append(f"{row.canary_key}: label {label} cls {parsed.cls} != {cls}")
@@ -116,9 +119,9 @@ class FleetCanaryTests(unittest.TestCase):
 
     def test_nkn_gfl_and_l02_access_differ_on_core(self):
         wanted = {
-            "CH-NKN-G08-L02-CORE01-1::1:5": "USW-1G-L02-AC01_23",
-            "CH-NKN-G08-GFL-DIST01::1": "USW-1G-GFL-AC01_23",
-            "CH-NKN-G08-GFL-DIST01::23": "USW-1G-L02-CO01_1_1",
+            "CH-NKN-G08-L02-CORE01-1::1:5": "USW-1G-L02-A01_23",
+            "CH-NKN-G08-GFL-DIST01::1": "USW-1G-GFL-A01_23",
+            "CH-NKN-G08-GFL-DIST01::23": "USW-1G-L02-C01-1_1_1",
         }
         got = {row.canary_key: label for row, _s, label in self.planned}
         missing = {key: wanted[key] for key in wanted if key not in got}
@@ -126,7 +129,7 @@ class FleetCanaryTests(unittest.TestCase):
         failures = [f"{key}: got {got[key]} want {val}" for key, val in wanted.items() if got.get(key) != val]
         self.assertEqual(failures, [])
         core = got.get("CH-NKN-G08-L02-CORE01-1::1:5")
-        # L02 access on Core must not be the floor-less USW-1G-AC01_23.
+        # L02 access on Core must not be the floor-less USW-1G-A01_23.
         if core:
             self.assertIn("L02", core)
 
@@ -142,7 +145,7 @@ class FleetCanaryTests(unittest.TestCase):
         labels = list(got.values())
         self.assertEqual(len(labels), len(set(labels)), got)
         for label in labels:
-            self.assertRegex(label, r"USW-(GFL|L01|L02)-DI")
+            self.assertRegex(label, r"USW-(GFL|L01|L02)-D")
 
     def test_isc_and_stack_ports_are_usw_not_x(self):
         """Stack / ISC / MLAG peer-links are fabric. They must alert as USW."""
@@ -164,6 +167,23 @@ class FleetCanaryTests(unittest.TestCase):
                 )
         self.assertGreater(seen, 20, "canary has no ISC/stack rows to check")
         self.assertEqual(failures, [], "\n".join(failures[:40]))
+
+    def test_han_esx_data_nics_keep_vmnic(self):
+        got = {
+            row.canary_key: label
+            for row, _s, label in self.planned
+            if row.local_device == "KR-SEL-HAN-L14-CORE02"
+            and "esx" in (row.far_device or "").lower()
+        }
+        if not got:
+            self.skipTest("HAN CORE02 ESX rows not in canary")
+        self.assertGreaterEqual(len(got), 4, got)
+        self.assertEqual(len(got), len(set(got.values())), got)
+        for key, label in got.items():
+            parsed = e.parse_label(label)
+            self.assertIsNotNone(parsed)
+            self.assertEqual(parsed.cls, "US", f"{key}: {label}")
+            self.assertIn("VMNIC", label, f"{key}: {label}")
 
     def test_generated_ids_use_short_role_codes(self):
         """CORE/DIST/ACCE/MGMT as device codes blow the 40G budget. `_MGMT` is a port."""
