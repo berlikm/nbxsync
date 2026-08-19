@@ -74,10 +74,10 @@ ROLE_MACROS = {
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
     },
     'access': {
-        '{$NET.IF.IFALIAS.MATCHES}': '^(USW|UP)(-|$)',
+        '{$NET.IF.IFALIAS.MATCHES}': '^(USW|US|UP|MON|UW|TMON)(-|$)',
         '{$NET.IF.IFALIAS.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
-        '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|UP)(-|$)',
+        '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|US|UP|MON)(-|$)',
     },
 }
 
@@ -516,7 +516,7 @@ def main() -> int:
     )
     record(
         'access opt-in classes',
-        ROLE_MACROS['access']['{$NET.IF.IFALIAS.MATCHES}'] == '^(USW|UP)(-|$)',
+        ROLE_MACROS['access']['{$NET.IF.IFALIAS.MATCHES}'] == '^(USW|US|UP|MON|UW|TMON)(-|$)',
         ROLE_MACROS['access']['{$NET.IF.IFALIAS.MATCHES}'],
         group='semantics',
     )

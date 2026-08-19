@@ -90,22 +90,22 @@ Util and intended-speed stay Latest data until a port has a class label. Honeyco
 | Role | Collect (admin-up physical/LAG) | Do not collect |
 |---|---|---|
 | Switch Core / Dist / Mgmt | **Every** admin-up port except `X…` | `X…`; **admin-down** is not discovered |
-| Switch Access | **Only** `USW` (to Dist) and `UP` (to AP) | Desk / laptop / `US` / `MON` / `UW` / `TMON` / unlabelled / `N…` / `X…` |
+| Switch Access | Grammar classes: `USW` `US` `UP` `MON` `UW` `TMON` | Unlabelled desk / laptop / `N…` / `X…` |
 
-Access is two labels, full stop. Unlabelled Access ports produce **no items**. Dist / Core / Mgmt: if it is admin-up, it is in — labelled or not (except `X`). Unused ports must be **admin-down**, not left up “with nothing connected”.
+Access is **opt-in by CLASS**. Unlabelled Access ports produce **no items**. Dist / Core / Mgmt: if it is admin-up, it is in — labelled or not (except `X`). Unused ports must be **admin-down**, not left up “with nothing connected”.
 
 **`X` excludes. `N` does not** (Core/Dist/Mgmt). Stack / ISC / MLAG peer-links are **`USW`** (alert). SPAN / operator-mute need **`X`**. Unused: **admin-down**.
 
 | Role | `{$NET.IF.IFALIAS.MATCHES}` | `{$NET.IF.IFALIAS.NOT_MATCHES}` | `{$NET.IF.IFTYPE.MATCHES}` |
 |---|---|---|---|
 | Core / Dist / Mgmt | `.*` | `^X(-\|$)` | `^(6\|161)$` |
-| Access | `^(USW\|UP)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` |
+| Access | `^(USW\|US\|UP\|MON\|UW\|TMON)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` |
 
-Access must also override Speed Expect or `US`/`MON` leak in: `{$PORTID.LLD.IFALIAS.MATCHES}` = `^(USW|UP)(-|$)`.
+Access Speed Expect uses `{$PORTID.LLD.IFALIAS.MATCHES}` = `^(USW|US|UP|MON)(-|$)` (same as the template default). `UW` / `TMON` get link/error items from stock LLD, not a speed Warning.
 
 There is no Switch Hybrid role. `^(6|161)$` drops EXOS VLAN ifaces.
 
-NetBox: those Access macros on role Switch Access. Locked checklist §11.1 still has the wider `USW|US|UP|MON|UW|TMON` pattern — **the live role value is the tighter regex.**
+NetBox: those Access macros on role Switch Access. Live role values match locked checklist §11.1.
 
 ---
 
@@ -223,7 +223,7 @@ Speed Expect uses its **own** LLD macros (not `{$NET.IF.*}`). Defaults live on *
 {$PORTID.LLD.IFTYPE.MATCHES}  = ^6$
 ```
 
-On **Access**, override MATCHES to `^(USW|UP)(-|$)`.
+On **Access**, the same PORTID MATCHES value is assigned on the role so HostSync overwrites a leftover `USW|UP`-only host macro.
 
 ### How intended speed works
 

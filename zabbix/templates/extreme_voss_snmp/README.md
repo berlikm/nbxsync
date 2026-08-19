@@ -48,7 +48,7 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 | `{$IF.UTIL.MAX}` | **101** | Stock bandwidth trigger off until stage 6 |
 | `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Physical + LAG only |
 
-Role IFALIAS macros (`.*` + `^X(-|$)` for Core/Dist/Mgmt; Access `^(USW|UP)(-|$)`) are assigned on the Switch* role in NetBox, not baked into this template. This YAML nests **Extreme Port Speed Expect by SNMP** — unlabeled ports are not discovered. Operator page: [`../../01-extreme-switching.md`](../../01-extreme-switching.md). Host dashboard **Health** (pages Overview / Hardware) plus **Network interfaces** (Overview / Port) ships in this YAML — re-import updates in place (same dashboard uuid).
+Role IFALIAS macros (`.*` + `^X(-|$)` for Core/Dist/Mgmt; Access `^(USW|US|UP|MON|UW|TMON)(-|$)`) are assigned on the Switch* role in NetBox, not baked into this template. This YAML nests **Extreme Port Speed Expect by SNMP** — unlabeled ports are not discovered. Operator page: [`../../01-extreme-switching.md`](../../01-extreme-switching.md). Host dashboard **Health** (pages Overview / Hardware) plus **Network interfaces** (Overview / Port) ships in this YAML — re-import updates in place (same dashboard uuid).
 
 ## Coverage
 

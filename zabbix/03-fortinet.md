@@ -110,7 +110,7 @@ Starter LLD (tighten on the first canary — **do not** MATCH `port`; on a 40F/1
 {$NET.IF.UTIL.MAX}           = 101
 ```
 
-If aliases follow the port-identity grammar, prefer `{$NET.IF.IFALIAS.MATCHES}` the same way Access uses `USW|UP`. Aggregated WAN (`agg` / `x1`) is a host override, not the fleet regex.
+If aliases follow the port-identity grammar, prefer `{$NET.IF.IFALIAS.MATCHES}` the same way Access uses `USW|US|UP|MON|UW|TMON`. Aggregated WAN (`agg` / `x1`) is a host override, not the fleet regex.
 
 ---
 

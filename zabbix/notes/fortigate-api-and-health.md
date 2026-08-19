@@ -95,7 +95,7 @@ Do **not** fork the stock template. Macro / trigger-status patches on apply, sam
 
 SNMP-only landmines we **leave behind** by not using SNMP as the long-term path: ICMP loss/RTT Warning from the CH proxy (WAN RTT), HA member CPU High, FortiAP WTP noise. If SNMP stays on a host during the mixed cutover, those still apply.
 
-FortiGate `port1` is **not** a WAN class. On 40F/60F/100F it is usually inside LAN. Fleet `{$NET.IF.IFNAME.MATCHES}` must not be `port`. Start with `^(wan|ha|mgmt|dmz)`; `x1`/`agg` are host overrides. Once aliases exist, prefer IFALIAS the way Access uses `USW|UP`.
+FortiGate `port1` is **not** a WAN class. On 40F/60F/100F it is usually inside LAN. Fleet `{$NET.IF.IFNAME.MATCHES}` must not be `port`. Start with `^(wan|ha|mgmt|dmz)`; `x1`/`agg` are host overrides. Once aliases exist, prefer IFALIAS the way Access uses grammar classes (`USW|US|UP|MON|UW|TMON`).
 
 ---
 

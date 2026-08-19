@@ -55,4 +55,4 @@ Design prefers **dependent items** on platform-template masters (`net.if.speed[�
 
 ## Rollout
 
-`--apply` nests this on every EXOS/VOSS switch. Unlabeled ports stay silent. A proper `display-string` / VOSS `name` starts items within 15m. Wrong token (Pure labelled `US-…` at 25G) is a Warning — fix the label. Access must override `{$PORTID.LLD.IFALIAS.MATCHES}` to `^(USW|UP)(-|$)`.
+`--apply` nests this on every EXOS/VOSS switch. Unlabeled ports stay silent. A proper `display-string` / VOSS `name` starts items within 15m. Wrong token (Pure labelled `US-…` at 25G) is a Warning — fix the label. Access assigns the same `{$PORTID.LLD.IFALIAS.MATCHES}` = `^(USW|US|UP|MON)(-|$)` on the role (stock LLD also includes `UW`/`TMON` via `{$NET.IF.IFALIAS.MATCHES}`).

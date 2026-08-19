@@ -157,25 +157,29 @@ TEMPLATE_FILES = {
 
 # Role → port-scoping macros (zabbix/01-extreme-switching.md).
 # Core / Dist / Mgmt = every admin-up ethernet/LAG except X*.
-# Access = USW (to Dist) and UP (to AP) only — no desk/laptop/US/MON/UW/TMON.
-# There is no Switch Hybrid role.
+# Access = opt-in grammar classes (USW/US/UP/MON/UW/TMON). Unlabelled desk
+# ports, N, and X still produce no items. Speed Expect uses PORTID.* (no UW/TMON
+# — those have no PHY token / no speed Warning).
 CORE_LIKE_IF_MACROS = {
     '{$NET.IF.IFALIAS.MATCHES}': '.*',
     '{$NET.IF.IFALIAS.NOT_MATCHES}': '^X(-|$)',
     '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
 }
+ACCESS_IFALIAS_MATCHES = '^(USW|US|UP|MON|UW|TMON)(-|$)'
+ACCESS_PORTID_MATCHES = '^(USW|US|UP|MON)(-|$)'
 ROLE_MACROS = {
     'Switch Core': dict(CORE_LIKE_IF_MACROS),
     'Switch Dist': dict(CORE_LIKE_IF_MACROS),
     'Switch Mgmt': dict(CORE_LIKE_IF_MACROS),
     'Switch Access': {
-        '{$NET.IF.IFALIAS.MATCHES}': '^(USW|UP)(-|$)',
+        '{$NET.IF.IFALIAS.MATCHES}': ACCESS_IFALIAS_MATCHES,
         '{$NET.IF.IFALIAS.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
-        # Speed Expect uses PORTID.* not NET.IF.* — override or US/MON leak in.
-        '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|UP)(-|$)',
+        '{$PORTID.LLD.IFALIAS.MATCHES}': ACCESS_PORTID_MATCHES,
     },
 }
+
+# There is no Switch Hybrid role.
 
 # NetBox role name variants → ROLE_MACROS key (Dist must get Core-like all-ports scope).
 ROLE_NAME_ALIASES = {
@@ -1812,14 +1816,14 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
         )
         m_acc = macro_map(objects['voss_access'])
         record(
-            'access_ifalias_usw_and_up_only',
-            m_acc.get('{$NET.IF.IFALIAS.MATCHES}') == '^(USW|UP)(-|$)',
+            'access_ifalias_grammar_classes',
+            m_acc.get('{$NET.IF.IFALIAS.MATCHES}') == ACCESS_IFALIAS_MATCHES,
             str(m_acc),
             group='resolve',
         )
         record(
-            'access_portid_usw_and_up_only',
-            m_acc.get('{$PORTID.LLD.IFALIAS.MATCHES}') == '^(USW|UP)(-|$)',
+            'access_portid_speed_classes',
+            m_acc.get('{$PORTID.LLD.IFALIAS.MATCHES}') == ACCESS_PORTID_MATCHES,
             str(m_acc),
             group='resolve',
         )
@@ -1920,14 +1924,14 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             if h_a:
                 macros = {m['macro']: m.get('value', '') for m in (h_a.get('macros') or []) if isinstance(m, dict) and 'macro' in m}
                 record(
-                    'zbx_access_ifalias_usw_and_up',
-                    macros.get('{$NET.IF.IFALIAS.MATCHES}') == '^(USW|UP)(-|$)',
+                    'zbx_access_ifalias_grammar_classes',
+                    macros.get('{$NET.IF.IFALIAS.MATCHES}') == ACCESS_IFALIAS_MATCHES,
                     str(macros),
                     group='zabbix',
                 )
                 record(
-                    'zbx_access_portid_usw_and_up',
-                    macros.get('{$PORTID.LLD.IFALIAS.MATCHES}') == '^(USW|UP)(-|$)',
+                    'zbx_access_portid_speed_classes',
+                    macros.get('{$PORTID.LLD.IFALIAS.MATCHES}') == ACCESS_PORTID_MATCHES,
                     str(macros),
                     group='zabbix',
                 )
