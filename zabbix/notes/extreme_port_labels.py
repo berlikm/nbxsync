@@ -1071,30 +1071,27 @@ def iftype_to_mbps(iface_type: str | None) -> int | None:
 
 
 def iface_speed_mbps(iface) -> int | None:
-    """Designed speed from NetBox ifType, falling back to ``Interface.speed`` (Kbps).
+    """Actual link speed: ``Interface.speed`` override first, then ifType PHY rate.
 
+    ``Interface.speed`` is how NetBox records a port autonegotiated/forced
+    to run *below* its connector's nominal rate (e.g. a 1000BASE-T port
+    stuck at 100 Mbps) — it must win over the generic type-derived guess,
+    or the label would claim a speed the port isn't actually running at.
     ``extreme-summitstack`` and other non-``Ngbase*`` types have no PHY rate —
-    they return None unless ``Interface.speed`` is set. The generator never
-    invents 10G when NetBox says 1G (or nothing).
+    they return None unless ``Interface.speed`` is set.
     """
-    parsed = iftype_to_mbps(getattr(iface, "type", None))
-    if parsed:
-        return parsed
     raw = getattr(iface, "speed", None)
     try:
         kbps = int(raw) if raw else 0
     except (TypeError, ValueError):
-        return None
-    if kbps <= 0:
-        return None
-    return kbps // 1000
+        kbps = 0
+    if kbps > 0:
+        return kbps // 1000
+    return iftype_to_mbps(getattr(iface, "type", None))
 
 
 def iface_speed_source(iface) -> str:
     """How ``iface_speed_mbps`` got a number. Empty when neither source is set."""
-    raw_type = (getattr(iface, "type", None) or "").strip()
-    if iftype_to_mbps(raw_type):
-        return f"iftype:{raw_type}"
     raw = getattr(iface, "speed", None)
     try:
         kbps = int(raw) if raw else 0
@@ -1102,6 +1099,9 @@ def iface_speed_source(iface) -> str:
         kbps = 0
     if kbps > 0:
         return f"speed:{kbps}kbps"
+    raw_type = (getattr(iface, "type", None) or "").strip()
+    if iftype_to_mbps(raw_type):
+        return f"iftype:{raw_type}"
     return ""
 
 
@@ -1615,8 +1615,44 @@ def _connect_voss(device_name: str, device_ip: str, username: str, password: str
                     device_name, attempt, exc, VOSS_CONNECT_RETRY_DELAY,
                 )
                 time.sleep(VOSS_CONNECT_RETRY_DELAY)
-            else:
-                raise
+
+    # All extreme_vsp attempts failed to detect a base prompt. VOSS does not
+    # have a Cisco-style user/privileged EXEC split, so 'enable' is not the
+    # fix here (nc.enable() above is already best-effort for that reason).
+    # Fall back once to a driver whose session_preparation() is a no-op —
+    # this skips prompt auto-detection entirely, which is safe because
+    # _send_voss() always passes its own expect_string and never reads
+    # nc.base_prompt. We capture the raw post-login output so a *repeat*
+    # failure gives us real evidence (banner/MOTD/paging) instead of a guess.
+    if last_exc is not None and "pattern not detected" in str(last_exc).lower():
+        try:
+            logger.warning(
+                "VOSS SSH %s: base-prompt detection failed after %d attempts — "
+                "retrying with no-prompt-detection fallback",
+                device_name, VOSS_CONNECT_RETRIES,
+            )
+            fallback_params = dict(conn_params)
+            fallback_params["device_type"] = "terminal_server"
+            nc = ConnectHandler(**fallback_params)
+            try:
+                time.sleep(1)
+                raw = nc.read_channel()
+                if raw:
+                    logger.warning(
+                        "VOSS SSH %s: post-login output after fallback connect "
+                        "(first 500 chars): %r",
+                        device_name, raw[:500],
+                    )
+            except Exception:
+                pass
+            logger.info(
+                "VOSS SSH connected to %s (%s) via fallback (no prompt auto-detect)",
+                device_name, device_ip,
+            )
+            return nc
+        except Exception as fallback_exc:  # noqa: BLE001
+            last_exc = fallback_exc
+
     raise last_exc  # pragma: no cover
 
 
