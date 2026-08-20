@@ -1249,17 +1249,19 @@ zabbix_export:
           value: '{#IFNAME}'
         trigger_prototypes:
         - uuid: 7b543f006f5046de8a4604ac30104969
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1'
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1 and {$LINKDOWN.IFALIAS:"{#IFALIAS}"}=1'
           recovery_mode: RECOVERY_EXPRESSION
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0
+          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0 or {$LINKDOWN.IFALIAS:"{#IFALIAS}"}=0
           name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
           opdata: 'Current state: {ITEM.LASTVALUE1}'
           priority: AVERAGE
           description: 'Admin-up + oper-down on a discovered port, including never-up.
-            Core/Dist/Mgmt: every admin-up ethernet/LAG except X. Access: every port
-            whose display-string / ifAlias matches USW|US|UP|MON|UW|TMON. Unlabelled
-            Access desk ports are not discovered. Mute with X (or admin-down), not ACK
-            and not {$IFCONTROL}. Average ticket — dayside, not a page.
+            Same Average on Extreme EXOS by SNMP (patched on --apply) and Extreme VOSS
+            by SNMP. Core/Dist/Mgmt: every admin-up ethernet/LAG except X.
+            Access: only a grammar display-string / ifAlias matching USW|US|UP|MON|UW|TMON.
+            Unlabelled Access desk ports must not ticket (LLD plus {$LINKDOWN.IFALIAS:"{#IFALIAS}"}).
+            Mute with X (or admin-down), not ACK and not {$IFCONTROL}. Average ticket —
+            dayside, not a page.
             '
           tags:
           - tag: scope
@@ -2325,6 +2327,9 @@ zabbix_export:
       description: Silence stock bandwidth trigger (101=off). Capacity uses Port Speed Expect + class context.
     - macro: '{$IFCONTROL}'
       value: '1'
+    - macro: '{$LINKDOWN.IFALIAS}'
+      value: '1'
+      description: 'Allow the discovered-port link-down Average for this ifAlias. Template default 1 keeps Core/Dist/Mgmt (empty alias still tickets). Switch Access sets default 0 and regex USW|US|UP|MON|UW|TMON = 1.'
     - macro: '{$MEMORY.UTIL.MAX}'
       value: '90'
     - macro: '{$NET.IF.IFADMINSTATUS.MATCHES}'

@@ -53,7 +53,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 | Ports in scope | Alert | Live (cutover) |
 |---|---|---|
-| Discovered link down (Core/Dist/Mgmt admin-up; Access grammar `display-string`) | yes | **Average** — one trigger, including never-up and `lowerLayerDown`. Unlabelled Access desk = not discovered. |
+| Discovered link down (Core/Dist/Mgmt admin-up; Access grammar `display-string`) | yes | **Average** — one trigger on **EXOS and VOSS**, including never-up and `lowerLayerDown`. Unlabelled Access desk = not discovered and `{$LINKDOWN.IFALIAS}` stays 0. |
 | Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
 | Wrong speed vs **intended** label | **armed** | Nested; **no items** until `USW`/`US`/`UP`/`MON`. Then **Warning**, not a page |
 | Half duplex | yes | Warning |
@@ -92,7 +92,7 @@ Util and intended-speed stay Latest data until a port has a class label. Honeyco
 | Switch Core / Dist / Mgmt | **Every** admin-up port except `X…` | `X…`; **admin-down** is not discovered |
 | Switch Access | Grammar classes: `USW` `US` `UP` `MON` `UW` `TMON` | Unlabelled desk / laptop / `N…` / `X…` |
 
-Access is **opt-in by CLASS** (the display-string). Unlabelled Access ports produce **no items**. A labelled Access port that is oper-down **does** Average-ticket, including never-up. Dist / Core / Mgmt: if it is admin-up, it is in — labelled or not (except `X`). Unused ports must be **admin-down**, not left up “with nothing connected”.
+Access is **opt-in by CLASS** (the display-string). Unlabelled Access ports produce **no items**. A labelled Access port that is oper-down **does** Average-ticket, including never-up. Dist / Core / Mgmt: if it is admin-up, it is in — labelled or not (except `X`). Unused ports must be **admin-down**, not left up “with nothing connected”. The Average itself also requires `{$LINKDOWN.IFALIAS:"{#IFALIAS}"}=1`: template default is `1` (Core/Dist/Mgmt, empty alias still tickets); Switch Access sets default `0` and regex `^(USW|US|UP|MON|UW|TMON)(-|$)` = `1`.
 
 **`X` excludes. `N` does not** (Core/Dist/Mgmt). Stack / ISC / MLAG peer-links are **`USW`** (alert). SPAN / operator-mute need **`X`**. Unused: **admin-down**.
 
@@ -100,6 +100,8 @@ Access is **opt-in by CLASS** (the display-string). Unlabelled Access ports prod
 |---|---|---|---|
 | Core / Dist / Mgmt | `.*` | `^X(-\|$)` | `^(6\|161)$` |
 | Access | `^(USW\|US\|UP\|MON\|UW\|TMON)(-\|$)` | `CHANGE_IF_NEEDED` | `^(6\|161)$` |
+
+Access also sets `{$LINKDOWN.IFALIAS}=0` and `{$LINKDOWN.IFALIAS:regex:"^(USW|US|UP|MON|UW|TMON)(-|$)"}=1`. Core/Dist/Mgmt inherit the template default `{$LINKDOWN.IFALIAS}=1`.
 
 Access Speed Expect uses `{$PORTID.LLD.IFALIAS.MATCHES}` = `^(USW|US|UP|MON)(-|$)` (same as the template default). `UW` / `TMON` get link/error items from stock LLD, not a speed Warning.
 
@@ -124,8 +126,8 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - YAML `deleteMissing: false` — retired items linger; we do not wipe LLD  
 - Does **not** mass-sync every device (template updates inherit in Zabbix). Speed Expect nests on VOSS / Observability, so existing switch hosts pick up the LLD on `--apply` without HostSync. Empty display-string → nothing discovered.  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
-- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, EXOS PSU LLD skip `notPresent`, VOSS PSU LLD skip `empty(2)` chassis slots and **delete lost PSU rows immediately**, PSU Average for installed-not-up (EXOS `presentPowerOff`, VOSS `unknown`), EXOS/VOSS link-down Average without `.diff()` (admin-up + oper **not up**, including `lowerLayerDown(7)`), EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
-- Role IFALIAS / Access `PORTID.*` changes need a **HostSync of those devices** — template inheritance does not push NetBox macros. `--apply` compares live Zabbix host macros and logs only drifted / missing hosts; it does **not** mass-sync.
+- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, EXOS PSU LLD skip `notPresent`, VOSS PSU LLD skip `empty(2)` chassis slots and **delete lost PSU rows immediately**, PSU Average for installed-not-up (EXOS `presentPowerOff`, VOSS `unknown`), EXOS/VOSS link-down Average without `.diff()` (admin-up + oper **not up**, including `lowerLayerDown(7)`), Access `{$LINKDOWN.IFALIAS}` grammar gate, EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
+- `--apply` writes Switch Access Zabbix **host** macros for IFALIAS / PORTID / `{$LINKDOWN.IFALIAS}` (grammar regex `USW|US|UP|MON|UW|TMON`). That is not HostSync and does not rewrite Core/Dist/Mgmt. Unlabelled Access desk ports then leave LLD (disable-now) and the Average cannot fire without a proper display-string. Core/Dist/Mgmt still ticket every admin-up port except `X`. Remaining Switch* drift is logged only.
 - `{$PORTID.LLD.*}` defaults live on **Extreme Port Speed Expect**. `--apply` will delete leftover Zabbix **global** PORTID macros (they bump config for every host).
 
 Per-host sync only when **that** device’s NetBox role/platform/macros changed.

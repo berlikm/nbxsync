@@ -1,19 +1,33 @@
 #!/usr/bin/env python3
-"""Stock .diff() / down(2)-only must not silence discovered admin-up + not-up."""
+"""Stock .diff() / down(2)-only must not silence discovered admin-up + not-up.
+
+Access still needs a grammar ifAlias (USW|US|UP|MON|UW|TMON) before the Average
+can fire. Core/Dist/Mgmt keep template {$LINKDOWN.IFALIAS}=1.
+"""
 
 from __future__ import annotations
 
 import unittest
 
 from extreme_linkdown import (
+    ACCESS_IFALIAS_MATCHES,
+    LINKDOWN_IFALIAS_ACCESS_DEFAULT,
+    LINKDOWN_IFALIAS_GATE,
+    LINKDOWN_IFALIAS_MACRO,
+    LINKDOWN_IFALIAS_RECOVERY,
+    LINKDOWN_IFALIAS_TEMPLATE_VALUE,
+    access_zabbix_host_macros,
     canonicalize_linkdown_problem,
     canonicalize_linkdown_recovery,
     is_platform_linkdown_name,
     linkdown_has_diff_guard,
+    linkdown_has_ifalias_gate,
     linkdown_is_not_up,
+    linkdown_ifalias_regex_macro,
     linkdown_manual_close_on,
     linkdown_recovery_is_up,
     ungate_linkdown_expr,
+    zabbix_regex_macro_name,
 )
 
 
@@ -29,17 +43,21 @@ _EXOS = (
 )
 _WANT_VOSS = (
     '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1'
+    f' and {LINKDOWN_IFALIAS_GATE}'
 )
 _WANT_EXOS = (
     '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme EXOS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1'
+    f' and {LINKDOWN_IFALIAS_GATE}'
 )
 _REC_VOSS = (
     'last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1'
     ' or {$IFCONTROL:"{#IFNAME}"}=0'
+    f' or {LINKDOWN_IFALIAS_RECOVERY}'
 )
 _REC_EXOS = (
     'last(/Extreme EXOS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1'
     ' or {$IFCONTROL:"{#IFNAME}"}=0'
+    f' or {LINKDOWN_IFALIAS_RECOVERY}'
 )
 
 
@@ -58,6 +76,8 @@ class UngateLinkdownTests(unittest.TestCase):
     def test_canonical_exos_is_not_up(self):
         self.assertEqual(canonicalize_linkdown_problem(_EXOS), _WANT_EXOS)
         self.assertEqual(canonicalize_linkdown_recovery(_WANT_EXOS), _REC_EXOS)
+        self.assertTrue(linkdown_is_not_up(_WANT_EXOS))
+        self.assertTrue(linkdown_recovery_is_up(_REC_EXOS))
 
     def test_strips_linkdown_high_gate(self):
         expr = (
@@ -76,6 +96,7 @@ class UngateLinkdownTests(unittest.TestCase):
 
     def test_already_not_up_is_idempotent(self):
         self.assertEqual(canonicalize_linkdown_problem(_WANT_VOSS), _WANT_VOSS)
+        self.assertEqual(canonicalize_linkdown_recovery(_WANT_VOSS), _REC_VOSS)
 
     def test_eq_down_is_not_enough(self):
         eq2 = (
@@ -83,10 +104,18 @@ class UngateLinkdownTests(unittest.TestCase):
             '[ifOperStatus.{#SNMPINDEX}])=2'
         )
         self.assertFalse(linkdown_is_not_up(eq2))
+        self.assertFalse(linkdown_has_ifalias_gate(eq2))
         self.assertFalse(linkdown_recovery_is_up(
             'last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2'
             ' or {$IFCONTROL:"{#IFNAME}"}=0'
         ))
+
+    def test_not_up_without_ifalias_gate_is_incomplete(self):
+        ungated = (
+            '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status'
+            '[ifOperStatus.{#SNMPINDEX}])<>1'
+        )
+        self.assertFalse(linkdown_is_not_up(ungated))
 
     def test_manual_close_yes(self):
         self.assertTrue(linkdown_manual_close_on({'manual_close': 'YES'}))
@@ -98,12 +127,36 @@ class UngateLinkdownTests(unittest.TestCase):
         self.assertTrue(is_platform_linkdown_name(
             'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
         ))
+        self.assertTrue(is_platform_linkdown_name(
+            'Extreme EXOS: Interface {#IFNAME}({#IFALIAS}): Link down'
+        ))
         self.assertFalse(is_platform_linkdown_name(
             'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down (USW)'
         ))
         self.assertFalse(is_platform_linkdown_name(
             'Port identity: Interface {#IFNAME}({#IFALIAS}): Link down (speed-expect)'
         ))
+
+    def test_access_ifalias_regex_keeps_usw_before_us(self):
+        self.assertEqual(ACCESS_IFALIAS_MATCHES, '^(USW|US|UP|MON|UW|TMON)(-|$)')
+        self.assertLess(ACCESS_IFALIAS_MATCHES.index('USW'), ACCESS_IFALIAS_MATCHES.index('|US|'))
+        name = linkdown_ifalias_regex_macro()
+        self.assertEqual(
+            name,
+            zabbix_regex_macro_name(LINKDOWN_IFALIAS_MACRO, ACCESS_IFALIAS_MATCHES),
+        )
+        self.assertIn('USW|US|UP|MON|UW|TMON', name)
+
+    def test_access_host_macros_deny_unlabelled(self):
+        role = {
+            '{$NET.IF.IFALIAS.MATCHES}': ACCESS_IFALIAS_MATCHES,
+            LINKDOWN_IFALIAS_MACRO: LINKDOWN_IFALIAS_ACCESS_DEFAULT,
+        }
+        got = access_zabbix_host_macros(role)
+        self.assertEqual(got[LINKDOWN_IFALIAS_MACRO], '0')
+        self.assertEqual(got[linkdown_ifalias_regex_macro()], '1')
+        self.assertEqual(LINKDOWN_IFALIAS_TEMPLATE_VALUE, '1')
+        self.assertEqual(got['{$NET.IF.IFALIAS.MATCHES}'], ACCESS_IFALIAS_MATCHES)
 
 
 if __name__ == '__main__':

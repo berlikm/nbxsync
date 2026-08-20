@@ -78,6 +78,8 @@ ROLE_MACROS = {
         '{$NET.IF.IFALIAS.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
         '{$PORTID.LLD.IFALIAS.MATCHES}': '^(USW|US|UP|MON)(-|$)',
+        '{$LINKDOWN.IFALIAS}': '0',
+        '{$LINKDOWN.IFALIAS:regex:"^(USW|US|UP|MON|UW|TMON)(-|$)"}': '1',
     },
 }
 
@@ -249,6 +251,7 @@ def verify_template_macros(api: ZabbixAPI, templateid: str) -> None:
         '{$VIST.CONTROL}': '0',
         '{$IST.CONTROL}': '0',
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
+        '{$LINKDOWN.IFALIAS}': '1',
     }
     for macro, expected in checks.items():
         got = macros.get(macro)
@@ -518,6 +521,13 @@ def main() -> int:
         'access opt-in classes',
         ROLE_MACROS['access']['{$NET.IF.IFALIAS.MATCHES}'] == '^(USW|US|UP|MON|UW|TMON)(-|$)',
         ROLE_MACROS['access']['{$NET.IF.IFALIAS.MATCHES}'],
+        group='semantics',
+    )
+    record(
+        'access link-down requires grammar ifAlias',
+        ROLE_MACROS['access']['{$LINKDOWN.IFALIAS}'] == '0'
+        and ROLE_MACROS['access']['{$LINKDOWN.IFALIAS:regex:"^(USW|US|UP|MON|UW|TMON)(-|$)"}'] == '1',
+        'unlabelled Access ifAlias does not ticket',
         group='semantics',
     )
 

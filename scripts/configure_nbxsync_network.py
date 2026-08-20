@@ -24,8 +24,10 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     never came up still tickets. Oper-status **not up** (``<>1``) so
     ``lowerLayerDown(7)`` matches the honeycomb, not only ``down(2)``.
     Recovery is ``last()=1``. Manual close is off so ACK cannot mute a
-    still-down port. Core/Dist/Mgmt every admin-up except X; Access every
-    grammar display-string.
+    still-down port. Same prototype on EXOS and VOSS. Core/Dist/Mgmt every
+    admin-up except X. Access only a grammar display-string: LLD plus
+    ``{$LINKDOWN.IFALIAS:"{#IFALIAS}"}``. ``--apply`` writes those Access
+    host macros (not HostSync, not Core).
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
@@ -49,8 +51,9 @@ Stage matrix (what each flag enables):
 Re-apply safety (estate already has switches/APs in Zabbix):
   * Does **not** delete hosts, interfaces, history, or hostids
   * Does **not** mass-sync every device (template updates inherit in Zabbix)
-  * After role macros, logs Switch* hosts whose Zabbix host macros differ from
-    NetBox role assignments (not every active Switch*). Does not mass-sync.
+  * After role macros, writes Switch Access Zabbix **host** macros (IFALIAS /
+    PORTID / ``{$LINKDOWN.IFALIAS}`` grammar regex) and logs remaining Switch*
+    drift. Does not mass-HostSync. Does not rewrite Core/Dist/Mgmt host macros.
   * YAML ``deleteMissing: false`` — retired items linger; LLD is not wiped
   * ``--apply`` without ``--link-speed-expect`` does **not** unlink a leftover role assignment
     (Speed Expect is nested on the platform templates; skip the flag).
@@ -137,14 +140,23 @@ from extreme_health_zabbix import (
     assert_wan_icmp_noise_disabled,
 )
 from extreme_linkdown import (
+    ACCESS_IFALIAS_MATCHES,
+    ACCESS_PORTID_MATCHES,
     LINKDOWN_HIGH_GATE as _LINKDOWN_HIGH_GATE,
     LINKDOWN_HIGH_MACRO_PREFIX as _LINKDOWN_HIGH_MACRO_PREFIX,
+    LINKDOWN_IFALIAS_ACCESS_DEFAULT as _LINKDOWN_IFALIAS_ACCESS_DEFAULT,
+    LINKDOWN_IFALIAS_MACRO as _LINKDOWN_IFALIAS_MACRO,
+    LINKDOWN_IFALIAS_TEMPLATE_VALUE as _LINKDOWN_IFALIAS_TEMPLATE_VALUE,
     LINKDOWN_RECOVERY_MODE as _LINKDOWN_RECOVERY_MODE,
     LINKDOWN_TEMPLATES as _LINKDOWN_TEMPLATES,
+    LINKDOWN_TRIGGER_DESCRIPTION as _LINKDOWN_TRIGGER_DESCRIPTION,
+    access_zabbix_host_macros as _access_zabbix_host_macros,
     canonicalize_linkdown_problem as _canonicalize_linkdown_problem,
     canonicalize_linkdown_recovery as _canonicalize_linkdown_recovery,
     is_platform_linkdown_name as _is_platform_linkdown_name,
     linkdown_has_diff_guard as _linkdown_has_diff_guard,
+    linkdown_has_ifalias_gate as _linkdown_has_ifalias_gate,
+    linkdown_ifalias_regex_macro as _linkdown_ifalias_regex_macro,
     linkdown_is_not_up as _linkdown_is_not_up,
     linkdown_manual_close_on as _linkdown_manual_close_on,
     linkdown_recovery_is_up as _linkdown_recovery_is_up,
@@ -199,8 +211,6 @@ CORE_LIKE_IF_MACROS = {
     '{$NET.IF.IFALIAS.NOT_MATCHES}': '^X(-|$)',
     '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
 }
-ACCESS_IFALIAS_MATCHES = '^(USW|US|UP|MON|UW|TMON)(-|$)'
-ACCESS_PORTID_MATCHES = '^(USW|US|UP|MON)(-|$)'
 ROLE_MACROS = {
     'Switch Core': dict(CORE_LIKE_IF_MACROS),
     'Switch Dist': dict(CORE_LIKE_IF_MACROS),
@@ -210,7 +220,20 @@ ROLE_MACROS = {
         '{$NET.IF.IFALIAS.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
         '{$NET.IF.IFTYPE.MATCHES}': '^(6|161)$',
         '{$PORTID.LLD.IFALIAS.MATCHES}': ACCESS_PORTID_MATCHES,
+        _LINKDOWN_IFALIAS_MACRO: _LINKDOWN_IFALIAS_ACCESS_DEFAULT,
     },
+}
+
+# Extra ZabbixMacroAssignment rows (same macro, regex context). HostSync / --apply
+# host-macro write both need the full name ``{$LINKDOWN.IFALIAS:regex:"…"}``.
+ROLE_REGEX_MACRO_ASSIGNMENTS = {
+    'Switch Access': (
+        {
+            'macro': _LINKDOWN_IFALIAS_MACRO,
+            'context': ACCESS_IFALIAS_MATCHES,
+            'value': '1',
+        },
+    ),
 }
 
 # There is no Switch Hybrid role.
@@ -1132,6 +1155,55 @@ def _triggerproto_name(proto: dict) -> str:
     return str(proto.get('description') or proto.get('name') or '')
 
 
+def _template_macro_payload(existing: list[dict], wanted: dict[str, str], descriptions: dict[str, str] | None = None) -> list[dict]:
+    """Merge ``wanted`` into a template.update macros list without dropping others."""
+    by_name = {m['macro']: dict(m) for m in existing if isinstance(m, dict) and m.get('macro')}
+    for macro, value in wanted.items():
+        if macro in by_name:
+            by_name[macro]['value'] = value
+            if descriptions and macro in descriptions:
+                by_name[macro]['description'] = descriptions[macro]
+        else:
+            entry = {'macro': macro, 'value': value}
+            if descriptions and macro in descriptions:
+                entry['description'] = descriptions[macro]
+            by_name[macro] = entry
+    payload = []
+    for m in by_name.values():
+        entry = {'macro': m['macro'], 'value': m.get('value', '')}
+        if m.get('hostmacroid'):
+            entry['hostmacroid'] = m['hostmacroid']
+        if m.get('description') is not None:
+            entry['description'] = m.get('description', '')
+        if m.get('type') is not None:
+            entry['type'] = m['type']
+        payload.append(entry)
+    return payload
+
+
+def _upsert_template_macros(
+    api,
+    template_name: str,
+    wanted: dict[str, str],
+    descriptions: dict[str, str] | None = None,
+) -> str:
+    tpls = api.template.get(
+        filter={'name': [template_name]},
+        output=['templateid'],
+        selectMacros='extend',
+    )
+    if not tpls:
+        return 'missing'
+    existing = list(tpls[0].get('macros') or [])
+    by_name = {m['macro']: m for m in existing if isinstance(m, dict) and m.get('macro')}
+    current = {k: str(by_name[k].get('value', '')) for k in wanted if k in by_name}
+    if all(current.get(k) == v for k, v in wanted.items()) and len(current) == len(wanted):
+        return 'ok'
+    payload = _template_macro_payload(existing, wanted, descriptions)
+    api.template.update(templateid=tpls[0]['templateid'], macros=payload)
+    return 'patched'
+
+
 def _drop_template_macros(api, template_name: str, prefixes: tuple[str, ...]) -> str:
     tpls = api.template.get(
         filter={'name': [template_name]},
@@ -1171,11 +1243,13 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
     Drop stock ``last(#1)<>last(#2)`` so never-up ports ticket. Match oper
     **not up** (``<>1``), not only ``down(2)`` — honeycomb is ``>=2`` and VOSS
     unused SFPs often report ``lowerLayerDown(7)``. Recovery is ``last()=1``
-    (stock ``<>2`` would clear 7 immediately). Manual close off. Access uses
-    the same prototype — labelled display-strings fire; unlabelled desk ports
-    are not in LLD.
+    (stock ``<>2`` would clear 7 immediately). Manual close off.
+
+    Same prototype on EXOS and VOSS. Access also requires
+    ``{$LINKDOWN.IFALIAS:"{#IFALIAS}"}=1`` (grammar display-string). Template
+    default is 1 so Core/Dist/Mgmt unlabelled admin-up still tickets.
     """
-    logger.info('Network: discovered link-down stays Average (not-up, no .diff())')
+    logger.info('Network: discovered link-down stays Average (not-up, no .diff(), Access ifAlias gate)')
     results: dict[str, str] = {}
     proto_output = [
         'triggerid',
@@ -1184,6 +1258,7 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
         'recovery_expression',
         'recovery_mode',
         'manual_close',
+        'comments',
     ]
     for template_name in _LINKDOWN_TEMPLATES:
         tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
@@ -1192,6 +1267,20 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
             continue
         tid = tpls[0]['templateid']
         changed = _drop_template_macros(api, template_name, (_LINKDOWN_HIGH_MACRO_PREFIX,)) == 'patched'
+        macro_status = _upsert_template_macros(
+            api,
+            template_name,
+            {_LINKDOWN_IFALIAS_MACRO: _LINKDOWN_IFALIAS_TEMPLATE_VALUE},
+            {
+                _LINKDOWN_IFALIAS_MACRO: (
+                    'Allow discovered-port link-down Average for this ifAlias. '
+                    'Template default 1 (Core/Dist/Mgmt). Access host default 0 + '
+                    'regex USW|US|UP|MON|UW|TMON = 1.'
+                ),
+            },
+        )
+        if macro_status == 'patched':
+            changed = True
         rules = api.discoveryrule.get(
             hostids=tid,
             filter={'key_': _IF_DISCOVERY_KEY},
@@ -1230,6 +1319,9 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
                 payload['recovery_mode'] = _LINKDOWN_RECOVERY_MODE
             if _linkdown_manual_close_on(proto):
                 payload['manual_close'] = 0
+            comments = str(proto.get('comments') or '')
+            if 'LINKDOWN.IFALIAS' not in comments:
+                payload['comments'] = _LINKDOWN_TRIGGER_DESCRIPTION
             if payload:
                 api.triggerprototype.update(triggerid=proto['triggerid'], **payload)
                 changed = True
@@ -1251,6 +1343,11 @@ def assert_linkdown_one_average(api, template_name: str) -> tuple[bool, str]:
     if not tpls:
         return True, 'template absent — n/a'
     macros = [str(m.get('macro') or '') for m in (tpls[0].get('macros') or [])]
+    macro_vals = {
+        str(m.get('macro') or ''): str(m.get('value') or '')
+        for m in (tpls[0].get('macros') or [])
+        if isinstance(m, dict)
+    }
     if any(m.startswith(_LINKDOWN_HIGH_MACRO_PREFIX) for m in macros):
         return False, f'leftover macros={[m for m in macros if m.startswith(_LINKDOWN_HIGH_MACRO_PREFIX)]}'
     rules = api.discoveryrule.get(
@@ -1274,11 +1371,13 @@ def assert_linkdown_one_average(api, template_name: str) -> tuple[bool, str]:
         and bool(linkdown)
         and not any(_LINKDOWN_HIGH_GATE in e for e in exprs)
         and all(_linkdown_is_not_up(e) for e in exprs)
+        and all(_linkdown_has_ifalias_gate(e) for e in exprs)
         and all(_linkdown_recovery_is_up(r) for r in recs)
         and not any(_linkdown_has_diff_guard(e) for e in exprs)
         and not any(_linkdown_manual_close_on(p) for p in linkdown)
+        and macro_vals.get(_LINKDOWN_IFALIAS_MACRO) == _LINKDOWN_IFALIAS_TEMPLATE_VALUE
     )
-    return ok, f'linkdown={names}'
+    return ok, f'linkdown={names} ifalias={macro_vals.get(_LINKDOWN_IFALIAS_MACRO)!r}'
 
 
 def _discovery_item_timeout_supported(rule: dict) -> bool:
@@ -1574,6 +1673,42 @@ def resolve_role_for_macros(canonical_name: str) -> DeviceRole | None:
     return roles[0] if roles else None
 
 
+def _upsert_role_macro_assignment(server, role, macro_name: str, value: str, *, context: str = '', is_regex: bool = False) -> None:
+    zmacro, _ = ensure(
+        M.ZabbixMacro,
+        macro=macro_name,
+        assigned_object_type=ct(M.ZabbixServer),
+        assigned_object_id=server.id,
+        defaults={
+            'value': value,
+            'type': ZabbixMacroTypeChoices.TEXT,
+            'description': f'nwn:{macro_name}',
+        },
+        update_fields=['type', 'description'],
+    )
+    ma = M.ZabbixMacroAssignment.objects.filter(
+        zabbixmacro=zmacro,
+        assigned_object_type=ct(DeviceRole),
+        assigned_object_id=role.id,
+        context=context,
+        is_regex=is_regex,
+    ).first()
+    if ma is None:
+        M.ZabbixMacroAssignment.objects.create(
+            zabbixmacro=zmacro,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=role.id,
+            value=value,
+            context=context,
+            is_regex=is_regex,
+        )
+    elif ma.value != value:
+        ma.value = value
+        ma.save(update_fields=['value'])
+    extra = f':regex:"{context}"' if is_regex else (f':{context}' if context else '')
+    logger.info('  %s %s%s = %s', role.name, macro_name, extra, value)
+
+
 def step_role_macros(server) -> None:
     """ZabbixMacroAssignment on Switch* roles — what inheritance actually syncs."""
     logger.info('=' * 60)
@@ -1591,39 +1726,23 @@ def step_role_macros(server) -> None:
             if role.name != role_name:
                 logger.info('  Resolved %s → NetBox role %r', role_name, role.name)
             for macro_name, value in macros.items():
-                zmacro, _ = ensure(
-                    M.ZabbixMacro,
-                    macro=macro_name,
-                    assigned_object_type=ct(M.ZabbixServer),
-                    assigned_object_id=server.id,
-                    defaults={
-                        'value': value,  # default; assignment overrides per role
-                        'type': ZabbixMacroTypeChoices.TEXT,
-                        'description': f'nwn:{macro_name}',
-                    },
-                    update_fields=['type', 'description'],
+                _upsert_role_macro_assignment(server, role, macro_name, value)
+            for spec in ROLE_REGEX_MACRO_ASSIGNMENTS.get(role_name, ()):
+                _upsert_role_macro_assignment(
+                    server,
+                    role,
+                    spec['macro'],
+                    spec['value'],
+                    context=spec['context'],
+                    is_regex=True,
                 )
-                # UniqueConstraint includes value — update-in-place by macro+role+context.
-                ma = M.ZabbixMacroAssignment.objects.filter(
-                    zabbixmacro=zmacro,
-                    assigned_object_type=ct(DeviceRole),
-                    assigned_object_id=role.id,
-                    context='',
-                    is_regex=False,
-                ).first()
-                if ma is None:
-                    M.ZabbixMacroAssignment.objects.create(
-                        zabbixmacro=zmacro,
-                        assigned_object_type=ct(DeviceRole),
-                        assigned_object_id=role.id,
-                        value=value,
-                        context='',
-                        is_regex=False,
-                    )
-                elif ma.value != value:
-                    ma.value = value
-                    ma.save(update_fields=['value'])
-                logger.info('  %s %s = %s', role.name, macro_name, value)
+
+
+def _expected_host_macros(canonical_role: str) -> dict[str, str]:
+    expected = dict(ROLE_MACROS[canonical_role])
+    for spec in ROLE_REGEX_MACRO_ASSIGNMENTS.get(canonical_role, ()):
+        expected[_linkdown_ifalias_regex_macro(spec['context'])] = spec['value']
+    return expected
 
 
 def _zabbix_hosts_by_name(api, names: list[str]) -> dict[str, dict]:
@@ -1647,15 +1766,131 @@ def _host_macros_match(host_row: dict, expected: dict[str, str]) -> bool:
     return all(current.get(macro) == value for macro, value in expected.items())
 
 
+def _upsert_host_macros(api, hostid: str, wanted: dict[str, str]) -> list[str]:
+    """Create/update named host macros only. Never replaces the rest of the host."""
+    current = {m['macro']: m for m in api.usermacro.get(hostids=hostid, output='extend') or [] if m.get('macro')}
+    changed: list[str] = []
+    for macro, value in wanted.items():
+        row = current.get(macro)
+        if row is None:
+            api.usermacro.create(hostid=hostid, macro=macro, value=value)
+            changed.append(macro)
+            continue
+        if str(row.get('value') or '') != value:
+            api.usermacro.update(hostmacroid=row['hostmacroid'], value=value)
+            changed.append(macro)
+    return changed
+
+
+def _queue_if_lld_checks(api, hostids: list[str], *, log_label: str) -> dict[str, int | str]:
+    """Check-now net.if.discovery so Access IFALIAS changes drop unlabelled rows."""
+    if not hostids:
+        return {'status': 'none', 'hosts': 0, 'tasks': 0}
+    rules = []
+    ordered = sorted({str(h) for h in hostids})
+    for start in range(0, len(ordered), 100):
+        rules.extend(
+            api.discoveryrule.get(
+                hostids=ordered[start:start + 100],
+                filter={'key_': _IF_DISCOVERY_KEY},
+                output=['itemid', 'hostid'],
+            )
+            or []
+        )
+    tasks = [
+        {'type': _CHECK_NOW_TASK_TYPE, 'request': {'itemid': rule['itemid']}}
+        for rule in rules
+    ]
+    if not tasks:
+        return {'status': 'no-discovery-rules', 'hosts': len(ordered), 'tasks': 0}
+    task_ids: list[str] = []
+    for start in range(0, len(tasks), 20):
+        result = api.task.create(tasks[start:start + 20]) or {}
+        task_ids.extend(str(task_id) for task_id in result.get('taskids', []))
+    logger.info(
+        '  %s IF LLD check-now queued: hosts=%s rules=%s tasks=%s',
+        log_label,
+        len(ordered),
+        len(rules),
+        len(task_ids),
+    )
+    return {'status': 'queued', 'hosts': len(ordered), 'tasks': len(task_ids)}
+
+
+def patch_access_port_scope_host_macros(api) -> dict[str, int | str]:
+    """Write Access IFALIAS / LINKDOWN.IFALIAS on Zabbix hosts. Not HostSync.
+
+    Template default IFALIAS.MATCHES is ``.*`` (Core-safe). Access hosts that
+    never got HostSync inherit that and ticket every admin-up desk port. This
+    writes only Switch Access host macros so the Average requires a grammar
+    display-string. Core/Dist/Mgmt hosts are not touched.
+    """
+    logger.info('Network: Switch Access host macros (IFALIAS + LINKDOWN.IFALIAS grammar)')
+    roles = resolve_roles_for_macros('Switch Access')
+    if not roles:
+        logger.info('  No Switch Access role — skip')
+        return {'status': 'no-role', 'patched': 0, 'missing': 0, 'in_sync': 0}
+    wanted = _access_zabbix_host_macros(ROLE_MACROS['Switch Access'])
+    devices = list(
+        Device.objects.filter(status='active', role_id__in=[r.pk for r in roles]).order_by('name')
+    )
+    if not devices:
+        logger.info('  No active Switch Access devices — skip')
+        return {'status': 'no-devices', 'patched': 0, 'missing': 0, 'in_sync': 0}
+    by_host = _zabbix_hosts_by_name(api, [d.name for d in devices])
+    patched: list[str] = []
+    missing: list[str] = []
+    in_sync = 0
+    patched_hostids: list[str] = []
+    for device in devices:
+        row = by_host.get(device.name)
+        if row is None:
+            missing.append(device.name)
+            continue
+        changed = _upsert_host_macros(api, str(row['hostid']), wanted)
+        if changed:
+            patched.append(device.name)
+            patched_hostids.append(str(row['hostid']))
+            logger.info('  %s: wrote %s', device.name, ', '.join(changed))
+        else:
+            in_sync += 1
+    queued = _queue_if_lld_checks(api, patched_hostids, log_label='Access') if patched_hostids else {
+        'status': 'none',
+        'hosts': 0,
+        'tasks': 0,
+    }
+    logger.info(
+        '  Access host macros: patched=%s in_sync=%s missing_in_zabbix=%s check-now=%s',
+        len(patched),
+        in_sync,
+        len(missing),
+        queued.get('status'),
+    )
+    if missing:
+        logger.warning('  Access devices not in Zabbix (sample): %s', missing[:12])
+    return {
+        'status': 'ok',
+        'patched': len(patched),
+        'in_sync': in_sync,
+        'missing': len(missing),
+        'sample': patched[:12],
+        'check_now': queued.get('status'),
+        'check_now_tasks': queued.get('tasks', 0),
+    }
+
+
 def report_hosts_needing_macro_sync(server=None) -> dict:
     """Log Switch* hosts whose Zabbix host macros differ from NetBox role assignments.
 
-    `--apply` does not HostSync. Without a live API this is a reminder, not a stale list.
+    Access IFALIAS / LINKDOWN.IFALIAS are written by
+    ``patch_access_port_scope_host_macros`` (not HostSync). Remaining drift is
+    Core/Dist/Mgmt or Access hosts not yet in Zabbix.
     """
     role_macros_by_id: dict[int, dict[str, str]] = {}
-    for canonical, macros in ROLE_MACROS.items():
+    for canonical in ROLE_MACROS:
+        expected = _expected_host_macros(canonical)
         for role in resolve_roles_for_macros(canonical):
-            role_macros_by_id[role.pk] = macros
+            role_macros_by_id[role.pk] = expected
     if not role_macros_by_id:
         logger.info('Network: no Switch* roles found — skip HostSync reminder')
         return {'count': 0, 'sample': [], 'in_sync': 0, 'missing': 0}
@@ -2233,6 +2468,15 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             attach(d, next_ip())
             objects[key] = d
 
+        with ZabbixConnection(server) as api:
+            access_macros = patch_access_port_scope_host_macros(api)
+            record(
+                'access_host_macros',
+                access_macros.get('status') in ('ok', 'no-devices', 'no-role'),
+                str(access_macros),
+                group='import',
+            )
+
         # --- Resolve asserts (NetBox side, like zerotouch) ---
         def cg_name(obj):
             a = get_assigned_zabbixobjects(obj)
@@ -2291,6 +2535,24 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             'access_portid_speed_classes',
             m_acc.get('{$PORTID.LLD.IFALIAS.MATCHES}') == ACCESS_PORTID_MATCHES,
             str(m_acc),
+            group='resolve',
+        )
+        record(
+            'access_linkdown_ifalias_default_off',
+            m_acc.get(_LINKDOWN_IFALIAS_MACRO) == _LINKDOWN_IFALIAS_ACCESS_DEFAULT,
+            str(m_acc),
+            group='resolve',
+        )
+        record(
+            'access_linkdown_ifalias_grammar_regex',
+            m_acc.get(_linkdown_ifalias_regex_macro()) == '1',
+            str(m_acc),
+            group='resolve',
+        )
+        record(
+            'core_linkdown_ifalias_not_forced',
+            _LINKDOWN_IFALIAS_MACRO not in m_core,
+            str(m_core),
             group='resolve',
         )
         def rule_templates(canonical: str) -> list[str]:
@@ -2398,6 +2660,18 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 record(
                     'zbx_access_portid_speed_classes',
                     macros.get('{$PORTID.LLD.IFALIAS.MATCHES}') == ACCESS_PORTID_MATCHES,
+                    str(macros),
+                    group='zabbix',
+                )
+                record(
+                    'zbx_access_linkdown_ifalias_off',
+                    macros.get(_LINKDOWN_IFALIAS_MACRO) == _LINKDOWN_IFALIAS_ACCESS_DEFAULT,
+                    str(macros),
+                    group='zabbix',
+                )
+                record(
+                    'zbx_access_linkdown_ifalias_grammar',
+                    macros.get(_linkdown_ifalias_regex_macro()) == '1',
                     str(macros),
                     group='zabbix',
                 )
@@ -2544,6 +2818,8 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
     step_server_macros(server)
     step_role_macros(server)
+    with ZabbixConnection(server) as api:
+        patch_access_port_scope_host_macros(api)
     report_hosts_needing_macro_sync(server)
     step_template_rules(server, tpl_models)
     step_speed_expect_assignment(server, tpl_models, link=link_speed_expect)

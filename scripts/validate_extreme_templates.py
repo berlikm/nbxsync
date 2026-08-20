@@ -549,6 +549,13 @@ def validate_voss(doc: dict) -> None:
         ld_expr[:160],
     )
     record(
+        'VOSS link-down Access ifAlias gate',
+        '{$LINKDOWN.IFALIAS:"{#IFALIAS}"}=1' in ld_expr
+        and '{$LINKDOWN.IFALIAS:"{#IFALIAS}"}=0' in ld_rec
+        and macros.get('{$LINKDOWN.IFALIAS}') == '1',
+        f'expr={ld_expr[:120]} rec={ld_rec[:80]} macro={macros.get("{$LINKDOWN.IFALIAS}")!r}',
+    )
+    record(
         'VOSS link-down description includes Access',
         'Access' in ((avg_ld or {}).get('description') or ''),
         ((avg_ld or {}).get('description') or '')[:120],
