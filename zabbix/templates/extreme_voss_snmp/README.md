@@ -19,7 +19,7 @@ Requires Zabbix **7.0+** (export version `7.0`).
 | CPU / memory | `extremeCpuMonitor*` / `extremeMemoryMonitor*` | `rcKhiSlot*` LLD (per slot); scalar CPU for slot 1 |
 | Temperature | Scalar `extremeCurrentTemperature` | `rcVossSystemTemperature*` LLD |
 | Fan | Status + RPM | Status + ambient ┬░C (no RPM OID) |
-| PSU / fan crit values | EXOS enums | `{$FAN_CRIT_STATUS}=3`, `{$PSU_CRIT_STATUS}=4` |
+| PSU / fan crit values | EXOS enums | `{$FAN_CRIT_STATUS}=3`, `{$PSU_CRIT_STATUS}=4`; VOSS LLD skips `empty(2)` bays |
 | Chassis identity | ENTITY-MIB index 1 | `rcChasSerialNumber` / `rcChasModelName` / `rcChasHardwareRevision` |
 | Software rev | Extreme software MIB | `rcSysVersion` |
 
@@ -55,7 +55,7 @@ Role IFALIAS macros (`.*` + `^X(-|$)` for Core/Dist/Mgmt; Access `^(USW|US|UP|MO
 - ICMP availability + targeted SNMP traps (fan/PSU/temp/ISIS/LAG)
 - Inventory: chassis model/serial/rev/PN/brand/base MAC, port/slot counts, `rcSysVersion`
 - CPU/memory: instantaneous + 1m/5m averages (`rcKhiSlot*`)
-- Fan / PSU (+ PSU output watts) / temperature discovery (`{#SENSOR_DESCR}` on °C items)
+- Fan / PSU (+ PSU output watts) / temperature discovery (`{#SENSOR_DESCR}` on °C items). PSU LLD skips `empty(2)` chassis bays.
 - Optics/DOM discovery (`rcPlugOptMod*`)
 - LLDP remote neighbor discovery
 - Fabric: V-IST / IST, SPBM enable, ISIS circuit/adjacency, SPBM nickname, MLT/SMLT

@@ -55,13 +55,16 @@ Walk: `1.3.6.1.4.1.2272.1.4.7.1.1.1`
 | `sensor.fan.status[rcChasFanOperStatus.{i}]` | `...7.1.1.2.{i}` | | crit = 3 |
 | `sensor.fan.temp[rcChasFanAmbientTemperature.{i}]` | `...7.1.1.3.{i}` | | ┬░C; no RPM |
 
-## LLD: PSU (`psu.discovery`)
+## LLD: PSU (`psu.discovery` / `psu.detail.discovery`)
 
-Walk: `1.3.6.1.4.1.2272.1.4.8.1.1.1` (or status column used by template)
+Walk id + status. Filter `{#PSU.STATUS}` **NOT_MATCHES** `^2$` (`empty`). Keep `unknown(1)` / `up(3)` / `down(4)`.
+
+Walk status: `1.3.6.1.4.1.2272.1.4.8.1.1.1` + `...8.1.1.2`
+Walk detail: `1.3.6.1.4.1.2272.1.4.8.2.1.1` + `...8.2.1.15`
 
 | Prototype key | OID | Observed | Notes |
 |---|---|---|---|
-| `sensor.psu.status[rcChasPowerSupplyOperStatus.{i}]` | `...8.1.1.2.{i}` | | crit = 4; empty(2) ok |
+| `sensor.psu.status[rcChasPowerSupplyOperStatus.{i}]` | `...8.1.1.2.{i}` | | crit = 4; empty(2) **not discovered** |
 | `sensor.psu.watts[rcChasPowerSupplyDetailOutputWatts.{i}]` | `...8.2.1.10.{i}` | | Health Power honeycomb |
 
 ## LLD: Temperature (`temp.discovery`)

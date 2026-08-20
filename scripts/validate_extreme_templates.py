@@ -116,6 +116,24 @@ def _lld_lost_policy_ok(rule: dict) -> bool:
     )
 
 
+def voss_psu_lld_skips_empty(rule: dict, status_oid: str) -> bool:
+    """True when VOSS PSU LLD walks status and filters empty(2), not down(4)."""
+    oid = str(rule.get('snmp_oid') or '')
+    if '{#PSU.STATUS}' not in oid or status_oid not in oid:
+        return False
+    if not _lld_lost_policy_ok(rule):
+        return False
+    for c in (rule.get('filter') or {}).get('conditions') or []:
+        op = str(c.get('operator') or '').upper()
+        if (
+            c.get('macro') == '{#PSU.STATUS}'
+            and op in ('NOT_MATCHES_REGEX', 'NOT_MATCHES', '9')
+            and c.get('value') == '^2$'
+        ):
+            return True
+    return False
+
+
 def validate_lld_lost_policy(name: str, tpl: dict) -> None:
     rules = tpl.get('discovery_rules') or []
     stated = [r for r in rules if r.get('lifetime') is not None or r.get('lifetime_type') is not None]
@@ -550,6 +568,24 @@ def validate_voss(doc: dict) -> None:
                 temp_status_index = '{#SNMPINDEX}' in iname
     record('VOSS temp value items named by SENSOR_DESCR', temp_value_named, '')
     record('VOSS temp status items keep SNMPINDEX', temp_status_index, '')
+    by_key = {r.get('key'): r for r in (tpl.get('discovery_rules') or [])}
+    psu = by_key.get('psu.discovery') or {}
+    psu_detail = by_key.get('psu.detail.discovery') or {}
+    record(
+        'VOSS psu.discovery skips empty(2)',
+        voss_psu_lld_skips_empty(psu, '1.3.6.1.4.1.2272.1.4.8.1.1.2'),
+        str(psu.get('snmp_oid')),
+    )
+    record(
+        'VOSS psu.detail.discovery skips empty(2)',
+        voss_psu_lld_skips_empty(psu_detail, '1.3.6.1.4.1.2272.1.4.8.2.1.15'),
+        str(psu_detail.get('snmp_oid')),
+    )
+    record(
+        'VOSS PSU crit is down(4) not empty(2)',
+        macros.get('{$PSU_CRIT_STATUS}') == '4',
+        str(macros.get('{$PSU_CRIT_STATUS}')),
+    )
     validate_health_dashboard('VOSS', doc, tpl, pages=('Overview', 'Hardware'))
     validate_interface_dashboard('VOSS', tpl, port_page=True, flaps=True)
     # Re-import identity — same uuid as the old traffic-only board

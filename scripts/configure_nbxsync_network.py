@@ -17,6 +17,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     Per-rule ``timeout`` stays empty: classic SNMP OID LLD is not ``walk[``/``get[``, so Zabbix
     requires the proxy/global SNMP timeout.
   * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding and queue check-now discovery for stale rows (no fork, no host sync)
+  * Patch VOSS ``psu.discovery`` / ``psu.detail.discovery`` to skip ``empty(2)`` chassis slots (YAML + API) and queue check-now for stale rows (no host sync)
   * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it).
     Stock ``.diff()`` / ``last(#1)<>last(#2)`` is stripped so an admin-up port that
     never came up still tickets (Core/Dist/Mgmt every admin-up except X; Access
@@ -54,7 +55,7 @@ Re-apply safety (estate already has switches/APs in Zabbix):
 
 Import policy:
   YAML imports use deleteMissing=False (safe — retired items linger but templates don't lose content).
-  Re-run ``--apply`` after Extreme template upgrades to re-assert TEMP/EtherLike/ICMP/Health patches.
+  Re-run ``--apply`` after Extreme template upgrades to re-assert TEMP/EtherLike/ICMP/Health/PSU-empty patches.
   Speed Expect nests on VOSS / Observability. Do not pass ``--link-speed-expect`` while nested.
 
 Does **not** re-implement SiteGroup Agent / hostgroup-first / Server OOB — call
@@ -543,6 +544,7 @@ def _lld_lost_resources_ok(rule: dict) -> bool:
 
 
 _PSU_DISCOVERY_KEY = 'psu.discovery'
+_PSU_DETAIL_DISCOVERY_KEY = 'psu.detail.discovery'
 _PSU_NUMBER_OID = '1.3.6.1.4.1.1916.1.1.1.27.1.1'
 _PSU_STATUS_OID = '1.3.6.1.4.1.1916.1.1.1.27.1.2'
 _PSU_DISCOVERY_OID = (
@@ -550,22 +552,93 @@ _PSU_DISCOVERY_OID = (
 )
 _PSU_STATUS_MACRO = '{#PSU.STATUS}'
 _PSU_NOTPRESENT = '^1$'
+_VOSS_TEMPLATE = 'Extreme VOSS by SNMP'
+_VOSS_PSU_ID_OID = '1.3.6.1.4.1.2272.1.4.8.1.1.1'
+_VOSS_PSU_STATUS_OID = '1.3.6.1.4.1.2272.1.4.8.1.1.2'
+_VOSS_PSU_DISCOVERY_OID = (
+    f'discovery[{{#SNMPVALUE}},{_VOSS_PSU_ID_OID},{{#PSU.STATUS}},{_VOSS_PSU_STATUS_OID}]'
+)
+_VOSS_PSU_DETAIL_ID_OID = '1.3.6.1.4.1.2272.1.4.8.2.1.1'
+_VOSS_PSU_DETAIL_STATUS_OID = '1.3.6.1.4.1.2272.1.4.8.2.1.15'
+_VOSS_PSU_DETAIL_DISCOVERY_OID = (
+    f'discovery[{{#SNMPVALUE}},{_VOSS_PSU_DETAIL_ID_OID},{{#PSU.STATUS}},{_VOSS_PSU_DETAIL_STATUS_OID}]'
+)
+_VOSS_PSU_EMPTY = '^2$'
+_VOSS_PSU_RULES = (
+    (_PSU_DISCOVERY_KEY, _VOSS_PSU_DISCOVERY_OID, _VOSS_PSU_STATUS_OID),
+    (_PSU_DETAIL_DISCOVERY_KEY, _VOSS_PSU_DETAIL_DISCOVERY_OID, _VOSS_PSU_DETAIL_STATUS_OID),
+)
+_PSU_LLD_RULE_OUTPUT = [
+    'itemid',
+    'key_',
+    'snmp_oid',
+    'lifetime',
+    'lifetime_type',
+    'enabled_lifetime',
+    'enabled_lifetime_type',
+]
 
 
-def _psu_lld_skips_notpresent(rule: dict) -> bool:
+def _lld_operator_is_not_matches(op) -> bool:
+    try:
+        return int(op) == _LLD_NOT_MATCHES_REGEX
+    except (TypeError, ValueError):
+        return str(op).upper() in ('NOT_MATCHES_REGEX', 'NOT_MATCHES')
+
+
+def _psu_lld_skips_status(rule: dict, *, status_oid: str, skip_regex: str) -> bool:
     snmp_oid = str(rule.get('snmp_oid') or '')
-    if '{#PSU.STATUS}' not in snmp_oid or _PSU_STATUS_OID not in snmp_oid:
+    if '{#PSU.STATUS}' not in snmp_oid or status_oid not in snmp_oid:
         return False
     if not _lld_lost_resources_ok(rule):
         return False
     for c in (rule.get('filter') or {}).get('conditions') or []:
         if (
             c.get('macro') == _PSU_STATUS_MACRO
-            and int(c.get('operator', 0)) == _LLD_NOT_MATCHES_REGEX
-            and c.get('value') == _PSU_NOTPRESENT
+            and _lld_operator_is_not_matches(c.get('operator', 0))
+            and c.get('value') == skip_regex
         ):
             return True
     return False
+
+
+def _psu_lld_skips_notpresent(rule: dict) -> bool:
+    return _psu_lld_skips_status(rule, status_oid=_PSU_STATUS_OID, skip_regex=_PSU_NOTPRESENT)
+
+
+def _psu_filter_conditions(rule: dict, skip_regex: str) -> list[dict]:
+    conditions = []
+    for c in (rule.get('filter') or {}).get('conditions') or []:
+        if c.get('macro') == _PSU_STATUS_MACRO:
+            continue
+        try:
+            operator = int(c.get('operator', _LLD_MATCHES_REGEX))
+        except (TypeError, ValueError):
+            operator = _LLD_MATCHES_REGEX
+        conditions.append(
+            {
+                'macro': c['macro'],
+                'value': c.get('value', ''),
+                'operator': operator,
+            }
+        )
+    conditions.append(
+        {
+            'macro': _PSU_STATUS_MACRO,
+            'value': skip_regex,
+            'operator': _LLD_NOT_MATCHES_REGEX,
+        }
+    )
+    return conditions
+
+
+def _patch_psu_lld_rule(api, rule: dict, *, snmp_oid: str, skip_regex: str) -> None:
+    api.discoveryrule.update(
+        itemid=rule['itemid'],
+        snmp_oid=snmp_oid,
+        filter={'evaltype': _LLD_EVAL_AND, 'conditions': _psu_filter_conditions(rule, skip_regex)},
+        **_lld_lost_resources_fields(),
+    )
 
 
 def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by SNMP') -> str:
@@ -587,7 +660,7 @@ def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by S
     rules = api.discoveryrule.get(
         hostids=tid,
         filter={'key_': _PSU_DISCOVERY_KEY},
-        output=['itemid', 'key_', 'snmp_oid', 'lifetime', 'lifetime_type', 'enabled_lifetime', 'enabled_lifetime_type'],
+        output=_PSU_LLD_RULE_OUTPUT,
         selectFilter='extend',
     )
     if not rules:
@@ -597,53 +670,72 @@ def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by S
     if _psu_lld_skips_notpresent(rule):
         logger.info('  %s: PSU LLD already skips notPresent', template_name)
         return 'ok'
-    conditions = []
-    for c in (rule.get('filter') or {}).get('conditions') or []:
-        if c.get('macro') == _PSU_STATUS_MACRO:
-            continue
-        conditions.append(
-            {
-                'macro': c['macro'],
-                'value': c.get('value', ''),
-                'operator': int(c.get('operator', _LLD_MATCHES_REGEX)),
-            }
-        )
-    conditions.append(
-        {
-            'macro': _PSU_STATUS_MACRO,
-            'value': _PSU_NOTPRESENT,
-            'operator': _LLD_NOT_MATCHES_REGEX,
-        }
-    )
-    api.discoveryrule.update(
-        itemid=rule['itemid'],
-        snmp_oid=_PSU_DISCOVERY_OID,
-        filter={'evaltype': _LLD_EVAL_AND, 'conditions': conditions},
-        **_lld_lost_resources_fields(),
-    )
+    _patch_psu_lld_rule(api, rule, snmp_oid=_PSU_DISCOVERY_OID, skip_regex=_PSU_NOTPRESENT)
     logger.info('  %s: patched PSU LLD to skip notPresent (itemid=%s)', template_name, rule['itemid'])
     return 'patched'
+
+
+def patch_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -> dict[str, str]:
+    """Drop empty chassis-slot padding from VOSS PSU discovery.
+
+    ``rcChasPowerSupplyTable`` / ``rcChasPowerSupplyDetailTable`` keep a row for
+    every PSU bay. CLI ``show sys power power-supply`` lists only fitted units
+    (PS#1 UP). Unfiltered LLD paints a second Health hex at ``empty(2)``. Walk
+    status too and skip ``empty(2)``. ``down(4)`` / ``unknown(1)`` stay so a
+    failed FRU still tickets Average. YAML is the source of truth; this patch
+    covers import failure / leftover OID. Disable lost immediately; delete after
+    7d. Does not host-sync or write NetBox.
+    """
+    logger.info('Network: VOSS psu.discovery skip empty(2)')
+    tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
+    if not tpls:
+        logger.warning('  %s: template not found — skip VOSS PSU LLD patch', template_name)
+        return {'status': 'missing'}
+    tid = tpls[0]['templateid']
+    results: dict[str, str] = {}
+    for key, snmp_oid, status_oid in _VOSS_PSU_RULES:
+        rules = api.discoveryrule.get(
+            hostids=tid,
+            filter={'key_': key},
+            output=_PSU_LLD_RULE_OUTPUT,
+            selectFilter='extend',
+        )
+        if not rules:
+            results[key] = 'no-psu-lld'
+            logger.warning('  %s: no %s — skip', template_name, key)
+            continue
+        rule = rules[0]
+        if _psu_lld_skips_status(rule, status_oid=status_oid, skip_regex=_VOSS_PSU_EMPTY):
+            results[key] = 'ok'
+            logger.info('  %s: %s already skips empty(2)', template_name, key)
+            continue
+        _patch_psu_lld_rule(api, rule, snmp_oid=snmp_oid, skip_regex=_VOSS_PSU_EMPTY)
+        results[key] = 'patched'
+        logger.info('  %s: patched %s to skip empty(2) (itemid=%s)', template_name, key, rule['itemid'])
+    if not results:
+        results['status'] = 'no-psu-lld'
+    return results
 
 
 _EXOS_STOCK_TEMPLATE = 'Extreme EXOS by SNMP'
 _EXOS_OBSERVABILITY_TEMPLATE = 'Extreme EXOS Observability'
 _PSU_ITEM_NAME = 'Power supply status'
+_PSU_DETAIL_ITEM_NAME = 'Detail oper status'
 _CHECK_NOW_TASK_TYPE = 6
 
 
-def queue_exos_psu_lld_checks(api, template_names: tuple[str, ...] | None = None) -> dict[str, int | str]:
-    """Queue immediate PSU LLD checks for hosts retaining notPresent rows.
-
-    LLD filters affect newly returned discovery data; they do not proactively
-    remove already-discovered item rows. Queueing check-now tasks makes an
-    apply converge immediately without host-syncing or changing NetBox.
-    Hosts are selected through either the stock EXOS template or its
-    Observability companion, and only hosts with a current PSU status value of
-    ``1`` are queued. ``-2`` stack hosts have neither template and are skipped.
-    """
-    names = template_names or (_EXOS_STOCK_TEMPLATE, _EXOS_OBSERVABILITY_TEMPLATE)
+def _queue_psu_lld_checks(
+    api,
+    *,
+    template_names: tuple[str, ...],
+    item_name_needles: tuple[str, ...],
+    stale_values: frozenset[str],
+    discovery_keys: tuple[str, ...],
+    log_label: str,
+) -> dict[str, int | str]:
+    """Queue check-now PSU LLD for hosts still holding skipped-status rows."""
     template_ids: set[str] = set()
-    for name in names:
+    for name in template_names:
         found = api.template.get(filter={'name': [name]}, output=['templateid']) or []
         template_ids.update(str(t['templateid']) for t in found)
     if not template_ids:
@@ -659,17 +751,18 @@ def queue_exos_psu_lld_checks(api, template_names: tuple[str, ...] | None = None
     stale_hosts: set[str] = set()
     ordered_hosts = sorted(host_ids)
     for start in range(0, len(ordered_hosts), 100):
-        items = api.item.get(
-            hostids=ordered_hosts[start:start + 100],
-            search={'name': _PSU_ITEM_NAME},
-            searchByAny=True,
-            output=['hostid', 'lastvalue'],
-        ) or []
-        stale_hosts.update(
-            str(item['hostid'])
-            for item in items
-            if str(item.get('lastvalue')) in ('1', '1.0')
-        )
+        chunk = ordered_hosts[start:start + 100]
+        for needle in item_name_needles:
+            items = api.item.get(
+                hostids=chunk,
+                search={'name': needle},
+                output=['hostid', 'lastvalue'],
+            ) or []
+            stale_hosts.update(
+                str(item['hostid'])
+                for item in items
+                if str(item.get('lastvalue')) in stale_values
+            )
     if not stale_hosts:
         return {'status': 'clean', 'hosts': 0, 'tasks': 0}
 
@@ -679,7 +772,7 @@ def queue_exos_psu_lld_checks(api, template_names: tuple[str, ...] | None = None
         rules.extend(
             api.discoveryrule.get(
                 hostids=ordered_stale[start:start + 100],
-                filter={'key_': [_PSU_DISCOVERY_KEY]},
+                filter={'key_': list(discovery_keys)},
                 output=['itemid', 'hostid'],
             )
             or []
@@ -696,12 +789,52 @@ def queue_exos_psu_lld_checks(api, template_names: tuple[str, ...] | None = None
         result = api.task.create(tasks[start:start + 20]) or {}
         task_ids.extend(str(task_id) for task_id in result.get('taskids', []))
     logger.info(
-        '  EXOS PSU LLD check-now queued: hosts=%s rules=%s tasks=%s',
+        '  %s check-now queued: hosts=%s rules=%s tasks=%s',
+        log_label,
         len(stale_hosts),
         len(rules),
         len(task_ids),
     )
     return {'status': 'queued', 'hosts': len(stale_hosts), 'tasks': len(task_ids)}
+
+
+def queue_exos_psu_lld_checks(api, template_names: tuple[str, ...] | None = None) -> dict[str, int | str]:
+    """Queue immediate PSU LLD checks for hosts retaining notPresent rows.
+
+    LLD filters affect newly returned discovery data; they do not proactively
+    remove already-discovered item rows. Queueing check-now tasks makes an
+    apply converge immediately without host-syncing or changing NetBox.
+    Hosts are selected through either the stock EXOS template or its
+    Observability companion, and only hosts with a current PSU status value of
+    ``1`` are queued. ``-2`` stack hosts have neither template and are skipped.
+    """
+    names = template_names or (_EXOS_STOCK_TEMPLATE, _EXOS_OBSERVABILITY_TEMPLATE)
+    return _queue_psu_lld_checks(
+        api,
+        template_names=names,
+        item_name_needles=(_PSU_ITEM_NAME,),
+        stale_values=frozenset({'1', '1.0'}),
+        discovery_keys=(_PSU_DISCOVERY_KEY,),
+        log_label='EXOS PSU LLD',
+    )
+
+
+def queue_voss_psu_lld_checks(api, template_names: tuple[str, ...] | None = None) -> dict[str, int | str]:
+    """Queue immediate PSU LLD checks for hosts retaining empty(2) rows.
+
+    Same converge-without-HostSync path as EXOS. Status and detail tables both
+    discover chassis bays, so both rules are queued when either lastvalue is
+    ``2``. Does not write NetBox.
+    """
+    names = template_names or (_VOSS_TEMPLATE,)
+    return _queue_psu_lld_checks(
+        api,
+        template_names=names,
+        item_name_needles=(_PSU_ITEM_NAME, _PSU_DETAIL_ITEM_NAME),
+        stale_values=frozenset({'2', '2.0'}),
+        discovery_keys=(_PSU_DISCOVERY_KEY, _PSU_DETAIL_DISCOVERY_KEY),
+        log_label='VOSS PSU LLD',
+    )
 
 
 def assert_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by SNMP') -> tuple[bool, str]:
@@ -711,13 +844,41 @@ def assert_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by 
     rules = api.discoveryrule.get(
         hostids=tpls[0]['templateid'],
         filter={'key_': _PSU_DISCOVERY_KEY},
-        output=['itemid', 'snmp_oid', 'lifetime', 'lifetime_type', 'enabled_lifetime', 'enabled_lifetime_type'],
+        output=_PSU_LLD_RULE_OUTPUT,
         selectFilter='extend',
     )
     if not rules:
         return True, 'no PSU LLD — n/a'
     ok = _psu_lld_skips_notpresent(rules[0])
     return ok, str({'snmp_oid': rules[0].get('snmp_oid'), 'filter': rules[0].get('filter')})
+
+
+def assert_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -> tuple[bool, str]:
+    tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
+    if not tpls:
+        return True, 'template absent — n/a'
+    details = {}
+    ok = True
+    for key, _snmp_oid, status_oid in _VOSS_PSU_RULES:
+        rules = api.discoveryrule.get(
+            hostids=tpls[0]['templateid'],
+            filter={'key_': key},
+            output=_PSU_LLD_RULE_OUTPUT,
+            selectFilter='extend',
+        )
+        if not rules:
+            details[key] = 'missing'
+            continue
+        rule_ok = _psu_lld_skips_status(rules[0], status_oid=status_oid, skip_regex=_VOSS_PSU_EMPTY)
+        ok = ok and rule_ok
+        details[key] = {
+            'ok': rule_ok,
+            'snmp_oid': rules[0].get('snmp_oid'),
+            'filter': rules[0].get('filter'),
+        }
+    if details and all(v == 'missing' for v in details.values()):
+        return True, 'no PSU LLD — n/a'
+    return ok, str(details)
 
 
 def _triggerproto_name(proto: dict) -> str:
@@ -1625,6 +1786,17 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             ok, detail = assert_exos_psu_lld_present_only(api)
             record('exos_psu_lld_present_only_assert', ok or 'n/a' in detail, detail, group='import')
 
+            voss_psu = patch_voss_psu_lld_present_only(api)
+            for key, status in voss_psu.items():
+                record(
+                    f'voss_psu_lld_{key}',
+                    status in ('ok', 'patched', 'missing', 'no-psu-lld'),
+                    status,
+                    group='import',
+                )
+            ok, detail = assert_voss_psu_lld_present_only(api)
+            record('voss_psu_lld_present_only_assert', ok or 'n/a' in detail, detail, group='import')
+
             linkdown_status = patch_linkdown_one_average(api)
             for tname, status in linkdown_status.items():
                 record(
@@ -2085,6 +2257,8 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         patch_exos_interface_lld_rollout(api)
         patch_exos_psu_lld_present_only(api)
         queue_exos_psu_lld_checks(api)
+        patch_voss_psu_lld_present_only(api)
+        queue_voss_psu_lld_checks(api)
         patch_linkdown_one_average(api)
         patch_extreme_template_temp_macros(api)
         step_health_patches(api)

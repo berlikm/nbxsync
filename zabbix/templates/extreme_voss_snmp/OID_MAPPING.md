@@ -13,7 +13,7 @@ VOSS MIBs: RapidCity `enterprises.2272` (`docs/VOSS-5520.9.3.1.0_mib.txt`).
 | Temperature status | `1916.1.1.1.7.0` | `rcVossSystemTemperatureStatus` | `2272.1.101.1.1.2.1.6.{idx}` | 1=normal 2=highWarning 3=highCritial |
 | Fan status LLD | `1916.1.1.1.27.1.2` | `rcChasFanOperStatus` | `2272.1.4.7.1.1.2.{id}` | 1=unk 2=up 3=down 4=notpresent; **crit=3** |
 | Fan speed | `1916.1.1.1.27.1.?` | ΓÇö | ΓÇö | No RPM in rcChasFan; ambient ┬░C at `.3` instead |
-| PSU status LLD | `1916.1.1.1.9.1.2` | `rcChasPowerSupplyOperStatus` | `2272.1.4.8.1.1.2.{id}` | 1=unk 2=empty 3=up 4=down; **crit=4** |
+| PSU status LLD | `1916.1.1.1.9.1.2` | `rcChasPowerSupplyOperStatus` | `2272.1.4.8.1.1.2.{id}` | 1=unk 2=empty 3=up 4=down; **crit=4**; LLD skips **empty(2)** |
 | OS / software rev | `1916.1.1.1.13.0` | `rcSysVersion` | `2272.1.1.7.0` | |
 | HW model | ENTITY `47.1.1.1.1.2.1` | `rcChasModelName` | `2272.1.4.67.0` | Prefer chassis MIB |
 | HW serial | ENTITY `47.1.1.1.1.11.1` | `rcChasSerialNumber` | `2272.1.4.2.0` | |

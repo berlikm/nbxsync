@@ -36,6 +36,8 @@ OID = {
     "optPN": "1.3.6.1.4.1.2272.1.71.1.1.7",
     "optSN": "1.3.6.1.4.1.2272.1.71.1.1.9",
     "optWL": "1.3.6.1.4.1.2272.1.71.1.1.16",
+    "psuId": "1.3.6.1.4.1.2272.1.4.8.1.1.1",
+    "psuOper": "1.3.6.1.4.1.2272.1.4.8.1.1.2",
     "psuDetId": "1.3.6.1.4.1.2272.1.4.8.2.1.1",
     "psuDetSN": "1.3.6.1.4.1.2272.1.4.8.2.1.3",
     "psuDetPN": "1.3.6.1.4.1.2272.1.4.8.2.1.5",
@@ -398,6 +400,20 @@ def proto(name, key, oid, **kw) -> str:
     return "\n".join(lines) + "\n"
 
 
+_PSU_EMPTY_LLD = """      lifetime: 7d
+      lifetime_type: DELETE_AFTER
+      enabled_lifetime: '0'
+      enabled_lifetime_type: DISABLE_IMMEDIATELY
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#PSU.STATUS}'
+          value: '^2$'
+          operator: NOT_MATCHES_REGEX
+          formulaid: A
+"""
+
+
 def discovery_rule(name, key, snmp_oid, items_yaml, description, delay="1h", filter_yaml=None) -> str:
     body = f"""    - uuid: {u()}
       name: {name}
@@ -675,9 +691,10 @@ def build_discovery_rules() -> str:
         discovery_rule(
             "PSU detail discovery",
             "psu.detail.discovery",
-            f"discovery[{{#SNMPVALUE}},{OID['psuDetId']}]",
+            f"discovery[{{#SNMPVALUE}},{OID['psuDetId']},{{#PSU.STATUS}},{OID['psuDetOper']}]",
             psu_items,
-            "RAPID-CITY rcChasPowerSupplyDetailTable.",
+            "RAPID-CITY rcChasPowerSupplyDetailTable. Skip empty(2) chassis slots.",
+            filter_yaml=_PSU_EMPTY_LLD,
         )
     )
 
