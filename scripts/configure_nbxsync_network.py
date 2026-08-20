@@ -17,7 +17,10 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     Per-rule ``timeout`` stays empty: classic SNMP OID LLD is not ``walk[``/``get[``, so Zabbix
     requires the proxy/global SNMP timeout.
   * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding and queue check-now discovery for stale rows (no fork, no host sync)
-  * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it)
+  * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it).
+    Stock ``.diff()`` / ``last(#1)<>last(#2)`` is stripped so an admin-up port that
+    never came up still tickets (Core/Dist/Mgmt hygiene). Manual close is off so
+    ACK cannot mute a still-down port.
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
@@ -127,6 +130,14 @@ from extreme_health_zabbix import (
     assert_exos_stock_interface_grid,
     assert_template_macros,
     assert_wan_icmp_noise_disabled,
+)
+from extreme_linkdown import (
+    LINKDOWN_HIGH_GATE as _LINKDOWN_HIGH_GATE,
+    LINKDOWN_HIGH_MACRO_PREFIX as _LINKDOWN_HIGH_MACRO_PREFIX,
+    LINKDOWN_TEMPLATES as _LINKDOWN_TEMPLATES,
+    ungate_linkdown_expr as _ungate_linkdown_expr,
+    linkdown_has_diff_guard as _linkdown_has_diff_guard,
+    linkdown_manual_close_on as _linkdown_manual_close_on,
 )
 
 # Reuse zerotouch helpers when present (same ensure/ct/slugify contract).
@@ -708,21 +719,8 @@ def assert_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by 
     return ok, str({'snmp_oid': rules[0].get('snmp_oid'), 'filter': rules[0].get('filter')})
 
 
-_LINKDOWN_HIGH_GATE = '{$LINKDOWN.HIGH:"{#IFALIAS}"}'
-_LINKDOWN_HIGH_MACRO_PREFIX = '{$LINKDOWN.HIGH'
-_LINKDOWN_TEMPLATES = ('Extreme EXOS by SNMP', 'Extreme VOSS by SNMP')
-
-
 def _triggerproto_name(proto: dict) -> str:
     return str(proto.get('description') or proto.get('name') or '')
-
-
-def _ungate_linkdown_expr(expr: str) -> str:
-    out = expr
-    for suffix in ('=0', '=1'):
-        token = f' and {_LINKDOWN_HIGH_GATE}{suffix}'
-        out = out.replace(token, '')
-    return out
 
 
 def _drop_template_macros(api, template_name: str, prefixes: tuple[str, ...]) -> str:
@@ -760,8 +758,11 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
     YAML ``deleteMissing: false`` would leave the class-scoped sibling in Zabbix.
     Scope is LLD (Access USW+UP; Core/Dist everything except X), not a second
     severity map. ICMP High still pages a dead box.
+
+    Also drop stock ``last(#1)<>last(#2)`` so Core/Dist/Mgmt admin-up + oper-down
+    tickets even when the port never came up (honeycomb showed down, no problem).
     """
-    logger.info('Network: discovered link-down stays Average')
+    logger.info('Network: discovered link-down stays Average (no .diff() silence)')
     results: dict[str, str] = {}
     for template_name in _LINKDOWN_TEMPLATES:
         tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
@@ -780,7 +781,7 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
             continue
         protos = api.triggerprototype.get(
             discoveryids=rules[0]['itemid'],
-            output=['triggerid', 'description', 'expression'],
+            output=['triggerid', 'description', 'expression', 'manual_close'],
         ) or []
         drop_ids = [
             p['triggerid']
@@ -797,11 +798,20 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
             if 'Link down' not in _triggerproto_name(proto):
                 continue
             expr = str(proto.get('expression') or '')
+            payload: dict = {}
             ungated = _ungate_linkdown_expr(expr)
             if ungated != expr:
-                api.triggerprototype.update(triggerid=proto['triggerid'], expression=ungated)
+                payload['expression'] = ungated
+            if _linkdown_manual_close_on(proto):
+                payload['manual_close'] = 0
+            if payload:
+                api.triggerprototype.update(triggerid=proto['triggerid'], **payload)
                 changed = True
-                logger.info('  %s: ungated Average link-down', template_name)
+                logger.info(
+                    '  %s: patched Average link-down (%s)',
+                    template_name,
+                    ', '.join(payload),
+                )
         results[template_name] = 'patched' if changed else 'ok'
     return results
 
@@ -826,13 +836,16 @@ def assert_linkdown_one_average(api, template_name: str) -> tuple[bool, str]:
         return True, 'no IF LLD — n/a'
     protos = api.triggerprototype.get(
         discoveryids=rules[0]['itemid'],
-        output=['triggerid', 'description', 'expression'],
+        output=['triggerid', 'description', 'expression', 'manual_close'],
     ) or []
-    names = [_triggerproto_name(p) for p in protos if 'Link down' in _triggerproto_name(p)]
-    exprs = [str(p.get('expression') or '') for p in protos]
+    linkdown = [p for p in protos if 'Link down' in _triggerproto_name(p)]
+    names = [_triggerproto_name(p) for p in linkdown]
+    exprs = [str(p.get('expression') or '') for p in linkdown]
     ok = (
         not any('(USW)' in n for n in names)
         and not any(_LINKDOWN_HIGH_GATE in e for e in exprs)
+        and not any(_linkdown_has_diff_guard(e) for e in exprs)
+        and not any(_linkdown_manual_close_on(p) for p in linkdown)
     )
     return ok, f'linkdown={names}'
 

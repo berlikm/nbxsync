@@ -1249,28 +1249,17 @@ zabbix_export:
           value: '{#IFNAME}'
         trigger_prototypes:
         - uuid: 7b543f006f5046de8a4604ac30104969
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))'
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2'
           recovery_mode: RECOVERY_EXPRESSION
           recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
           name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
           opdata: 'Current state: {ITEM.LASTVALUE1}'
           priority: AVERAGE
-          description: 'This trigger expression works as follows:
-
-            1. It can be triggered if the operations status is down.
-
-            2. `{$IFCONTROL:"{#IFNAME}"}=1` - a user can redefine the context macro to "0", marking this interface as not
-            important. No new trigger will be fired if this interface is down.
-
-            3. `{TEMPLATE_NAME:METRIC.diff()}=1` - the trigger fires only if the operational status was up to (1) sometime
-            before (so, does not fire for "eternal off" interfaces.)
-
-
-            WARNING: if closed manually - it will not fire again on the next poll, because of .diff.
-
+          description: 'Admin-up + oper-down on a discovered port. Core/Dist/Mgmt discover
+            every admin-up ethernet/LAG except X; unused ports must be admin-down. Access
+            discovers labelled classes only. Mute with X (or admin-down), not ACK and
+            not {$IFCONTROL}. Average ticket — dayside, not a page.
             '
-          manual_close: 'YES'
           tags:
           - tag: scope
             value: availability
@@ -1381,8 +1370,7 @@ zabbix_export:
         manual_close: 'YES'
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))'
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2'
           recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
         tags:
         - tag: scope
@@ -1413,8 +1401,7 @@ zabbix_export:
         manual_close: 'YES'
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))'
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2'
           recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
         tags:
         - tag: scope
@@ -1439,8 +1426,7 @@ zabbix_export:
         manual_close: 'YES'
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2
-            and (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))'
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2'
           recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
         tags:
         - tag: scope

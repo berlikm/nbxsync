@@ -92,4 +92,4 @@ Temporary LM silence (`TEMP_*=999`) is optional `--cutover-silence` only — not
 - EXOS: grammar in **`display-string`**, max **20**; leave **`description-string` empty**.
 - VOSS: grammar in interface **`name`** → `ifAlias` (lab-proven).
 - Relabel to `X` takes effect at the **next discovery cycle**.
-- Core unlabelled admin-up: link-down only if the port **was up then went down** (`.diff()`).
+- Core unlabelled admin-up: link-down **Average** while oper-down (no `.diff()`). Unused: admin-down.

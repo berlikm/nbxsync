@@ -206,9 +206,9 @@ This is the deliberate safety net for a forgotten label. Same applies to `N` and
 | Speed-expect (thin) | no — filter is `{$PORTID.LLD.IFALIAS.MATCHES}` | none |
 | Capacity (§6.4) | no — same filter | none |
 
-And link-down carries the stock `.diff()` guard: it only fires if the port **was up before and then went down**. An admin-up port that never had a cable in it never alerts.
+And link-down **does not** wait for an up→down edge. Admin-up + oper-down is already a ticket (empty port you forgot to shut, or a path that never came up). Stock `.diff()` / `last(#1)<>last(#2)` is stripped on `--apply` for EXOS and in the VOSS YAML.
 
-Net behaviour: *"tell me if something that was working stops working, even if nobody labelled it."* Correct default for core.
+Net behaviour: *"if it is admin-up on Core/Dist/Mgmt, it should be live."* Mute with **`X`** or **admin-down**.
 
 ### Exclusion hierarchy — admin-down beats `X`
 
@@ -269,7 +269,7 @@ Scaffold: `templates/zabbix/net/extreme_port_speed_expect_snmp/`.
 |---|---|---|---|
 | High | unavailable by ICMP | 3 polls (5 for remote sites) | stock |
 | Warning | no SNMP data | 5m | stock |
-| Warning | link down (oper down, admin up, was up before) | `.diff()` guard | stock |
+| Average | link down (oper down, admin up — including never-up) | none (no `.diff()`) | YAML / `--apply` |
 | Warning | interface flapping | count of status changes in 1h | **build** |
 | Warning | `last(speed) <> {#IF.SPEED.EXPECTED}` while oper up | on oper status, 5m | **build** |
 | Warning | error rate above threshold | 5m | stock, threshold from baseline |
@@ -490,8 +490,8 @@ Silencing by macro rather than disabling triggers keeps the template untouched a
 - **`X` excludes. `N` does not.** `N` is a note — a port labelled `N-SPARE` is still monitored on a core switch. To silence a port, use `X` or admin-down.
 - Unused ports: **admin-down**, not `X`. Admin-down ports are not discovered at all.
 - Labelling a port `X` takes effect at the **next discovery cycle**, not immediately.
-- On core/dist, an unlabelled admin-up port still gets link-down and error alerts — deliberately. It will not alert unless it was up and then went down.
-- The stock link-down trigger uses `.diff()` and manual close — after a manual close it will **not** re-fire on the next poll.
+- On core/dist, an unlabelled admin-up port still gets link-down and error alerts — deliberately, including ports that never came up.
+- Link-down does **not** use stock `.diff()` / manual close. ACK cannot mute a still-down port; use **`X`** or **admin-down**.
 - `{$IFCONTROL:"{#IFNAME}"}` is a second, ifName-keyed mute switch built into the stock template. **Do not use it** — `X` is the single source of truth. Leaving two mute mechanisms creates a shadow config.
 - Firmware upgrades need a maintenance window **with data collection** — otherwise we create data gaps as well as noise.
 - Remove a device from Zabbix *before* powering it off for decommission.

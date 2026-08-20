@@ -496,6 +496,17 @@ def validate_voss(doc: dict) -> None:
         and '{$LINKDOWN.HIGH}' not in macros,
         f'avg={bool(avg_ld)} usw={bool(usw_ld)}',
     )
+    ld_expr = (avg_ld or {}).get('expression') or ''
+    record(
+        'VOSS link-down fires while oper-down (no .diff())',
+        bool(avg_ld)
+        and 'ifOperStatus' in ld_expr
+        and ')=2' in ld_expr.replace(' ', '')
+        and ',#1' not in ld_expr
+        and ',#2' not in ld_expr
+        and str((avg_ld or {}).get('manual_close') or 'NO').upper() != 'YES',
+        ld_expr[:160],
+    )
     card = next((t for t in trigs if 'card' in (t.get('name') or '').lower() and 'down' in (t.get('name') or '').lower()), None)
     isis = next((t for t in trigs if 'isis' in (t.get('name') or '').lower() and 'circuit' in (t.get('name') or '').lower()), None)
     record(
