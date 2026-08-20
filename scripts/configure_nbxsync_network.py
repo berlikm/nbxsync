@@ -19,8 +19,9 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding and queue check-now discovery for stale rows (no fork, no host sync)
   * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it).
     Stock ``.diff()`` / ``last(#1)<>last(#2)`` is stripped so an admin-up port that
-    never came up still tickets (Core/Dist/Mgmt hygiene). Manual close is off so
-    ACK cannot mute a still-down port.
+    never came up still tickets (Core/Dist/Mgmt every admin-up except X; Access
+    every grammar display-string). Manual close is off so ACK cannot mute a
+    still-down port.
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
@@ -759,8 +760,10 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
     Scope is LLD (Access USW+UP; Core/Dist everything except X), not a second
     severity map. ICMP High still pages a dead box.
 
-    Also drop stock ``last(#1)<>last(#2)`` so Core/Dist/Mgmt admin-up + oper-down
-    tickets even when the port never came up (honeycomb showed down, no problem).
+    Also drop stock ``last(#1)<>last(#2)`` so admin-up + oper-down tickets even
+    when the port never came up. Access uses the same prototype — labelled
+    display-strings (USW/US/UP/MON/UW/TMON) fire; unlabelled desk ports are
+    not in LLD.
     """
     logger.info('Network: discovered link-down stays Average (no .diff() silence)')
     results: dict[str, str] = {}

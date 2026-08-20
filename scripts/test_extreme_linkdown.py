@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stock .diff() must not silence Core/Dist/Mgmt admin-up + oper-down."""
+"""Stock .diff() must not silence discovered admin-up + oper-down (all switch roles)."""
 
 from __future__ import annotations
 

@@ -1255,10 +1255,11 @@ zabbix_export:
           name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
           opdata: 'Current state: {ITEM.LASTVALUE1}'
           priority: AVERAGE
-          description: 'Admin-up + oper-down on a discovered port. Core/Dist/Mgmt discover
-            every admin-up ethernet/LAG except X; unused ports must be admin-down. Access
-            discovers labelled classes only. Mute with X (or admin-down), not ACK and
-            not {$IFCONTROL}. Average ticket — dayside, not a page.
+          description: 'Admin-up + oper-down on a discovered port, including never-up.
+            Core/Dist/Mgmt: every admin-up ethernet/LAG except X. Access: every port
+            whose display-string / ifAlias matches USW|US|UP|MON|UW|TMON. Unlabelled
+            Access desk ports are not discovered. Mute with X (or admin-down), not ACK
+            and not {$IFCONTROL}. Average ticket — dayside, not a page.
             '
           tags:
           - tag: scope

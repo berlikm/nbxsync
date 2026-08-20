@@ -53,7 +53,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 | Ports in scope | Alert | Live (cutover) |
 |---|---|---|
-| Discovered link down (`USW` / `UP` / `US` / `MON` / `UW` / unlabelled Dist) | yes | **Average** — one trigger. Scope is LLD, not a second severity map. |
+| Discovered link down (Core/Dist/Mgmt admin-up; Access grammar `display-string`) | yes | **Average** — one trigger, including never-up. Unlabelled Access desk = not discovered. |
 | Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
 | Wrong speed vs **intended** label | **armed** | Nested; **no items** until `USW`/`US`/`UP`/`MON`. Then **Warning**, not a page |
 | Half duplex | yes | Warning |
@@ -64,7 +64,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 Do **not** alert on: a laptop unplugging on Access (those ports are not collected), fifty **High**s for one site down, “bandwidth high” on a backup window.
 
-On Core/Dist/Mgmt, **admin-up is the contract**: only important ports should be up. Link-down is either a real path loss (Pure/`US`, `USW` to a firewall, `UP` to an AP) or an empty port you forgot to shut — both get a **ticket** so dayside can fix or admin-down. Same Average for every class. Do **not** page it: pikett cannot restore an array at 03:00, and cleaning unused ports is not a night job. High is ICMP (the box is gone) and overtemp. If the *storage switch itself* must wake someone, that is the host `critical` tag, not a special `US` trigger.
+On Core/Dist/Mgmt, **admin-up is the contract**: only important ports should be up. On **Access**, a grammar **display-string** (`USW` / `US` / `UP` / `MON` / `UW` / `TMON`) is the same contract — that port should be live. Link-down is a real path loss or a labelled port that never came up; both get a **ticket**. Unlabelled Access desk/laptop ports are not discovered (a laptop unplug stays silent). Same Average for every discovered class. Do **not** page it: pikett cannot restore an array at 03:00, and cleaning unused ports is not a night job. High is ICMP (the box is gone) and overtemp. If the *storage switch itself* must wake someone, that is the host `critical` tag, not a special `US` trigger.
 
 ---
 
@@ -92,7 +92,7 @@ Util and intended-speed stay Latest data until a port has a class label. Honeyco
 | Switch Core / Dist / Mgmt | **Every** admin-up port except `X…` | `X…`; **admin-down** is not discovered |
 | Switch Access | Grammar classes: `USW` `US` `UP` `MON` `UW` `TMON` | Unlabelled desk / laptop / `N…` / `X…` |
 
-Access is **opt-in by CLASS**. Unlabelled Access ports produce **no items**. Dist / Core / Mgmt: if it is admin-up, it is in — labelled or not (except `X`). Unused ports must be **admin-down**, not left up “with nothing connected”.
+Access is **opt-in by CLASS** (the display-string). Unlabelled Access ports produce **no items**. A labelled Access port that is oper-down **does** Average-ticket, including never-up. Dist / Core / Mgmt: if it is admin-up, it is in — labelled or not (except `X`). Unused ports must be **admin-down**, not left up “with nothing connected”.
 
 **`X` excludes. `N` does not** (Core/Dist/Mgmt). Stack / ISC / MLAG peer-links are **`USW`** (alert). SPAN / operator-mute need **`X`**. Unused: **admin-down**.
 
@@ -124,7 +124,7 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - YAML `deleteMissing: false` — retired items linger; we do not wipe LLD  
 - Does **not** mass-sync every device (template updates inherit in Zabbix). Speed Expect nests on VOSS / Observability, so existing switch hosts pick up the LLD on `--apply` without HostSync. Empty display-string → nothing discovered.  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
-- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, EXOS PSU LLD skip `notPresent`, EXOS/VOSS link-down Average without `.diff()` (admin-up + oper-down tickets), EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
+- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, EXOS PSU LLD skip `notPresent`, EXOS/VOSS link-down Average without `.diff()` (admin-up + oper-down tickets on Core/Dist/Mgmt and on Access grammar display-strings), EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
 - Role IFALIAS / Access `PORTID.*` changes need a **HostSync of those devices** — template inheritance does not push NetBox macros. `--apply` compares live Zabbix host macros and logs only drifted / missing hosts; it does **not** mass-sync.
 - `{$PORTID.LLD.*}` defaults live on **Extreme Port Speed Expect**. `--apply` will delete leftover Zabbix **global** PORTID macros (they bump config for every host).
 

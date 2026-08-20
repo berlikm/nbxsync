@@ -507,6 +507,11 @@ def validate_voss(doc: dict) -> None:
         and str((avg_ld or {}).get('manual_close') or 'NO').upper() != 'YES',
         ld_expr[:160],
     )
+    record(
+        'VOSS link-down description includes Access',
+        'Access' in ((avg_ld or {}).get('description') or ''),
+        ((avg_ld or {}).get('description') or '')[:120],
+    )
     card = next((t for t in trigs if 'card' in (t.get('name') or '').lower() and 'down' in (t.get('name') or '').lower()), None)
     isis = next((t for t in trigs if 'isis' in (t.get('name') or '').lower() and 'circuit' in (t.get('name') or '').lower()), None)
     record(

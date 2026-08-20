@@ -39,7 +39,7 @@ If the port runs at the class default, **omit SPEED**. If it does not (Pure 25G,
 | `X` / `X-<note>` | **Exclude** | — | — | none |
 | `N` / `N-<text>` | Note — monitoring-neutral | — | — | same as unlabelled |
 
-**`X` excludes. `N` does not.** On Core/Dist/Mgmt, **admin-up means it should be live** — including `N`, empty, or odd labels. Unused: **admin-down** (or `X`). On **Access**, only **`USW` (to Dist) and `UP` (to AP)** are collected — no desk, laptop, `US`, `MON`, `UW`, `TMON`, or unlabelled.
+**`X` excludes. `N` does not.** On Core/Dist/Mgmt, **admin-up means it should be live** — including `N`, empty, or odd labels. Unused: **admin-down** (or `X`). On **Access**, grammar **display-string** classes `USW` `US` `UP` `MON` `UW` `TMON` are collected — a labelled port that is down tickets Average (including never-up). No desk, laptop, `N…`, `X…`, or unlabelled.
 
 Every discovered **link-down is Average** (ticket). Same for Pure/`US` and an empty admin-up port you forgot to shut. Do not also split High by class.
 

@@ -208,7 +208,7 @@ This is the deliberate safety net for a forgotten label. Same applies to `N` and
 
 And link-down **does not** wait for an up→down edge. Admin-up + oper-down is already a ticket (empty port you forgot to shut, or a path that never came up). Stock `.diff()` / `last(#1)<>last(#2)` is stripped on `--apply` for EXOS and in the VOSS YAML.
 
-Net behaviour: *"if it is admin-up on Core/Dist/Mgmt, it should be live."* Mute with **`X`** or **admin-down**.
+Net behaviour: *"if it is discovered, it should be live."* Core/Dist/Mgmt: admin-up. Access: grammar display-string. Mute with **`X`** or **admin-down**. Unlabelled Access desk ports are not discovered.
 
 ### Exclusion hierarchy — admin-down beats `X`
 
@@ -491,6 +491,7 @@ Silencing by macro rather than disabling triggers keeps the template untouched a
 - Unused ports: **admin-down**, not `X`. Admin-down ports are not discovered at all.
 - Labelling a port `X` takes effect at the **next discovery cycle**, not immediately.
 - On core/dist, an unlabelled admin-up port still gets link-down and error alerts — deliberately, including ports that never came up.
+- On Access, a grammar **display-string** (`USW`/`US`/`UP`/`MON`/`UW`/`TMON`) is the same Average while oper-down, including never-up. Unlabelled desk/laptop ports are not discovered.
 - Link-down does **not** use stock `.diff()` / manual close. ACK cannot mute a still-down port; use **`X`** or **admin-down**.
 - `{$IFCONTROL:"{#IFNAME}"}` is a second, ifName-keyed mute switch built into the stock template. **Do not use it** — `X` is the single source of truth. Leaving two mute mechanisms creates a shadow config.
 - Firmware upgrades need a maintenance window **with data collection** — otherwise we create data gaps as well as noise.

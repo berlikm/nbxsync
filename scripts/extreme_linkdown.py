@@ -2,8 +2,11 @@
 
 Stock EXOS/VOSS link-down only fires on an up→down edge
 (``last(#1)<>last(#2)`` / ``.diff()``). Admin-up ports that never came up
-show down on the honeycomb with no Average. Core/Dist/Mgmt contract is:
-admin-up means it should be live.
+show down on the honeycomb with no Average.
+
+Same trigger on every switch role. Core/Dist/Mgmt: admin-up means live.
+Access: a grammar display-string (``USW``/``US``/``UP``/``MON``/``UW``/``TMON``)
+means live — unlabelled desk ports stay undiscovered.
 """
 
 from __future__ import annotations
