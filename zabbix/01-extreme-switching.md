@@ -38,7 +38,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | Temperature **critical** (100 °C) / vendor alarm | yes | **High** |
 | Temperature warning (95 °C) | yes | Warning — next day; not stock 55 |
 | Temperature too low | **no** | `{$TEMP_CRIT_LOW}=-273` silences stack/VM 0 °C |
-| PSU / fan failed | yes | Average |
+| PSU / fan failed | yes | Average — installed PSU not supplying power (down, unknown, or unpowered), not only a down transition |
 | CPU high | yes | Warning — baseline first |
 | Memory high | yes | Average — baseline first |
 | Optic DOM **status** alarm (VOSS) | yes | Average — prefer status, not raw dBm |
@@ -124,7 +124,7 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - YAML `deleteMissing: false` — retired items linger; we do not wipe LLD  
 - Does **not** mass-sync every device (template updates inherit in Zabbix). Speed Expect nests on VOSS / Observability, so existing switch hosts pick up the LLD on `--apply` without HostSync. Empty display-string → nothing discovered.  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
-- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, EXOS PSU LLD skip `notPresent`, VOSS PSU LLD skip `empty(2)` chassis slots, EXOS/VOSS link-down Average without `.diff()` (admin-up + oper-down tickets on Core/Dist/Mgmt and on Access grammar display-strings), EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
+- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, EXOS PSU LLD skip `notPresent`, VOSS PSU LLD skip `empty(2)` chassis slots, PSU Average for installed-not-up (EXOS `presentPowerOff`, VOSS `unknown`), EXOS/VOSS link-down Average without `.diff()` (admin-up + oper-down tickets on Core/Dist/Mgmt and on Access grammar display-strings), EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
 - Role IFALIAS / Access `PORTID.*` changes need a **HostSync of those devices** — template inheritance does not push NetBox macros. `--apply` compares live Zabbix host macros and logs only drifted / missing hosts; it does **not** mass-sync.
 - `{$PORTID.LLD.*}` defaults live on **Extreme Port Speed Expect**. `--apply` will delete leftover Zabbix **global** PORTID macros (they bump config for every host).
 
@@ -173,7 +173,7 @@ A site WAN blip is one ICMP High per switch. That is accepted.
 | Extreme EXOS Observability | Platform EXOS Template Rule; nests stock **Extreme EXOS by SNMP** + **Port Speed Expect**; owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; owns the native **Network interfaces** graph prototype/dashboard |
 
-We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD (15m, disable-lost immediately, delete after 7d), skips EXOS PSU `notPresent` stack-MIB padding, keeps discovered link-down **Average** (drops leftover USW High), disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. Stock EXOS `net.if.discovery` is classic SNMP OID LLD, not `walk[`/`get[`, so the rule `timeout` field must stay empty (proxy/global SNMP timeout). The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory), the zero-interface Average trigger, and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD (15m, disable-lost immediately, delete after 7d), skips EXOS PSU `notPresent` stack-MIB padding, tickets installed PSUs that are `presentNotOK` **or** `presentPowerOff` (no AC), keeps discovered link-down **Average** (drops leftover USW High), disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. Stock EXOS `net.if.discovery` is classic SNMP OID LLD, not `walk[`/`get[`, so the rule `timeout` field must stay empty (proxy/global SNMP timeout). The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory), the zero-interface Average trigger, and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
 
 Stock EXOS trigger severities stay upstream except those patches. SNMP-dead is **Warning** on EXOS, VOSS, and IQ.
 
@@ -185,7 +185,7 @@ Stock EXOS trigger severities stay upstream except those patches. SNMP-dead is *
 |---|---|
 | Extreme VOSS by SNMP | Platform VOSS; nests **Port Speed Expect** |
 
-Same `{$TEMP_*}` on **this template**. Re-import after this revision. PSU LLD skips `empty(2)` chassis bays (CLI `show sys power power-supply` lists fitted units only; SNMP still has a row per bay). `down(4)` still tickets Average. `--apply` queues check-now so stale PSU 2 `empty` rows leave Health without HostSync. Fleet macros (template / globals, not Switch* role):
+Same `{$TEMP_*}` on **this template**. Re-import after this revision. PSU LLD skips `empty(2)` chassis bays (CLI `show sys power power-supply` lists fitted units only; SNMP still has a row per bay). A fitted PSU that is **not supplying power** (`unknown(1)` or `down(4)`) tickets Average — not only `down`. `--apply` queues check-now so stale PSU 2 `empty` rows leave Health without HostSync. Fleet macros (template / globals, not Switch* role):
 
 ```
 {$OPTIC.TEMP.CRIT}     = 70

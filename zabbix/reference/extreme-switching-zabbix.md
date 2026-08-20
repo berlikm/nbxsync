@@ -381,7 +381,7 @@ Without this, one WAN blip produces one alert per device per site. A Zabbix **pr
 | Closets without cooling | 45–55 °C in summer | silence the warning tier, keep critical + vendor alarm |
 | `sysUpTime` 32-bit counter | wraps at ~497 days → false "restarted" | accept, or prefer `hrSystemUptime` where supported |
 | Stack master failover | ENTITY-MIB serial can change → "device replaced" | Info + manual close |
-| Chassis with one PSU fitted | SNMP has a row for the empty bay (`empty(2)` on VOSS, `notPresent(1)` on EXOS) | LLD **skips** those statuses; `down(4)` / failed still Average |
+| Chassis with one PSU fitted | SNMP has a row for the empty bay (`empty(2)` on VOSS, `notPresent(1)` on EXOS) | LLD **skips** those statuses. Fitted but unpowered (`unknown` / `presentPowerOff`) Average; `down` / `presentNotOK` Average |
 | Remote sites over WAN | 3 consecutive ICMP misses is easy to hit | use `#5` for remote host groups |
 | LAG aggregate speed | reports the sum of members | excluded by the ifType filter |
 | EXOS VLAN interfaces | discovered as "ports" | excluded by the ifType filter |
@@ -508,7 +508,7 @@ Silencing by macro rather than disabling triggers keeps the template untouched a
 - [ ] `{$IF.DISCARDS.WARN}` and `{$IF.UTIL.MAX:"USW"}` — set from 4+ weeks of history, not guessed
 - [ ] Do our uplinks have predictable nightly backup windows that need time-of-day handling?
 - [ ] Memory baseline — if the fleet normally sits above 90% the stock trigger fires permanently
-- [x] ~~PSU status reported by an **empty** slot in a 2-PSU chassis~~ **Answered** — VOSS SNMP `rcChasPowerSupplyOperStatus` `empty(2)` is chassis-bay padding (CLI `show sys power power-supply` on CH-STA-L26-L02-MGMT03 listed only PS#1 UP). LLD skips `empty(2)` on `psu.discovery` and `psu.detail.discovery`; `down(4)` still tickets Average. EXOS already skips `notPresent(1)`.
+- [x] ~~PSU status reported by an **empty** slot in a 2-PSU chassis~~ **Answered** — VOSS SNMP `rcChasPowerSupplyOperStatus` `empty(2)` is chassis-bay padding (CLI `show sys power power-supply` on CH-STA-L26-L02-MGMT03 listed only PS#1 UP). LLD skips `empty(2)` on `psu.discovery` and `psu.detail.discovery`. A fitted PSU that is **not supplying power** (`unknown(1)` or `down(4)`) tickets Average — not only `down`. EXOS `--apply` tickets `presentNotOK(3)` and `presentPowerOff(4)` (installed, no AC); `notPresent(1)` stays skipped.
 - [ ] ifIndex stability across reboot and across adding a stack member
 - [ ] Legacy unparseable labels (`ISC`, `MLAG_MGMT01_p51`, `esx40_ct1_eth0`) — migration list. Relabel ISC / peer-link members to **`USW-…`** (they should stay monitored); SPAN / mute stays **`X`**.
 

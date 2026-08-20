@@ -650,9 +650,13 @@ def build_discovery_rules() -> str:
                 tags=[("component", "power")],
                 trigger_prototypes=[
                     {
-                        "expression": 'count(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}],#1,"eq","{$PSU_CRIT_STATUS}")=1',
-                        "name": "Extreme VOSS: PSU {#SNMPINDEX}: Detail status critical",
+                        "expression": (
+                            'last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS}'
+                            ' and last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.EMPTY_STATUS}'
+                        ),
+                        "name": "Extreme VOSS: PSU {#SNMPINDEX}: Detail status not up",
                         "priority": "AVERAGE",
+                        "description": "Installed PSU is not supplying power (unknown, down, or unpowered). Empty bays are not discovered.",
                     }
                 ],
             ),

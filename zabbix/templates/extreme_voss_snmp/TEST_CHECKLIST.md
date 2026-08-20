@@ -58,6 +58,7 @@ Walk: `1.3.6.1.4.1.2272.1.4.7.1.1.1`
 ## LLD: PSU (`psu.discovery` / `psu.detail.discovery`)
 
 Walk id + status. Filter `{#PSU.STATUS}` **NOT_MATCHES** `^2$` (`empty`). Keep `unknown(1)` / `up(3)` / `down(4)`.
+Average when `last()<>{$PSU.OK_STATUS}` and `last()<>{$PSU.EMPTY_STATUS}` (unknown or down — installed, not supplying power).
 
 Walk status: `1.3.6.1.4.1.2272.1.4.8.1.1.1` + `...8.1.1.2`
 Walk detail: `1.3.6.1.4.1.2272.1.4.8.2.1.1` + `...8.2.1.15`

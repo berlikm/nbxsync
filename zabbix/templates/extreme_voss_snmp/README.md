@@ -19,7 +19,7 @@ Requires Zabbix **7.0+** (export version `7.0`).
 | CPU / memory | `extremeCpuMonitor*` / `extremeMemoryMonitor*` | `rcKhiSlot*` LLD (per slot); scalar CPU for slot 1 |
 | Temperature | Scalar `extremeCurrentTemperature` | `rcVossSystemTemperature*` LLD |
 | Fan | Status + RPM | Status + ambient ┬░C (no RPM OID) |
-| PSU / fan crit values | EXOS enums | `{$FAN_CRIT_STATUS}=3`, `{$PSU_CRIT_STATUS}=4`; VOSS LLD skips `empty(2)` bays |
+| PSU / fan crit values | EXOS enums | `{$FAN_CRIT_STATUS}=3`; PSU Average = not up (`{$PSU.OK_STATUS}=3`), empty bays skipped |
 | Chassis identity | ENTITY-MIB index 1 | `rcChasSerialNumber` / `rcChasModelName` / `rcChasHardwareRevision` |
 | Software rev | Extreme software MIB | `rcSysVersion` |
 
@@ -32,6 +32,8 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 | Macro | Default | Meaning |
 |---|---|---|
 | `{$FAN_CRIT_STATUS}` | `3` | `rcChasFanOperStatus` down |
+| `{$PSU.OK_STATUS}` | `3` | `rcChasPowerSupplyOperStatus` up (supplying power) |
+| `{$PSU.EMPTY_STATUS}` | `2` | empty bay; trigger excludes |
 | `{$PSU_CRIT_STATUS}` | `4` | `rcChasPowerSupplyOperStatus` down |
 | `{$TEMP_CRIT_STATUS}` | `3` | `rcVossSystemTemperatureStatus` highCritial |
 | `{$CPU.UTIL.CRIT}` | (from EXOS base) | Slot CPU util % |

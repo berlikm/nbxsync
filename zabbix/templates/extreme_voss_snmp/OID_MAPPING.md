@@ -26,7 +26,9 @@ VOSS MIBs: RapidCity `enterprises.2272` (`docs/VOSS-5520.9.3.1.0_mib.txt`).
 | Macro | Value | Reason |
 |---|---|---|
 | `{$FAN_CRIT_STATUS}` | `3` | `down(3)` |
-| `{$PSU_CRIT_STATUS}` | `4` | `down(4)` |
+| `{$PSU.OK_STATUS}` | `3` | `up(3)` present and supplying power |
+| `{$PSU.EMPTY_STATUS}` | `2` | `empty(2)` not installed (trigger excludes) |
+| `{$PSU_CRIT_STATUS}` | `4` | `down(4)` present, failure indicated |
 | `{$TEMP_CRIT_STATUS}` | `3` | `highCritial(3)` (MIB spelling) |
 
 ## Test matrix

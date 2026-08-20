@@ -72,6 +72,19 @@ class VossPsuEmptySkipTests(unittest.TestCase):
         }
         self.assertFalse(voss_psu_lld_skips_empty(rule, _STATUS_OID))
 
+    def test_yaml_tickets_unknown_and_down(self):
+        from extreme_psu import psu_expr_is_not_up
+
+        rule = _rules()['psu.discovery']
+        trigs = []
+        for it in rule.get('item_prototypes') or []:
+            trigs.extend(it.get('trigger_prototypes') or [])
+        self.assertTrue(trigs)
+        expr = trigs[0].get('expression') or ''
+        self.assertTrue(psu_expr_is_not_up(expr))
+        self.assertNotIn('{$PSU_CRIT_STATUS}', expr)
+        self.assertIn('not up', (trigs[0].get('name') or '').lower())
+
 
 if __name__ == '__main__':
     unittest.main()

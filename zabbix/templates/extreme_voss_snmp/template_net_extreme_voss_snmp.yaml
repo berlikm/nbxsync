@@ -1613,11 +1613,11 @@ zabbix_export:
           value: power
         trigger_prototypes:
         - uuid: ee629d82d4124f8d8f71ead32fede0eb
-          expression: count(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}],#1,"eq","{$PSU_CRIT_STATUS}")=1
-          name: 'Extreme VOSS: PSU {#SNMPVALUE}: Power supply is in critical state'
+          expression: last(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS} and last(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}])<>{$PSU.EMPTY_STATUS}
+          name: 'Extreme VOSS: PSU {#SNMPVALUE}: Power supply is not up'
           opdata: 'Current state: {ITEM.LASTVALUE1}'
           priority: AVERAGE
-          description: Please check the power supply unit for errors
+          description: 'Installed PSU is not supplying power (unknown, down, or unpowered). Empty bays are not discovered.'
           tags:
           - tag: scope
             value: availability
@@ -2012,9 +2012,10 @@ zabbix_export:
           value: power
         trigger_prototypes:
         - uuid: 03368bc544304d99a5b7acabe442ab60
-          expression: count(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}],#1,"eq","{$PSU_CRIT_STATUS}")=1
-          name: 'Extreme VOSS: PSU {#SNMPINDEX}: Detail status critical'
+          expression: last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS} and last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.EMPTY_STATUS}
+          name: 'Extreme VOSS: PSU {#SNMPINDEX}: Detail status not up'
           priority: AVERAGE
+          description: 'Installed PSU is not supplying power (unknown, down, or unpowered). Empty bays are not discovered.'
           tags:
           - tag: scope
             value: availability
@@ -2354,9 +2355,15 @@ zabbix_export:
       description: Physical ethernet + LAG only (exclude EXOS/VOSS VLAN ifaces from port alerts).
     - macro: '{$NET.IF.IFTYPE.NOT_MATCHES}'
       value: CHANGE_IF_NEEDED
+    - macro: '{$PSU.EMPTY_STATUS}'
+      value: '2'
+      description: VOSS rcChasPowerSupplyOperStatus empty(2) — not installed. Trigger excludes this.
+    - macro: '{$PSU.OK_STATUS}'
+      value: '3'
+      description: VOSS rcChasPowerSupplyOperStatus up(3) — present and supplying power.
     - macro: '{$PSU_CRIT_STATUS}'
       value: '4'
-      description: VOSS rcChasPowerSupplyOperStatus down(4)
+      description: VOSS rcChasPowerSupplyOperStatus down(4) — present, failure indicated.
     - macro: '{$SNMP.TIMEOUT}'
       value: 5m
       description: Time interval for the SNMP availability trigger.
@@ -2804,15 +2811,21 @@ zabbix_export:
             value: '0'
           - type: STRING
             name: thresholds.1.color
-            value: 0EC9AC
-          - type: STRING
-            name: thresholds.1.threshold
-            value: '3'
-          - type: STRING
-            name: thresholds.2.color
             value: FF465C
           - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: STRING
+            name: thresholds.2.color
+            value: 0EC9AC
+          - type: STRING
             name: thresholds.2.threshold
+            value: '3'
+          - type: STRING
+            name: thresholds.3.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.3.threshold
             value: '4'
         - type: honeycomb
           name: Temp

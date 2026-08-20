@@ -18,6 +18,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     requires the proxy/global SNMP timeout.
   * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding and queue check-now discovery for stale rows (no fork, no host sync)
   * Patch VOSS ``psu.discovery`` / ``psu.detail.discovery`` to skip ``empty(2)`` chassis slots (YAML + API) and queue check-now for stale rows (no host sync)
+  * PSU Average tickets an installed unit that is not supplying power (EXOS ``presentPowerOff``, VOSS ``unknown``), not only ``down`` / ``presentNotOK``. Empty bays stay silent.
   * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it).
     Stock ``.diff()`` / ``last(#1)<>last(#2)`` is stripped so an admin-up port that
     never came up still tickets (Core/Dist/Mgmt every admin-up except X; Access
@@ -140,6 +141,18 @@ from extreme_linkdown import (
     ungate_linkdown_expr as _ungate_linkdown_expr,
     linkdown_has_diff_guard as _linkdown_has_diff_guard,
     linkdown_manual_close_on as _linkdown_manual_close_on,
+)
+from extreme_psu import (
+    PSU_DISCOVERY_KEYS as _PSU_NOT_UP_DISCOVERY_KEYS,
+    PSU_EMPTY_BY_TEMPLATE as _PSU_EMPTY_BY_TEMPLATE,
+    PSU_EMPTY_MACRO as _PSU_EMPTY_MACRO,
+    PSU_OK_BY_TEMPLATE as _PSU_OK_BY_TEMPLATE,
+    PSU_OK_MACRO as _PSU_OK_MACRO,
+    PSU_TEMPLATES as _PSU_NOT_UP_TEMPLATES,
+    psu_expr_is_not_up as _psu_expr_is_not_up,
+    psu_power_off_name_match as _psu_power_off_name_match,
+    psu_trigger_name_match as _psu_trigger_name_match,
+    rewrite_psu_not_up_expr as _rewrite_psu_not_up_expr,
 )
 
 # Reuse zerotouch helpers when present (same ensure/ct/slugify contract).
@@ -878,6 +891,177 @@ def assert_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -
         }
     if details and all(v == 'missing' for v in details.values()):
         return True, 'no PSU LLD — n/a'
+    return ok, str(details)
+
+
+def _upsert_template_macros(api, template_name: str, wanted: dict[str, tuple[str, str]]) -> str:
+    """Merge ``wanted`` macros (value, description) onto a template. Returns ok/patched/missing."""
+    tpls = api.template.get(
+        filter={'name': [template_name]},
+        output=['templateid'],
+        selectMacros='extend',
+    )
+    if not tpls:
+        return 'missing'
+    existing = list(tpls[0].get('macros') or [])
+    by_name = {m['macro']: dict(m) for m in existing if isinstance(m, dict) and m.get('macro')}
+    changed = False
+    for macro, (value, description) in wanted.items():
+        row = by_name.get(macro)
+        if row is None:
+            by_name[macro] = {'macro': macro, 'value': value, 'description': description}
+            changed = True
+            continue
+        if str(row.get('value', '')) != value:
+            row['value'] = value
+            changed = True
+        if description and not str(row.get('description') or '').strip():
+            row['description'] = description
+            changed = True
+    if not changed:
+        return 'ok'
+    payload = []
+    for m in by_name.values():
+        entry = {'macro': m['macro'], 'value': m.get('value', '')}
+        if m.get('hostmacroid'):
+            entry['hostmacroid'] = m['hostmacroid']
+        if m.get('description') is not None:
+            entry['description'] = m.get('description', '')
+        if m.get('type') is not None:
+            entry['type'] = m['type']
+        payload.append(entry)
+    api.template.update(templateid=tpls[0]['templateid'], macros=payload)
+    return 'patched'
+
+
+def patch_psu_not_up(api) -> dict[str, str]:
+    """Average on installed PSU not supplying power — not only down/presentNotOK.
+
+    Stock EXOS matches ``presentNotOK(3)`` only, so ``presentPowerOff(4)`` (fitted,
+    no AC) is silent. VOSS matches ``down(4)`` only, so ``unknown(1)`` is silent.
+    ``last()<>{$PSU.OK_STATUS} and last()<>{$PSU.EMPTY_STATUS}`` tickets those
+    states while empty / notPresent bays stay quiet even if LLD has not yet
+    dropped a stale row. Drops a leftover separate power-off prototype so we
+    do not double-ticket. Does not host-sync or write NetBox.
+    """
+    logger.info('Network: PSU Average for installed-not-up')
+    results: dict[str, str] = {}
+    for template_name in _PSU_NOT_UP_TEMPLATES:
+        wanted = {
+            _PSU_OK_MACRO: (
+                _PSU_OK_BY_TEMPLATE[template_name],
+                'Present and supplying power (EXOS presentOK / VOSS up).',
+            ),
+            _PSU_EMPTY_MACRO: (
+                _PSU_EMPTY_BY_TEMPLATE[template_name],
+                'Bay not installed (EXOS notPresent / VOSS empty). Trigger excludes this.',
+            ),
+        }
+        macro_status = _upsert_template_macros(api, template_name, wanted)
+        tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
+        if not tpls:
+            results[template_name] = 'missing'
+            continue
+        tid = tpls[0]['templateid']
+        rules = api.discoveryrule.get(
+            hostids=tid,
+            filter={'key_': list(_PSU_NOT_UP_DISCOVERY_KEYS)},
+            output=['itemid', 'key_'],
+        ) or []
+        if not rules:
+            results[template_name] = macro_status if macro_status != 'patched' else 'no-psu-lld'
+            continue
+        changed = macro_status == 'patched'
+        for rule in rules:
+            protos = api.triggerprototype.get(
+                discoveryids=rule['itemid'],
+                output=['triggerid', 'description', 'expression', 'comments', 'manual_close'],
+            ) or []
+            drop_ids = [
+                p['triggerid']
+                for p in protos
+                if _psu_power_off_name_match(_triggerproto_name(p))
+            ]
+            if drop_ids:
+                api.triggerprototype.delete(*drop_ids)
+                changed = True
+                logger.info('  %s: deleted leftover PSU power-off prototype (%s)', template_name, drop_ids)
+            for proto in protos:
+                if proto['triggerid'] in drop_ids:
+                    continue
+                name = _triggerproto_name(proto)
+                if not _psu_trigger_name_match(name):
+                    continue
+                expr = str(proto.get('expression') or '')
+                payload: dict = {}
+                rewritten = _rewrite_psu_not_up_expr(expr)
+                if rewritten != expr:
+                    payload['expression'] = rewritten
+                if 'not up' not in name.lower():
+                    payload['description'] = name.replace(
+                        'Power supply is in critical state',
+                        'Power supply is not up',
+                    ).replace('Detail status critical', 'Detail status not up')
+                comments = str(proto.get('comments') or '')
+                want_comments = (
+                    'Installed PSU is not supplying power (unknown, down, or unpowered). '
+                    'Empty bays are not discovered.'
+                )
+                if comments != want_comments:
+                    payload['comments'] = want_comments
+                if str(proto.get('manual_close') or '0') in ('1', 'YES'):
+                    payload['manual_close'] = 0
+                if payload:
+                    api.triggerprototype.update(triggerid=proto['triggerid'], **payload)
+                    changed = True
+                    logger.info(
+                        '  %s: patched PSU not-up (%s itemid=%s)',
+                        template_name,
+                        ', '.join(payload),
+                        proto['triggerid'],
+                    )
+        results[template_name] = 'patched' if changed else 'ok'
+    return results
+
+
+def assert_psu_not_up(api, template_name: str) -> tuple[bool, str]:
+    tpls = api.template.get(
+        filter={'name': [template_name]},
+        output=['templateid'],
+        selectMacros='extend',
+    )
+    if not tpls:
+        return True, 'template absent — n/a'
+    have = {m.get('macro'): str(m.get('value', '')) for m in (tpls[0].get('macros') or [])}
+    if have.get(_PSU_OK_MACRO) != _PSU_OK_BY_TEMPLATE[template_name]:
+        return False, f'ok_status={have.get(_PSU_OK_MACRO)!r}'
+    if have.get(_PSU_EMPTY_MACRO) != _PSU_EMPTY_BY_TEMPLATE[template_name]:
+        return False, f'empty_status={have.get(_PSU_EMPTY_MACRO)!r}'
+    rules = api.discoveryrule.get(
+        hostids=tpls[0]['templateid'],
+        filter={'key_': list(_PSU_NOT_UP_DISCOVERY_KEYS)},
+        output=['itemid', 'key_'],
+    ) or []
+    if not rules:
+        return True, 'no PSU LLD — n/a'
+    details = {}
+    ok = True
+    for rule in rules:
+        protos = api.triggerprototype.get(
+            discoveryids=rule['itemid'],
+            output=['triggerid', 'description', 'expression'],
+        ) or []
+        matched = [p for p in protos if _psu_trigger_name_match(_triggerproto_name(p))]
+        if not matched:
+            details[rule.get('key_')] = 'no-psu-trigger'
+            continue
+        for proto in matched:
+            expr_ok = _psu_expr_is_not_up(str(proto.get('expression') or ''))
+            ok = ok and expr_ok
+            details[_triggerproto_name(proto)] = {
+                'ok': expr_ok,
+                'expression': proto.get('expression'),
+            }
     return ok, str(details)
 
 
@@ -1797,6 +1981,17 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             ok, detail = assert_voss_psu_lld_present_only(api)
             record('voss_psu_lld_present_only_assert', ok or 'n/a' in detail, detail, group='import')
 
+            psu_not_up = patch_psu_not_up(api)
+            for tname, status in psu_not_up.items():
+                record(
+                    f'psu_not_up_{tname}',
+                    status in ('ok', 'patched', 'missing', 'no-psu-lld'),
+                    status,
+                    group='import',
+                )
+                ok, detail = assert_psu_not_up(api, tname)
+                record(f'psu_not_up_assert_{tname}', ok or 'n/a' in detail, detail, group='import')
+
             linkdown_status = patch_linkdown_one_average(api)
             for tname, status in linkdown_status.items():
                 record(
@@ -2259,6 +2454,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         queue_exos_psu_lld_checks(api)
         patch_voss_psu_lld_present_only(api)
         queue_voss_psu_lld_checks(api)
+        patch_psu_not_up(api)
         patch_linkdown_one_average(api)
         patch_extreme_template_temp_macros(api)
         step_health_patches(api)

@@ -21,6 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
+from extreme_psu import psu_expr_is_not_up
+
 TEMPLATES = {
     'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
     'Extreme VOSS by SNMP': ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml',
@@ -582,10 +584,38 @@ def validate_voss(doc: dict) -> None:
         str(psu_detail.get('snmp_oid')),
     )
     record(
-        'VOSS PSU crit is down(4) not empty(2)',
+        'VOSS {$PSU.OK_STATUS}',
+        macros.get('{$PSU.OK_STATUS}') == '3',
+        str(macros.get('{$PSU.OK_STATUS}')),
+    )
+    record(
+        'VOSS {$PSU.EMPTY_STATUS}',
+        macros.get('{$PSU.EMPTY_STATUS}') == '2',
+        str(macros.get('{$PSU.EMPTY_STATUS}')),
+    )
+    record(
+        'VOSS {$PSU_CRIT_STATUS} down(4)',
         macros.get('{$PSU_CRIT_STATUS}') == '4',
         str(macros.get('{$PSU_CRIT_STATUS}')),
     )
+    psu_trigs = [
+        t
+        for t in trigs
+        if 'Power supply is not up' in (t.get('name') or '')
+        or 'Detail status not up' in (t.get('name') or '')
+    ]
+    record('VOSS PSU not-up triggers', len(psu_trigs) == 2, f'count={len(psu_trigs)}')
+    record(
+        'VOSS PSU tickets unknown and down, not empty',
+        bool(psu_trigs) and all(psu_expr_is_not_up(t.get('expression') or '') for t in psu_trigs),
+        (psu_trigs[0].get('expression') if psu_trigs else '')[:160],
+    )
+    leftover_crit = [
+        t.get('name')
+        for t in trigs
+        if 'PSU' in (t.get('name') or '') and '{$PSU_CRIT_STATUS}' in (t.get('expression') or '')
+    ]
+    record('VOSS PSU trigger not only down(4)', not leftover_crit, str(leftover_crit))
     validate_health_dashboard('VOSS', doc, tpl, pages=('Overview', 'Hardware'))
     validate_interface_dashboard('VOSS', tpl, port_page=True, flaps=True)
     # Re-import identity — same uuid as the old traffic-only board
