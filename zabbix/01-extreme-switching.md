@@ -53,7 +53,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 | Ports in scope | Alert | Live (cutover) |
 |---|---|---|
-| Discovered link down (Core/Dist/Mgmt admin-up; Access grammar `display-string`) | yes | **Average** — one trigger, including never-up. Unlabelled Access desk = not discovered. |
+| Discovered link down (Core/Dist/Mgmt admin-up; Access grammar `display-string`) | yes | **Average** — one trigger, including never-up and `lowerLayerDown`. Unlabelled Access desk = not discovered. |
 | Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
 | Wrong speed vs **intended** label | **armed** | Nested; **no items** until `USW`/`US`/`UP`/`MON`. Then **Warning**, not a page |
 | Half duplex | yes | Warning |
@@ -124,7 +124,7 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - YAML `deleteMissing: false` — retired items linger; we do not wipe LLD  
 - Does **not** mass-sync every device (template updates inherit in Zabbix). Speed Expect nests on VOSS / Observability, so existing switch hosts pick up the LLD on `--apply` without HostSync. Empty display-string → nothing discovered.  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
-- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, EXOS PSU LLD skip `notPresent`, VOSS PSU LLD skip `empty(2)` chassis slots and **delete lost PSU rows immediately**, PSU Average for installed-not-up (EXOS `presentPowerOff`, VOSS `unknown`), EXOS/VOSS link-down Average without `.diff()` (admin-up + oper-down tickets on Core/Dist/Mgmt and on Access grammar display-strings), EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
+- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, EXOS PSU LLD skip `notPresent`, VOSS PSU LLD skip `empty(2)` chassis slots and **delete lost PSU rows immediately**, PSU Average for installed-not-up (EXOS `presentPowerOff`, VOSS `unknown`), EXOS/VOSS link-down Average without `.diff()` (admin-up + oper **not up**, including `lowerLayerDown(7)`), EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
 - Role IFALIAS / Access `PORTID.*` changes need a **HostSync of those devices** — template inheritance does not push NetBox macros. `--apply` compares live Zabbix host macros and logs only drifted / missing hosts; it does **not** mass-sync.
 - `{$PORTID.LLD.*}` defaults live on **Extreme Port Speed Expect**. `--apply` will delete leftover Zabbix **global** PORTID macros (they bump config for every host).
 

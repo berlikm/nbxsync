@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
+from extreme_linkdown import linkdown_is_not_up, linkdown_recovery_is_up
 from extreme_psu import psu_expr_is_not_up
 
 TEMPLATES = {
@@ -538,13 +539,12 @@ def validate_voss(doc: dict) -> None:
         f'avg={bool(avg_ld)} usw={bool(usw_ld)}',
     )
     ld_expr = (avg_ld or {}).get('expression') or ''
+    ld_rec = (avg_ld or {}).get('recovery_expression') or ''
     record(
-        'VOSS link-down fires while oper-down (no .diff())',
+        'VOSS link-down fires while oper not up (no .diff())',
         bool(avg_ld)
-        and 'ifOperStatus' in ld_expr
-        and ')=2' in ld_expr.replace(' ', '')
-        and ',#1' not in ld_expr
-        and ',#2' not in ld_expr
+        and linkdown_is_not_up(ld_expr)
+        and linkdown_recovery_is_up(ld_rec)
         and str((avg_ld or {}).get('manual_close') or 'NO').upper() != 'YES',
         ld_expr[:160],
     )

@@ -21,9 +21,11 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * PSU Average tickets an installed unit that is not supplying power (EXOS ``presentPowerOff``, VOSS ``unknown``), not only ``down`` / ``presentNotOK``. Empty bays stay silent.
   * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it).
     Stock ``.diff()`` / ``last(#1)<>last(#2)`` is stripped so an admin-up port that
-    never came up still tickets (Core/Dist/Mgmt every admin-up except X; Access
-    every grammar display-string). Manual close is off so ACK cannot mute a
-    still-down port.
+    never came up still tickets. Oper-status **not up** (``<>1``) so
+    ``lowerLayerDown(7)`` matches the honeycomb, not only ``down(2)``.
+    Recovery is ``last()=1``. Manual close is off so ACK cannot mute a
+    still-down port. Core/Dist/Mgmt every admin-up except X; Access every
+    grammar display-string.
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
@@ -137,10 +139,16 @@ from extreme_health_zabbix import (
 from extreme_linkdown import (
     LINKDOWN_HIGH_GATE as _LINKDOWN_HIGH_GATE,
     LINKDOWN_HIGH_MACRO_PREFIX as _LINKDOWN_HIGH_MACRO_PREFIX,
+    LINKDOWN_RECOVERY_MODE as _LINKDOWN_RECOVERY_MODE,
     LINKDOWN_TEMPLATES as _LINKDOWN_TEMPLATES,
-    ungate_linkdown_expr as _ungate_linkdown_expr,
+    canonicalize_linkdown_problem as _canonicalize_linkdown_problem,
+    canonicalize_linkdown_recovery as _canonicalize_linkdown_recovery,
+    is_platform_linkdown_name as _is_platform_linkdown_name,
     linkdown_has_diff_guard as _linkdown_has_diff_guard,
+    linkdown_is_not_up as _linkdown_is_not_up,
     linkdown_manual_close_on as _linkdown_manual_close_on,
+    linkdown_recovery_is_up as _linkdown_recovery_is_up,
+    linkdown_expr_equal as _linkdown_expr_equal,
 )
 from extreme_psu import (
     PSU_DISCOVERY_KEYS as _PSU_NOT_UP_DISCOVERY_KEYS,
@@ -1160,13 +1168,23 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
     Scope is LLD (Access USW+UP; Core/Dist everything except X), not a second
     severity map. ICMP High still pages a dead box.
 
-    Also drop stock ``last(#1)<>last(#2)`` so admin-up + oper-down tickets even
-    when the port never came up. Access uses the same prototype — labelled
-    display-strings (USW/US/UP/MON/UW/TMON) fire; unlabelled desk ports are
-    not in LLD.
+    Drop stock ``last(#1)<>last(#2)`` so never-up ports ticket. Match oper
+    **not up** (``<>1``), not only ``down(2)`` — honeycomb is ``>=2`` and VOSS
+    unused SFPs often report ``lowerLayerDown(7)``. Recovery is ``last()=1``
+    (stock ``<>2`` would clear 7 immediately). Manual close off. Access uses
+    the same prototype — labelled display-strings fire; unlabelled desk ports
+    are not in LLD.
     """
-    logger.info('Network: discovered link-down stays Average (no .diff() silence)')
+    logger.info('Network: discovered link-down stays Average (not-up, no .diff())')
     results: dict[str, str] = {}
+    proto_output = [
+        'triggerid',
+        'description',
+        'expression',
+        'recovery_expression',
+        'recovery_mode',
+        'manual_close',
+    ]
     for template_name in _LINKDOWN_TEMPLATES:
         tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
         if not tpls:
@@ -1184,7 +1202,7 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
             continue
         protos = api.triggerprototype.get(
             discoveryids=rules[0]['itemid'],
-            output=['triggerid', 'description', 'expression', 'manual_close'],
+            output=proto_output,
         ) or []
         drop_ids = [
             p['triggerid']
@@ -1198,13 +1216,18 @@ def patch_linkdown_one_average(api) -> dict[str, str]:
         for proto in protos:
             if proto['triggerid'] in drop_ids:
                 continue
-            if 'Link down' not in _triggerproto_name(proto):
+            if not _is_platform_linkdown_name(_triggerproto_name(proto)):
                 continue
             expr = str(proto.get('expression') or '')
+            recovery = str(proto.get('recovery_expression') or '')
             payload: dict = {}
-            ungated = _ungate_linkdown_expr(expr)
-            if ungated != expr:
+            ungated = _canonicalize_linkdown_problem(expr)
+            if not _linkdown_expr_equal(ungated, expr):
                 payload['expression'] = ungated
+            want_rec = _canonicalize_linkdown_recovery(ungated)
+            if want_rec and not _linkdown_expr_equal(want_rec, recovery):
+                payload['recovery_expression'] = want_rec
+                payload['recovery_mode'] = _LINKDOWN_RECOVERY_MODE
             if _linkdown_manual_close_on(proto):
                 payload['manual_close'] = 0
             if payload:
@@ -1239,14 +1262,19 @@ def assert_linkdown_one_average(api, template_name: str) -> tuple[bool, str]:
         return True, 'no IF LLD — n/a'
     protos = api.triggerprototype.get(
         discoveryids=rules[0]['itemid'],
-        output=['triggerid', 'description', 'expression', 'manual_close'],
+        output=['triggerid', 'description', 'expression', 'recovery_expression', 'manual_close'],
     ) or []
-    linkdown = [p for p in protos if 'Link down' in _triggerproto_name(p)]
+    linkdown = [p for p in protos if _is_platform_linkdown_name(_triggerproto_name(p))]
     names = [_triggerproto_name(p) for p in linkdown]
     exprs = [str(p.get('expression') or '') for p in linkdown]
+    recs = [str(p.get('recovery_expression') or '') for p in linkdown]
+    leftover = [p for p in protos if 'Link down' in _triggerproto_name(p) and '(USW)' in _triggerproto_name(p)]
     ok = (
-        not any('(USW)' in n for n in names)
+        not leftover
+        and bool(linkdown)
         and not any(_LINKDOWN_HIGH_GATE in e for e in exprs)
+        and all(_linkdown_is_not_up(e) for e in exprs)
+        and all(_linkdown_recovery_is_up(r) for r in recs)
         and not any(_linkdown_has_diff_guard(e) for e in exprs)
         and not any(_linkdown_manual_close_on(p) for p in linkdown)
     )

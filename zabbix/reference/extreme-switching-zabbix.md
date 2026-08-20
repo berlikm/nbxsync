@@ -206,7 +206,7 @@ This is the deliberate safety net for a forgotten label. Same applies to `N` and
 | Speed-expect (thin) | no — filter is `{$PORTID.LLD.IFALIAS.MATCHES}` | none |
 | Capacity (§6.4) | no — same filter | none |
 
-And link-down **does not** wait for an up→down edge. Admin-up + oper-down is already a ticket (empty port you forgot to shut, or a path that never came up). Stock `.diff()` / `last(#1)<>last(#2)` is stripped on `--apply` for EXOS and in the VOSS YAML.
+And link-down **does not** wait for an up→down edge. Admin-up + oper **not up** is already a ticket (empty port you forgot to shut, a path that never came up, or SNMP `lowerLayerDown(7)`). Stock `.diff()` / `last(#1)<>last(#2)` and `last()=2`-only are stripped on `--apply` for EXOS and in the VOSS YAML. Recovery is `last()=1`.
 
 Net behaviour: *"if it is discovered, it should be live."* Core/Dist/Mgmt: admin-up. Access: grammar display-string. Mute with **`X`** or **admin-down**. Unlabelled Access desk ports are not discovered.
 
@@ -269,7 +269,7 @@ Scaffold: `templates/zabbix/net/extreme_port_speed_expect_snmp/`.
 |---|---|---|---|
 | High | unavailable by ICMP | 3 polls (5 for remote sites) | stock |
 | Warning | no SNMP data | 5m | stock |
-| Average | link down (oper down, admin up — including never-up) | none (no `.diff()`) | YAML / `--apply` |
+| Average | link down (oper not up, admin up — including never-up and lowerLayerDown) | none (no `.diff()`) | YAML / `--apply` |
 | Warning | interface flapping | count of status changes in 1h | **build** |
 | Warning | `last(speed) <> {#IF.SPEED.EXPECTED}` while oper up | on oper status, 5m | **build** |
 | Warning | error rate above threshold | 5m | stock, threshold from baseline |

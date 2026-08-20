@@ -1249,9 +1249,9 @@ zabbix_export:
           value: '{#IFNAME}'
         trigger_prototypes:
         - uuid: 7b543f006f5046de8a4604ac30104969
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2'
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1'
           recovery_mode: RECOVERY_EXPRESSION
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
+          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0
           name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
           opdata: 'Current state: {ITEM.LASTVALUE1}'
           priority: AVERAGE
@@ -1353,14 +1353,14 @@ zabbix_export:
 
           and
 
-          (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2)
+          (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1)
 
           '
         recovery_mode: RECOVERY_EXPRESSION
         recovery_expression: '(change(/Extreme VOSS by SNMP/net.if.speed[ifHighSpeed.{#SNMPINDEX}])>0 and last(/Extreme VOSS
           by SNMP/net.if.speed[ifHighSpeed.{#SNMPINDEX}],#2)>0) or
 
-          (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2)
+          (last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1)
 
           '
         name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Ethernet has changed to lower speed than it was before'
@@ -1371,8 +1371,8 @@ zabbix_export:
         manual_close: 'YES'
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2'
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1'
+          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0
         tags:
         - tag: scope
           value: performance
@@ -1402,8 +1402,8 @@ zabbix_export:
         manual_close: 'YES'
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2'
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1'
+          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0
         tags:
         - tag: scope
           value: performance
@@ -1427,8 +1427,8 @@ zabbix_export:
         manual_close: 'YES'
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2'
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2 or {$IFCONTROL:"{#IFNAME}"}=0
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1'
+          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0
         tags:
         - tag: scope
           value: availability
