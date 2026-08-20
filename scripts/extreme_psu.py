@@ -79,6 +79,11 @@ VOSS_PSU_DETAIL_DISCOVERY_OID = psu_discovery_snmp_oid(
 )
 
 
+LLD_MATCHES_REGEX = 8
+LLD_NOT_MATCHES_REGEX = 9
+LLD_EVAL_OR = 2
+
+
 def _filter_eval_is_or(filt: dict) -> bool:
     raw = str((filt or {}).get('evaltype') or '').upper()
     return raw in {'OR', '2'}
@@ -86,16 +91,58 @@ def _filter_eval_is_or(filt: dict) -> bool:
 
 def _op_is_not_matches(op) -> bool:
     try:
-        return int(op) == 9
+        return int(op) == LLD_NOT_MATCHES_REGEX
     except (TypeError, ValueError):
         return str(op).upper() in {'NOT_MATCHES_REGEX', 'NOT_MATCHES'}
 
 
 def _op_is_matches(op) -> bool:
     try:
-        return int(op) == 8
+        return int(op) == LLD_MATCHES_REGEX
     except (TypeError, ValueError):
         return str(op).upper() in {'MATCHES_REGEX', 'MATCHES'}
+
+
+def _lld_operator(op) -> int:
+    try:
+        return int(op)
+    except (TypeError, ValueError):
+        return LLD_MATCHES_REGEX
+
+
+def psu_lld_api_filter(empty_regex: str, existing_filter: dict | None = None) -> dict:
+    """OR filter for ``discoveryrule.update``.
+
+    Zabbix 7 rejects non-empty ``formulaid`` unless evaltype is a custom
+    expression. ``discoveryrule.get`` still returns A/B and ``A or B``.
+    YAML export may include formulaid; do not copy it back on API write.
+    """
+    conditions = []
+    for c in (existing_filter or {}).get('conditions') or []:
+        if c.get('macro') in (PSU_STATUS_MACRO, PSU_SERIAL_MACRO):
+            continue
+        conditions.append(
+            {
+                'macro': c['macro'],
+                'value': c.get('value', ''),
+                'operator': _lld_operator(c.get('operator', LLD_MATCHES_REGEX)),
+            }
+        )
+    conditions.append(
+        {
+            'macro': PSU_STATUS_MACRO,
+            'value': empty_regex,
+            'operator': LLD_NOT_MATCHES_REGEX,
+        }
+    )
+    conditions.append(
+        {
+            'macro': PSU_SERIAL_MACRO,
+            'value': PSU_SERIAL_PRESENT,
+            'operator': LLD_MATCHES_REGEX,
+        }
+    )
+    return {'evaltype': LLD_EVAL_OR, 'conditions': conditions}
 
 
 ZBX_PREPROC_JAVASCRIPT = 21

@@ -14,6 +14,7 @@ from extreme_psu import (
     VOSS_PSU_SERIAL_OID,
     VOSS_PSU_STATUS_OID,
     psu_expr_is_not_up,
+    psu_lld_api_filter,
     psu_lld_defaults_missing_macros,
     psu_lld_js_default_macros,
     psu_lld_keeps_installed_fru,
@@ -138,6 +139,58 @@ class RewritePsuNotUpTests(unittest.TestCase):
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]['type'], 21)
         self.assertIn('{#PSU.SERIAL}', payload[0]['params'])
+
+    def test_api_or_filter_omits_formulaid(self):
+        """Zabbix 7 rejects formulaid on AND/OR; GET still canonicalizes to A or B."""
+        existing = {
+            'evaltype': '2',
+            'eval_formula': 'A or B',
+            'conditions': [
+                {
+                    'macro': '{#PSU.STATUS}',
+                    'value': '^1$',
+                    'operator': '9',
+                    'formulaid': 'A',
+                },
+                {
+                    'macro': PSU_SERIAL_MACRO,
+                    'value': '.+',
+                    'operator': '8',
+                    'formulaid': 'B',
+                },
+                {
+                    'macro': '{#SNMPVALUE}',
+                    'value': '.+',
+                    'operator': '8',
+                    'formulaid': 'C',
+                },
+            ],
+        }
+        filt = psu_lld_api_filter('^1$', existing)
+        self.assertEqual(filt['evaltype'], 2)
+        self.assertNotIn('formula', filt)
+        self.assertNotIn('eval_formula', filt)
+        self.assertEqual(len(filt['conditions']), 3)
+        macros = [c['macro'] for c in filt['conditions']]
+        self.assertEqual(macros[0], '{#SNMPVALUE}')
+        self.assertEqual(macros[1], '{#PSU.STATUS}')
+        self.assertEqual(macros[2], PSU_SERIAL_MACRO)
+        for c in filt['conditions']:
+            self.assertNotIn('formulaid', c)
+
+    def test_get_canonical_formulaid_is_not_required_to_keep_fru(self):
+        rule = self._fru_rule(snmp_oid=EXOS_PSU_DISCOVERY_OID, empty_regex='^1$')
+        rule['filter']['eval_formula'] = 'A or B'
+        rule['filter']['conditions'][0]['formulaid'] = 'A'
+        rule['filter']['conditions'][1]['formulaid'] = 'B'
+        self.assertTrue(
+            psu_lld_keeps_installed_fru(
+                rule,
+                status_oid=EXOS_PSU_STATUS_OID,
+                serial_oid=EXOS_PSU_SERIAL_OID,
+                empty_regex='^1$',
+            )
+        )
 
     def test_status_only_skip_empty_is_not_enough(self):
         rule = {

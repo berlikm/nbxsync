@@ -182,9 +182,6 @@ from extreme_psu import (
     PSU_EMPTY_MACRO as _PSU_EMPTY_MACRO,
     PSU_OK_BY_TEMPLATE as _PSU_OK_BY_TEMPLATE,
     PSU_OK_MACRO as _PSU_OK_MACRO,
-    PSU_SERIAL_MACRO as _PSU_SERIAL_LLD_MACRO,
-    PSU_SERIAL_PRESENT as _PSU_SERIAL_PRESENT,
-    PSU_STATUS_MACRO as _PSU_STATUS_MACRO,
     PSU_TEMPLATES as _PSU_NOT_UP_TEMPLATES,
     VOSS_PSU_DETAIL_DISCOVERY_OID as _VOSS_PSU_DETAIL_DISCOVERY_OID,
     VOSS_PSU_DETAIL_STATUS_OID as _VOSS_PSU_DETAIL_STATUS_OID,
@@ -192,6 +189,7 @@ from extreme_psu import (
     VOSS_PSU_SERIAL_OID as _VOSS_PSU_SERIAL_OID,
     VOSS_PSU_STATUS_OID as _VOSS_PSU_STATUS_OID,
     psu_expr_is_not_up as _psu_expr_is_not_up,
+    psu_lld_api_filter as _psu_lld_api_filter,
     psu_lld_keeps_installed_fru as _psu_lld_keeps_installed_fru,
     psu_lld_preprocessing_payload as _psu_lld_preprocessing_payload,
     psu_power_off_name_match as _psu_power_off_name_match,
@@ -467,7 +465,6 @@ def import_extreme_templates(api) -> dict[str, tuple[int, str]]:
 _LLD_MATCHES_REGEX = 8
 _LLD_NOT_MATCHES_REGEX = 9
 _LLD_EVAL_AND = 1
-_LLD_EVAL_OR = 2
 _IFALIAS_MATCHES = '{$NET.IF.IFALIAS.MATCHES}'
 _IFALIAS_NOT_MATCHES = '{$NET.IF.IFALIAS.NOT_MATCHES}'
 _ETHERLIKE_KEY = 'net.if.duplex.discovery'
@@ -676,42 +673,6 @@ def _lld_operator_is_matches(op) -> bool:
         return str(op).upper() in ('MATCHES_REGEX', 'MATCHES')
 
 
-def _psu_fru_filter_conditions(rule: dict, empty_regex: str) -> list[dict]:
-    """Keep a PSU row if it is not padding: status not empty, or serial present."""
-    conditions = []
-    for c in (rule.get('filter') or {}).get('conditions') or []:
-        if c.get('macro') in (_PSU_STATUS_MACRO, _PSU_SERIAL_LLD_MACRO):
-            continue
-        try:
-            operator = int(c.get('operator', _LLD_MATCHES_REGEX))
-        except (TypeError, ValueError):
-            operator = _LLD_MATCHES_REGEX
-        conditions.append(
-            {
-                'macro': c['macro'],
-                'value': c.get('value', ''),
-                'operator': operator,
-            }
-        )
-    conditions.append(
-        {
-            'macro': _PSU_STATUS_MACRO,
-            'value': empty_regex,
-            'operator': _LLD_NOT_MATCHES_REGEX,
-            'formulaid': 'A',
-        }
-    )
-    conditions.append(
-        {
-            'macro': _PSU_SERIAL_LLD_MACRO,
-            'value': _PSU_SERIAL_PRESENT,
-            'operator': _LLD_MATCHES_REGEX,
-            'formulaid': 'B',
-        }
-    )
-    return conditions
-
-
 def _patch_psu_lld_rule(
     api,
     rule: dict,
@@ -720,10 +681,12 @@ def _patch_psu_lld_rule(
     empty_regex: str,
     lost_fields: dict | None = None,
 ) -> None:
+    # AND/OR updates must omit formulaid. GET still returns A/B; echoing those
+    # IDs is what Zabbix 7 rejects with "formulaid must be empty".
     api.discoveryrule.update(
         itemid=rule['itemid'],
         snmp_oid=snmp_oid,
-        filter={'evaltype': _LLD_EVAL_OR, 'conditions': _psu_fru_filter_conditions(rule, empty_regex)},
+        filter=_psu_lld_api_filter(empty_regex, rule.get('filter')),
         preprocessing=_psu_lld_preprocessing_payload(rule.get('preprocessing')),
         **(lost_fields or _lld_lost_resources_fields()),
     )
