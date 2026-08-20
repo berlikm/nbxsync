@@ -559,9 +559,9 @@ Port-label grammar and staged enablement: *[Extreme switching — Confluence TBD
 | `{$VMWARE.URL}` | `https://{{ object.primary_ip4.address.ip }}/sdk` | vCenter |
 
 
-### 11.3 Application secrets (per-device / per-site)
+### 11.3 Application secrets (per-device / per-type / per-site)
 
-Each macro is defined as a server-level **ZabbixMacro** (on ZabbixServer) with a **ZabbixMacroAssignment** on the target object (Device, VM, or DeviceRole). The assignment carries the secret value and is resolved during sync via the inheritance chain.
+Each macro is defined as a server-level **ZabbixMacro** (on ZabbixServer) with a **ZabbixMacroAssignment** on the target object (Device, Device Type, VM, or DeviceRole). The assignment carries the secret value and is resolved during sync via the inheritance chain. HostSync renders Jinja with `object` = the host, so a Device Type assignment can still use `object.primary_ip4`.
 
 #### Pure Storage API token + URL (per-device)
 
@@ -580,17 +580,19 @@ Same `MONITORING-IDRAC` user, same passphrases on all three CGs — only the pro
 
 Passphrases live on each iDRAC CG Host Interface. The iDRAC SNMPv3 user must be configured on each iDRAC (via iDRAC UI or racadm).
 
-#### HPE MSA API credentials (per-device)
+#### HPE MSA API credentials (Device Type)
 
-Dell Storage arrays (HPE MSA 2060) use the HPE MSA HTTP template — REST API, not SNMP. Each array has its own API account. Macro assignments are on each **Device**.
+Dell Storage arrays (HPE MSA 2060) use the HPE MSA HTTP template — REST API, not SNMP. Macro assignments are on the **Device Type** (the MSA 2060 type), not each Device, manufacturer Dell, or Agent Monitoring. HostSync evaluates `object` as that array, so HOST is the device’s primary IPv4. Do **not** wrap HOST in `https://` — scheme/port stay on the template macros. A leftover **Device**-level assignment wins over Device Type; delete it if one remains.
+
+Each array needs **primary IPv4** set (controller mgmt / VIP, not iSCSI/FC). An IP change in NetBox reaches Zabbix on HostSync of that host.
 
 | Macro | Target | Type | Value |
 |---|---|---|---|
-| `{$HPE.MSA.API.HOST}` | Device (per array) | Text | IP or hostname of the array |
-| `{$HPE.MSA.API.USERNAME}` | Device (per array) | Text | API user |
-| `{$HPE.MSA.API.PASSWORD}` | Device (per array) | Secret | API password |
+| `{$HPE.MSA.API.HOST}` | Device Type | Text | `{{ object.primary_ip4.address.ip }}` |
+| `{$HPE.MSA.API.USERNAME}` | Device Type | Text | Shared API user |
+| `{$HPE.MSA.API.PASSWORD}` | Device Type | Secret | Shared API password |
 
-Array: `CN-SHA-P-STOD01`.
+Arrays of that Device Type include `CN-SHA-P-STOD01`.
 
 #### VMware vCenter SSO credentials (per-VM)
 
@@ -669,7 +671,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 | Storage (Pure) | Agent Monitoring | Pure Storage FlashArray v2 by HTTP + ICMP Ping; macros `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` | Agent / HTTP | Sites/…, Roles/Storage |
 | Storage (Synology) | SNMP Monitoring → Manufacturer Synology | Synology DiskStation SNMPv3 + ICMP Ping | SNMP `MONITORING` | Sites/…, Roles/Storage |
 | Storage (Huawei) `HU-DEB-SAN01` | **SNMP Monitoring (Huawei)** on Device | Huawei OceanStor Dorado by SNMP (has `icmpping`; no extra ICMP rule); LogicMonitor on **CG HI** | SNMP `LogicMonitor` | Sites/…, Roles/Storage |
-| Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP + ICMP Ping (rule **Dell Storage (HTTP)**); macros `{$HPE.MSA.API.HOST}` / `{$HPE.MSA.API.USERNAME}` / `{$HPE.MSA.API.PASSWORD}` (§11.3) | Agent / HTTP | Sites/CH/…, Roles/Storage |
+| Storage (Dell) | Agent Monitoring | HPE MSA 2060 Storage by HTTP + ICMP Ping (rule **Dell Storage (HTTP)**); Device Type macros `{$HPE.MSA.API.HOST}` / `{$HPE.MSA.API.USERNAME}` / `{$HPE.MSA.API.PASSWORD}` (§11.3) | Agent / HTTP | Sites/CH/…, Roles/Storage |
 | Cohesity physical (oob only) | Dell iDRAC SNMP (Legacy) (SHA1/AES128) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC** on oob | Sites/CH/…, Roles/Cohesity |
 | ESXi hypervisor (Dell) | Dell iDRAC SNMP (SHA384/AES256) | Dell iDRAC by SNMP | SNMP **v3 MONITORING-IDRAC SHA384/AES256** on oob | Sites/…, Roles/ESXi Hypervisor, OS/VMware |
 | vCenter | Agent Monitoring (Site Group) unless overridden | VMware FQDN + ICMP Ping (**no** Linux by agent — Linux rule excludes role vCenter); macros `{$VMWARE.USERNAME}` / `{$VMWARE.PASSWORD}` | Agent / HTTP(SDK) | Sites/…, Roles/vCenter |

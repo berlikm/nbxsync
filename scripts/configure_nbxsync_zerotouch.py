@@ -62,10 +62,11 @@ Usage::
   # export NBX_VMWARE_PASS_CH_STA_P_VCSA02=...
   # MSSQL service account (shared):
   # export NBX_MSSQL_USER=... NBX_MSSQL_PASS=...
-  # Per-device HPE MSA API credentials (Dell Storage arrays, one per device):
-  # export NBX_MSA_API_HOST_CN_SHA_P_STOD01=10.31.101.40
-  # export NBX_MSA_API_USER_CN_SHA_P_STOD01=MONITORING-WEB
-  # export NBX_MSA_API_PASS_CN_SHA_P_STOD01=...
+  # HPE MSA API on Device Type (Dell Storage MSA arrays). HOST is Jinja
+  # (primary IPv4 at HostSync) — do not set NBX_MSA_API_HOST_*:
+  # export NBX_MSA_API_USER=MONITORING-WEB
+  # export NBX_MSA_API_PASS=...
+  # Optional fallback: NBX_MSA_API_USER_<HOSTNAME> / NBX_MSA_API_PASS_<HOSTNAME>
   # Dell iDRAC SNMPv3 (shared MONITORING-IDRAC user, both tiers use same passphrases):
   # export NBX_SNMP_AUTHPASS_IDRAC=... NBX_SNMP_PRIVPASS_IDRAC=...
   python scripts/configure_nbxsync_zerotouch.py
@@ -2124,7 +2125,7 @@ def _ensure_macro_assignment(server, macro_name, value, obj, mtype=ZabbixMacroTy
     """Create server-level ZabbixMacro + ZabbixMacroAssignment on obj.
 
     ZabbixMacro.assigned_object must be ZabbixServer (per MACRO_ASSIGNMENT_MODELS).
-    ZabbixMacroAssignment.assigned_object is the Device/DeviceRole/VM that inherits it.
+    ZabbixMacroAssignment.assigned_object is the Device/DeviceType/DeviceRole/VM that inherits it.
     """
     # 1. Server-level macro definition
     macro, _ = ensure(
@@ -2254,37 +2255,79 @@ def step11_macros(server):
     if _stale_dell_defs:
         logger.info('  PRUNED: %s Dell Redfish macro definition(s)', _stale_dell_defs)
 
-    # ---- Secret macros: HPE MSA storage (per-device, API credentials) ----
+    # ---- HPE MSA API (Device Type; HOST from primary IPv4 at HostSync) ----
     # Template macros: {$HPE.MSA.API.HOST}, {$HPE.MSA.API.USERNAME}, {$HPE.MSA.API.PASSWORD}
-    # Env vars: NBX_MSA_API_HOST_<HOSTNAME>, NBX_MSA_API_USER_<HOSTNAME>,
-    #           NBX_MSA_API_PASS_<HOSTNAME>
+    # HOST is Jinja (no env). USER/PASS: NBX_MSA_API_USER / NBX_MSA_API_PASS,
+    # with optional per-host fallback from the previous per-device layout.
+    # Do not assign on manufacturer Dell or Agent Monitoring (CG values are not rendered).
+    MSA_MACROS = (
+        '{$HPE.MSA.API.HOST}',
+        '{$HPE.MSA.API.USERNAME}',
+        '{$HPE.MSA.API.PASSWORD}',
+    )
+    MSA_HOST_JINJA = '{{ object.primary_ip4.address.ip }}'
     msa_arrays = Device.objects.filter(
         device_type__manufacturer__name__iexact='Dell',
         role__name__iexact='Storage',
-    )
+    ).select_related('device_type')
+    msa_types = []
+    seen_msa_types = set()
     for dev in msa_arrays:
-        env_suffix = dev.name.upper().replace('-', '_')
-        msa_host = _env_first((f'NBX_MSA_API_HOST_{env_suffix}',))
-        msa_pass = _env_first((f'NBX_MSA_API_PASS_{env_suffix}',))
-        msa_user = _env_first((f'NBX_MSA_API_USER_{env_suffix}',))
-        if msa_host:
+        dtype = dev.device_type
+        if dtype is None or dtype.pk in seen_msa_types:
+            continue
+        seen_msa_types.add(dtype.pk)
+        mixed = Device.objects.filter(device_type=dtype).exclude(role__name__iexact='Storage').exists()
+        if mixed:
+            logger.warning(
+                '  Skip MSA macros on Device Type %s — also used by non-Storage Dell devices',
+                dtype.model,
+            )
+            continue
+        msa_types.append(dtype)
+
+    msa_user = _env_first(('NBX_MSA_API_USER',))
+    msa_pass = _env_first(('NBX_MSA_API_PASS',))
+    if not msa_user or not msa_pass:
+        for dev in msa_arrays:
+            env_suffix = dev.name.upper().replace('-', '_')
+            if not msa_user:
+                msa_user = _env_first((f'NBX_MSA_API_USER_{env_suffix}',))
+            if not msa_pass:
+                msa_pass = _env_first((f'NBX_MSA_API_PASS_{env_suffix}',))
+            if msa_user and msa_pass:
+                break
+
+    stale_msa, _ = M.ZabbixMacroAssignment.objects.filter(
+        zabbixmacro__macro__in=MSA_MACROS,
+        assigned_object_type=ct(Device),
+    ).delete()
+    if stale_msa:
+        logger.info('  PRUNED: %s device-level HPE MSA macro assignment(s) (moved to Device Type)', stale_msa)
+
+    if not msa_types:
+        if msa_arrays.exists():
+            logger.warning('  No Dell Storage-only Device Type for MSA macros')
+        else:
+            logger.info('  No Dell Storage devices — skip MSA macros')
+    else:
+        for dtype in msa_types:
             _ensure_macro_assignment(
-                server, '{$HPE.MSA.API.HOST}', msa_host, dev,
+                server, '{$HPE.MSA.API.HOST}', MSA_HOST_JINJA, dtype,
                 mtype=ZabbixMacroTypeChoices.TEXT,
-                description=f'ztc:msa-host:{dev.name}')
-        if msa_user:
-            _ensure_macro_assignment(
-                server, '{$HPE.MSA.API.USERNAME}', msa_user, dev,
-                mtype=ZabbixMacroTypeChoices.TEXT,
-                description=f'ztc:msa-user:{dev.name}')
-        if msa_pass:
-            _ensure_macro_assignment(
-                server, '{$HPE.MSA.API.PASSWORD}', msa_pass, dev,
-                description=f'ztc:secret:msa:{dev.name}')
-        if msa_host and msa_pass:
-            logger.info('  Macros {$HPE.MSA.API.*} on %s', dev.name)
-        elif not msa_host and not msa_pass:
-            logger.warning('  NBX_MSA_API_*_%s env vars not set — MSA API will fail on %s', env_suffix, dev.name)
+                description='ztc:msa-host:primary-ip4')
+            if msa_user:
+                _ensure_macro_assignment(
+                    server, '{$HPE.MSA.API.USERNAME}', msa_user, dtype,
+                    mtype=ZabbixMacroTypeChoices.TEXT,
+                    description='ztc:msa-user:device-type')
+            if msa_pass:
+                _ensure_macro_assignment(
+                    server, '{$HPE.MSA.API.PASSWORD}', msa_pass, dtype,
+                    description='ztc:secret:msa:device-type')
+            logger.info('  Macros {$HPE.MSA.API.*} on Device Type %s', dtype.model)
+        if not msa_user or not msa_pass:
+            logger.warning('  NBX_MSA_API_USER / NBX_MSA_API_PASS not set — MSA API login will fail')
 
     # ---- Prune stale ZabbixMacro objects with wrong assigned_object_type ----
     # Previous script versions created ZabbixMacro directly on DeviceRole/Device/VM
