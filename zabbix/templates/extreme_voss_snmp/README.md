@@ -57,7 +57,7 @@ Role IFALIAS macros (`.*` + `^X(-|$)` for Core/Dist/Mgmt; Access `^(USW|US|UP|MO
 - ICMP availability + targeted SNMP traps (fan/PSU/temp/ISIS/LAG)
 - Inventory: chassis model/serial/rev/PN/brand/base MAC, port/slot counts, `rcSysVersion`
 - CPU/memory: instantaneous + 1m/5m averages (`rcKhiSlot*`)
-- Fan / PSU (+ PSU output watts) / temperature discovery (`{#SENSOR_DESCR}` on °C items). PSU LLD skips `empty(2)` chassis bays.
+- Fan / PSU (+ PSU output watts) / temperature discovery (`{#SENSOR_DESCR}` on °C items). PSU LLD skips `empty(2)` chassis bays and deletes lost empty rows immediately.
 - Optics/DOM discovery (`rcPlugOptMod*`)
 - LLDP remote neighbor discovery
 - Fabric: V-IST / IST, SPBM enable, ISIS circuit/adjacency, SPBM nickname, MLT/SMLT

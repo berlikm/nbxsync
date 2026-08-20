@@ -400,8 +400,8 @@ def proto(name, key, oid, **kw) -> str:
     return "\n".join(lines) + "\n"
 
 
-_PSU_EMPTY_LLD = """      lifetime: 7d
-      lifetime_type: DELETE_AFTER
+_PSU_EMPTY_LLD = """      lifetime: '0'
+      lifetime_type: DELETE_IMMEDIATELY
       enabled_lifetime: '0'
       enabled_lifetime_type: DISABLE_IMMEDIATELY
       filter:

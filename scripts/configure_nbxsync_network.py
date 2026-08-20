@@ -17,7 +17,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     Per-rule ``timeout`` stays empty: classic SNMP OID LLD is not ``walk[``/``get[``, so Zabbix
     requires the proxy/global SNMP timeout.
   * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding and queue check-now discovery for stale rows (no fork, no host sync)
-  * Patch VOSS ``psu.discovery`` / ``psu.detail.discovery`` to skip ``empty(2)`` chassis slots (YAML + API) and queue check-now for stale rows (no host sync)
+  * Patch VOSS ``psu.discovery`` / ``psu.detail.discovery`` to skip ``empty(2)`` chassis slots, delete lost rows immediately, and queue check-now for stale rows (no host sync)
   * PSU Average tickets an installed unit that is not supplying power (EXOS ``presentPowerOff``, VOSS ``unknown``), not only ``down`` / ``presentNotOK``. Empty bays stay silent.
   * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it).
     Stock ``.diff()`` / ``last(#1)<>last(#2)`` is stripped so an admin-up port that
@@ -515,13 +515,16 @@ _IF_LLD_WALK_TIMEOUT = '30s'
 # Zabbix 7 discoveryrule API. Immediate *delete* wipes history on a truncated
 # GETBULK or a wrong IFALIAS filter. A rule that goes not-supported (SNMP
 # timeout) does not process lost resources — a full outage is a graph gap.
-# Disable immediately so X-ports / empty PSU slots leave the honeycomb; delete
-# after 7d (default) so rediscovery re-enables with history intact.
+# Interface LLD: disable immediately so X-ports leave the honeycomb; delete
+# after 7d so rediscovery re-enables with history intact.
+# VOSS PSU LLD: delete immediately. Health honeycomb keeps lastvalue on a
+# disabled item, so a 7d lifetime leaves empty(2) hexes visible.
 _LLD_DELETE_AFTER = 0
 _LLD_DELETE_IMMEDIATELY = 2
 _LLD_DISABLE_IMMEDIATELY = 2
 _LLD_DELETE_LIFETIME = '7d'
 _LLD_DISABLE_LIFETIME = '0'
+_LLD_DELETE_NOW_LIFETIME = '0'
 
 
 def _lld_lost_resources_fields() -> dict:
@@ -533,12 +536,29 @@ def _lld_lost_resources_fields() -> dict:
     }
 
 
+def _voss_psu_lost_resources_fields() -> dict:
+    return {
+        'lifetime': _LLD_DELETE_NOW_LIFETIME,
+        'lifetime_type': _LLD_DELETE_IMMEDIATELY,
+        'enabled_lifetime': _LLD_DISABLE_LIFETIME,
+        'enabled_lifetime_type': _LLD_DISABLE_IMMEDIATELY,
+    }
+
+
+def _lld_disable_now(rule: dict) -> bool:
+    enabled = str(rule.get('enabled_lifetime') if rule.get('enabled_lifetime') is not None else '0')
+    enabled_type = str(rule.get('enabled_lifetime_type') if rule.get('enabled_lifetime_type') is not None else '')
+    return enabled in ('0', '0s', '0d', '0h', '') and enabled_type in (
+        '',
+        str(_LLD_DISABLE_IMMEDIATELY),
+        'DISABLE_IMMEDIATELY',
+    )
+
+
 def _lld_lost_resources_ok(rule: dict) -> bool:
     """Disable lost immediately; delete after 7d — never delete-immediately."""
     lifetime = str(rule.get('lifetime') or '')
     lifetime_type = str(rule.get('lifetime_type') if rule.get('lifetime_type') is not None else '')
-    enabled = str(rule.get('enabled_lifetime') if rule.get('enabled_lifetime') is not None else '0')
-    enabled_type = str(rule.get('enabled_lifetime_type') if rule.get('enabled_lifetime_type') is not None else '')
     if lifetime_type in (str(_LLD_DELETE_IMMEDIATELY), 'DELETE_IMMEDIATELY'):
         return False
     if lifetime in ('0', '0s', '0d', '0h') and lifetime_type not in ('1', 'DELETE_NEVER'):
@@ -548,12 +568,17 @@ def _lld_lost_resources_ok(rule: dict) -> bool:
         str(_LLD_DELETE_AFTER),
         'DELETE_AFTER',
     )
-    disable_now = enabled in ('0', '0s', '0d', '0h', '') and enabled_type in (
-        '',
-        str(_LLD_DISABLE_IMMEDIATELY),
-        'DISABLE_IMMEDIATELY',
+    return delete_after and _lld_disable_now(rule)
+
+
+def _voss_psu_lost_resources_ok(rule: dict) -> bool:
+    """Delete lost VOSS PSU rows immediately so empty hexes leave Health."""
+    lifetime = str(rule.get('lifetime') or '')
+    lifetime_type = str(rule.get('lifetime_type') if rule.get('lifetime_type') is not None else '')
+    delete_now = lifetime_type in (str(_LLD_DELETE_IMMEDIATELY), 'DELETE_IMMEDIATELY') or (
+        lifetime in ('0', '0s', '0d', '0h') and lifetime_type not in ('1', 'DELETE_NEVER')
     )
-    return delete_after and disable_now
+    return delete_now and _lld_disable_now(rule)
 
 
 _PSU_DISCOVERY_KEY = 'psu.discovery'
@@ -599,11 +624,17 @@ def _lld_operator_is_not_matches(op) -> bool:
         return str(op).upper() in ('NOT_MATCHES_REGEX', 'NOT_MATCHES')
 
 
-def _psu_lld_skips_status(rule: dict, *, status_oid: str, skip_regex: str) -> bool:
+def _psu_lld_skips_status(
+    rule: dict,
+    *,
+    status_oid: str,
+    skip_regex: str,
+    lost_ok=_lld_lost_resources_ok,
+) -> bool:
     snmp_oid = str(rule.get('snmp_oid') or '')
     if '{#PSU.STATUS}' not in snmp_oid or status_oid not in snmp_oid:
         return False
-    if not _lld_lost_resources_ok(rule):
+    if not lost_ok(rule):
         return False
     for c in (rule.get('filter') or {}).get('conditions') or []:
         if (
@@ -645,12 +676,19 @@ def _psu_filter_conditions(rule: dict, skip_regex: str) -> list[dict]:
     return conditions
 
 
-def _patch_psu_lld_rule(api, rule: dict, *, snmp_oid: str, skip_regex: str) -> None:
+def _patch_psu_lld_rule(
+    api,
+    rule: dict,
+    *,
+    snmp_oid: str,
+    skip_regex: str,
+    lost_fields: dict | None = None,
+) -> None:
     api.discoveryrule.update(
         itemid=rule['itemid'],
         snmp_oid=snmp_oid,
         filter={'evaltype': _LLD_EVAL_AND, 'conditions': _psu_filter_conditions(rule, skip_regex)},
-        **_lld_lost_resources_fields(),
+        **(lost_fields or _lld_lost_resources_fields()),
     )
 
 
@@ -696,10 +734,11 @@ def patch_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) ->
     (PS#1 UP). Unfiltered LLD paints a second Health hex at ``empty(2)``. Walk
     status too and skip ``empty(2)``. ``down(4)`` / ``unknown(1)`` stay so a
     failed FRU still tickets Average. YAML is the source of truth; this patch
-    covers import failure / leftover OID. Disable lost immediately; delete after
-    7d. Does not host-sync or write NetBox.
+    covers import failure / leftover OID / lifetime=7d. Delete lost immediately
+    so empty hexes leave Health (honeycomb keeps lastvalue on disabled items).
+    Does not host-sync or write NetBox.
     """
-    logger.info('Network: VOSS psu.discovery skip empty(2)')
+    logger.info('Network: VOSS psu.discovery skip empty(2), delete lost now')
     tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
     if not tpls:
         logger.warning('  %s: template not found — skip VOSS PSU LLD patch', template_name)
@@ -718,13 +757,24 @@ def patch_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) ->
             logger.warning('  %s: no %s — skip', template_name, key)
             continue
         rule = rules[0]
-        if _psu_lld_skips_status(rule, status_oid=status_oid, skip_regex=_VOSS_PSU_EMPTY):
+        if _psu_lld_skips_status(
+            rule,
+            status_oid=status_oid,
+            skip_regex=_VOSS_PSU_EMPTY,
+            lost_ok=_voss_psu_lost_resources_ok,
+        ):
             results[key] = 'ok'
-            logger.info('  %s: %s already skips empty(2)', template_name, key)
+            logger.info('  %s: %s already skips empty(2) and deletes lost now', template_name, key)
             continue
-        _patch_psu_lld_rule(api, rule, snmp_oid=snmp_oid, skip_regex=_VOSS_PSU_EMPTY)
+        _patch_psu_lld_rule(
+            api,
+            rule,
+            snmp_oid=snmp_oid,
+            skip_regex=_VOSS_PSU_EMPTY,
+            lost_fields=_voss_psu_lost_resources_fields(),
+        )
         results[key] = 'patched'
-        logger.info('  %s: patched %s to skip empty(2) (itemid=%s)', template_name, key, rule['itemid'])
+        logger.info('  %s: patched %s to skip empty(2) / delete-now (itemid=%s)', template_name, key, rule['itemid'])
     if not results:
         results['status'] = 'no-psu-lld'
     return results
@@ -882,7 +932,12 @@ def assert_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -
         if not rules:
             details[key] = 'missing'
             continue
-        rule_ok = _psu_lld_skips_status(rules[0], status_oid=status_oid, skip_regex=_VOSS_PSU_EMPTY)
+        rule_ok = _psu_lld_skips_status(
+            rules[0],
+            status_oid=status_oid,
+            skip_regex=_VOSS_PSU_EMPTY,
+            lost_ok=_voss_psu_lost_resources_ok,
+        )
         ok = ok and rule_ok
         details[key] = {
             'ok': rule_ok,

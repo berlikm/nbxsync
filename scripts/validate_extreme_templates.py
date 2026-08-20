@@ -109,6 +109,9 @@ def _walk_triggers(tpl: dict) -> list[dict]:
     return out
 
 
+_VOSS_PSU_LLD_KEYS = frozenset({'psu.discovery', 'psu.detail.discovery'})
+
+
 def _lld_lost_policy_ok(rule: dict) -> bool:
     return (
         str(rule.get('lifetime_type') or '') == 'DELETE_AFTER'
@@ -118,12 +121,28 @@ def _lld_lost_policy_ok(rule: dict) -> bool:
     )
 
 
+def _voss_psu_lost_policy_ok(rule: dict) -> bool:
+    """Empty PSU hexes stay on Health until the item is deleted, not merely disabled."""
+    lifetime = str(rule.get('lifetime') or '')
+    lifetime_type = str(rule.get('lifetime_type') or '')
+    enabled = str(rule.get('enabled_lifetime') or '0')
+    enabled_type = str(rule.get('enabled_lifetime_type') or '')
+    delete_now = lifetime_type in ('DELETE_IMMEDIATELY', '2') or (
+        lifetime in ('0', '0s', '0d', '0h') and lifetime_type not in ('DELETE_NEVER', '1')
+    )
+    disable_now = enabled in ('0', '0s', '0d', '0h') and enabled_type in (
+        'DISABLE_IMMEDIATELY',
+        '2',
+    )
+    return delete_now and disable_now
+
+
 def voss_psu_lld_skips_empty(rule: dict, status_oid: str) -> bool:
-    """True when VOSS PSU LLD walks status and filters empty(2), not down(4)."""
+    """True when VOSS PSU LLD walks status, filters empty(2), and deletes lost rows now."""
     oid = str(rule.get('snmp_oid') or '')
     if '{#PSU.STATUS}' not in oid or status_oid not in oid:
         return False
-    if not _lld_lost_policy_ok(rule):
+    if not _voss_psu_lost_policy_ok(rule):
         return False
     for c in (rule.get('filter') or {}).get('conditions') or []:
         op = str(c.get('operator') or '').upper()
@@ -143,6 +162,8 @@ def validate_lld_lost_policy(name: str, tpl: dict) -> None:
         return
     bad = []
     for rule in stated:
+        if name == 'Extreme VOSS by SNMP' and rule.get('key') in _VOSS_PSU_LLD_KEYS:
+            continue
         if not _lld_lost_policy_ok(rule):
             bad.append(
                 f"{rule.get('key')}: lifetime={rule.get('lifetime')} type={rule.get('lifetime_type')} "
