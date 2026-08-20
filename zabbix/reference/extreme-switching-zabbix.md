@@ -382,6 +382,7 @@ Without this, one WAN blip produces one alert per device per site. A Zabbix **pr
 | `sysUpTime` 32-bit counter | wraps at ~497 days → false "restarted" | accept, or prefer `hrSystemUptime` where supported |
 | Stack master failover | ENTITY-MIB serial can change → "device replaced" | Info + manual close |
 | Chassis with two PSU bays | SNMP has a row per bay (`empty(2)` on VOSS, `notPresent(1)` on EXOS) | Padding (empty/notPresent **and** no serial) is skipped; VOSS **deletes** lost padding immediately. Two present / one connected Average (`last()<>{$PSU.OK_STATUS}`), including serialled empty/notPresent, `unknown` / `presentPowerOff`, `down` / `presentNotOK` |
+| Chassis OOB unused | VOSS ifName `mgmt` (empty alias), EXOS ifName `Management` (alias `MgmtPort`) | LLD `{$NET.IF.IFNAME.NOT_MATCHES}` skips them. Not `{$IFCONTROL}`. Data-port mute stays `X`. |
 | Remote sites over WAN | 3 consecutive ICMP misses is easy to hit | use `#5` for remote host groups |
 | LAG aggregate speed | reports the sum of members | excluded by the ifType filter |
 | EXOS VLAN interfaces | discovered as "ports" | excluded by the ifType filter |

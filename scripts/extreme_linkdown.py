@@ -23,6 +23,20 @@ import re
 ACCESS_IFALIAS_MATCHES = '^(USW|US|UP|MON|UW|TMON)(-|$)'
 ACCESS_PORTID_MATCHES = '^(USW|US|UP|MON)(-|$)'
 
+# Chassis OOB is not a labelled data port. VOSS ifName ``mgmt`` (empty alias),
+# EXOS ifName ``Management`` (vendor alias MgmtPort). Mute with LLD, not
+# {$IFCONTROL} and not X. Keep stock loopback/docker skips and VOSS ``Mgmt-``.
+IFNAME_NOT_MATCHES_MACRO = '{$NET.IF.IFNAME.NOT_MATCHES}'
+IFNAME_NOT_MATCHES = (
+    '(^Software Loopback Interface|^NULL[0-9.]*$|^[Ll]o[0-9.]*$|^[Ss]ystem$'
+    '|^Nu[0-9.]*$|^veth[0-9a-z]+$|docker[0-9]+|br-[a-z0-9]{12}'
+    '|^Mgmt-|^mgmt$|^Management$)'
+)
+IFNAME_OOB_ITEM_NEEDLES = (
+    'Interface mgmt(',
+    'Interface Management(',
+)
+
 LINKDOWN_HIGH_GATE = '{$LINKDOWN.HIGH:"{#IFALIAS}"}'
 LINKDOWN_HIGH_MACRO_PREFIX = '{$LINKDOWN.HIGH'
 LINKDOWN_IFALIAS_MACRO = '{$LINKDOWN.IFALIAS}'
@@ -66,6 +80,11 @@ LINKDOWN_IFALIAS_GATE_RE = re.compile(
     r'\s+and\s+\{\$LINKDOWN\.IFALIAS:"\{\#IFALIAS\}"\}=1',
     re.I,
 )
+
+
+def ifname_not_matches_excludes_oob(value: str) -> bool:
+    compact = value or ''
+    return '^mgmt$' in compact and '^Management$' in compact
 
 
 def zabbix_regex_macro_name(base: str, pattern: str) -> str:

@@ -2356,8 +2356,8 @@ zabbix_export:
     - macro: '{$NET.IF.IFNAME.MATCHES}'
       value: ^.*$
     - macro: '{$NET.IF.IFNAME.NOT_MATCHES}'
-      value: (^Software Loopback Interface|^NULL[0-9.]*$|^[Ll]o[0-9.]*$|^[Ss]ystem$|^Nu[0-9.]*$|^veth[0-9a-z]+$|docker[0-9]+|br-[a-z0-9]{12}|^Mgmt-)
-      description: Filter out loopbacks, nulls, docker veth links, docker0 bridge and VOSS management interfaces (Mgmt-clip/Mgmt-oob — no ifTable counters) by default
+      value: '(^Software Loopback Interface|^NULL[0-9.]*$|^[Ll]o[0-9.]*$|^[Ss]ystem$|^Nu[0-9.]*$|^veth[0-9a-z]+$|docker[0-9]+|br-[a-z0-9]{12}|^Mgmt-|^mgmt$|^Management$)'
+      description: Skip loopbacks/docker, VOSS Mgmt-clip/oob, and unused chassis OOB (VOSS ifName mgmt, EXOS ifName Management). Not {$IFCONTROL}.
     - macro: '{$NET.IF.IFOPERSTATUS.MATCHES}'
       value: ^.*$
     - macro: '{$NET.IF.IFOPERSTATUS.NOT_MATCHES}'

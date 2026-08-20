@@ -7,10 +7,13 @@ can fire. Core/Dist/Mgmt keep template {$LINKDOWN.IFALIAS}=1.
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from extreme_linkdown import (
     ACCESS_IFALIAS_MATCHES,
+    IFNAME_NOT_MATCHES,
+    IFNAME_NOT_MATCHES_MACRO,
     LINKDOWN_IFALIAS_ACCESS_DEFAULT,
     LINKDOWN_IFALIAS_GATE,
     LINKDOWN_IFALIAS_MACRO,
@@ -19,6 +22,7 @@ from extreme_linkdown import (
     access_zabbix_host_macros,
     canonicalize_linkdown_problem,
     canonicalize_linkdown_recovery,
+    ifname_not_matches_excludes_oob,
     is_platform_linkdown_name,
     linkdown_has_diff_guard,
     linkdown_has_ifalias_gate,
@@ -157,6 +161,28 @@ class UngateLinkdownTests(unittest.TestCase):
         self.assertEqual(got[linkdown_ifalias_regex_macro()], '1')
         self.assertEqual(LINKDOWN_IFALIAS_TEMPLATE_VALUE, '1')
         self.assertEqual(got['{$NET.IF.IFALIAS.MATCHES}'], ACCESS_IFALIAS_MATCHES)
+
+
+class ChassisOobIfnameTests(unittest.TestCase):
+    def test_excludes_voss_mgmt_and_exos_management(self):
+        self.assertTrue(ifname_not_matches_excludes_oob(IFNAME_NOT_MATCHES))
+        self.assertEqual(IFNAME_NOT_MATCHES_MACRO, '{$NET.IF.IFNAME.NOT_MATCHES}')
+        self.assertIsNotNone(re.search(IFNAME_NOT_MATCHES, 'mgmt'))
+        self.assertIsNotNone(re.search(IFNAME_NOT_MATCHES, 'Management'))
+        self.assertIsNotNone(re.search(IFNAME_NOT_MATCHES, 'Mgmt-oob'))
+
+    def test_keeps_data_ports_and_ap_mgmt0(self):
+        for name in ('1/1', '1:24', 'mgmt0', 'eth0', 'MgmtPort'):
+            self.assertIsNone(re.search(IFNAME_NOT_MATCHES, name), name)
+
+    def test_old_voss_mgmthyphen_only_is_not_enough(self):
+        old = (
+            '(^Software Loopback Interface|^NULL[0-9.]*$|^[Ll]o[0-9.]*$|^[Ss]ystem$'
+            '|^Nu[0-9.]*$|^veth[0-9a-z]+$|docker[0-9]+|br-[a-z0-9]{12}|^Mgmt-)'
+        )
+        self.assertFalse(ifname_not_matches_excludes_oob(old))
+        self.assertIsNone(re.search(old, 'mgmt'))
+        self.assertIsNone(re.search(old, 'Management'))
 
 
 if __name__ == '__main__':

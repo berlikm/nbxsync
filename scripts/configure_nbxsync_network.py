@@ -32,7 +32,9 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     still-down port. Same prototype on EXOS and VOSS. Core/Dist/Mgmt every
     admin-up except X. Access only a grammar display-string: LLD plus
     ``{$LINKDOWN.IFALIAS:"{#IFALIAS}"}``. ``--apply`` writes those Access
-    host macros (not HostSync, not Core).
+    host macros (not HostSync, not Core). Chassis OOB ifName ``mgmt`` /
+    ``Management`` is skipped in ``{$NET.IF.IFNAME.NOT_MATCHES}`` (unused,
+    not connected) — not ``{$IFCONTROL}``.
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
@@ -147,6 +149,9 @@ from extreme_health_zabbix import (
 from extreme_linkdown import (
     ACCESS_IFALIAS_MATCHES,
     ACCESS_PORTID_MATCHES,
+    IFNAME_NOT_MATCHES as _IFNAME_NOT_MATCHES,
+    IFNAME_NOT_MATCHES_MACRO as _IFNAME_NOT_MATCHES_MACRO,
+    IFNAME_OOB_ITEM_NEEDLES as _IFNAME_OOB_ITEM_NEEDLES,
     LINKDOWN_HIGH_GATE as _LINKDOWN_HIGH_GATE,
     LINKDOWN_HIGH_MACRO_PREFIX as _LINKDOWN_HIGH_MACRO_PREFIX,
     LINKDOWN_IFALIAS_ACCESS_DEFAULT as _LINKDOWN_IFALIAS_ACCESS_DEFAULT,
@@ -166,6 +171,7 @@ from extreme_linkdown import (
     linkdown_manual_close_on as _linkdown_manual_close_on,
     linkdown_recovery_is_up as _linkdown_recovery_is_up,
     linkdown_expr_equal as _linkdown_expr_equal,
+    ifname_not_matches_excludes_oob as _ifname_not_matches_excludes_oob,
 )
 from extreme_psu import (
     EXOS_PSU_DISCOVERY_OID as _PSU_DISCOVERY_OID,
@@ -1320,6 +1326,46 @@ def assert_linkdown_one_average(api, template_name: str) -> tuple[bool, str]:
     return ok, f'linkdown={names} ifalias={macro_vals.get(_LINKDOWN_IFALIAS_MACRO)!r}'
 
 
+_IFNAME_NOT_MATCHES_DESCRIPTION = (
+    'Skip loopbacks/docker, VOSS Mgmt-clip/oob, and unused chassis OOB '
+    '(VOSS ifName mgmt, EXOS ifName Management). Not {$IFCONTROL}.'
+)
+
+
+def patch_ifname_skip_chassis_oob(api) -> dict[str, str]:
+    """Do not discover unused chassis OOB (VOSS mgmt, EXOS Management).
+
+    Core/Dist IFALIAS is ``.*`` except X, so empty ``mgmt()`` and vendor
+    ``Management(MgmtPort)`` ticket Average. Skip by ifName on the template
+    so every role inherits it. Does not host-sync or write NetBox.
+    """
+    logger.info('Network: skip chassis OOB ifName mgmt / Management')
+    results: dict[str, str] = {}
+    for template_name in _LINKDOWN_TEMPLATES:
+        results[template_name] = _upsert_template_macros(
+            api,
+            template_name,
+            {_IFNAME_NOT_MATCHES_MACRO: _IFNAME_NOT_MATCHES},
+            {_IFNAME_NOT_MATCHES_MACRO: _IFNAME_NOT_MATCHES_DESCRIPTION},
+        )
+        logger.info('  %s: IFNAME.NOT_MATCHES %s', template_name, results[template_name])
+    return results
+
+
+def assert_ifname_skip_chassis_oob(api, template_name: str) -> tuple[bool, str]:
+    tpls = api.template.get(
+        filter={'name': [template_name]},
+        output=['templateid'],
+        selectMacros='extend',
+    )
+    if not tpls:
+        return True, 'template absent — n/a'
+    have = {m.get('macro'): str(m.get('value', '')) for m in (tpls[0].get('macros') or [])}
+    value = have.get(_IFNAME_NOT_MATCHES_MACRO, '')
+    ok = _ifname_not_matches_excludes_oob(value)
+    return ok, value
+
+
 def _discovery_item_timeout_supported(rule: dict) -> bool:
     """Zabbix allows discoveryrule.timeout for SNMP only on walk[/get[ OIDs."""
     oid = str(rule.get('snmp_oid') or '')
@@ -1755,6 +1801,38 @@ def _queue_if_lld_checks(api, hostids: list[str], *, log_label: str) -> dict[str
         len(task_ids),
     )
     return {'status': 'queued', 'hosts': len(ordered), 'tasks': len(task_ids)}
+
+
+def queue_oob_if_lld_checks(api) -> dict[str, int | str]:
+    """Check-now IF LLD on hosts still holding chassis OOB interface rows."""
+    template_ids: set[str] = set()
+    for name in (_EXOS_STOCK_TEMPLATE, _EXOS_OBSERVABILITY_TEMPLATE, _VOSS_TEMPLATE):
+        found = api.template.get(filter={'name': [name]}, output=['templateid']) or []
+        template_ids.update(str(t['templateid']) for t in found)
+    if not template_ids:
+        return {'status': 'missing-template', 'hosts': 0, 'tasks': 0}
+
+    host_ids: set[str] = set()
+    for template_id in sorted(template_ids):
+        hosts = api.host.get(templateids=[template_id], output=['hostid']) or []
+        host_ids.update(str(h['hostid']) for h in hosts)
+    if not host_ids:
+        return {'status': 'no-hosts', 'hosts': 0, 'tasks': 0}
+
+    stale: set[str] = set()
+    ordered = sorted(host_ids)
+    for start in range(0, len(ordered), 100):
+        chunk = ordered[start:start + 100]
+        for needle in _IFNAME_OOB_ITEM_NEEDLES:
+            items = api.item.get(
+                hostids=chunk,
+                search={'name': needle},
+                output=['hostid'],
+            ) or []
+            stale.update(str(item['hostid']) for item in items)
+    if not stale:
+        return {'status': 'clean', 'hosts': 0, 'tasks': 0}
+    return _queue_if_lld_checks(api, sorted(stale), log_label='chassis OOB')
 
 
 def patch_access_port_scope_host_macros(api) -> dict[str, int | str]:
@@ -2217,6 +2295,17 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             ok, detail = assert_exos_interface_lld_rollout(api)
             # Lab stub EXOS has no real IF LLD — treat missing/n/a as pass
             record('exos_if_lld_rollout_assert', ok or 'n/a' in detail, detail, group='import')
+
+            ifname_oob = patch_ifname_skip_chassis_oob(api)
+            for tname, status in ifname_oob.items():
+                record(
+                    f'ifname_oob_{tname}',
+                    status in ('ok', 'patched', 'missing'),
+                    status,
+                    group='import',
+                )
+                ok, detail = assert_ifname_skip_chassis_oob(api, tname)
+                record(f'ifname_oob_assert_{tname}', ok or 'n/a' in detail, detail, group='import')
 
             psu_lld_status = patch_exos_psu_lld_present_only(api)
             record(
@@ -2747,6 +2836,8 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         step_global_macros_zabbix(api)
         patch_etherlike_ifalias_filters(api)
         patch_exos_interface_lld_rollout(api)
+        patch_ifname_skip_chassis_oob(api)
+        queue_oob_if_lld_checks(api)
         patch_exos_psu_lld_present_only(api)
         queue_exos_psu_lld_checks(api)
         patch_voss_psu_lld_present_only(api)

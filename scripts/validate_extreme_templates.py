@@ -21,7 +21,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
-from extreme_linkdown import linkdown_is_not_up, linkdown_recovery_is_up
+from extreme_linkdown import (
+    IFNAME_NOT_MATCHES,
+    ifname_not_matches_excludes_oob,
+    linkdown_is_not_up,
+    linkdown_recovery_is_up,
+)
 from extreme_psu import (
     VOSS_PSU_SERIAL_OID,
     psu_expr_is_not_up,
@@ -566,6 +571,12 @@ def validate_voss(doc: dict) -> None:
         and '{$LINKDOWN.IFALIAS:"{#IFALIAS}"}=0' in ld_rec
         and macros.get('{$LINKDOWN.IFALIAS}') == '1',
         f'expr={ld_expr[:120]} rec={ld_rec[:80]} macro={macros.get("{$LINKDOWN.IFALIAS}")!r}',
+    )
+    record(
+        'VOSS IFNAME skips chassis OOB mgmt',
+        macros.get('{$NET.IF.IFNAME.NOT_MATCHES}') == IFNAME_NOT_MATCHES
+        and ifname_not_matches_excludes_oob(macros.get('{$NET.IF.IFNAME.NOT_MATCHES}') or ''),
+        str(macros.get('{$NET.IF.IFNAME.NOT_MATCHES}')),
     )
     record(
         'VOSS link-down description includes Access',
