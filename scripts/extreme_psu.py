@@ -98,6 +98,82 @@ def _op_is_matches(op) -> bool:
         return str(op).upper() in {'MATCHES_REGEX', 'MATCHES'}
 
 
+ZBX_PREPROC_JAVASCRIPT = 21
+
+
+def psu_lld_js_default_macros() -> str:
+    """Fill missing LLD macros so the serial filter can run.
+
+    EXOS ``extremePowerSupplyTable`` has a row per stack slot. Padding
+    ``notPresent`` indexes often have **no** serial OID instance, so Zabbix
+    omits ``{#PSU.SERIAL}`` and refuses the filter with
+    ``no value received for macro "{#PSU.SERIAL}"``. Empty string is padding.
+    """
+    return (
+        "try {\n"
+        "\tvar data = JSON.parse(value);\n"
+        "}\n"
+        "catch (error) {\n"
+        "\tthrow 'Failed to parse JSON of PSU discovery.';\n"
+        "}\n"
+        "var fields = ['{#PSU.STATUS}','{#PSU.SERIAL}'];\n"
+        "data.forEach(function (element) {\n"
+        "\tfields.forEach(function (field) {\n"
+        "\t\telement[field] = element[field] || '';\n"
+        "\t});\n"
+        "});\n"
+        "return JSON.stringify(data);\n"
+    )
+
+
+def _preprocessing_script(step: dict) -> str:
+    params = step.get('params')
+    if params is None:
+        params = step.get('parameters')
+    if isinstance(params, list):
+        return '\n'.join(str(p) for p in params)
+    return str(params or '')
+
+
+def psu_lld_defaults_missing_macros(rule: dict) -> bool:
+    """True when LLD JS defaults missing {#PSU.SERIAL} before the filter."""
+    for step in rule.get('preprocessing') or []:
+        raw = str(step.get('type') or '').upper()
+        if raw not in {'JAVASCRIPT', '21'}:
+            continue
+        text = _preprocessing_script(step)
+        if PSU_SERIAL_MACRO in text and 'JSON.parse' in text and '||' in text:
+            return True
+    return False
+
+
+def psu_lld_preprocessing_payload(existing: list | None = None) -> list[dict]:
+    """API preprocessing list: keep unrelated steps, ensure serial default JS."""
+    kept: list[dict] = []
+    for step in existing or []:
+        script = _preprocessing_script(step)
+        if PSU_SERIAL_MACRO in script and 'JSON.parse' in script:
+            continue
+        entry = {
+            'type': step.get('type', ZBX_PREPROC_JAVASCRIPT),
+            'params': step.get('params', script),
+        }
+        if step.get('error_handler') is not None:
+            entry['error_handler'] = step['error_handler']
+        if step.get('error_handler_params') is not None:
+            entry['error_handler_params'] = step['error_handler_params']
+        kept.append(entry)
+    kept.append(
+        {
+            'type': ZBX_PREPROC_JAVASCRIPT,
+            'params': psu_lld_js_default_macros(),
+            'error_handler': 0,
+            'error_handler_params': '',
+        }
+    )
+    return kept
+
+
 def psu_lld_keeps_installed_fru(
     rule: dict,
     *,
@@ -105,11 +181,13 @@ def psu_lld_keeps_installed_fru(
     serial_oid: str,
     empty_regex: str,
 ) -> bool:
-    """True when LLD walks status+serial and keeps a FRU that is not padding."""
+    """True when LLD walks status+serial, defaults missing serial, keeps a FRU."""
     oid = str(rule.get('snmp_oid') or '')
     if PSU_STATUS_MACRO not in oid or PSU_SERIAL_MACRO not in oid:
         return False
     if status_oid not in oid or serial_oid not in oid:
+        return False
+    if not psu_lld_defaults_missing_macros(rule):
         return False
     filt = rule.get('filter') or {}
     if not _filter_eval_is_or(filt):

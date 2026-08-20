@@ -415,6 +415,23 @@ _PSU_FRU_LLD = """      lifetime: '0'
           value: '.+'
           operator: MATCHES_REGEX
           formulaid: B
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          try {
+          	var data = JSON.parse(value);
+          }
+          catch (error) {
+          	throw 'Failed to parse JSON of PSU discovery.';
+          }
+          var fields = ['{#PSU.STATUS}','{#PSU.SERIAL}'];
+          data.forEach(function (element) {
+          	fields.forEach(function (field) {
+          		element[field] = element[field] || '';
+          	});
+          });
+          return JSON.stringify(data);
 """
 
 
@@ -700,7 +717,7 @@ def build_discovery_rules() -> str:
             "psu.detail.discovery",
             f"discovery[{{#SNMPVALUE}},{OID['psuDetId']},{{#PSU.STATUS}},{OID['psuDetOper']},{{#PSU.SERIAL}},{OID['psuDetSN']}]",
             psu_items,
-            "RAPID-CITY rcChasPowerSupplyDetailTable. Keep a row when status is not empty(2) or serial is set.",
+            "RAPID-CITY rcChasPowerSupplyDetailTable. Keep a row when status is not empty(2) or serial is set. LLD JS defaults missing {#PSU.SERIAL} so Zabbix can apply the filter.",
             filter_yaml=_PSU_FRU_LLD,
         )
     )

@@ -57,7 +57,7 @@ Walk: `1.3.6.1.4.1.2272.1.4.7.1.1.1`
 
 ## LLD: PSU (`psu.discovery` / `psu.detail.discovery`)
 
-Walk id + status + serial. Keep a row when `{#PSU.STATUS}` **NOT_MATCHES** `^2$` (`empty`) **or** `{#PSU.SERIAL}` **MATCHES** `.+`. Padding (empty, no serial) is skipped. Fitted but unplugged (unknown / empty-with-serial / down) stays.
+Walk id + status + serial. LLD JS defaults missing `{#PSU.STATUS}` / `{#PSU.SERIAL}` to empty so the filter can run when SNMP omits the serial OID. Keep a row when `{#PSU.STATUS}` **NOT_MATCHES** `^2$` (`empty`) **or** `{#PSU.SERIAL}` **MATCHES** `.+`. Padding (empty, no serial) is skipped. Fitted but unplugged (unknown / empty-with-serial / down) stays.
 Lost resources: **delete immediately** (`lifetime: 0`) so padding leaves Health. Disable-now is not enough — honeycomb keeps lastvalue on a disabled item.
 Average when `last()<>{$PSU.OK_STATUS}` (two present / one connected, including serialled empty).
 

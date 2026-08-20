@@ -193,6 +193,7 @@ from extreme_psu import (
     VOSS_PSU_STATUS_OID as _VOSS_PSU_STATUS_OID,
     psu_expr_is_not_up as _psu_expr_is_not_up,
     psu_lld_keeps_installed_fru as _psu_lld_keeps_installed_fru,
+    psu_lld_preprocessing_payload as _psu_lld_preprocessing_payload,
     psu_power_off_name_match as _psu_power_off_name_match,
     psu_trigger_name_match as _psu_trigger_name_match,
     rewrite_psu_not_up_expr as _rewrite_psu_not_up_expr,
@@ -654,6 +655,11 @@ _PSU_LLD_RULE_OUTPUT = [
     'enabled_lifetime',
     'enabled_lifetime_type',
 ]
+_PSU_LLD_GET_KW = {
+    'output': _PSU_LLD_RULE_OUTPUT,
+    'selectFilter': 'extend',
+    'selectPreprocessing': 'extend',
+}
 
 
 def _lld_operator_is_not_matches(op) -> bool:
@@ -718,6 +724,7 @@ def _patch_psu_lld_rule(
         itemid=rule['itemid'],
         snmp_oid=snmp_oid,
         filter={'evaltype': _LLD_EVAL_OR, 'conditions': _psu_fru_filter_conditions(rule, empty_regex)},
+        preprocessing=_psu_lld_preprocessing_payload(rule.get('preprocessing')),
         **(lost_fields or _lld_lost_resources_fields()),
     )
 
@@ -726,7 +733,9 @@ def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by S
     """Discover installed EXOS PSUs, including presentPowerOff and serialled notPresent.
 
     ``extremePowerSupplyTable`` has a row for every possible stack member slot.
-    Padding is ``notPresent`` with an empty serial — skip those. A fitted PSU
+    Padding is ``notPresent`` with no serial OID instance — Zabbix then omits
+    ``{#PSU.SERIAL}`` and the filter errors. LLD JS defaults that macro to
+    empty so padding skips and a serialled unplugged FRU stays. A fitted PSU
     with no AC is ``presentPowerOff(4)`` or, on some code, ``notPresent`` with
     a serial; both stay so two present / one connected tickets Average.
     Disable lost immediately; delete after 7d. Does not fork the stock YAML.
@@ -740,8 +749,7 @@ def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by S
     rules = api.discoveryrule.get(
         hostids=tid,
         filter={'key_': _PSU_DISCOVERY_KEY},
-        output=_PSU_LLD_RULE_OUTPUT,
-        selectFilter='extend',
+        **_PSU_LLD_GET_KW,
     )
     if not rules:
         logger.warning('  %s: no %s — skip', template_name, _PSU_DISCOVERY_KEY)
@@ -779,8 +787,7 @@ def patch_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) ->
         rules = api.discoveryrule.get(
             hostids=tid,
             filter={'key_': key},
-            output=_PSU_LLD_RULE_OUTPUT,
-            selectFilter='extend',
+            **_PSU_LLD_GET_KW,
         )
         if not rules:
             results[key] = 'no-psu-lld'
@@ -908,8 +915,7 @@ def assert_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by 
     rules = api.discoveryrule.get(
         hostids=tpls[0]['templateid'],
         filter={'key_': _PSU_DISCOVERY_KEY},
-        output=_PSU_LLD_RULE_OUTPUT,
-        selectFilter='extend',
+        **_PSU_LLD_GET_KW,
     )
     if not rules:
         return True, 'no PSU LLD — n/a'
@@ -932,8 +938,7 @@ def assert_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -
         rules = api.discoveryrule.get(
             hostids=tpls[0]['templateid'],
             filter={'key_': key},
-            output=_PSU_LLD_RULE_OUTPUT,
-            selectFilter='extend',
+            **_PSU_LLD_GET_KW,
         )
         if not rules:
             details[key] = 'missing'

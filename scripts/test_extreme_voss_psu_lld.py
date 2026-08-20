@@ -14,6 +14,7 @@ from extreme_psu import (
     VOSS_PSU_DISCOVERY_OID,
     VOSS_PSU_SERIAL_OID,
     psu_expr_is_not_up,
+    psu_lld_defaults_missing_macros,
 )
 from validate_extreme_templates import _tpl, voss_psu_lld_keeps_installed_fru
 
@@ -49,6 +50,7 @@ class VossPsuInstalledFruTests(unittest.TestCase):
         self.assertIn('^2$', values)
         self.assertIn('.+', values)
         self.assertNotIn('^4$', values)
+        self.assertTrue(psu_lld_defaults_missing_macros(rule))
 
     def test_detail_discovery_keeps_serialled_empty_keeps_down(self):
         rule = _rules()['psu.detail.discovery']
@@ -57,6 +59,7 @@ class VossPsuInstalledFruTests(unittest.TestCase):
         values = [c.get('value') for c in (rule.get('filter') or {}).get('conditions') or []]
         self.assertIn('^2$', values)
         self.assertNotIn('^4$', values)
+        self.assertTrue(psu_lld_defaults_missing_macros(rule))
 
     def test_empty_without_status_walk_is_rejected(self):
         rule = {
@@ -102,6 +105,17 @@ class VossPsuInstalledFruTests(unittest.TestCase):
                     {'macro': '{#PSU.STATUS}', 'value': '^2$', 'operator': 'NOT_MATCHES_REGEX'},
                 ],
             },
+        }
+        self.assertFalse(voss_psu_lld_keeps_installed_fru(rule, _STATUS_OID))
+
+    def test_filter_without_serial_default_js_is_not_enough(self):
+        rule = {
+            'snmp_oid': VOSS_PSU_DISCOVERY_OID,
+            'lifetime': '0',
+            'lifetime_type': 'DELETE_IMMEDIATELY',
+            'enabled_lifetime': '0',
+            'enabled_lifetime_type': 'DISABLE_IMMEDIATELY',
+            'filter': _fru_filter(),
         }
         self.assertFalse(voss_psu_lld_keeps_installed_fru(rule, _STATUS_OID))
 

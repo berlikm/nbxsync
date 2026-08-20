@@ -1600,7 +1600,24 @@ zabbix_export:
           value: '.+'
           operator: MATCHES_REGEX
           formulaid: B
-      description: 'RAPID-CITY rcChasPowerSupplyTable. Keep a row when status is not empty(2) or serial is set. Padding (empty, no serial) is skipped. Fitted but unplugged (unknown / empty-with-serial / down) stays so two present / one connected tickets.'
+      description: 'RAPID-CITY rcChasPowerSupplyTable. Keep a row when status is not empty(2) or serial is set. Padding (empty, no serial) is skipped. Fitted but unplugged (unknown / empty-with-serial / down) stays so two present / one connected tickets. LLD JS defaults missing {#PSU.SERIAL} so Zabbix can apply the filter.'
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          try {
+          	var data = JSON.parse(value);
+          }
+          catch (error) {
+          	throw 'Failed to parse JSON of PSU discovery.';
+          }
+          var fields = ['{#PSU.STATUS}','{#PSU.SERIAL}'];
+          data.forEach(function (element) {
+          	fields.forEach(function (field) {
+          		element[field] = element[field] || '';
+          	});
+          });
+          return JSON.stringify(data);
       item_prototypes:
       - uuid: 69e8278ce76c4edcaea7deb1001dc48e
         name: 'PSU {#SNMPVALUE}: Power supply status'
@@ -2006,7 +2023,24 @@ zabbix_export:
           value: '.+'
           operator: MATCHES_REGEX
           formulaid: B
-      description: 'RAPID-CITY rcChasPowerSupplyDetailTable. Keep a row when status is not empty(2) or serial is set. Padding (empty, no serial) is skipped.'
+      description: 'RAPID-CITY rcChasPowerSupplyDetailTable. Keep a row when status is not empty(2) or serial is set. Padding (empty, no serial) is skipped. LLD JS defaults missing {#PSU.SERIAL} so Zabbix can apply the filter.'
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          try {
+          	var data = JSON.parse(value);
+          }
+          catch (error) {
+          	throw 'Failed to parse JSON of PSU discovery.';
+          }
+          var fields = ['{#PSU.STATUS}','{#PSU.SERIAL}'];
+          data.forEach(function (element) {
+          	fields.forEach(function (field) {
+          		element[field] = element[field] || '';
+          	});
+          });
+          return JSON.stringify(data);
       item_prototypes:
       - uuid: b3175a0aa6034dabb56429bd4c634d87
         name: 'PSU {#SNMPINDEX}: Detail oper status'

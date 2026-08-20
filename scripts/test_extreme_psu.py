@@ -6,12 +6,18 @@ from __future__ import annotations
 import unittest
 
 from extreme_psu import (
+    EXOS_PSU_DISCOVERY_OID,
+    EXOS_PSU_SERIAL_OID,
+    EXOS_PSU_STATUS_OID,
     PSU_SERIAL_MACRO,
     VOSS_PSU_DISCOVERY_OID,
     VOSS_PSU_SERIAL_OID,
     VOSS_PSU_STATUS_OID,
     psu_expr_is_not_up,
+    psu_lld_defaults_missing_macros,
+    psu_lld_js_default_macros,
     psu_lld_keeps_installed_fru,
+    psu_lld_preprocessing_payload,
     psu_not_up_expr,
     rewrite_psu_not_up_expr,
 )
@@ -67,25 +73,71 @@ class RewritePsuNotUpTests(unittest.TestCase):
         path = '/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}]'
         self.assertEqual(psu_not_up_expr(path), _VOSS_WANT)
 
-    def test_fru_filter_keeps_empty_with_serial(self):
+    def _fru_rule(self, *, snmp_oid, empty_regex, with_js=True):
         rule = {
-            'snmp_oid': VOSS_PSU_DISCOVERY_OID,
+            'snmp_oid': snmp_oid,
             'filter': {
                 'evaltype': 'OR',
                 'conditions': [
-                    {'macro': '{#PSU.STATUS}', 'value': '^2$', 'operator': 'NOT_MATCHES_REGEX'},
+                    {'macro': '{#PSU.STATUS}', 'value': empty_regex, 'operator': 'NOT_MATCHES_REGEX'},
                     {'macro': PSU_SERIAL_MACRO, 'value': '.+', 'operator': 'MATCHES_REGEX'},
                 ],
             },
         }
+        if with_js:
+            rule['preprocessing'] = [
+                {'type': 'JAVASCRIPT', 'params': psu_lld_js_default_macros()},
+            ]
+        return rule
+
+    def test_fru_filter_keeps_empty_with_serial(self):
         self.assertTrue(
             psu_lld_keeps_installed_fru(
-                rule,
+                self._fru_rule(snmp_oid=VOSS_PSU_DISCOVERY_OID, empty_regex='^2$'),
                 status_oid=VOSS_PSU_STATUS_OID,
                 serial_oid=VOSS_PSU_SERIAL_OID,
                 empty_regex='^2$',
             )
         )
+
+    def test_exos_fru_filter_keeps_serialled_notpresent(self):
+        self.assertTrue(
+            psu_lld_keeps_installed_fru(
+                self._fru_rule(snmp_oid=EXOS_PSU_DISCOVERY_OID, empty_regex='^1$'),
+                status_oid=EXOS_PSU_STATUS_OID,
+                serial_oid=EXOS_PSU_SERIAL_OID,
+                empty_regex='^1$',
+            )
+        )
+
+    def test_fru_filter_without_serial_default_js_is_not_enough(self):
+        """EXOS padding slots omit the serial OID; filter-only LLD errors."""
+        self.assertFalse(
+            psu_lld_keeps_installed_fru(
+                self._fru_rule(
+                    snmp_oid=EXOS_PSU_DISCOVERY_OID,
+                    empty_regex='^1$',
+                    with_js=False,
+                ),
+                status_oid=EXOS_PSU_STATUS_OID,
+                serial_oid=EXOS_PSU_SERIAL_OID,
+                empty_regex='^1$',
+            )
+        )
+
+    def test_lld_js_defaults_missing_serial(self):
+        js = psu_lld_js_default_macros()
+        self.assertIn('{#PSU.SERIAL}', js)
+        self.assertIn('{#PSU.STATUS}', js)
+        self.assertIn("|| ''", js)
+        self.assertTrue(psu_lld_defaults_missing_macros({'preprocessing': [{'type': 21, 'params': js}]}))
+        self.assertFalse(psu_lld_defaults_missing_macros({'preprocessing': [{'type': 21, 'params': 'return value;'}]}))
+
+    def test_preprocessing_payload_replaces_serial_default_js(self):
+        payload = psu_lld_preprocessing_payload([{'type': 21, 'params': psu_lld_js_default_macros()}])
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]['type'], 21)
+        self.assertIn('{#PSU.SERIAL}', payload[0]['params'])
 
     def test_status_only_skip_empty_is_not_enough(self):
         rule = {
