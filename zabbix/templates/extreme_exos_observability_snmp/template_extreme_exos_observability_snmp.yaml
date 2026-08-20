@@ -508,15 +508,21 @@ zabbix_export:
             value: '0'
           - type: STRING
             name: thresholds.1.color
-            value: 0EC9AC
-          - type: STRING
-            name: thresholds.1.threshold
-            value: '2'
-          - type: STRING
-            name: thresholds.2.color
             value: FF465C
           - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: STRING
+            name: thresholds.2.color
+            value: 0EC9AC
+          - type: STRING
             name: thresholds.2.threshold
+            value: '2'
+          - type: STRING
+            name: thresholds.3.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.3.threshold
             value: '3'
         - type: gauge
           name: Temp

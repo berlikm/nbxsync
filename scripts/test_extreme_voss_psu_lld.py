@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VOSS PSU LLD must skip empty chassis bays and still ticket a failed FRU."""
+"""VOSS PSU LLD must keep serialled FRUs, skip padding, and ticket not-up."""
 
 from __future__ import annotations
 
@@ -8,7 +8,14 @@ from pathlib import Path
 
 import yaml
 
-from validate_extreme_templates import _tpl, voss_psu_lld_skips_empty
+from extreme_psu import (
+    PSU_SERIAL_MACRO,
+    VOSS_PSU_DETAIL_DISCOVERY_OID,
+    VOSS_PSU_DISCOVERY_OID,
+    VOSS_PSU_SERIAL_OID,
+    psu_expr_is_not_up,
+)
+from validate_extreme_templates import _tpl, voss_psu_lld_keeps_installed_fru
 
 ROOT = Path(__file__).resolve().parents[1]
 VOSS_YAML = ROOT / 'zabbix/templates/extreme_voss_snmp/template_net_extreme_voss_snmp.yaml'
@@ -22,19 +29,31 @@ def _rules() -> dict[str, dict]:
     return {r.get('key'): r for r in (tpl.get('discovery_rules') or [])}
 
 
-class VossPsuEmptySkipTests(unittest.TestCase):
-    def test_status_discovery_skips_empty_keeps_down(self):
+def _fru_filter() -> dict:
+    return {
+        'evaltype': 'OR',
+        'conditions': [
+            {'macro': '{#PSU.STATUS}', 'value': '^2$', 'operator': 'NOT_MATCHES_REGEX'},
+            {'macro': PSU_SERIAL_MACRO, 'value': '.+', 'operator': 'MATCHES_REGEX'},
+        ],
+    }
+
+
+class VossPsuInstalledFruTests(unittest.TestCase):
+    def test_status_discovery_keeps_serialled_empty_keeps_down(self):
         rule = _rules()['psu.discovery']
-        self.assertTrue(voss_psu_lld_skips_empty(rule, _STATUS_OID))
-        self.assertIn(_STATUS_OID, rule['snmp_oid'])
+        self.assertTrue(voss_psu_lld_keeps_installed_fru(rule, _STATUS_OID))
+        self.assertEqual(rule['snmp_oid'], VOSS_PSU_DISCOVERY_OID)
+        self.assertIn(VOSS_PSU_SERIAL_OID, rule['snmp_oid'])
         values = [c.get('value') for c in (rule.get('filter') or {}).get('conditions') or []]
         self.assertIn('^2$', values)
+        self.assertIn('.+', values)
         self.assertNotIn('^4$', values)
 
-    def test_detail_discovery_skips_empty_keeps_down(self):
+    def test_detail_discovery_keeps_serialled_empty_keeps_down(self):
         rule = _rules()['psu.detail.discovery']
-        self.assertTrue(voss_psu_lld_skips_empty(rule, _DETAIL_STATUS_OID))
-        self.assertIn(_DETAIL_STATUS_OID, rule['snmp_oid'])
+        self.assertTrue(voss_psu_lld_keeps_installed_fru(rule, _DETAIL_STATUS_OID))
+        self.assertEqual(rule['snmp_oid'], VOSS_PSU_DETAIL_DISCOVERY_OID)
         values = [c.get('value') for c in (rule.get('filter') or {}).get('conditions') or []]
         self.assertIn('^2$', values)
         self.assertNotIn('^4$', values)
@@ -46,15 +65,28 @@ class VossPsuEmptySkipTests(unittest.TestCase):
             'lifetime_type': 'DELETE_IMMEDIATELY',
             'enabled_lifetime': '0',
             'enabled_lifetime_type': 'DISABLE_IMMEDIATELY',
-            'filter': {
-                'conditions': [
-                    {'macro': '{#PSU.STATUS}', 'value': '^2$', 'operator': 'NOT_MATCHES_REGEX'},
-                ]
-            },
+            'filter': _fru_filter(),
         }
-        self.assertFalse(voss_psu_lld_skips_empty(rule, _STATUS_OID))
+        self.assertFalse(voss_psu_lld_keeps_installed_fru(rule, _STATUS_OID))
 
     def test_skipping_down_is_not_the_empty_filter(self):
+        rule = {
+            'snmp_oid': VOSS_PSU_DISCOVERY_OID,
+            'lifetime': '0',
+            'lifetime_type': 'DELETE_IMMEDIATELY',
+            'enabled_lifetime': '0',
+            'enabled_lifetime_type': 'DISABLE_IMMEDIATELY',
+            'filter': {
+                'evaltype': 'OR',
+                'conditions': [
+                    {'macro': '{#PSU.STATUS}', 'value': '^4$', 'operator': 'NOT_MATCHES_REGEX'},
+                    {'macro': PSU_SERIAL_MACRO, 'value': '.+', 'operator': 'MATCHES_REGEX'},
+                ],
+            },
+        }
+        self.assertFalse(voss_psu_lld_keeps_installed_fru(rule, _STATUS_OID))
+
+    def test_and_skip_empty_without_serial_is_not_enough(self):
         rule = {
             'snmp_oid': (
                 'discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.4.8.1.1.1,'
@@ -65,30 +97,24 @@ class VossPsuEmptySkipTests(unittest.TestCase):
             'enabled_lifetime': '0',
             'enabled_lifetime_type': 'DISABLE_IMMEDIATELY',
             'filter': {
+                'evaltype': 'AND',
                 'conditions': [
-                    {'macro': '{#PSU.STATUS}', 'value': '^4$', 'operator': 'NOT_MATCHES_REGEX'},
-                ]
+                    {'macro': '{#PSU.STATUS}', 'value': '^2$', 'operator': 'NOT_MATCHES_REGEX'},
+                ],
             },
         }
-        self.assertFalse(voss_psu_lld_skips_empty(rule, _STATUS_OID))
+        self.assertFalse(voss_psu_lld_keeps_installed_fru(rule, _STATUS_OID))
 
     def test_lifetime_7d_is_not_enough(self):
         rule = {
-            'snmp_oid': (
-                'discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.4.8.1.1.1,'
-                '{#PSU.STATUS},1.3.6.1.4.1.2272.1.4.8.1.1.2]'
-            ),
+            'snmp_oid': VOSS_PSU_DISCOVERY_OID,
             'lifetime': '7d',
             'lifetime_type': 'DELETE_AFTER',
             'enabled_lifetime': '0',
             'enabled_lifetime_type': 'DISABLE_IMMEDIATELY',
-            'filter': {
-                'conditions': [
-                    {'macro': '{#PSU.STATUS}', 'value': '^2$', 'operator': 'NOT_MATCHES_REGEX'},
-                ]
-            },
+            'filter': _fru_filter(),
         }
-        self.assertFalse(voss_psu_lld_skips_empty(rule, _STATUS_OID))
+        self.assertFalse(voss_psu_lld_keeps_installed_fru(rule, _STATUS_OID))
 
     def test_yaml_deletes_lost_psu_rows_immediately(self):
         for key in ('psu.discovery', 'psu.detail.discovery'):
@@ -97,9 +123,7 @@ class VossPsuEmptySkipTests(unittest.TestCase):
             self.assertEqual(rule.get('lifetime_type'), 'DELETE_IMMEDIATELY')
             self.assertEqual(str(rule.get('enabled_lifetime')), '0')
 
-    def test_yaml_tickets_unknown_and_down(self):
-        from extreme_psu import psu_expr_is_not_up
-
+    def test_yaml_tickets_not_up_including_serialled_empty(self):
         rule = _rules()['psu.discovery']
         trigs = []
         for it in rule.get('item_prototypes') or []:
@@ -108,6 +132,7 @@ class VossPsuEmptySkipTests(unittest.TestCase):
         expr = trigs[0].get('expression') or ''
         self.assertTrue(psu_expr_is_not_up(expr))
         self.assertNotIn('{$PSU_CRIT_STATUS}', expr)
+        self.assertNotIn('{$PSU.EMPTY_STATUS}', expr)
         self.assertIn('not up', (trigs[0].get('name') or '').lower())
 
 

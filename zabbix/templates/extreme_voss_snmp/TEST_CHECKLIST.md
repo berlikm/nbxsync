@@ -57,16 +57,16 @@ Walk: `1.3.6.1.4.1.2272.1.4.7.1.1.1`
 
 ## LLD: PSU (`psu.discovery` / `psu.detail.discovery`)
 
-Walk id + status. Filter `{#PSU.STATUS}` **NOT_MATCHES** `^2$` (`empty`). Keep `unknown(1)` / `up(3)` / `down(4)`.
-Lost resources: **delete immediately** (`lifetime: 0`) so an already-discovered empty bay leaves Health. Disable-now is not enough — honeycomb keeps lastvalue on a disabled item.
-Average when `last()<>{$PSU.OK_STATUS}` and `last()<>{$PSU.EMPTY_STATUS}` (unknown or down — installed, not supplying power).
+Walk id + status + serial. Keep a row when `{#PSU.STATUS}` **NOT_MATCHES** `^2$` (`empty`) **or** `{#PSU.SERIAL}` **MATCHES** `.+`. Padding (empty, no serial) is skipped. Fitted but unplugged (unknown / empty-with-serial / down) stays.
+Lost resources: **delete immediately** (`lifetime: 0`) so padding leaves Health. Disable-now is not enough — honeycomb keeps lastvalue on a disabled item.
+Average when `last()<>{$PSU.OK_STATUS}` (two present / one connected, including serialled empty).
 
-Walk status: `1.3.6.1.4.1.2272.1.4.8.1.1.1` + `...8.1.1.2`
-Walk detail: `1.3.6.1.4.1.2272.1.4.8.2.1.1` + `...8.2.1.15`
+Walk status: `1.3.6.1.4.1.2272.1.4.8.1.1.1` + `...8.1.1.2` + serial `...8.2.1.3`
+Walk detail: `1.3.6.1.4.1.2272.1.4.8.2.1.1` + `...8.2.1.15` + serial `...8.2.1.3`
 
 | Prototype key | OID | Observed | Notes |
 |---|---|---|---|
-| `sensor.psu.status[rcChasPowerSupplyOperStatus.{i}]` | `...8.1.1.2.{i}` | | crit = 4; empty(2) **not discovered** |
+| `sensor.psu.status[rcChasPowerSupplyOperStatus.{i}]` | `...8.1.1.2.{i}` | | not-up Average; padding **not discovered** |
 | `sensor.psu.watts[rcChasPowerSupplyDetailOutputWatts.{i}]` | `...8.2.1.10.{i}` | | Health Power honeycomb |
 
 ## LLD: Temperature (`temp.discovery`)

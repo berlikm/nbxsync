@@ -16,9 +16,14 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Patch stock EXOS ``net.if.discovery`` rollout (15m / disable-lost immediately / delete after 7d).
     Per-rule ``timeout`` stays empty: classic SNMP OID LLD is not ``walk[``/``get[``, so Zabbix
     requires the proxy/global SNMP timeout.
-  * Patch stock EXOS ``psu.discovery`` to skip ``notPresent`` stack-MIB padding and queue check-now discovery for stale rows (no fork, no host sync)
-  * Patch VOSS ``psu.discovery`` / ``psu.detail.discovery`` to skip ``empty(2)`` chassis slots, delete lost rows immediately, and queue check-now for stale rows (no host sync)
-  * PSU Average tickets an installed unit that is not supplying power (EXOS ``presentPowerOff``, VOSS ``unknown``), not only ``down`` / ``presentNotOK``. Empty bays stay silent.
+  * Patch stock EXOS ``psu.discovery`` to keep installed FRUs (status not
+    ``notPresent`` **or** serial set) and queue check-now so padding leaves and
+    serialled unplugged units appear (no fork, no host sync)
+  * Patch VOSS ``psu.discovery`` / ``psu.detail.discovery`` the same way for
+    ``empty(2)``, delete lost padding immediately, and queue check-now
+  * PSU Average is ``last()<>{$PSU.OK_STATUS}`` so two present / one connected
+    tickets (EXOS ``presentPowerOff`` / serialled ``notPresent``, VOSS
+    ``unknown`` / serialled ``empty`` / ``down``). Padding with no serial stays silent.
   * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it).
     Stock ``.diff()`` / ``last(#1)<>last(#2)`` is stripped so an admin-up port that
     never came up still tickets. Oper-status **not up** (``<>1``) so
@@ -163,13 +168,25 @@ from extreme_linkdown import (
     linkdown_expr_equal as _linkdown_expr_equal,
 )
 from extreme_psu import (
+    EXOS_PSU_DISCOVERY_OID as _PSU_DISCOVERY_OID,
+    EXOS_PSU_SERIAL_OID as _PSU_SERIAL_OID,
+    EXOS_PSU_STATUS_OID as _PSU_STATUS_OID,
     PSU_DISCOVERY_KEYS as _PSU_NOT_UP_DISCOVERY_KEYS,
     PSU_EMPTY_BY_TEMPLATE as _PSU_EMPTY_BY_TEMPLATE,
     PSU_EMPTY_MACRO as _PSU_EMPTY_MACRO,
     PSU_OK_BY_TEMPLATE as _PSU_OK_BY_TEMPLATE,
     PSU_OK_MACRO as _PSU_OK_MACRO,
+    PSU_SERIAL_MACRO as _PSU_SERIAL_LLD_MACRO,
+    PSU_SERIAL_PRESENT as _PSU_SERIAL_PRESENT,
+    PSU_STATUS_MACRO as _PSU_STATUS_MACRO,
     PSU_TEMPLATES as _PSU_NOT_UP_TEMPLATES,
+    VOSS_PSU_DETAIL_DISCOVERY_OID as _VOSS_PSU_DETAIL_DISCOVERY_OID,
+    VOSS_PSU_DETAIL_STATUS_OID as _VOSS_PSU_DETAIL_STATUS_OID,
+    VOSS_PSU_DISCOVERY_OID as _VOSS_PSU_DISCOVERY_OID,
+    VOSS_PSU_SERIAL_OID as _VOSS_PSU_SERIAL_OID,
+    VOSS_PSU_STATUS_OID as _VOSS_PSU_STATUS_OID,
     psu_expr_is_not_up as _psu_expr_is_not_up,
+    psu_lld_keeps_installed_fru as _psu_lld_keeps_installed_fru,
     psu_power_off_name_match as _psu_power_off_name_match,
     psu_trigger_name_match as _psu_trigger_name_match,
     rewrite_psu_not_up_expr as _rewrite_psu_not_up_expr,
@@ -443,6 +460,7 @@ def import_extreme_templates(api) -> dict[str, tuple[int, str]]:
 _LLD_MATCHES_REGEX = 8
 _LLD_NOT_MATCHES_REGEX = 9
 _LLD_EVAL_AND = 1
+_LLD_EVAL_OR = 2
 _IFALIAS_MATCHES = '{$NET.IF.IFALIAS.MATCHES}'
 _IFALIAS_NOT_MATCHES = '{$NET.IF.IFALIAS.NOT_MATCHES}'
 _ETHERLIKE_KEY = 'net.if.duplex.discovery'
@@ -549,7 +567,7 @@ _IF_LLD_WALK_TIMEOUT = '30s'
 # Interface LLD: disable immediately so X-ports leave the honeycomb; delete
 # after 7d so rediscovery re-enables with history intact.
 # VOSS PSU LLD: delete immediately. Health honeycomb keeps lastvalue on a
-# disabled item, so a 7d lifetime leaves empty(2) hexes visible.
+# disabled item, so a 7d lifetime leaves padding hexes visible.
 _LLD_DELETE_AFTER = 0
 _LLD_DELETE_IMMEDIATELY = 2
 _LLD_DISABLE_IMMEDIATELY = 2
@@ -614,28 +632,12 @@ def _voss_psu_lost_resources_ok(rule: dict) -> bool:
 
 _PSU_DISCOVERY_KEY = 'psu.discovery'
 _PSU_DETAIL_DISCOVERY_KEY = 'psu.detail.discovery'
-_PSU_NUMBER_OID = '1.3.6.1.4.1.1916.1.1.1.27.1.1'
-_PSU_STATUS_OID = '1.3.6.1.4.1.1916.1.1.1.27.1.2'
-_PSU_DISCOVERY_OID = (
-    f'discovery[{{#SNMPVALUE}},{_PSU_NUMBER_OID},{{#PSU.STATUS}},{_PSU_STATUS_OID}]'
-)
-_PSU_STATUS_MACRO = '{#PSU.STATUS}'
 _PSU_NOTPRESENT = '^1$'
 _VOSS_TEMPLATE = 'Extreme VOSS by SNMP'
-_VOSS_PSU_ID_OID = '1.3.6.1.4.1.2272.1.4.8.1.1.1'
-_VOSS_PSU_STATUS_OID = '1.3.6.1.4.1.2272.1.4.8.1.1.2'
-_VOSS_PSU_DISCOVERY_OID = (
-    f'discovery[{{#SNMPVALUE}},{_VOSS_PSU_ID_OID},{{#PSU.STATUS}},{_VOSS_PSU_STATUS_OID}]'
-)
-_VOSS_PSU_DETAIL_ID_OID = '1.3.6.1.4.1.2272.1.4.8.2.1.1'
-_VOSS_PSU_DETAIL_STATUS_OID = '1.3.6.1.4.1.2272.1.4.8.2.1.15'
-_VOSS_PSU_DETAIL_DISCOVERY_OID = (
-    f'discovery[{{#SNMPVALUE}},{_VOSS_PSU_DETAIL_ID_OID},{{#PSU.STATUS}},{_VOSS_PSU_DETAIL_STATUS_OID}]'
-)
 _VOSS_PSU_EMPTY = '^2$'
 _VOSS_PSU_RULES = (
-    (_PSU_DISCOVERY_KEY, _VOSS_PSU_DISCOVERY_OID, _VOSS_PSU_STATUS_OID),
-    (_PSU_DETAIL_DISCOVERY_KEY, _VOSS_PSU_DETAIL_DISCOVERY_OID, _VOSS_PSU_DETAIL_STATUS_OID),
+    (_PSU_DISCOVERY_KEY, _VOSS_PSU_DISCOVERY_OID, _VOSS_PSU_STATUS_OID, _VOSS_PSU_SERIAL_OID),
+    (_PSU_DETAIL_DISCOVERY_KEY, _VOSS_PSU_DETAIL_DISCOVERY_OID, _VOSS_PSU_DETAIL_STATUS_OID, _VOSS_PSU_SERIAL_OID),
 )
 _PSU_LLD_RULE_OUTPUT = [
     'itemid',
@@ -655,36 +657,18 @@ def _lld_operator_is_not_matches(op) -> bool:
         return str(op).upper() in ('NOT_MATCHES_REGEX', 'NOT_MATCHES')
 
 
-def _psu_lld_skips_status(
-    rule: dict,
-    *,
-    status_oid: str,
-    skip_regex: str,
-    lost_ok=_lld_lost_resources_ok,
-) -> bool:
-    snmp_oid = str(rule.get('snmp_oid') or '')
-    if '{#PSU.STATUS}' not in snmp_oid or status_oid not in snmp_oid:
-        return False
-    if not lost_ok(rule):
-        return False
-    for c in (rule.get('filter') or {}).get('conditions') or []:
-        if (
-            c.get('macro') == _PSU_STATUS_MACRO
-            and _lld_operator_is_not_matches(c.get('operator', 0))
-            and c.get('value') == skip_regex
-        ):
-            return True
-    return False
+def _lld_operator_is_matches(op) -> bool:
+    try:
+        return int(op) == _LLD_MATCHES_REGEX
+    except (TypeError, ValueError):
+        return str(op).upper() in ('MATCHES_REGEX', 'MATCHES')
 
 
-def _psu_lld_skips_notpresent(rule: dict) -> bool:
-    return _psu_lld_skips_status(rule, status_oid=_PSU_STATUS_OID, skip_regex=_PSU_NOTPRESENT)
-
-
-def _psu_filter_conditions(rule: dict, skip_regex: str) -> list[dict]:
+def _psu_fru_filter_conditions(rule: dict, empty_regex: str) -> list[dict]:
+    """Keep a PSU row if it is not padding: status not empty, or serial present."""
     conditions = []
     for c in (rule.get('filter') or {}).get('conditions') or []:
-        if c.get('macro') == _PSU_STATUS_MACRO:
+        if c.get('macro') in (_PSU_STATUS_MACRO, _PSU_SERIAL_LLD_MACRO):
             continue
         try:
             operator = int(c.get('operator', _LLD_MATCHES_REGEX))
@@ -700,8 +684,17 @@ def _psu_filter_conditions(rule: dict, skip_regex: str) -> list[dict]:
     conditions.append(
         {
             'macro': _PSU_STATUS_MACRO,
-            'value': skip_regex,
+            'value': empty_regex,
             'operator': _LLD_NOT_MATCHES_REGEX,
+            'formulaid': 'A',
+        }
+    )
+    conditions.append(
+        {
+            'macro': _PSU_SERIAL_LLD_MACRO,
+            'value': _PSU_SERIAL_PRESENT,
+            'operator': _LLD_MATCHES_REGEX,
+            'formulaid': 'B',
         }
     )
     return conditions
@@ -712,28 +705,27 @@ def _patch_psu_lld_rule(
     rule: dict,
     *,
     snmp_oid: str,
-    skip_regex: str,
+    empty_regex: str,
     lost_fields: dict | None = None,
 ) -> None:
     api.discoveryrule.update(
         itemid=rule['itemid'],
         snmp_oid=snmp_oid,
-        filter={'evaltype': _LLD_EVAL_AND, 'conditions': _psu_filter_conditions(rule, skip_regex)},
+        filter={'evaltype': _LLD_EVAL_OR, 'conditions': _psu_fru_filter_conditions(rule, empty_regex)},
         **(lost_fields or _lld_lost_resources_fields()),
     )
 
 
 def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by SNMP') -> str:
-    """Drop stack-MIB padding from stock EXOS PSU discovery.
+    """Discover installed EXOS PSUs, including presentPowerOff and serialled notPresent.
 
     ``extremePowerSupplyTable`` has a row for every possible stack member slot.
-    Stock LLD walks only the number column, so an 8-slot stack paints 32 grey
-    hexes. Walk status too and skip ``notPresent(1)``. Failed/off units stay
-    (``presentNotOK`` / ``presentPowerOff``). Disable lost immediately so empty
-    slots leave the honeycomb on the next discovery; delete after 7d so a
-    truncated walk does not wipe history. Does not fork the stock YAML.
+    Padding is ``notPresent`` with an empty serial — skip those. A fitted PSU
+    with no AC is ``presentPowerOff(4)`` or, on some code, ``notPresent`` with
+    a serial; both stay so two present / one connected tickets Average.
+    Disable lost immediately; delete after 7d. Does not fork the stock YAML.
     """
-    logger.info('Network: EXOS psu.discovery present-only')
+    logger.info('Network: EXOS psu.discovery installed FRUs (serial or not notPresent)')
     tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
     if not tpls:
         logger.warning('  %s: template not found — skip PSU LLD patch', template_name)
@@ -749,34 +741,35 @@ def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by S
         logger.warning('  %s: no %s — skip', template_name, _PSU_DISCOVERY_KEY)
         return 'no-psu-lld'
     rule = rules[0]
-    if _psu_lld_skips_notpresent(rule):
-        logger.info('  %s: PSU LLD already skips notPresent', template_name)
+    if _psu_lld_keeps_installed_fru(
+        rule,
+        status_oid=_PSU_STATUS_OID,
+        serial_oid=_PSU_SERIAL_OID,
+        empty_regex=_PSU_NOTPRESENT,
+    ) and _lld_lost_resources_ok(rule):
+        logger.info('  %s: PSU LLD already keeps installed FRUs', template_name)
         return 'ok'
-    _patch_psu_lld_rule(api, rule, snmp_oid=_PSU_DISCOVERY_OID, skip_regex=_PSU_NOTPRESENT)
-    logger.info('  %s: patched PSU LLD to skip notPresent (itemid=%s)', template_name, rule['itemid'])
+    _patch_psu_lld_rule(api, rule, snmp_oid=_PSU_DISCOVERY_OID, empty_regex=_PSU_NOTPRESENT)
+    logger.info('  %s: patched PSU LLD for installed FRUs (itemid=%s)', template_name, rule['itemid'])
     return 'patched'
 
 
 def patch_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -> dict[str, str]:
-    """Drop empty chassis-slot padding from VOSS PSU discovery.
+    """Discover installed VOSS PSUs, including empty(2) when a serial is set.
 
-    ``rcChasPowerSupplyTable`` / ``rcChasPowerSupplyDetailTable`` keep a row for
-    every PSU bay. CLI ``show sys power power-supply`` lists only fitted units
-    (PS#1 UP). Unfiltered LLD paints a second Health hex at ``empty(2)``. Walk
-    status too and skip ``empty(2)``. ``down(4)`` / ``unknown(1)`` stay so a
-    failed FRU still tickets Average. YAML is the source of truth; this patch
-    covers import failure / leftover OID / lifetime=7d. Delete lost immediately
-    so empty hexes leave Health (honeycomb keeps lastvalue on disabled items).
-    Does not host-sync or write NetBox.
+    ``rcChasPowerSupplyTable`` keeps a row per bay. True padding is empty with
+    no serial. A fitted PSU with no AC is often ``unknown(1)`` or ``down(4)``,
+    and some code reports ``empty(2)`` with a serial — those stay so two
+    present / one connected tickets Average. Delete lost immediately.
     """
-    logger.info('Network: VOSS psu.discovery skip empty(2), delete lost now')
+    logger.info('Network: VOSS psu.discovery installed FRUs (serial or not empty)')
     tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
     if not tpls:
         logger.warning('  %s: template not found — skip VOSS PSU LLD patch', template_name)
         return {'status': 'missing'}
     tid = tpls[0]['templateid']
     results: dict[str, str] = {}
-    for key, snmp_oid, status_oid in _VOSS_PSU_RULES:
+    for key, snmp_oid, status_oid, serial_oid in _VOSS_PSU_RULES:
         rules = api.discoveryrule.get(
             hostids=tid,
             filter={'key_': key},
@@ -788,33 +781,29 @@ def patch_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) ->
             logger.warning('  %s: no %s — skip', template_name, key)
             continue
         rule = rules[0]
-        if _psu_lld_skips_status(
+        if _psu_lld_keeps_installed_fru(
             rule,
             status_oid=status_oid,
-            skip_regex=_VOSS_PSU_EMPTY,
-            lost_ok=_voss_psu_lost_resources_ok,
-        ):
+            serial_oid=serial_oid,
+            empty_regex=_VOSS_PSU_EMPTY,
+        ) and _voss_psu_lost_resources_ok(rule):
             results[key] = 'ok'
-            logger.info('  %s: %s already skips empty(2) and deletes lost now', template_name, key)
+            logger.info('  %s: %s already keeps installed FRUs and deletes lost now', template_name, key)
             continue
         _patch_psu_lld_rule(
             api,
             rule,
             snmp_oid=snmp_oid,
-            skip_regex=_VOSS_PSU_EMPTY,
+            empty_regex=_VOSS_PSU_EMPTY,
             lost_fields=_voss_psu_lost_resources_fields(),
         )
         results[key] = 'patched'
-        logger.info('  %s: patched %s to skip empty(2) / delete-now (itemid=%s)', template_name, key, rule['itemid'])
-    if not results:
-        results['status'] = 'no-psu-lld'
+        logger.info('  %s: patched %s for installed FRUs / delete-now (itemid=%s)', template_name, key, rule['itemid'])
     return results
 
 
 _EXOS_STOCK_TEMPLATE = 'Extreme EXOS by SNMP'
 _EXOS_OBSERVABILITY_TEMPLATE = 'Extreme EXOS Observability'
-_PSU_ITEM_NAME = 'Power supply status'
-_PSU_DETAIL_ITEM_NAME = 'Detail oper status'
 _CHECK_NOW_TASK_TYPE = 6
 
 
@@ -822,12 +811,14 @@ def _queue_psu_lld_checks(
     api,
     *,
     template_names: tuple[str, ...],
-    item_name_needles: tuple[str, ...],
-    stale_values: frozenset[str],
     discovery_keys: tuple[str, ...],
     log_label: str,
 ) -> dict[str, int | str]:
-    """Queue check-now PSU LLD for hosts still holding skipped-status rows."""
+    """Queue check-now PSU LLD for every host on the templates.
+
+    Padding rows leave and serialled empty/notPresent FRUs appear without
+    waiting for the 1h discovery delay. Not HostSync; does not write NetBox.
+    """
     template_ids: set[str] = set()
     for name in template_names:
         found = api.template.get(filter={'name': [name]}, output=['templateid']) or []
@@ -842,30 +833,12 @@ def _queue_psu_lld_checks(
     if not host_ids:
         return {'status': 'no-hosts', 'hosts': 0, 'tasks': 0}
 
-    stale_hosts: set[str] = set()
+    rules = []
     ordered_hosts = sorted(host_ids)
     for start in range(0, len(ordered_hosts), 100):
-        chunk = ordered_hosts[start:start + 100]
-        for needle in item_name_needles:
-            items = api.item.get(
-                hostids=chunk,
-                search={'name': needle},
-                output=['hostid', 'lastvalue'],
-            ) or []
-            stale_hosts.update(
-                str(item['hostid'])
-                for item in items
-                if str(item.get('lastvalue')) in stale_values
-            )
-    if not stale_hosts:
-        return {'status': 'clean', 'hosts': 0, 'tasks': 0}
-
-    rules = []
-    ordered_stale = sorted(stale_hosts)
-    for start in range(0, len(ordered_stale), 100):
         rules.extend(
             api.discoveryrule.get(
-                hostids=ordered_stale[start:start + 100],
+                hostids=ordered_hosts[start:start + 100],
                 filter={'key_': list(discovery_keys)},
                 output=['itemid', 'hostid'],
             )
@@ -876,7 +849,7 @@ def _queue_psu_lld_checks(
         for rule in rules
     ]
     if not tasks:
-        return {'status': 'no-discovery-rules', 'hosts': len(stale_hosts), 'tasks': 0}
+        return {'status': 'no-discovery-rules', 'hosts': len(host_ids), 'tasks': 0}
 
     task_ids: list[str] = []
     for start in range(0, len(tasks), 20):
@@ -885,47 +858,38 @@ def _queue_psu_lld_checks(
     logger.info(
         '  %s check-now queued: hosts=%s rules=%s tasks=%s',
         log_label,
-        len(stale_hosts),
+        len(host_ids),
         len(rules),
         len(task_ids),
     )
-    return {'status': 'queued', 'hosts': len(stale_hosts), 'tasks': len(task_ids)}
+    return {'status': 'queued', 'hosts': len(host_ids), 'tasks': len(task_ids)}
 
 
 def queue_exos_psu_lld_checks(api, template_names: tuple[str, ...] | None = None) -> dict[str, int | str]:
-    """Queue immediate PSU LLD checks for hosts retaining notPresent rows.
+    """Queue immediate PSU LLD checks on stock EXOS and the Observability companion.
 
-    LLD filters affect newly returned discovery data; they do not proactively
-    remove already-discovered item rows. Queueing check-now tasks makes an
-    apply converge immediately without host-syncing or changing NetBox.
-    Hosts are selected through either the stock EXOS template or its
-    Observability companion, and only hosts with a current PSU status value of
-    ``1`` are queued. ``-2`` stack hosts have neither template and are skipped.
+    LLD filters do not remove already-discovered rows or invent skipped FRUs
+    until discovery runs. Check-now converges an apply without HostSync.
+    ``-2`` stack hosts have neither template and are skipped.
     """
     names = template_names or (_EXOS_STOCK_TEMPLATE, _EXOS_OBSERVABILITY_TEMPLATE)
     return _queue_psu_lld_checks(
         api,
         template_names=names,
-        item_name_needles=(_PSU_ITEM_NAME,),
-        stale_values=frozenset({'1', '1.0'}),
         discovery_keys=(_PSU_DISCOVERY_KEY,),
         log_label='EXOS PSU LLD',
     )
 
 
 def queue_voss_psu_lld_checks(api, template_names: tuple[str, ...] | None = None) -> dict[str, int | str]:
-    """Queue immediate PSU LLD checks for hosts retaining empty(2) rows.
+    """Queue immediate PSU LLD checks for status and detail tables.
 
-    Same converge-without-HostSync path as EXOS. Status and detail tables both
-    discover chassis bays, so both rules are queued when either lastvalue is
-    ``2``. Does not write NetBox.
+    Same converge-without-HostSync path as EXOS. Does not write NetBox.
     """
     names = template_names or (_VOSS_TEMPLATE,)
     return _queue_psu_lld_checks(
         api,
         template_names=names,
-        item_name_needles=(_PSU_ITEM_NAME, _PSU_DETAIL_ITEM_NAME),
-        stale_values=frozenset({'2', '2.0'}),
         discovery_keys=(_PSU_DISCOVERY_KEY, _PSU_DETAIL_DISCOVERY_KEY),
         log_label='VOSS PSU LLD',
     )
@@ -943,7 +907,12 @@ def assert_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by 
     )
     if not rules:
         return True, 'no PSU LLD — n/a'
-    ok = _psu_lld_skips_notpresent(rules[0])
+    ok = _psu_lld_keeps_installed_fru(
+        rules[0],
+        status_oid=_PSU_STATUS_OID,
+        serial_oid=_PSU_SERIAL_OID,
+        empty_regex=_PSU_NOTPRESENT,
+    ) and _lld_lost_resources_ok(rules[0])
     return ok, str({'snmp_oid': rules[0].get('snmp_oid'), 'filter': rules[0].get('filter')})
 
 
@@ -953,7 +922,7 @@ def assert_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -
         return True, 'template absent — n/a'
     details = {}
     ok = True
-    for key, _snmp_oid, status_oid in _VOSS_PSU_RULES:
+    for key, _snmp_oid, status_oid, serial_oid in _VOSS_PSU_RULES:
         rules = api.discoveryrule.get(
             hostids=tpls[0]['templateid'],
             filter={'key_': key},
@@ -963,12 +932,12 @@ def assert_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -
         if not rules:
             details[key] = 'missing'
             continue
-        rule_ok = _psu_lld_skips_status(
+        rule_ok = _psu_lld_keeps_installed_fru(
             rules[0],
             status_oid=status_oid,
-            skip_regex=_VOSS_PSU_EMPTY,
-            lost_ok=_voss_psu_lost_resources_ok,
-        )
+            serial_oid=serial_oid,
+            empty_regex=_VOSS_PSU_EMPTY,
+        ) and _voss_psu_lost_resources_ok(rules[0])
         ok = ok and rule_ok
         details[key] = {
             'ok': rule_ok,
@@ -980,70 +949,32 @@ def assert_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -
     return ok, str(details)
 
 
-def _upsert_template_macros(api, template_name: str, wanted: dict[str, tuple[str, str]]) -> str:
-    """Merge ``wanted`` macros (value, description) onto a template. Returns ok/patched/missing."""
-    tpls = api.template.get(
-        filter={'name': [template_name]},
-        output=['templateid'],
-        selectMacros='extend',
-    )
-    if not tpls:
-        return 'missing'
-    existing = list(tpls[0].get('macros') or [])
-    by_name = {m['macro']: dict(m) for m in existing if isinstance(m, dict) and m.get('macro')}
-    changed = False
-    for macro, (value, description) in wanted.items():
-        row = by_name.get(macro)
-        if row is None:
-            by_name[macro] = {'macro': macro, 'value': value, 'description': description}
-            changed = True
-            continue
-        if str(row.get('value', '')) != value:
-            row['value'] = value
-            changed = True
-        if description and not str(row.get('description') or '').strip():
-            row['description'] = description
-            changed = True
-    if not changed:
-        return 'ok'
-    payload = []
-    for m in by_name.values():
-        entry = {'macro': m['macro'], 'value': m.get('value', '')}
-        if m.get('hostmacroid'):
-            entry['hostmacroid'] = m['hostmacroid']
-        if m.get('description') is not None:
-            entry['description'] = m.get('description', '')
-        if m.get('type') is not None:
-            entry['type'] = m['type']
-        payload.append(entry)
-    api.template.update(templateid=tpls[0]['templateid'], macros=payload)
-    return 'patched'
-
-
 def patch_psu_not_up(api) -> dict[str, str]:
-    """Average on installed PSU not supplying power — not only down/presentNotOK.
+    """Average when a discovered PSU is not supplying power.
 
-    Stock EXOS matches ``presentNotOK(3)`` only, so ``presentPowerOff(4)`` (fitted,
-    no AC) is silent. VOSS matches ``down(4)`` only, so ``unknown(1)`` is silent.
-    ``last()<>{$PSU.OK_STATUS} and last()<>{$PSU.EMPTY_STATUS}`` tickets those
-    states while empty / notPresent bays stay quiet even if LLD has not yet
-    dropped a stale row. Drops a leftover separate power-off prototype so we
-    do not double-ticket. Does not host-sync or write NetBox.
+    Stock EXOS matches ``presentNotOK(3)`` only, so ``presentPowerOff(4)`` is
+    silent. VOSS matches ``down(4)`` only, so ``unknown(1)`` is silent. Some
+    firmware reports a fitted unplugged FRU as empty/notPresent; LLD keeps
+    those when a serial is set. ``last()<>{$PSU.OK_STATUS}`` tickets two
+    present / one connected. Padding (empty, no serial) is not discovered.
+    Drops a leftover separate power-off prototype so we do not double-ticket.
+    Does not host-sync or write NetBox.
     """
     logger.info('Network: PSU Average for installed-not-up')
     results: dict[str, str] = {}
+    descriptions = {
+        _PSU_OK_MACRO: 'Present and supplying power (EXOS presentOK / VOSS up).',
+        _PSU_EMPTY_MACRO: (
+            'Bay not installed (EXOS notPresent / VOSS empty). '
+            'LLD skips this unless serial is set.'
+        ),
+    }
     for template_name in _PSU_NOT_UP_TEMPLATES:
         wanted = {
-            _PSU_OK_MACRO: (
-                _PSU_OK_BY_TEMPLATE[template_name],
-                'Present and supplying power (EXOS presentOK / VOSS up).',
-            ),
-            _PSU_EMPTY_MACRO: (
-                _PSU_EMPTY_BY_TEMPLATE[template_name],
-                'Bay not installed (EXOS notPresent / VOSS empty). Trigger excludes this.',
-            ),
+            _PSU_OK_MACRO: _PSU_OK_BY_TEMPLATE[template_name],
+            _PSU_EMPTY_MACRO: _PSU_EMPTY_BY_TEMPLATE[template_name],
         }
-        macro_status = _upsert_template_macros(api, template_name, wanted)
+        macro_status = _upsert_template_macros(api, template_name, wanted, descriptions)
         tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
         if not tpls:
             results[template_name] = 'missing'
@@ -1090,8 +1021,9 @@ def patch_psu_not_up(api) -> dict[str, str]:
                     ).replace('Detail status critical', 'Detail status not up')
                 comments = str(proto.get('comments') or '')
                 want_comments = (
-                    'Installed PSU is not supplying power (unknown, down, or unpowered). '
-                    'Empty bays are not discovered.'
+                    'Installed PSU is not supplying power. Two present and one '
+                    'connected must Average. Padding bays (empty/notPresent with '
+                    'no serial) are not discovered.'
                 )
                 if comments != want_comments:
                     payload['comments'] = want_comments
@@ -1197,7 +1129,15 @@ def _upsert_template_macros(
     existing = list(tpls[0].get('macros') or [])
     by_name = {m['macro']: m for m in existing if isinstance(m, dict) and m.get('macro')}
     current = {k: str(by_name[k].get('value', '')) for k in wanted if k in by_name}
-    if all(current.get(k) == v for k, v in wanted.items()) and len(current) == len(wanted):
+    values_ok = all(current.get(k) == v for k, v in wanted.items()) and len(current) == len(wanted)
+    descriptions_ok = True
+    if descriptions:
+        for macro, description in descriptions.items():
+            row = by_name.get(macro)
+            if row is None or str(row.get('description') or '') != description:
+                descriptions_ok = False
+                break
+    if values_ok and descriptions_ok:
         return 'ok'
     payload = _template_macro_payload(existing, wanted, descriptions)
     api.template.update(templateid=tpls[0]['templateid'], macros=payload)

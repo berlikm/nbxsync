@@ -381,7 +381,7 @@ Without this, one WAN blip produces one alert per device per site. A Zabbix **pr
 | Closets without cooling | 45–55 °C in summer | silence the warning tier, keep critical + vendor alarm |
 | `sysUpTime` 32-bit counter | wraps at ~497 days → false "restarted" | accept, or prefer `hrSystemUptime` where supported |
 | Stack master failover | ENTITY-MIB serial can change → "device replaced" | Info + manual close |
-| Chassis with one PSU fitted | SNMP has a row for the empty bay (`empty(2)` on VOSS, `notPresent(1)` on EXOS) | LLD **skips** those statuses; VOSS also **deletes** lost empty rows immediately. Fitted but unpowered (`unknown` / `presentPowerOff`) Average; `down` / `presentNotOK` Average |
+| Chassis with two PSU bays | SNMP has a row per bay (`empty(2)` on VOSS, `notPresent(1)` on EXOS) | Padding (empty/notPresent **and** no serial) is skipped; VOSS **deletes** lost padding immediately. Two present / one connected Average (`last()<>{$PSU.OK_STATUS}`), including serialled empty/notPresent, `unknown` / `presentPowerOff`, `down` / `presentNotOK` |
 | Remote sites over WAN | 3 consecutive ICMP misses is easy to hit | use `#5` for remote host groups |
 | LAG aggregate speed | reports the sum of members | excluded by the ifType filter |
 | EXOS VLAN interfaces | discovered as "ports" | excluded by the ifType filter |
@@ -411,7 +411,7 @@ Each stage runs for a week. Only promote if the previous stage is quiet. Target:
 |---|---|---|
 | **0** | Nothing. Link templates, collect data. **Hybrid switches in access/opt-in mode** | 1 week clean collection; ifIndex stability verified across a pilot reboot |
 | **1** | ICMP unavailable, no SNMP data, proxy + self-monitoring, unsupported-item count | < 5 alerts/day |
-| **2** | Link down, flapping, PSU, fan, temperature **critical** | Empty PSU bays skipped (VOSS `empty(2)`, EXOS `notPresent(1)`); stack-temperature too-low silenced; < 5 alerts/day |
+| **2** | Link down, flapping, PSU, fan, temperature **critical** | Padding PSU bays skipped (empty/notPresent with no serial); two present / one connected Average; stack-temperature too-low silenced; < 5 alerts/day |
 | **3** | CPU, memory, errors — thresholds from **2 weeks of baseline**, not stock defaults. **OSPF adjacency count in parallel (§C)** | baseline data exists; `ospfNbrTable` confirmed |
 | **4** | Speed expectation, per host group | that site's label diff is clean |
 | **5** | Flip hybrids from opt-in to fabric mode, per site | that site's `X`-fill and admin-down hygiene verified |
@@ -510,7 +510,7 @@ Silencing by macro rather than disabling triggers keeps the template untouched a
 - [ ] `{$IF.DISCARDS.WARN}` and `{$IF.UTIL.MAX:"USW"}` — set from 4+ weeks of history, not guessed
 - [ ] Do our uplinks have predictable nightly backup windows that need time-of-day handling?
 - [ ] Memory baseline — if the fleet normally sits above 90% the stock trigger fires permanently
-- [x] ~~PSU status reported by an **empty** slot in a 2-PSU chassis~~ **Answered** — VOSS SNMP `rcChasPowerSupplyOperStatus` `empty(2)` is chassis-bay padding (CLI `show sys power power-supply` on CH-STA-L26-L02-MGMT03 listed only PS#1 UP). LLD skips `empty(2)` on `psu.discovery` and `psu.detail.discovery` and **deletes** lost empty rows immediately (`lifetime: 0`; honeycomb keeps lastvalue on a disabled item). A fitted PSU that is **not supplying power** (`unknown(1)` or `down(4)`) tickets Average — not only `down`. EXOS `--apply` tickets `presentNotOK(3)` and `presentPowerOff(4)` (installed, no AC); `notPresent(1)` stays skipped.
+- [x] ~~PSU status reported by an **empty** slot in a 2-PSU chassis~~ **Answered** — SNMP keeps a row per bay. Padding is `empty(2)` / `notPresent(1)` **with no serial** (canary CH-STA-L26-L02-MGMT03 listed only PS#1 UP). LLD skips those and VOSS **deletes** lost padding immediately (`lifetime: 0`; honeycomb keeps lastvalue on a disabled item). Two present / one connected Average: `last()<>{$PSU.OK_STATUS}` on discovered FRUs, including firmware that reports a fitted unplugged unit as empty/notPresent when serial is set. EXOS honeycomb paints serialled `notPresent(1)` red.
 - [ ] ifIndex stability across reboot and across adding a stack member
 - [ ] Legacy unparseable labels (`ISC`, `MLAG_MGMT01_p51`, `esx40_ct1_eth0`) — migration list. Relabel ISC / peer-link members to **`USW-…`** (they should stay monitored); SPAN / mute stays **`X`**.
 

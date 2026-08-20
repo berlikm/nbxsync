@@ -1582,7 +1582,7 @@ zabbix_export:
     - uuid: c126ae5e03fd4704b06f8f69461c6e3e
       name: PSU Discovery
       type: SNMP_AGENT
-      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.4.8.1.1.1,{#PSU.STATUS},1.3.6.1.4.1.2272.1.4.8.1.1.2]
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.4.8.1.1.1,{#PSU.STATUS},1.3.6.1.4.1.2272.1.4.8.1.1.2,{#PSU.SERIAL},1.3.6.1.4.1.2272.1.4.8.2.1.3]
       key: psu.discovery
       delay: 1h
       lifetime: '0'
@@ -1590,13 +1590,17 @@ zabbix_export:
       enabled_lifetime: '0'
       enabled_lifetime_type: DISABLE_IMMEDIATELY
       filter:
-        evaltype: AND
+        evaltype: OR
         conditions:
         - macro: '{#PSU.STATUS}'
           value: '^2$'
           operator: NOT_MATCHES_REGEX
           formulaid: A
-      description: 'RAPID-CITY rcChasPowerSupplyTable. Skip empty(2) chassis slots (padding, not a FRU). Keep unknown(1) / up(3) / down(4).'
+        - macro: '{#PSU.SERIAL}'
+          value: '.+'
+          operator: MATCHES_REGEX
+          formulaid: B
+      description: 'RAPID-CITY rcChasPowerSupplyTable. Keep a row when status is not empty(2) or serial is set. Padding (empty, no serial) is skipped. Fitted but unplugged (unknown / empty-with-serial / down) stays so two present / one connected tickets.'
       item_prototypes:
       - uuid: 69e8278ce76c4edcaea7deb1001dc48e
         name: 'PSU {#SNMPVALUE}: Power supply status'
@@ -1615,11 +1619,11 @@ zabbix_export:
           value: power
         trigger_prototypes:
         - uuid: ee629d82d4124f8d8f71ead32fede0eb
-          expression: last(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS} and last(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}])<>{$PSU.EMPTY_STATUS}
+          expression: last(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS}
           name: 'Extreme VOSS: PSU {#SNMPVALUE}: Power supply is not up'
           opdata: 'Current state: {ITEM.LASTVALUE1}'
           priority: AVERAGE
-          description: 'Installed PSU is not supplying power (unknown, down, or unpowered). Empty bays are not discovered.'
+          description: 'Installed PSU is not supplying power. Two present and one connected must Average. Padding bays (empty, no serial) are not discovered.'
           tags:
           - tag: scope
             value: availability
@@ -1984,7 +1988,7 @@ zabbix_export:
     - uuid: 91f93d6b78364b279c2920e78a3d9104
       name: PSU detail discovery
       type: SNMP_AGENT
-      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.4.8.2.1.1,{#PSU.STATUS},1.3.6.1.4.1.2272.1.4.8.2.1.15]
+      snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.4.8.2.1.1,{#PSU.STATUS},1.3.6.1.4.1.2272.1.4.8.2.1.15,{#PSU.SERIAL},1.3.6.1.4.1.2272.1.4.8.2.1.3]
       key: psu.detail.discovery
       delay: 1h
       lifetime: '0'
@@ -1992,13 +1996,17 @@ zabbix_export:
       enabled_lifetime: '0'
       enabled_lifetime_type: DISABLE_IMMEDIATELY
       filter:
-        evaltype: AND
+        evaltype: OR
         conditions:
         - macro: '{#PSU.STATUS}'
           value: '^2$'
           operator: NOT_MATCHES_REGEX
           formulaid: A
-      description: 'RAPID-CITY rcChasPowerSupplyDetailTable. Skip empty(2) chassis slots (padding, not a FRU). Keep unknown(1) / up(3) / down(4).'
+        - macro: '{#PSU.SERIAL}'
+          value: '.+'
+          operator: MATCHES_REGEX
+          formulaid: B
+      description: 'RAPID-CITY rcChasPowerSupplyDetailTable. Keep a row when status is not empty(2) or serial is set. Padding (empty, no serial) is skipped.'
       item_prototypes:
       - uuid: b3175a0aa6034dabb56429bd4c634d87
         name: 'PSU {#SNMPINDEX}: Detail oper status'
@@ -2014,10 +2022,10 @@ zabbix_export:
           value: power
         trigger_prototypes:
         - uuid: 03368bc544304d99a5b7acabe442ab60
-          expression: last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS} and last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.EMPTY_STATUS}
+          expression: last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS}
           name: 'Extreme VOSS: PSU {#SNMPINDEX}: Detail status not up'
           priority: AVERAGE
-          description: 'Installed PSU is not supplying power (unknown, down, or unpowered). Empty bays are not discovered.'
+          description: 'Installed PSU is not supplying power. Two present and one connected must Average. Padding bays (empty, no serial) are not discovered.'
           tags:
           - tag: scope
             value: availability
@@ -2362,7 +2370,7 @@ zabbix_export:
       value: CHANGE_IF_NEEDED
     - macro: '{$PSU.EMPTY_STATUS}'
       value: '2'
-      description: VOSS rcChasPowerSupplyOperStatus empty(2) — not installed. Trigger excludes this.
+      description: VOSS rcChasPowerSupplyOperStatus empty(2) — not installed. LLD skips unless serial is set.
     - macro: '{$PSU.OK_STATUS}'
       value: '3'
       description: VOSS rcChasPowerSupplyOperStatus up(3) — present and supplying power.

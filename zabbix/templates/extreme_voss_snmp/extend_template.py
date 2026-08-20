@@ -400,17 +400,21 @@ def proto(name, key, oid, **kw) -> str:
     return "\n".join(lines) + "\n"
 
 
-_PSU_EMPTY_LLD = """      lifetime: '0'
+_PSU_FRU_LLD = """      lifetime: '0'
       lifetime_type: DELETE_IMMEDIATELY
       enabled_lifetime: '0'
       enabled_lifetime_type: DISABLE_IMMEDIATELY
       filter:
-        evaltype: AND
+        evaltype: OR
         conditions:
         - macro: '{#PSU.STATUS}'
           value: '^2$'
           operator: NOT_MATCHES_REGEX
           formulaid: A
+        - macro: '{#PSU.SERIAL}'
+          value: '.+'
+          operator: MATCHES_REGEX
+          formulaid: B
 """
 
 
@@ -652,11 +656,10 @@ def build_discovery_rules() -> str:
                     {
                         "expression": (
                             'last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS}'
-                            ' and last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.EMPTY_STATUS}'
                         ),
                         "name": "Extreme VOSS: PSU {#SNMPINDEX}: Detail status not up",
                         "priority": "AVERAGE",
-                        "description": "Installed PSU is not supplying power (unknown, down, or unpowered). Empty bays are not discovered.",
+                        "description": "Installed PSU is not supplying power. Two present and one connected must Average. Padding bays (empty, no serial) are not discovered.",
                     }
                 ],
             ),
@@ -695,10 +698,10 @@ def build_discovery_rules() -> str:
         discovery_rule(
             "PSU detail discovery",
             "psu.detail.discovery",
-            f"discovery[{{#SNMPVALUE}},{OID['psuDetId']},{{#PSU.STATUS}},{OID['psuDetOper']}]",
+            f"discovery[{{#SNMPVALUE}},{OID['psuDetId']},{{#PSU.STATUS}},{OID['psuDetOper']},{{#PSU.SERIAL}},{OID['psuDetSN']}]",
             psu_items,
-            "RAPID-CITY rcChasPowerSupplyDetailTable. Skip empty(2) chassis slots.",
-            filter_yaml=_PSU_EMPTY_LLD,
+            "RAPID-CITY rcChasPowerSupplyDetailTable. Keep a row when status is not empty(2) or serial is set.",
+            filter_yaml=_PSU_FRU_LLD,
         )
     )
 

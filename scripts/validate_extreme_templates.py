@@ -22,7 +22,11 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
 from extreme_linkdown import linkdown_is_not_up, linkdown_recovery_is_up
-from extreme_psu import psu_expr_is_not_up
+from extreme_psu import (
+    VOSS_PSU_SERIAL_OID,
+    psu_expr_is_not_up,
+    psu_lld_keeps_installed_fru,
+)
 
 TEMPLATES = {
     'Extreme Port Speed Expect by SNMP': ROOT / 'zabbix/templates/extreme_port_speed_expect_snmp/template_net_extreme_port_speed_expect_snmp.yaml',
@@ -138,22 +142,14 @@ def _voss_psu_lost_policy_ok(rule: dict) -> bool:
     return delete_now and disable_now
 
 
-def voss_psu_lld_skips_empty(rule: dict, status_oid: str) -> bool:
-    """True when VOSS PSU LLD walks status, filters empty(2), and deletes lost rows now."""
-    oid = str(rule.get('snmp_oid') or '')
-    if '{#PSU.STATUS}' not in oid or status_oid not in oid:
-        return False
-    if not _voss_psu_lost_policy_ok(rule):
-        return False
-    for c in (rule.get('filter') or {}).get('conditions') or []:
-        op = str(c.get('operator') or '').upper()
-        if (
-            c.get('macro') == '{#PSU.STATUS}'
-            and op in ('NOT_MATCHES_REGEX', 'NOT_MATCHES', '9')
-            and c.get('value') == '^2$'
-        ):
-            return True
-    return False
+def voss_psu_lld_keeps_installed_fru(rule: dict, status_oid: str) -> bool:
+    """True when VOSS PSU LLD keeps serialled FRUs and deletes lost padding now."""
+    return psu_lld_keeps_installed_fru(
+        rule,
+        status_oid=status_oid,
+        serial_oid=VOSS_PSU_SERIAL_OID,
+        empty_regex='^2$',
+    ) and _voss_psu_lost_policy_ok(rule)
 
 
 def validate_lld_lost_policy(name: str, tpl: dict) -> None:
@@ -175,6 +171,22 @@ def validate_lld_lost_policy(name: str, tpl: dict) -> None:
 
 def _macro_map(tpl: dict) -> dict[str, str]:
     return {m['macro']: str(m.get('value', '')) for m in (tpl.get('macros') or []) if m.get('macro')}
+
+
+def _honeycomb_threshold_map(widget: dict) -> dict[str, str]:
+    """Map honeycomb threshold value to colour."""
+    by_idx: dict[str, dict[str, str]] = {}
+    for field in widget.get('fields') or []:
+        name = str(field.get('name') or '')
+        match = re.match(r'^thresholds\.(\d+)\.(color|threshold)$', name)
+        if not match:
+            continue
+        by_idx.setdefault(match.group(1), {})[match.group(2)] = str(field.get('value') or '')
+    return {
+        row['threshold']: row.get('color', '')
+        for row in by_idx.values()
+        if 'threshold' in row
+    }
 
 
 def validate_health_dashboard(name: str, doc: dict, tpl: dict, *, pages: tuple[str, ...]) -> None:
@@ -602,13 +614,13 @@ def validate_voss(doc: dict) -> None:
     psu = by_key.get('psu.discovery') or {}
     psu_detail = by_key.get('psu.detail.discovery') or {}
     record(
-        'VOSS psu.discovery skips empty(2)',
-        voss_psu_lld_skips_empty(psu, '1.3.6.1.4.1.2272.1.4.8.1.1.2'),
+        'VOSS psu.discovery keeps installed FRUs',
+        voss_psu_lld_keeps_installed_fru(psu, '1.3.6.1.4.1.2272.1.4.8.1.1.2'),
         str(psu.get('snmp_oid')),
     )
     record(
-        'VOSS psu.detail.discovery skips empty(2)',
-        voss_psu_lld_skips_empty(psu_detail, '1.3.6.1.4.1.2272.1.4.8.2.1.15'),
+        'VOSS psu.detail.discovery keeps installed FRUs',
+        voss_psu_lld_keeps_installed_fru(psu_detail, '1.3.6.1.4.1.2272.1.4.8.2.1.15'),
         str(psu_detail.get('snmp_oid')),
     )
     record(
@@ -634,7 +646,7 @@ def validate_voss(doc: dict) -> None:
     ]
     record('VOSS PSU not-up triggers', len(psu_trigs) == 2, f'count={len(psu_trigs)}')
     record(
-        'VOSS PSU tickets unknown and down, not empty',
+        'VOSS PSU tickets not-up including serialled empty',
         bool(psu_trigs) and all(psu_expr_is_not_up(t.get('expression') or '') for t in psu_trigs),
         (psu_trigs[0].get('expression') if psu_trigs else '')[:160],
     )
@@ -721,6 +733,20 @@ def validate_exos_observability(doc: dict) -> None:
         str(macros.get('{$NET.IF.DISCOVERY.MIN}')),
     )
     validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware'))
+    psu_widget = None
+    for dash in tpl.get('dashboards') or []:
+        if dash.get('name') != 'Health':
+            continue
+        for page in dash.get('pages') or []:
+            for widget in page.get('widgets') or []:
+                if widget.get('type') == 'honeycomb' and widget.get('name') == 'PSU':
+                    psu_widget = widget
+    th = _honeycomb_threshold_map(psu_widget or {})
+    record(
+        'EXOS companion PSU honeycomb notPresent red',
+        th.get('1') == 'FF465C' and th.get('2') == '0EC9AC' and th.get('3') == 'FF465C',
+        str(th),
+    )
 
 
 def validate_speed_expect(doc: dict) -> None:
