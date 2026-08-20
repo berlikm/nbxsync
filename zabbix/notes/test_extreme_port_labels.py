@@ -726,10 +726,10 @@ class CliSafetyTests(unittest.TestCase):
         lines = body.splitlines()
         self.assertEqual(lines[0], "sep=,")
         header = lines[1]
-        self.assertTrue(header.startswith("site,device,port,"), header)
+        self.assertTrue(header.startswith("site,device,ssh_via,port,"), header)
         for col in (
             "class", "speed", "link_mbps", "speed_source", "far_site",
-            "netbox_description", "ifalias_source",
+            "netbox_description", "ifalias_source", "ssh_via",
             "blocking", "collision", "description_string",
             "rewrite",
         ):
@@ -814,19 +814,29 @@ class CliSafetyTests(unittest.TestCase):
         self.assertTrue(e.allowlist_hit("CORE01", "1/17", allow))
         self.assertFalse(e.allowlist_hit("CORE01", "1/18", allow))
         self.assertFalse(e.allowlist_hit("CORE02", "1/17", allow))
+        self.assertTrue(
+            e.allowlist_hit("CORE01-2", "2:10", {"CORE01-1::2:10"}, "CORE01-1")
+        )
 
     def test_iface_speed_falls_back_to_kbps_field(self):
-        iface = type("I", (), {"type": None, "speed": 10_000_000})()
+        class _I:
+            def __init__(self, **kw):
+                self.__dict__.update(kw)
+
+        iface = _I(type=None, speed=10_000_000)
         self.assertEqual(e.iface_speed_mbps(iface), 10000)
-        typed = type("I", (), {"type": "10gbase-x-sfpp", "speed": 1000})()
+        typed = _I(type="10gbase-x-sfpp", speed=None)
         self.assertEqual(e.iface_speed_mbps(typed), 10000)
         self.assertEqual(e.iface_speed_source(typed), "iftype:10gbase-x-sfpp")
-        stack = type("I", (), {"type": "extreme-summitstack", "speed": None})()
+        forced = _I(type="10gbase-x-sfpp", speed=1_000_000)
+        self.assertEqual(e.iface_speed_mbps(forced), 1000)
+        self.assertEqual(e.iface_speed_source(forced), "speed:1000000kbps")
+        stack = _I(type="extreme-summitstack", speed=None)
         self.assertIsNone(e.iface_speed_mbps(stack))
         self.assertEqual(e.iface_speed_source(stack), "")
-        kbps = type("I", (), {"type": None, "speed": 1_000_000})()
+        kbps = _I(type=None, speed=1_000_000)
         self.assertEqual(e.iface_speed_source(kbps), "speed:1000000kbps")
-        far = type("I", (), {"type": "1000base-t", "speed": None})()
+        far = _I(type="1000base-t", speed=None)
         mbps, src = e.link_mbps_and_source(typed, far)
         self.assertEqual(mbps, 1000)
         self.assertEqual(src, "far:iftype:1000base-t")
@@ -1230,6 +1240,135 @@ class VossSshTransportTests(unittest.TestCase):
         # never to VOSS expect_string.
         out = e._send(Fake(), "show configuration vlan", read_timeout=120)
         self.assertEqual(out, "exos:show configuration vlan:120")
+
+
+class ExosStackSessionTests(unittest.TestCase):
+    def test_parse_stack_hostname(self):
+        self.assertEqual(
+            e.parse_exos_stack_hostname("CN-SHA-JIU-L03-CORE01-1"),
+            ("CN-SHA-JIU-L03-CORE01", "1"),
+        )
+        self.assertEqual(
+            e.parse_exos_stack_hostname("JP-YOK-CHO-L06-CORE-2"),
+            ("JP-YOK-CHO-L06-CORE", "2"),
+        )
+        self.assertIsNone(e.parse_exos_stack_hostname("CH-STA-L50-B01-ACCE01"))
+        self.assertIsNone(e.parse_exos_stack_hostname("CN-SHA-JIU-L03-CORE01"))
+
+    def test_ifname_slot_and_canonical(self):
+        self.assertEqual(e.ifname_stack_slot("2:10"), "2")
+        self.assertEqual(e.ifname_stack_slot("02:10"), "2")
+        self.assertEqual(e.ifname_stack_slot("2/10"), "2")
+        self.assertIsNone(e.ifname_stack_slot("10"))
+        self.assertEqual(e.canonical_port_key("02:10"), "2:10")
+        self.assertEqual(e.canonical_port_key("2/10"), "2:10")
+
+    def test_session_key_groups_exos_stack_not_voss(self):
+        a = e.exos_stack_session_key(
+            name="CN-SHA-JIU-L03-CORE01-1", site="cn-sha-jiu", kind="exos",
+        )
+        b = e.exos_stack_session_key(
+            name="CN-SHA-JIU-L03-CORE01-2", site="cn-sha-jiu", kind="exos",
+        )
+        self.assertEqual(a, b)
+        self.assertNotEqual(
+            a,
+            e.exos_stack_session_key(
+                name="CN-SHA-JIU-L03-CORE03-1", site="cn-sha-jiu", kind="exos",
+            ),
+        )
+        self.assertNotEqual(
+            e.exos_stack_session_key(name="VSP-1", site="s", kind="voss"),
+            e.exos_stack_session_key(name="VSP-2", site="s", kind="voss"),
+        )
+        self.assertEqual(
+            e.exos_stack_session_key(
+                name="A-2", site="s", vc_id=9, kind="exos",
+            ),
+            e.exos_stack_session_key(
+                name="B-1", site="s", vc_id=9, kind="exos",
+            ),
+        )
+
+    def test_pick_ssh_member_prefers_master_then_slot1(self):
+        members = [
+            {"name": "CORE01-2", "ip": None, "master": False, "position": 2},
+            {"name": "CORE01-1", "ip": "10.0.0.1", "master": True, "position": 1},
+        ]
+        picked = e.pick_exos_stack_ssh_member(members)
+        self.assertEqual(picked["name"], "CORE01-1")
+        no_master = [
+            {"name": "CORE01-2", "ip": None, "master": False, "position": 2},
+            {"name": "CORE01-1", "ip": "10.0.0.1", "master": False, "position": 1},
+        ]
+        self.assertEqual(e.pick_exos_stack_ssh_member(no_master)["name"], "CORE01-1")
+        self.assertIsNone(e.pick_exos_stack_ssh_member([
+            {"name": "CORE01-2", "ip": None, "master": False, "position": 2},
+        ]))
+
+    def test_prefer_slot2_owner_for_duplicate_ifname(self):
+        master = e.PortPlan(
+            device="CORE01-1", site="s", kind="exos", ifname="2:10",
+            expected="USW-WRONG",
+        )
+        member = e.PortPlan(
+            device="CORE01-2", site="s", kind="exos", ifname="2:10",
+            expected="US-P-ESX13_NIC2",
+        )
+        kept = e.prefer_stack_ifname_owner([master, member])
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0].device, "CORE01-2")
+        self.assertEqual(kept[0].expected, "US-P-ESX13_NIC2")
+
+    def test_live_slot2_is_not_kept_when_member_has_cable(self):
+        plans = [
+            e.PortPlan(
+                device="CORE01-1", site="s", kind="exos", ifname="1:8",
+                expected="MON-P-ESX11_ILO9_1", ssh_device="CORE01-1",
+            ),
+            e.PortPlan(
+                device="CORE01-2", site="s", kind="exos", ifname="2:10",
+                expected="US-P-ESX13_NIC2", ssh_device="CORE01-1",
+            ),
+        ]
+        e.note_kept_live(
+            plans,
+            {"1:8": "MON-P-ESX11_ILO9_1", "2:10": "ESX13_eth2", "2:99": "ISP"},
+            {},
+            ssh_device="CORE01-1",
+        )
+        kept = [p for p in plans if p.status == "kept"]
+        self.assertEqual([p.ifname for p in kept], ["2:99"])
+        self.assertEqual(kept[0].device, "CORE01-1")
+
+    def test_collision_is_per_live_box_not_netbox_member(self):
+        a = e.PortPlan(
+            device="CORE01-1", site="s", kind="exos", ifname="1:1",
+            expected="USW-D01_23", ssh_device="CORE01-1",
+        )
+        b = e.PortPlan(
+            device="CORE01-2", site="s", kind="exos", ifname="2:1",
+            expected="USW-D01_23", ssh_device="CORE01-1",
+        )
+        e.flag_collisions([a, b])
+        self.assertTrue(a.collision)
+        self.assertTrue(b.collision)
+
+    def test_csv_ssh_via_only_when_member_differs(self):
+        member = e.PortPlan(
+            device="CORE01-2", site="s", kind="exos", ifname="2:2",
+            expected="USW-L02-D02_27", ssh_device="CORE01-1",
+        )
+        text = e.plans_to_csv([member])
+        self.assertIn("CORE01-2", text)
+        self.assertIn("CORE01-1", text)
+        local = e.PortPlan(
+            device="CORE01-1", site="s", kind="exos", ifname="1:8",
+            expected="MON-X", ssh_device="CORE01-1",
+        )
+        local_csv = e.plans_to_csv([local])
+        header = local_csv.splitlines()[1]
+        self.assertIn("ssh_via", header)
 
 
 if __name__ == "__main__":

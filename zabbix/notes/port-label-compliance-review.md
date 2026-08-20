@@ -81,7 +81,7 @@ only if that box is ticked).
 | `status = diff` | Box display-string / VOSS `name` ≠ cabling |
 | `status = missing` | Cabled in NetBox, no live label |
 | `status = alias_hijacked` | Grammar is on display-string; Zabbix still reads description-string |
-| `status = unreachable` | SSH failed or no `oob_ip`/`primary_ip`. One **device** login; every port on that box gets the same short `detail`. The job **always fails** — we cannot attest those ports |
+| `status = unreachable` | SSH failed or no `oob_ip`/`primary_ip`. One **login** (EXOS stack master, or one VOSS box); every port on that live box gets the same short `detail`. The job **always fails** — we cannot attest those ports. Slot-2 cables are **not** unreachable just because `…-2` has no IP — they apply via `…-1`. |
 | `collision = yes` | Two ports on this switch share `expected` (not `X`/`N`) |
 | `status = kept` | Label on the box, no complete cable. **Listed, never wiped.** Often still useful (ISP, leftover NIC) |
 | `class` | `USW` / `US` / `UP` / `MON` / `UW` / `X` — own column, do not parse `expected` |
@@ -171,8 +171,10 @@ The script is the right shape for NetBox: a **flat file** next to
 - Auto-confirm `y/N` is the runner’s behaviour (needed for `save`). Display-string
   itself does not prompt.
 - Canary allowlist is `device::ifName`. `1:17` and `1/17` match. Copy the
-  device name from NetBox.
+  device name from NetBox. On an EXOS stack, `CORE01-1::2:10` and
+  `CORE01-2::2:10` both match (SSH is the master).
 - If `oob_ip` is empty, SSH goes to `primary_ip` (in-band). Fill OOB in NetBox.
+  EXOS VC members other than the master usually have neither — that is expected.
 - Live `show running-config` on VOSS can be slow; timeout is 180s.
 - `mgmt` / `oob` as substrings on a far-port name can false-positive BMC.
   Prefer `oob_ip` assigned to that interface and `mgmt_only`.

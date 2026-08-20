@@ -28,8 +28,9 @@ the runner's ``_send_exos`` helper — that hunts Netmiko's default
 ``extreme_firmware_upgrade.py`` (``expect_string=r"#|>"``, timing for
 ``save config``). The runner module is registered in ``sys.modules`` before
 exec (Python 3.12 dataclasses). Compliance/remediate open **one SSH login
-per switch**; every port on that box is compared (and optionally pushed) on
-that same session.
+per EXOS stack** (the member with ``oob_ip``/``primary_ip`` — the VC master).
+Slot-2 cables live on ``…-2`` in NetBox; ``configure ports 2:x`` still runs on
+the master. VOSS stays one login per box.
 
 Environment variables (identical to the CLI runner):
   EXTREME_VENV_PATH                                   — venv holding netmiko
@@ -355,7 +356,7 @@ LOG_TABLE_LIMIT = 40
 SCORECARD_LOG_CHUNK = 200
 
 CSV_COLUMNS = (
-    "site", "device", "port", "kind",
+    "site", "device", "ssh_via", "port", "kind",
     "class", "speed", "link_mbps", "speed_source",
     "far_site", "far_device", "far_port", "far_role",
     "netbox_description", "expected", "live", "description_string",
@@ -420,10 +421,13 @@ def plan_rewrite(plan) -> str:
 
 
 def flag_collisions(plans: list) -> int:
-    """Mark ports that share an expected label on the same device.
+    """Mark ports that share an expected label on the same live box.
 
     The ladder is local (one far-end). Two neighbours can compress to the same
     20-character string; preview must say so instead of looking clean.
+
+    EXOS stack members share one CLI, so collisions key on ``ssh_device``
+    (the master), not the NetBox member that owns the cable.
 
     ``X`` / ``N`` are policy labels — every SPAN port on a switch is *supposed*
     to be ``X``. Those must not count as collisions.
@@ -436,7 +440,8 @@ def flag_collisions(plans: list) -> int:
             continue
         if plan.status in {"kept", "unreachable"}:
             continue
-        groups.setdefault((plan.device or "", expected), []).append(plan)
+        box = getattr(plan, "ssh_device", "") or plan.device or ""
+        groups.setdefault((box, expected), []).append(plan)
     hit = 0
     for group in groups.values():
         if len(group) < 2:
@@ -556,9 +561,13 @@ def plans_to_csv(plans: list) -> str:
     for plan in sorted(plans, key=lambda p: (p.device or "", p.ifname or "")):
         parsed = parse_label(plan.expected) if plan.expected else None
         link_mbps = getattr(plan, "link_mbps", None)
+        ssh_via = getattr(plan, "ssh_device", "") or ""
+        if ssh_via == (plan.device or ""):
+            ssh_via = ""
         writer.writerow({
             "site": plan.site,
             "device": plan.device,
+            "ssh_via": ssh_via,
             "port": _excel_text(plan.ifname),
             "kind": plan.kind,
             "class": parsed.cls if parsed else "",
@@ -1302,13 +1311,186 @@ def lookup_live_label(labels: dict[str, str], ifname: str) -> str:
     return ""
 
 
-def allowlist_hit(device: str, ifname: str, allowlist: set[str]) -> bool:
-    """True when ``device::ifname`` is on the canary list (``:``/``/``/``.`` equivalent)."""
+def allowlist_hit(
+    device: str, ifname: str, allowlist: set[str], ssh_device: str = "",
+) -> bool:
+    """True when ``device::ifname`` is on the canary list (``:``/``/``/``.`` equivalent).
+
+    EXOS stack member ports also match the master name (``ssh_device``) so a
+    canary of ``CORE01-1::2:10`` still hits the cable that NetBox keeps on
+    ``CORE01-2``.
+    """
     if not allowlist:
         return False
-    if f"{device}::{ifname}" in allowlist:
-        return True
-    return any(f"{device}::{alias}" in allowlist for alias in port_key_aliases(ifname))
+    names = {device}
+    if ssh_device:
+        names.add(ssh_device)
+    for name in names:
+        if not name:
+            continue
+        if f"{name}::{ifname}" in allowlist:
+            return True
+        if any(f"{name}::{alias}" in allowlist for alias in port_key_aliases(ifname)):
+            return True
+    return False
+
+
+#: EXOS SummitStack members in this estate are ``…-1`` … ``…-8``.
+_EXOS_STACK_SUFFIX_RE = re.compile(r"^(?P<stem>.+)-(?P<slot>[1-8])$")
+
+
+def parse_exos_stack_hostname(name: str) -> tuple[str, str] | None:
+    """``CN-SHA-JIU-L03-CORE01-1`` → ``('CN-SHA-JIU-L03-CORE01', '1')``."""
+    match = _EXOS_STACK_SUFFIX_RE.fullmatch((name or "").strip())
+    if not match:
+        return None
+    return match.group("stem"), match.group("slot")
+
+
+def ifname_stack_slot(ifname: str) -> str | None:
+    """``2:10`` / ``02:10`` / ``2/10`` → ``'2'``. Unslotted ``10`` → ``None``."""
+    match = re.match(r"^0*(\d+)\s*[:/.]", (ifname or "").strip())
+    if not match:
+        return None
+    slot = match.group(1)
+    if slot == "0":
+        return None
+    return slot
+
+
+def canonical_port_key(ifname: str) -> str:
+    """``02:10`` / ``2/10`` → ``2:10`` so VC members can share one live port."""
+    raw = (ifname or "").strip().replace("/", ":").replace(".", ":")
+    match = re.match(r"^0*(\d+):0*(\d+)(?::0*(\d+))?$", raw)
+    if not match:
+        return raw
+    if match.group(3) is not None:
+        return f"{int(match.group(1))}:{int(match.group(2))}:{int(match.group(3))}"
+    return f"{int(match.group(1))}:{int(match.group(2))}"
+
+
+def exos_stack_session_key(
+    *,
+    name: str,
+    site: str = "",
+    vc_id=None,
+    kind: str = "exos",
+) -> str:
+    """One SSH login covers every NetBox member of an EXOS stack.
+
+    NetBox ``virtual_chassis`` id wins. Otherwise EXOS hostnames ``…-1``/``…-2``
+    at the same site share a session — only the master holds ``primary_ip``.
+    VOSS stays per-device (each VSP has its own IP).
+    """
+    if kind != "exos":
+        return f"device:{name}"
+    if vc_id not in (None, ""):
+        return f"vc:{vc_id}"
+    parsed = parse_exos_stack_hostname(name)
+    if parsed:
+        stem, _slot = parsed
+        return f"stack:{site}:{stem}"
+    return f"device:{name}"
+
+
+def pick_exos_stack_ssh_member(members: list[dict]) -> dict | None:
+    """Member we SSH to. Prefer VC master with an IP, else slot 1, else any IP."""
+    with_ip = [m for m in members if m.get("ip")]
+    if not with_ip:
+        return None
+    masters = [m for m in with_ip if m.get("master")]
+    if masters:
+        return masters[0]
+    pos1 = [m for m in with_ip if str(m.get("position") or "") in {"1", "01"}]
+    if pos1:
+        return pos1[0]
+    named = []
+    for member in with_ip:
+        parsed = parse_exos_stack_hostname(member.get("name") or "")
+        if parsed and parsed[1] == "1":
+            named.append(member)
+    if named:
+        return named[0]
+    return with_ip[0]
+
+
+def plan_hostname_slot(plan) -> str | None:
+    parsed = parse_exos_stack_hostname(getattr(plan, "device", "") or "")
+    return parsed[1] if parsed else None
+
+
+def prefer_stack_ifname_owner(plans: list) -> list:
+    """One plan per live ifName when two VC members both have ``2:10``.
+
+    Keep the member whose hostname/VC slot matches the ifName slot
+    (``CORE01-2`` owns ``2:10``). Cabled rows win over empty.
+    """
+    groups: dict[str, list] = {}
+    order: list[str] = []
+    for plan in plans:
+        key = canonical_port_key(plan.ifname)
+        if key not in groups:
+            order.append(key)
+        groups.setdefault(key, []).append(plan)
+    kept: list = []
+    for key in order:
+        group = groups[key]
+        if len(group) == 1:
+            kept.append(group[0])
+            continue
+        slot = ifname_stack_slot(group[0].ifname)
+        matching = [
+            plan for plan in group
+            if slot and plan_hostname_slot(plan) == slot
+        ] if slot else []
+        pool = matching or group
+        cabled = [plan for plan in pool if (plan.expected or "").strip()]
+        kept.append((cabled or pool)[0])
+    return kept
+
+
+def note_kept_live(
+    plans: list,
+    labels: dict[str, str],
+    descriptions: dict[str, str] | None = None,
+    *,
+    ssh_device: str = "",
+) -> None:
+    """Live labels with no cabled NetBox port — list them, never push.
+
+    Across an EXOS stack the planned set is *every* member. A live ``2:10``
+    on the master is not ``kept`` when ``CORE01-2`` has that cable.
+    """
+    if not plans or not labels:
+        return
+    template = plans[0]
+    planned: set[str] = set()
+    for plan in plans:
+        planned |= port_key_aliases(plan.ifname)
+    descriptions = descriptions or {}
+    device_name = ssh_device or template.device
+    for live_port, live_label in labels.items():
+        if not live_label:
+            continue
+        if port_key_aliases(live_port) & planned:
+            continue
+        plans.append(type(template)(
+            device=device_name,
+            site=template.site,
+            kind=template.kind,
+            ifname=live_port,
+            live=live_label,
+            description_string=lookup_live_label(descriptions, live_port),
+            status="kept",
+            detail="live label kept; no complete cable in NetBox",
+            ssh_device=ssh_device or getattr(template, "ssh_device", "") or "",
+            ifalias_source=(
+                "description-string"
+                if template.kind == "exos"
+                and lookup_live_label(descriptions, live_port)
+                else ("name" if template.kind == "voss" else "display-string")
+            ),
+        ))
 
 
 def parse_exos_labels(config_text: str) -> tuple[dict[str, str], dict[str, str]]:
@@ -1770,6 +1952,7 @@ class PortPlan:
     collision: bool = False
     netbox_description: str = ""
     speed_source: str = ""
+    ssh_device: str = ""     # EXOS stack master we actually log into
 
     @property
     def blocking(self) -> bool:
@@ -2194,8 +2377,9 @@ if _NETBOX:
         max_workers = IntegerVar(
             default=8, min_value=1, max_value=20,
             description=(
-                "Concurrent SSH logins — one session per switch, not per port. "
-                "All ports on a box share that session. Capped at 20."
+                "Concurrent SSH logins — one session per EXOS stack (the "
+                "master with oob_ip/primary_ip) or per VOSS box, not per port. "
+                "Slot-2 cables on …-2 are pushed on that master session. Capped at 20."
             ),
             label="Concurrent workers",
         )
@@ -2211,6 +2395,9 @@ if _NETBOX:
             structural_tag_ids = {t.pk for t in (data.get("structural_tag") or [])}
 
             device_list = self._resolve_devices(data)
+            extra_stack = []
+            if device_list:
+                device_list, extra_stack = self._expand_exos_stack_members(device_list)
             device_by_name = {d.name: d for d in device_list}
             wanted = normalize_platform_filter(data.get("platform_filter"))
             plat_names = ", ".join(
@@ -2236,6 +2423,15 @@ if _NETBOX:
                 f"- **Workers:** {data.get('max_workers', 8)}"
             )
             self.log_info("```\n" + "\n".join(runner_status_lines()) + "\n```")
+            if extra_stack:
+                shown = ", ".join(extra_stack[:12])
+                more = f" (+{len(extra_stack) - 12})" if len(extra_stack) > 12 else ""
+                self.log_info(
+                    "EXOS stack: included "
+                    f"**{len(extra_stack)}** member(s) so slot-N cables apply "
+                    f"via the master (only `-1` holds oob_ip/primary_ip): "
+                    f"{shown}{more}."
+                )
             if not preview_only and _RUNNER is None and wanted != "voss":
                 self.log_failure(
                     "SSH transport unavailable — "
@@ -2285,8 +2481,7 @@ if _NETBOX:
                 self.log_info(f"Canary allowlist active: {len(allowlist)} port(s).")
 
             # ---- 1. Build the expected plan from NetBox ----
-            plans_by_device: dict[str, list[PortPlan]] = {}
-            targets: list[tuple[Device, str, str]] = []   # (device, ip, kind)
+            raw_plans: dict[str, list[PortPlan]] = {}
             for device in device_list:
                 kind = _platform_kind(
                     getattr(device.platform, "name", None),
@@ -2294,64 +2489,85 @@ if _NETBOX:
                 )
                 if kind is None:
                     continue
-                if device.name in plans_by_device:
+                if device.name in raw_plans:
                     self.log_warning(
                         f"Skipping duplicate NetBox name **{device.name}** "
-                        "(one SSH session per switch).",
+                        "(one SSH session per EXOS stack).",
                         obj=device,
                     )
                     continue
                 plans = self._plan_device(device, kind, data, structural_tag_ids)
-                if not plans:
+                if plans:
+                    raw_plans[device.name] = plans
+
+            session_plans: dict[str, list[PortPlan]] = {}
+            targets: list[tuple] = []
+            for ssh_device, ip, kind, members in self._group_ssh_sessions(device_list):
+                merged: list[PortPlan] = []
+                for member in members:
+                    merged.extend(raw_plans.get(member["name"], []))
+                merged = prefer_stack_ifname_owner(merged)
+                if not merged:
                     continue
-                plans_by_device[device.name] = plans
+                ssh_name = (
+                    ssh_device.name if ssh_device is not None else members[0]["name"]
+                )
+                for plan in merged:
+                    plan.ssh_device = ssh_name
+                session_plans[ssh_name] = merged
                 if preview_only:
                     continue
-                ip = _device_ssh_ip(device)
                 if ip:
-                    targets.append((device, ip, kind))
-                else:
-                    for plan in plans:
-                        plan.status = "unreachable"
-                        plan.detail = "no oob_ip/primary_ip in NetBox"
-                    self.log_warning(
-                        f"**{device.name}** — no oob_ip/primary_ip in NetBox",
-                        obj=device,
+                    targets.append((ssh_device, ip, kind, ssh_name))
+                    continue
+                names = ", ".join(m["name"] for m in members)
+                detail = "no oob_ip/primary_ip in NetBox"
+                if len(members) > 1:
+                    detail = (
+                        "EXOS stack: no oob_ip/primary_ip on any member "
+                        f"({names}); label slot-N ports from the master"
                     )
+                for plan in merged:
+                    plan.status = "unreachable"
+                    plan.detail = detail
+                self.log_warning(
+                    f"**{ssh_name}** — {detail}",
+                    obj=ssh_device or members[0]["device"],
+                )
 
-            if not plans_by_device:
+            if not session_plans:
                 self.log_failure("No labellable ports found in the selected scope.")
                 return
 
-            # ---- 2. One SSH login per switch (all ports share the session) ----
+            # ---- 2. One SSH login per EXOS stack / VOSS box ----
             apply_now = remediating
             if not preview_only:
                 workers = min(int(data.get("max_workers", 8) or 8), max(1, len(targets)))
                 self.log_info(
-                    f"SSH: **{len(targets)}** login(s) (one per switch, "
-                    f"{workers} concurrent). Ports on the same box share "
-                    "the session — not one connection per port."
+                    f"SSH: **{len(targets)}** login(s) (one per EXOS stack or "
+                    f"VOSS box, {workers} concurrent). Slot-N ports share the "
+                    "master session — not one connection per NetBox member."
                 )
                 with ThreadPoolExecutor(max_workers=workers) as pool:
                     futures = {
                         pool.submit(
                             self._session_device,
-                            device.name, ip, kind,
-                            plans_by_device[device.name],
+                            ssh_name, ip, kind,
+                            session_plans[ssh_name],
                             apply_now,
                             bool(data.get("save_config", True)),
                             bool(data.get("clear_description_string")),
                             allowlist if apply_now else None,
-                        ): device.name
-                        for device, ip, kind in targets
+                        ): ssh_name
+                        for ssh_device, ip, kind, ssh_name in targets
                     }
                     for index, future in enumerate(as_completed(futures), 1):
                         name = futures[future]
                         connect_error, apply_error, transcript = future.result()
-                        nports = len(plans_by_device.get(name, []))
+                        nports = len(session_plans.get(name, []))
                         if connect_error:
                             stamp_device_ssh_failure(
-                                plans_by_device.get(name, []), connect_error,
+                                session_plans.get(name, []), connect_error,
                             )
                             self.log_warning(
                                 f"[{index}/{len(targets)}] **{name}** — "
@@ -2364,11 +2580,11 @@ if _NETBOX:
                             )
                             continue
                         live_n = sum(
-                            1 for p in plans_by_device.get(name, [])
+                            1 for p in session_plans.get(name, [])
                             if p.live
                         )
                         applied_n = sum(
-                            1 for p in plans_by_device.get(name, [])
+                            1 for p in session_plans.get(name, [])
                             if p.status == "applied"
                         )
                         self.log_info(
@@ -2387,7 +2603,7 @@ if _NETBOX:
                                 f"{summarize_ssh_error(apply_error)}"
                             )
 
-            all_plans = [p for plans in plans_by_device.values() for p in plans]
+            all_plans = [p for plans in session_plans.values() for p in plans]
             if not data.get("include_neutral", True):
                 all_plans = [
                     p for p in all_plans
@@ -2505,6 +2721,7 @@ if _NETBOX:
                 "platform", "site", "role",
                 "device_type", "device_type__manufacturer",
                 "primary_ip4", "primary_ip6", "oob_ip",
+                "virtual_chassis", "virtual_chassis__master",
             ):
                 kind = _platform_kind(
                     getattr(device.platform, "name", None),
@@ -2521,6 +2738,117 @@ if _NETBOX:
                     seen.add(pk)
                 result.append(device)
             return sorted(result, key=lambda d: d.name or "")
+
+        def _expand_exos_stack_members(self, devices: list) -> tuple[list, list[str]]:
+            """Pull VC / ``…-2`` peers so slot-N cables are in scope with the master."""
+            by_pk = {d.pk: d for d in devices if getattr(d, "pk", None) is not None}
+            extra_names: list[str] = []
+            seen_vc: set = set()
+            seen_stem: set = set()
+            related = (
+                "platform", "site", "role",
+                "device_type", "device_type__manufacturer",
+                "primary_ip4", "primary_ip6", "oob_ip",
+                "virtual_chassis", "virtual_chassis__master",
+            )
+
+            def _add(peer) -> None:
+                pk = getattr(peer, "pk", None)
+                if pk is None or pk in by_pk:
+                    return
+                kind = _platform_kind(
+                    getattr(getattr(peer, "platform", None), "name", None),
+                    getattr(getattr(peer, "platform", None), "slug", None),
+                )
+                if kind != "exos":
+                    return
+                by_pk[pk] = peer
+                extra_names.append(peer.name)
+
+            for device in list(devices):
+                kind = _platform_kind(
+                    getattr(getattr(device, "platform", None), "name", None),
+                    getattr(getattr(device, "platform", None), "slug", None),
+                )
+                if kind != "exos":
+                    continue
+                vc = getattr(device, "virtual_chassis", None)
+                vc_id = getattr(vc, "pk", None) if vc is not None else None
+                if vc_id is not None:
+                    if vc_id in seen_vc:
+                        continue
+                    seen_vc.add(vc_id)
+                    for peer in Device.objects.filter(
+                        virtual_chassis_id=vc_id,
+                        status=DeviceStatusChoices.STATUS_ACTIVE,
+                    ).select_related(*related):
+                        _add(peer)
+                    continue
+                parsed = parse_exos_stack_hostname(device.name or "")
+                if not parsed:
+                    continue
+                stem, _slot = parsed
+                site_id = getattr(getattr(device, "site", None), "pk", None)
+                key = (site_id, stem)
+                if key in seen_stem:
+                    continue
+                seen_stem.add(key)
+                names = [f"{stem}-{i}" for i in range(1, 9)]
+                qs = Device.objects.filter(
+                    name__in=names,
+                    status=DeviceStatusChoices.STATUS_ACTIVE,
+                ).select_related(*related)
+                if site_id is not None:
+                    qs = qs.filter(site_id=site_id)
+                for peer in qs:
+                    _add(peer)
+            extra_names.sort()
+            return sorted(by_pk.values(), key=lambda d: d.name or ""), extra_names
+
+        @staticmethod
+        def _stack_member_info(device) -> dict:
+            vc = getattr(device, "virtual_chassis", None)
+            master = getattr(vc, "master", None) if vc is not None else None
+            master_pk = getattr(master, "pk", None)
+            return {
+                "device": device,
+                "name": device.name,
+                "ip": _device_ssh_ip(device),
+                "master": (
+                    master_pk is not None
+                    and getattr(device, "pk", None) == master_pk
+                ),
+                "position": getattr(device, "vc_position", None),
+                "kind": _platform_kind(
+                    getattr(getattr(device, "platform", None), "name", None),
+                    getattr(getattr(device, "platform", None), "slug", None),
+                ),
+                "site": getattr(getattr(device, "site", None), "slug", "") or "",
+                "vc_id": getattr(vc, "pk", None) if vc is not None else None,
+            }
+
+        def _group_ssh_sessions(self, device_list: list) -> list[tuple]:
+            """One tuple per SSH login: (ssh_device, ip, kind, member_infos)."""
+            groups: dict[str, list[dict]] = {}
+            for device in device_list:
+                info = self._stack_member_info(device)
+                if info["kind"] is None:
+                    continue
+                key = exos_stack_session_key(
+                    name=info["name"],
+                    site=info["site"],
+                    vc_id=info["vc_id"],
+                    kind=info["kind"],
+                )
+                groups.setdefault(key, []).append(info)
+            sessions = []
+            for members in groups.values():
+                picked = pick_exos_stack_ssh_member(members)
+                ssh_device = picked["device"] if picked else None
+                ip = picked["ip"] if picked else None
+                kind = members[0]["kind"]
+                sessions.append((ssh_device, ip, kind, members))
+            return sessions
 
         @staticmethod
         def _far_bits(iface) -> tuple[str, str, str, str]:
@@ -2611,7 +2939,7 @@ if _NETBOX:
             try:
                 nc = _connect(name, ip, kind)
                 labels, descriptions = _fetch_live_labels(nc, kind)
-                self._note_kept_live(plans, labels, descriptions)
+                note_kept_live(plans, labels, descriptions, ssh_device=name)
                 for plan in plans:
                     self._compare(plan, labels, descriptions, clear_description)
                 flag_collisions(plans)
@@ -2620,7 +2948,9 @@ if _NETBOX:
                     if allowlist:
                         todo = [
                             p for p in todo
-                            if allowlist_hit(p.device, p.ifname, allowlist)
+                            if allowlist_hit(
+                                p.device, p.ifname, allowlist, p.ssh_device,
+                            )
                         ]
                     _ok, transcript, err = self._apply_on_session(
                         nc, kind, todo, save_config,
@@ -2643,44 +2973,6 @@ if _NETBOX:
                     close_old_connections()
                 except Exception:  # noqa: BLE001
                     pass
-
-        @staticmethod
-        def _note_kept_live(plans: list[PortPlan], labels: dict[str, str],
-                            descriptions: dict[str, str] | None = None) -> None:
-            """Live labels with no cabled NetBox port — list them, never push.
-
-            These strings often still tell an engineer what the port used to
-            be (ISP, leftover server NIC). Keeping them beats blanking the
-            box. Status is ``kept``, not a failure.
-            """
-            if not plans or not labels:
-                return
-            template = plans[0]
-            planned: set[str] = set()
-            for plan in plans:
-                planned |= port_key_aliases(plan.ifname)
-            descriptions = descriptions or {}
-            for live_port, live_label in labels.items():
-                if not live_label:
-                    continue
-                if port_key_aliases(live_port) & planned:
-                    continue
-                plans.append(PortPlan(
-                    device=template.device,
-                    site=template.site,
-                    kind=template.kind,
-                    ifname=live_port,
-                    live=live_label,
-                    description_string=lookup_live_label(descriptions, live_port),
-                    status="kept",
-                    detail="live label kept; no complete cable in NetBox",
-                    ifalias_source=(
-                        "description-string"
-                        if template.kind == "exos"
-                        and lookup_live_label(descriptions, live_port)
-                        else ("name" if template.kind == "voss" else "display-string")
-                    ),
-                ))
 
         @staticmethod
         def _compare(plan: PortPlan, labels, descriptions, clear_description: bool):
@@ -2849,7 +3141,9 @@ if _NETBOX:
             if allowlist:
                 actionable = [
                     p for p in actionable
-                    if allowlist_hit(p.device, p.ifname, allowlist)
+                    if allowlist_hit(
+                        p.device, p.ifname, allowlist, p.ssh_device,
+                    )
                 ]
             if not actionable:
                 self.log_info("Nothing to remediate.")
@@ -2857,12 +3151,14 @@ if _NETBOX:
 
             by_device: dict[str, list[PortPlan]] = {}
             for plan in actionable:
-                by_device.setdefault(plan.device, []).append(plan)
+                by_device.setdefault(plan.ssh_device or plan.device, []).append(plan)
 
             for name, plans in sorted(by_device.items()):
+                members = sorted({p.device for p in plans if p.device != name})
+                extra = f" (NetBox {', '.join(members)})" if members else ""
                 lines = [c for p in plans for c in p.commands]
                 self.log_info(
-                    f"\n---\n### Would apply on {name} ({len(plans)} port(s)) "
+                    f"\n---\n### Would apply on {name}{extra} ({len(plans)} port(s)) "
                     "— one SSH session when you tick Commit\n"
                     "```\n" + "\n".join(lines) + "\n```"
                 )

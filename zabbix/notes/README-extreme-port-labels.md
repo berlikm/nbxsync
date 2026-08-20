@@ -115,11 +115,21 @@ text is **kept** and listed in compliance as `kept` (it often still means
 something: ISP, leftover NIC). We do not blank the box to look tidy.
 
 SSH uses **`oob_ip` first**, then `primary_ip`. Site groups include **nested children**.
-Compliance and remediate open **one SSH login per switch**: `show configuration vlan`
-(or VOSS `show running-config`) once, then every port on that box is compared in
-memory. Remediate with **Commit** pushes on **that same session**, then disconnects.
-Workers are concurrent *devices*, not concurrent ports. Duplicate NetBox names /
-pks are skipped so EXOS is not hammered with a second login.
+EXOS **virtual chassis / SummitStack** is one CLI: only the master (`…-1`) holds
+the management IP, and `configure ports 2:x display-string …` is issued there.
+Cables in NetBox still sit on the member (`…-2`, ifName `2:10`). The script
+includes those peers in scope even if you picked only `-1`, plans the label from
+the member cable, and SSH/applies **once via the master**. CSV `device` stays
+the NetBox member; `ssh_via` is the master when they differ. Canary
+`CORE01-1::2:10` and `CORE01-2::2:10` both match. VOSS stays one login per box
+(each VSP has its own IP).
+
+Compliance and remediate open **one SSH login per EXOS stack / VOSS box**:
+`show configuration vlan` (or VOSS `show running-config`) once, then every port
+on that live box is compared in memory. Remediate with **Commit** pushes on
+**that same session**, then disconnects. Workers are concurrent *logins*, not
+concurrent ports. Duplicate NetBox names / pks are skipped so EXOS is not
+hammered with a second login.
 
 If login fails, every port on that switch is `status=unreachable` with the **same
 short** `detail` (`SSH session failed (1 login, N port(s)): …`). That is one
