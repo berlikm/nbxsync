@@ -26,8 +26,12 @@ single flat file next to the others. On this estate that directory is
 /opt/netbox/netbox/scripts/
 ├── extreme_cli_runner.py       # SSH transport — reused, not forked
 ├── extreme_firmware_upgrade.py
-└── extreme_port_labels.py      # this script
+├── extreme_port_labels.py      # this script
+└── extreme_port_mute.py        # allowlist shutdown / X- (separate job)
 ```
+
+Port shutdown / `X-` mute is a **separate** script so cabling remediate cannot
+disable ports: [`README-extreme-port-mute.md`](README-extreme-port-mute.md).
 
 It reuses the CLI runner's **EXOS** session helpers and credential resolution
 by loading the runner **by file path** (`importlib`), because NetBox loads each
