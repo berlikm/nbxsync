@@ -107,36 +107,31 @@ Emit a token **only** for non-default speeds.
 
 ## 4. Examples
 
-`USW` / `US` / `UP` / `MON` Display values are generator output from the 1535-port cabling preview (`../notes/fixtures/port_label_preview.tsv`) unless marked otherwise.
+`USW` / `US` / `UP` / `MON` Display values are generator output from the cabling preview (`../notes/fixtures/port_label_preview.tsv`). `UW` / `TMON` / `X` / `N` are operator-applied.
 
 **Normal (default speed — no token):**
 
 | Scenario | Display | Len | Expect |
 |---|---|---|---|
-| Switch ↔ switch (ZH4 CORE ISC) | `USW-C02_1` | 9 | 10G |
-| Firewall 10G data (L26 Core → FWZone) | `USW-FW01_X1` | 11 | 10G |
-| Hypervisor 10G NIC (ZH4 CORE → ESX40) | `US-ESX40_NIC0` | 13 | 10G |
-| Storage 10G (ZH4 CORE → SAN01) | `US-SAN01_CT0_10` | 15 | 10G |
-| AP (NKN L02) | `UP-L02-AP07` | 11 | 1G |
-| iDRAC (ZH4 MGMT → ESX40) | `MON-ESX40_ILO10_1` | 17 | 1G |
-| Cohesity iLO (L26 MGMT; MON, not a data NIC) | `MON-SAN10-N01` | 13 | 1G |
-| SummitStack (ZH4 MGMT) | `USW-M01_2_50` | 12 | `USW` — not `X` |
+| Switch ↔ switch | `USW-C02_1` | 9 | 10G |
+| Hypervisor / 10G NIC | `US-ESX40_NIC0` | 13 | 10G |
+| Storage 10G | `US-SAN01_CT0_10` | 15 | 10G |
+| AP | `UP-L02-AP07` | 11 | 1G |
+| iDRAC / BMC | `MON-ESX40_ILO10_1` | 17 | 1G |
 | WAN uplink | `UW-SC1` | 6 | link/flap/errors |
 | Temp watch | `TMON-GUEST` | 10 | items + INFO link-down |
 | Exclude | `X` / `X-SPAN` | | none |
-| Note (neutral) | `N-SPARE` | 7 | same as unlabelled |
+| Note only | `N-SPARE` | 7 | same as unlabelled |
 
-`UW` / `TMON` / `X` / `N` are operator-applied — none of those CLASSes appear in the current cabling preview. Printers and cameras are still `MON`; the preview has no such cables, so there is no generated `MON-PRN…` row.
+A 1G **server** NIC is not this table: `US` defaults to 10G, so it needs a token (`US-1G-…` below). It is never `MON`. Stack / ISC stay `USW` (`USW-M01_2_50`), not `X-STACK`.
 
 **Exceptions (token required — not the class default):**
 
 | Scenario | Display | Len | Expect |
 |---|---|---|---|
-| Switch ↔ switch at 1G (NEP-GFL Dist → Access) | `USW-1G-GFL-A01_23` | 17 | 1G |
-| Firewall 1G HA | `USW-1G-FW01_HA` | 14 | 1G |
-| 1G server NIC (ZH4 MGMT → ESX40) | `US-1G-ESX40_NIC4` | 16 | 1G |
-| Storage 25G (token on today's SAN02 ID; preview cabling is 10G) | `US-25G-SAN02_CT0_10` | 19 | 25G |
-| AP at 2.5G (token on today's AP ID; no 2.5G AP in the preview) | `UP-2G5-L02-AP07` | 15 | 2.5G |
+| Switch ↔ switch at 1G | `USW-1G-GFL-A01_23` | 17 | 1G |
+| 1G server NIC | `US-1G-ESX40_NIC4` | 16 | 1G |
+| AP at 2.5G | `UP-2G5-L02-AP07` | 15 | 2.5G |
 | 10G port that would otherwise be `MON` | `MON-10G-…` | | 10G |
 
 **Does not fit (25 > 20):** `USW-10G-CH-ZRH-ZH4-DIST01` — shorten the ID; full name stays in NetBox. The generator refuses this.

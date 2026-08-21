@@ -65,24 +65,32 @@ Expected = token if present, else class default.
 
 ## Examples
 
-Generator output from the cabling preview unless marked operator-applied. Full table: [reference/port-identity-foundation.md](reference/port-identity-foundation.md) §4.
+Same two tables as [reference/port-identity-foundation.md](reference/port-identity-foundation.md) §4.
+
+**Normal (default speed — no token):**
 
 | Scenario | Display | Len | Expect |
 |---|---|---|---|
-| Switch ↔ switch 10G (ZH4 CORE ISC) | `USW-C02_1` | 9 | 10G |
-| Firewall 10G | `USW-FW01_X1` | 11 | 10G |
-| Hypervisor 10G NIC | `US-ESX40_NIC0` | 13 | 10G |
+| Switch ↔ switch | `USW-C02_1` | 9 | 10G |
+| Hypervisor / 10G NIC | `US-ESX40_NIC0` | 13 | 10G |
 | Storage 10G | `US-SAN01_CT0_10` | 15 | 10G |
 | AP | `UP-L02-AP07` | 11 | 1G |
-| iDRAC | `MON-ESX40_ILO10_1` | 17 | 1G |
+| iDRAC / BMC | `MON-ESX40_ILO10_1` | 17 | 1G |
+| WAN uplink | `UW-SC1` | 6 | link/flap/errors |
+| Temp watch | `TMON-GUEST` | 10 | items + INFO link-down |
+| Exclude | `X` / `X-SPAN` | | none |
+| Note only | `N-SPARE` | 7 | same as unlabelled |
+
+**Exceptions (token required — not the class default):**
+
+| Scenario | Display | Len | Expect |
+|---|---|---|---|
+| Switch ↔ switch at 1G | `USW-1G-GFL-A01_23` | 17 | 1G |
 | 1G server NIC | `US-1G-ESX40_NIC4` | 16 | 1G |
-| Dist ↔ Access 1G | `USW-1G-GFL-A01_23` | 17 | 1G |
-| Storage 25G | `US-25G-SAN02_CT0_10` | 19 | 25G |
 | AP at 2.5G | `UP-2G5-L02-AP07` | 15 | 2.5G |
-| SummitStack (not `X`) | `USW-M01_2_50` | 12 | `USW` |
-| Exclude | `X-SPAN` | 6 | none |
-| Note | `N-SPARE` | 7 | = unlabelled |
-| Too long | `USW-10G-CH-ZRH-ZH4-DIST01` | **25** | refuse |
+| 10G port that would otherwise be `MON` | `MON-10G-…` | | 10G |
+
+Too long (refuse): `USW-10G-CH-ZRH-ZH4-DIST01` (**25**). A 1G server NIC is `US-1G-…`, not `MON`. Stack is `USW`, not `X-STACK`.
 
 ---
 
