@@ -65,16 +65,21 @@ Expected = token if present, else class default.
 
 ## Examples
 
+Generator output from the cabling preview unless marked operator-applied. Full table: [reference/port-identity-foundation.md](reference/port-identity-foundation.md) §4.
+
 | Scenario | Display | Len | Expect |
 |---|---|---|---|
-| Switch / firewall | `USW-SWD14` | 9 | 10G |
-| Hypervisor / storage 10G | `US-ESX01` | 8 | 10G |
-| Pure / array | `US-PURE01` | 10 | 10G |
-| AP | `UP-AP3F07` | 9 | 1G |
-| iDRAC (MON: BMC / anything else) | `MON-IDR03` | 9 | 1G |
-| 1G server NIC | `US-1G-SRV12` | 12 | 1G |
-| Pure 25G | `US-25G-P01` | 10 | 25G |
-| AP at 2.5G | `UP-2G5-AP07` | 12 | 2.5G |
+| Switch ↔ switch 10G (ZH4 CORE ISC) | `USW-C02_1` | 9 | 10G |
+| Firewall 10G | `USW-FW01_X1` | 11 | 10G |
+| Hypervisor 10G NIC | `US-ESX40_NIC0` | 13 | 10G |
+| Storage 10G | `US-SAN01_CT0_10` | 15 | 10G |
+| AP | `UP-L02-AP07` | 11 | 1G |
+| iDRAC | `MON-ESX40_ILO10_1` | 17 | 1G |
+| 1G server NIC | `US-1G-ESX40_NIC4` | 16 | 1G |
+| Dist ↔ Access 1G | `USW-1G-GFL-A01_23` | 17 | 1G |
+| Storage 25G | `US-25G-SAN02_CT0_10` | 19 | 25G |
+| AP at 2.5G | `UP-2G5-L02-AP07` | 15 | 2.5G |
+| SummitStack (not `X`) | `USW-M01_2_50` | 12 | `USW` |
 | Exclude | `X-SPAN` | 6 | none |
 | Note | `N-SPARE` | 7 | = unlabelled |
 | Too long | `USW-10G-CH-ZRH-ZH4-DIST01` | **25** | refuse |

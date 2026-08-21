@@ -29,7 +29,7 @@ The on-box label is the contract (`USW`→10G, `US`→10G, `UP`→1G, `MON`→1G
 - **When a class label exists:** Warning `last(speed) <> {#IF.SPEED.EXPECTED}` while oper-up 5m. Empty `ifAlias` → no items. Next day, not a page — the link still forwards. Dayside: cable / SFP / autoneg, or the label is wrong.
 - Settle on **oper-status 5m**, never `min(speed,5m)` (heartbeat 1h → unknown).
 - Stock “changed to lower speed” misses `10G → bounce → 1G`. Absolute expect exists because of that hole.
-- Do **not** split High by class. A Pure port at 25G labelled `US-PURE01` (expect 10G) is a **label** bug, same channel as an AP at 2.5G labelled `UP-…`.
+- Do **not** split High by class. A Pure port at 25G labelled `US-SAN02_CT0_10` (expect 10G) is a **label** bug, same channel as an AP at 2.5G labelled `UP-L02-AP07`.
 - Utilisation (later) is **% of intended**, 1h average, **USW only** — not stock 15m vs live speed. A busy `US`/`UP` is that box’s problem.
 - Discards are the “someone is dropping” signal. YAML trigger **DISABLED** until a baseline; `{$IF.DISCARDS.WARN}=1` is not gated by util `101`.
 - Duplicate Speed Expect link-down is **DISABLED** — platform already Average-tickets discovered ports.

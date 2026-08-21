@@ -46,9 +46,9 @@ Speed only decides whether a SPEED token is emitted after CLASS is known.
 | `TMON` | Temp watch | — | No | items; optional link-down **INFO** only |
 
 **`US` vs `MON`:** ask “what is this?” — server/storage data NIC → `US` (a 1G
-server is `US-1G-SRV12`, not `MON-SRV12`). Everything that is not a named class
-is `MON`, **including 10G cameras / printers** (`MON-10G-…`). Speed is the
-token, not the class.
+ESXi NIC is `US-1G-ESX40_NIC4`, not `MON-ESX40_NIC4`). Everything that is not a
+named class is `MON`, **including 10G cameras / printers** (`MON-10G-…`).
+Speed is the token, not the class.
 
 ID role codes are short **for fabric** so 40G and stack members still fit:
 `CORE→C` `DIST→D` `ACCE→A` `MGMT→M`. Ports have no extra `P` (`_25` not
@@ -107,31 +107,39 @@ Emit a token **only** for non-default speeds.
 
 ## 4. Examples
 
+`USW` / `US` / `UP` / `MON` Display values are generator output from the 1535-port cabling preview (`../notes/fixtures/port_label_preview.tsv`) unless marked otherwise.
+
 **Normal (default speed — no token):**
 
 | Scenario | Display | Len | Expect |
 |---|---|---|---|
-| Switch ↔ switch | `USW-SWD14` | 9 | 10G |
-| Hypervisor / 10G NIC | `US-ESX01` | 8 | 10G |
-| Storage 10G | `US-SAN01` | 8 | 10G |
-| AP | `UP-AP3F07` | 9 | 1G |
-| iDRAC / BMC | `MON-IDR03` | 9 | 1G |
-| Printer / camera / anything else | `MON-PRN01` | 9 | 1G |
+| Switch ↔ switch (ZH4 CORE ISC) | `USW-C02_1` | 9 | 10G |
+| Firewall 10G data (L26 Core → FWZone) | `USW-FW01_X1` | 11 | 10G |
+| Hypervisor 10G NIC (ZH4 CORE → ESX40) | `US-ESX40_NIC0` | 13 | 10G |
+| Storage 10G (ZH4 CORE → SAN01) | `US-SAN01_CT0_10` | 15 | 10G |
+| AP (NKN L02) | `UP-L02-AP07` | 11 | 1G |
+| iDRAC (ZH4 MGMT → ESX40) | `MON-ESX40_ILO10_1` | 17 | 1G |
+| Cohesity iLO (L26 MGMT; MON, not a data NIC) | `MON-SAN10-N01` | 13 | 1G |
+| SummitStack (ZH4 MGMT) | `USW-M01_2_50` | 12 | `USW` — not `X` |
 | WAN uplink | `UW-SC1` | 6 | link/flap/errors |
 | Temp watch | `TMON-GUEST` | 10 | items + INFO link-down |
 | Exclude | `X` / `X-SPAN` | | none |
 | Note (neutral) | `N-SPARE` | 7 | same as unlabelled |
 
+`UW` / `TMON` / `X` / `N` are operator-applied — none of those CLASSes appear in the current cabling preview. Printers and cameras are still `MON`; the preview has no such cables, so there is no generated `MON-PRN…` row.
+
 **Exceptions (token required — not the class default):**
 
-| Scenario | Display | Expect |
-|---|---|---|
-| Switch ↔ switch at 1G | `USW-1G-SWA08` | 1G |
-| 1G server NIC | `US-1G-SRV12` | 1G |
-| AP at 2.5G | `UP-2G5-AP07` | 2.5G |
-| 10G port that would otherwise be `MON` | `MON-10G-…` | 10G |
+| Scenario | Display | Len | Expect |
+|---|---|---|---|
+| Switch ↔ switch at 1G (NEP-GFL Dist → Access) | `USW-1G-GFL-A01_23` | 17 | 1G |
+| Firewall 1G HA | `USW-1G-FW01_HA` | 14 | 1G |
+| 1G server NIC (ZH4 MGMT → ESX40) | `US-1G-ESX40_NIC4` | 16 | 1G |
+| Storage 25G (token on today's SAN02 ID; preview cabling is 10G) | `US-25G-SAN02_CT0_10` | 19 | 25G |
+| AP at 2.5G (token on today's AP ID; no 2.5G AP in the preview) | `UP-2G5-L02-AP07` | 15 | 2.5G |
+| 10G port that would otherwise be `MON` | `MON-10G-…` | | 10G |
 
-**Does not fit (25 > 20):** `USW-10G-CH-ZRH-ZH4-DIST01` — shorten the ID; full name stays in NetBox.
+**Does not fit (25 > 20):** `USW-10G-CH-ZRH-ZH4-DIST01` — shorten the ID; full name stays in NetBox. The generator refuses this.
 
 ---
 

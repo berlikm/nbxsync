@@ -107,12 +107,12 @@ Worst-case prefix is `USW-100M-` = 9 characters, leaving **11 for the ID**:
 
 | Label | Len |
 |---|---|
-| `USW-SWD14` | 9 |
-| `USW-10G-SWD14` | 13 |
-| `USW-100M-ZH4-DIST01` | 19 |
-| `MON-100M-IDR03` | 14 |
-| `UP-2G5-AP3F07` | 13 |
-| `X-MLAG-PEER` | 11 |
+| `USW-C02_1` | 9 |
+| `USW-10G-C02_1` | 13 |
+| `USW-1G-GFL-A01_23` | 17 |
+| `MON-ESX40_ILO10_1` | 17 |
+| `UP-2G5-L02-AP07` | 15 |
+| `X-SPAN` | 6 |
 | `USW-10G-CH-ZRH-ZH4-DIST01` | **25 — does not fit** |
 
 IDs must be machine-short abbreviations, not hostnames. Full identity lives in NetBox.

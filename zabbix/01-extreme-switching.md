@@ -233,20 +233,20 @@ The on-box label **is** the contract. Live `ifHighSpeed` (IF-MIB, million bits/s
 
 | Label | Expected (Mbps) | Why |
 |---|---|---|
-| `USW-SWD14` | 10000 | class default `USW` = 10G |
-| `US-PURE01` | 10000 | class default `US` = 10G — **wrong** if the array is 25G/100G; write `US-25G-PURE01` |
-| `UP-AP3F07` | 1000 | class default `UP` = 1G — **wrong** if the AP is 2.5G; write `UP-2G5-AP3F07` |
-| `UP-2G5-AP07` | 2500 | token overrides the class default |
-| `USW-1G-SWA14` | 1000 | Dist↔Access copper that is really 1G |
-| `MON-IDR03` | 1000 | class default `MON` = 1G |
-| `UW-ISP1` | — | **not in this LLD**. PHY speed ≠ circuit commit (05) |
+| `USW-C02_1` | 10000 | class default `USW` = 10G |
+| `US-SAN02_CT0_10` | 10000 | class default `US` = 10G — **wrong** if the array is 25G/100G; write `US-25G-SAN02_CT0_10` |
+| `UP-L02-AP07` | 1000 | class default `UP` = 1G — **wrong** if the AP is 2.5G; write `UP-2G5-L02-AP07` |
+| `UP-2G5-L02-AP07` | 2500 | token overrides the class default |
+| `USW-1G-GFL-A01_23` | 1000 | Dist↔Access copper that is really 1G |
+| `MON-ESX40_ILO10_1` | 1000 | class default `MON` = 1G |
+| `UW-SC1` | — | **not in this LLD**. PHY speed ≠ circuit commit (05) |
 | unlabelled Dist port | — | **not in this LLD**. Platform still Average-tickets link-down. No intended speed without a class |
 
 LLD JS parses `CLASS[-SPEED]-ID` into `{#IF.CLASS}` + `{#IF.SPEED.EXPECTED}`. Only **physical ethernet** (`ifType=6`). LAG/MLT aggregates report **summed** speed and would sit in problem forever — they stay on the platform template for link-down/errors, not here.
 
 **Operator view:** nothing, until a port has a class label. Then, within **15m** LLD:
 
-- **Problems:** Warning, next day — `Port identity: Interface 1/21(USW-SWD14): Speed 1000 Mbps != expected 10000 Mbps (class USW)`.
+- **Problems:** Warning, next day — `Port identity: Interface 23(USW-GFL-A01_23): Speed 1000 Mbps != expected 10000 Mbps (class USW)`.
 - **Network interfaces → Overview** honeycomb stays **oper-status**. Do not paint hexes by Mbps (10G vs 1G vs 2.5G is not a colour scale).
 - **Network interfaces → Port** already shows live **Speed** (platform item, bps after ×1e6) + duplex. That is the “what is it now” pane. The Warning is “what should it be”.
 - **Latest data** grows `Speed (speed-expect)` in Mbps plus util-%-of-intended helpers. Util graphs are later; they are **% of the label**, 1h average — not stock 15m vs live speed.
@@ -256,7 +256,7 @@ LLD JS parses `CLASS[-SPEED]-ID` into `{#IF.CLASS}` + `{#IF.SPEED.EXPECTED}`. On
 
 **Empty display-string is the safe case.** LLD filter is `^(USW|US|UP|MON)(-|$)`. No class → no Speed Expect items → no Warnings. Building production without labels does **not** need a census first. Arm it now (`--apply` nests the template). The 15m discovery starts the day you write `USW-…` / `US-25G-…` / `UP-2G5-…`.
 
-**Dirty labels are the noisy case** — class present, token wrong (`US-PURE01` on a 25G array, `UP-AP07` on a 2.5G AP). That Warning *is* the census: fix the token. Changing a class default later (`USW` 10G → 25G) silently re-values every tokenless label; freeze defaults.
+**Dirty labels are the noisy case** — class present, token wrong (`US-SAN02_CT0_10` on a 25G array, `UP-L02-AP07` on a 2.5G AP). That Warning *is* the census: fix the token. Changing a class default later (`USW` 10G → 25G) silently re-values every tokenless label; freeze defaults.
 
 Do **not** pass `--link-speed-expect` while nested: HostSync would try to link the same template directly and Zabbix rejects that. Util stays off (`101`) until 4+ weeks of history, then maybe `{$IF.UTIL.MAX:"USW"}=80` — **USW only**, not `US`/`UP`/`MON`. Discards stay DISABLED. Extra SNMP GETs exist today (platform-neutral YAML cannot declare cross-template dependent masters); swap to dependents later — compare in Mbps, never `min(speed,5m)` (heartbeat 1h → unknown).
 
