@@ -2021,6 +2021,7 @@ def _fetch_live_labels(nc, kind: str) -> tuple[dict[str, str], dict[str, str]]:
 try:
     from dcim.choices import DeviceStatusChoices
     from dcim.models import Device, DeviceRole, Interface, Platform, Site, SiteGroup
+    from django.db.models import Q
     from extras.models import Tag
     from extras.scripts import (
         BooleanVar,
@@ -2147,6 +2148,27 @@ def compare_plan(
     elif plan.status == "alias_hijacked" and clear_description:
         if is_safe_cli_label(plan.expected) and is_safe_cli_port(plan.ifname):
             plan.commands = exos_apply_commands(plan.ifname, plan.expected, True)
+
+
+def switching_device_query_params(platform_slugs: list[str]) -> dict:
+    """REST query_params for the Devices picker — EXOS/VOSS platforms only.
+
+    ``platform`` is always the switching OS slugs so Extreme APs / IQ / WiNG
+    never appear. ``platform_id=$platforms`` further narrows when the operator
+    picks a Platform object. Empty ``$platforms`` is omitted by the UI.
+    """
+    slugs = [s for s in platform_slugs if s]
+    if not slugs:
+        slugs = ["__no-exos-voss-platform__"]
+    return {
+        "status": "active",
+        "platform": slugs,
+        "platform_id": "$platforms",
+        "site_id": "$site",
+        "site_group_id": "$site_group",
+        "role_id": "$role",
+        "tag_id": "$tag",
+    }
 
 
 def platform_kind(platform_name: str | None, platform_slug: str | None = None) -> str | None:
@@ -2328,6 +2350,99 @@ def expected_label_for(iface, structural_tag_ids: set[int]) -> tuple[str, str]:
 
 if _NETBOX:
 
+    def platform_os_q(kind: str):
+        """Django Q: devices/platforms whose OS is EXOS and/or VOSS."""
+        if kind == "exos":
+            return (
+                Q(platform__name__icontains="exos")
+                | Q(platform__name__icontains="switch engine")
+                | Q(platform__slug__icontains="exos")
+                | Q(platform__slug__icontains="switch-engine")
+                | Q(platform__slug__icontains="switchengine")
+            )
+        if kind == "voss":
+            return (
+                Q(platform__name__icontains="voss")
+                | Q(platform__name__icontains="fabric engine")
+                | Q(platform__slug__icontains="voss")
+                | Q(platform__slug__icontains="fabric-engine")
+                | Q(platform__slug__icontains="fabricengine")
+                | Q(platform__name__icontains="vsp")
+                | Q(platform__slug__icontains="vsp")
+            )
+        return platform_os_q("exos") | platform_os_q("voss")
+
+    def platform_object_os_q(kind: str = "both"):
+        """Same OS match, but against Platform itself (no ``platform__`` prefix)."""
+        if kind == "exos":
+            return (
+                Q(name__icontains="exos")
+                | Q(name__icontains="switch engine")
+                | Q(slug__icontains="exos")
+                | Q(slug__icontains="switch-engine")
+                | Q(slug__icontains="switchengine")
+            )
+        if kind == "voss":
+            return (
+                Q(name__icontains="voss")
+                | Q(name__icontains="fabric engine")
+                | Q(slug__icontains="voss")
+                | Q(slug__icontains="fabric-engine")
+                | Q(slug__icontains="fabricengine")
+                | Q(name__icontains="vsp")
+                | Q(slug__icontains="vsp")
+            )
+        return platform_object_os_q("exos") | platform_object_os_q("voss")
+
+    def exos_voss_platform_pks_and_slugs() -> tuple[list[int], list[str]]:
+        try:
+            rows = list(
+                Platform.objects.filter(platform_object_os_q("both"))
+                .values_list("pk", "slug")
+            )
+        except Exception:  # noqa: BLE001 — form render during migrate
+            rows = []
+        pks = [pk for pk, _slug in rows if pk]
+        slugs = [slug for _pk, slug in rows if slug]
+        if not pks:
+            return [0], ["__no-exos-voss-platform__"]
+        if not slugs:
+            slugs = ["__no-exos-voss-platform__"]
+        return pks, slugs
+
+    def exos_voss_platform_slugs() -> list[str]:
+        return exos_voss_platform_pks_and_slugs()[1]
+
+    class _ExosVossPlatformVar(MultiObjectVar):
+        """Platform picker: EXOS / Switch Engine / VOSS / Fabric Engine / VSP."""
+
+        def as_field(self):
+            pks, _slugs = exos_voss_platform_pks_and_slugs()
+            qp = dict(self.field_attrs.get("query_params") or {})
+            qp["id"] = pks
+            self.field_attrs["query_params"] = qp
+            field = super().as_field()
+            try:
+                field.queryset = Platform.objects.filter(platform_object_os_q("both"))
+            except Exception:  # noqa: BLE001
+                pass
+            return field
+
+    class _ExosVossDeviceVar(MultiObjectVar):
+        """Device picker: active devices on EXOS/VOSS platforms only."""
+
+        def as_field(self):
+            slugs = exos_voss_platform_slugs()
+            self.field_attrs["query_params"] = switching_device_query_params(slugs)
+            field = super().as_field()
+            try:
+                field.queryset = Device.objects.filter(
+                    status=DeviceStatusChoices.STATUS_ACTIVE,
+                ).filter(platform_os_q("both")).distinct()
+            except Exception:  # noqa: BLE001
+                pass
+            return field
+
     class ExtremePortLabels(Script):
         """Compliance-check (and optionally remediate) Extreme port labels."""
 
@@ -2335,8 +2450,9 @@ if _NETBOX:
             name = "Extreme Port Labels (ifAlias compliance)"
             description = (
                 "Preview expected CLASS[-SPEED]-ID labels from NetBox cabling "
-                "(no SSH), compare them to the live box, or push. Preview uses "
-                "Scope (site / role / devices) and cables — not the canary "
+                "(no SSH), compare them to the live box, or push. Scope is "
+                "**EXOS and VOSS only** (Switch Engine / Fabric Engine / VSP). "
+                "Preview uses site / role / devices and cables — not the canary "
                 "allowlist. Cabled ports are evaluated; live labels without a "
                 "NetBox cable are kept on the box and listed (never pushed). "
                 "Preview needs no Commit. Remediation needs mode=remediate AND "
@@ -2424,41 +2540,34 @@ if _NETBOX:
             choices=(("both", "EXOS + VOSS"), ("exos", "EXOS only"), ("voss", "VOSS only")),
             default="both",
             description=(
-                "Operating system. Applied with every other scope filter, "
-                "including an explicit device list. VOSS only = Fabric Engine / "
-                "VSP / VOSS. EXOS only = Switch Engine / EXOS."
+                "Narrow EXOS vs VOSS. The script never includes IQ, WiNG, or "
+                "other platforms — Devices and Platforms pickers are switching "
+                "OS only. Default is both."
             ),
             label="Platform (EXOS / VOSS)",
         )
-        platforms = MultiObjectVar(
+        platforms = _ExosVossPlatformVar(
             model=Platform,
             required=False,
             description=(
-                "Optional NetBox platform objects (the Devices dropdown follows "
-                "this). Combined with EXOS/VOSS above: pick the VOSS / Fabric "
-                "Engine platform here so the device list is VOSS-only before "
+                "Optional. Only EXOS / Switch Engine / VOSS / Fabric Engine / "
+                "VSP platforms are listed. Combined with EXOS/VOSS above: pick "
+                "Fabric Engine here so the device list is VOSS-only before "
                 "you run."
             ),
-            label="Platforms (device list)",
+            label="Platforms (EXOS / VOSS)",
         )
-        devices = MultiObjectVar(
+        devices = _ExosVossDeviceVar(
             model=Device,
             required=False,
             description=(
-                "Specific devices. Empty = every active Extreme switch matching "
-                "the filters above. Combined with site, role, tag, site group, "
-                "and platform (EXOS/VOSS and any Platform objects). A VOSS-only "
-                "run never includes EXOS boxes even if they appear in this list."
+                "Specific switches. Empty = every active EXOS/VOSS switch "
+                "matching the filters above. The picker lists only Switch "
+                "Engine / EXOS and Fabric Engine / VOSS / VSP — not IQ, WiNG, "
+                "or other Extreme platforms. Combined with site, role, tag, "
+                "and EXOS-only / VOSS-only."
             ),
-            query_params={
-                "status": "active",
-                "manufacturer": "extreme-networks",
-                "site_id": "$site",
-                "site_group_id": "$site_group",
-                "role_id": "$role",
-                "tag_id": "$tag",
-                "platform_id": "$platforms",
-            },
+            query_params=switching_device_query_params([]),
         )
         structural_tag = MultiObjectVar(
             model=Tag,
@@ -2786,35 +2895,10 @@ if _NETBOX:
         # ---- helpers -------------------------------------------------------
 
         def _resolve_devices(self, data) -> list:
-            """AND every scope filter. Platform is not skipped when devices are set."""
-            from django.db.models import Q
-
-            def _os_q(kind: str):
-                if kind == "exos":
-                    return (
-                        Q(platform__name__icontains="exos")
-                        | Q(platform__name__icontains="switch engine")
-                        | Q(platform__slug__icontains="exos")
-                        | Q(platform__slug__icontains="switch-engine")
-                        | Q(platform__slug__icontains="switchengine")
-                    )
-                if kind == "voss":
-                    return (
-                        Q(platform__name__icontains="voss")
-                        | Q(platform__name__icontains="fabric engine")
-                        | Q(platform__slug__icontains="voss")
-                        | Q(platform__slug__icontains="fabric-engine")
-                        | Q(platform__slug__icontains="fabricengine")
-                        | Q(platform__name__icontains="vsp")
-                        | Q(platform__slug__icontains="vsp")
-                    )
-                return _os_q("exos") | _os_q("voss")
+            """AND every scope filter. EXOS/VOSS only — never IQ, WiNG, or other OS."""
 
             queryset = Device.objects.filter(status=DeviceStatusChoices.STATUS_ACTIVE)
-            queryset = queryset.filter(
-                Q(device_type__manufacturer__slug="extreme-networks")
-                | _os_q("both")
-            ).distinct()
+            queryset = queryset.filter(platform_os_q("both")).distinct()
 
             # Explicit devices narrow the set; they do not drop site / role / OS.
             if data.get("devices"):
@@ -2844,7 +2928,7 @@ if _NETBOX:
             if data.get("platforms"):
                 queryset = queryset.filter(platform__in=data["platforms"])
             wanted = normalize_platform_filter(data.get("platform_filter"))
-            queryset = queryset.filter(_os_q(wanted))
+            queryset = queryset.filter(platform_os_q(wanted))
 
             result = []
             seen: set[int] = set()

@@ -156,8 +156,9 @@ The script is the right shape for NetBox: a **flat file** next to
 - Duplicate expected labels on one switch are `collision=yes` (blocking).
   Multiple `X` (SPAN) ports on the same switch are **not** collisions.
 - Device names in the scorecard are NetBox links (`/dcim/devices/<id>/`).
-- Fleet-wide scope is Extreme manufacturer **or** EXOS/VOSS/Switch Engine /
-  Fabric Engine platform — it does not scan every server in DCIM.
+- Fleet-wide scope is **EXOS / Switch Engine / VOSS / Fabric Engine / VSP
+  platforms only** — IQ, WiNG, and other DCIM devices are not in the picker
+  and are skipped at run time.
 - Canary allowlist treats `1:17` and `1/17` as the same port.
 - Label length and charset are checked again immediately before the write.
 - Threads call `close_old_connections()` so Django is not surprised.

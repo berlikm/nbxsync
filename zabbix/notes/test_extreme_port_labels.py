@@ -87,6 +87,20 @@ class PlatformKindTests(unittest.TestCase):
         self.assertEqual(e.platform_kind("VSP 8600"), "voss")
         self.assertEqual(e.platform_kind(None, "vsp-7400"), "voss")
 
+    def test_iq_wing_and_cisco_are_not_switching(self):
+        self.assertIsNone(e.platform_kind("IQ Engine"))
+        self.assertIsNone(e.platform_kind(None, "iq-engine"))
+        self.assertIsNone(e.platform_kind("WiNG"))
+        self.assertIsNone(e.platform_kind("Cisco IOS-XE"))
+
+    def test_device_picker_filters_by_switching_platform_not_manufacturer(self):
+        params = e.switching_device_query_params(["switch-engine", "fabric-engine"])
+        self.assertNotIn("manufacturer", params)
+        self.assertEqual(params["platform"], ["switch-engine", "fabric-engine"])
+        self.assertEqual(params["platform_id"], "$platforms")
+        empty = e.switching_device_query_params([])
+        self.assertEqual(empty["platform"], ["__no-exos-voss-platform__"])
+
     def test_normalize_choicevar_and_labels(self):
         self.assertEqual(e.normalize_platform_filter("voss"), "voss")
         self.assertEqual(e.normalize_platform_filter("VOSS only"), "voss")
