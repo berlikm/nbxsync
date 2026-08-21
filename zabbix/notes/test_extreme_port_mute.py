@@ -117,9 +117,26 @@ class CliTests(unittest.TestCase):
         self.assertEqual(cmds[1], 'name "X-USW-FOO"')
         self.assertEqual(cmds[2], "exit")
 
+    def test_exos_no_shutdown_is_enable_port(self):
+        self.assertEqual(
+            m.cli_no_shutdown_cmds("exos", "2:10"), ["enable port 2:10"],
+        )
+        self.assertEqual(
+            m.cli_no_shutdown_cmds("exos", "2/10"), ["enable port 2:10"],
+        )
+
+    def test_voss_no_shutdown_is_gigabitethernet_interface(self):
+        self.assertEqual(
+            m.cli_no_shutdown_cmds("voss", "2:10"),
+            ["interface GigabitEthernet 2/10", "no shutdown", "exit"],
+        )
+
     def test_commands_are_single_ports_not_ranges(self):
         for kind in ("exos", "voss"):
-            blob = " ".join(m.cli_shutdown_cmds(kind, "2:17"))
+            blob = " ".join(
+                m.cli_shutdown_cmds(kind, "2:17")
+                + m.cli_no_shutdown_cmds(kind, "2:17")
+            )
             self.assertNotIn("-", blob.split("port")[-1] if "port" in blob else blob)
 
 
@@ -134,6 +151,41 @@ class DecideMuteTests(unittest.TestCase):
         )
         base.update(kw)
         return m.MutePlan(**base)
+
+    def test_no_shutdown_preview_emits_enable(self):
+        plan = m.decide_mute(
+            self._plan(action="no_shutdown"),
+            allow_cabled=False, live_known=False,
+        )
+        self.assertEqual(plan.status, "planned")
+        self.assertEqual(plan.action, "no_shutdown")
+        self.assertEqual(plan.commands, ["enable port 2:10"])
+        self.assertIn("admin-enable", plan.detail)
+
+    def test_enable_alias_is_no_shutdown(self):
+        plan = m.decide_mute(
+            self._plan(action="enable"),
+            allow_cabled=False, live_known=False,
+        )
+        self.assertEqual(plan.action, "no_shutdown")
+        self.assertEqual(plan.commands, ["enable port 2:10"])
+
+    def test_voss_no_shutdown_preview(self):
+        plan = m.decide_mute(
+            self._plan(kind="voss", ifname="1/17", action="no_shutdown"),
+            allow_cabled=False, live_known=False,
+        )
+        self.assertEqual(plan.commands[0], "interface GigabitEthernet 1/17")
+        self.assertIn("no shutdown", plan.commands)
+        self.assertNotIn("shutdown", plan.commands)
+
+    def test_no_shutdown_cabled_skipped_without_override(self):
+        plan = m.decide_mute(
+            self._plan(action="no_shutdown", cabled=True, far_device="LEAF01"),
+            allow_cabled=False, live_known=False,
+        )
+        self.assertEqual(plan.status, "skip")
+        self.assertEqual(plan.commands, [])
 
     def test_shutdown_preview_emits_disable(self):
         plan = m.decide_mute(self._plan(), allow_cabled=False, live_known=False)
@@ -286,6 +338,28 @@ class ApplySessionTests(unittest.TestCase):
         self.assertIn("> save configuration", transcript)
         self.assertNotIn("configure terminal", transcript)
 
+    def test_exos_apply_enable_then_save(self):
+        class Fake:
+            def __init__(self):
+                self.cmds = []
+
+            def send_command_timing(self, cmd, read_timeout=60):
+                self.cmds.append(cmd)
+                return ""
+
+        plan = m.MutePlan(
+            canary="CORE01-1::2:10", device="CORE01-1", ifname="2:10",
+            kind="exos", action="no_shutdown",
+            commands=["enable port 2:10"],
+        )
+        ok, transcript, err = m.apply_mute_on_session(Fake(), "exos", [plan], True)
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        self.assertEqual(plan.status, "applied")
+        self.assertIn("> enable port 2:10", transcript)
+        self.assertIn("> save configuration", transcript)
+        self.assertNotIn("disable port", transcript)
+
     def test_voss_apply_enters_config_then_shutdown_then_save(self):
         class Fake:
             def __init__(self):
@@ -363,6 +437,23 @@ class DedupeAndCsvTests(unittest.TestCase):
         self.assertIn("disable port 2:10", csv_text)
         self.assertIn("shutdown", csv_text)
         self.assertIn("planned", csv_text)
+
+
+class NormalizeActionTests(unittest.TestCase):
+    def test_aliases(self):
+        self.assertEqual(m.normalize_mute_action("shutdown"), "shutdown")
+        self.assertEqual(m.normalize_mute_action("no_shutdown"), "no_shutdown")
+        self.assertEqual(m.normalize_mute_action("No shutdown"), "no_shutdown")
+        self.assertEqual(m.normalize_mute_action("enable"), "no_shutdown")
+        self.assertEqual(
+            m.normalize_mute_action("No shutdown / enable port"), "no_shutdown",
+        )
+        self.assertEqual(
+            m.normalize_mute_action("Shutdown / disable port (default on Core unused)"),
+            "shutdown",
+        )
+        self.assertEqual(m.normalize_mute_action("x_prefix"), "x_prefix")
+        self.assertEqual(m.normalize_mute_action(""), "shutdown")
 
 
 if __name__ == "__main__":

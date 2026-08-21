@@ -1,13 +1,13 @@
 # Extreme Port Mute — NetBox custom script
 
-`extreme_port_mute.py` admin-disables a port, or prefixes the live on-box
+`extreme_port_mute.py` admin-disables or admin-enables a port, or prefixes the live on-box
 label with `X-`, from a **required allowlist**. It is **not** a mode on
 [Extreme Port Labels](README-extreme-port-labels.md): cabling remediate must
-never be able to shut an uplink.
+never be able to shut (or unshut) an uplink.
 
 Platform is detected from the NetBox device (`EXOS` / Switch Engine vs
 `VOSS` / Fabric Engine). EXOS stacks SSH via the member that holds
-`oob_ip` / `primary_ip` (the VC master) — `configure` / `disable` for slot 2
+`oob_ip` / `primary_ip` (the VC master) — `configure` / `disable` / `enable` for slot 2
 still run on that login.
 
 ## Install
@@ -60,6 +60,7 @@ refuses `extreme-summitstack` even if they appear in the paste.
 | Action | EXOS | VOSS | When |
 |---|---|---|---|
 | **shutdown** (default) | `disable port 2:10` | `interface GigabitEthernet 2/10` then `shutdown` | Unused Core/Dist/Mgmt: admin-down |
+| **no_shutdown** | `enable port 2:10` | `interface GigabitEthernet 2/10` then `no shutdown` | Bring an admin-down port back up |
 | **x_prefix** | `configure ports 2:10 display-string X-…` and `unconfigure port 2:10 description-string` | `name "X-…"` under GigabitEthernet | Keep the link up; Zabbix IFALIAS mute |
 
 `X-` keeps the live display-string (or `name`), prefixes `X-`, and cuts from
@@ -78,14 +79,14 @@ Already `X` / `X-…` is not double-prefixed. Do **not** put `X-` in EXOS
   ingestor marked them gone; NetBox deletes them after ~30 days).
 - Per-port commands only (no `2:10-2:17` ranges) so the transcript is 1:1.
 - EXOS stacks: one SSH login to the master; `CORE01-1::2:10` is valid.
-- Does **not** write NetBox `Interface.enabled`. Admin-down there separately
-  if you want NetBox to match the box.
+- Does **not** write NetBox `Interface.enabled`. Admin-down / admin-up there
+  separately if you want NetBox to match the box.
 - Save config defaults on (`save configuration` / `save config`), same as labels.
 
 ## Modes
 
 1. **Preview** — resolve names, platform, cables, stack-port refusal. No SSH.
-   Shutdown already shows the CLI. `X-` waits for a live read.
+   Shutdown and no-shutdown already show the CLI. `X-` waits for a live read.
 2. **Apply** without Commit — SSH, read live labels, show commands.
 3. **Apply** + Commit — push, then save.
 

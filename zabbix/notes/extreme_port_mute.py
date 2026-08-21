@@ -2,15 +2,17 @@
 Extreme Port Mute — NetBox Custom Script
 ========================================
 
-Admin-disable a port, or prefix its live on-box label with ``X-``, from an
-**allowlist**. Not a fourth mode on Extreme Port Labels: cabling remediate
-must never be able to shut an uplink.
+Admin-disable or admin-enable a port, or prefix its live on-box label with
+``X-``, from an **allowlist**. Not a fourth mode on Extreme Port Labels:
+cabling remediate must never be able to shut (or unshut) an uplink.
 
-Two actions (auto-detect EXOS vs VOSS from the NetBox platform):
+Three actions (auto-detect EXOS vs VOSS from the NetBox platform):
 
 1. **shutdown** (default) — EXOS ``disable port <slot:port>``;
    VOSS ``interface GigabitEthernet <slot/port>`` then ``shutdown``.
-2. **x_prefix** — keep the live display-string / ``name``, prefix ``X-``,
+2. **no_shutdown** — EXOS ``enable port <slot:port>``;
+   VOSS ``interface GigabitEthernet <slot/port>`` then ``no shutdown``.
+3. **x_prefix** — keep the live display-string / ``name``, prefix ``X-``,
    truncate from the **end** to 20 characters. EXOS writes ``display-string``
    and always clears ``description-string`` (that field wins SNMP ifAlias).
 
@@ -204,6 +206,32 @@ def native_cli_port(kind: str, ifname: str) -> str:
     return raw.replace("/", ":").replace(".", ":")
 
 
+MUTE_ACTIONS = ("shutdown", "no_shutdown", "x_prefix")
+
+
+def normalize_mute_action(value) -> str:
+    """ChoiceVar / scheduled-job value → ``shutdown`` | ``no_shutdown`` | ``x_prefix``.
+
+    NetBox may pass the key (``no_shutdown``) or the label
+    (``No shutdown / enable port``). Check no-shutdown **before** shutdown —
+    the latter is a substring of the former.
+    """
+    text = str(value or "").strip().lower().replace("-", "_")
+    text = re.sub(r"[^a-z0-9_]+", "_", text)
+    text = re.sub(r"_+", "_", text).strip("_")
+    if "x_prefix" in text or text in {"x", "xprefix"}:
+        return "x_prefix"
+    if (
+        "no_shutdown" in text
+        or "noshutdown" in text
+        or "no_shut" in text
+        or text in {"enable", "enable_port"}
+        or text.startswith("enable_")
+    ):
+        return "no_shutdown"
+    return "shutdown"
+
+
 def cli_shutdown_cmds(kind: str, ifname: str) -> list[str]:
     """Per-port disable/shutdown. Never a range — the transcript must be 1:1."""
     port = native_cli_port(kind, ifname)
@@ -214,6 +242,18 @@ def cli_shutdown_cmds(kind: str, ifname: str) -> list[str]:
             "exit",
         ]
     return [f"disable port {port}"]
+
+
+def cli_no_shutdown_cmds(kind: str, ifname: str) -> list[str]:
+    """Per-port enable / no shutdown. Never a range — the transcript must be 1:1."""
+    port = native_cli_port(kind, ifname)
+    if kind == "voss":
+        return [
+            f"interface GigabitEthernet {port}",
+            "no shutdown",
+            "exit",
+        ]
+    return [f"enable port {port}"]
 
 
 def cli_x_prefix_cmds(kind: str, ifname: str, label: str) -> list[str]:
@@ -298,6 +338,8 @@ def decide_mute(
         )
         return plan
 
+    plan.action = normalize_mute_action(plan.action)
+
     if plan.action == "x_prefix":
         if not live_known:
             plan.new_label = ""
@@ -333,9 +375,15 @@ def decide_mute(
             plan.detail = "prefix live display-string with X- (truncate from the end)"
         return plan
 
-    plan.commands = cli_shutdown_cmds(plan.kind, plan.ifname)
-    plan.status = "planned"
-    plan.detail = "admin-disable port"
+    action = plan.action
+    if action == "no_shutdown":
+        plan.commands = cli_no_shutdown_cmds(plan.kind, plan.ifname)
+        plan.status = "planned"
+        plan.detail = "admin-enable port"
+    else:
+        plan.commands = cli_shutdown_cmds(plan.kind, plan.ifname)
+        plan.status = "planned"
+        plan.detail = "admin-disable port"
     if plan.orphaned_cable:
         plan.detail += " (nbx-ingestor: Orphaned cable ignored)"
     if not plan.port_in_netbox:
@@ -493,18 +541,18 @@ except Exception:  # noqa: BLE001 — helpers stay importable outside NetBox
 if _NETBOX:
 
     class ExtremePortMute(Script):
-        """Allowlist shutdown / X- mute on Extreme EXOS and VOSS."""
+        """Allowlist shutdown / no-shutdown / X- mute on Extreme EXOS and VOSS."""
 
         class Meta(Script.Meta):
-            name = "Extreme Port Mute (shutdown / X-)"
+            name = "Extreme Port Mute (shutdown / enable / X-)"
             description = (
-                "Paste DEVICE::port lines. Shutdown (admin-disable) or prefix "
-                "the live on-box label with X- (truncate to 20 from the end). "
-                "Platform is detected from NetBox (EXOS vs VOSS). EXOS stacks "
-                "SSH via the master. SummitStack ports are refused. Cabled "
-                "ports need an override tick. Never writes NetBox "
-                "Interface.enabled. Allowlist required — no entire-scope push. "
-                "Apply needs Commit changes."
+                "Paste DEVICE::port lines. Shutdown (admin-disable), no "
+                "shutdown (admin-enable), or prefix the live on-box label "
+                "with X- (truncate to 20 from the end). Platform is detected "
+                "from NetBox (EXOS vs VOSS). EXOS stacks SSH via the master. "
+                "SummitStack ports are refused. Cabled ports need an override "
+                "tick. Never writes NetBox Interface.enabled. Allowlist "
+                "required — no entire-scope push. Apply needs Commit changes."
             )
             commit_default = False
             scheduling_enabled = False
@@ -530,11 +578,13 @@ if _NETBOX:
         action = ChoiceVar(
             choices=(
                 ("shutdown", "Shutdown / disable port (default on Core unused)"),
+                ("no_shutdown", "No shutdown / enable port"),
                 ("x_prefix", "Prefix live display-string with X- (keep link up)"),
             ),
             default="shutdown",
             description=(
                 "Shutdown: EXOS `disable port`, VOSS GigabitEthernet `shutdown`. "
+                "No shutdown: EXOS `enable port`, VOSS `no shutdown`. "
                 "X-: keep the live string, prefix X-, cut from the end to 20 "
                 "chars. Zabbix IFALIAS mute without bringing the link down."
             ),
@@ -553,9 +603,11 @@ if _NETBOX:
         allow_cabled = BooleanVar(
             default=False,
             description=(
-                "Allow mute/shutdown on a port that has a complete NetBox cable. "
-                "Off by default — leftover unused ports (no cable) are the "
-                "usual target. Stack ports are still refused."
+                "Allow shutdown / no-shutdown / X- on a port that has a "
+                "complete NetBox cable. Off by default — leftover unused "
+                "ports (no cable) are the usual shutdown target. Bringing a "
+                "cabled uplink back up needs this tick. Stack ports are "
+                "still refused."
             ),
             label="Allow cabled ports",
         )
@@ -585,9 +637,7 @@ if _NETBOX:
                 return
 
             mode = data.get("mode") or "preview"
-            action = data.get("action") or "shutdown"
-            if action not in {"shutdown", "x_prefix"}:
-                action = "shutdown"
+            action = normalize_mute_action(data.get("action") or "shutdown")
             applying = mode == "apply" and bool(commit)
             preview_only = mode != "apply"
             allow_cabled = bool(data.get("allow_cabled"))
@@ -1116,7 +1166,8 @@ if _NETBOX:
                 f"\n---\n## Summary\n{summary or '_nothing evaluated_'}\n\n"
                 "Full sheet is the **CSV in the Output tab**. "
                 "This script does **not** write NetBox `Interface.enabled` — "
-                "admin-down there separately if you want NetBox to match the box.\n"
+                "admin-down / admin-up there separately if you want NetBox "
+                "to match the box.\n"
             )
             rows = [
                 [
