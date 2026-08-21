@@ -166,6 +166,18 @@ class DecideMuteTests(unittest.TestCase):
         self.assertIn("cabled", plan.detail)
         self.assertEqual(plan.commands, [])
 
+    def test_orphaned_cable_is_not_treated_as_cabled(self):
+        plan = m.decide_mute(
+            self._plan(
+                cabled=False, orphaned_cable=True,
+                far_device="GONE-SERVER", far_port="eth0",
+            ),
+            allow_cabled=False, live_known=False,
+        )
+        self.assertEqual(plan.status, "planned")
+        self.assertEqual(plan.commands, ["disable port 2:10"])
+        self.assertIn("Orphaned", plan.detail)
+
     def test_cabled_allowed_emits_disable(self):
         plan = m.decide_mute(
             self._plan(cabled=True),

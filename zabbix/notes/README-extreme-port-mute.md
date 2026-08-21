@@ -74,6 +74,8 @@ Already `X` / `X-…` is not double-prefixed. Do **not** put `X-` in EXOS
   **Commit changes** = push.
 - SummitStack / stacking ports always skipped.
 - Complete NetBox cables skipped unless **Allow cabled ports** is ticked.
+  Cables tagged `nbx-ingestor: Orphaned` do **not** count as cabled (the
+  ingestor marked them gone; NetBox deletes them after ~30 days).
 - Per-port commands only (no `2:10-2:17` ranges) so the transcript is 1:1.
 - EXOS stacks: one SSH login to the master; `CORE01-1::2:10` is valid.
 - Does **not** write NetBox `Interface.enabled`. Admin-down there separately

@@ -250,6 +250,7 @@ class MutePlan:
     iftype: str = ""
     netbox_description: str = ""
     port_in_netbox: bool = False
+    orphaned_cable: bool = False
     status: str = "planned"
     detail: str = ""
     commands: list[str] = field(default_factory=list)
@@ -335,6 +336,8 @@ def decide_mute(
     plan.commands = cli_shutdown_cmds(plan.kind, plan.ifname)
     plan.status = "planned"
     plan.detail = "admin-disable port"
+    if plan.orphaned_cable:
+        plan.detail += " (nbx-ingestor: Orphaned cable ignored)"
     if not plan.port_in_netbox:
         plan.detail += " (port not in NetBox)"
     return plan
@@ -676,18 +679,33 @@ if _NETBOX:
                     plan.netbox_member = getattr(getattr(iface, "device", None), "name", "") or ""
                     plan.iftype = getattr(iface, "type", None) or ""
                     plan.netbox_description = (getattr(iface, "description", None) or "").strip()
-                    far = labels._far_endpoint(iface)
-                    if far is not None:
-                        plan.cabled = True
-                        if type(far).__name__ == "CircuitTermination":
-                            plan.far_device = "circuit"
-                            plan.far_port = str(
-                                getattr(getattr(far, "circuit", None), "cid", "") or ""
-                            )
-                        else:
-                            far_dev = getattr(far, "device", None)
-                            plan.far_device = getattr(far_dev, "name", None) or ""
-                            plan.far_port = getattr(far, "name", None) or ""
+                    if labels.interface_has_orphaned_cable(iface):
+                        plan.orphaned_cable = True
+                        plan.cabled = False
+                        ghost = labels._connected_far_endpoint(iface)
+                        if ghost is not None:
+                            if type(ghost).__name__ == "CircuitTermination":
+                                plan.far_device = "circuit"
+                                plan.far_port = str(
+                                    getattr(getattr(ghost, "circuit", None), "cid", "") or ""
+                                )
+                            else:
+                                far_dev = getattr(ghost, "device", None)
+                                plan.far_device = getattr(far_dev, "name", None) or ""
+                                plan.far_port = getattr(ghost, "name", None) or ""
+                    else:
+                        far = labels._far_endpoint(iface)
+                        if far is not None:
+                            plan.cabled = True
+                            if type(far).__name__ == "CircuitTermination":
+                                plan.far_device = "circuit"
+                                plan.far_port = str(
+                                    getattr(getattr(far, "circuit", None), "cid", "") or ""
+                                )
+                            else:
+                                far_dev = getattr(far, "device", None)
+                                plan.far_device = getattr(far_dev, "name", None) or ""
+                                plan.far_port = getattr(far, "name", None) or ""
                     if getattr(iface, "type", None) in labels._NON_PHYSICAL_TYPES:
                         plan.status = "skip"
                         plan.detail = f"not a physical Ethernet port ({iface.type})"
@@ -987,8 +1005,11 @@ if _NETBOX:
                 return index
             pks = [d.pk for d in devices if getattr(d, "pk", None) is not None]
             qs = Interface.objects.filter(device_id__in=pks).select_related("device")
-            if any(f.name == "_path" for f in Interface._meta.get_fields()):
+            field_names = {f.name for f in Interface._meta.get_fields()}
+            if "_path" in field_names:
                 qs = qs.select_related("_path")
+            if "cable" in field_names:
+                qs = qs.prefetch_related("cable__tags")
             for iface in qs:
                 key = labels.canonical_port_key(iface.name or "")
                 index.setdefault(key, []).append(iface)

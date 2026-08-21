@@ -14,6 +14,13 @@ Three modes:
 3. **remediate** — push only non-compliant *cabled* ports. Double-gated:
    ``mode=remediate`` **and** NetBox's *Commit changes* box.
 
+Cables tagged ``nbx-ingestor: Orphaned`` are not topology. The ingestor marks
+cables that no longer exist; NetBox deletes them after ~30 days. Until then
+the path still looks complete — this script ignores those cables (no expected
+label, never remediates from them). Live labels on those ports stay ``kept``
+if there is no other complete cable, or show as ``orphaned`` when the tagged
+cable is the only path.
+
 Why it matters: Zabbix LLD filters on ``{$NET.IF.IFALIAS.MATCHES}``. A wrong or
 truncated label silently drops a port out of (or into) monitoring.
 
@@ -253,6 +260,110 @@ def is_safe_cli_port(ifname: str) -> bool:
     return bool(ifname) and bool(SAFE_PORT_RE.fullmatch(ifname.strip()))
 
 
+#: nbx-ingestor marks gone cables with this tag. NetBox still holds the Cable
+#: object for ~30 days, then deletes it. Until then ``connected_endpoints``
+#: still walks the path — labels and mute must treat it as *no cable*.
+ORPHANED_CABLE_TAG_NORM = "nbx-ingestor-orphaned"
+
+
+def normalize_cable_tag(value: str | None) -> str:
+    """Tag name or slug → ``nbx-ingestor-orphaned`` form for comparison."""
+    text = (value or "").strip().lower()
+    return re.sub(r"[\s_:]+", "-", text).strip("-")
+
+
+def is_orphaned_cable_tag(name: str | None = None, slug: str | None = None) -> bool:
+    """True for ``nbx-ingestor: Orphaned`` (name) or ``nbx-ingestor-orphaned`` (slug)."""
+    return (
+        normalize_cable_tag(name) == ORPHANED_CABLE_TAG_NORM
+        or normalize_cable_tag(slug) == ORPHANED_CABLE_TAG_NORM
+    )
+
+
+def _iter_tag_objects(tags) -> list:
+    if tags is None:
+        return []
+    try:
+        if hasattr(tags, "all"):
+            return list(tags.all())
+        return list(tags)
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def cable_is_orphaned(cable) -> bool:
+    """True when a NetBox Cable carries the nbx-ingestor orphaned tag."""
+    if cable is None:
+        return False
+    for tag in _iter_tag_objects(getattr(cable, "tags", None)):
+        if isinstance(tag, str):
+            if is_orphaned_cable_tag(tag):
+                return True
+            continue
+        if is_orphaned_cable_tag(
+            getattr(tag, "name", None),
+            getattr(tag, "slug", None),
+        ):
+            return True
+    return False
+
+
+def _add_unique_cable(found: list, seen: set, obj, *, trust: bool = False) -> None:
+    if obj is None:
+        return
+    if not trust and type(obj).__name__ != "Cable":
+        return
+    key = getattr(obj, "pk", None)
+    if key is None:
+        key = id(obj)
+    if key in seen:
+        return
+    seen.add(key)
+    found.append(obj)
+
+
+def iter_interface_cables(iface) -> list:
+    """Local ``cable``/``link`` plus every Cable hop on ``_path`` (patch panels)."""
+    found: list = []
+    seen: set = set()
+    _add_unique_cable(found, seen, getattr(iface, "cable", None), trust=True)
+    link = getattr(iface, "link", None)
+    _add_unique_cable(found, seen, link, trust=type(link).__name__ == "Cable" if link else False)
+    path = getattr(iface, "_path", None) or getattr(iface, "path", None)
+    if path is None:
+        return found
+    hops: list = []
+    objs = getattr(path, "path_objects", None)
+    if objs is not None:
+        try:
+            hops = list(objs)
+        except Exception:  # noqa: BLE001
+            hops = []
+    for hop in hops:
+        if hop is None:
+            continue
+        if isinstance(hop, (list, tuple, set)):
+            for item in hop:
+                _add_unique_cable(found, seen, item)
+        else:
+            _add_unique_cable(found, seen, hop)
+    raw = getattr(path, "cables", None)
+    if raw is None:
+        return found
+    try:
+        iterable = raw.all() if hasattr(raw, "all") else raw
+        for item in iterable:
+            _add_unique_cable(found, seen, item, trust=True)
+    except Exception:  # noqa: BLE001
+        pass
+    return found
+
+
+def interface_has_orphaned_cable(iface) -> bool:
+    """True when any cable on this port (or its path) is tagged Orphaned."""
+    return any(cable_is_orphaned(cable) for cable in iter_interface_cables(iface))
+
+
 def redact_error(text: str) -> str:
     """Keep SSH errors useful without echoing a password if netmiko includes one."""
     raw = "" if text is None else str(text)
@@ -438,7 +549,7 @@ def flag_collisions(plans: list) -> int:
         expected = (plan.expected or "").strip().upper()
         if not expected or expected in {"X", "N"}:
             continue
-        if plan.status in {"kept", "unreachable"}:
+        if plan.status in {"kept", "unreachable", "orphaned"}:
             continue
         box = getattr(plan, "ssh_device", "") or plan.device or ""
         groups.setdefault((box, expected), []).append(plan)
@@ -1971,6 +2082,11 @@ def compare_plan(
     """Fill live / status / commands on one plan. Pure helper (no SSH)."""
     if plan.status in {"unreachable", "kept"}:
         return
+    if plan.status == "orphaned":
+        plan.live = lookup_live_label(labels, plan.ifname)
+        plan.description_string = lookup_live_label(descriptions or {}, plan.ifname)
+        plan.commands = []
+        return
     planned_too_long = plan.status == "too_long"
     plan.live = lookup_live_label(labels, plan.ifname)
     plan.description_string = lookup_live_label(descriptions, plan.ifname)
@@ -2102,9 +2218,11 @@ def _is_physical(iface) -> bool:
     return True
 
 
-def _far_endpoint(iface):
-    """Far-end Interface or CircuitTermination on a *complete* cable path.
+def _connected_far_endpoint(iface):
+    """Far-end Interface or CircuitTermination on the NetBox path.
 
+    Includes paths whose cables are tagged ``nbx-ingestor: Orphaned``. Callers
+    that must ignore those ghosts should use ``_far_endpoint`` instead.
     ``connected_endpoints`` already walks patch-panel Front/Rear ports. A cable
     that dies on a rear port is incomplete — we return None (no derivable ID).
     A circuit handoff is a CircuitTermination, not an Interface.
@@ -2114,11 +2232,21 @@ def _far_endpoint(iface):
     except Exception:  # noqa: BLE001 — unterminated/split cable paths raise
         return None
     for endpoint in endpoints:
-        if isinstance(endpoint, Interface):
+        name = type(endpoint).__name__
+        if name == "CircuitTermination":
             return endpoint
-        if type(endpoint).__name__ == "CircuitTermination":
+        if name == "Interface":
+            return endpoint
+        if _NETBOX and isinstance(endpoint, Interface):
             return endpoint
     return None
+
+
+def _far_endpoint(iface):
+    """Far end used for labels and mute. Orphaned cables count as no cable."""
+    if interface_has_orphaned_cable(iface):
+        return None
+    return _connected_far_endpoint(iface)
 
 
 def _is_management_interface(iface, extra: str = "") -> bool:
@@ -2142,11 +2270,14 @@ def expected_label_for(iface, structural_tag_ids: set[int]) -> tuple[str, str]:
     """Compute the expected label for one interface.
 
     Returns ``(label, status)`` where status is ``ok`` (label derived),
-    ``structural`` (tagged never-alert), ``no_cable`` (out of scope), or
-    ``too_long``.
+    ``structural`` (tagged never-alert), ``no_cable`` (out of scope),
+    ``orphaned`` (nbx-ingestor ghost cable), or ``too_long``.
     """
     if structural_tag_ids and {t.pk for t in iface.tags.all()} & structural_tag_ids:
         return "X", "structural"
+
+    if interface_has_orphaned_cable(iface):
+        return "", "orphaned"
 
     far = _far_endpoint(iface)
     if far is None:
@@ -2851,8 +2982,9 @@ if _NETBOX:
             return sessions
 
         @staticmethod
-        def _far_bits(iface) -> tuple[str, str, str, str]:
-            far = _far_endpoint(iface)
+        def _far_bits(iface, far=None) -> tuple[str, str, str, str]:
+            if far is None:
+                far = _far_endpoint(iface)
             if far is None:
                 return "", "", "", ""
             if type(far).__name__ == "CircuitTermination":
@@ -2879,8 +3011,11 @@ if _NETBOX:
                 .select_related("device", "device__role", "device__site")
                 .prefetch_related("tags")
             )
-            if any(f.name == "_path" for f in Interface._meta.get_fields()):
+            field_names = {f.name for f in Interface._meta.get_fields()}
+            if "_path" in field_names:
                 qs = qs.select_related("_path")
+            if "cable" in field_names:
+                qs = qs.prefetch_related("cable__tags")
             interfaces = qs
             for iface in interfaces:
                 if not _is_physical(iface):
@@ -2890,8 +3025,15 @@ if _NETBOX:
                 expected, status = expected_label_for(iface, structural_tag_ids)
                 if status == "no_cable":
                     continue
-                far_device, far_port, far_role, far_site = self._far_bits(iface)
-                far = _far_endpoint(iface)
+                far_obj = (
+                    _connected_far_endpoint(iface)
+                    if status == "orphaned"
+                    else _far_endpoint(iface)
+                )
+                far_device, far_port, far_role, far_site = self._far_bits(
+                    iface, far_obj,
+                )
+                far = far_obj
                 link_mbps = None
                 speed_source = ""
                 if far is not None and type(far).__name__ != "CircuitTermination":
@@ -2910,6 +3052,15 @@ if _NETBOX:
                     netbox_description=(getattr(iface, "description", None) or "").strip(),
                     speed_source=speed_source,
                 )
+                if status == "orphaned":
+                    plan.status = "orphaned"
+                    plan.expected = ""
+                    plan.detail = (
+                        "nbx-ingestor: Orphaned cable ignored "
+                        "(not live topology; NetBox removes it after 30 days)"
+                    )
+                    plans.append(plan)
+                    continue
                 if status == "too_long":
                     plan.status = "too_long"
                     plan.detail = (
@@ -3131,6 +3282,19 @@ if _NETBOX:
                 [
                     [_dev_cell(p.device), _cell(p.ifname), f"`{_cell(p.live) or '—'}`"]
                     for p in sorted(kept, key=lambda x: (x.device, x.ifname))
+                ],
+            )
+            orphaned = [p for p in plans if p.status == "orphaned"]
+            _emit(
+                "Orphaned cables ignored (`nbx-ingestor: Orphaned` — not live topology)",
+                ["Device", "ifName", "Ghost far", "Live"],
+                [
+                    [
+                        _dev_cell(p.device), _cell(p.ifname),
+                        _cell(f"{p.far_device} {p.far_port}".strip() or "—"),
+                        f"`{_cell(p.live) or '—'}`",
+                    ]
+                    for p in sorted(orphaned, key=lambda x: (x.device, x.ifname))
                 ],
             )
 

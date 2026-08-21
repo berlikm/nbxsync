@@ -84,6 +84,7 @@ only if that box is ticked).
 | `status = unreachable` | SSH failed or no `oob_ip`/`primary_ip`. One **login** (EXOS stack master, or one VOSS box); every port on that live box gets the same short `detail`. The job **always fails** — we cannot attest those ports. Slot-2 cables are **not** unreachable just because `…-2` has no IP — they apply via `…-1`. |
 | `collision = yes` | Two ports on this switch share `expected` (not `X`/`N`) |
 | `status = kept` | Label on the box, no complete cable. **Listed, never wiped.** Often still useful (ISP, leftover NIC) |
+| `status = orphaned` | Cable tagged `nbx-ingestor: Orphaned`. Ghost topology — **ignored**, never rewritten. NetBox deletes the cable after ~30 days |
 | `class` | `USW` / `US` / `UP` / `MON` / `UW` / `X` — own column, do not parse `expected` |
 | `netbox_description` | Current NetBox interface description (preview has no SSH `live`) |
 | `speed_source` | `iftype:<slug>` or `speed:<kbps>kbps` from the slower of local/far; empty when neither is set |

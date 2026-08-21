@@ -1371,5 +1371,97 @@ class ExosStackSessionTests(unittest.TestCase):
         self.assertIn("ssh_via", header)
 
 
+class OrphanedCableTests(unittest.TestCase):
+    def test_tag_name_and_slug_match(self):
+        self.assertTrue(e.is_orphaned_cable_tag("nbx-ingestor: Orphaned"))
+        self.assertTrue(e.is_orphaned_cable_tag("nbx-ingestor:Orphaned"))
+        self.assertTrue(e.is_orphaned_cable_tag(None, "nbx-ingestor-orphaned"))
+        self.assertFalse(e.is_orphaned_cable_tag("Orphaned"))
+        self.assertFalse(e.is_orphaned_cable_tag("nbx-ingestor: stale"))
+
+    def test_far_endpoint_ignores_orphaned_local_cable(self):
+        class Tag:
+            name = "nbx-ingestor: Orphaned"
+            slug = "nbx-ingestor-orphaned"
+
+        class Cable:
+            def __init__(self):
+                self.pk = 1
+                self.tags = [Tag()]
+
+        class Far:
+            pass
+        Far.__name__ = "Interface"
+
+        class Iface:
+            cable = Cable()
+            connected_endpoints = [Far()]
+            _path = None
+            link = None
+
+        self.assertTrue(e.interface_has_orphaned_cable(Iface()))
+        self.assertIsNone(e._far_endpoint(Iface()))
+        self.assertIs(e._connected_far_endpoint(Iface()), Iface.connected_endpoints[0])
+
+    def test_path_hop_orphaned_cable_is_ignored(self):
+        class Tag:
+            name = "nbx-ingestor: Orphaned"
+            slug = "nbx-ingestor-orphaned"
+
+        class Cable:
+            def __init__(self):
+                self.pk = 9
+                self.tags = [Tag()]
+
+        class Path:
+            path_objects = [[object()], [Cable()], [object()]]
+            cables = None
+
+        class Iface:
+            cable = None
+            link = None
+            connected_endpoints = [type("Interface", (), {})()]
+            _path = Path()
+
+        self.assertTrue(e.interface_has_orphaned_cable(Iface()))
+        self.assertIsNone(e._far_endpoint(Iface()))
+
+    def test_live_cable_without_tag_still_counts(self):
+        class Tag:
+            name = "production"
+            slug = "production"
+
+        class Cable:
+            def __init__(self):
+                self.pk = 2
+                self.tags = [Tag()]
+
+        class Far:
+            pass
+        Far.__name__ = "Interface"
+
+        class Iface:
+            cable = Cable()
+            connected_endpoints = [Far()]
+            _path = None
+            link = None
+
+        self.assertFalse(e.interface_has_orphaned_cable(Iface()))
+        self.assertIs(e._far_endpoint(Iface()), Iface.connected_endpoints[0])
+
+    def test_compare_plan_does_not_rewrite_orphaned(self):
+        plan = e.PortPlan(
+            device="SW1", site="lab", kind="exos", ifname="1:8",
+            expected="", status="orphaned",
+            detail="nbx-ingestor: Orphaned cable ignored",
+        )
+        e.compare_plan(plan, labels={"1:8": "USW-OLD"}, descriptions={})
+        self.assertEqual(plan.status, "orphaned")
+        self.assertEqual(plan.live, "USW-OLD")
+        self.assertEqual(plan.commands, [])
+        self.assertFalse(plan.blocking)
+        self.assertEqual(e.plan_rewrite(plan), "no")
+
+
 if __name__ == "__main__":
     unittest.main()

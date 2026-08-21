@@ -114,7 +114,10 @@ recovered in `port_label_canary.py` before replay. Rebuild the TSV with
 
 **Scope rule:** cabled ports get an expected grammar label from NetBox topology.
 A port with **no complete cable path** cannot derive a far end — it is **not**
-pushed. If the box still has a live label or EXOS `description-string`, that
+pushed. Cables tagged `nbx-ingestor: Orphaned` are treated the same way: the
+ingestor marks gone cables and NetBox deletes them after ~30 days, but until
+then the path still looks complete. The script ignores that tag (`status=orphaned`,
+never rewritten). If the box still has a live label or EXOS `description-string`, that
 text is **kept** and listed in compliance as `kept` (it often still means
 something: ISP, leftover NIC). We do not blank the box to look tidy.
 
@@ -153,6 +156,7 @@ Per-port statuses:
 | `alias_hijacked` | EXOS display-string matches, but `description-string` still wins ifAlias | yes | only if “clear description-string” is ticked |
 | `unreachable` | no SSH (missing IP or session failed) | yes | no |
 | `kept` | live label, no complete cable — listed, never wiped | no | **never** |
+| `orphaned` | NetBox cable tagged `nbx-ingestor: Orphaned` — ignored | no | **never** |
 | `applied` | remediator wrote this port | no | already done |
 
 `collision=yes` on the CSV is also blocking: two ports on the **same switch**
