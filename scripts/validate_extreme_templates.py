@@ -889,6 +889,16 @@ def validate_speed_expect(doc: dict) -> None:
         event.isascii() and '!=' in event,
         event,
     )
+    speed_item = None
+    for rule in tpl.get('discovery_rules') or []:
+        for it in rule.get('item_prototypes') or []:
+            if it.get('key') == 'net.if.speedexpect.speed[{#SNMPINDEX}]':
+                speed_item = it
+    record(
+        'SpeedExpect speed units !Mbps',
+        (speed_item or {}).get('units') == '!Mbps',
+        str((speed_item or {}).get('units')),
+    )
     record(
         'SpeedExpect link-down DISABLED',
         bool(link_down) and not _is_on(link_down),

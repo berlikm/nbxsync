@@ -79,8 +79,9 @@ zabbix_export:
         delay: 1m
         history: 7d
         trends: 30d
-        units: Mbps
-        description: 'Live ifHighSpeed. Compared to {#IF.SPEED.EXPECTED} from label.
+        units: '!Mbps'
+        description: 'Live ifHighSpeed (already Mbps). units !Mbps so Zabbix does
+          not print KMbps. Compared to {#IF.SPEED.EXPECTED} from the label.
           Unique key - does not collide with stock net.if.speed[].
 
           '
