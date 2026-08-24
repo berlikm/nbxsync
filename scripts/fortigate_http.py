@@ -68,17 +68,18 @@ POLICY_MASTER_KEY = 'fgate.fwp.get_data'
 POLICY_DISCOVERY_KEY = 'fgate.fwp.discovery'
 
 # HostSync of a FortiOS device inherits platform macros onto the companion.
-# SD-WAN LLD is a separate filter family from NET.IF.*; leave NAME/ZONE
-# MATCHES on wan/ha/mgmt/dmz until the first canary names the real
-# health-checks. {$FGATE.SDWAN.EXPECTED}=0 keeps zero-member census quiet
-# on standalone boxes without SD-WAN.
+# Physical iface LLD stays wan/ha/mgmt/dmz (do not MATCH port — LAN on 200F).
+# SD-WAN LLD is a different family: members are cmdb names (often port1/x1/ISP),
+# so NAME/IFNAME MATCHES stay stock ``.*``. ZH4 canary: wan-regex discovered
+# 0 members. {$FGATE.SDWAN.EXPECTED}=0 keeps census quiet until set on SD-WAN
+# sites. {$FGATE.HA.EXPECTED}=1 until the pair is set to 2.
 FORTIOS_PLATFORM_MACROS = {
     '{$FGATE.SCHEME}': 'https',
     '{$FGATE.API.PORT}': FGATE_API_PORT,
     '{$NET.IF.IFNAME.MATCHES}': '^(wan|ha|mgmt|dmz)',
-    '{$NET.IF.IFNAME.NOT_MATCHES}': r'^(ssl\.|npu|fortilink|loopback|vlan)',
-    '{$SDWAN.HEALTH.IFNAME.MATCHES}': '^(wan|ha|mgmt|dmz)',
-    '{$SDWAN.MEMBER.NAME.MATCHES}': '^(wan|ha|mgmt|dmz)',
+    '{$NET.IF.IFNAME.NOT_MATCHES}': r'^(ssl\.|npu|fortilink|vlan)|loopback',
+    '{$SDWAN.HEALTH.IFNAME.MATCHES}': '.*',
+    '{$SDWAN.MEMBER.NAME.MATCHES}': '.*',
     '{$FWP.FWNAME.MATCHES}': '^$',
     '{$NET.IF.UTIL.MAX}': '101',
     '{$FIRMWARE.UPDATES.CONTROL}': '0',

@@ -194,17 +194,16 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(expr.count('in_errors'), 1)
         self.assertEqual(expr.count('out_errors'), 1)
 
-    def test_sdwan_matches_follow_wan_ifname_not_star(self):
-        self.assertEqual(
-            FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.IFNAME.MATCHES}'],
-            '^(wan|ha|mgmt|dmz)',
-        )
-        self.assertEqual(
-            FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'],
-            '^(wan|ha|mgmt|dmz)',
-        )
+    def test_sdwan_lld_is_not_physical_ifname_filter(self):
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.IFNAME.MATCHES}'], '.*')
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'], '.*')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SDWAN.EXPECTED}'], '0')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.HA.EXPECTED}'], '1')
+        self.assertIn('loopback', FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.NOT_MATCHES}'])
+        self.assertNotEqual(
+            FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'],
+            FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}'],
+        )
 
     def test_device_dual_link_is_snmp_only_not_nested_parents(self):
         self.assertEqual(DEVICE_DUAL_LINK_TEMPLATES, (FORTIGATE_SNMP_TEMPLATE,))
@@ -279,6 +278,10 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertIn("macro: '{$FGATE.API.PORT}'", companion)
         self.assertIn("value: '20443'", companion)
         self.assertNotIn("value: '443'", companion)
+        self.assertIn("macro: '{$SDWAN.MEMBER.NAME.MATCHES}'", companion)
+        self.assertIn("value: '.*'", companion)
+        self.assertIn('Object.keys', companion)
+        self.assertIn('|loopback', companion)
 
 
 if __name__ == '__main__':

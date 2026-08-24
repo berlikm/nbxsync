@@ -207,13 +207,14 @@ zabbix_export:
             try {
             	var ha = getHttpData(api_url + '/api/v2/monitor/system/ha/checksums');
             	var rows = ha.results || ha;
-            	if (!rows) {
-            		return 1;
+            	if (Array.isArray(rows)) {
+            		return rows.length || 1;
             	}
-            	if (!Array.isArray(rows)) {
-            		return 1;
+            	if (rows && typeof rows === 'object') {
+            		var n = Object.keys(rows).length;
+            		return n || 1;
             	}
-            	return rows.length;
+            	return 1;
             } catch (error) {
             	return 1;
             }
@@ -338,14 +339,14 @@ zabbix_export:
         - macro: '{$NET.IF.IFNAME.MATCHES}'
           value: '^(wan|ha|mgmt|dmz)'
         - macro: '{$NET.IF.IFNAME.NOT_MATCHES}'
-          value: '^(ssl\.|npu|fortilink|loopback|vlan)'
+          value: '^(ssl\.|npu|fortilink|vlan)|loopback'
         - macro: '{$FGATE.PATH.CONTROL}'
           value: '1'
           description: '1 = WAN/SD-WAN path tickets. ha.role=0 still mutes secondary.'
         - macro: '{$SDWAN.HEALTH.IFNAME.MATCHES}'
-          value: '^(wan|ha|mgmt|dmz)'
+          value: '.*'
         - macro: '{$SDWAN.MEMBER.NAME.MATCHES}'
-          value: '^(wan|ha|mgmt|dmz)'
+          value: '.*'
         - macro: '{$NET.IF.DISCOVERY.MIN}'
           value: '1'
           description: 'Minimum in-scope netif.status items after LLD. Zero with API up is a watcher ticket.'

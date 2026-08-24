@@ -102,13 +102,15 @@ Stock HTTP has **no** host Health board. Observability ships **Health** and **Pa
 
 Mute an in-scope iface with context `{$NET.IF.CONTROL:"wan1"}=0` (or SD-WAN CONTROL), not a second CMDB. Prefer **excluding from LLD** over CONTROL=0 on a hundred names.
 
-Starter LLD (tighten on the first canary — **do not** MATCH `port`; on a 40F/100F `port1` is often LAN). `--apply-fortigate-http` (or `--apply-firewall-macros` / Extreme `--apply` for the **platform** macros only) puts these on **Platform FortiOS**:
+Starter LLD (tighten physical WAN on the first canary — **do not** MATCH `port` on NET.IF; on a 40F/100F/200F `port1` is often LAN). SD-WAN member/health LLD stays stock `.*` — members are cmdb names, not `wan`. `--apply-fortigate-http` (or `--apply-firewall-macros` / Extreme `--apply` for the **platform** macros only) puts these on **Platform FortiOS**:
 
 ```
-{$NET.IF.IFNAME.MATCHES}     = ^(wan|ha|mgmt|dmz)
-{$NET.IF.IFNAME.NOT_MATCHES} = ^(ssl\.|npu|fortilink|loopback|vlan)
-{$FWP.FWNAME.MATCHES}        = ^$
-{$NET.IF.UTIL.MAX}           = 101
+{$NET.IF.IFNAME.MATCHES}        = ^(wan|ha|mgmt|dmz)
+{$NET.IF.IFNAME.NOT_MATCHES}    = ^(ssl\.|npu|fortilink|vlan)|loopback
+{$SDWAN.MEMBER.NAME.MATCHES}    = .*
+{$SDWAN.HEALTH.IFNAME.MATCHES}  = .*
+{$FWP.FWNAME.MATCHES}           = ^$
+{$NET.IF.UTIL.MAX}              = 101
 ```
 
 If aliases follow the port-identity grammar, prefer `{$NET.IF.IFALIAS.MATCHES}` the same way Access uses `USW|US|UP|MON|UW|TMON`. Aggregated WAN (`agg` / `x1`) is a host override, not the fleet regex.
@@ -289,9 +291,9 @@ Template-level macros (not globals, not Switch roles, **not role Firewall**). **
 {$FGATE.SCHEME}                 = https
 {$FGATE.API.PORT}               = 20443
 {$NET.IF.IFNAME.MATCHES}        = ^(wan|ha|mgmt|dmz)
-{$NET.IF.IFNAME.NOT_MATCHES}    = ^(ssl\.|npu|fortilink|loopback|vlan)
-{$SDWAN.HEALTH.IFNAME.MATCHES}  = ^(wan|ha|mgmt|dmz)
-{$SDWAN.MEMBER.NAME.MATCHES}    = ^(wan|ha|mgmt|dmz)
+{$NET.IF.IFNAME.NOT_MATCHES}    = ^(ssl\.|npu|fortilink|vlan)|loopback
+{$SDWAN.HEALTH.IFNAME.MATCHES}  = .*
+{$SDWAN.MEMBER.NAME.MATCHES}    = .*
 {$FWP.FWNAME.MATCHES}           = ^$
 {$NET.IF.UTIL.MAX}              = 101
 {$FIRMWARE.UPDATES.CONTROL}     = 0
