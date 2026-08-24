@@ -545,17 +545,69 @@ function flattenFortiSdwanCmdb(payload) {
 	return { members: members, 'health-check': health };
 }
 
+function fortiEmpty(code) {
+	return { status: 'error', http_status: code || 0, results: {} };
+}
+
+function fortiHttpRaw(url) {
+	var req = new HttpRequest();
+	if (typeof params.http_proxy !== 'undefined' && params.http_proxy !== '{' + '$FGATE.HTTP.PROXY}' && params.http_proxy !== '') {
+		req.setProxy(params.http_proxy);
+	}
+	req.addHeader('Accept: application/json');
+	req.addHeader('Authorization: Bearer ' + params.token);
+	var raw = null;
+	var code = 0;
+	try {
+		raw = req.get(url);
+		code = req.getStatus();
+	} catch (e) {
+		Zabbix.log(4, '[ FortiGate ] [ ' + url + ' ] request failed: ' + e);
+		return { code: 0, body: null };
+	}
+	var parsed = null;
+	if (raw !== null && String(raw) !== '') {
+		try {
+			parsed = JSON.parse(raw);
+		} catch (e) {
+			parsed = null;
+		}
+	}
+	if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.status == 'error' && typeof parsed.http_status !== 'undefined') {
+		code = parsed.http_status;
+	}
+	Zabbix.log(4, '[ FortiGate ] [ ' + url + ' ] status ' + code);
+	return { code: code, body: parsed };
+}
+
+function fortiHttpOk(resp) {
+	if (!resp || resp.code !== 200 || resp.body == null) {
+		return false;
+	}
+	var b = resp.body;
+	if (Array.isArray(b)) {
+		return true;
+	}
+	if (typeof b !== 'object') {
+		return false;
+	}
+	if (typeof b.status !== 'undefined' && b.status != 'success') {
+		return false;
+	}
+	if (typeof b.http_status !== 'undefined' && b.http_status !== 200) {
+		return false;
+	}
+	return typeof b.results !== 'undefined';
+}
+
 function fortiVdomNames(base) {
 	if (typeof fortiVdomNames._cache !== 'undefined') {
 		return fortiVdomNames._cache;
 	}
 	var names = [];
-	try {
-		var payload = getHttpData(base + '/api/v2/cmdb/system/vdom');
-		var rows = [];
-		if (payload && Array.isArray(payload.results)) {
-			rows = payload.results;
-		}
+	var resp = fortiHttpRaw(base + '/api/v2/cmdb/system/vdom');
+	if (fortiHttpOk(resp) && resp.body && Array.isArray(resp.body.results)) {
+		var rows = resp.body.results;
 		for (var i = 0; i < rows.length; i++) {
 			var row = rows[i];
 			if (!row) {
@@ -566,8 +618,6 @@ function fortiVdomNames(base) {
 				names.push(String(n));
 			}
 		}
-	} catch (e) {
-		names = [];
 	}
 	if (names.length > 16) {
 		names = names.slice(0, 16);
@@ -576,47 +626,71 @@ function fortiVdomNames(base) {
 	return names;
 }
 
+function fortiFetchPerVdom(base, path, sep) {
+	var blocks = [];
+	var names = fortiVdomNames(base);
+	for (var i = 0; i < names.length; i++) {
+		var one = fortiHttpRaw(base + path + sep + 'vdom=' + names[i]);
+		if (!fortiHttpOk(one)) {
+			continue;
+		}
+		var body = one.body;
+		if (Array.isArray(body)) {
+			for (var j = 0; j < body.length; j++) {
+				blocks.push(body[j]);
+			}
+		} else if (body && typeof body === 'object') {
+			if (!body.vdom) {
+				body.vdom = names[i];
+			}
+			blocks.push(body);
+		}
+	}
+	return blocks;
+}
+
 function fortiFetchVdom(base, path) {
 	var sep = path.indexOf('?') >= 0 ? '&' : '?';
-	try {
-		return getHttpData(base + path + sep + 'vdom=*');
-	} catch (e1) {
-		var blocks = [];
-		var names = fortiVdomNames(base);
-		for (var i = 0; i < names.length; i++) {
-			try {
-				var one = getHttpData(base + path + sep + 'vdom=' + names[i]);
-				if (Array.isArray(one)) {
-					for (var j = 0; j < one.length; j++) {
-						blocks.push(one[j]);
-					}
-				} else if (one && typeof one === 'object') {
-					if (!one.vdom) {
-						one.vdom = names[i];
-					}
-					blocks.push(one);
-				}
-			} catch (e3) {
-				continue;
-			}
-		}
+	var star = fortiHttpRaw(base + path + sep + 'vdom=*');
+	if (fortiHttpOk(star)) {
+		return star.body;
+	}
+	var code = star.code || 0;
+	// 424/404: endpoint absent (ZH5 health-check). Do not walk VDOMs — timeout.
+	if (code === 424 || code === 404) {
+		return fortiEmpty(code);
+	}
+	if (code === 500) {
+		var blocks = fortiFetchPerVdom(base, path, sep);
 		if (blocks.length > 0) {
 			return blocks;
 		}
-		try {
-			return getHttpData(base + path);
-		} catch (e2) {
-			return { status: 'error', results: {} };
-		}
 	}
+	var plain = fortiHttpRaw(base + path);
+	if (fortiHttpOk(plain)) {
+		return plain.body;
+	}
+	return fortiEmpty(plain.code || code);
 }
 
 '''
 
 
 def script_has_vdom_star(script: str) -> bool:
-    """True when interface/SD-WAN collection already requests every VDOM."""
-    if not script or _VDOM_STAR_MARK not in script or 'function fortiFetchVdom' not in script:
+    """True when interface/SD-WAN collection already requests every VDOM.
+
+    Live Cloud scripts from the first vdom=* patch still have
+    ``fortiFetchVdom`` that throws and walks every VDOM on any non-200
+    (ZH5 ``health-check`` 424 × N VDOMs blows ``{$FGATE.DATA.TIMEOUT}``
+    and leaves ``lastclock=0``). Those must keep looking unpatched until
+    ``fortiHttpRaw`` short-circuits 424/404.
+    """
+    if (
+        not script
+        or _VDOM_STAR_MARK not in script
+        or 'function fortiHttpRaw' not in script
+        or 'code === 424' not in script
+    ):
         return False
     if 'virtual-wan/members' in script or '/cmdb/system/sdwan' in script:
         return '"member_lld": []' in script
@@ -748,28 +822,121 @@ def flatten_forti_sdwan_cmdb(payload) -> dict:
     return {'members': members, 'health-check': health}
 
 
-def _forti_fetch_vdom_js() -> str:
-    start = FORTI_VDOM_HELPERS.find('function fortiVdomNames')
+_FETCH_HELPER_NAMES = (
+    'fortiEmpty',
+    'fortiHttpRaw',
+    'fortiHttpOk',
+    'fortiVdomNames',
+    'fortiFetchPerVdom',
+    'fortiFetchVdom',
+)
+
+
+def _js_function_span(text: str, name: str) -> tuple[int, int] | None:
+    """Start/end of ``function name(...) { ... }``, brace-matched."""
+    needle = f'function {name}('
+    start = text.find(needle)
     if start < 0:
+        return None
+    brace = text.find('{', start)
+    if brace < 0:
+        return None
+    depth = 0
+    i = brace
+    n = len(text)
+    quote = None
+    while i < n:
+        c = text[i]
+        if quote:
+            if c == '\\' and i + 1 < n:
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+            i += 1
+            continue
+        if c in '"\'':
+            quote = c
+            i += 1
+            continue
+        if c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0:
+                return start, i + 1
+        i += 1
+    return None
+
+
+def _extract_js_function(blob: str, name: str) -> str:
+    span = _js_function_span(blob, name)
+    if not span:
         return ''
-    return '\n' + FORTI_VDOM_HELPERS[start:].lstrip('\n')
+    return blob[span[0] : span[1]]
+
+
+def _replace_js_function(text: str, name: str, new_fn: str) -> tuple[str, bool]:
+    span = _js_function_span(text, name)
+    if not span:
+        return text, False
+    start, end = span
+    if end < len(text) and text[end] == '\n':
+        end += 1
+    return text[:start] + new_fn.rstrip() + '\n' + text[end:], True
+
+
+def _insert_js_before_fetch(text: str, block: str) -> str:
+    idx = text.find('function fortiFetchVdom(')
+    if idx >= 0:
+        return text[:idx] + block + text[idx:]
+    marker = "['scheme', 'api.token'"
+    at = text.find(marker)
+    if at >= 0:
+        try_idx = text.rfind('try {', 0, at)
+        if try_idx >= 0:
+            return text[:try_idx] + block + text[try_idx:]
+    if 'function flattenFortiSdwanCmdb' in text:
+        patched, n_fn = _FLATTEN_SDWAN_END.subn(
+            lambda m: m.group(1) + '\n' + block, text, count=1
+        )
+        if n_fn == 1:
+            return patched
+    return text + '\n' + block
 
 
 def _ensure_fetch_helper(script: str) -> str:
-    if 'function fortiFetchVdom' in script:
+    """Install/upgrade fetch helpers. 424 must not walk every VDOM (timeout).
+
+    Live scripts already define ``fortiFetchVdom``. Prepending a new copy is
+    not enough: JS last-declaration-wins would keep the throw-and-walk body.
+    Replace each helper in place; insert only names that are missing.
+    """
+    text = script
+    missing: list[str] = []
+    for name in _FETCH_HELPER_NAMES:
+        src = _extract_js_function(FORTI_VDOM_HELPERS, name)
+        if not src:
+            return script
+        if f'function {name}(' in text:
+            text, ok = _replace_js_function(text, name, src)
+            if not ok:
+                return script
+        else:
+            missing.append(src)
+    if missing:
+        text = _insert_js_before_fetch(
+            text, '\n' + '\n\n'.join(s.rstrip() for s in missing) + '\n\n'
+        )
+    if 'function fortiHttpRaw' not in text or 'code === 424' not in text:
         return script
-    if 'function flattenFortiSdwanCmdb' not in script:
-        return script
-    patched, n_fn = _FLATTEN_SDWAN_END.subn(
-        lambda m: m.group(1) + _forti_fetch_vdom_js(), script, count=1
-    )
-    return patched if n_fn == 1 else script
+    return text
 
 
 def _ensure_netif_vdom_resilience(script: str) -> str:
     """Upgrade iface collection so a vdom=* 500 does not leave data as {}."""
     patched = _ensure_fetch_helper(script)
-    if 'function fortiFetchVdom' not in patched:
+    if 'function fortiHttpRaw' not in patched:
         return script
     for rx, repl in _NETIF_FETCHES:
         patched = rx.sub(repl, patched, count=1)
@@ -799,7 +966,7 @@ def _ensure_netif_vdom_resilience(script: str) -> str:
 def _ensure_sdwan_vdom_resilience(script: str) -> str:
     """Upgrade SD-WAN collection so a vdom=* 500 does not empty $.data."""
     patched = _ensure_fetch_helper(script)
-    if 'function fortiFetchVdom' not in patched:
+    if 'function fortiHttpRaw' not in patched:
         return script
     for rx, repl in _SDWAN_FETCHES:
         patched = rx.sub(repl, patched, count=1)

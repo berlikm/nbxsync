@@ -36,6 +36,7 @@ from fortigate_http import (
     SLOW_ITEM_DELAYS,
     SNMP_MONITORING_CG,
     VDOM_STAR_SCRIPT_KEYS,
+    _js_function_span,
     fgate_token_env,
     flatten_forti_cmdb_list,
     flatten_forti_monitor_map,
@@ -327,6 +328,106 @@ def _yaml_script(text: str, key: str) -> str:
         return '\n'.join(out).strip('\n') + '\n'
 
 
+# Live Cloud scripts after the first vdom=* patch: getHttpData throws on any
+# non-200, then walks every VDOM. ZH5 health-check 424 × N VDOMs times out.
+_LIVE_THROW_AND_WALK = r'''
+function fortiVdomNames(base) {
+	if (typeof fortiVdomNames._cache !== 'undefined') {
+		return fortiVdomNames._cache;
+	}
+	var names = [];
+	try {
+		var payload = getHttpData(base + '/api/v2/cmdb/system/vdom');
+		var rows = [];
+		if (payload && Array.isArray(payload.results)) {
+			rows = payload.results;
+		}
+		for (var i = 0; i < rows.length; i++) {
+			var row = rows[i];
+			if (!row) {
+				continue;
+			}
+			var n = row.name || row.q_origin_key;
+			if (n) {
+				names.push(String(n));
+			}
+		}
+	} catch (e) {
+		names = [];
+	}
+	if (names.length > 16) {
+		names = names.slice(0, 16);
+	}
+	fortiVdomNames._cache = names;
+	return names;
+}
+
+function fortiFetchVdom(base, path) {
+	var sep = path.indexOf('?') >= 0 ? '&' : '?';
+	try {
+		return getHttpData(base + path + sep + 'vdom=*');
+	} catch (e1) {
+		var blocks = [];
+		var names = fortiVdomNames(base);
+		for (var i = 0; i < names.length; i++) {
+			try {
+				var one = getHttpData(base + path + sep + 'vdom=' + names[i]);
+				if (Array.isArray(one)) {
+					for (var j = 0; j < one.length; j++) {
+						blocks.push(one[j]);
+					}
+				} else if (one && typeof one === 'object') {
+					if (!one.vdom) {
+						one.vdom = names[i];
+					}
+					blocks.push(one);
+				}
+			} catch (e3) {
+				continue;
+			}
+		}
+		if (blocks.length > 0) {
+			return blocks;
+		}
+		try {
+			return getHttpData(base + path);
+		} catch (e2) {
+			return { status: 'error', results: {} };
+		}
+	}
+}
+'''
+
+
+def _drop_js_function(text: str, name: str) -> str:
+    span = _js_function_span(text, name)
+    if not span:
+        return text
+    start, end = span
+    while end < len(text) and text[end] == '\n':
+        end += 1
+    return text[:start] + text[end:]
+
+
+def _as_live_throw_and_walk(script: str) -> str:
+    live = script
+    for name in (
+        'fortiEmpty',
+        'fortiHttpRaw',
+        'fortiHttpOk',
+        'fortiFetchPerVdom',
+        'fortiVdomNames',
+        'fortiFetchVdom',
+    ):
+        live = _drop_js_function(live, name)
+    span = _js_function_span(live, 'flattenFortiSdwanCmdb')
+    if span is None:
+        span = _js_function_span(live, 'flattenFortiCmdbList')
+    if span is None:
+        raise AssertionError('missing flatten helper to reattach live fetch')
+    return live[: span[1]] + '\n' + _LIVE_THROW_AND_WALK + live[span[1] :]
+
+
 class FortiVdomStarTests(unittest.TestCase):
     def test_script_keys_are_netif_and_sdwan(self):
         self.assertEqual(
@@ -439,17 +540,21 @@ class FortiVdomStarTests(unittest.TestCase):
         self.assertIn('(netif_list.results || []).map', patched)
         self.assertIn('flattenFortiCmdbList(netif_list)', patched)
         self.assertIn('fortiIfaceId(item)', patched)
+        self.assertIn('function fortiHttpRaw', patched)
+        self.assertIn('code === 424', patched)
+        self.assertEqual(patched.count('function fortiFetchVdom('), 1)
         self.assertEqual(patch_vdom_star_script(patched), patched)
 
     def test_netif_vdom_star_500_keeps_data_array(self):
         raw = _yaml_script(_http_yaml(), 'fgate.netif.get_data')
         patched = patch_vdom_star_script(patch_zbx27082_script(raw))
         naive = patched.replace('{"data": [], "error": ""}', '{"data": {}, "error": ""}', 1)
-        naive = naive.replace('function fortiFetchVdom', 'function fortiFetchVdomMissing', 1)
+        naive = naive.replace('function fortiHttpRaw', 'function fortiHttpRawMissing', 1)
         self.assertFalse(script_has_vdom_star(naive))
         upgraded = patch_vdom_star_script(naive)
         self.assertTrue(script_has_vdom_star(upgraded))
         self.assertIn('{"data": [], "error": ""}', upgraded)
+        self.assertIn('function fortiHttpRaw', upgraded)
         self.assertIn("fortiFetchVdom(api_url, '/api/v2/cmdb/system/interface')", upgraded)
 
     def test_bundled_sdwan_script_gets_vdom_star(self):
@@ -469,7 +574,57 @@ class FortiVdomStarTests(unittest.TestCase):
         self.assertIn('"member_lld": []', patched)
         self.assertIn('(sdwan_list.results.members || []).filter', patched)
         self.assertIn('fortiMonitorLookup(sdwan_member_data.results', patched)
+        self.assertIn('function fortiHttpRaw', patched)
+        self.assertIn('code === 424', patched)
+        self.assertIn('code === 500', patched)
+        self.assertEqual(patched.count('function fortiFetchVdom('), 1)
+        self.assertGreaterEqual(patched.count('fortiFetchVdom(api_url'), 3)
         self.assertEqual(patch_vdom_star_script(patched), patched)
+
+    def test_sdwan_health_check_424_does_not_walk_vdoms(self):
+        raw = _yaml_script(_http_yaml(), 'fgate.sdwan.get_data')
+        patched = patch_vdom_star_script(patch_zbx27082_script(raw))
+        fetch = patched.split('function fortiFetchVdom')[1].split('function ')[0]
+        self.assertIn('code === 424', fetch)
+        self.assertIn('fortiEmpty(code)', fetch)
+        self.assertIn('code === 500', fetch)
+        self.assertTrue(fetch.find('code === 424') < fetch.find('fortiFetchPerVdom'))
+        self.assertIn('Do not walk VDOMs', fetch)
+
+    def test_upgrades_live_throw_and_walk_sdwan_script(self):
+        raw = _yaml_script(_http_yaml(), 'fgate.sdwan.get_data')
+        patched = patch_vdom_star_script(patch_zbx27082_script(raw))
+        live = _as_live_throw_and_walk(patched)
+        self.assertFalse(script_has_vdom_star(live))
+        self.assertIn("getHttpData(base + path + sep + 'vdom=*')", live)
+        self.assertEqual(live.count('function fortiFetchVdom('), 1)
+        upgraded = patch_vdom_star_script(live)
+        self.assertTrue(script_has_vdom_star(upgraded))
+        self.assertEqual(upgraded.count('function fortiFetchVdom('), 1)
+        self.assertNotIn("getHttpData(base + path + sep + 'vdom=*')", upgraded)
+        self.assertIn('function fortiHttpRaw', upgraded)
+        self.assertIn('code === 424', upgraded)
+        self.assertIn("fortiFetchVdom(api_url, '/api/v2/monitor/virtual-wan/members')", upgraded)
+        self.assertIn("fortiFetchVdom(api_url, '/api/v2/monitor/virtual-wan/health-check')", upgraded)
+        self.assertIn("fortiFetchVdom(api_url, '/api/v2/cmdb/system/sdwan')", upgraded)
+        fetch = upgraded.split('function fortiFetchVdom')[1].split('function ')[0]
+        self.assertTrue(fetch.find('code === 424') < fetch.find('fortiFetchPerVdom'))
+        self.assertEqual(patch_vdom_star_script(upgraded), upgraded)
+
+    def test_http_424_envelope_is_skipped(self):
+        payload = {
+            'status': 'error',
+            'http_status': 424,
+            'vdom': 'root',
+            'path': 'virtual-wan',
+            'name': 'health-check',
+            'results': {},
+        }
+        self.assertEqual(flatten_forti_monitor_map(payload), {})
+        self.assertEqual(
+            flatten_forti_sdwan_cmdb(payload),
+            {'members': [], 'health-check': []},
+        )
 
     def test_sdwan_vdom_star_500_keeps_member_lld_path(self):
         raw = _yaml_script(_http_yaml(), 'fgate.sdwan.get_data')
@@ -479,11 +634,11 @@ class FortiVdomStarTests(unittest.TestCase):
             '{"data": {}, "error": ""}',
             1,
         )
-        naive = naive.replace('function fortiFetchVdom', 'function fortiFetchVdomMissing', 1)
+        naive = naive.replace('function fortiHttpRaw', 'function fortiHttpRawMissing', 1)
         self.assertFalse(script_has_vdom_star(naive))
         upgraded = patch_vdom_star_script(naive)
         self.assertTrue(script_has_vdom_star(upgraded))
-        self.assertIn('function fortiFetchVdom', upgraded)
+        self.assertIn('function fortiHttpRaw', upgraded)
         self.assertIn('"member_lld": []', upgraded)
 
     def test_monitor_map_accepts_array_results(self):

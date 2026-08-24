@@ -223,8 +223,10 @@ def main() -> int:
         'patch_vdom_star_items' in zbx_src
         and 'vdom_star' in zbx_src
         and 'vdom=*' in forti_http
-        and 'VDOM_STAR_SCRIPT_KEYS' in forti_http,
-        'surgical vdom=* flatten on netif + SD-WAN scripts; stock YAML is not imported',
+        and 'VDOM_STAR_SCRIPT_KEYS' in forti_http
+        and 'function fortiHttpRaw' in forti_http
+        and 'code === 424' in forti_http,
+        'surgical vdom=* flatten on netif + SD-WAN scripts; 424 does not walk VDOMs; stock YAML is not imported',
     )
     record(
         'network_fortigate_fqdn_is_platform_jinja',
