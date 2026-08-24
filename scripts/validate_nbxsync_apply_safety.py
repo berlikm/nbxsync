@@ -194,10 +194,12 @@ def main() -> int:
     )
     preflight = _function_source(net_src, net_tree, '_preflight_fortigate_http') or ''
     record(
-        'network_fortigate_http_preflight_blocks_icmpping_dual_link',
+        'network_fortigate_http_preflight_blocks_snmp_dual_link',
         '_DEVICE_DUAL_LINK_TEMPLATES' in preflight
-        and 'icmpping' in preflight,
-        'device-level SNMP/HTTP/ICMP Ping is an abort, not a warning',
+        and 'icmpping' in preflight
+        and 'SNMP is not a nested parent' in preflight
+        and '_prune_fortios_colliding_templates' in nbx,
+        'device-level FortiGate by SNMP is an abort; ICMP/HTTP are pruned as nested parents',
     )
     record(
         'network_reads_yaml_as_utf8',
@@ -236,6 +238,30 @@ def main() -> int:
         and '_fmg_faz_platforms' in transport
         and '_step_fortigate_http_transport()' in fg,
         'SNMP Monitoring moves to FMG/FAZ platforms; FortiOS is HTTP',
+    )
+    prune = _function_source(net_src, net_tree, '_prune_fortios_colliding_templates') or ''
+    record(
+        'network_fortigate_does_not_prune_icmp_from_agent_cgs',
+        bool(prune)
+        and 'agent-plane CGs' in prune
+        and 'ZabbixConfigurationGroup' not in prune
+        and 'DeviceType' in prune,
+        'FortiOS leftover ICMP/HTTP/SNMP is pruned; shared agent CGs are not',
+    )
+    record(
+        'network_fortigate_nested_parents_are_http_and_icmp',
+        'FORTIOS_NESTED_PARENT_TEMPLATES' in forti_http
+        and 'DEVICE_DUAL_LINK_TEMPLATES = (FORTIGATE_SNMP_TEMPLATE,)' in forti_http,
+        'ICMP/HTTP are nested parents; only SNMP dual-link aborts apply',
+    )
+    hostsync = (SCRIPTS.parent / 'nbxsync' / 'utils' / 'sync' / 'hostsync.py').read_text(encoding='utf-8')
+    parents = (SCRIPTS.parent / 'nbxsync' / 'utils' / 'sync' / 'template_parents.py').read_text(encoding='utf-8')
+    record(
+        'hostsync_skips_nested_parent_templates',
+        'drop_nested_parent_templateids' in hostsync
+        and 'selectParentTemplates' in hostsync
+        and 'would be linked twice' in parents,
+        'HostSync omits nested parents before host.update',
     )
 
     failed = sum(1 for _, ok, _ in RESULTS if not ok)

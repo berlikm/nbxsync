@@ -21,7 +21,10 @@ Firewall. Empty env must not wipe. Optional per-device override:
 ``NBX_FGATE_TOKEN_<HOSTNAME>``.
 
 Companion **FortiGate Observability** nests stock FortiGate by HTTP + ICMP
-Ping. Apply never imports bundled 7.0-3 over Cloud **Zabbix, 7.0-2**.
+Ping. Do not also assign those parents on FortiOS objects — HostSync skips
+nested parents, and apply prunes leftover ICMP/HTTP/SNMP from FortiOS
+devices, platforms, and device types. Do not strip ICMP Ping from agent-plane
+CGs. Apply never imports bundled 7.0-3 over Cloud **Zabbix, 7.0-2**.
 Do not re-run zerotouch.
 """
 
@@ -95,13 +98,21 @@ FIREWALL_ROLE_FORTI_TEMPLATES = (
     ICMP_PING_TEMPLATE,
 )
 
-# Device-level assignments that dual-link once Observability nests HTTP+ICMP.
-# FortiGate by SNMP also ships icmpping. Observability itself is the target.
-DEVICE_DUAL_LINK_TEMPLATES = (
-    FORTIGATE_SNMP_TEMPLATE,
+# Nested parents of Observability. Assigned again → Zabbix "parent would be
+# linked twice". HostSync skips these; apply also prunes them from FortiOS
+# devices / platforms / device types. Do **not** strip ICMP Ping from shared
+# agent-plane CGs (servers still need the direct link).
+FORTIOS_NESTED_PARENT_TEMPLATES = (
     FORTIGATE_HTTP_TEMPLATE,
     ICMP_PING_TEMPLATE,
 )
+
+# Sibling icmpping collision — cannot nest. Device-level leftover is an abort.
+# Observability itself is the target, not an abort.
+DEVICE_DUAL_LINK_TEMPLATES = (FORTIGATE_SNMP_TEMPLATE,)
+
+# FortiOS-owned objects: prune nested parents and leftover SNMP together.
+FORTIOS_COLLIDING_TEMPLATES = FORTIOS_NESTED_PARENT_TEMPLATES + DEVICE_DUAL_LINK_TEMPLATES
 
 REQUIRED_HTTP_SCRIPT_KEYS = (
     'fgate.netif.get_data',

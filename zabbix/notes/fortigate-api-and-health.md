@@ -9,7 +9,7 @@ Sources: official Zabbix 7.0 `templates/net/fortinet/` (`FortiGate by HTTP`, `Fo
 
 ## Decision
 
-Monitor FortiGates with companion **FortiGate Observability** (nests stock **FortiGate by HTTP** + **ICMP Ping**). Do **not** also link **FortiGate by SNMP** or **Network Generic**. Do **not** put Forti templates or the REST token on generic role **Firewall** (FMG/FAZ share it).
+Monitor FortiGates with companion **FortiGate Observability** (nests stock **FortiGate by HTTP** + **ICMP Ping**). Do **not** also assign ICMP Ping or FortiGate by HTTP on FortiOS objects (nested parents — HostSync skips them; apply prunes FortiOS leftovers). Do **not** also link **FortiGate by SNMP** or **Network Generic**. Do **not** put Forti templates or the REST token on generic role **Firewall** (FMG/FAZ share it).
 
 Live nbxSync today still points FortiOS at **FortiGate by SNMP**. Retarget with `configure_nbxsync_network.py --apply-fortigate-http` — **do not re-run zerotouch**. The flag fails closed, looks up Cloud **Zabbix, 7.0-2**, patches ZBX-27082 in place, and never imports bundled 7.0-3. HostSync **both members** of a cluster (`primary_ip4`).
 
@@ -176,7 +176,8 @@ Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-h
 - FortiOS → Observability (`HostInterfaceRequirement` **ANY**). Not role Firewall
 - Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS** from `NBX_FGATE_TOKEN` (empty env does not wipe). Optional per-host override `NBX_FGATE_TOKEN_<HOSTNAME>`
 - `{$FGATE.API.FQDN}` on **Platform FortiOS** as Jinja `{{ object.primary_ip4.address.ip }}`. Leftover Device-level literals are pruned
-- Fleet defaults on Platform FortiOS. Prune Forti/ICMP templates **and SNMP Monitoring** from role Firewall; assign SNMP Monitoring on FortiManager / FortiAnalyzer platforms
+- Fleet defaults on Platform FortiOS. Prune Forti/ICMP templates **and SNMP Monitoring** from role Firewall; prune leftover ICMP/HTTP/SNMP from FortiOS devices, platforms, and device types; assign SNMP Monitoring on FortiManager / FortiAnalyzer platforms. Do **not** strip ICMP Ping from agent-plane CGs.
+- After SNMP Monitoring is pruned, FortiOS inherits Site Group Agent Monitoring (ICMP Ping). Observability already nests ICMP. HostSync drops nested parents before `host.update` so Zabbix does not reject “parent template would be linked twice”.
 - Do **not** dual-link HTTP+SNMP. No Extreme YAML, no mass-HostSync. HostSync both members of the first cluster, then the rest
 
 Changing the FortiOS Template Rule on a live estate **will** retarget on next HostSync of that firewall.

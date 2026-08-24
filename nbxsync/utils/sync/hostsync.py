@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django_rq import get_queue
 
 from .syncbase import ZabbixSyncBase
+from .template_parents import drop_nested_parent_templateids, fetch_template_parent_map
 from nbxsync.choices import HostInterfaceRequirementChoices, ZabbixHostInterfaceSNMPVersionChoices, ZabbixHostInterfaceTypeChoices, ZabbixInterfaceSNMPV3SecurityLevelChoices
 from nbxsync.choices.syncsot import SyncSOT
 from nbxsync.choices.zabbixstatus import ZabbixHostStatus
@@ -411,7 +412,43 @@ class HostSync(ZabbixSyncBase):
             # Passed all checks
             result.append({'templateid': assigned_template.zabbixtemplate.templateid})
 
+        result = self._drop_nested_parent_templates(result)
         return {'templates': result}
+
+    def _drop_nested_parent_templates(self, templates: list) -> list:
+        """Omit templateids that Zabbix would reject as a duplicate parent link.
+
+        Effective NetBox assignments can include both a companion (FortiGate
+        Observability, EXOS Observability) and a nested parent (ICMP Ping,
+        FortiGate by HTTP, Port Speed Expect). ``host.update`` must receive
+        only the leaves; ``templates_clear`` then unlinks a leftover direct
+        parent while the nested copy remains.
+        """
+        if len(templates) < 2:
+            return templates
+        intended = [row['templateid'] for row in templates]
+        parent_map = fetch_template_parent_map(
+            intended,
+            lambda ids: self.api.template.get(
+                templateids=ids,
+                output=['templateid'],
+                selectParentTemplates=['templateid'],
+            )
+            or [],
+        )
+        kept = set(drop_nested_parent_templateids(intended, parent_map))
+        filtered = []
+        seen = set()
+        for row in templates:
+            tid = int(row['templateid'])
+            if tid not in kept or tid in seen:
+                continue
+            seen.add(tid)
+            filtered.append(row)
+        dropped = list(dict.fromkeys(int(tid) for tid in intended if int(tid) not in kept))
+        if dropped:
+            logger.info('Skipping nested parent templateids already inherited: %s', dropped)
+        return filtered
 
     def get_tag_attributes(self):
         sync_target = self._get_sync_target()

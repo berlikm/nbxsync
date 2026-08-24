@@ -53,6 +53,10 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     ``{$FGATE.API.TOKEN}`` on **Platform FortiOS**, not role Firewall.
     ``{$FGATE.API.FQDN}`` is Platform FortiOS Jinja on ``primary_ip4``.
     Fail-closed preflight. FortiOS does not inherit SNMP Monitoring.
+    After SNMP Monitoring is pruned, FortiOS still inherits Site Group Agent
+    Monitoring (ICMP Ping). Observability already nests ICMP; HostSync drops
+    nested parents before ``host.update``. Apply prunes leftover ICMP/HTTP/SNMP
+    from FortiOS devices/platforms/device types — not from agent CGs.
     Operator path is ``--apply-fortigate-http`` — do **not** re-run zerotouch.
     Do not dual-link HTTP+SNMP.
   * Global **destination** macros on the Zabbix server object (production end-state).
@@ -170,6 +174,20 @@ from nbxsync.utils.zabbixconnection import ZabbixConnection
 from fortigate_http import (
     DEVICE_DUAL_LINK_TEMPLATES as _DEVICE_DUAL_LINK_TEMPLATES,
     FGATE_FQDN_JINJA as _FGATE_FQDN_JINJA,
+    FGATE_FQDN_MACRO as _FGATE_FQDN_MACRO,
+    FGATE_TOKEN_ENV as _FGATE_TOKEN_ENV,
+    FGATE_TOKEN_MACRO as _FGATE_TOKEN_MACRO,
+    FIREWALL_ROLE as _FIREWALL_ROLE,
+    FIREWALL_ROLE_FORTI_TEMPLATES as _FIREWALL_ROLE_FORTI_TEMPLATES,
+    FMG_FAZ_PLATFORM_PATTERN as _FMG_FAZ_PLATFORM_PATTERN,
+    FORTIGATE_HTTP_CLOUD_VENDOR as _FORTIGATE_HTTP_CLOUD_VENDOR,
+    FORTIGATE_HTTP_TEMPLATE as _FORTIGATE_HTTP_TEMPLATE,
+    FORTIGATE_OBSERVABILITY_TEMPLATE as _FORTIGATE_OBSERVABILITY_TEMPLATE,
+    FORTIGATE_SNMP_TEMPLATE as _FORTIGATE_SNMP_TEMPLATE,
+    FORTIOS_COLLIDING_TEMPLATES as _FORTIOS_COLLIDING_TEMPLATES,
+    FORTIOS_PLATFORM_MACROS as _FORTIOS_PLATFORM_MACROS,
+    FORTIOS_PLATFORM_PATTERN as _FORTIOS_PLATFORM_PATTERN,
+    FORTIOS_TEMPLATE_RULE as _FORTIOS_TEMPLATE_RULE,
     FGATE_FQDN_MACRO as _FGATE_FQDN_MACRO,
     FGATE_TOKEN_ENV as _FGATE_TOKEN_ENV,
     FGATE_TOKEN_MACRO as _FGATE_TOKEN_MACRO,
@@ -2263,6 +2281,53 @@ def _prune_role_cg_names(role, names: set[str]) -> int:
     return deleted
 
 
+def _prune_template_names_from_model(model, ids, names: set[str]) -> int:
+    if not ids:
+        return 0
+    deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+        zabbixtemplate__name__in=names,
+        assigned_object_type=ct(model),
+        assigned_object_id__in=list(ids),
+    ).delete()
+    return deleted
+
+
+def _fortios_device_type_ids() -> list[int]:
+    return list(
+        _fortios_devices()
+        .exclude(device_type_id__isnull=True)
+        .values_list('device_type_id', flat=True)
+        .distinct()
+    )
+
+
+def _prune_fortios_colliding_templates() -> int:
+    """Drop leftover ICMP/HTTP/SNMP assignments on FortiOS-owned objects.
+
+    Observability already nests ICMP Ping and FortiGate by HTTP. Linking them
+    again makes HostSync fail until nested parents are skipped. FortiGate by
+    SNMP is a sibling ``icmpping`` collision, not a nested parent.
+
+    Do not prune ICMP Ping from agent-plane CGs, manufacturers, or sites —
+    servers still need the direct ICMP link, and FMG/FAZ may too.
+    """
+    names = set(_FORTIOS_COLLIDING_TEMPLATES)
+    total = 0
+    n = _prune_template_names_from_model(Device, list(_fortios_devices().values_list('id', flat=True)), names)
+    if n:
+        logger.info('  PRUNED: %s colliding template assignment(s) from FortiOS devices', n)
+    total += n
+    n = _prune_template_names_from_model(Platform, [p.id for p in _fortios_platforms()], names)
+    if n:
+        logger.info('  PRUNED: %s colliding template assignment(s) from FortiOS platforms', n)
+    total += n
+    n = _prune_template_names_from_model(DeviceType, _fortios_device_type_ids(), names)
+    if n:
+        logger.info('  PRUNED: %s colliding template assignment(s) from FortiOS device types', n)
+    total += n
+    return total
+
+
 def _prune_firewall_role_forti_templates() -> int:
     """Remove Forti/ICMP templates from role Firewall. SNMP CG is moved separately."""
     total = 0
@@ -2504,6 +2569,9 @@ def _print_fortigate_http_plan(
         'write' if _should_write_secret(env_token) else 'leave existing',
     )
     logger.info('  prune Forti/ICMP templates from role %s', _FIREWALL_ROLE)
+    logger.info(
+        '  prune nested ICMP/HTTP and leftover SNMP from FortiOS devices/platforms/device types (not agent CGs)',
+    )
     logger.info('  prune %s from role %s / FortiOS; assign it on FMG/FAZ platforms', _SNMP_MONITORING_CG, _FIREWALL_ROLE)
     logger.info('  Platform FortiOS %s = %s', _FGATE_FQDN_MACRO, _FGATE_FQDN_JINJA)
     logger.info('FortiOS mutation set:')
@@ -2563,7 +2631,7 @@ def _preflight_fortigate_http(server, *, icmp_ok: bool) -> list[str]:
             if _device_has_template(dev, name):
                 errors.append(
                     f'{dev.name}: device-level {name} would dual-link Observability '
-                    f'(icmpping / HTTP parent collision) — remove it first'
+                    f'(icmpping collision; SNMP is not a nested parent) — remove it first'
                 )
         override = os.environ.get(_fgate_token_env(dev.name), '')
         if not _should_write_secret(env_token) and not platform_token and not _should_write_secret(override):
@@ -2651,6 +2719,7 @@ def _step_fortigate_http_nbxsync(
         _ICMP_PING_TEMPLATE,
     )
     _prune_firewall_role_forti_templates()
+    _prune_fortios_colliding_templates()
 
 
 def _step_fortios_device_macros(server) -> dict[str, int]:
@@ -4009,6 +4078,7 @@ def run_apply_fortigate_http() -> int:
         'Shared %s is on Platform FortiOS (not role Firewall). '
         '%s is platform Jinja on primary_ip4. '
         'FortiOS does not inherit %s (FMG/FAZ platforms keep it). '
+        'Nested ICMP/HTTP leftovers on FortiOS objects are pruned; agent CGs are not. '
         'HostSync both members of the first cluster, then the rest. '
         'Do not re-run zerotouch — it still floors FortiOS on %s.',
         _FGATE_TOKEN_MACRO,

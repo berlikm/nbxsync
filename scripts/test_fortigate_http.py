@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import unittest
-
 from pathlib import Path
 
 from fortigate_http import (
@@ -24,6 +23,8 @@ from fortigate_http import (
     FORTIGATE_HTTP_TEMPLATE,
     FORTIGATE_OBSERVABILITY_TEMPLATE,
     FORTIGATE_SNMP_TEMPLATE,
+    FORTIOS_COLLIDING_TEMPLATES,
+    FORTIOS_NESTED_PARENT_TEMPLATES,
     FORTIOS_PLATFORM_MACROS,
     FORTIOS_PLATFORM_PATTERN,
     FORTIOS_TEMPLATE_RULE,
@@ -199,12 +200,22 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SDWAN.EXPECTED}'], '0')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.HA.EXPECTED}'], '1')
 
-    def test_device_dual_link_is_snmp_http_icmp_not_observability(self):
-        self.assertIn(FORTIGATE_SNMP_TEMPLATE, DEVICE_DUAL_LINK_TEMPLATES)
-        self.assertIn(FORTIGATE_HTTP_TEMPLATE, DEVICE_DUAL_LINK_TEMPLATES)
-        self.assertIn(ICMP_PING_TEMPLATE, DEVICE_DUAL_LINK_TEMPLATES)
+    def test_device_dual_link_is_snmp_only_not_nested_parents(self):
+        self.assertEqual(DEVICE_DUAL_LINK_TEMPLATES, (FORTIGATE_SNMP_TEMPLATE,))
+        self.assertNotIn(FORTIGATE_HTTP_TEMPLATE, DEVICE_DUAL_LINK_TEMPLATES)
+        self.assertNotIn(ICMP_PING_TEMPLATE, DEVICE_DUAL_LINK_TEMPLATES)
         self.assertNotIn(FORTIGATE_OBSERVABILITY_TEMPLATE, DEVICE_DUAL_LINK_TEMPLATES)
         self.assertNotIn(SNMP_MONITORING_CG, DEVICE_DUAL_LINK_TEMPLATES)
+        self.assertEqual(
+            FORTIOS_NESTED_PARENT_TEMPLATES,
+            (FORTIGATE_HTTP_TEMPLATE, ICMP_PING_TEMPLATE),
+        )
+        self.assertNotIn(FORTIGATE_OBSERVABILITY_TEMPLATE, FORTIOS_NESTED_PARENT_TEMPLATES)
+        self.assertNotIn(FORTIGATE_SNMP_TEMPLATE, FORTIOS_NESTED_PARENT_TEMPLATES)
+        self.assertEqual(
+            FORTIOS_COLLIDING_TEMPLATES,
+            FORTIOS_NESTED_PARENT_TEMPLATES + DEVICE_DUAL_LINK_TEMPLATES,
+        )
 
     def test_empty_vendor_is_not_cloud_compatible(self):
         self.assertFalse(is_cloud_fortigate_http_vendor(''))

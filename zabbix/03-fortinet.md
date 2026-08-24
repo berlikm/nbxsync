@@ -24,7 +24,7 @@ This page is the **target contract**. Live nbxSync still links **FortiGate by SN
 | Host dashboard | Observability **Health** + **Path** |
 | Severity | **Disaster** = site only. Warning = next day, not a dump bucket |
 
-Data path: stock **FortiGate by HTTP** + **ICMP Ping**. Do **not** also link FortiGate by SNMP or Network Generic (`icmpping` collision once ICMP Ping is on the host).
+Data path: companion **FortiGate Observability** (nests stock **FortiGate by HTTP** + **ICMP Ping**). Do **not** also assign ICMP Ping or FortiGate by HTTP on FortiOS objects — they are nested parents, and Zabbix rejects a duplicate parent link. Do **not** also link FortiGate by SNMP or Network Generic (`icmpping` collision). After SNMP Monitoring is pruned, FortiOS still inherits Site Group **Agent Monitoring** (ICMP Ping); HostSync drops that nested parent before `host.update`.
 
 Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24/7; Average = ticket; Warning = next day; Info = log.
 
@@ -175,7 +175,7 @@ That flag:
 | Platform FortiOS | **FortiGate Observability** (nests Cloud HTTP + ICMP Ping) + `OS/Network`. ANY |
 | Role Firewall | **prune** FortiGate HTTP/SNMP and ICMP Ping leftovers. **Prune** SNMP Monitoring (FortiOS is HTTP) |
 | SNMP Monitoring | **moved** onto FortiManager / FortiAnalyzer **platforms**. Not on FortiGates |
-| ICMP | Nested on Observability — **not** on role Firewall |
+| ICMP | Nested on Observability — **not** on role Firewall. Leftover ICMP/HTTP/SNMP on FortiOS devices, platforms, and device types is **pruned**. Agent-plane CGs keep ICMP Ping (servers). HostSync skips nested parents if Agent Monitoring still assigns ICMP Ping. |
 | Fleet HTTP defaults | **Platform FortiOS** — https/443, WAN/HA/mgmt LLD, CPU/mem CRIT 101, empty policy LLD |
 | Secrets | Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS** (`NBX_FGATE_TOKEN`). `{$FGATE.API.FQDN}` = platform Jinja `{{ object.primary_ip4.address.ip }}` |
 
@@ -191,7 +191,7 @@ Then HostSync **both members of the first cluster** (each unique OOB). Inheritan
 | Role Firewall | no FortiGate template floor and no SNMP Monitoring CG |
 | Secrets | Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS**. `{$FGATE.API.FQDN}` = platform Jinja `{{ object.primary_ip4.address.ip }}` (OOB / ha-mgmt; not a WAN VIP). HostSync renders per device. |
 | Fleet HTTP defaults | **Platform FortiOS** — https/443, WAN/HA/mgmt LLD, `{$FWP.FWNAME.MATCHES}`=`^$`, util 101, CPU/mem CRIT 101. Not Switch* or Firewall role |
-| ICMP | nested on Observability (applied at HostSync with HTTP) |
+| ICMP | nested on Observability. After SNMP Monitoring is gone, Site Group Agent Monitoring still assigns ICMP Ping — HostSync skips that nested parent. Do not strip ICMP from agent CGs. |
 | SNMP Monitoring | **FortiManager / FortiAnalyzer platforms only**. FortiOS falls through to the country Site Group Agent default (HTTP + ICMP). |
 | Health | already on the HTTP template after upsert — no dashboard script |
 
@@ -200,7 +200,7 @@ Before the flag:
 1. FortiGate by HTTP is already in Zabbix Cloud as **Zabbix, 7.0-2** — keep it. `--apply-fortigate-http` looks it up and never imports 7.0-3 over it.
 2. On-box: read-only admin profile (Zabbix: enable **all Read**) → REST API Admin → token **once** (usually syncs). Trusted hosts = **Swiss proxy on each member’s ha-mgmt / OOB**, not a laptop.
 
-Do **not** HostSync a Forti that still has FortiGate by SNMP **and** ICMP Ping (`icmpping` key collision). `--apply-fortigate-http` prunes the SNMP floor first so a later HostSync replaces SNMP with HTTP+ICMP together.
+Until this HostSync nested-parent skip is on the live plugin, a Forti whose effective assignments include **ICMP Ping** and **FortiGate Observability** fails with `parent template would be linked twice` and stays untemplated. Deploy the plugin change, re-run `--apply-fortigate-http` (no HostSync, no zerotouch), then HostSync **both** HA members via unique OOB.
 
 ---
 
@@ -277,7 +277,7 @@ Do **not** clone stock FortiGate by HTTP.
 |---|---|---|
 | FortiGate Observability | Platform FortiOS — **target** | Nests Cloud HTTP + ICMP Ping. Health + Path, census, conserve, ha.member.count |
 | FortiGate by HTTP (stock) | nested parent | Cloud is **Zabbix, 7.0-2**. Reuse; never import 7.0-3. Apply patches ZBX-27082 / WAN state / policy off / CRIT 101 / ha.role |
-| ICMP Ping | nested on Observability | HTTP has no `icmpping`. Not on role Firewall |
+| ICMP Ping | nested on Observability | HTTP has no `icmpping`. Not on role Firewall. HostSync skips a leftover Agent Monitoring ICMP assignment. Do not strip ICMP from agent CGs. |
 | FortiGate by SNMP (stock) | Platform FortiOS — **live until `--apply-fortigate-http`** | Do not dual-link with HTTP. Pruned from role Firewall |
 | Network Generic Device by SNMP | **not** on FortiGate | FMG/FAZ only (SNMP Monitoring on those **platforms**) |
 
