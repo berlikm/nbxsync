@@ -9,7 +9,7 @@ If a script and that document disagree, **fix the script or the document so they
 | Order | Script | Applies |
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
-| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes Device Role Firewall FortiGate HTTP defaults only (no Extreme import, no Forti HostSync). |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes Device Role Firewall FortiGate HTTP defaults only. `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS/Firewall → HTTP, prune SNMP CG, per-device TOKEN/FQDN) — **do not re-run zerotouch** for that. Neither Forti flag HostSyncs. |
 | — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** and **Network interfaces** ship from platform templates/runtime patch |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
@@ -42,6 +42,16 @@ python scripts/configure_nbxsync_network.py --apply
 ```
 
 Always finish with the network script so VOSS / IQ Engine Template Rules are not left unresolved. Re-running both scripts on an estate that **already has** switches and APs in Zabbix is the maintenance path: YAML `deleteMissing: false`, no host delete, no mass `SyncHostJob`. Template Health dashboards and trigger status inherit in Zabbix without touching hostids.
+
+FortiGate HTTP cutover is **not** zerotouch and **not** Extreme `--apply`:
+
+```bash
+export NBX_ZABBIX_TOKEN=...
+# optional: export NBX_FGATE_TOKEN_<HOSTNAME>=...   # dashes→underscores; empty env does not wipe
+python3 scripts/configure_nbxsync_network.py --apply-fortigate-http
+```
+
+Then HostSync **one** HA pair. Do not re-run zerotouch after that — it still floors FortiOS on FortiGate by SNMP.
 
 ```bash
 python3 scripts/validate_extreme_templates.py --zabbix   # lab: YAML contract + double import
@@ -93,5 +103,6 @@ Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **
 | Extreme TemplateRules (EXOS/VOSS/IQ) | ensure when template exists; **never** fall back to Network Generic. Patterns: `EXOS\|Switch Engine`, `VOSS\|Fabric Engine`, `IQ ENGINE\|IQEngine\|IQ-ENGINE` | import + retarget if a rule still points at Network Generic |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
 | Firewall FortiGate HTTP fleet macros (https/443, WAN/HA/mgmt LLD) | — | yes (`--apply-firewall-macros` or `--apply`; no Forti HostSync) |
+| FortiOS / Firewall → FortiGate by HTTP, prune SNMP CG, ICMP Ping on Firewall, per-device TOKEN/FQDN | **do not re-run** (still SNMP) | `--apply-fortigate-http` (no Extreme YAML, no HostSync) |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |

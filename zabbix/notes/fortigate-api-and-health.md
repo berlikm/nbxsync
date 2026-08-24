@@ -11,7 +11,7 @@ Sources: official Zabbix 7.0 `templates/net/fortinet/` (`FortiGate by HTTP`, `Fo
 
 Monitor FortiGates with stock **FortiGate by HTTP** (REST from the Swiss Zabbix proxy). Add **ICMP Ping** (the HTTP template has no `icmpping`). Do **not** also link **FortiGate by SNMP** or **Network Generic**.
 
-Live nbxSync today still points FortiOS at **FortiGate by SNMP**. That is the current estate, not the target. Retargeting the Template Rule **will** swap templates on the next HostSync. Do not flip production until tokens, trusted-hosts, and HTTPS macros exist on the hosts.
+Live nbxSync today still points FortiOS at **FortiGate by SNMP**. That is the current estate, not the target. Retarget with `configure_nbxsync_network.py --apply-fortigate-http` — **do not re-run zerotouch**. The next HostSync of a firewall swaps templates. Import latest 7.0 HTTP, put tokens/trusted-hosts on the boxes, then canary-sync one HA pair.
 
 ---
 
@@ -156,7 +156,7 @@ Stock HTTP has no host **Health** board (same gap as stock EXOS). Plan: upsert *
 
 ## Zero-touch / cutover (do not break live SNMP Fortis)
 
-Live today (`configure_nbxsync_zerotouch.py` + locked GUI checklist):
+Live today (`configure_nbxsync_zerotouch.py` + locked GUI checklist) until the network-script flag:
 
 - Template Rule **FortiOS** `FORTIOS|FortiOS` → **FortiGate by SNMP** + `OS/Network`
 - Role **Firewall** floor → same SNMP template
@@ -164,19 +164,18 @@ Live today (`configure_nbxsync_zerotouch.py` + locked GUI checklist):
 - ICMP Ping is **not** on fleet SNMP Monitoring (Forti SNMP already has `icmpping`)
 - FMG/FAZ → Network Generic (do **not** assign FortiGate HTTP by manufacturer)
 
-Target after tokens exist:
+**Do not re-run zerotouch for the HTTP cutover.** Zerotouch would put FortiOS back on SNMP.
 
-- FortiOS → **FortiGate by HTTP** (`HostInterfaceRequirement` **ANY**, not SNMP)
-- Per-device secret macros like Pure: `{$FGATE.API.TOKEN}`, `{$FGATE.API.FQDN}`
-- Fleet defaults (https/443, WAN/HA/mgmt IFNAME, empty policy LLD) as **ZabbixMacroAssignment on Device Role Firewall**. Token/FQDN stay per-device. `--apply-firewall-macros` (or `--apply`) writes the role; neither HostSyncs Fortis.
-- ICMP Ping on a CG/path that **SNMP Fortis never inherit** during the mixed window (role-level ICMP on Firewall would duplicate `icmpping` on leftover SNMP hosts)
+Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-http`
+
+- FortiOS → **FortiGate by HTTP** (`HostInterfaceRequirement` **ANY**, not SNMP) when that template exists in Zabbix (soft-resolve; missing HTTP leaves SNMP)
+- Per-device secret macros like Pure: `{$FGATE.API.TOKEN}` from `NBX_FGATE_TOKEN_<HOSTNAME>` (empty env does not wipe), `{$FGATE.API.FQDN}` from `primary_ip4`
+- Fleet defaults (https/443, WAN/HA/mgmt IFNAME, empty policy LLD) as **ZabbixMacroAssignment on Device Role Firewall**. Token/FQDN stay per-device. `--apply-firewall-macros` (or `--apply`) writes the role only.
+- ICMP Ping on role Firewall (lands on HostSync with HTTP). Prunes FortiGate by SNMP and SNMP Monitoring from Firewall first so HostSync does not dual-link `icmpping`
 - Leave Firewall **off** SNMP Monitoring once HTTP is the data path (HTTP items do not use UDP 161)
-- Empty env must **not** wipe tokens (same Pure rule)
-- YAML `deleteMissing: false` if we later vendor a patched export
+- No Extreme YAML, no check-now, no mass-HostSync. Canary-sync one HA pair.
 
-Sequence: import latest HTTP template → canary token + trusted host = **Swiss proxy** (and server if it polls) → per-host macros → link HTTP + ICMP on canaries **without** unlinking the fleet → only then retarget the FortiOS rule / prune the SNMP floor.
-
-Changing the FortiOS Template Rule on a live estate **will** retarget on next HostSync. This docs pass does **not** change the script.
+Changing the FortiOS Template Rule on a live estate **will** retarget on next HostSync of that firewall.
 
 Locked [`docs/netbox-zabbix/configuration.md`](../../docs/netbox-zabbix/configuration.md) still lists FortiGate by SNMP. That file stays locked; this note is the drift record.
 

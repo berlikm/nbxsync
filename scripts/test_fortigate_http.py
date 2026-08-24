@@ -9,6 +9,14 @@ from fortigate_http import (
     FIREWALL_DEVICE_MACROS,
     FIREWALL_ROLE,
     FIREWALL_ROLE_MACROS,
+    FORTIGATE_HTTP_TEMPLATE,
+    FORTIGATE_SNMP_TEMPLATE,
+    FORTIOS_PLATFORM_PATTERN,
+    FORTIOS_TEMPLATE_RULE,
+    ICMP_PING_TEMPLATE,
+    SNMP_MONITORING_CG,
+    fgate_token_env,
+    should_write_secret,
 )
 
 
@@ -50,6 +58,26 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$NET.IF.UTIL.MAX}'], '101')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FIRMWARE.UPDATES.CONTROL}'], '0')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$DISK.FREE.CRIT}'], '0')
+
+    def test_cutover_names_are_stock_zabbix_and_netbox(self):
+        self.assertEqual(FORTIGATE_HTTP_TEMPLATE, 'FortiGate by HTTP')
+        self.assertEqual(FORTIGATE_SNMP_TEMPLATE, 'FortiGate by SNMP')
+        self.assertEqual(ICMP_PING_TEMPLATE, 'ICMP Ping')
+        self.assertEqual(SNMP_MONITORING_CG, 'SNMP Monitoring')
+        self.assertEqual(FORTIOS_TEMPLATE_RULE, 'FortiOS')
+        self.assertEqual(FORTIOS_PLATFORM_PATTERN, r'FORTIOS|FortiOS')
+
+    def test_token_env_uppercases_and_underscores_dashes(self):
+        self.assertEqual(
+            fgate_token_env('ch-zrh-p-fw01'),
+            'NBX_FGATE_TOKEN_CH_ZRH_P_FW01',
+        )
+
+    def test_empty_env_must_not_wipe_token(self):
+        self.assertFalse(should_write_secret(None))
+        self.assertFalse(should_write_secret(''))
+        self.assertFalse(should_write_secret('   '))
+        self.assertTrue(should_write_secret('abc'))
 
 
 if __name__ == '__main__':

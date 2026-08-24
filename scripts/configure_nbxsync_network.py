@@ -44,11 +44,12 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
   * Platform TemplateRules: EXOS → Observability companion (nests stock); VOSS / IQ Engine → Extreme * by SNMP
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
-  * Firewall role FortiGate HTTP macros (https/443, WAN/HA/mgmt LLD, no policy LLD).
-    Token / FQDN stay per-device. ``--apply`` and ``--apply-firewall-macros`` write
-    NetBox ZabbixMacroAssignment only. They do not HostSync Fortis (live SNMP still
-    uses ``{$NET.IF.IFNAME.MATCHES}``). Use ``--apply-firewall-macros`` when you
-    only want the Firewall role — it skips Extreme YAML import and check-now.
+  * Firewall FortiGate HTTP: fleet macros on Device Role Firewall; per-device
+    TOKEN/FQDN; FortiOS Template Rule + Firewall floor → FortiGate by HTTP (ANY);
+    prune FortiGate by SNMP and SNMP Monitoring CG from Firewall; ICMP Ping on
+    the role (stock HTTP has no icmpping). Operator path is
+    ``--apply-fortigate-http`` — do **not** re-run zerotouch for this cutover.
+    ``--apply-firewall-macros`` is macros-only. Neither flag mass-HostSyncs Fortis.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -60,8 +61,9 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 Stage matrix (what each flag enables):
   ``--apply``                     = stages 0–3: template imports + EXOS/VOSS/IQ rules + IFALIAS + destination globals + TEMP/ICMP/Health patches.
                                     Speed Expect is nested on VOSS and EXOS Observability (empty ifAlias = not discovered).
-                                    Also writes Device Role Firewall FortiGate HTTP macros (no Forti HostSync).
-  ``--apply-firewall-macros``     = NetBox-only Device Role Firewall macros. No Extreme import, no Zabbix API, no HostSync.
+                                    Also writes Device Role Firewall FortiGate HTTP macros (no Forti HostSync, no FortiOS retarget).
+  ``--apply-firewall-macros``     = NetBox-only Device Role Firewall macros. No Extreme import, no Zabbix API, no HostSync, no FortiOS retarget.
+  ``--apply-fortigate-http``      = FortiGate HTTP cutover without zerotouch or Extreme YAML: role macros + FortiOS/Firewall → HTTP ANY + prune SNMP floor/CG + ICMP Ping on Firewall + per-device TOKEN/FQDN. No HostSync.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -97,8 +99,12 @@ Usage::
   # If NetBox has no row named "Zabbix Production", also set NBX_ZABBIX_URL.
   python scripts/configure_nbxsync_network.py --apply
 
-  # Firewall Device Role macros only (no Extreme YAML / check-now / HostSync)
+  # Firewall Device Role macros only (no Extreme YAML / check-now / HostSync / FortiOS retarget)
   python scripts/configure_nbxsync_network.py --apply-firewall-macros
+
+  # FortiGate HTTP cutover (no zerotouch, no Extreme YAML, no HostSync)
+  # export NBX_FGATE_TOKEN_<HOSTNAME>=...   # dashes→underscores; empty env does not wipe
+  python scripts/configure_nbxsync_network.py --apply-fortigate-http
 
   # Temporary LM cutover silence only (not the long-term target)
   python scripts/configure_nbxsync_network.py --apply --cutover-silence
@@ -151,9 +157,19 @@ from nbxsync.utils import get_assigned_zabbixobjects
 from nbxsync.utils.zabbixconnection import ZabbixConnection
 
 from fortigate_http import (
+    FGATE_FQDN_MACRO as _FGATE_FQDN_MACRO,
+    FGATE_TOKEN_MACRO as _FGATE_TOKEN_MACRO,
     FIREWALL_DEVICE_MACROS as _FIREWALL_DEVICE_MACROS,
     FIREWALL_ROLE as _FIREWALL_ROLE,
     FIREWALL_ROLE_MACROS as _FIREWALL_ROLE_MACROS,
+    FORTIGATE_HTTP_TEMPLATE as _FORTIGATE_HTTP_TEMPLATE,
+    FORTIGATE_SNMP_TEMPLATE as _FORTIGATE_SNMP_TEMPLATE,
+    FORTIOS_PLATFORM_PATTERN as _FORTIOS_PLATFORM_PATTERN,
+    FORTIOS_TEMPLATE_RULE as _FORTIOS_TEMPLATE_RULE,
+    ICMP_PING_TEMPLATE as _ICMP_PING_TEMPLATE,
+    SNMP_MONITORING_CG as _SNMP_MONITORING_CG,
+    fgate_token_env as _fgate_token_env,
+    should_write_secret as _should_write_secret,
 )
 from extreme_ascii_titles import title_payload as _title_payload
 from extreme_health_zabbix import (
@@ -353,7 +369,8 @@ def apply_macro_mode(*, cutover_silence: bool = False) -> None:
 
 SWITCH_SNMP_ROLES = list(ROLE_MACROS.keys())
 # Firewall is not a Switch* SNMP-CG role. HTTP macros live on Device Role
-# Firewall; FortiOS Template Rule stays FortiGate by SNMP until tokens exist.
+# Firewall. FortiOS / Firewall floor stay FortiGate by SNMP until
+# ``--apply-fortigate-http`` (not zerotouch, not Extreme ``--apply``).
 
 
 def ct(model):
@@ -485,6 +502,14 @@ def import_extreme_templates(api) -> dict[str, tuple[int, str]]:
     if exos:
         out['Extreme EXOS by SNMP'] = (int(exos[0]['templateid']), 'Extreme EXOS by SNMP')
     return out
+
+
+def _lookup_zabbix_template(api, name: str) -> tuple[int, str] | None:
+    """Exact template name in Zabbix, or None. Soft like VOSS — never invent a fallback."""
+    found = api.template.get(filter={'name': [name]}, output=['templateid', 'name']) or []
+    if found:
+        return int(found[0]['templateid']), found[0]['name']
+    return None
 
 
 # Zabbix LLD filter operators (API)
@@ -1699,14 +1724,16 @@ def step_health_patches(api) -> dict:
     return apply_extreme_health_patches(api)
 
 
-def ensure_nbx_template(server, templateid: int, name: str) -> M.ZabbixTemplate:
+def ensure_nbx_template(server, templateid: int, name: str, *, req=None) -> M.ZabbixTemplate:
+    if req is None:
+        req = [HostInterfaceRequirementChoices.SNMP]
     obj, _ = ensure(
         M.ZabbixTemplate,
         name=name,
         zabbixserver=server,
         defaults={
             'templateid': templateid,
-            'interface_requirements': [HostInterfaceRequirementChoices.SNMP],
+            'interface_requirements': req,
         },
         update_fields=['templateid', 'interface_requirements'],
     )
@@ -1874,6 +1901,276 @@ def _step_firewall_role_macros(server, *, required: bool = False) -> int:
             role.name,
         )
     return len(roles)
+
+
+def _os_network_hostgroup(server):
+    name = f'{PREFIX}OS/Network' if server.name == SIM_SERVER_NAME else 'OS/Network'
+    hg, _ = ensure(
+        M.ZabbixHostgroup,
+        zabbixserver=server,
+        name=name,
+        defaults={'value': 'OS/Network'},
+        update_fields=['value'],
+    )
+    return hg
+
+
+def _firewall_roles(*, required: bool = False) -> list:
+    roles = resolve_roles_for_macros(_FIREWALL_ROLE)
+    if not roles:
+        msg = f'Role not found: {_FIREWALL_ROLE}'
+        if required:
+            raise SystemExit(msg)
+        logger.warning('  %s', msg)
+    return roles
+
+
+def _prune_role_template_names(role, names: set[str]) -> int:
+    deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+        zabbixtemplate__name__in=names,
+        assigned_object_type=ct(DeviceRole),
+        assigned_object_id=role.id,
+    ).delete()
+    return deleted
+
+
+def _prune_role_cg_names(role, names: set[str]) -> int:
+    deleted, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
+        zabbixconfigurationgroup__name__in=names,
+        assigned_object_type=ct(DeviceRole),
+        assigned_object_id=role.id,
+    ).delete()
+    return deleted
+
+
+def _upsert_object_macro_assignment(
+    server,
+    obj,
+    macro_name: str,
+    value: str,
+    *,
+    mtype,
+    description: str,
+) -> None:
+    """Server-level ZabbixMacro + assignment on Device/Role. Empty callers must skip."""
+    zmacro, _ = ensure(
+        M.ZabbixMacro,
+        macro=macro_name,
+        assigned_object_type=ct(M.ZabbixServer),
+        assigned_object_id=server.id,
+        defaults={
+            'value': '',
+            'type': mtype,
+            'description': description,
+        },
+        update_fields=['type', 'description'],
+    )
+    ma = M.ZabbixMacroAssignment.objects.filter(
+        zabbixmacro=zmacro,
+        assigned_object_type=ct(type(obj)),
+        assigned_object_id=obj.id,
+        context='',
+        is_regex=False,
+    ).first()
+    if ma is None:
+        M.ZabbixMacroAssignment.objects.create(
+            zabbixmacro=zmacro,
+            assigned_object_type=ct(type(obj)),
+            assigned_object_id=obj.id,
+            value=value,
+            context='',
+            is_regex=False,
+        )
+        return
+    if ma.value != value:
+        ma.value = value
+        ma.save(update_fields=['value'])
+
+
+def _step_fortigate_http_nbxsync(
+    server,
+    *,
+    http: tuple[int, str],
+    snmp: tuple[int, str] | None,
+    icmp: tuple[int, str] | None,
+) -> None:
+    """Retarget FortiOS + Firewall to HTTP. No HostSync."""
+    logger.info('=' * 60)
+    logger.info('Network: FortiGate HTTP nbxSync levers (no HostSync)')
+    logger.info('=' * 60)
+    tpl_http = ensure_nbx_template(
+        server,
+        http[0],
+        http[1],
+        req=[HostInterfaceRequirementChoices.ANY],
+    )
+    if snmp is not None:
+        ensure_nbx_template(
+            server,
+            snmp[0],
+            snmp[1],
+            req=[HostInterfaceRequirementChoices.SNMP],
+        )
+
+    existing = get_template_rule(server, _FORTIOS_TEMPLATE_RULE)
+    hg = existing.zabbixhostgroup if existing is not None and existing.zabbixhostgroup_id else _os_network_hostgroup(server)
+    rule_defaults = {
+        'pattern': _FORTIOS_PLATFORM_PATTERN,
+        'zabbixtemplate': tpl_http,
+        'enabled': True,
+        'priority': 100,
+        'zabbixtag': None,
+        'zabbixhostgroup': hg,
+        'require_tags': '',
+        'role_pattern': '',
+        'manufacturer': None,
+    }
+    # Live FortiOS rule: only retarget the template. Do not rewrite pattern/priority.
+    update_fields = ['zabbixtemplate'] if existing is not None else None
+    ensure_template_rule(
+        server,
+        _FORTIOS_TEMPLATE_RULE,
+        rule_defaults,
+        update_fields=update_fields,
+    )
+    logger.info(
+        '  TemplateRule %s → %s (ANY; was SNMP until this flag)',
+        simulation_rule_name(server, _FORTIOS_TEMPLATE_RULE),
+        tpl_http.name,
+    )
+
+    for role in _firewall_roles(required=True):
+        ensure(
+            M.ZabbixTemplateAssignment,
+            zabbixtemplate=tpl_http,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=role.id,
+            defaults={},
+        )
+        logger.info('  %s floor → %s (ANY)', role.name, tpl_http.name)
+        snmp_names = {_FORTIGATE_SNMP_TEMPLATE}
+        if snmp is not None:
+            snmp_names.add(snmp[1])
+        pruned_tpl = _prune_role_template_names(role, snmp_names)
+        if pruned_tpl:
+            logger.info(
+                '  PRUNED: %s %s assignment(s) from role %s',
+                pruned_tpl,
+                _FORTIGATE_SNMP_TEMPLATE,
+                role.name,
+            )
+        pruned_cg = _prune_role_cg_names(role, {_SNMP_MONITORING_CG})
+        if pruned_cg:
+            logger.info(
+                '  PRUNED: %s %s CG assignment(s) from role %s',
+                pruned_cg,
+                _SNMP_MONITORING_CG,
+                role.name,
+            )
+        elif not M.ZabbixConfigurationGroupAssignment.objects.filter(
+            zabbixconfigurationgroup__name=_SNMP_MONITORING_CG,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=role.id,
+        ).exists():
+            logger.info('  Role %s already off %s', role.name, _SNMP_MONITORING_CG)
+
+        if icmp is None:
+            logger.warning(
+                '  %s not in Zabbix — skip ICMP Ping on role %s (stock HTTP has no icmpping)',
+                _ICMP_PING_TEMPLATE,
+                role.name,
+            )
+            continue
+        tpl_icmp = ensure_nbx_template(
+            server,
+            icmp[0],
+            icmp[1],
+            req=[HostInterfaceRequirementChoices.ANY],
+        )
+        ensure(
+            M.ZabbixTemplateAssignment,
+            zabbixtemplate=tpl_icmp,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=role.id,
+            defaults={},
+        )
+        logger.info(
+            '  ICMP Ping → role %s (lands on HostSync with HTTP; do not mass-HostSync)',
+            role.name,
+        )
+
+
+def _step_firewall_device_macros(server) -> dict[str, int]:
+    """Per-device TOKEN (env) + FQDN (primary_ip4). Empty env does not wipe TOKEN."""
+    logger.info('=' * 60)
+    logger.info('Network: FortiGate per-device TOKEN / FQDN (no HostSync)')
+    logger.info('=' * 60)
+    stats = {
+        'devices': 0,
+        'token_written': 0,
+        'token_skipped_empty_env': 0,
+        'fqdn_written': 0,
+        'fqdn_skipped_no_ip': 0,
+    }
+    roles = _firewall_roles(required=True)
+    seen: set[int] = set()
+    for role in roles:
+        for dev in Device.objects.filter(role=role).select_related('primary_ip4'):
+            if dev.pk in seen:
+                continue
+            seen.add(dev.pk)
+            stats['devices'] += 1
+            env_key = _fgate_token_env(dev.name)
+            token = os.environ.get(env_key, '')
+            if _should_write_secret(token):
+                _upsert_object_macro_assignment(
+                    server,
+                    dev,
+                    _FGATE_TOKEN_MACRO,
+                    token.strip(),
+                    mtype=ZabbixMacroTypeChoices.SECRET,
+                    description=f'nwn:secret:fgate:{dev.name}',
+                )
+                stats['token_written'] += 1
+                logger.info('  %s %s from %s', dev.name, _FGATE_TOKEN_MACRO, env_key)
+            else:
+                stats['token_skipped_empty_env'] += 1
+                logger.warning(
+                    '  Env var %s not set — %s token left untouched '
+                    '(look at the Device, not role %s)',
+                    env_key,
+                    dev.name,
+                    role.name,
+                )
+            if dev.primary_ip4:
+                fqdn = str(dev.primary_ip4.address.ip)
+                _upsert_object_macro_assignment(
+                    server,
+                    dev,
+                    _FGATE_FQDN_MACRO,
+                    fqdn,
+                    mtype=ZabbixMacroTypeChoices.TEXT,
+                    description=f'nwn:fgate-fqdn:{dev.name}',
+                )
+                stats['fqdn_written'] += 1
+                logger.info('  %s %s=%s', dev.name, _FGATE_FQDN_MACRO, fqdn)
+            else:
+                stats['fqdn_skipped_no_ip'] += 1
+                logger.warning(
+                    '  %s has no primary_ip4 — skip %s (HA mgmt IP)',
+                    dev.name,
+                    _FGATE_FQDN_MACRO,
+                )
+    logger.info(
+        '  Forti devices=%s token_written=%s token_env_missing=%s '
+        'fqdn_written=%s fqdn_no_ip=%s',
+        stats['devices'],
+        stats['token_written'],
+        stats['token_skipped_empty_env'],
+        stats['fqdn_written'],
+        stats['fqdn_skipped_no_ip'],
+    )
+    return stats
 
 
 def _expected_host_macros(canonical_role: str) -> dict[str, str]:
@@ -3067,7 +3364,8 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     logger.info(
         'Firewall role FortiGate HTTP macros are NetBox assignments only '
         '(https/443, WAN/HA/mgmt LLD). Token/FQDN stay per-device. '
-        'This run does not HostSync Fortis and does not retarget FortiOS.',
+        'This run does not HostSync Fortis and does not retarget FortiOS. '
+        'Use --apply-fortigate-http for the HTTP cutover without zerotouch.',
     )
     return 0
 
@@ -3088,8 +3386,53 @@ def run_apply_firewall_macros() -> int:
     logger.info(
         'Firewall role FortiGate HTTP macros written on Device Role %s '
         '(https/443, WAN/HA/mgmt LLD, empty policy LLD). Token/FQDN stay '
-        'per-device. No Zabbix API, no HostSync, no FortiOS retarget.',
+        'per-device. No Zabbix API, no HostSync, no FortiOS retarget. '
+        'Use --apply-fortigate-http to retarget FortiOS / prune SNMP / write TOKEN+FQDN.',
         _FIREWALL_ROLE,
+    )
+    return 0
+
+
+def run_apply_fortigate_http() -> int:
+    """FortiGate HTTP cutover without zerotouch or Extreme YAML.
+
+    Writes Firewall role macros, retargets FortiOS + Firewall floor to
+    FortiGate by HTTP (ANY) when that template exists, prunes FortiGate by
+    SNMP and SNMP Monitoring from Firewall, assigns ICMP Ping on the role,
+    and writes per-device TOKEN (env) + FQDN (primary_ip4).
+
+    Does not import Extreme YAML, does not check-now Extreme hosts, does not
+    mass-HostSync. Empty env does not wipe tokens. Inheritance lands on
+    HostSync of that firewall — canary one HA pair.
+    """
+    token = os.environ.get('NBX_ZABBIX_TOKEN')
+    if not token:
+        raise SystemExit('Set NBX_ZABBIX_TOKEN')
+    server = resolve_apply_zabbix_server(token=token)
+
+    with ZabbixConnection(server) as api:
+        http = _lookup_zabbix_template(api, _FORTIGATE_HTTP_TEMPLATE)
+        snmp = _lookup_zabbix_template(api, _FORTIGATE_SNMP_TEMPLATE)
+        icmp = _lookup_zabbix_template(api, _ICMP_PING_TEMPLATE)
+
+    _step_firewall_role_macros(server, required=True)
+    if http is None:
+        logger.warning(
+            '  %s not in Zabbix — skip FortiOS retarget, SNMP prune, and ICMP. '
+            'Import the stock latest 7.0 HTTP template, then re-run this flag. '
+            'FortiOS stays %s.',
+            _FORTIGATE_HTTP_TEMPLATE,
+            _FORTIGATE_SNMP_TEMPLATE,
+        )
+    else:
+        _step_fortigate_http_nbxsync(server, http=http, snmp=snmp, icmp=icmp)
+    _step_firewall_device_macros(server)
+    logger.info(
+        'FortiGate HTTP cutover written in NetBox. No HostSync. '
+        'Canary-sync one HA pair after each unit has {$FGATE.API.TOKEN} '
+        '(Device page, not role Firewall). Do not re-run zerotouch — it still '
+        'floors FortiOS on %s.',
+        _FORTIGATE_SNMP_TEMPLATE,
     )
     return 0
 
@@ -3114,7 +3457,12 @@ def main() -> int:
     mode.add_argument(
         '--apply-firewall-macros',
         action='store_true',
-        help='NetBox-only: FortiGate HTTP macros on Device Role Firewall (no Extreme import, no HostSync)',
+        help='NetBox-only: FortiGate HTTP macros on Device Role Firewall (no Extreme import, no HostSync, no FortiOS retarget)',
+    )
+    mode.add_argument(
+        '--apply-fortigate-http',
+        action='store_true',
+        help='FortiGate HTTP cutover without zerotouch: FortiOS/Firewall → HTTP, prune SNMP CG, per-device TOKEN/FQDN, no HostSync',
     )
     parser.add_argument('--link-speed-expect', action='store_true', help='Also assign Port Speed Expect on Switch roles (avoid if already nested on VOSS/Observability)')
     parser.add_argument(
@@ -3131,6 +3479,10 @@ def main() -> int:
         if args.link_speed_expect or args.cutover_silence:
             raise SystemExit('--apply-firewall-macros does not take --link-speed-expect or --cutover-silence')
         return run_apply_firewall_macros()
+    if args.apply_fortigate_http:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--apply-fortigate-http does not take --link-speed-expect or --cutover-silence')
+        return run_apply_fortigate_http()
     return run_apply(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
 
 

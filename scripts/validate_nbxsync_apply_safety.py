@@ -136,6 +136,23 @@ def main() -> int:
         'report_hosts_needing_macro_sync(server=None)',
     )
 
+    fg = _function_source(net_src, net_tree, 'run_apply_fortigate_http') or ''
+    record(
+        'network_fortigate_http_apply_exists',
+        bool(fg),
+        'run_apply_fortigate_http',
+    )
+    record(
+        'network_fortigate_http_apply_skips_extreme_and_hostsync',
+        bool(fg) and 'import_extreme_templates' not in fg and 'SyncHostJob' not in fg,
+        'no Extreme import / HostSync in --apply-fortigate-http',
+    )
+    record(
+        'zerotouch_no_fortigate_http_auto_cutover',
+        'fortigate_http' not in ztc_src,
+        'Forti HTTP cutover is network --apply-fortigate-http, not zerotouch',
+    )
+
     failed = sum(1 for _, ok, _ in RESULTS if not ok)
     print(f'\n{len(RESULTS) - failed}/{len(RESULTS)} apply-safety checks passed')
     return 1 if failed else 0

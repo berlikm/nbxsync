@@ -6,7 +6,7 @@ World-class here means: **page what users feel (box down, path down), never fail
 
 Same bar as [01-extreme-switching.md](01-extreme-switching.md). Scale: [_template.md](_template.md). Analysis: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md). WAN class: [05-internet-circuits.md](05-internet-circuits.md). Overlay: [04-cato.md](04-cato.md). Extreme Health notes do **not** apply to Forti.
 
-This page is the **target contract**. Live nbxSync still links **FortiGate by SNMP**. Do not retarget production until tokens exist — [Zero-touch](#zero-touch-nbxsync).
+This page is the **target contract**. Live nbxSync still links **FortiGate by SNMP** until you run `--apply-fortigate-http` (network script, **not** zerotouch) and canary-HostSync one HA pair. Token/FQDN live on the **Device**, not role Firewall.
 
 ---
 
@@ -101,7 +101,7 @@ Stock HTTP has **no** host Health board. Upsert on this template via API (same p
 
 Mute an in-scope iface with context `{$NET.IF.CONTROL:"wan1"}=0` (or SD-WAN CONTROL), not a second CMDB. Prefer **excluding from LLD** over CONTROL=0 on a hundred names.
 
-Starter LLD (tighten on the first canary — **do not** MATCH `port`; on a 40F/100F `port1` is often LAN). `--apply-firewall-macros` (or full `--apply`) puts these on Device Role **Firewall**:
+Starter LLD (tighten on the first canary — **do not** MATCH `port`; on a 40F/100F `port1` is often LAN). `--apply-fortigate-http` (or `--apply-firewall-macros` / Extreme `--apply` for the role macros only) puts these on Device Role **Firewall**:
 
 ```
 {$NET.IF.IFNAME.MATCHES}     = ^(wan|ha|mgmt|dmz)
@@ -136,37 +136,61 @@ VIP-only is a **fallback** when the secondary is unreachable (no ha-mgmt). Call 
 
 ## Zero-touch (nbxSync)
 
-**Live today** (do not change in this docs pass):
+**Do not re-run `configure_nbxsync_zerotouch.py` for this cutover.** Zerotouch still floors FortiOS on **FortiGate by SNMP** and puts Firewall on **SNMP Monitoring**. A later zerotouch re-apply would undo HTTP.
+
+**Live today** (until `--apply-fortigate-http`):
 
 1. Template Rule **FortiOS** `FORTIOS|FortiOS` → **FortiGate by SNMP** + `OS/Network`
 2. Role **Firewall** floor → FortiGate by SNMP
 3. Role Firewall → **SNMP Monitoring** CG (`MONITORING` MD5/DES)
 4. ICMP Ping is **not** on fleet SNMP Monitoring (Forti SNMP already has `icmpping`)
 5. FMG/FAZ rule → Network Generic
+6. Device Role Firewall already has HTTP **fleet** macros if you ran `--apply-firewall-macros` (https/443, WAN/HA/mgmt LLD). Token/FQDN are **not** on the role — look at the Device.
 
-Locked GUI checklist still lists FortiGate by SNMP — that file is not updated here. Re-running zerotouch **will retarget** every FortiOS host if that Template Rule’s template changes. Empty env must **not** wipe `{$FGATE.API.TOKEN}` (same Pure rule).
+Locked GUI checklist still lists FortiGate by SNMP — that file is not updated here. Empty env must **not** wipe `{$FGATE.API.TOKEN}` (same Pure rule).
 
-**Target** (after tokens + trusted-hosts exist):
+**Operator path** (no zerotouch, no Extreme YAML, no mass-HostSync):
+
+```bash
+export NBX_ZABBIX_TOKEN=...
+# Per physical unit (dashes → underscores). Skip a host to leave its token untouched.
+# export NBX_FGATE_TOKEN_CH_ZRH_P_FW01=...
+python3 scripts/configure_nbxsync_network.py --apply-fortigate-http
+```
+
+That flag:
+
+| Lever | What it writes |
+|---|---|
+| Platform FortiOS | **FortiGate by HTTP** + `OS/Network`. Interface requirement **ANY**. Soft-resolve: if the HTTP template is missing in Zabbix, warn and leave SNMP |
+| Role Firewall | HTTP floor; **prune** FortiGate by SNMP |
+| SNMP Monitoring | **off** Firewall |
+| ICMP | **ICMP Ping** on role Firewall (stock HTTP has no `icmpping`). Lands on HostSync together with HTTP — do not mass-HostSync |
+| Fleet HTTP defaults | Device Role **Firewall** — https/443, WAN/HA/mgmt LLD, empty policy LLD, util 101 |
+| Secrets | Per-device `{$FGATE.API.TOKEN}` from env + `{$FGATE.API.FQDN}` = **that unit’s** `primary_ip4` (HA mgmt, not a WAN VIP) |
+
+`--apply-firewall-macros` is the lighter sibling (role macros only). Extreme `--apply` still does **not** retarget FortiOS.
+
+Then **canary HostSync one HA pair** — not every Firewall. Inheritance does not hit live Zabbix hosts until that sync.
+
+**Target** after the flag + canary HostSync:
 
 | Lever | Target |
 |---|---|
 | Platform FortiOS | **FortiGate by HTTP** + `OS/Network`. Interface requirement **ANY**, not SNMP |
-| Role Firewall | HTTP template floor **or** platform rule only — not both SNMP and HTTP |
+| Role Firewall | HTTP template floor — not both SNMP and HTTP |
 | Secrets | Per-device `{$FGATE.API.TOKEN}` + `{$FGATE.API.FQDN}` = **that unit’s HA mgmt IP** (not a WAN VIP) |
 | Fleet HTTP defaults | Device Role **Firewall** — https/443, WAN/HA/mgmt LLD, `{$FWP.FWNAME.MATCHES}`=`^$`, util 101. Not Switch* roles |
-| ICMP | **ICMP Ping** on a CG/path SNMP Fortis **never** inherit during the mixed window |
+| ICMP | **ICMP Ping** on role Firewall (applied at HostSync with HTTP) |
 | SNMP Monitoring | **off** the HTTP Forti (HTTP does not use UDP 161) |
 | Health | already on the HTTP template after upsert — no dashboard script |
 
-Cutover sequence:
+Before the flag:
 
 1. Import **latest 7.0** FortiGate by HTTP (Bearer header, [ZBX-27082](https://support.zabbix.com/browse/ZBX-27082) request-per-call). Lab is 7.0.29 — still re-import; do not assume the image template is current.
 2. On-box: read-only admin profile (Zabbix: enable **all Read**) → REST API Admin → token **once** (usually syncs). Trusted hosts = **Swiss proxy on each member’s ha-mgmt**, not a laptop.
-3. Host macros: FQDN, token, and if not set on the template **https** / **443**.
-4. Canaries: link HTTP + ICMP Ping **without** unlinking the fleet SNMP rule.
-5. Only then retarget FortiOS / prune the SNMP floor.
 
-Do **not** put ICMP Ping on role Firewall while any Forti still has FortiGate by SNMP (`icmpping` key collision).
+Do **not** HostSync a Forti that still has FortiGate by SNMP **and** ICMP Ping (`icmpping` key collision). `--apply-fortigate-http` prunes the SNMP floor first so a later HostSync replaces SNMP with HTTP+ICMP together.
 
 ---
 
@@ -234,11 +258,11 @@ Do **not** clone stock FortiGate by HTTP.
 | Template | Where | Notes |
 |---|---|---|
 | FortiGate by HTTP (stock, latest 7.0) | Platform FortiOS — **target** | Bearer 7.0-2+; import newer than the 401 bugs |
-| ICMP Ping | CG that SNMP Fortis do not inherit | HTTP has no `icmpping` |
-| FortiGate by SNMP (stock) | Platform FortiOS — **live today** | Fallback / HA-VPN gap only. Do not dual-link with HTTP |
+| ICMP Ping | Role **Firewall** after `--apply-fortigate-http` | HTTP has no `icmpping`. Lands on HostSync with HTTP |
+| FortiGate by SNMP (stock) | Platform FortiOS — **live until `--apply-fortigate-http`** | Fallback / HA-VPN gap only. Do not dual-link with HTTP |
 | Network Generic Device by SNMP | **not** on FortiGate | FMG/FAZ only |
 
-Template-level macros (not globals, not Switch roles). **`--apply-firewall-macros` writes these as ZabbixMacroAssignment on Device Role Firewall** — same lever as Switch Access IFALIAS. Full `--apply` writes them too, plus Extreme templates. Inheritance lands on HostSync of that firewall. Neither flag mass-HostSyncs Fortis (live SNMP still uses `{$NET.IF.IFNAME.MATCHES}`). Prefer `--apply-firewall-macros` when you only want the role.
+Template-level macros (not globals, not Switch roles). **`--apply-fortigate-http` writes these as ZabbixMacroAssignment on Device Role Firewall** (same as `--apply-firewall-macros` / Extreme `--apply`). Token/FQDN stay per-device. None of these flags mass-HostSync Fortis. Prefer `--apply-fortigate-http` for the cutover; `--apply-firewall-macros` when you only want the role defaults.
 
 ```
 {$FGATE.SCHEME}                 = https
@@ -286,6 +310,6 @@ Same: no official template. Log disk **is** the product — disk High may be jus
 
 ## Later
 
-Thin HTTP items for **HA role / peer / sync** (so path tickets follow the primary after failover without flipping macros) and IPsec/SSL-VPN. Global session table. Sensors. VDOM LLD. Named policy canaries. Class-scoped WAN High. Site Disaster parent. Unsupported-item Average trigger. Health upsert. FortiOS Template Rule retarget **after** tokens. FMG device-sync. FAZ log ingest vs native.
+Thin HTTP items for **HA role / peer / sync** (so path tickets follow the primary after failover without flipping macros) and IPsec/SSL-VPN. Global session table. Sensors. VDOM LLD. Named policy canaries. Class-scoped WAN High. Site Disaster parent. Unsupported-item Average trigger. Health upsert. FMG device-sync. FAZ log ingest vs native.
 
 Do not block Extreme/AP cutover on this page.

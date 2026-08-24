@@ -7,7 +7,7 @@ Status: active
 **Hard deadline: LogicMonitor → Zabbix cutover.** That reframes everything below.
 
 **In scope now:** Extreme switches (01) and access points (02).  
-**Prepared, not blocking cutover:** FortiGate over **API** (03), network VMs (06). Same page shape and observability bar. Live FortiOS still SNMP until tokens exist.  
+**Prepared, not blocking cutover:** FortiGate over **API** (03), network VMs (06). Same page shape and observability bar. Live FortiOS still SNMP until `--apply-fortigate-http` + canary HostSync (do not re-run zerotouch).  
 **Later still:** Cato (04), circuits (05).
 
 The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everything in the design docs". Anything LM does not watch today cannot be a regression.
@@ -74,7 +74,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 01–ports | Port Speed Expect | **built** — nested on VOSS / EXOS Observability | yes | empty labels silent | armed on `--apply` |
 | 01c | OSPF routing (core/dist, both platforms) | **built** — `templates/extreme_routing_snmp/` | yes | no | no |
 | 02 | HiveOS / IQ Engine AP | **built** — `templates/extreme_iq_engine_snmp/` | yes | ICMP/SNMP path in prod; RF canary open | partial |
-| 03 | FortiGate | stock **FortiGate by HTTP** (7.0) + ICMP Ping | yes — [03](03-fortinet.md) | no | no (live nbxSync still **SNMP**) |
+| 03 | FortiGate | stock **FortiGate by HTTP** (7.0) + ICMP Ping | yes — [03](03-fortinet.md) | no | no (live nbxSync still **SNMP** until `--apply-fortigate-http`) |
 | 03 | FortiManager | none official (Network Generic) | yes — short block in 03 | no | no |
 | 03 | FortiAnalyzer | none official (Network Generic) | yes — short block in 03 | no | no |
 | 04 | Cato | none (HTTP agent) | scaffold | no | no |
