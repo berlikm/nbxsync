@@ -223,12 +223,13 @@ def _voss_psu_lost_policy_ok(rule: dict) -> bool:
 
 
 def voss_psu_lld_keeps_installed_fru(rule: dict, status_oid: str) -> bool:
-    """True when VOSS PSU LLD keeps serialled FRUs and deletes lost padding now."""
+    """True when VOSS PSU LLD skips empty(2) (even dummy serial --) and deletes lost padding now."""
     return psu_lld_keeps_installed_fru(
         rule,
         status_oid=status_oid,
         serial_oid=VOSS_PSU_SERIAL_OID,
         empty_regex='^2$',
+        keep_serialled_empty=False,
     ) and _voss_psu_lost_policy_ok(rule)
 
 
@@ -707,12 +708,12 @@ def validate_voss(doc: dict) -> None:
     psu = by_key.get('psu.discovery') or {}
     psu_detail = by_key.get('psu.detail.discovery') or {}
     record(
-        'VOSS psu.discovery keeps installed FRUs',
+        'VOSS psu.discovery skips empty bays',
         voss_psu_lld_keeps_installed_fru(psu, '1.3.6.1.4.1.2272.1.4.8.1.1.2'),
         str(psu.get('snmp_oid')),
     )
     record(
-        'VOSS psu.detail.discovery keeps installed FRUs',
+        'VOSS psu.detail.discovery skips empty bays',
         voss_psu_lld_keeps_installed_fru(psu_detail, '1.3.6.1.4.1.2272.1.4.8.2.1.15'),
         str(psu_detail.get('snmp_oid')),
     )
@@ -739,7 +740,7 @@ def validate_voss(doc: dict) -> None:
     ]
     record('VOSS PSU not-up triggers', len(psu_trigs) == 2, f'count={len(psu_trigs)}')
     record(
-        'VOSS PSU tickets not-up including serialled empty',
+        'VOSS PSU tickets not-up excluding empty padding',
         bool(psu_trigs) and all(psu_expr_is_not_up(t.get('expression') or '') for t in psu_trigs),
         (psu_trigs[0].get('expression') if psu_trigs else '')[:160],
     )

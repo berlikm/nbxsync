@@ -7,11 +7,18 @@ Stock EXOS/VOSS PSU Average only matches one enum:
 * VOSS ``{$PSU_CRIT_STATUS}=4`` (``down``) — ``unknown(1)`` is a fitted PSU
   whose status cannot be determined (often unpowered) and stays silent.
 
-Some firmware reports a fitted-but-unplugged FRU as empty / notPresent.
-LLD therefore keeps a row when status is **not** empty/notPresent **or**
-the PSU serial is non-empty. Padding bays (empty + no serial) stay out.
-The Average is ``last()<>{$PSU.OK_STATUS}`` on those discovered FRUs —
-two present, one connected must ticket.
+VOSS ``empty(2)`` is **not installed**. Chassis firmware often fills the
+serial field with ``--`` on every bay, including the empty one. That dummy
+is not a FRU — CH-STA-L26-L02-MGMT03 has one PSU and still reports PSU 2
+as empty(2) / ``--``. LLD skips empty even when serial looks set. The
+Average is ``last()<>{$PSU.OK_STATUS} and last()<>{$PSU.EMPTY_STATUS}`` so
+a leftover empty row recovers before LLD deletes it. Fitted-unplugged on
+VOSS is ``unknown(1)`` or ``down(4)``, not empty.
+
+EXOS padding is ``notPresent`` with no serial OID instance. LLD JS defaults
+missing serial to empty and wipes dummy values. A serialled unplugged FRU
+stays (OR: status not notPresent **or** a real serial). Average is
+``last()<>{$PSU.OK_STATUS}`` on those discovered FRUs.
 """
 
 from __future__ import annotations
@@ -43,6 +50,7 @@ PSU_POWER_OFF_NAME_HINTS = (
     'Power supply power off',
     'Power supply is powered off',
 )
+VOSS_TEMPLATE_NAME = 'Extreme VOSS by SNMP'
 
 EXOS_PSU_NUMBER_OID = '1.3.6.1.4.1.1916.1.1.1.27.1.1'
 EXOS_PSU_STATUS_OID = '1.3.6.1.4.1.1916.1.1.1.27.1.2'
@@ -52,6 +60,9 @@ VOSS_PSU_STATUS_OID = '1.3.6.1.4.1.2272.1.4.8.1.1.2'
 VOSS_PSU_SERIAL_OID = '1.3.6.1.4.1.2272.1.4.8.2.1.3'
 VOSS_PSU_DETAIL_ID_OID = '1.3.6.1.4.1.2272.1.4.8.2.1.1'
 VOSS_PSU_DETAIL_STATUS_OID = '1.3.6.1.4.1.2272.1.4.8.2.1.15'
+
+# Firmware placeholders — not a FRU serial (VOSS empty bays use "--").
+PSU_DUMMY_SERIAL_RE = re.compile(r'^(--|-|n/a|na|none|unknown|0+)$', re.I)
 
 _COUNT_CRIT = re.compile(
     r'count\(\s*(?P<item>/[^,]+?)\s*,\s*#1\s*,\s*"?eq"?\s*,\s*"?\{\$PSU_CRIT_STATUS\}"?\s*\)\s*=\s*1',
@@ -81,12 +92,24 @@ VOSS_PSU_DETAIL_DISCOVERY_OID = psu_discovery_snmp_oid(
 
 LLD_MATCHES_REGEX = 8
 LLD_NOT_MATCHES_REGEX = 9
+LLD_EVAL_AND = 1
 LLD_EVAL_OR = 2
+
+
+def psu_serial_is_dummy(serial: str) -> bool:
+    """True when SNMP serial is missing or a firmware placeholder such as ``--``."""
+    text = str(serial or '').strip()
+    return not text or bool(PSU_DUMMY_SERIAL_RE.fullmatch(text))
 
 
 def _filter_eval_is_or(filt: dict) -> bool:
     raw = str((filt or {}).get('evaltype') or '').upper()
     return raw in {'OR', '2'}
+
+
+def _filter_eval_is_and(filt: dict) -> bool:
+    raw = str((filt or {}).get('evaltype') or '').upper()
+    return raw in {'AND', '1'}
 
 
 def _op_is_not_matches(op) -> bool:
@@ -110,12 +133,22 @@ def _lld_operator(op) -> int:
         return LLD_MATCHES_REGEX
 
 
-def psu_lld_api_filter(empty_regex: str, existing_filter: dict | None = None) -> dict:
-    """OR filter for ``discoveryrule.update``.
+def psu_lld_api_filter(
+    empty_regex: str,
+    existing_filter: dict | None = None,
+    *,
+    keep_serialled_empty: bool = True,
+) -> dict:
+    """AND/OR filter for ``discoveryrule.update``.
 
     Zabbix 7 rejects non-empty ``formulaid`` unless evaltype is a custom
     expression. ``discoveryrule.get`` still returns A/B and ``A or B``.
     YAML export may include formulaid; do not copy it back on API write.
+
+    * EXOS (``keep_serialled_empty=True``): OR — status not empty **or**
+      serial matches ``.+`` (after JS wipes dummy serials).
+    * VOSS (``keep_serialled_empty=False``): AND — status not empty only.
+      Dummy ``--`` serials must not keep an empty bay.
     """
     conditions = []
     for c in (existing_filter or {}).get('conditions') or []:
@@ -135,26 +168,31 @@ def psu_lld_api_filter(empty_regex: str, existing_filter: dict | None = None) ->
             'operator': LLD_NOT_MATCHES_REGEX,
         }
     )
-    conditions.append(
-        {
-            'macro': PSU_SERIAL_MACRO,
-            'value': PSU_SERIAL_PRESENT,
-            'operator': LLD_MATCHES_REGEX,
-        }
-    )
-    return {'evaltype': LLD_EVAL_OR, 'conditions': conditions}
+    if keep_serialled_empty:
+        conditions.append(
+            {
+                'macro': PSU_SERIAL_MACRO,
+                'value': PSU_SERIAL_PRESENT,
+                'operator': LLD_MATCHES_REGEX,
+            }
+        )
+        return {'evaltype': LLD_EVAL_OR, 'conditions': conditions}
+    return {'evaltype': LLD_EVAL_AND, 'conditions': conditions}
 
 
 ZBX_PREPROC_JAVASCRIPT = 21
 
 
 def psu_lld_js_default_macros() -> str:
-    """Fill missing LLD macros so the serial filter can run.
+    """Fill missing LLD macros and wipe dummy serials before the filter.
 
     EXOS ``extremePowerSupplyTable`` has a row per stack slot. Padding
     ``notPresent`` indexes often have **no** serial OID instance, so Zabbix
     omits ``{#PSU.SERIAL}`` and refuses the filter with
     ``no value received for macro "{#PSU.SERIAL}"``. Empty string is padding.
+
+    VOSS empty bays still emit a serial OID, usually ``--``. That matches
+    ``.+`` and would keep the empty bay if LLD ORed on serial — wipe it.
     """
     return (
         "try {\n"
@@ -164,10 +202,17 @@ def psu_lld_js_default_macros() -> str:
         "\tthrow 'Failed to parse JSON of PSU discovery.';\n"
         "}\n"
         "var fields = ['{#PSU.STATUS}','{#PSU.SERIAL}'];\n"
+        "var dummy = /^(--|-|n\\/a|na|none|unknown|0+)$/i;\n"
         "data.forEach(function (element) {\n"
         "\tfields.forEach(function (field) {\n"
         "\t\telement[field] = element[field] || '';\n"
         "\t});\n"
+        "\tvar serial = String(element['{#PSU.SERIAL}'] || '').trim();\n"
+        "\tif (!serial || dummy.test(serial)) {\n"
+        "\t\telement['{#PSU.SERIAL}'] = '';\n"
+        "\t} else {\n"
+        "\t\telement['{#PSU.SERIAL}'] = serial;\n"
+        "\t}\n"
         "});\n"
         "return JSON.stringify(data);\n"
     )
@@ -190,6 +235,18 @@ def psu_lld_defaults_missing_macros(rule: dict) -> bool:
             continue
         text = _preprocessing_script(step)
         if PSU_SERIAL_MACRO in text and 'JSON.parse' in text and '||' in text:
+            return True
+    return False
+
+
+def psu_lld_js_clears_dummy_serials(rule: dict) -> bool:
+    """True when LLD JS treats firmware placeholders such as ``--`` as empty."""
+    for step in rule.get('preprocessing') or []:
+        raw = str(step.get('type') or '').upper()
+        if raw not in {'JAVASCRIPT', '21'}:
+            continue
+        text = _preprocessing_script(step)
+        if PSU_SERIAL_MACRO in text and 'dummy' in text and '--' in text:
             return True
     return False
 
@@ -227,6 +284,7 @@ def psu_lld_keeps_installed_fru(
     status_oid: str,
     serial_oid: str,
     empty_regex: str,
+    keep_serialled_empty: bool = True,
 ) -> bool:
     """True when LLD walks status+serial, defaults missing serial, keeps a FRU."""
     oid = str(rule.get('snmp_oid') or '')
@@ -236,9 +294,9 @@ def psu_lld_keeps_installed_fru(
         return False
     if not psu_lld_defaults_missing_macros(rule):
         return False
-    filt = rule.get('filter') or {}
-    if not _filter_eval_is_or(filt):
+    if not psu_lld_js_clears_dummy_serials(rule):
         return False
+    filt = rule.get('filter') or {}
     has_status = False
     has_serial = False
     for c in filt.get('conditions') or []:
@@ -254,17 +312,34 @@ def psu_lld_keeps_installed_fru(
             and c.get('value') == PSU_SERIAL_PRESENT
         ):
             has_serial = True
-    return has_status and has_serial
+    if keep_serialled_empty:
+        return _filter_eval_is_or(filt) and has_status and has_serial
+    # VOSS: empty(2) is not installed even when serial is "--".
+    return _filter_eval_is_and(filt) and has_status and not has_serial
 
 
-def psu_not_up_expr(item_path: str) -> str:
+def _expr_is_voss(text: str) -> bool:
+    compact = re.sub(r'\s+', '', text or '')
+    return 'ExtremeVOSSbySNMP' in compact
+
+
+def psu_not_up_expr(item_path: str, *, exclude_empty: bool | None = None) -> str:
     path = item_path.strip()
-    return f'last({path})<>{PSU_OK_MACRO}'
+    if exclude_empty is None:
+        exclude_empty = _expr_is_voss(path)
+    base = f'last({path})<>{PSU_OK_MACRO}'
+    if exclude_empty:
+        return f'{base} and last({path})<>{PSU_EMPTY_MACRO}'
+    return base
 
 
 def psu_expr_is_not_up(expr: str) -> bool:
     compact = re.sub(r'\s+', '', expr or '')
-    if PSU_EMPTY_MACRO.replace(' ', '') in compact:
+    if not compact:
+        return False
+    exclude_empty = _expr_is_voss(compact)
+    has_empty = PSU_EMPTY_MACRO.replace(' ', '') in compact
+    if exclude_empty != has_empty:
         return False
     return (
         'last(' in compact
@@ -277,7 +352,11 @@ def psu_expr_is_not_up(expr: str) -> bool:
 
 
 def rewrite_psu_not_up_expr(expr: str) -> str:
-    """Turn stock count==crit / empty-excluded last() into last()<>OK."""
+    """Turn stock count==crit / last()<>OK into the platform canonical form.
+
+    VOSS adds ``and last()<>{$PSU.EMPTY_STATUS}`` so dummy empty bays recover.
+    EXOS stays ``last()<>{$PSU.OK_STATUS}``.
+    """
     if psu_expr_is_not_up(expr):
         return expr
     compact_src = re.sub(r'\s+', ' ', expr or '').strip()

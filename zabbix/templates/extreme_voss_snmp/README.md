@@ -19,7 +19,7 @@ Requires Zabbix **7.0+** (export version `7.0`).
 | CPU / memory | `extremeCpuMonitor*` / `extremeMemoryMonitor*` | `rcKhiSlot*` LLD (per slot); scalar CPU for slot 1 |
 | Temperature | Scalar `extremeCurrentTemperature` | `rcVossSystemTemperature*` LLD |
 | Fan | Status + RPM | Status + ambient ┬░C (no RPM OID) |
-| PSU / fan crit values | EXOS enums | `{$FAN_CRIT_STATUS}=3`; PSU Average = not up (`{$PSU.OK_STATUS}=3`); padding skipped unless serial |
+| PSU / fan crit values | EXOS enums | `{$FAN_CRIT_STATUS}=3`; PSU Average = not up (`{$PSU.OK_STATUS}=3`); empty(2) skipped even with dummy serial `--` |
 | Chassis identity | ENTITY-MIB index 1 | `rcChasSerialNumber` / `rcChasModelName` / `rcChasHardwareRevision` |
 | Software rev | Extreme software MIB | `rcSysVersion` |
 
@@ -33,7 +33,7 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 |---|---|---|
 | `{$FAN_CRIT_STATUS}` | `3` | `rcChasFanOperStatus` down |
 | `{$PSU.OK_STATUS}` | `3` | `rcChasPowerSupplyOperStatus` up (supplying power) |
-| `{$PSU.EMPTY_STATUS}` | `2` | empty bay; LLD skips unless serial is set |
+| `{$PSU.EMPTY_STATUS}` | `2` | empty bay; LLD skips even when serial is `--` |
 | `{$PSU_CRIT_STATUS}` | `4` | `rcChasPowerSupplyOperStatus` down |
 | `{$TEMP_CRIT_STATUS}` | `3` | `rcVossSystemTemperatureStatus` highCritial |
 | `{$CPU.UTIL.CRIT}` | (from EXOS base) | Slot CPU util % |
@@ -57,7 +57,7 @@ Role IFALIAS macros (`.*` + `^X(-|$)` for Core/Dist/Mgmt; Access `^(USW|US|UP|MO
 - ICMP availability + targeted SNMP traps (fan/PSU/temp/ISIS/LAG)
 - Inventory: chassis model/serial/rev/PN/brand/base MAC, port/slot counts, `rcSysVersion`
 - CPU/memory: instantaneous + 1m/5m averages (`rcKhiSlot*`)
-- Fan / PSU (+ PSU output watts) / temperature discovery (`{#SENSOR_DESCR}` on °C items). PSU LLD keeps installed FRUs (not empty **or** serial set) and deletes lost padding immediately.
+- Fan / PSU (+ PSU output watts) / temperature discovery (`{#SENSOR_DESCR}` on °C items). PSU LLD skips `empty(2)` even with dummy serial `--` and deletes lost padding immediately.
 - Optics/DOM discovery (`rcPlugOptMod*`)
 - LLDP remote neighbor discovery
 - Fabric: V-IST / IST, SPBM enable, ISIS circuit/adjacency, SPBM nickname, MLT/SMLT

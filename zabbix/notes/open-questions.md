@@ -14,7 +14,7 @@
 ## Must verify on the pilot before enabling alerts
 
 - [ ] **Do CRC errors actually show up?** `ifInErrors` is an aggregate and may not move for FCS errors. The proper counter is `dot3StatsFCSErrors` (EtherLike-MIB), which the stock template does **not** poll — its EtherLike LLD only pulls duplex. Test with a known-bad patch lead. If it doesn't move, the "dirty link" requirement is not covered.
-- [ ] **PSU status from an empty slot** in a 2-PSU chassis. If an empty slot reports the critical status, every single-PSU switch alerts forever.
+- [x] ~~**PSU status from an empty slot**~~ **Answered** — VOSS `empty(2)` is not installed. Firmware often fills serial with `--` (CH-STA-L26-L02-MGMT03). LLD skips empty even when serial looks set; Average excludes empty so leftover PSU 2 recovers. Honeycomb paints empty red until the item is deleted.
 - [ ] **Stack temperature** — confirm non-master nodes report 0 (drives the "too low" silencing).
 - [ ] **ifIndex stability** across a reboot and across adding a stack member. If it shifts, everything re-discovers and history is lost.
 - [ ] **Memory baseline** — if the fleet normally sits above 90%, the stock trigger fires permanently.

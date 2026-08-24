@@ -17,13 +17,16 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     Per-rule ``timeout`` stays empty: classic SNMP OID LLD is not ``walk[``/``get[``, so Zabbix
     requires the proxy/global SNMP timeout.
   * Patch stock EXOS ``psu.discovery`` to keep installed FRUs (status not
-    ``notPresent`` **or** serial set) and queue check-now so padding leaves and
-    serialled unplugged units appear (no fork, no host sync)
-  * Patch VOSS ``psu.discovery`` / ``psu.detail.discovery`` the same way for
-    ``empty(2)``, delete lost padding immediately, and queue check-now
-  * PSU Average is ``last()<>{$PSU.OK_STATUS}`` so two present / one connected
+    ``notPresent`` **or** a real serial) and queue check-now so padding leaves and
+    serialled unplugged units appear (no fork, no host sync). Dummy serials
+    such as ``--`` are wiped in LLD JS.
+  * Patch VOSS ``psu.discovery`` / ``psu.detail.discovery`` to skip ``empty(2)``
+    even when firmware fills serial with ``--``, delete lost padding immediately,
+    and queue check-now
+  * PSU Average is ``last()<>{$PSU.OK_STATUS}`` (VOSS also
+    ``and last()<>{$PSU.EMPTY_STATUS}``) so two present / one connected
     tickets (EXOS ``presentPowerOff`` / serialled ``notPresent``, VOSS
-    ``unknown`` / serialled ``empty`` / ``down``). Padding with no serial stays silent.
+    ``unknown`` / ``down``). VOSS empty bays stay silent.
   * Discovered link-down stays **Average** (drop leftover USW High if a prior apply created it).
     Stock ``.diff()`` / ``last(#1)<>last(#2)`` is stripped so an admin-up port that
     never came up still tickets. Oper-status **not up** (``<>1``) so
@@ -810,13 +813,18 @@ def _patch_psu_lld_rule(
     snmp_oid: str,
     empty_regex: str,
     lost_fields: dict | None = None,
+    keep_serialled_empty: bool = True,
 ) -> None:
     # AND/OR updates must omit formulaid. GET still returns A/B; echoing those
     # IDs is what Zabbix 7 rejects with "formulaid must be empty".
     api.discoveryrule.update(
         itemid=rule['itemid'],
         snmp_oid=snmp_oid,
-        filter=_psu_lld_api_filter(empty_regex, rule.get('filter')),
+        filter=_psu_lld_api_filter(
+            empty_regex,
+            rule.get('filter'),
+            keep_serialled_empty=keep_serialled_empty,
+        ),
         preprocessing=_psu_lld_preprocessing_payload(rule.get('preprocessing')),
         **(lost_fields or _lld_lost_resources_fields()),
     )
@@ -862,14 +870,14 @@ def patch_exos_psu_lld_present_only(api, template_name: str = 'Extreme EXOS by S
 
 
 def patch_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -> dict[str, str]:
-    """Discover installed VOSS PSUs, including empty(2) when a serial is set.
+    """Discover installed VOSS PSUs; skip empty(2) even with dummy serial ``--``.
 
-    ``rcChasPowerSupplyTable`` keeps a row per bay. True padding is empty with
-    no serial. A fitted PSU with no AC is often ``unknown(1)`` or ``down(4)``,
-    and some code reports ``empty(2)`` with a serial — those stay so two
-    present / one connected tickets Average. Delete lost immediately.
+    ``rcChasPowerSupplyTable`` keeps a row per bay. ``empty(2)`` is not
+    installed. Chassis firmware often fills serial with ``--`` on every bay
+    (CH-STA-L26-L02-MGMT03), which used to keep the empty bay via OR+serial.
+    Fitted-unplugged is ``unknown(1)`` or ``down(4)``. Delete lost immediately.
     """
-    logger.info('Network: VOSS psu.discovery installed FRUs (serial or not empty)')
+    logger.info('Network: VOSS psu.discovery skip empty(2) including dummy serial')
     tpls = api.template.get(filter={'name': [template_name]}, output=['templateid', 'name'])
     if not tpls:
         logger.warning('  %s: template not found — skip VOSS PSU LLD patch', template_name)
@@ -892,9 +900,10 @@ def patch_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) ->
             status_oid=status_oid,
             serial_oid=serial_oid,
             empty_regex=_VOSS_PSU_EMPTY,
+            keep_serialled_empty=False,
         ) and _voss_psu_lost_resources_ok(rule):
             results[key] = 'ok'
-            logger.info('  %s: %s already keeps installed FRUs and deletes lost now', template_name, key)
+            logger.info('  %s: %s already skips empty bays and deletes lost now', template_name, key)
             continue
         _patch_psu_lld_rule(
             api,
@@ -902,9 +911,10 @@ def patch_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) ->
             snmp_oid=snmp_oid,
             empty_regex=_VOSS_PSU_EMPTY,
             lost_fields=_voss_psu_lost_resources_fields(),
+            keep_serialled_empty=False,
         )
         results[key] = 'patched'
-        logger.info('  %s: patched %s for installed FRUs / delete-now (itemid=%s)', template_name, key, rule['itemid'])
+        logger.info('  %s: patched %s skip empty / delete-now (itemid=%s)', template_name, key, rule['itemid'])
     return results
 
 
@@ -922,7 +932,7 @@ def _queue_psu_lld_checks(
 ) -> dict[str, int | str]:
     """Queue check-now PSU LLD for every host on the templates.
 
-    Padding rows leave and serialled empty/notPresent FRUs appear without
+    Padding rows leave and EXOS serialled unplugged FRUs appear without
     waiting for the 1h discovery delay. Not HostSync; does not write NetBox.
     """
     template_ids: set[str] = set()
@@ -1041,6 +1051,7 @@ def assert_voss_psu_lld_present_only(api, template_name: str = _VOSS_TEMPLATE) -
             status_oid=status_oid,
             serial_oid=serial_oid,
             empty_regex=_VOSS_PSU_EMPTY,
+            keep_serialled_empty=False,
         ) and _voss_psu_lost_resources_ok(rules[0])
         ok = ok and rule_ok
         details[key] = {
@@ -1058,9 +1069,10 @@ def patch_psu_not_up(api) -> dict[str, str]:
 
     Stock EXOS matches ``presentNotOK(3)`` only, so ``presentPowerOff(4)`` is
     silent. VOSS matches ``down(4)`` only, so ``unknown(1)`` is silent. Some
-    firmware reports a fitted unplugged FRU as empty/notPresent; LLD keeps
-    those when a serial is set. ``last()<>{$PSU.OK_STATUS}`` tickets two
-    present / one connected. Padding (empty, no serial) is not discovered.
+    firmware reports a fitted unplugged EXOS FRU as notPresent with a real
+    serial; LLD keeps those. VOSS ``empty(2)`` is not installed even when
+    serial is ``--``. ``last()<>{$PSU.OK_STATUS}`` tickets two present / one
+    connected; VOSS also excludes empty so leftover padding recovers.
     Drops a leftover separate power-off prototype so we do not double-ticket.
     Does not host-sync or write NetBox.
     """
@@ -1070,7 +1082,8 @@ def patch_psu_not_up(api) -> dict[str, str]:
         _PSU_OK_MACRO: 'Present and supplying power (EXOS presentOK / VOSS up).',
         _PSU_EMPTY_MACRO: (
             'Bay not installed (EXOS notPresent / VOSS empty). '
-            'LLD skips this unless serial is set.'
+            'VOSS LLD skips empty even when firmware fills serial with --. '
+            'EXOS LLD skips padding unless a real serial is set.'
         ),
     }
     for template_name in _PSU_NOT_UP_TEMPLATES:
@@ -1126,8 +1139,9 @@ def patch_psu_not_up(api) -> dict[str, str]:
                 comments = str(proto.get('comments') or '')
                 want_comments = (
                     'Installed PSU is not supplying power. Two present and one '
-                    'connected must Average. Padding bays (empty/notPresent with '
-                    'no serial) are not discovered.'
+                    'connected must Average. VOSS empty(2) bays (including dummy '
+                    'serial --) are not discovered. EXOS padding (notPresent, no '
+                    'real serial) is not discovered.'
                 )
                 if comments != want_comments:
                     payload['comments'] = want_comments

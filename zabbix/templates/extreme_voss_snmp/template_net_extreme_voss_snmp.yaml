@@ -1608,17 +1608,13 @@ zabbix_export:
       enabled_lifetime: '0'
       enabled_lifetime_type: DISABLE_IMMEDIATELY
       filter:
-        evaltype: OR
+        evaltype: AND
         conditions:
         - macro: '{#PSU.STATUS}'
           value: '^2$'
           operator: NOT_MATCHES_REGEX
           formulaid: A
-        - macro: '{#PSU.SERIAL}'
-          value: '.+'
-          operator: MATCHES_REGEX
-          formulaid: B
-      description: 'RAPID-CITY rcChasPowerSupplyTable. Keep a row when status is not empty(2) or serial is set. Padding (empty, no serial) is skipped. Fitted but unplugged (unknown / empty-with-serial / down) stays so two present / one connected tickets. LLD JS defaults missing {#PSU.SERIAL} so Zabbix can apply the filter.'
+      description: 'RAPID-CITY rcChasPowerSupplyTable. Keep a row when status is not empty(2). Dummy serial -- on an empty bay is not a FRU (CH-STA-L26-L02-MGMT03). Fitted-unplugged is unknown(1) or down(4). LLD JS defaults missing {#PSU.SERIAL} and wipes dummy serials.'
       preprocessing:
       - type: JAVASCRIPT
         parameters:
@@ -1630,10 +1626,17 @@ zabbix_export:
           	throw 'Failed to parse JSON of PSU discovery.';
           }
           var fields = ['{#PSU.STATUS}','{#PSU.SERIAL}'];
+          var dummy = /^(--|-|n\/a|na|none|unknown|0+)$/i;
           data.forEach(function (element) {
           	fields.forEach(function (field) {
           		element[field] = element[field] || '';
           	});
+          	var serial = String(element['{#PSU.SERIAL}'] || '').trim();
+          	if (!serial || dummy.test(serial)) {
+          		element['{#PSU.SERIAL}'] = '';
+          	} else {
+          		element['{#PSU.SERIAL}'] = serial;
+          	}
           });
           return JSON.stringify(data);
       item_prototypes:
@@ -1654,11 +1657,11 @@ zabbix_export:
           value: power
         trigger_prototypes:
         - uuid: ee629d82d4124f8d8f71ead32fede0eb
-          expression: last(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS}
+          expression: last(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS} and last(/Extreme VOSS by SNMP/sensor.psu.status[rcChasPowerSupplyOperStatus.{#SNMPINDEX}])<>{$PSU.EMPTY_STATUS}
           name: 'Extreme VOSS: PSU {#SNMPVALUE}: Power supply is not up'
           opdata: 'Current state: {ITEM.LASTVALUE1}'
           priority: AVERAGE
-          description: 'Installed PSU is not supplying power. Two present and one connected must Average. Padding bays (empty, no serial) are not discovered.'
+          description: 'Installed PSU is not supplying power. Two present and one connected must Average. Empty bays (empty(2), including dummy serial --) are not discovered.'
           tags:
           - tag: scope
             value: availability
@@ -2031,17 +2034,13 @@ zabbix_export:
       enabled_lifetime: '0'
       enabled_lifetime_type: DISABLE_IMMEDIATELY
       filter:
-        evaltype: OR
+        evaltype: AND
         conditions:
         - macro: '{#PSU.STATUS}'
           value: '^2$'
           operator: NOT_MATCHES_REGEX
           formulaid: A
-        - macro: '{#PSU.SERIAL}'
-          value: '.+'
-          operator: MATCHES_REGEX
-          formulaid: B
-      description: 'RAPID-CITY rcChasPowerSupplyDetailTable. Keep a row when status is not empty(2) or serial is set. Padding (empty, no serial) is skipped. LLD JS defaults missing {#PSU.SERIAL} so Zabbix can apply the filter.'
+      description: 'RAPID-CITY rcChasPowerSupplyDetailTable. Keep a row when status is not empty(2). Dummy serial -- on an empty bay is not a FRU. LLD JS defaults missing {#PSU.SERIAL} and wipes dummy serials.'
       preprocessing:
       - type: JAVASCRIPT
         parameters:
@@ -2053,10 +2052,17 @@ zabbix_export:
           	throw 'Failed to parse JSON of PSU discovery.';
           }
           var fields = ['{#PSU.STATUS}','{#PSU.SERIAL}'];
+          var dummy = /^(--|-|n\/a|na|none|unknown|0+)$/i;
           data.forEach(function (element) {
           	fields.forEach(function (field) {
           		element[field] = element[field] || '';
           	});
+          	var serial = String(element['{#PSU.SERIAL}'] || '').trim();
+          	if (!serial || dummy.test(serial)) {
+          		element['{#PSU.SERIAL}'] = '';
+          	} else {
+          		element['{#PSU.SERIAL}'] = serial;
+          	}
           });
           return JSON.stringify(data);
       item_prototypes:
@@ -2074,10 +2080,10 @@ zabbix_export:
           value: power
         trigger_prototypes:
         - uuid: 03368bc544304d99a5b7acabe442ab60
-          expression: last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS}
+          expression: last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS} and last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.EMPTY_STATUS}
           name: 'Extreme VOSS: PSU {#SNMPINDEX}: Detail status not up'
           priority: AVERAGE
-          description: 'Installed PSU is not supplying power. Two present and one connected must Average. Padding bays (empty, no serial) are not discovered.'
+          description: 'Installed PSU is not supplying power. Two present and one connected must Average. Empty bays (empty(2), including dummy serial --) are not discovered.'
           tags:
           - tag: scope
             value: availability
@@ -2422,7 +2428,7 @@ zabbix_export:
       value: CHANGE_IF_NEEDED
     - macro: '{$PSU.EMPTY_STATUS}'
       value: '2'
-      description: VOSS rcChasPowerSupplyOperStatus empty(2) — not installed. LLD skips unless serial is set.
+      description: VOSS rcChasPowerSupplyOperStatus empty(2) — not installed. LLD skips empty even when firmware fills serial with --.
     - macro: '{$PSU.OK_STATUS}'
       value: '3'
       description: VOSS rcChasPowerSupplyOperStatus up(3) — present and supplying power.

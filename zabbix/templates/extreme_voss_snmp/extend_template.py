@@ -405,16 +405,12 @@ _PSU_FRU_LLD = """      lifetime: '0'
       enabled_lifetime: '0'
       enabled_lifetime_type: DISABLE_IMMEDIATELY
       filter:
-        evaltype: OR
+        evaltype: AND
         conditions:
         - macro: '{#PSU.STATUS}'
           value: '^2$'
           operator: NOT_MATCHES_REGEX
           formulaid: A
-        - macro: '{#PSU.SERIAL}'
-          value: '.+'
-          operator: MATCHES_REGEX
-          formulaid: B
       preprocessing:
       - type: JAVASCRIPT
         parameters:
@@ -426,10 +422,17 @@ _PSU_FRU_LLD = """      lifetime: '0'
           	throw 'Failed to parse JSON of PSU discovery.';
           }
           var fields = ['{#PSU.STATUS}','{#PSU.SERIAL}'];
+          var dummy = /^(--|-|n\/a|na|none|unknown|0+)$/i;
           data.forEach(function (element) {
           	fields.forEach(function (field) {
           		element[field] = element[field] || '';
           	});
+          	var serial = String(element['{#PSU.SERIAL}'] || '').trim();
+          	if (!serial || dummy.test(serial)) {
+          		element['{#PSU.SERIAL}'] = '';
+          	} else {
+          		element['{#PSU.SERIAL}'] = serial;
+          	}
           });
           return JSON.stringify(data);
 """
@@ -673,10 +676,11 @@ def build_discovery_rules() -> str:
                     {
                         "expression": (
                             'last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.OK_STATUS}'
+                            ' and last(/Extreme VOSS by SNMP/sensor.psu.detail.status[rcChasPowerSupplyDetailOperStatus.{#SNMPINDEX}])<>{$PSU.EMPTY_STATUS}'
                         ),
                         "name": "Extreme VOSS: PSU {#SNMPINDEX}: Detail status not up",
                         "priority": "AVERAGE",
-                        "description": "Installed PSU is not supplying power. Two present and one connected must Average. Padding bays (empty, no serial) are not discovered.",
+                        "description": "Installed PSU is not supplying power. Two present and one connected must Average. Empty bays (empty(2), including dummy serial --) are not discovered.",
                     }
                 ],
             ),
@@ -717,7 +721,7 @@ def build_discovery_rules() -> str:
             "psu.detail.discovery",
             f"discovery[{{#SNMPVALUE}},{OID['psuDetId']},{{#PSU.STATUS}},{OID['psuDetOper']},{{#PSU.SERIAL}},{OID['psuDetSN']}]",
             psu_items,
-            "RAPID-CITY rcChasPowerSupplyDetailTable. Keep a row when status is not empty(2) or serial is set. LLD JS defaults missing {#PSU.SERIAL} so Zabbix can apply the filter.",
+            "RAPID-CITY rcChasPowerSupplyDetailTable. Keep a row when status is not empty(2). Dummy serial -- is not a FRU. LLD JS defaults missing {#PSU.SERIAL} and wipes dummy serials.",
             filter_yaml=_PSU_FRU_LLD,
         )
     )
