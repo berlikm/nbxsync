@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from fortigate_http import (
+    AGENT_MONITORING_CG,
     DEVICE_DUAL_LINK_TEMPLATES,
     FGATE_FQDN_JINJA,
     FGATE_FQDN_MACRO,
@@ -17,6 +18,7 @@ from fortigate_http import (
     FIREWALL_ROLE,
     FIREWALL_ROLE_FORTI_TEMPLATES,
     FIREWALL_ROLE_MACROS,
+    FORTIGATE_HTTP_CG,
     FORTIGATE_HTTP_CLOUD_VENDOR,
     FORTIGATE_HTTP_CLOUD_VENDOR_NAME,
     FORTIGATE_HTTP_CLOUD_VENDOR_VERSION,
@@ -216,6 +218,13 @@ class FirewallRoleMacroTests(unittest.TestCase):
             FORTIOS_COLLIDING_TEMPLATES,
             FORTIOS_NESTED_PARENT_TEMPLATES + DEVICE_DUAL_LINK_TEMPLATES,
         )
+
+    def test_fortigate_http_cg_beats_agent_monitoring_and_has_no_icmp(self):
+        self.assertEqual(FORTIGATE_HTTP_CG, 'FortiGate HTTP')
+        self.assertEqual(AGENT_MONITORING_CG, 'Agent Monitoring')
+        self.assertNotEqual(FORTIGATE_HTTP_CG, AGENT_MONITORING_CG)
+        self.assertNotEqual(FORTIGATE_HTTP_CG, SNMP_MONITORING_CG)
+        self.assertNotIn(ICMP_PING_TEMPLATE, (FORTIGATE_HTTP_CG,))
 
     def test_empty_vendor_is_not_cloud_compatible(self):
         self.assertFalse(is_cloud_fortigate_http_vendor(''))

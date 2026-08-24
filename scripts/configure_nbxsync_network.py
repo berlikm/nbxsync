@@ -53,12 +53,12 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     ``{$FGATE.API.TOKEN}`` on **Platform FortiOS**, not role Firewall.
     ``{$FGATE.API.FQDN}`` is Platform FortiOS Jinja on ``primary_ip4``.
     Fail-closed preflight. FortiOS does not inherit SNMP Monitoring.
-    After SNMP Monitoring is pruned, FortiOS still inherits Site Group Agent
-    Monitoring (ICMP Ping). Observability already nests ICMP; HostSync drops
-    nested parents before ``host.update``. Apply prunes leftover ICMP/HTTP/SNMP
-    from FortiOS devices/platforms/device types — not from agent CGs.
-    Operator path is ``--apply-fortigate-http`` — do **not** re-run zerotouch.
-    Do not dual-link HTTP+SNMP.
+    After SNMP Monitoring is pruned from role Firewall, assign CG
+    **FortiGate HTTP** on Platform FortiOS so Site Group Agent Monitoring
+    (ICMP Ping) does not win. Observability already nests ICMP. Apply prunes
+    leftover ICMP/HTTP/SNMP from FortiOS devices/platforms/device types —
+    not from agent CGs. Operator path is ``--apply-fortigate-http`` — do
+    **not** re-run zerotouch. Do not dual-link HTTP+SNMP.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -166,12 +166,14 @@ from nbxsync.choices import (
     ZabbixInterfaceTypeChoices,
     ZabbixInterfaceUseChoices,
     ZabbixMacroTypeChoices,
+    ZabbixTLSChoices,
 )
 from nbxsync.jobs.synchost import SyncHostJob
 from nbxsync.utils import get_assigned_zabbixobjects
 from nbxsync.utils.zabbixconnection import ZabbixConnection
 
 from fortigate_http import (
+    AGENT_MONITORING_CG as _AGENT_MONITORING_CG,
     DEVICE_DUAL_LINK_TEMPLATES as _DEVICE_DUAL_LINK_TEMPLATES,
     FGATE_FQDN_JINJA as _FGATE_FQDN_JINJA,
     FGATE_FQDN_MACRO as _FGATE_FQDN_MACRO,
@@ -180,24 +182,12 @@ from fortigate_http import (
     FIREWALL_ROLE as _FIREWALL_ROLE,
     FIREWALL_ROLE_FORTI_TEMPLATES as _FIREWALL_ROLE_FORTI_TEMPLATES,
     FMG_FAZ_PLATFORM_PATTERN as _FMG_FAZ_PLATFORM_PATTERN,
+    FORTIGATE_HTTP_CG as _FORTIGATE_HTTP_CG,
     FORTIGATE_HTTP_CLOUD_VENDOR as _FORTIGATE_HTTP_CLOUD_VENDOR,
     FORTIGATE_HTTP_TEMPLATE as _FORTIGATE_HTTP_TEMPLATE,
     FORTIGATE_OBSERVABILITY_TEMPLATE as _FORTIGATE_OBSERVABILITY_TEMPLATE,
     FORTIGATE_SNMP_TEMPLATE as _FORTIGATE_SNMP_TEMPLATE,
     FORTIOS_COLLIDING_TEMPLATES as _FORTIOS_COLLIDING_TEMPLATES,
-    FORTIOS_PLATFORM_MACROS as _FORTIOS_PLATFORM_MACROS,
-    FORTIOS_PLATFORM_PATTERN as _FORTIOS_PLATFORM_PATTERN,
-    FORTIOS_TEMPLATE_RULE as _FORTIOS_TEMPLATE_RULE,
-    FGATE_FQDN_MACRO as _FGATE_FQDN_MACRO,
-    FGATE_TOKEN_ENV as _FGATE_TOKEN_ENV,
-    FGATE_TOKEN_MACRO as _FGATE_TOKEN_MACRO,
-    FIREWALL_ROLE as _FIREWALL_ROLE,
-    FIREWALL_ROLE_FORTI_TEMPLATES as _FIREWALL_ROLE_FORTI_TEMPLATES,
-    FMG_FAZ_PLATFORM_PATTERN as _FMG_FAZ_PLATFORM_PATTERN,
-    FORTIGATE_HTTP_CLOUD_VENDOR as _FORTIGATE_HTTP_CLOUD_VENDOR,
-    FORTIGATE_HTTP_TEMPLATE as _FORTIGATE_HTTP_TEMPLATE,
-    FORTIGATE_OBSERVABILITY_TEMPLATE as _FORTIGATE_OBSERVABILITY_TEMPLATE,
-    FORTIGATE_SNMP_TEMPLATE as _FORTIGATE_SNMP_TEMPLATE,
     FORTIOS_PLATFORM_MACROS as _FORTIOS_PLATFORM_MACROS,
     FORTIOS_PLATFORM_PATTERN as _FORTIOS_PLATFORM_PATTERN,
     FORTIOS_TEMPLATE_RULE as _FORTIOS_TEMPLATE_RULE,
@@ -428,9 +418,10 @@ def apply_macro_mode(*, cutover_silence: bool = False) -> None:
 
 SWITCH_SNMP_ROLES = list(ROLE_MACROS.keys())
 # Firewall is not a Switch* SNMP-CG role. Forti HTTP lives on platform FortiOS
-# (Observability companion). SNMP Monitoring stays on FMG/FAZ platforms, not
-# on FortiGates (role Firewall used to leak that CG onto HTTP boxes).
-# ``--apply-fortigate-http`` (not zerotouch, not Extreme ``--apply``).
+# (Observability companion + CG FortiGate HTTP). SNMP Monitoring stays on
+# FMG/FAZ platforms, not on FortiGates (role Firewall used to leak that CG
+# onto HTTP boxes). ``--apply-fortigate-http`` (not zerotouch, not Extreme
+# ``--apply``).
 
 
 def ct(model):
@@ -2305,11 +2296,12 @@ def _prune_fortios_colliding_templates() -> int:
     """Drop leftover ICMP/HTTP/SNMP assignments on FortiOS-owned objects.
 
     Observability already nests ICMP Ping and FortiGate by HTTP. Linking them
-    again makes HostSync fail until nested parents are skipped. FortiGate by
-    SNMP is a sibling ``icmpping`` collision, not a nested parent.
+    again makes HostSync fail (parent linked twice). FortiGate by SNMP is a
+    sibling ``icmpping`` collision, not a nested parent.
 
     Do not prune ICMP Ping from agent-plane CGs, manufacturers, or sites —
     servers still need the direct ICMP link, and FMG/FAZ may too.
+    FortiOS uses CG FortiGate HTTP so Agent Monitoring does not win.
     """
     names = set(_FORTIOS_COLLIDING_TEMPLATES)
     total = 0
@@ -2373,57 +2365,152 @@ def _snmp_monitoring_group():
     return M.ZabbixConfigurationGroup.objects.filter(name=_SNMP_MONITORING_CG).first()
 
 
-def _step_fortigate_http_transport() -> dict[str, int]:
-    """FortiOS is HTTP: no SNMP Monitoring. FMG/FAZ keep it on their platforms."""
-    logger.info('Network: FortiOS HTTP transport (no SNMP Monitoring on FortiGates)')
+def _agent_monitoring_group():
+    return M.ZabbixConfigurationGroup.objects.filter(name=_AGENT_MONITORING_CG).first()
+
+
+def _ensure_fortigate_http_group():
+    group, _ = ensure(
+        M.ZabbixConfigurationGroup,
+        name=_FORTIGATE_HTTP_CG,
+        defaults={
+            'description': (
+                'FortiOS HTTP transport. Agent @ primary so nested ICMP Ping '
+                'has an address. No ICMP Ping template — Observability nests it. '
+                'Assigned on Platform FortiOS; beats Site Group Agent Monitoring.'
+            ),
+        },
+        update_fields=['description'],
+    )
+    return group
+
+
+def _ensure_fortigate_http_agent_interface(server, group) -> None:
+    ensure(
+        M.ZabbixHostInterface,
+        zabbixserver=server,
+        assigned_object_type=ct(M.ZabbixConfigurationGroup),
+        assigned_object_id=group.id,
+        type=ZabbixHostInterfaceTypeChoices.AGENT,
+        defaults={
+            'zabbixconfigurationgroup': group,
+            'interface_type': ZabbixInterfaceTypeChoices.DEFAULT,
+            'port': 10050,
+            'useip': ZabbixInterfaceUseChoices.IP,
+            'tls_connect': ZabbixTLSChoices.NO_ENCRYPTION,
+            'dns': '',
+            'use_oob_ip': False,
+        },
+        update_fields=[
+            'zabbixconfigurationgroup',
+            'interface_type',
+            'port',
+            'useip',
+            'tls_connect',
+            'dns',
+            'use_oob_ip',
+        ],
+    )
+
+
+def _prune_icmp_from_fortigate_http_group(group) -> int:
+    deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+        zabbixtemplate__name=_ICMP_PING_TEMPLATE,
+        assigned_object_type=ct(M.ZabbixConfigurationGroup),
+        assigned_object_id=group.id,
+    ).delete()
+    if deleted:
+        logger.info('  PRUNED: ICMP Ping from CG %s (Observability nests it)', group.name)
+    return deleted
+
+
+def _prune_cg_from_fortios_objects(group) -> tuple[int, int]:
+    """Drop a CG from FortiOS devices and platforms so it cannot beat FortiGate HTTP."""
+    device_n = 0
+    platform_n = 0
+    if group is None:
+        return device_n, platform_n
+    fortios_ids = list(_fortios_devices().values_list('id', flat=True))
+    if fortios_ids:
+        device_n, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
+            zabbixconfigurationgroup=group,
+            assigned_object_type=ct(Device),
+            assigned_object_id__in=fortios_ids,
+        ).delete()
+    for plat in _fortios_platforms():
+        n, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
+            zabbixconfigurationgroup=group,
+            assigned_object_type=ct(Platform),
+            assigned_object_id=plat.id,
+        ).delete()
+        platform_n += n
+    return device_n, platform_n
+
+
+def _step_fortigate_http_transport(server) -> dict[str, int]:
+    """FortiOS winning CG is FortiGate HTTP. FMG/FAZ keep SNMP Monitoring."""
+    logger.info('Network: FortiOS HTTP transport (FortiGate HTTP CG, no SNMP/Agent Monitoring)')
     stats = {
         'fmg_faz_platforms': 0,
         'role_cg_pruned': 0,
         'fortios_device_cg_pruned': 0,
         'fortios_platform_cg_pruned': 0,
+        'forti_http_platforms': 0,
+        'icmp_pruned_from_forti_cg': 0,
     }
-    snmp = _snmp_monitoring_group()
-    if snmp is None:
-        logger.warning('  %s CG missing — skip transport prune', _SNMP_MONITORING_CG)
-        return stats
-    for plat in _fmg_faz_platforms():
+    forti_cg = _ensure_fortigate_http_group()
+    _ensure_fortigate_http_agent_interface(server, forti_cg)
+    stats['icmp_pruned_from_forti_cg'] = _prune_icmp_from_fortigate_http_group(forti_cg)
+    for plat in _fortios_platforms():
         ensure(
             M.ZabbixConfigurationGroupAssignment,
-            zabbixconfigurationgroup=snmp,
+            zabbixconfigurationgroup=forti_cg,
             assigned_object_type=ct(Platform),
             assigned_object_id=plat.id,
             defaults={},
         )
-        stats['fmg_faz_platforms'] += 1
-        logger.info('  Platform %s → %s (FMG/FAZ keep SNMP)', plat.name, _SNMP_MONITORING_CG)
-    for role in _firewall_roles(required=False):
-        n = _prune_role_cg_names(role, {_SNMP_MONITORING_CG})
-        stats['role_cg_pruned'] += n
-        if n:
-            logger.info(
-                '  PRUNED: %s from role %s (FortiOS is HTTP; FMG/FAZ use platform)',
-                _SNMP_MONITORING_CG,
-                role.name,
+        stats['forti_http_platforms'] += 1
+        logger.info('  Platform %s → %s (beats Site Group Agent Monitoring)', plat.name, _FORTIGATE_HTTP_CG)
+
+    snmp = _snmp_monitoring_group()
+    if snmp is None:
+        logger.warning('  %s CG missing — skip SNMP prune / FMG-FAZ assign', _SNMP_MONITORING_CG)
+    else:
+        for plat in _fmg_faz_platforms():
+            ensure(
+                M.ZabbixConfigurationGroupAssignment,
+                zabbixconfigurationgroup=snmp,
+                assigned_object_type=ct(Platform),
+                assigned_object_id=plat.id,
+                defaults={},
             )
-    fortios_ids = list(_fortios_devices().values_list('id', flat=True))
-    if fortios_ids:
-        deleted, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
-            zabbixconfigurationgroup=snmp,
-            assigned_object_type=ct(Device),
-            assigned_object_id__in=fortios_ids,
-        ).delete()
-        stats['fortios_device_cg_pruned'] = deleted
-        if deleted:
-            logger.info('  PRUNED: %s FortiOS device-level %s', deleted, _SNMP_MONITORING_CG)
-    for plat in _fortios_platforms():
-        deleted, _ = M.ZabbixConfigurationGroupAssignment.objects.filter(
-            zabbixconfigurationgroup=snmp,
-            assigned_object_type=ct(Platform),
-            assigned_object_id=plat.id,
-        ).delete()
-        stats['fortios_platform_cg_pruned'] += deleted
-        if deleted:
-            logger.info('  PRUNED: %s from Platform %s', _SNMP_MONITORING_CG, plat.name)
+            stats['fmg_faz_platforms'] += 1
+            logger.info('  Platform %s → %s (FMG/FAZ keep SNMP)', plat.name, _SNMP_MONITORING_CG)
+        for role in _firewall_roles(required=False):
+            n = _prune_role_cg_names(role, {_SNMP_MONITORING_CG})
+            stats['role_cg_pruned'] += n
+            if n:
+                logger.info(
+                    '  PRUNED: %s from role %s (FortiOS is HTTP; FMG/FAZ use platform)',
+                    _SNMP_MONITORING_CG,
+                    role.name,
+                )
+        d, p = _prune_cg_from_fortios_objects(snmp)
+        stats['fortios_device_cg_pruned'] += d
+        stats['fortios_platform_cg_pruned'] += p
+        if d:
+            logger.info('  PRUNED: %s FortiOS device-level %s', d, _SNMP_MONITORING_CG)
+        if p:
+            logger.info('  PRUNED: %s FortiOS platform-level %s', p, _SNMP_MONITORING_CG)
+
+    agent = _agent_monitoring_group()
+    d, p = _prune_cg_from_fortios_objects(agent)
+    stats['fortios_device_cg_pruned'] += d
+    stats['fortios_platform_cg_pruned'] += p
+    if d:
+        logger.info('  PRUNED: %s FortiOS device-level %s', d, _AGENT_MONITORING_CG)
+    if p:
+        logger.info('  PRUNED: %s FortiOS platform-level %s', p, _AGENT_MONITORING_CG)
     return stats
 
 
@@ -2572,7 +2659,9 @@ def _print_fortigate_http_plan(
     logger.info(
         '  prune nested ICMP/HTTP and leftover SNMP from FortiOS devices/platforms/device types (not agent CGs)',
     )
-    logger.info('  prune %s from role %s / FortiOS; assign it on FMG/FAZ platforms', _SNMP_MONITORING_CG, _FIREWALL_ROLE)
+    logger.info('  CG %s on Platform FortiOS (Agent :10050, no ICMP Ping template)', _FORTIGATE_HTTP_CG)
+    logger.info('  prune %s / %s from FortiOS devices and platforms (not Site Groups)', _SNMP_MONITORING_CG, _AGENT_MONITORING_CG)
+    logger.info('  prune %s from role %s; assign it on FMG/FAZ platforms', _SNMP_MONITORING_CG, _FIREWALL_ROLE)
     logger.info('  Platform FortiOS %s = %s', _FGATE_FQDN_MACRO, _FGATE_FQDN_JINJA)
     logger.info('FortiOS mutation set:')
     for dev in _fortios_devices():
@@ -4071,18 +4160,20 @@ def run_apply_fortigate_http() -> int:
         snmp=snmp,
         icmp=icmp,
     )
-    _step_fortigate_http_transport()
+    _step_fortigate_http_transport(server)
     _step_fortios_device_macros(server)
     logger.info(
         'FortiGate HTTP cutover written in NetBox. No HostSync. '
         'Shared %s is on Platform FortiOS (not role Firewall). '
         '%s is platform Jinja on primary_ip4. '
-        'FortiOS does not inherit %s (FMG/FAZ platforms keep it). '
-        'Nested ICMP/HTTP leftovers on FortiOS objects are pruned; agent CGs are not. '
+        'FortiOS winning CG is %s (not %s). FMG/FAZ platforms keep %s. '
+        'Leftover ICMP/HTTP/SNMP template rows on FortiOS objects are pruned; agent CGs are not. '
         'HostSync both members of the first cluster, then the rest. '
         'Do not re-run zerotouch — it still floors FortiOS on %s.',
         _FGATE_TOKEN_MACRO,
         _FGATE_FQDN_MACRO,
+        _FORTIGATE_HTTP_CG,
+        _AGENT_MONITORING_CG,
         _SNMP_MONITORING_CG,
         _FORTIGATE_SNMP_TEMPLATE,
     )

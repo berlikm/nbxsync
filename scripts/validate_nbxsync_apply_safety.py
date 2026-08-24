@@ -236,8 +236,18 @@ def main() -> int:
         bool(transport)
         and '_prune_role_cg_names' in transport
         and '_fmg_faz_platforms' in transport
-        and '_step_fortigate_http_transport()' in fg,
+        and '_step_fortigate_http_transport(server)' in fg,
         'SNMP Monitoring moves to FMG/FAZ platforms; FortiOS is HTTP',
+    )
+    record(
+        'network_fortigate_http_cg_on_fortios_platform',
+        bool(transport)
+        and '_FORTIGATE_HTTP_CG' in transport
+        and '_ensure_fortigate_http_group' in transport
+        and '_fortios_platforms' in transport
+        and '_prune_icmp_from_fortigate_http_group' in transport
+        and '_AGENT_MONITORING_CG' in transport,
+        'FortiOS winning CG is FortiGate HTTP; Agent Monitoring is pruned from FortiOS objects',
     )
     prune = _function_source(net_src, net_tree, '_prune_fortios_colliding_templates') or ''
     record(
@@ -251,17 +261,18 @@ def main() -> int:
     record(
         'network_fortigate_nested_parents_are_http_and_icmp',
         'FORTIOS_NESTED_PARENT_TEMPLATES' in forti_http
-        and 'DEVICE_DUAL_LINK_TEMPLATES = (FORTIGATE_SNMP_TEMPLATE,)' in forti_http,
-        'ICMP/HTTP are nested parents; only SNMP dual-link aborts apply',
+        and 'DEVICE_DUAL_LINK_TEMPLATES = (FORTIGATE_SNMP_TEMPLATE,)' in forti_http
+        and "FORTIGATE_HTTP_CG = 'FortiGate HTTP'" in forti_http,
+        'ICMP/HTTP are nested parents; FortiOS uses FortiGate HTTP CG; only SNMP dual-link aborts apply',
     )
-    hostsync = (SCRIPTS.parent / 'nbxsync' / 'utils' / 'sync' / 'hostsync.py').read_text(encoding='utf-8')
-    parents = (SCRIPTS.parent / 'nbxsync' / 'utils' / 'sync' / 'template_parents.py').read_text(encoding='utf-8')
+    ztc_icmp = _function_source(ztc_src, ztc_tree, 'step4_configgroups') or ''
     record(
-        'hostsync_skips_nested_parent_templates',
-        'drop_nested_parent_templateids' in hostsync
-        and 'selectParentTemplates' in hostsync
-        and 'would be linked twice' in parents,
-        'HostSync omits nested parents before host.update',
+        'zerotouch_fortigate_http_cg_has_no_icmp',
+        'FORTIGATE_HTTP_CG' in ztc_src
+        and 'forti_http' in ztc_icmp
+        and 'Observability nests it' in ztc_src
+        and 'fortigate_http' not in ztc_src,
+        'zerotouch creates FortiGate HTTP CG without importing the Forti HTTP cutover module',
     )
 
     failed = sum(1 for _, ok, _ in RESULTS if not ok)

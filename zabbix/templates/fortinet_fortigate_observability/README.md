@@ -7,7 +7,8 @@ parent by name. It never imports bundled 7.0-3 over Cloud.
 Platform Template Rule **FortiOS** points here. Generic role **Firewall** does
 not get this template (FortiManager / FortiAnalyzer share that role).
 Do not also assign **ICMP Ping** or **FortiGate by HTTP** on the same host —
-they are nested parents. HostSync skips a leftover parent link.
+they are nested parents. FortiOS uses CG **FortiGate HTTP** (no ICMP Ping
+template) so Agent Monitoring does not add a second copy.
 
 Companion-only gaps: Health + Path dashboards, unsupported-item census, zero
 interface / SD-WAN member / HA member counts, conserve mode, estate macros

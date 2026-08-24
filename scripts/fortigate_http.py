@@ -12,20 +12,23 @@ Firewall — that role is shared with FortiManager / FortiAnalyzer.
 from that unit's OOB / ha-mgmt. Do not write a literal IP on the Device —
 that assignment wins over the platform and shows as not inherited.
 
-FortiOS is HTTP + ICMP: do **not** inherit **SNMP Monitoring** from role
-Firewall. That CG stays on FortiManager / FortiAnalyzer platforms. A leftover
-device-level FQDN or SNMP CG on a FortiGate is pruned on apply.
+FortiOS is HTTP + nested ICMP: do **not** inherit **SNMP Monitoring** from
+role Firewall, and do **not** inherit Site Group **Agent Monitoring** (that
+CG assigns ICMP Ping, which Observability already nests). Assign CG
+**FortiGate HTTP** on Platform FortiOS instead — Agent @ primary for the
+nested ICMP Ping IP, no ICMP Ping template on the CG. FMG/FAZ platforms
+keep SNMP Monitoring. A leftover device-level FQDN or SNMP/Agent CG on a
+FortiGate is pruned on apply.
 
 Shared token (``NBX_FGATE_TOKEN``) lands on **Platform FortiOS**, not role
 Firewall. Empty env must not wipe. Optional per-device override:
 ``NBX_FGATE_TOKEN_<HOSTNAME>``.
 
 Companion **FortiGate Observability** nests stock FortiGate by HTTP + ICMP
-Ping. Do not also assign those parents on FortiOS objects — HostSync skips
-nested parents, and apply prunes leftover ICMP/HTTP/SNMP from FortiOS
-devices, platforms, and device types. Do not strip ICMP Ping from agent-plane
-CGs. Apply never imports bundled 7.0-3 over Cloud **Zabbix, 7.0-2**.
-Do not re-run zerotouch.
+Ping. Do not also assign those parents on FortiOS objects. Apply prunes
+leftover ICMP/HTTP/SNMP from FortiOS devices, platforms, and device types.
+Do not strip ICMP Ping from agent-plane CGs. Apply never imports bundled
+7.0-3 over Cloud **Zabbix, 7.0-2**. Do not re-run zerotouch.
 """
 
 from __future__ import annotations
@@ -44,6 +47,11 @@ FORTIGATE_HTTP_CLOUD_VENDOR = (
 FORTIGATE_SNMP_TEMPLATE = 'FortiGate by SNMP'
 ICMP_PING_TEMPLATE = 'ICMP Ping'
 SNMP_MONITORING_CG = 'SNMP Monitoring'
+AGENT_MONITORING_CG = 'Agent Monitoring'
+# Winning CG for FortiOS after SNMP is pruned from role Firewall. Beats Site
+# Group Agent Monitoring so ICMP Ping is not assigned twice (Observability
+# already nests it). Not role Firewall — FMG/FAZ share that role.
+FORTIGATE_HTTP_CG = 'FortiGate HTTP'
 FORTIOS_TEMPLATE_RULE = 'FortiOS'
 FORTIOS_PLATFORM_PATTERN = r'FORTIOS|FortiOS'
 FMG_FAZ_PLATFORM_PATTERN = r'FortiAnalyzer|FortiManager'
@@ -99,9 +107,10 @@ FIREWALL_ROLE_FORTI_TEMPLATES = (
 )
 
 # Nested parents of Observability. Assigned again → Zabbix "parent would be
-# linked twice". HostSync skips these; apply also prunes them from FortiOS
-# devices / platforms / device types. Do **not** strip ICMP Ping from shared
-# agent-plane CGs (servers still need the direct link).
+# linked twice". Apply prunes them from FortiOS devices / platforms / device
+# types. Do **not** strip ICMP Ping from shared agent-plane CGs. FortiOS uses
+# CG FortiGate HTTP (no ICMP Ping template) so Site Group Agent Monitoring
+# does not win.
 FORTIOS_NESTED_PARENT_TEMPLATES = (
     FORTIGATE_HTTP_TEMPLATE,
     ICMP_PING_TEMPLATE,
