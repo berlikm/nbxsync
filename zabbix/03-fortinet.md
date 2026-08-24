@@ -101,7 +101,7 @@ Stock HTTP has **no** host Health board. Upsert on this template via API (same p
 
 Mute an in-scope iface with context `{$NET.IF.CONTROL:"wan1"}=0` (or SD-WAN CONTROL), not a second CMDB. Prefer **excluding from LLD** over CONTROL=0 on a hundred names.
 
-Starter LLD (tighten on the first canary — **do not** MATCH `port`; on a 40F/100F `port1` is often LAN):
+Starter LLD (tighten on the first canary — **do not** MATCH `port`; on a 40F/100F `port1` is often LAN). `--apply` puts these on Device Role **Firewall**:
 
 ```
 {$NET.IF.IFNAME.MATCHES}     = ^(wan|ha|mgmt|dmz)
@@ -153,6 +153,7 @@ Locked GUI checklist still lists FortiGate by SNMP — that file is not updated 
 | Platform FortiOS | **FortiGate by HTTP** + `OS/Network`. Interface requirement **ANY**, not SNMP |
 | Role Firewall | HTTP template floor **or** platform rule only — not both SNMP and HTTP |
 | Secrets | Per-device `{$FGATE.API.TOKEN}` + `{$FGATE.API.FQDN}` = **that unit’s HA mgmt IP** (not a WAN VIP) |
+| Fleet HTTP defaults | Device Role **Firewall** — https/443, WAN/HA/mgmt LLD, `{$FWP.FWNAME.MATCHES}`=`^$`, util 101. Not Switch* roles |
 | ICMP | **ICMP Ping** on a CG/path SNMP Fortis **never** inherit during the mixed window |
 | SNMP Monitoring | **off** the HTTP Forti (HTTP does not use UDP 161) |
 | Health | already on the HTTP template after upsert — no dashboard script |
@@ -237,24 +238,22 @@ Do **not** clone stock FortiGate by HTTP.
 | FortiGate by SNMP (stock) | Platform FortiOS — **live today** | Fallback / HA-VPN gap only. Do not dual-link with HTTP |
 | Network Generic Device by SNMP | **not** on FortiGate | FMG/FAZ only |
 
-Template-level macros (not globals, not Switch roles):
+Template-level macros (not globals, not Switch roles). **`--apply` writes these as ZabbixMacroAssignment on Device Role Firewall** — same lever as Switch Access IFALIAS. Inheritance lands on HostSync of that firewall. `--apply` does **not** mass-HostSync Fortis (live SNMP still uses `{$NET.IF.IFNAME.MATCHES}`).
 
 ```
 {$FGATE.SCHEME}                 = https
 {$FGATE.API.PORT}               = 443
+{$NET.IF.IFNAME.MATCHES}        = ^(wan|ha|mgmt|dmz)
+{$NET.IF.IFNAME.NOT_MATCHES}    = ^(ssl\.|npu|fortilink|loopback|vlan)
+{$FWP.FWNAME.MATCHES}           = ^$
 {$NET.IF.UTIL.MAX}              = 101
 {$FIRMWARE.UPDATES.CONTROL}     = 0
-{$CPU.UTIL.WARN}                = 85
-{$CPU.UTIL.CRIT}                = 99          # High trigger off or unreachable until retuned
-{$MEMORY.UTIL.CRIT}             = 99          # keep WARN 80 = Average
-{$DISK.FREE.CRIT}               = 0           # High off; WARN 20 stays graph/Warning
-{$SERVICE.EXPIRY.WARN}          = 7
-{$SDWAN.HEALTH.IF.LOSS.WARN}    = 20
+{$DISK.FREE.CRIT}               = 0
 ```
 
-Per **device**: `{$FGATE.API.TOKEN}`, `{$FGATE.API.FQDN}`.
+Per **device** (not the role): `{$FGATE.API.TOKEN}`, `{$FGATE.API.FQDN}` = that unit’s HA mgmt IP. Empty env must not wipe tokens.
 
-Disable (do not fork) the three stock **High** resource triggers, ICMP Ping loss/RTT, and firmware Info if CONTROL=0 is not enough. Same apply-patch style as EXOS ICMP disable.
+CPU/mem **High** stay a later HTTP-template trigger-status patch (do not put `{$CPU.UTIL.CRIT}` on Firewall — zerotouch already uses that name on Server/MSSQL). ICMP Ping loss/RTT and firmware Info if CONTROL=0 is not enough. Same apply-patch style as EXOS ICMP disable.
 
 ---
 

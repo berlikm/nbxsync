@@ -167,7 +167,8 @@ Live today (`configure_nbxsync_zerotouch.py` + locked GUI checklist):
 Target after tokens exist:
 
 - FortiOS → **FortiGate by HTTP** (`HostInterfaceRequirement` **ANY**, not SNMP)
-- Per-device secret macros like Pure: `{$FGATE.API.TOKEN}`, `{$FGATE.API.FQDN}`, scheme/port if not on the template
+- Per-device secret macros like Pure: `{$FGATE.API.TOKEN}`, `{$FGATE.API.FQDN}`
+- Fleet defaults (https/443, WAN/HA/mgmt IFNAME, empty policy LLD) as **ZabbixMacroAssignment on Device Role Firewall**. Token/FQDN stay per-device. `--apply` does not HostSync Fortis.
 - ICMP Ping on a CG/path that **SNMP Fortis never inherit** during the mixed window (role-level ICMP on Firewall would duplicate `icmpping` on leftover SNMP hosts)
 - Leave Firewall **off** SNMP Monitoring once HTTP is the data path (HTTP items do not use UDP 161)
 - Empty env must **not** wipe tokens (same Pure rule)

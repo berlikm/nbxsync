@@ -44,6 +44,9 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
   * Platform TemplateRules: EXOS → Observability companion (nests stock); VOSS / IQ Engine → Extreme * by SNMP
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
+  * Firewall role FortiGate HTTP macros (https/443, WAN/HA/mgmt LLD, no policy LLD).
+    Token / FQDN stay per-device. Does not HostSync Fortis (live SNMP still uses
+    ``{$NET.IF.IFNAME.MATCHES}``).
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -140,6 +143,11 @@ from nbxsync.jobs.synchost import SyncHostJob
 from nbxsync.utils import get_assigned_zabbixobjects
 from nbxsync.utils.zabbixconnection import ZabbixConnection
 
+from fortigate_http import (
+    FIREWALL_DEVICE_MACROS as _FIREWALL_DEVICE_MACROS,
+    FIREWALL_ROLE as _FIREWALL_ROLE,
+    FIREWALL_ROLE_MACROS as _FIREWALL_ROLE_MACROS,
+)
 from extreme_ascii_titles import title_payload as _title_payload
 from extreme_health_zabbix import (
     IQ_HEALTH_MACROS,
@@ -337,6 +345,8 @@ def apply_macro_mode(*, cutover_silence: bool = False) -> None:
 
 
 SWITCH_SNMP_ROLES = list(ROLE_MACROS.keys())
+# Firewall is not a Switch* SNMP-CG role. HTTP macros live on Device Role
+# Firewall; FortiOS Template Rule stays FortiGate by SNMP until tokens exist.
 
 
 def ct(model):
@@ -1808,9 +1818,9 @@ def _upsert_role_macro_assignment(server, role, macro_name: str, value: str, *, 
 
 
 def step_role_macros(server) -> None:
-    """ZabbixMacroAssignment on Switch* roles — what inheritance actually syncs."""
+    """ZabbixMacroAssignment on Switch* and Firewall roles — inheritance / HostSync."""
     logger.info('=' * 60)
-    logger.info('Network: role IFALIAS / IFTYPE macros')
+    logger.info('Network: role IFALIAS / IFTYPE / FortiGate HTTP macros')
     logger.info('=' * 60)
     if server is None:
         raise SystemExit('No ZabbixServer — run with --simulate or create a server first')
@@ -1834,6 +1844,25 @@ def step_role_macros(server) -> None:
                     context=spec['context'],
                     is_regex=True,
                 )
+    _step_firewall_role_macros(server)
+
+
+def _step_firewall_role_macros(server) -> None:
+    """HTTPS / WAN LLD / quiet util on Device Role Firewall. Not TOKEN/FQDN."""
+    roles = resolve_roles_for_macros(_FIREWALL_ROLE)
+    if not roles:
+        logger.warning('  Role not found: %s — skipping FortiGate HTTP macros', _FIREWALL_ROLE)
+        return
+    secret = set(_FIREWALL_DEVICE_MACROS)
+    for role in roles:
+        for macro_name, value in _FIREWALL_ROLE_MACROS.items():
+            if macro_name in secret:
+                continue
+            _upsert_role_macro_assignment(server, role, macro_name, value)
+        logger.info(
+            '  %s FortiGate HTTP macros assigned (no token/FQDN; no Forti HostSync)',
+            role.name,
+        )
 
 
 def _expected_host_macros(canonical_role: str) -> dict[str, str]:
@@ -2292,6 +2321,10 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
         slug=slugify('Access Point'),
         defaults={'name': f'{PREFIX}Access Point', 'color': '2196f3', 'vm_role': False},
     )
+    roles[_FIREWALL_ROLE], _ = DeviceRole.objects.get_or_create(
+        slug=slugify(_FIREWALL_ROLE),
+        defaults={'name': f'{PREFIX}{_FIREWALL_ROLE}', 'color': 'ff9800', 'vm_role': False},
+    )
 
     # Monkey-patch get_role for prefixed lab (same trick as zerotouch)
     orig_get_role = globals()['get_role']
@@ -2620,6 +2653,15 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             attach(d, next_ip())
             objects[key] = d
 
+        fortigate = Device.objects.create(
+            name=f'{PREFIX}fortigate',
+            device_type=dtype,
+            role=roles[_FIREWALL_ROLE],
+            site=site,
+            status='active',
+        )
+        attach(fortigate, next_ip())
+
         with ZabbixConnection(server) as api:
             access_macros = patch_access_port_scope_host_macros(api)
             record(
@@ -2704,6 +2746,38 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
         record(
             'core_linkdown_ifalias_not_forced',
             _LINKDOWN_IFALIAS_MACRO not in m_core,
+            str(m_core),
+            group='resolve',
+        )
+        m_fw = macro_map(fortigate)
+        record(
+            'firewall_https_not_http_80',
+            m_fw.get('{$FGATE.SCHEME}') == 'https' and m_fw.get('{$FGATE.API.PORT}') == '443',
+            str(m_fw),
+            group='resolve',
+        )
+        record(
+            'firewall_ifname_wan_not_port1',
+            m_fw.get('{$NET.IF.IFNAME.MATCHES}') == '^(wan|ha|mgmt|dmz)'
+            and 'port' not in (m_fw.get('{$NET.IF.IFNAME.MATCHES}') or ''),
+            str(m_fw),
+            group='resolve',
+        )
+        record(
+            'firewall_no_policy_lld',
+            m_fw.get('{$FWP.FWNAME.MATCHES}') == '^$',
+            str(m_fw),
+            group='resolve',
+        )
+        record(
+            'firewall_token_not_on_role',
+            '{$FGATE.API.TOKEN}' not in m_fw and '{$FGATE.API.FQDN}' not in m_fw,
+            str(m_fw),
+            group='resolve',
+        )
+        record(
+            'switch_core_has_no_fgate_scheme',
+            '{$FGATE.SCHEME}' not in m_core,
             str(m_core),
             group='resolve',
         )
@@ -2979,6 +3053,11 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     step_template_rules(server, tpl_models)
     step_speed_expect_assignment(server, tpl_models, link=link_speed_expect)
     logger.info('Network configuration applied (macros=%s)', 'cutover-silence' if cutover_silence else 'destination')
+    logger.info(
+        'Firewall role FortiGate HTTP macros are NetBox assignments only '
+        '(https/443, WAN/HA/mgmt LLD). Token/FQDN stay per-device. '
+        'This run does not HostSync Fortis and does not retarget FortiOS.',
+    )
     return 0
 
 
