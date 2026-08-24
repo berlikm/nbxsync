@@ -11,7 +11,7 @@ Sources: official Zabbix 7.0 `templates/net/fortinet/` (`FortiGate by HTTP`, `Fo
 
 Monitor FortiGates with stock **FortiGate by HTTP** (REST from the Swiss Zabbix proxy). Add **ICMP Ping** (the HTTP template has no `icmpping`). Do **not** also link **FortiGate by SNMP** or **Network Generic**.
 
-Live nbxSync today still points FortiOS at **FortiGate by SNMP**. That is the current estate, not the target. Retarget with `configure_nbxsync_network.py --apply-fortigate-http` — **do not re-run zerotouch**. The next HostSync of a firewall swaps templates. Import latest 7.0 HTTP, put tokens/trusted-hosts on the boxes, then canary-sync one HA pair.
+Live nbxSync today still points FortiOS at **FortiGate by SNMP**. That is the current estate, not the target. Retarget with `configure_nbxsync_network.py --apply-fortigate-http` — **do not re-run zerotouch**. Zabbix Cloud already has **FortiGate by HTTP** vendor **7.0-2** (Bearer); the flag reuses it and does not overwrite. The next HostSync of a firewall swaps templates. Canary-sync one HA pair.
 
 ---
 
@@ -168,11 +168,13 @@ Live today (`configure_nbxsync_zerotouch.py` + locked GUI checklist) until the n
 
 Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-http`
 
-- FortiOS → **FortiGate by HTTP** (`HostInterfaceRequirement` **ANY**, not SNMP) when that template exists in Zabbix (soft-resolve; missing HTTP leaves SNMP)
-- Per-device secret macros like Pure: `{$FGATE.API.TOKEN}` from `NBX_FGATE_TOKEN_<HOSTNAME>` (empty env does not wipe), `{$FGATE.API.FQDN}` from `primary_ip4`
-- Fleet defaults (https/443, WAN/HA/mgmt IFNAME, empty policy LLD) as **ZabbixMacroAssignment on Device Role Firewall**. Token/FQDN stay per-device. `--apply-firewall-macros` (or `--apply`) writes the role only.
-- ICMP Ping on role Firewall (lands on HostSync with HTTP). Prunes FortiGate by SNMP and SNMP Monitoring from Firewall first so HostSync does not dual-link `icmpping`
-- Leave Firewall **off** SNMP Monitoring once HTTP is the data path (HTTP items do not use UDP 161)
+- Reuse **FortiGate by HTTP** already in Zabbix Cloud (**Zabbix, 7.0-2**). Import bundled YAML only if the template is missing. Do not overwrite 7.0-2.
+- FortiOS → HTTP (`HostInterfaceRequirement` **ANY**) when that template exists
+- Shared `{$FGATE.API.TOKEN}` on Device Role Firewall from `NBX_FGATE_TOKEN` (empty env does not wipe). Optional per-host override `NBX_FGATE_TOKEN_<HOSTNAME>`
+- Per-device `{$FGATE.API.FQDN}` prefers `oob_ip` then `primary_ip4` (both HA members via OOB, not a WAN VIP)
+- Fleet defaults (https/443, WAN/HA/mgmt IFNAME, empty policy LLD) on Device Role Firewall
+- ICMP Ping on role Firewall (lands on HostSync with HTTP). Prunes FortiGate by SNMP and SNMP Monitoring from Firewall
+- Do **not** dual-link HTTP+SNMP because OOB exists. OOB is how both **nodes** are reachable. SNMP would add a second `icmpping` and a second WAN/CPU ticket family
 - No Extreme YAML, no check-now, no mass-HostSync. Canary-sync one HA pair.
 
 Changing the FortiOS Template Rule on a live estate **will** retarget on next HostSync of that firewall.

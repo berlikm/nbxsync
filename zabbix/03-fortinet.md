@@ -132,6 +132,8 @@ REST API admin usually **syncs**; one token often works on both mgmt IPs. Truste
 
 VIP-only is a **fallback** when the secondary is unreachable (no ha-mgmt). Call that out as a watcher gap, not the design.
 
+OOB / ha-mgmt is how you poll **both HA members at once**. It is **not** a reason to link **FortiGate by HTTP and FortiGate by SNMP** on the same host. Stock item keys do not collide, but SNMP re-adds `icmpping` (collision with ICMP Ping), and you get two WAN link-down families plus two CPU Highs for the same box. Keep HTTP + ICMP Ping. HA peer/sync and sensors stay a later thin item, not a second platform template.
+
 ---
 
 ## Zero-touch (nbxSync)
@@ -145,29 +147,30 @@ VIP-only is a **fallback** when the secondary is unreachable (no ha-mgmt). Call 
 3. Role Firewall → **SNMP Monitoring** CG (`MONITORING` MD5/DES)
 4. ICMP Ping is **not** on fleet SNMP Monitoring (Forti SNMP already has `icmpping`)
 5. FMG/FAZ rule → Network Generic
-6. Device Role Firewall already has HTTP **fleet** macros if you ran `--apply-firewall-macros` (https/443, WAN/HA/mgmt LLD). Token/FQDN are **not** on the role — look at the Device.
+6. Device Role Firewall already has HTTP **fleet** macros if you ran `--apply-firewall-macros` (https/443, WAN/HA/mgmt LLD). Shared token belongs on the **role**. FQDN is per-device (`oob_ip` then `primary_ip4`).
 
-Locked GUI checklist still lists FortiGate by SNMP — that file is not updated here. Empty env must **not** wipe `{$FGATE.API.TOKEN}` (same Pure rule).
+Locked GUI checklist still lists FortiGate by SNMP — that file is not updated here. Empty env must **not** wipe `{$FGATE.API.TOKEN}`.
 
 **Operator path** (no zerotouch, no Extreme YAML, no mass-HostSync):
 
 ```bash
 export NBX_ZABBIX_TOKEN=...
-# Per physical unit (dashes → underscores). Skip a host to leave its token untouched.
-# export NBX_FGATE_TOKEN_CH_ZRH_P_FW01=...
+export NBX_FGATE_TOKEN=...          # shared REST key → Device Role Firewall
 python3 scripts/configure_nbxsync_network.py --apply-fortigate-http
 ```
+
+Zabbix Cloud already has **FortiGate by HTTP** vendor **7.0-2**. The flag **reuses that template** (Bearer header is already in 7.0-2). It does not re-import or overwrite 7.0-2.
 
 That flag:
 
 | Lever | What it writes |
 |---|---|
-| Platform FortiOS | **FortiGate by HTTP** + `OS/Network`. Interface requirement **ANY**. Soft-resolve: if the HTTP template is missing in Zabbix, warn and leave SNMP |
+| Platform FortiOS | **FortiGate by HTTP** + `OS/Network`. Interface requirement **ANY**. Reuse Cloud 7.0-2; import bundled YAML only if the template is missing |
 | Role Firewall | HTTP floor; **prune** FortiGate by SNMP |
 | SNMP Monitoring | **off** Firewall |
 | ICMP | **ICMP Ping** on role Firewall (stock HTTP has no `icmpping`). Lands on HostSync together with HTTP — do not mass-HostSync |
 | Fleet HTTP defaults | Device Role **Firewall** — https/443, WAN/HA/mgmt LLD, empty policy LLD, util 101 |
-| Secrets | Per-device `{$FGATE.API.TOKEN}` from env + `{$FGATE.API.FQDN}` = **that unit’s** `primary_ip4` (HA mgmt, not a WAN VIP) |
+| Secrets | Shared `{$FGATE.API.TOKEN}` on role Firewall (`NBX_FGATE_TOKEN`). Per-device `{$FGATE.API.FQDN}` = **oob_ip then primary_ip4** (HA mgmt / OOB, not a WAN VIP) |
 
 `--apply-firewall-macros` is the lighter sibling (role macros only). Extreme `--apply` still does **not** retarget FortiOS.
 
@@ -179,7 +182,7 @@ Then **canary HostSync one HA pair** — not every Firewall. Inheritance does no
 |---|---|
 | Platform FortiOS | **FortiGate by HTTP** + `OS/Network`. Interface requirement **ANY**, not SNMP |
 | Role Firewall | HTTP template floor — not both SNMP and HTTP |
-| Secrets | Per-device `{$FGATE.API.TOKEN}` + `{$FGATE.API.FQDN}` = **that unit’s HA mgmt IP** (not a WAN VIP) |
+| Secrets | Shared `{$FGATE.API.TOKEN}` on role Firewall. Per-device `{$FGATE.API.FQDN}` = **that unit’s OOB / HA mgmt IP** (not a WAN VIP) |
 | Fleet HTTP defaults | Device Role **Firewall** — https/443, WAN/HA/mgmt LLD, `{$FWP.FWNAME.MATCHES}`=`^$`, util 101. Not Switch* roles |
 | ICMP | **ICMP Ping** on role Firewall (applied at HostSync with HTTP) |
 | SNMP Monitoring | **off** the HTTP Forti (HTTP does not use UDP 161) |
@@ -187,8 +190,8 @@ Then **canary HostSync one HA pair** — not every Firewall. Inheritance does no
 
 Before the flag:
 
-1. Import **latest 7.0** FortiGate by HTTP (Bearer header, [ZBX-27082](https://support.zabbix.com/browse/ZBX-27082) request-per-call). Lab is 7.0.29 — still re-import; do not assume the image template is current.
-2. On-box: read-only admin profile (Zabbix: enable **all Read**) → REST API Admin → token **once** (usually syncs). Trusted hosts = **Swiss proxy on each member’s ha-mgmt**, not a laptop.
+1. FortiGate by HTTP is already in Zabbix Cloud as **Zabbix, 7.0-2** — keep it. Do not re-import 7.0-3 over it.
+2. On-box: read-only admin profile (Zabbix: enable **all Read**) → REST API Admin → token **once** (usually syncs). Trusted hosts = **Swiss proxy on each member’s ha-mgmt / OOB**, not a laptop.
 
 Do **not** HostSync a Forti that still has FortiGate by SNMP **and** ICMP Ping (`icmpping` key collision). `--apply-fortigate-http` prunes the SNMP floor first so a later HostSync replaces SNMP with HTTP+ICMP together.
 
@@ -202,8 +205,8 @@ Production poller for NL/US/CH is the **Swiss proxy group**. HTTP items run **fr
 |---|---|---|
 | `{$FGATE.SCHEME}` | `http` | **https** |
 | `{$FGATE.API.PORT}` | `80` | **443** |
-| `{$FGATE.API.FQDN}` | empty | **that unit’s** HA mgmt IP / GUI FQDN — not the WAN VIP |
-| `{$FGATE.API.TOKEN}` | empty | secret; often one synced token, **per-device** assignment (Pure pattern) |
+| `{$FGATE.API.FQDN}` | empty | **that unit’s** OOB / ha-mgmt IP — `oob_ip` then `primary_ip4`, not the WAN VIP |
+| `{$FGATE.API.TOKEN}` | empty | **one** secret on Device Role **Firewall** (`NBX_FGATE_TOKEN`). Same key for the fleet |
 | `{$FGATE.DATA.TIMEOUT}` | `15s` | keep unless slow VDOMs |
 | `{$FGATE.HTTP.PROXY}` | empty | leave empty — the Zabbix proxy **is** the poller, not an HTTP forward proxy unless required |
 
@@ -244,7 +247,7 @@ A site WAN blip must not be Forti Average **plus** Extreme `UW` Average **plus**
 | HTTPS port down, API items stale | GUI port / scheme still `80`/`http` | Average port unavailable |
 | Zero interfaces | IFNAME regex or `netif` API fail | Health census |
 | SD-WAN site, zero members | [ZBX-26072](https://support.zabbix.com/browse/ZBX-26072) “all members” health-check, or not SD-WAN | Health / Path census |
-| Duplicate Authorization 401 | old HTTP template ([ZBX-27082](https://support.zabbix.com/browse/ZBX-27082)) | re-import latest 7.0 |
+| Duplicate Authorization 401 | 7.0-2/7.0-3 still reuse `HttpRequest` in `getHttpData` ([ZBX-27082](https://support.zabbix.com/browse/ZBX-27082)) | canary SD-WAN; do not overwrite Cloud 7.0-2 |
 | HA pair, only one host in Zabbix | backup never polled — VIP-only or missing NetBox device | census; add the member |
 | Secondary API 401, ICMP up | trusted-hosts on **that** unit’s ha-mgmt; token not valid there | Average Unexpected API |
 | Proxy last-seen | hosts go *unknown*, not *down* | later |
@@ -257,12 +260,12 @@ Do **not** clone stock FortiGate by HTTP.
 
 | Template | Where | Notes |
 |---|---|---|
-| FortiGate by HTTP (stock, latest 7.0) | Platform FortiOS — **target** | Bearer 7.0-2+; import newer than the 401 bugs |
+| FortiGate by HTTP (stock) | Platform FortiOS — **target** | Cloud is **Zabbix, 7.0-2** (Bearer). Reuse; do not overwrite with 7.0-3 |
 | ICMP Ping | Role **Firewall** after `--apply-fortigate-http` | HTTP has no `icmpping`. Lands on HostSync with HTTP |
 | FortiGate by SNMP (stock) | Platform FortiOS — **live until `--apply-fortigate-http`** | Fallback / HA-VPN gap only. Do not dual-link with HTTP |
 | Network Generic Device by SNMP | **not** on FortiGate | FMG/FAZ only |
 
-Template-level macros (not globals, not Switch roles). **`--apply-fortigate-http` writes these as ZabbixMacroAssignment on Device Role Firewall** (same as `--apply-firewall-macros` / Extreme `--apply`). Token/FQDN stay per-device. None of these flags mass-HostSync Fortis. Prefer `--apply-fortigate-http` for the cutover; `--apply-firewall-macros` when you only want the role defaults.
+Template-level macros (not globals, not Switch roles). **`--apply-fortigate-http` writes these as ZabbixMacroAssignment on Device Role Firewall** (same as `--apply-firewall-macros` / Extreme `--apply`). Shared TOKEN is also on that role. FQDN stays per-device. None of these flags mass-HostSync Fortis.
 
 ```
 {$FGATE.SCHEME}                 = https
@@ -275,7 +278,7 @@ Template-level macros (not globals, not Switch roles). **`--apply-fortigate-http
 {$DISK.FREE.CRIT}               = 0
 ```
 
-Per **device** (not the role): `{$FGATE.API.TOKEN}`, `{$FGATE.API.FQDN}` = that unit’s HA mgmt IP. Empty env must not wipe tokens.
+Per **device** (not the role): `{$FGATE.API.FQDN}` = that unit’s OOB / ha-mgmt IP. Shared `{$FGATE.API.TOKEN}` is on Device Role Firewall. Empty env must not wipe the role token.
 
 CPU/mem **High** stay a later HTTP-template trigger-status patch (do not put `{$CPU.UTIL.CRIT}` on Firewall — zerotouch already uses that name on Server/MSSQL). ICMP Ping loss/RTT and firmware Info if CONTROL=0 is not enough. Same apply-patch style as EXOS ICMP disable.
 

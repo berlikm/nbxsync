@@ -148,6 +148,11 @@ def main() -> int:
         'no Extreme import / HostSync in --apply-fortigate-http',
     )
     record(
+        'network_fortigate_http_reuses_existing_template',
+        'not re-importing' in ( _function_source(net_src, net_tree, 'import_fortigate_http_template') or ''),
+        'Cloud 7.0-2 is not overwritten',
+    )
+    record(
         'zerotouch_no_fortigate_http_auto_cutover',
         'fortigate_http' not in ztc_src,
         'Forti HTTP cutover is network --apply-fortigate-http, not zerotouch',

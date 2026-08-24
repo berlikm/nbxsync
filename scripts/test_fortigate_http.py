@@ -6,6 +6,9 @@ from __future__ import annotations
 import unittest
 
 from fortigate_http import (
+    FGATE_FQDN_MACRO,
+    FGATE_TOKEN_ENV,
+    FGATE_TOKEN_MACRO,
     FIREWALL_DEVICE_MACROS,
     FIREWALL_ROLE,
     FIREWALL_ROLE_MACROS,
@@ -16,6 +19,7 @@ from fortigate_http import (
     ICMP_PING_TEMPLATE,
     SNMP_MONITORING_CG,
     fgate_token_env,
+    preferred_mgmt_ip,
     should_write_secret,
 )
 
@@ -45,6 +49,9 @@ class FirewallRoleMacroTests(unittest.TestCase):
         )
         for macro in FIREWALL_DEVICE_MACROS:
             self.assertNotIn(macro, FIREWALL_ROLE_MACROS)
+        self.assertNotIn(FGATE_TOKEN_MACRO, FIREWALL_ROLE_MACROS)
+        self.assertEqual(FIREWALL_DEVICE_MACROS, (FGATE_FQDN_MACRO,))
+        self.assertEqual(FGATE_TOKEN_ENV, 'NBX_FGATE_TOKEN')
 
     def test_ifname_is_wan_ha_mgmt_not_port1(self):
         matches = FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}']
@@ -78,6 +85,11 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertFalse(should_write_secret(''))
         self.assertFalse(should_write_secret('   '))
         self.assertTrue(should_write_secret('abc'))
+
+    def test_fqdn_prefers_oob_over_primary(self):
+        self.assertEqual(preferred_mgmt_ip('10.1.1.1', '1.2.3.4'), '10.1.1.1')
+        self.assertEqual(preferred_mgmt_ip(None, '1.2.3.4'), '1.2.3.4')
+        self.assertIsNone(preferred_mgmt_ip(None, None))
 
 
 if __name__ == '__main__':
