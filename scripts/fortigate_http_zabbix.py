@@ -16,6 +16,8 @@ from fortigate_http import (
     POLICY_DISCOVERY_KEY,
     POLICY_MASTER_KEY,
     FORTIGATE_HTTP_CLOUD_VENDOR,
+    RAW_MASTER_HISTORY,
+    RAW_MASTER_HISTORY_KEYS,
     REQUIRED_HTTP_SCRIPT_KEYS,
     SLOW_ITEM_DELAYS,
     VDOM_STAR_SCRIPT_KEYS,
@@ -399,6 +401,28 @@ def _linkdown_payload(proto: dict, item_ref: str, control: str, down_value: str)
     return payload
 
 
+def patch_raw_master_history(api, templateid) -> dict[str, str]:
+    """Stock history=0 hides lastclock on the masters operators debug."""
+    out: dict[str, str] = {}
+    for key in RAW_MASTER_HISTORY_KEYS:
+        items = api.item.get(
+            hostids=templateid,
+            filter={'key_': key},
+            output=['itemid', 'history'],
+        ) or []
+        if not items:
+            out[key] = 'missing'
+            continue
+        item = items[0]
+        if str(item.get('history') or '') == RAW_MASTER_HISTORY:
+            out[key] = 'ok'
+            continue
+        api.item.update(itemid=item['itemid'], history=RAW_MASTER_HISTORY)
+        out[key] = RAW_MASTER_HISTORY
+        logger.info('  %s history=%s', key, RAW_MASTER_HISTORY)
+    return out
+
+
 def patch_slow_item_delays(api, templateid) -> dict[str, str]:
     """Firmware/license are not 1-minute signals. Policy stays disabled separately."""
     out: dict[str, str] = {}
@@ -440,6 +464,7 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
     policy = disable_policy_collection(api, templateid)
     wan = patch_wan_state_triggers(api, templateid)
     delays = patch_slow_item_delays(api, templateid)
+    history = patch_raw_master_history(api, templateid)
     return {
         'zbx27082': zbx,
         'vdom_star': vdom,
@@ -448,4 +473,5 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
         'policy': policy,
         'wan_triggers': wan,
         'delays': delays,
+        'history': history,
     }

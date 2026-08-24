@@ -34,6 +34,8 @@ from fortigate_http import (
     ICMP_PING_TEMPLATE,
     REQUIRED_HTTP_SCRIPT_KEYS,
     SLOW_ITEM_DELAYS,
+    RAW_MASTER_HISTORY,
+    RAW_MASTER_HISTORY_KEYS,
     SNMP_MONITORING_CG,
     VDOM_STAR_SCRIPT_KEYS,
     _js_function_span,
@@ -259,6 +261,15 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(VDOM_STAR_SCRIPT_KEYS, ('fgate.netif.get_data', 'fgate.sdwan.get_data'))
         self.assertEqual(SLOW_ITEM_DELAYS['fgate.firmware.get_data'], '12h')
         self.assertEqual(SLOW_ITEM_DELAYS['fgate.service.get_data'], '1h')
+        self.assertEqual(RAW_MASTER_HISTORY, '1h')
+        self.assertEqual(
+            RAW_MASTER_HISTORY_KEYS,
+            (
+                'fgate.netif.get_data',
+                'fgate.sdwan.get_data',
+                'fgate.system.get_data',
+            ),
+        )
 
     def test_ha_role_script_is_not_zbx27082(self):
         from fortigate_http_zabbix import HA_ROLE_SCRIPT

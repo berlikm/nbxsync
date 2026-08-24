@@ -229,6 +229,13 @@ def main() -> int:
         'surgical vdom=* flatten on netif + SD-WAN scripts; 424 does not walk VDOMs; stock YAML is not imported',
     )
     record(
+        'network_fortigate_http_raw_master_history',
+        'patch_raw_master_history' in zbx_src
+        and 'RAW_MASTER_HISTORY' in forti_http
+        and "RAW_MASTER_HISTORY = '1h'" in forti_http,
+        'netif/sdwan/system masters keep 1h history so lastclock is visible',
+    )
+    record(
         'network_fortigate_fqdn_is_platform_jinja',
         "FGATE_FQDN_JINJA = '{{ object.primary_ip4.address.ip }}'" in forti_http
         and 'FGATE_FQDN_MACRO: FGATE_FQDN_JINJA' in forti_http

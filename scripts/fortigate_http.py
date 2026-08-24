@@ -145,6 +145,18 @@ SLOW_ITEM_DELAYS = {
     'fgate.service.get_data': '1h',
 }
 
+# Stock Forti HTTP masters use history=0 (pass-through to dependents). item.get
+# lastclock/lastvalue then stay empty even when the poller is running — that is
+# why fgate.ha.role (default history) looked healthy while sdwan/netif/system
+# looked uncollected. Keep 1h so Execute now is visible; do not store days of
+# vdom=* JSON.
+RAW_MASTER_HISTORY = '1h'
+RAW_MASTER_HISTORY_KEYS = (
+    'fgate.netif.get_data',
+    'fgate.sdwan.get_data',
+    'fgate.system.get_data',
+)
+
 # ZBX-27082: getHttpData reuses one HttpRequest and addHeader()s Authorization
 # on every call. Fixed upstream for 7.0.30rc1 (not 7.0.29rc1). Vendor 7.0-2
 # still has the bug; detect the script, do not trust the version string.
