@@ -251,7 +251,7 @@ _NOT_OBJECT_RE = re.compile(
     r"(if \(typeof response !== 'object' \|\| response === null\) \{[\s\S]*?"
     r"received data is not an object\.[\s\S]*?\}\s*\n)"
 )
-_NETIF_LIST_GET = re.compile(r'(var netif_list = getHttpData\([\s\S]*?\);\s*\n)')
+_NETIF_LIST_GET = re.compile(r'(var netif_list = [^;]+;\s*\n)')
 _SDWAN_LIST_GET = re.compile(r'(var sdwan_list = [^;]+;\s*\n)')
 _NETIF_LOOKUP_RE = re.compile(
     r"if \(typeof item\.q_origin_key !== 'undefined' && "
@@ -276,14 +276,24 @@ _SDWAN_HEALTH_RE = re.compile(
     r"Object\.assign\(v, sdwan_health_data\.results\[v\.name\]\);\s*"
     r"\}"
 )
-_VDOM_URLS = (
+_VDOM_URLS = ()
+_NETIF_EMPTY_DATA = '{"data": [], "error": ""}'
+_NETIF_FETCHES = (
     (
-        re.compile(r"api_url \+ '/api/v2/monitor/system/interface(?:\?[^']*)?'"),
-        "api_url + '/api/v2/monitor/system/interface?include_vlan=true&vdom=*'",
+        re.compile(
+            r"var netif_data = getHttpData\(\s*"
+            r"api_url \+ '/api/v2/monitor/system/interface(?:\?[^']*)?'\s*"
+            r"\);"
+        ),
+        "var netif_data = fortiFetchVdom(api_url, '/api/v2/monitor/system/interface?include_vlan=true');",
     ),
     (
-        re.compile(r"api_url \+ '/api/v2/cmdb/system/interface(?:\?[^']*)?'"),
-        "api_url + '/api/v2/cmdb/system/interface?vdom=*'",
+        re.compile(
+            r"var netif_list = getHttpData\(\s*"
+            r"api_url \+ '/api/v2/cmdb/system/interface(?:\?[^']*)?'\s*"
+            r"\);"
+        ),
+        "var netif_list = fortiFetchVdom(api_url, '/api/v2/cmdb/system/interface');",
     ),
 )
 _NETIF_KEYS = "['q_origin_key', 'name', 'mode', 'type', 'description']"
@@ -606,14 +616,16 @@ function fortiFetchVdom(base, path) {
 
 def script_has_vdom_star(script: str) -> bool:
     """True when interface/SD-WAN collection already requests every VDOM."""
-    if not script or _VDOM_STAR_MARK not in script or 'vdom=*' not in script:
+    if not script or _VDOM_STAR_MARK not in script or 'function fortiFetchVdom' not in script:
         return False
     if 'virtual-wan/members' in script or '/cmdb/system/sdwan' in script:
+        return '"member_lld": []' in script
+    if '/monitor/system/interface' in script or '/cmdb/system/interface' in script:
         return (
-            'function fortiFetchVdom' in script
-            and '"member_lld": []' in script
+            "fortiFetchVdom(api_url, '/api/v2/cmdb/system/interface')" in script
+            and '{"data": [], "error": ""}' in script
         )
-    return True
+    return 'vdom=*' in script
 
 
 def _is_vdom_block(obj) -> bool:
@@ -743,18 +755,52 @@ def _forti_fetch_vdom_js() -> str:
     return '\n' + FORTI_VDOM_HELPERS[start:].lstrip('\n')
 
 
+def _ensure_fetch_helper(script: str) -> str:
+    if 'function fortiFetchVdom' in script:
+        return script
+    if 'function flattenFortiSdwanCmdb' not in script:
+        return script
+    patched, n_fn = _FLATTEN_SDWAN_END.subn(
+        lambda m: m.group(1) + _forti_fetch_vdom_js(), script, count=1
+    )
+    return patched if n_fn == 1 else script
+
+
+def _ensure_netif_vdom_resilience(script: str) -> str:
+    """Upgrade iface collection so a vdom=* 500 does not leave data as {}."""
+    patched = _ensure_fetch_helper(script)
+    if 'function fortiFetchVdom' not in patched:
+        return script
+    for rx, repl in _NETIF_FETCHES:
+        patched = rx.sub(repl, patched, count=1)
+    if 'flattenFortiCmdbList(netif_list)' not in patched:
+        patched, n_norm = _NETIF_LIST_GET.subn(
+            lambda m: m.group(1) + _NETIF_NORMALIZE, patched, count=1
+        )
+        if n_norm != 1:
+            return script
+    if _NETIF_KEYS_VDOM not in patched and _NETIF_KEYS in patched:
+        patched = patched.replace(_NETIF_KEYS, _NETIF_KEYS_VDOM, 1)
+    if 'fortiMonitorLookup(netif_data.results' not in patched:
+        patched, n_lookup = _NETIF_LOOKUP_RE.subn(_NETIF_LOOKUP, patched, count=1)
+        if n_lookup != 1:
+            return script
+    if 'fortiIfaceId(item)' not in patched:
+        patched, n_id = _NETIF_ID_RE.subn('item.id = fortiIfaceId(item);', patched, count=1)
+        if n_id != 1:
+            return script
+    if 'netif_list.results.map' in patched and '(netif_list.results || []).map' not in patched:
+        patched = patched.replace('netif_list.results.map', '(netif_list.results || []).map', 1)
+    if _SDWAN_STOCK_DATA in patched and '"member_lld": []' not in patched:
+        patched = patched.replace(_SDWAN_STOCK_DATA, _NETIF_EMPTY_DATA, 1)
+    return patched
+
+
 def _ensure_sdwan_vdom_resilience(script: str) -> str:
     """Upgrade SD-WAN collection so a vdom=* 500 does not empty $.data."""
-    patched = script
+    patched = _ensure_fetch_helper(script)
     if 'function fortiFetchVdom' not in patched:
-        if 'function flattenFortiSdwanCmdb' in patched:
-            patched, n_fn = _FLATTEN_SDWAN_END.subn(
-                lambda m: m.group(1) + _forti_fetch_vdom_js(), patched, count=1
-            )
-            if n_fn != 1:
-                return script
-        else:
-            return script
+        return script
     for rx, repl in _SDWAN_FETCHES:
         patched = rx.sub(repl, patched, count=1)
     if 'flattenFortiSdwanCmdb(sdwan_list)' not in patched:
@@ -799,19 +845,7 @@ def patch_vdom_star_script(script: str) -> str:
     for rx, repl in _VDOM_URLS:
         patched = rx.sub(repl, patched)
     if '/api/v2/monitor/system/interface' in script:
-        if 'flattenFortiCmdbList(netif_list)' not in patched:
-            patched, n_norm = _NETIF_LIST_GET.subn(
-                lambda m: m.group(1) + _NETIF_NORMALIZE, patched, count=1
-            )
-            if n_norm != 1:
-                return script
-        patched = patched.replace(_NETIF_KEYS, _NETIF_KEYS_VDOM, 1)
-        patched, n_lookup = _NETIF_LOOKUP_RE.subn(_NETIF_LOOKUP, patched, count=1)
-        if n_lookup != 1:
-            return script
-        patched, n_id = _NETIF_ID_RE.subn('item.id = fortiIfaceId(item);', patched, count=1)
-        if n_id != 1:
-            return script
+        patched = _ensure_netif_vdom_resilience(patched)
     if '/api/v2/cmdb/system/sdwan' in script:
         patched = _ensure_sdwan_vdom_resilience(patched)
     return patched

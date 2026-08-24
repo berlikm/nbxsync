@@ -433,10 +433,24 @@ class FortiVdomStarTests(unittest.TestCase):
         patched = patch_vdom_star_script(patch_zbx27082_script(raw))
         self.assertTrue(script_has_vdom_star(patched))
         self.assertFalse(script_has_zbx27082(patched))
-        self.assertIn('include_vlan=true&vdom=*', patched)
+        self.assertIn("fortiFetchVdom(api_url, '/api/v2/monitor/system/interface?include_vlan=true')", patched)
+        self.assertIn("fortiFetchVdom(api_url, '/api/v2/cmdb/system/interface')", patched)
+        self.assertIn('{"data": [], "error": ""}', patched)
+        self.assertIn('(netif_list.results || []).map', patched)
         self.assertIn('flattenFortiCmdbList(netif_list)', patched)
         self.assertIn('fortiIfaceId(item)', patched)
         self.assertEqual(patch_vdom_star_script(patched), patched)
+
+    def test_netif_vdom_star_500_keeps_data_array(self):
+        raw = _yaml_script(_http_yaml(), 'fgate.netif.get_data')
+        patched = patch_vdom_star_script(patch_zbx27082_script(raw))
+        naive = patched.replace('{"data": [], "error": ""}', '{"data": {}, "error": ""}', 1)
+        naive = naive.replace('function fortiFetchVdom', 'function fortiFetchVdomMissing', 1)
+        self.assertFalse(script_has_vdom_star(naive))
+        upgraded = patch_vdom_star_script(naive)
+        self.assertTrue(script_has_vdom_star(upgraded))
+        self.assertIn('{"data": [], "error": ""}', upgraded)
+        self.assertIn("fortiFetchVdom(api_url, '/api/v2/cmdb/system/interface')", upgraded)
 
     def test_bundled_sdwan_script_gets_vdom_star(self):
         raw = _yaml_script(_http_yaml(), 'fgate.sdwan.get_data')
