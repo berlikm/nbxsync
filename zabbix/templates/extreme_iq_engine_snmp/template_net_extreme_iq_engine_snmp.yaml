@@ -13,7 +13,8 @@ zabbix_export:
       Official pack: XIQ Auxiliary Files. Operator page: zabbix/02-extreme-access-points.md.
       Do not also link Network Generic (icmpping collision).
       ICMP loss/RTT, CPU critical, and client-count triggers are present but DISABLED
-      (collect first). SNMP-dead is Warning; AP eth down is Warning (plant ticket is switch UP-).
+      (collect first). SNMP-dead is Warning; AP eth down is Warning after 3×1m
+      (plant ticket is switch UP-; one-shot ifOperStatus blips stay silent).
     groups:
     - name: Templates/Network devices
     items:
@@ -712,10 +713,17 @@ zabbix_export:
           value: '{#IFNAME}'
         trigger_prototypes:
         - uuid: c42facaf18a24ad58717f579a10601b5
-          expression: '{$IFCONTROL}=1 and last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2 and last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2)'
+          expression: '{$IFCONTROL}=1 and min(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#3)=2
+            and max(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#15)=1'
+          recovery_mode: RECOVERY_EXPRESSION
+          recovery_expression: last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL}=0
           name: 'Extreme IQ Engine: Interface {#IFNAME}: Link down'
           priority: WARNING
-          description: AP eth oper-down. Cable/PoE pages on switch UP- High; this is next-day unless the AP is hung with eth still up.
+          description: 'AP eth down(2) for 3×1m after a recent up. A single SNMP
+            sample of down (CH proxy → far AP) is not a cable. Unused never-up
+            eth1 stays silent (no up in last 15 polls). Plant ticket is switch
+            UP- Average; AP ICMP High if the box is gone.
+            '
           dependencies:
           - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
             expression: max(/Extreme IQ Engine by SNMP/icmpping,#3)=0

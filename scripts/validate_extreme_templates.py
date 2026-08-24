@@ -768,6 +768,35 @@ def validate_iq(doc: dict) -> None:
         bool(snmp) and snmp.get('priority') == 'WARNING',
         str((snmp or {}).get('priority')),
     )
+    eth_ld = by_name.get('Extreme IQ Engine: Interface {#IFNAME}: Link down')
+    eth_expr = ((eth_ld or {}).get('expression') or '').replace(' ', '').replace('\n', '')
+    eth_rec = ((eth_ld or {}).get('recovery_expression') or '').replace(' ', '').replace('\n', '')
+    record(
+        'IQ eth link-down Warning',
+        bool(eth_ld) and (eth_ld or {}).get('priority') == 'WARNING',
+        str((eth_ld or {}).get('priority')),
+    )
+    record(
+        'IQ eth link-down 3-sample settle',
+        'min(/ExtremeIQEnginebySNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#3)=2' in eth_expr,
+        (eth_ld or {}).get('expression') or '',
+    )
+    record(
+        'IQ eth link-down never-up silent',
+        'max(/ExtremeIQEnginebySNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#15)=1' in eth_expr,
+        (eth_ld or {}).get('expression') or '',
+    )
+    record(
+        'IQ eth link-down not one-shot .diff()',
+        '#1)<>' not in eth_expr and '.diff()' not in eth_expr,
+        (eth_ld or {}).get('expression') or '',
+    )
+    record(
+        'IQ eth link-down recovers on up',
+        'last(/ExtremeIQEnginebySNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1' in eth_rec
+        and str((eth_ld or {}).get('recovery_mode') or '').upper() == 'RECOVERY_EXPRESSION',
+        (eth_ld or {}).get('recovery_expression') or '',
+    )
     validate_health_dashboard('IQ', doc, tpl, pages=('Overview', 'RF'))
     validate_interface_dashboard('IQ', tpl, compact_map=True)
 

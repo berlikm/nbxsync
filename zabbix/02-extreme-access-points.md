@@ -34,7 +34,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | Memory high | yes | Average |
 | Temperature (canary) | yes | Average — many APs stub `ahEnvirmentTemp`; **not** switch 95/100 |
 | CPU high (`{$CPU.UTIL.WARN}=90`) | yes | Warning — GTAC: high CPU alone is not a fault |
-| AP eth / mgt oper down | yes | Warning — plant ticket is switch `UP-` (Average) |
+| AP eth / mgt oper down | yes | Warning — **3×1m** `down(2)` after a recent up. One SNMP blip (CH proxy → CN/US AP) is not a cable. Never-up eth1 stays silent. Plant ticket is switch `UP-` (Average). |
 | Unsupported item count | yes | Average — `{$UNSUPPORTED.MAX}` (default 5), 30m |
 | Zero eth / zero radios (SNMP=1 for 1h) | yes | Average — LLD/filter break, not a cable |
 | CPU critical | **no** | trigger **DISABLED** until a quiet pilot |
