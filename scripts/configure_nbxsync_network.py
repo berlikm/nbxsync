@@ -45,8 +45,10 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Platform TemplateRules: EXOS → Observability companion (nests stock); VOSS / IQ Engine → Extreme * by SNMP
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
   * Firewall role FortiGate HTTP macros (https/443, WAN/HA/mgmt LLD, no policy LLD).
-    Token / FQDN stay per-device. Does not HostSync Fortis (live SNMP still uses
-    ``{$NET.IF.IFNAME.MATCHES}``).
+    Token / FQDN stay per-device. ``--apply`` and ``--apply-firewall-macros`` write
+    NetBox ZabbixMacroAssignment only. They do not HostSync Fortis (live SNMP still
+    uses ``{$NET.IF.IFNAME.MATCHES}``). Use ``--apply-firewall-macros`` when you
+    only want the Firewall role — it skips Extreme YAML import and check-now.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -58,6 +60,8 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
 Stage matrix (what each flag enables):
   ``--apply``                     = stages 0–3: template imports + EXOS/VOSS/IQ rules + IFALIAS + destination globals + TEMP/ICMP/Health patches.
                                     Speed Expect is nested on VOSS and EXOS Observability (empty ifAlias = not discovered).
+                                    Also writes Device Role Firewall FortiGate HTTP macros (no Forti HostSync).
+  ``--apply-firewall-macros``     = NetBox-only Device Role Firewall macros. No Extreme import, no Zabbix API, no HostSync.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -92,6 +96,9 @@ Usage::
   export NBX_ZABBIX_TOKEN=...
   # If NetBox has no row named "Zabbix Production", also set NBX_ZABBIX_URL.
   python scripts/configure_nbxsync_network.py --apply
+
+  # Firewall Device Role macros only (no Extreme YAML / check-now / HostSync)
+  python scripts/configure_nbxsync_network.py --apply-firewall-macros
 
   # Temporary LM cutover silence only (not the long-term target)
   python scripts/configure_nbxsync_network.py --apply --cutover-silence
@@ -1847,12 +1854,15 @@ def step_role_macros(server) -> None:
     _step_firewall_role_macros(server)
 
 
-def _step_firewall_role_macros(server) -> None:
+def _step_firewall_role_macros(server, *, required: bool = False) -> int:
     """HTTPS / WAN LLD / quiet util on Device Role Firewall. Not TOKEN/FQDN."""
     roles = resolve_roles_for_macros(_FIREWALL_ROLE)
     if not roles:
-        logger.warning('  Role not found: %s — skipping FortiGate HTTP macros', _FIREWALL_ROLE)
-        return
+        msg = f'Role not found: {_FIREWALL_ROLE} — FortiGate HTTP macros not applied'
+        if required:
+            raise SystemExit(msg)
+        logger.warning('  %s', msg)
+        return 0
     secret = set(_FIREWALL_DEVICE_MACROS)
     for role in roles:
         for macro_name, value in _FIREWALL_ROLE_MACROS.items():
@@ -1863,6 +1873,7 @@ def _step_firewall_role_macros(server) -> None:
             '  %s FortiGate HTTP macros assigned (no token/FQDN; no Forti HostSync)',
             role.name,
         )
+    return len(roles)
 
 
 def _expected_host_macros(canonical_role: str) -> dict[str, str]:
@@ -3061,6 +3072,28 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     return 0
 
 
+def run_apply_firewall_macros() -> int:
+    """NetBox-only: ZabbixMacroAssignment on Device Role Firewall.
+
+    Does not import Extreme YAML, does not call the Zabbix API, does not
+    HostSync Fortis, and does not retarget FortiOS. Inheritance lands on the
+    next HostSync of a Firewall device — do not mass-sync while SNMP Fortis
+    still use ``{$NET.IF.IFNAME.MATCHES}``.
+    """
+    token = os.environ.get('NBX_ZABBIX_TOKEN')
+    if not token:
+        raise SystemExit('Set NBX_ZABBIX_TOKEN (or use --simulate)')
+    server = resolve_apply_zabbix_server(token=token)
+    _step_firewall_role_macros(server, required=True)
+    logger.info(
+        'Firewall role FortiGate HTTP macros written on Device Role %s '
+        '(https/443, WAN/HA/mgmt LLD, empty policy LLD). Token/FQDN stay '
+        'per-device. No Zabbix API, no HostSync, no FortiOS retarget.',
+        _FIREWALL_ROLE,
+    )
+    return 0
+
+
 def run_zabbix_only(*, link_speed_expect: bool = False) -> int:
     """Fallback smoke without NetBox object graph — delegates to run_network_zabbix_sim."""
     from run_network_zabbix_sim import main as sim_main
@@ -3078,6 +3111,11 @@ def main() -> int:
     mode.add_argument('--simulate', action='store_true', help='Lab: NetBox estate + SyncHostJob + Zabbix asserts')
     mode.add_argument('--zabbix-only', action='store_true', help='Zabbix API smoke only (no NetBox graph)')
     mode.add_argument('--apply', action='store_true', help='Apply network deltas (needs NBX_ZABBIX_TOKEN)')
+    mode.add_argument(
+        '--apply-firewall-macros',
+        action='store_true',
+        help='NetBox-only: FortiGate HTTP macros on Device Role Firewall (no Extreme import, no HostSync)',
+    )
     parser.add_argument('--link-speed-expect', action='store_true', help='Also assign Port Speed Expect on Switch roles (avoid if already nested on VOSS/Observability)')
     parser.add_argument(
         '--cutover-silence',
@@ -3089,6 +3127,10 @@ def main() -> int:
         return run_simulate(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
     if args.zabbix_only:
         return run_zabbix_only(link_speed_expect=args.link_speed_expect)
+    if args.apply_firewall_macros:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--apply-firewall-macros does not take --link-speed-expect or --cutover-silence')
+        return run_apply_firewall_macros()
     return run_apply(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
 
 

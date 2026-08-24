@@ -101,7 +101,7 @@ Stock HTTP has **no** host Health board. Upsert on this template via API (same p
 
 Mute an in-scope iface with context `{$NET.IF.CONTROL:"wan1"}=0` (or SD-WAN CONTROL), not a second CMDB. Prefer **excluding from LLD** over CONTROL=0 on a hundred names.
 
-Starter LLD (tighten on the first canary — **do not** MATCH `port`; on a 40F/100F `port1` is often LAN). `--apply` puts these on Device Role **Firewall**:
+Starter LLD (tighten on the first canary — **do not** MATCH `port`; on a 40F/100F `port1` is often LAN). `--apply-firewall-macros` (or full `--apply`) puts these on Device Role **Firewall**:
 
 ```
 {$NET.IF.IFNAME.MATCHES}     = ^(wan|ha|mgmt|dmz)
@@ -238,7 +238,7 @@ Do **not** clone stock FortiGate by HTTP.
 | FortiGate by SNMP (stock) | Platform FortiOS — **live today** | Fallback / HA-VPN gap only. Do not dual-link with HTTP |
 | Network Generic Device by SNMP | **not** on FortiGate | FMG/FAZ only |
 
-Template-level macros (not globals, not Switch roles). **`--apply` writes these as ZabbixMacroAssignment on Device Role Firewall** — same lever as Switch Access IFALIAS. Inheritance lands on HostSync of that firewall. `--apply` does **not** mass-HostSync Fortis (live SNMP still uses `{$NET.IF.IFNAME.MATCHES}`).
+Template-level macros (not globals, not Switch roles). **`--apply-firewall-macros` writes these as ZabbixMacroAssignment on Device Role Firewall** — same lever as Switch Access IFALIAS. Full `--apply` writes them too, plus Extreme templates. Inheritance lands on HostSync of that firewall. Neither flag mass-HostSyncs Fortis (live SNMP still uses `{$NET.IF.IFNAME.MATCHES}`). Prefer `--apply-firewall-macros` when you only want the role.
 
 ```
 {$FGATE.SCHEME}                 = https

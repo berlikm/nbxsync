@@ -21,7 +21,20 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SCHEME}'], 'https')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.API.PORT}'], '443')
 
-    def test_token_and_fqdn_are_not_role_defaults(self):
+    def test_role_macros_are_fleet_defaults_only(self):
+        self.assertEqual(
+            set(FIREWALL_ROLE_MACROS),
+            {
+                '{$FGATE.SCHEME}',
+                '{$FGATE.API.PORT}',
+                '{$NET.IF.IFNAME.MATCHES}',
+                '{$NET.IF.IFNAME.NOT_MATCHES}',
+                '{$FWP.FWNAME.MATCHES}',
+                '{$NET.IF.UTIL.MAX}',
+                '{$FIRMWARE.UPDATES.CONTROL}',
+                '{$DISK.FREE.CRIT}',
+            },
+        )
         for macro in FIREWALL_DEVICE_MACROS:
             self.assertNotIn(macro, FIREWALL_ROLE_MACROS)
 
