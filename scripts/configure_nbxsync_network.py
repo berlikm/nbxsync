@@ -3763,9 +3763,9 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             group='resolve',
         )
         record(
-            'firewall_ifname_wan_not_port1',
-            m_fw.get('{$NET.IF.IFNAME.MATCHES}') == '^(wan|ha|mgmt|dmz)'
-            and 'port' not in (m_fw.get('{$NET.IF.IFNAME.MATCHES}') or ''),
+            'firewall_ifname_lld_open',
+            m_fw.get('{$NET.IF.IFNAME.MATCHES}') == '.*'
+            and m_fw.get('{$NET.IF.IFNAME.NOT_MATCHES}') == 'CHANGE_IF_NEEDED',
             str(m_fw),
             group='resolve',
         )

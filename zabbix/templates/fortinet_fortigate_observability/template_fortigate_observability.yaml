@@ -169,7 +169,7 @@ zabbix_export:
           delay: 1m
           value_type: FLOAT
           params: 'count(exists_foreach(//fgate.sdwan_member.link_status[*]))-1'
-          description: 'Enabled SD-WAN member link_status items minus the seed. {$FGATE.SDWAN.EXPECTED}=0 keeps standalone quiet.'
+          description: 'Enabled SD-WAN member link_status items minus the seed. {$FGATE.SDWAN.EXPECTED}=1 tickets empty LLD while API is up (canary).'
           tags:
             - tag: component
               value: census
@@ -178,7 +178,7 @@ zabbix_export:
               expression: 'min(/FortiGate Observability/fgate.observability.api,30m)=1 and last(/FortiGate Observability/fgate.observability.sdwan.count)<{$FGATE.SDWAN.EXPECTED}'
               name: 'FortiGate: fewer SD-WAN members than expected'
               priority: AVERAGE
-              description: 'API is up and member LLD is below {$FGATE.SDWAN.EXPECTED}. ZBX-26072 "all members" or not an SD-WAN site — set EXPECTED=0 if none.'
+              description: 'API is up and member LLD is below {$FGATE.SDWAN.EXPECTED}. ZBX-26072 "all members" or not an SD-WAN site — set EXPECTED=0 if none. Canary is 1.'
               tags:
                 - tag: scope
                   value: availability
@@ -337,9 +337,9 @@ zabbix_export:
         - macro: '{$FWP.FWNAME.MATCHES}'
           value: '^$'
         - macro: '{$NET.IF.IFNAME.MATCHES}'
-          value: '^(wan|ha|mgmt|dmz)'
+          value: '.*'
         - macro: '{$NET.IF.IFNAME.NOT_MATCHES}'
-          value: '^(ssl\.|npu|fortilink|vlan)|loopback'
+          value: CHANGE_IF_NEEDED
         - macro: '{$FGATE.PATH.CONTROL}'
           value: '1'
           description: '1 = WAN/SD-WAN path tickets. ha.role=0 still mutes secondary.'
@@ -351,8 +351,8 @@ zabbix_export:
           value: '1'
           description: 'Minimum in-scope netif.status items after LLD. Zero with API up is a watcher ticket.'
         - macro: '{$FGATE.SDWAN.EXPECTED}'
-          value: '0'
-          description: 'Minimum SD-WAN members. 0 = no census (standalone). Set 2+ on SD-WAN sites after the canary names them.'
+          value: '1'
+          description: 'Minimum SD-WAN members. Canary 1 so empty LLD tickets. Set 0 on standalone without SD-WAN, 2+ after members are named.'
         - macro: '{$FGATE.HA.EXPECTED}'
           value: '1'
           description: 'Expected ha/checksums members. 1 = standalone. Set 2 on HA pair hosts.'

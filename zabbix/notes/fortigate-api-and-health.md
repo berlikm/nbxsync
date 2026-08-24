@@ -96,7 +96,7 @@ Do **not** fork the stock template. Macro / trigger-status patches on apply, sam
 
 SNMP-only landmines we **leave behind** by not using SNMP as the long-term path: ICMP loss/RTT Warning from the CH proxy (WAN RTT), HA member CPU High, FortiAP WTP noise. If SNMP stays on a host during the mixed cutover, those still apply.
 
-FortiGate `port1` is **not** a WAN class. On 40F/60F/100F/200F it is usually inside LAN. Fleet `{$NET.IF.IFNAME.MATCHES}` must not be `port`. Start with `^(wan|ha|mgmt|dmz)`; `x1`/`agg` are host overrides. SD-WAN member/health LLD stays stock `.*` — ZH4 canary showed 0 members when NAME MATCHES copied the physical ifName regex. Once aliases exist, prefer IFALIAS the way Access uses grammar classes (`USW|US|UP|MON|UW|TMON`).
+FortiGate `port1` is **not** a WAN class long-term. On 40F/60F/100F/200F it is usually inside LAN. Canary LLD is stock `.*` / `CHANGE_IF_NEEDED` so ZH4 names every iface; tighten `{$NET.IF.IFNAME.MATCHES}` after that dump and do not keep `port` in the fleet regex. SD-WAN member/health LLD stays `.*`. `{$FGATE.SDWAN.EXPECTED}` is **1** on the canary so empty member LLD tickets. Once aliases exist, prefer IFALIAS the way Access uses grammar classes (`USW|US|UP|MON|UW|TMON`).
 
 ---
 

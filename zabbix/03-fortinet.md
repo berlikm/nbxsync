@@ -64,7 +64,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | SD-WAN health-check loss | yes | Warning | Warning at `{$SDWAN.HEALTH.IF.LOSS.WARN}`=20 |
 | SD-WAN latency / jitter | **no** | dashboard **Path** | items only |
 | WAN / HA / mgmt iface link down | yes | Average — **primary/standalone only** | patched the same way |
-| VLAN / VPN / loopback / unused | **no** | not discovered | `{$NET.IF.IFNAME.MATCHES}`=`^(wan\|ha\|mgmt\|dmz)` |
+| VLAN / VPN / loopback / unused | **canary: yes** — tighten after ZH4 names them | discovered | `{$NET.IF.IFNAME.MATCHES}`=`.*` for now |
 | Interface errors | yes | Warning | patched to in **or** out errors (stock checked inbound twice) |
 | Sustained util | **no** | dashboard | Warning at **95%** / 15m — `{$NET.IF.UTIL.MAX}=101` |
 | Firewall policy hits / sessions | **no** | named canaries later | master `fgate.fwp.get_data` + discovery **disabled** |
@@ -102,13 +102,14 @@ Stock HTTP has **no** host Health board. Observability ships **Health** and **Pa
 
 Mute an in-scope iface with context `{$NET.IF.CONTROL:"wan1"}=0` (or SD-WAN CONTROL), not a second CMDB. Prefer **excluding from LLD** over CONTROL=0 on a hundred names.
 
-Starter LLD (tighten physical WAN on the first canary — **do not** MATCH `port` on NET.IF; on a 40F/100F/200F `port1` is often LAN). SD-WAN member/health LLD stays stock `.*` — members are cmdb names, not `wan`. `--apply-fortigate-http` (or `--apply-firewall-macros` / Extreme `--apply` for the **platform** macros only) puts these on **Platform FortiOS**:
+Canary LLD is **open** (`.*` / `CHANGE_IF_NEEDED`) so the first cluster names every iface and SD-WAN member. Down VLANs will Average until we tighten. Policy LLD stays empty (`{$FWP.FWNAME.MATCHES}`=`^$`). `--apply-fortigate-http` (or `--apply-firewall-macros` / Extreme `--apply` for the **platform** macros only) puts these on **Platform FortiOS**:
 
 ```
-{$NET.IF.IFNAME.MATCHES}        = ^(wan|ha|mgmt|dmz)
-{$NET.IF.IFNAME.NOT_MATCHES}    = ^(ssl\.|npu|fortilink|vlan)|loopback
+{$NET.IF.IFNAME.MATCHES}        = .*
+{$NET.IF.IFNAME.NOT_MATCHES}    = CHANGE_IF_NEEDED
 {$SDWAN.MEMBER.NAME.MATCHES}    = .*
 {$SDWAN.HEALTH.IFNAME.MATCHES}  = .*
+{$FGATE.SDWAN.EXPECTED}         = 1
 {$FWP.FWNAME.MATCHES}           = ^$
 {$NET.IF.UTIL.MAX}              = 101
 ```
@@ -265,7 +266,7 @@ Tag events with `site`, `circuit_id`, `path`, `device/member`, `cluster`, `layer
 | ICMP = 0 | box or path to mgmt | ICMP High |
 | HTTPS port down, API items stale | GUI port / scheme still `80`/`http`, or poller still on `443` instead of `20443` | Average port unavailable |
 | Zero interfaces | IFNAME regex or `netif` API fail | `fgate.observability.netif.count` < `{$NET.IF.DISCOVERY.MIN}` |
-| SD-WAN site, too few members | [ZBX-26072](https://support.zabbix.com/browse/ZBX-26072) or not SD-WAN | `fgate.observability.sdwan.count` < `{$FGATE.SDWAN.EXPECTED}` (default 0) |
+| SD-WAN site, too few members | [ZBX-26072](https://support.zabbix.com/browse/ZBX-26072) or not SD-WAN | `fgate.observability.sdwan.count` < `{$FGATE.SDWAN.EXPECTED}` (canary **1**) |
 | Duplicate Authorization 401 | 7.0-2/7.0-3 reuse `HttpRequest` in `getHttpData` ([ZBX-27082](https://support.zabbix.com/browse/ZBX-27082), fix in **7.0.30rc1**) | `--apply-fortigate-http` patches scripts in place; aborts if still vulnerable |
 | HA pair, wrong member count | backup never polled, or checksums API | `fgate.observability.ha.member.count` ≠ `{$FGATE.HA.EXPECTED}` (set 2 on pairs) |
 | Secondary API 401, ICMP up | trusted-hosts on **that** unit’s ha-mgmt; token not valid there | Average Unexpected API |
@@ -290,8 +291,8 @@ Template-level macros (not globals, not Switch roles, **not role Firewall**). **
 ```
 {$FGATE.SCHEME}                 = https
 {$FGATE.API.PORT}               = 20443
-{$NET.IF.IFNAME.MATCHES}        = ^(wan|ha|mgmt|dmz)
-{$NET.IF.IFNAME.NOT_MATCHES}    = ^(ssl\.|npu|fortilink|vlan)|loopback
+{$NET.IF.IFNAME.MATCHES}        = .*
+{$NET.IF.IFNAME.NOT_MATCHES}    = CHANGE_IF_NEEDED
 {$SDWAN.HEALTH.IFNAME.MATCHES}  = .*
 {$SDWAN.MEMBER.NAME.MATCHES}    = .*
 {$FWP.FWNAME.MATCHES}           = ^$
@@ -302,7 +303,7 @@ Template-level macros (not globals, not Switch roles, **not role Firewall**). **
 {$MEMORY.UTIL.CRIT}             = 101
 {$FGATE.PATH.CONTROL}           = 1
 {$NET.IF.DISCOVERY.MIN}         = 1
-{$FGATE.SDWAN.EXPECTED}         = 0
+{$FGATE.SDWAN.EXPECTED}         = 1
 {$FGATE.HA.EXPECTED}            = 1
 {$FGATE.API.FQDN}               = {{ object.primary_ip4.address.ip }}
 ```

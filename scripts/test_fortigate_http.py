@@ -94,10 +94,9 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertIn('object.primary_ip4.address.ip', FGATE_FQDN_JINJA)
         self.assertEqual(FGATE_TOKEN_ENV, 'NBX_FGATE_TOKEN')
 
-    def test_ifname_is_wan_ha_mgmt_not_port1(self):
-        matches = FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}']
-        self.assertEqual(matches, '^(wan|ha|mgmt|dmz)')
-        self.assertNotIn('port', matches)
+    def test_ifname_lld_is_open_for_canary(self):
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}'], '.*')
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.NOT_MATCHES}'], 'CHANGE_IF_NEEDED')
 
     def test_policy_lld_collects_none(self):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FWP.FWNAME.MATCHES}'], '^$')
@@ -194,13 +193,12 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(expr.count('in_errors'), 1)
         self.assertEqual(expr.count('out_errors'), 1)
 
-    def test_sdwan_lld_is_not_physical_ifname_filter(self):
+    def test_sdwan_lld_is_open_and_expected_is_one(self):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.IFNAME.MATCHES}'], '.*')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'], '.*')
-        self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SDWAN.EXPECTED}'], '0')
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SDWAN.EXPECTED}'], '1')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.HA.EXPECTED}'], '1')
-        self.assertIn('loopback', FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.NOT_MATCHES}'])
-        self.assertNotEqual(
+        self.assertEqual(
             FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'],
             FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}'],
         )
@@ -280,8 +278,10 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertNotIn("value: '443'", companion)
         self.assertIn("macro: '{$SDWAN.MEMBER.NAME.MATCHES}'", companion)
         self.assertIn("value: '.*'", companion)
+        self.assertIn("macro: '{$FGATE.SDWAN.EXPECTED}'", companion)
+        self.assertIn("value: '1'", companion)
+        self.assertIn('CHANGE_IF_NEEDED', companion)
         self.assertIn('Object.keys', companion)
-        self.assertIn('|loopback', companion)
 
 
 if __name__ == '__main__':
