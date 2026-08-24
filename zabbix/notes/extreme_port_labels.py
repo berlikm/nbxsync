@@ -32,8 +32,12 @@ searched under BASE_DIR/scripts). VOSS / Fabric Engine SSH does **not** use
 the runner's ``_send_exos`` helper — that hunts Netmiko's default
 ``(?:\\#|>)`` prompt and times out on ``hostname:1#``. VOSS uses the same
 ``ConnectHandler(device_type="extreme_vsp")`` settings as
-``extreme_firmware_upgrade.py`` (``expect_string=r"#|>"``, timing for
-``save config``). The runner module is registered in ``sys.modules`` before
+``extreme_firmware_upgrade.py`` for login, then hunts a *hostname* prompt
+(not a lone ``#``) for short commands. ``show running-config`` dumps are
+read with ``send_command_timing`` because Fabric Engine fills them with
+``# PORT CONFIGURATION`` comments — ``expect_string=r"#|>"`` stops on the
+first comment and every cabled port then looks ``missing``. ``save config``
+still uses timing. The runner module is registered in ``sys.modules`` before
 exec (Python 3.12 dataclasses). Compliance/remediate open **one SSH login
 per EXOS stack** (the member with ``oob_ip``/``primary_ip`` — the VC master).
 Slot-2 cables live on ``…-2`` in NetBox; ``configure ports 2:x`` still runs on
@@ -1338,8 +1342,15 @@ _RE_EXOS_DESCRIPTION = re.compile(
     r"^configure\s+ports?\s+(?P<port>\S+)\s+description-string\s+(?P<value>.+?)\s*$",
     re.MULTILINE,
 )
-_RE_VOSS_IFACE = re.compile(r"^interface\s+GigabitEthernet\s+(?P<port>\S+)\s*$", re.IGNORECASE)
-_RE_VOSS_NAME = re.compile(r'^\s*name\s+"?(?P<value>[^"\r\n]*)"?\s*$', re.IGNORECASE)
+# VOSS/FE still uses GigabitEthernet for 10G/25G/40G/100G. Clear ``current``
+# on any other ``interface`` line so a vlan name cannot stick to the last port.
+_RE_VOSS_IFACE = re.compile(
+    r"^interface\s+(?:(?:ten|twentyfive|forty|fifty|hundred)?gigabit)?ethernet\s+"
+    r"(?P<port>\S+)\s*$",
+    re.IGNORECASE,
+)
+_RE_VOSS_ANY_IFACE = re.compile(r"^interface\s+\S+", re.IGNORECASE)
+_RE_VOSS_NAME = re.compile(r'^\s*name\s+"?(?P<value>[^"\r\n]*?)"?\s*$', re.IGNORECASE)
 
 
 def _unquote(value: str) -> str:
@@ -1624,21 +1635,31 @@ def parse_exos_labels(config_text: str) -> tuple[dict[str, str], dict[str, str]]
 
 
 def parse_voss_labels(config_text: str) -> dict[str, str]:
-    """Extract ``{port: name}`` from the PORT CONFIGURATION blocks."""
+    """Extract ``{port: name}`` from VOSS PORT CONFIGURATION blocks.
+
+    Fabric Engine ``show running-config`` is full of ``#`` comment lines.
+    A prompt hunt of ``#|>`` stops on the first comment and this parser
+    then sees zero names — every cabled port looks ``missing``.
+    """
     labels: dict[str, str] = {}
     current: str | None = None
-    for line in (config_text or "").splitlines():
-        iface = _RE_VOSS_IFACE.match(line.strip())
-        if iface:
-            current = iface.group("port")
+    for raw in (config_text or "").splitlines():
+        line = raw.strip()
+        if _RE_VOSS_ANY_IFACE.match(line):
+            iface = _RE_VOSS_IFACE.match(line)
+            current = iface.group("port") if iface else None
             continue
-        if line.strip().lower() == "exit":
+        if line.lower() == "exit":
             current = None
             continue
-        if current:
-            name = _RE_VOSS_NAME.match(line)
-            if name:
-                labels[current] = name.group("value").strip()
+        if not current:
+            continue
+        name = _RE_VOSS_NAME.match(raw) or _RE_VOSS_NAME.match(line)
+        if not name:
+            continue
+        value = name.group("value").strip().strip('"')
+        if value:
+            labels[current] = value
     return labels
 
 
@@ -1824,9 +1845,11 @@ def _credentials(kind: str) -> tuple[str, str, str]:
     return "extreme_exos", exos_user, exos_pass
 
 
-#: Same ``expect_string`` Extreme Firmware Upgrade uses on VOSS ``send_command``.
-#: Netmiko's default ``(?:\#|>)`` is what failed on Fabric Engine sessions.
-VOSS_PROMPT_RE = r"#|>"
+#: Hostname prompt, not a lone ``#``. Firmware Upgrade's ``r"#|>"`` is right
+#: for short VOSS commands and wrong for ``show running-config``: Fabric Engine
+#: dumps are full of ``# PORT CONFIGURATION`` comments, and Netmiko stops on
+#: the first ``#``. ``HOSTNAME:1#`` / ``HOSTNAME:1(config-if)#`` still match.
+VOSS_PROMPT_RE = r"(?m)^[\w.:()-]{2,}(?:\([^)]+\))?[#>]\s*$"
 VOSS_CONNECT_RETRIES = 3
 VOSS_CONNECT_RETRY_DELAY = 5
 
@@ -1868,7 +1891,9 @@ def _connect_voss(device_name: str, device_ip: str, username: str, password: str
     The EXOS runner helpers (``_connect_netmiko`` / ``_send_exos``) hunt
     Netmiko's default ``(?:\\#|>)`` prompt. That is what failed on VOSS.
     Firmware Upgrade uses ``device_type="extreme_vsp"``, ``enable()``,
-    ``expect_string=r"#|>"``, and ``send_command_timing`` for ``save config``.
+    and ``send_command_timing`` for ``save config``. Short commands hunt
+    ``VOSS_PROMPT_RE`` (a hostname line, not a lone ``#``). Config dumps
+    never hunt a prompt — see ``_send_voss``.
     """
     from netmiko import ConnectHandler
 
@@ -1895,6 +1920,7 @@ def _connect_voss(device_name: str, device_ip: str, username: str, password: str
                 nc.enable()
             except Exception:
                 pass
+            _voss_disable_paging(nc)
             logger.info(
                 "VOSS SSH connected to %s (%s) attempt %d/%d",
                 device_name, device_ip, attempt, VOSS_CONNECT_RETRIES,
@@ -1938,6 +1964,7 @@ def _connect_voss(device_name: str, device_ip: str, username: str, password: str
                     )
             except Exception:
                 pass
+            _voss_disable_paging(nc)
             logger.info(
                 "VOSS SSH connected to %s (%s) via fallback (no prompt auto-detect)",
                 device_name, device_ip,
@@ -1959,8 +1986,23 @@ def _send(nc, cmd: str, read_timeout: int = 60, *, kind: str | None = None) -> s
     return nc.send_command_timing(cmd, read_timeout=read_timeout)
 
 
+def _voss_cmd_is_config_dump(cmd: str) -> bool:
+    """True for commands whose output is full of ``#`` comment banners."""
+    stripped = (cmd or "").strip().lower()
+    return stripped.startswith(("show running-config", "show configuration"))
+
+
 def _send_voss(nc, cmd: str, read_timeout: int = 60) -> str:
-    """``send_command(..., expect_string=r"#|>")`` — same as firmware upgrade."""
+    """Hunt a hostname prompt for short commands; timing-only for config dumps.
+
+    Firmware Upgrade's ``expect_string=r"#|>"`` is safe for ``interface`` /
+    ``name`` / ``exit``. It is not safe for ``show running-config``: the first
+    ``# PORT CONFIGURATION`` line matches and the rest of the dump never
+    arrives, so ``parse_voss_labels`` returns ``{}`` and compliance marks
+    every cabled port ``missing``.
+    """
+    if _voss_cmd_is_config_dump(cmd):
+        return _send_voss_timing(nc, cmd, read_timeout=read_timeout)
     send = getattr(nc, "send_command", None)
     if callable(send):
         try:
@@ -2000,11 +2042,37 @@ def _send_voss_timing(nc, cmd: str, read_timeout: int = 60) -> str:
     return "" if output is None else str(output)
 
 
+def _voss_disable_paging(nc) -> None:
+    """Best-effort. ``terminal_server`` fallback skips Netmiko session_prep."""
+    try:
+        _send_voss(nc, "terminal more disable", read_timeout=15)
+    except Exception:  # noqa: BLE001
+        logger.debug("VOSS terminal more disable failed", exc_info=True)
+
+
 def _fetch_live_labels(nc, kind: str) -> tuple[dict[str, str], dict[str, str]]:
     """Read the live labels off an open session. Returns (labels, descriptions)."""
     if kind == "voss":
-        text = _send(nc, "show running-config", read_timeout=180, kind="voss")
-        return parse_voss_labels(text), {}
+        _voss_disable_paging(nc)
+        text = _send(
+            nc, "show running-config module port", read_timeout=180, kind="voss",
+        )
+        labels = parse_voss_labels(text)
+        if not labels:
+            logger.warning(
+                "VOSS port-module dump parsed 0 names from %d chars; "
+                "retrying show running-config",
+                len(text or ""),
+            )
+            text = _send(nc, "show running-config", read_timeout=240, kind="voss")
+            labels = parse_voss_labels(text)
+            if not labels and len(text or "") > 200:
+                logger.warning(
+                    "VOSS running-config is %d chars but parsed 0 port names "
+                    "(first 200: %r)",
+                    len(text or ""), (text or "")[:200],
+                )
+        return labels, {}
     text = _send(nc, "show configuration vlan", read_timeout=120)
     display, description = parse_exos_labels(text)
     if not display and not description:
@@ -3433,8 +3501,8 @@ if _NETBOX:
                             "EXOS/VOSS port (no lists, no extra punctuation)")
                 if kind == "voss":
                     # Do not use send_config_set — it hunts Netmiko's default
-                    # ``(?:\#|>)`` prompt. Firmware Upgrade sends VOSS config
-                    # with expect_string=r"#|>" / send_command_timing.
+                    # ``(?:\#|>)`` prompt. Short VOSS config lines hunt
+                    # ``VOSS_PROMPT_RE`` (hostname, not a comment ``#``).
                     if not voss_config:
                         output = _send(
                             nc, "configure terminal", read_timeout=30, kind="voss",

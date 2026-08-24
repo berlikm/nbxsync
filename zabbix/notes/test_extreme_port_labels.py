@@ -988,6 +988,54 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(e.lookup_live_label(labels, "1:24"), "USW-DI01_P29")
         self.assertEqual(e.lookup_live_label(labels, "1.24"), "USW-DI01_P29")
 
+    def test_voss_hash_comment_dump_parses_zero_names(self):
+        """What compliance saw when Netmiko stopped on the first ``#``."""
+        truncated = "#\n# PORT CONFIGURATION\n#\n"
+        self.assertEqual(e.parse_voss_labels(truncated), {})
+
+    def test_voss_port_block_and_vlan_name_does_not_stick(self):
+        text = textwrap.dedent("""\
+            #
+            # PORT CONFIGURATION
+            #
+            interface GigabitEthernet 1/19
+            name "L26-GFL-Di02:29"
+            exit
+            interface Vlan 100
+            name "USERS"
+            exit
+            interface GigabitEthernet 1/2
+            name "S-FWZONE:X1"
+            exit
+            interface TenGigabitEthernet 2/1
+            name "NNI:L26-Co02:2/1"
+            exit
+            interface GigabitEthernet 1/4
+            name ""
+            exit
+        """)
+        labels = e.parse_voss_labels(text)
+        self.assertEqual(labels["1/19"], "L26-GFL-Di02:29")
+        self.assertEqual(labels["1/2"], "S-FWZONE:X1")
+        self.assertEqual(labels["2/1"], "NNI:L26-Co02:2/1")
+        self.assertNotIn("1/4", labels)
+        self.assertNotEqual(labels.get("1/19"), "USERS")
+        self.assertNotIn("100", labels)
+
+    def test_voss_live_colon_name_is_forbidden_not_missing(self):
+        plan = e.PortPlan(
+            device="CH-STA-L26-L02-CORE01", site="ch-sta-l26",
+            kind="voss", ifname="1/19", expected="USW-GFL-D01_29",
+        )
+        e.compare_plan(
+            plan,
+            labels={"1/19": "L26-GFL-Di02:29"},
+            descriptions={},
+        )
+        self.assertEqual(plan.live, "L26-GFL-Di02:29")
+        self.assertEqual(plan.status, "forbidden")
+        self.assertIn(":", plan.detail)
+
 
 class MgmtHeuristicTests(unittest.TestCase):
     def test_missing_primary_ip_is_not_mgmt(self):
@@ -1217,10 +1265,39 @@ class VossSshTransportTests(unittest.TestCase):
         self.assertEqual(kw["banner_timeout"], 30)
         self.assertIs(kw["fast_cli"], False)
 
-    def test_prompt_is_firmware_expect_string(self):
-        self.assertEqual(e.VOSS_PROMPT_RE, r"#|>")
+    def test_prompt_matches_hostname_not_hash_comments(self):
+        pat = re.compile(e.VOSS_PROMPT_RE)
+        self.assertIsNone(pat.search("# PORT CONFIGURATION"))
+        self.assertIsNone(pat.search("#"))
+        self.assertIsNone(pat.search("#\n# PORT CONFIGURATION\n#"))
+        self.assertIsNotNone(pat.search("CH-STA-L26-L02-CORE01:1#"))
+        self.assertIsNotNone(pat.search("hostname:1(config-if)#"))
+        self.assertIsNotNone(pat.search("VSP-8284XSQ:1# "))
+        # Firmware-upgrade ``r"#|>"`` *does* match the comment — that is the bug.
+        old = re.compile(r"#|>")
+        self.assertIsNotNone(old.search("# PORT CONFIGURATION"))
 
-    def test_send_voss_uses_firmware_expect_string(self):
+    def test_config_dump_uses_timing_not_hash_prompt_hunt(self):
+        class Fake:
+            def send_command(self, cmd, read_timeout=60, expect_string=None):
+                raise AssertionError(
+                    f"must not hunt a prompt on {cmd!r}; comments would match"
+                )
+
+            def send_command_timing(self, cmd, read_timeout=60, last_read=2.0):
+                return f"timing:{cmd}"
+
+        nc = Fake()
+        self.assertEqual(
+            e._send(nc, "show running-config", read_timeout=180, kind="voss"),
+            "timing:show running-config",
+        )
+        self.assertEqual(
+            e._send_voss(nc, "show running-config module port", read_timeout=180),
+            "timing:show running-config module port",
+        )
+
+    def test_short_command_hunts_hostname_prompt(self):
         class Fake:
             def __init__(self):
                 self.calls = []
@@ -1230,9 +1307,58 @@ class VossSshTransportTests(unittest.TestCase):
                 return "hostname:1# "
 
         nc = Fake()
-        out = e._send(nc, "show running-config", read_timeout=180, kind="voss")
+        out = e._send(nc, "configure terminal", read_timeout=30, kind="voss")
         self.assertEqual(out, "hostname:1# ")
-        self.assertEqual(nc.calls, [("show running-config", 180, r"#|>")])
+        self.assertEqual(nc.calls, [("configure terminal", 30, e.VOSS_PROMPT_RE)])
+
+    def test_fetch_live_labels_uses_port_module_then_parses(self):
+        dump = textwrap.dedent("""\
+            #
+            # PORT CONFIGURATION
+            #
+            interface GigabitEthernet 1/19
+            name "L26-GFL-Di02:29"
+            exit
+        """)
+
+        class Rec:
+            def __init__(self):
+                self.cmds = []
+
+            def send_command(self, cmd, read_timeout=60, expect_string=None):
+                self.cmds.append(("hunt", cmd))
+                return "ok"
+
+            def send_command_timing(self, cmd, read_timeout=60, last_read=2.0):
+                self.cmds.append(("timing", cmd))
+                if cmd.startswith("show running-config module port"):
+                    return dump
+                return "SHOULD-NOT-FULL-DUMP"
+
+        rec = Rec()
+        labels, descriptions = e._fetch_live_labels(rec, "voss")
+        self.assertEqual(labels["1/19"], "L26-GFL-Di02:29")
+        self.assertEqual(descriptions, {})
+        self.assertIn(("timing", "show running-config module port"), rec.cmds)
+        self.assertNotIn(("timing", "show running-config"), rec.cmds)
+        self.assertNotIn(("hunt", "show running-config"), rec.cmds)
+
+    def test_fetch_live_labels_falls_back_to_full_running_config(self):
+        class Fake:
+            def send_command(self, cmd, read_timeout=60, expect_string=None):
+                return "ok"
+
+            def send_command_timing(self, cmd, read_timeout=60, last_read=2.0):
+                if cmd == "show running-config":
+                    return (
+                        'interface GigabitEthernet 1/2\n'
+                        'name "S-FWZONE:X1"\n'
+                        "exit\n"
+                    )
+                return "#\n# PORT CONFIGURATION\n#\n"
+
+        labels, _ = e._fetch_live_labels(Fake(), "voss")
+        self.assertEqual(labels["1/2"], "S-FWZONE:X1")
 
     def test_send_voss_falls_back_to_timing_on_prompt_miss(self):
         class Fake:

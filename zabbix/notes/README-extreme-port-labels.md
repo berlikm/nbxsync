@@ -42,10 +42,13 @@ reliable.
 **VOSS / Fabric Engine SSH does not use those EXOS helpers.** Netmiko's
 default prompt hunt (`(?:\#|>)`) times out on Fabric Engine (`hostname:1#`).
 The labels script opens VOSS the same way `extreme_firmware_upgrade.py` does:
-`ConnectHandler(device_type="extreme_vsp")`, `enable()`,
-`send_command(..., expect_string=r"#|>")`, and `send_command_timing` for
-`save config`. Credentials still come from the runner or
-`NBX_NAPALM_VOSS_*`.
+`ConnectHandler(device_type="extreme_vsp")`, `enable()`. Short commands hunt a
+**hostname** prompt (`HOSTNAME:1#` / `HOSTNAME:1(config-if)#`), not a lone
+`#`. `show running-config` is read with `send_command_timing` because Fabric
+Engine dumps are full of `# PORT CONFIGURATION` comments — firmware-upgrade
+`expect_string=r"#|>"` stops on the first comment and every cabled port then
+looks `missing`. `save config` still uses timing. Credentials still come from
+the runner or `NBX_NAPALM_VOSS_*`.
 
 The loader searches, in order: the directory of this file, `…/scripts/` under
 that directory and its parent, Django `SCRIPTS_ROOT` / `BASE_DIR`. That covers
@@ -391,7 +394,7 @@ script treats that warning text as a command rejection.
 | Action | Command | Source |
 |---|---|---|
 | Set label | `interface GigabitEthernet <slot/port>` → `name "<LABEL>"` → `exit` | Live `show running-config` from `CH-STA-L26-L02-CORE01` (PORT CONFIGURATION PHASE II blocks) |
-| Read label | `show running-config` | same |
+| Read label | `show running-config module port`, then `show running-config` if that dump parsed zero `name`s | same; timing-only so `#` comments do not truncate the dump |
 | Save | `save config` | — |
 
 Interface-config mode form (`interface GigabitEthernet {slot/port[/sub-port]…}`)
@@ -405,9 +408,11 @@ label works on both platforms.
 SSH: Fabric Engine is not Extreme ERS. Netmiko `extreme_vsp` inherits ERS
 session prep, and the EXOS runner's `_send_exos` hunts `(?:\#|>)` — that is
 the `Pattern not detected: '(?:\\#|>)'` failure after three attempts. This
-script's VOSS path matches Extreme Firmware Upgrade: `extreme_vsp`,
-`expect_string=r"#|>"` (covers `hostname:1#` and `hostname:1(config-if)#`),
-and `send_command_timing` for `save config`. Login `timeout` / `auth_timeout`
+script's VOSS path matches Extreme Firmware Upgrade for login (`extreme_vsp`,
+60s auth). Short commands hunt a hostname prompt, not `r"#|>"`. Config dumps
+use `send_command_timing` — otherwise the first `# PORT CONFIGURATION` comment
+matches and compliance reports every cabled port `missing` with Live `—`.
+`save config` still uses timing. Login `timeout` / `auth_timeout`
 are **60s** (slow TACACS/RADIUS); banner stays 30s. EXOS SSH is unchanged.
 
 > **Corpus gap:** the Fabric Engine *CLI Commands Reference* is not in the
