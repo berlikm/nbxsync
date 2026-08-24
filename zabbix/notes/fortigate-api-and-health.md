@@ -91,7 +91,7 @@ Do **not** fork the stock template. Macro / trigger-status patches on apply, sam
 | `{$SERVICE.LICENSE.CONTROL}`=`1`, expiry 7d | Average on unsuccessful; Warning at 7d | Keep for production licenses; context-0 lab/unused SKUs |
 | Policy LLD `{$FWP.FWNAME.MATCHES}`=`.*` | No policy **triggers**, but ~8 items × every policy | MATCHES=`^$` **and** disable `fgate.fwp.get_data` + discovery (MATCHES alone still polls) |
 | Link-down uses `.diff()` + **manual close** | ACK a down WAN and it **will not re-fire** until another up→down | `--apply-fortigate-http` patches to sustained `#3` + auto-recover + `ha.role` gate |
-| No `vdom=*` on iface/SD-WAN scripts | Only the REST login VDOM (usually `root`) is discovered — other VDOMs look empty | Apply patches `fgate.netif.get_data` / `fgate.sdwan.get_data` to `?vdom=*` and flatten. Token needs read on those VDOMs |
+| No `vdom=*` on iface/SD-WAN scripts | Only the REST login VDOM (usually `root`) is discovered — other VDOMs look empty | Apply patches `fgate.netif.get_data` / `fgate.sdwan.get_data`. SD-WAN `vdom=*` 500 (VDOM without SD-WAN) retries per-VDOM then login VDOM; LLD always has `member_lld` so JSONPath stays supported |
 | `{$NET.IF.IFNAME.NOT_MATCHES}`=`.*` | MATCHES `.*` **and** NOT_MATCHES `.*` excludes every iface | Keep **`CHANGE_IF_NEEDED`**. Never set NOT_MATCHES to `.*` |
 | Stock high-error trigger | README expression checks **in_errors twice** (no out_errors) | patched to in **or** out |
 | CPU CRIT 95 / mem CRIT 90 = **High** | 03:00 pages | `{$CPU.UTIL.CRIT}`/`{$MEMORY.UTIL.CRIT}`=101 on FortiOS; conserve-mode Average instead |

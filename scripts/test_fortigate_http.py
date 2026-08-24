@@ -445,10 +445,41 @@ class FortiVdomStarTests(unittest.TestCase):
         patched = patch_vdom_star_script(patch_zbx27082_script(raw))
         self.assertTrue(script_has_vdom_star(patched))
         self.assertFalse(script_has_zbx27082(patched))
-        self.assertIn("api_url + '/api/v2/monitor/virtual-wan/members?vdom=*'", patched)
         self.assertIn('flattenFortiSdwanCmdb(sdwan_list)', patched)
+        self.assertIn("fortiFetchVdom(api_url, '/api/v2/monitor/virtual-wan/members')", patched)
+        self.assertIn("fortiFetchVdom(api_url, '/api/v2/cmdb/system/sdwan')", patched)
+        self.assertNotIn(
+            "api_url + '/api/v2/monitor/virtual-wan/members?vdom=*'",
+            patched,
+        )
+        self.assertIn('"member_lld": []', patched)
+        self.assertIn('(sdwan_list.results.members || []).filter', patched)
         self.assertIn('fortiMonitorLookup(sdwan_member_data.results', patched)
         self.assertEqual(patch_vdom_star_script(patched), patched)
+
+    def test_sdwan_vdom_star_500_keeps_member_lld_path(self):
+        raw = _yaml_script(_http_yaml(), 'fgate.sdwan.get_data')
+        patched = patch_vdom_star_script(patch_zbx27082_script(raw))
+        naive = patched.replace(
+            '{"data": {"member_lld": [], "health_lld": [], "health_data": []}, "error": ""}',
+            '{"data": {}, "error": ""}',
+            1,
+        )
+        naive = naive.replace('function fortiFetchVdom', 'function fortiFetchVdomMissing', 1)
+        self.assertFalse(script_has_vdom_star(naive))
+        upgraded = patch_vdom_star_script(naive)
+        self.assertTrue(script_has_vdom_star(upgraded))
+        self.assertIn('function fortiFetchVdom', upgraded)
+        self.assertIn('"member_lld": []', upgraded)
+
+    def test_monitor_map_accepts_array_results(self):
+        payload = {
+            'status': 'success',
+            'vdom': 'root',
+            'results': [{'interface': 'port1', 'link': True}],
+        }
+        mapped = flatten_forti_monitor_map(payload)
+        self.assertEqual(mapped['root:port1']['link'], True)
 
 
 if __name__ == '__main__':

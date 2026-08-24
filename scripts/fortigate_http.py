@@ -252,7 +252,7 @@ _NOT_OBJECT_RE = re.compile(
     r"received data is not an object\.[\s\S]*?\}\s*\n)"
 )
 _NETIF_LIST_GET = re.compile(r'(var netif_list = getHttpData\([\s\S]*?\);\s*\n)')
-_SDWAN_LIST_GET = re.compile(r'(var sdwan_list = getHttpData\([\s\S]*?\);\s*\n)')
+_SDWAN_LIST_GET = re.compile(r'(var sdwan_list = [^;]+;\s*\n)')
 _NETIF_LOOKUP_RE = re.compile(
     r"if \(typeof item\.q_origin_key !== 'undefined' && "
     r"typeof netif_data\.results\[String\(item\.q_origin_key\)\] !== 'undefined'\) \{\s*"
@@ -285,18 +285,6 @@ _VDOM_URLS = (
         re.compile(r"api_url \+ '/api/v2/cmdb/system/interface(?:\?[^']*)?'"),
         "api_url + '/api/v2/cmdb/system/interface?vdom=*'",
     ),
-    (
-        re.compile(r"api_url \+ '/api/v2/monitor/virtual-wan/members(?:\?[^']*)?'"),
-        "api_url + '/api/v2/monitor/virtual-wan/members?vdom=*'",
-    ),
-    (
-        re.compile(r"api_url \+ '/api/v2/monitor/virtual-wan/health-check(?:\?[^']*)?'"),
-        "api_url + '/api/v2/monitor/virtual-wan/health-check?vdom=*'",
-    ),
-    (
-        re.compile(r"api_url \+ '/api/v2/cmdb/system/sdwan(?:\?[^']*)?'"),
-        "api_url + '/api/v2/cmdb/system/sdwan?vdom=*'",
-    ),
 )
 _NETIF_KEYS = "['q_origin_key', 'name', 'mode', 'type', 'description']"
 _NETIF_KEYS_VDOM = "['q_origin_key', 'name', 'mode', 'type', 'description', 'vdom']"
@@ -315,6 +303,58 @@ _SDWAN_NORMALIZE = (
     "\t\t\tsdwan_member_data = { results: flattenFortiMonitorMap(sdwan_member_data) };\n"
     "\t\t\tsdwan_health_data = { results: flattenFortiMonitorMap(sdwan_health_data) };\n"
     "\t\t\tsdwan_list = { results: flattenFortiSdwanCmdb(sdwan_list) };\n"
+)
+_SDWAN_EMPTY_DATA = (
+    '{"data": {"member_lld": [], "health_lld": [], "health_data": []}, "error": ""}'
+)
+_SDWAN_STOCK_DATA = '{"data": {}, "error": ""}'
+_SDWAN_FETCHES = (
+    (
+        re.compile(
+            r"var sdwan_member_data = getHttpData\(\s*"
+            r"api_url \+ '/api/v2/monitor/virtual-wan/members(?:\?[^']*)?'\s*"
+            r"\);"
+        ),
+        "var sdwan_member_data = fortiFetchVdom(api_url, '/api/v2/monitor/virtual-wan/members');",
+    ),
+    (
+        re.compile(
+            r"var sdwan_health_data = getHttpData\(\s*"
+            r"api_url \+ '/api/v2/monitor/virtual-wan/health-check(?:\?[^']*)?'\s*"
+            r"\);"
+        ),
+        "var sdwan_health_data = fortiFetchVdom(api_url, '/api/v2/monitor/virtual-wan/health-check');",
+    ),
+    (
+        re.compile(
+            r"var sdwan_list = getHttpData\(\s*"
+            r"api_url \+ '/api/v2/cmdb/system/sdwan(?:\?[^']*)?'\s*"
+            r"\);"
+        ),
+        "var sdwan_list = fortiFetchVdom(api_url, '/api/v2/cmdb/system/sdwan');",
+    ),
+)
+_SDWAN_FOREACH = (
+    (
+        "sdwan_list.results['health-check'].forEach",
+        "(sdwan_list.results['health-check'] || []).forEach",
+    ),
+    (
+        'sdwan_list.results.members.forEach',
+        '(sdwan_list.results.members || []).forEach',
+    ),
+    (
+        'sdwan_list.results.members.filter',
+        '(sdwan_list.results.members || []).filter',
+    ),
+    (
+        "sdwan_list.results['health-check'].filter",
+        "(sdwan_list.results['health-check'] || []).filter",
+    ),
+)
+_FLATTEN_SDWAN_END = re.compile(
+    r"(function flattenFortiSdwanCmdb\(payload\) \{[\s\S]*?"
+    r"return \{ members: members, 'health-check': health \};\n\})"
 )
 _NETIF_LOOKUP = (
     "var _mon = fortiMonitorLookup(netif_data.results, item.vdom, item.q_origin_key);\n"
@@ -394,6 +434,19 @@ function flattenFortiMonitorMap(payload) {
 		var block = blocks[i];
 		var vdom = block.vdom || '';
 		var results = block.results;
+		if (Array.isArray(results)) {
+			var mapped = {};
+			results.forEach(function (row) {
+				if (!row || typeof row !== 'object') {
+					return;
+				}
+				var name = row.interface || row.name || row.q_origin_key;
+				if (name !== undefined && name !== null && String(name) !== '') {
+					mapped[String(name)] = row;
+				}
+			});
+			results = mapped;
+		}
 		if (!results || typeof results !== 'object' || Array.isArray(results)) {
 			continue;
 		}
@@ -482,12 +535,85 @@ function flattenFortiSdwanCmdb(payload) {
 	return { members: members, 'health-check': health };
 }
 
+function fortiVdomNames(base) {
+	if (typeof fortiVdomNames._cache !== 'undefined') {
+		return fortiVdomNames._cache;
+	}
+	var names = [];
+	try {
+		var payload = getHttpData(base + '/api/v2/cmdb/system/vdom');
+		var rows = [];
+		if (payload && Array.isArray(payload.results)) {
+			rows = payload.results;
+		}
+		for (var i = 0; i < rows.length; i++) {
+			var row = rows[i];
+			if (!row) {
+				continue;
+			}
+			var n = row.name || row.q_origin_key;
+			if (n) {
+				names.push(String(n));
+			}
+		}
+	} catch (e) {
+		names = [];
+	}
+	if (names.length > 16) {
+		names = names.slice(0, 16);
+	}
+	fortiVdomNames._cache = names;
+	return names;
+}
+
+function fortiFetchVdom(base, path) {
+	var sep = path.indexOf('?') >= 0 ? '&' : '?';
+	try {
+		return getHttpData(base + path + sep + 'vdom=*');
+	} catch (e1) {
+		var blocks = [];
+		var names = fortiVdomNames(base);
+		for (var i = 0; i < names.length; i++) {
+			try {
+				var one = getHttpData(base + path + sep + 'vdom=' + names[i]);
+				if (Array.isArray(one)) {
+					for (var j = 0; j < one.length; j++) {
+						blocks.push(one[j]);
+					}
+				} else if (one && typeof one === 'object') {
+					if (!one.vdom) {
+						one.vdom = names[i];
+					}
+					blocks.push(one);
+				}
+			} catch (e3) {
+				continue;
+			}
+		}
+		if (blocks.length > 0) {
+			return blocks;
+		}
+		try {
+			return getHttpData(base + path);
+		} catch (e2) {
+			return { status: 'error', results: {} };
+		}
+	}
+}
+
 '''
 
 
 def script_has_vdom_star(script: str) -> bool:
     """True when interface/SD-WAN collection already requests every VDOM."""
-    return bool(script) and _VDOM_STAR_MARK in script and 'vdom=*' in script
+    if not script or _VDOM_STAR_MARK not in script or 'vdom=*' not in script:
+        return False
+    if 'virtual-wan/members' in script or '/cmdb/system/sdwan' in script:
+        return (
+            'function fortiFetchVdom' in script
+            and '"member_lld": []' in script
+        )
+    return True
 
 
 def _is_vdom_block(obj) -> bool:
@@ -528,6 +654,15 @@ def flatten_forti_monitor_map(payload) -> dict:
     for block in forti_api_blocks(payload):
         vdom = block.get('vdom') or ''
         results = block.get('results')
+        if isinstance(results, list):
+            mapped = {}
+            for row in results:
+                if not isinstance(row, dict):
+                    continue
+                name = row.get('interface') or row.get('name') or row.get('q_origin_key')
+                if name is not None and str(name) != '':
+                    mapped[str(name)] = row
+            results = mapped
         if not isinstance(results, dict):
             continue
         for name, row in results.items():
@@ -601,6 +736,49 @@ def flatten_forti_sdwan_cmdb(payload) -> dict:
     return {'members': members, 'health-check': health}
 
 
+def _forti_fetch_vdom_js() -> str:
+    start = FORTI_VDOM_HELPERS.find('function fortiVdomNames')
+    if start < 0:
+        return ''
+    return '\n' + FORTI_VDOM_HELPERS[start:].lstrip('\n')
+
+
+def _ensure_sdwan_vdom_resilience(script: str) -> str:
+    """Upgrade SD-WAN collection so a vdom=* 500 does not empty $.data."""
+    patched = script
+    if 'function fortiFetchVdom' not in patched:
+        if 'function flattenFortiSdwanCmdb' in patched:
+            patched, n_fn = _FLATTEN_SDWAN_END.subn(
+                lambda m: m.group(1) + _forti_fetch_vdom_js(), patched, count=1
+            )
+            if n_fn != 1:
+                return script
+        else:
+            return script
+    for rx, repl in _SDWAN_FETCHES:
+        patched = rx.sub(repl, patched, count=1)
+    if 'flattenFortiSdwanCmdb(sdwan_list)' not in patched:
+        patched, n_norm = _SDWAN_LIST_GET.subn(
+            lambda m: m.group(1) + _SDWAN_NORMALIZE, patched, count=1
+        )
+        if n_norm != 1:
+            return script
+    if 'fortiMonitorLookup(sdwan_member_data.results' not in patched:
+        patched, n_mem = _SDWAN_MEM_RE.subn(_SDWAN_MEM_LOOKUP, patched, count=1)
+        if n_mem != 1:
+            return script
+    if 'fortiMonitorLookup(sdwan_health_data.results' not in patched:
+        patched, n_health = _SDWAN_HEALTH_RE.subn(_SDWAN_HEALTH_LOOKUP, patched, count=1)
+        if n_health != 1:
+            return script
+    if _SDWAN_STOCK_DATA in patched and '"member_lld": []' not in patched:
+        patched = patched.replace(_SDWAN_STOCK_DATA, _SDWAN_EMPTY_DATA, 1)
+    for old, new in _SDWAN_FOREACH:
+        if old in patched and new not in patched:
+            patched = patched.replace(old, new, 1)
+    return patched
+
+
 def patch_vdom_star_script(script: str) -> str:
     """Request vdom=* and flatten multi-VDOM payloads. Idempotent."""
     if not script or script_has_vdom_star(script):
@@ -635,18 +813,7 @@ def patch_vdom_star_script(script: str) -> str:
         if n_id != 1:
             return script
     if '/api/v2/cmdb/system/sdwan' in script:
-        if 'flattenFortiSdwanCmdb(sdwan_list)' not in patched:
-            patched, n_norm = _SDWAN_LIST_GET.subn(
-                lambda m: m.group(1) + _SDWAN_NORMALIZE, patched, count=1
-            )
-            if n_norm != 1:
-                return script
-        patched, n_mem = _SDWAN_MEM_RE.subn(_SDWAN_MEM_LOOKUP, patched, count=1)
-        if n_mem != 1:
-            return script
-        patched, n_health = _SDWAN_HEALTH_RE.subn(_SDWAN_HEALTH_LOOKUP, patched, count=1)
-        if n_health != 1:
-            return script
+        patched = _ensure_sdwan_vdom_resilience(patched)
     return patched
 
 
