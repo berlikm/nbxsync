@@ -1391,8 +1391,8 @@ zabbix_export:
         manual_close: 'YES'
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1'
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1 and {$LINKDOWN.IFALIAS:"{#IFALIAS}"}=1'
+          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0 or {$LINKDOWN.IFALIAS:"{#IFALIAS}"}=0
         tags:
         - tag: scope
           value: performance
@@ -1422,8 +1422,8 @@ zabbix_export:
         manual_close: 'YES'
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1'
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1 and {$LINKDOWN.IFALIAS:"{#IFALIAS}"}=1'
+          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0 or {$LINKDOWN.IFALIAS:"{#IFALIAS}"}=0
         tags:
         - tag: scope
           value: performance
@@ -1447,8 +1447,8 @@ zabbix_export:
         manual_close: 'YES'
         dependencies:
         - name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): Link down'
-          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1'
-          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0
+          expression: '{$IFCONTROL:"{#IFNAME}"}=1 and last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>1 and {$LINKDOWN.IFALIAS:"{#IFALIAS}"}=1'
+          recovery_expression: last(/Extreme VOSS by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0 or {$LINKDOWN.IFALIAS:"{#IFALIAS}"}=0
         tags:
         - tag: scope
           value: availability

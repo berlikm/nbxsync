@@ -108,6 +108,45 @@ def _walk_item_keys(tpl: dict) -> set[str]:
     return keys
 
 
+def _compact_trigger_expr(value: str | None) -> str:
+    """Zabbix import compares trigger identity after YAML wrapping."""
+    return re.sub(r'\s+', '', value or '')
+
+
+def _trigger_identity(trig: dict) -> tuple[str, str, str]:
+    return (
+        trig.get('name') or '',
+        _compact_trigger_expr(trig.get('expression')),
+        _compact_trigger_expr(trig.get('recovery_expression')),
+    )
+
+
+def validate_yaml_trigger_dependencies(name: str, tpl: dict) -> None:
+    """Import resolves ``dependencies:`` by name+expression+recovery, not display name.
+
+    Editing a parent trigger and leaving child pointers on the old expression
+    yields ``depends on trigger ... which does not exist`` even when the parent
+    is in the same YAML. That is what blocked Extreme VOSS by SNMP import after
+    the Access ``{$LINKDOWN.IFALIAS}`` gate was added to Link down only.
+    """
+    trigs = _walk_triggers(tpl)
+    known = {_trigger_identity(t) for t in trigs}
+    bad = []
+    for trig in trigs:
+        for dep in trig.get('dependencies') or []:
+            ident = _trigger_identity(dep)
+            if ident in known:
+                continue
+            child = trig.get('name') or '?'
+            parent = dep.get('name') or '?'
+            bad.append(f'{child} -> {parent}')
+    record(
+        f'{name} trigger deps resolve in YAML',
+        not bad,
+        f'{len(trigs)} triggers' if not bad else '; '.join(bad[:8]),
+    )
+
+
 def _walk_triggers(tpl: dict) -> list[dict]:
     out: list[dict] = []
     for it in tpl.get('items') or []:
@@ -927,6 +966,10 @@ def validate_yaml() -> None:
             validate_lld_lost_policy(name, _tpl(doc))
         except Exception as exc:
             record(f'{name} LLD policy', False, str(exc))
+        try:
+            validate_yaml_trigger_dependencies(name, _tpl(doc))
+        except Exception as exc:
+            record(f'{name} trigger deps resolve in YAML', False, str(exc))
         try:
             validate_ascii_trigger_titles(name, _tpl(doc))
         except Exception as exc:
