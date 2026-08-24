@@ -35,6 +35,10 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     host macros (not HostSync, not Core). Chassis OOB ifName ``mgmt`` /
     ``Management`` is skipped in ``{$NET.IF.IFNAME.NOT_MATCHES}`` (unused,
     not connected) — not ``{$IFCONTROL}``.
+  * Rewrite Unicode operators in Extreme trigger / prototype ``event_name`` to
+    ASCII (``!=`` not ``≠`` / ``Γëá``). YAML import can leave the old glyph on
+    live prototypes; LLD check-now copies the ASCII title onto discovered
+    Speed Expect triggers. Open Problems keep the title from create.
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
@@ -68,7 +72,7 @@ Re-apply safety (estate already has switches/APs in Zabbix):
 
 Import policy:
   YAML imports use deleteMissing=False (safe — retired items linger but templates don't lose content).
-  Re-run ``--apply`` after Extreme template upgrades to re-assert TEMP/EtherLike/ICMP/Health/PSU-empty patches.
+  Re-run ``--apply`` after Extreme template upgrades to re-assert TEMP/EtherLike/ICMP/Health/PSU-empty/ASCII-title patches.
   Speed Expect nests on VOSS / Observability. Do not pass ``--link-speed-expect`` while nested.
 
 Does **not** re-implement SiteGroup Agent / hostgroup-first / Server OOB — call
@@ -136,6 +140,7 @@ from nbxsync.jobs.synchost import SyncHostJob
 from nbxsync.utils import get_assigned_zabbixobjects
 from nbxsync.utils.zabbixconnection import ZabbixConnection
 
+from extreme_ascii_titles import title_payload as _title_payload
 from extreme_health_zabbix import (
     IQ_HEALTH_MACROS,
     SPEED_EXPECT_HEALTH_MACROS,
@@ -222,6 +227,10 @@ TEMPLATE_FILES = {
     'Extreme Routing by SNMP': ROOT / 'zabbix/templates/extreme_routing_snmp/template_net_extreme_routing_snmp.yaml',
     'Extreme IQ Engine by SNMP': ROOT / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
 }
+
+_SPEED_EXPECT_TEMPLATE = 'Extreme Port Speed Expect by SNMP'
+_SPEED_EXPECT_DISCOVERY_KEY = 'net.if.speedexpect.discovery'
+_ASCII_TITLE_TEMPLATES = tuple(TEMPLATE_FILES) + ('Extreme EXOS by SNMP',)
 
 # Role → port-scoping macros (zabbix/01-extreme-switching.md).
 # Core / Dist / Mgmt = every admin-up ethernet/LAG except X*.
@@ -1532,6 +1541,141 @@ def assert_extreme_template_temp_macros(api, template_name: str) -> tuple[bool, 
     return ok, str(detail)
 
 
+def _patch_template_ascii_titles(api, templateid) -> int:
+    """Rewrite Unicode operators on template triggers and trigger prototypes."""
+    changed = 0
+    for row in api.trigger.get(
+        hostids=templateid,
+        inherited=False,
+        output=['triggerid', 'description', 'event_name'],
+    ) or []:
+        payload = _title_payload(row)
+        if not payload:
+            continue
+        api.trigger.update(triggerid=row['triggerid'], **payload)
+        changed += 1
+    rules = api.discoveryrule.get(hostids=templateid, output=['itemid']) or []
+    for rule in rules:
+        for proto in api.triggerprototype.get(
+            discoveryids=rule['itemid'],
+            output=['triggerid', 'description', 'event_name'],
+        ) or []:
+            payload = _title_payload(proto)
+            if not payload:
+                continue
+            api.triggerprototype.update(triggerid=proto['triggerid'], **payload)
+            changed += 1
+            logger.info(
+                '  trigger prototype %s ASCII title (%s)',
+                proto['triggerid'],
+                ', '.join(payload),
+            )
+    return changed
+
+
+def _patch_discovered_port_identity_titles(api) -> tuple[int, int]:
+    """Try host-level Port identity titles; discovered rows often need LLD instead."""
+    tpls = api.template.get(filter={'name': [_SPEED_EXPECT_TEMPLATE]}, output=['templateid'])
+    if not tpls:
+        return 0, 0
+    hosts = api.host.get(templateids=[tpls[0]['templateid']], output=['hostid']) or []
+    hostids = [h['hostid'] for h in hosts]
+    patched = 0
+    lld_pending = 0
+    for start in range(0, len(hostids), 100):
+        rows = api.trigger.get(
+            hostids=hostids[start:start + 100],
+            search={'description': 'Port identity'},
+            output=['triggerid', 'description', 'event_name'],
+        ) or []
+        for row in rows:
+            payload = _title_payload(row)
+            if not payload:
+                continue
+            try:
+                api.trigger.update(triggerid=row['triggerid'], **payload)
+                patched += 1
+            except Exception as exc:
+                lld_pending += 1
+                logger.info(
+                    '  discovered trigger %s event_name left for LLD (%s)',
+                    row['triggerid'],
+                    exc,
+                )
+    return patched, lld_pending
+
+
+def queue_speed_expect_lld_checks(api) -> dict[str, int | str]:
+    """Check-now Port speed-expect LLD so discovered triggers copy ASCII event_name."""
+    return _queue_psu_lld_checks(
+        api,
+        template_names=(
+            _SPEED_EXPECT_TEMPLATE,
+            'Extreme VOSS by SNMP',
+            _EXOS_OBSERVABILITY_TEMPLATE,
+        ),
+        discovery_keys=(_SPEED_EXPECT_DISCOVERY_KEY,),
+        log_label='Speed Expect LLD',
+    )
+
+
+def patch_ascii_trigger_titles(api) -> dict[str, str]:
+    """Force ASCII ``!=`` on Extreme trigger titles. YAML import can skip event_name.
+
+    Does not close open Problems — those names freeze at create. Does not
+    HostSync or write NetBox.
+    """
+    logger.info('Network: ASCII trigger event names (no Unicode operators)')
+    results: dict[str, str] = {}
+    need_lld = False
+    for name in _ASCII_TITLE_TEMPLATES:
+        tpls = api.template.get(filter={'name': [name]}, output=['templateid'])
+        if not tpls:
+            results[name] = 'missing'
+            continue
+        changed = _patch_template_ascii_titles(api, tpls[0]['templateid'])
+        results[name] = f'patched:{changed}' if changed else 'ok'
+        if changed:
+            need_lld = True
+    discovered, pending = _patch_discovered_port_identity_titles(api)
+    if discovered:
+        results['discovered Port identity'] = f'patched:{discovered}'
+        need_lld = True
+    elif pending:
+        results['discovered Port identity'] = f'lld-pending:{pending}'
+        need_lld = True
+    else:
+        results['discovered Port identity'] = 'ok'
+    if need_lld:
+        queued = queue_speed_expect_lld_checks(api)
+        results['speedexpect_lld_check_now'] = str(queued.get('status') or '')
+    return results
+
+
+def assert_ascii_trigger_titles(api, template_name: str) -> tuple[bool, str]:
+    tpls = api.template.get(filter={'name': [template_name]}, output=['templateid'])
+    if not tpls:
+        return True, 'template absent — n/a'
+    tid = tpls[0]['templateid']
+    bad: list[str] = []
+    for row in api.trigger.get(
+        hostids=tid,
+        inherited=False,
+        output=['triggerid', 'description', 'event_name'],
+    ) or []:
+        if _title_payload(row):
+            bad.append(str(row.get('event_name') or row.get('description') or ''))
+    rules = api.discoveryrule.get(hostids=tid, output=['itemid']) or []
+    for rule in rules:
+        for proto in api.triggerprototype.get(
+            discoveryids=rule['itemid'],
+            output=['triggerid', 'description', 'event_name'],
+        ) or []:
+            if _title_payload(proto):
+                bad.append(str(proto.get('event_name') or proto.get('description') or ''))
+    return not bad, ('; '.join(bad[:5]) or 'ok')
+
+
 def step_health_patches(api) -> dict:
     """ICMP noise off + EXOS Health dashboard. Fail closed — a silent skip hid broken Health."""
     logger.info('Network: Health / ICMP-noise patches')
@@ -2339,6 +2483,17 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                     status,
                     group='import',
                 )
+            ascii_titles = patch_ascii_trigger_titles(api)
+            for tname, status in ascii_titles.items():
+                record(
+                    f'ascii_titles_{tname}',
+                    str(status).startswith(('ok', 'patched', 'missing', 'lld-pending', 'queued')),
+                    status,
+                    group='import',
+                )
+            for tname in _ASCII_TITLE_TEMPLATES:
+                ok, detail = assert_ascii_trigger_titles(api, tname)
+                record(f'ascii_titles_assert_{tname}', ok or 'n/a' in detail, detail, group='import')
             record(
                 'exos_health_dashboard',
                 str(health.get('exos_health')) == 'companion-yaml',
@@ -2814,6 +2969,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         patch_linkdown_one_average(api)
         patch_extreme_template_temp_macros(api)
         step_health_patches(api)
+        patch_ascii_trigger_titles(api)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
     step_server_macros(server)
     step_role_macros(server)

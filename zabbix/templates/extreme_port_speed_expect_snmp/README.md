@@ -31,7 +31,7 @@ Role scoping for the *stock* interface LLD stays on `{$NET.IF.*}`. This template
 
 | Trigger | Status | Why |
 |---|---|---|
-| Speed ≠ expected Mbps, oper-up 5m | **on** (Warning) | the product; silent until a class label exists |
+| Speed != expected Mbps, oper-up 5m | **on** (Warning) | the product; silent until a class label exists |
 | Sustained util vs intended | on, but `{$IF.UTIL.MAX}=101` | unreachable until USW is set to 80 |
 | Link down (speed-expect) | **DISABLED** | platform already Average-tickets discovered link-down |
 | Outbound discards | **DISABLED** | 1 pps is not gated by util 101; need a baseline |

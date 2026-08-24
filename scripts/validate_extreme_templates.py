@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
+from extreme_ascii_titles import yaml_title_fields_needing_ascii
 from extreme_linkdown import (
     IFNAME_NOT_MATCHES,
     ifname_not_matches_excludes_oob,
@@ -823,6 +824,14 @@ def validate_exos_observability(doc: dict) -> None:
     )
 
 
+def validate_ascii_trigger_titles(name: str, tpl: dict) -> None:
+    """Problem titles (name / event_name / opdata) must not use ≠ — it becomes Γëá."""
+    bad: list[str] = []
+    for trig in _walk_triggers(tpl):
+        bad.extend(yaml_title_fields_needing_ascii(trig))
+    record(f'{name} ASCII trigger titles', not bad, '; '.join(bad[:4]))
+
+
 def validate_speed_expect(doc: dict) -> None:
     tpl = _tpl(doc)
     macros = _macro_map(tpl)
@@ -879,6 +888,10 @@ def validate_yaml() -> None:
             validate_lld_lost_policy(name, _tpl(doc))
         except Exception as exc:
             record(f'{name} LLD policy', False, str(exc))
+        try:
+            validate_ascii_trigger_titles(name, _tpl(doc))
+        except Exception as exc:
+            record(f'{name} ASCII titles', False, str(exc))
         if name == 'Extreme VOSS by SNMP':
             validate_voss(doc)
         elif name == 'Extreme IQ Engine by SNMP':
