@@ -159,13 +159,13 @@ export NBX_FGATE_TOKEN=...          # shared REST key → Device Role Firewall
 python3 scripts/configure_nbxsync_network.py --apply-fortigate-http
 ```
 
-Zabbix Cloud already has **FortiGate by HTTP** vendor **7.0-2**. The flag **reuses that template** (Bearer header is already in 7.0-2). It does not re-import or overwrite 7.0-2.
+Zabbix Cloud already has **FortiGate by HTTP** vendor **Zabbix, 7.0-2**. The flag **looks that template up** (Bearer header is already in 7.0-2). It never imports YAML and does not overwrite 7.0-2.
 
 That flag:
 
 | Lever | What it writes |
 |---|---|
-| Platform FortiOS | **FortiGate by HTTP** + `OS/Network`. Interface requirement **ANY**. Reuse Cloud 7.0-2; import bundled YAML only if the template is missing |
+| Platform FortiOS | **FortiGate by HTTP** + `OS/Network`. Interface requirement **ANY**. Lookup Cloud **Zabbix, 7.0-2**; never import bundled 7.0-3 |
 | Role Firewall | HTTP floor; **prune** FortiGate by SNMP |
 | SNMP Monitoring | **off** Firewall |
 | ICMP | **ICMP Ping** on role Firewall (stock HTTP has no `icmpping`). Lands on HostSync together with HTTP — do not mass-HostSync |
@@ -190,7 +190,7 @@ Then **canary HostSync one HA pair** — not every Firewall. Inheritance does no
 
 Before the flag:
 
-1. FortiGate by HTTP is already in Zabbix Cloud as **Zabbix, 7.0-2** — keep it. Do not re-import 7.0-3 over it.
+1. FortiGate by HTTP is already in Zabbix Cloud as **Zabbix, 7.0-2** — keep it. `--apply-fortigate-http` looks it up and never imports 7.0-3 over it.
 2. On-box: read-only admin profile (Zabbix: enable **all Read**) → REST API Admin → token **once** (usually syncs). Trusted hosts = **Swiss proxy on each member’s ha-mgmt / OOB**, not a laptop.
 
 Do **not** HostSync a Forti that still has FortiGate by SNMP **and** ICMP Ping (`icmpping` key collision). `--apply-fortigate-http` prunes the SNMP floor first so a later HostSync replaces SNMP with HTTP+ICMP together.

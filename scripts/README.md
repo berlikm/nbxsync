@@ -43,7 +43,7 @@ python scripts/configure_nbxsync_network.py --apply
 
 Always finish with the network script so VOSS / IQ Engine Template Rules are not left unresolved. Re-running both scripts on an estate that **already has** switches and APs in Zabbix is the maintenance path: YAML `deleteMissing: false`, no host delete, no mass `SyncHostJob`. Template Health dashboards and trigger status inherit in Zabbix without touching hostids.
 
-FortiGate HTTP cutover is **not** zerotouch and **not** Extreme `--apply`. Zabbix Cloud already has **FortiGate by HTTP** vendor **7.0-2** — the flag reuses it:
+FortiGate HTTP cutover is **not** zerotouch and **not** Extreme `--apply`. Zabbix Cloud already has **FortiGate by HTTP** vendor **Zabbix, 7.0-2** — the flag looks that template up and **never imports YAML** (bundled 7.0-3 would overwrite Cloud):
 
 ```bash
 export NBX_ZABBIX_TOKEN=...
@@ -103,6 +103,6 @@ Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **
 | Extreme TemplateRules (EXOS/VOSS/IQ) | ensure when template exists; **never** fall back to Network Generic. Patterns: `EXOS\|Switch Engine`, `VOSS\|Fabric Engine`, `IQ ENGINE\|IQEngine\|IQ-ENGINE` | import + retarget if a rule still points at Network Generic |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
 | Firewall FortiGate HTTP fleet macros (https/443, WAN/HA/mgmt LLD) | — | yes (`--apply-firewall-macros` or `--apply`; no Forti HostSync) |
-| FortiOS / Firewall → FortiGate by HTTP (reuse Cloud 7.0-2), prune SNMP CG, ICMP Ping, shared TOKEN on Firewall, per-device FQDN | **do not re-run** (still SNMP) | `--apply-fortigate-http` (no Extreme YAML, no HostSync) |
+| FortiOS / Firewall → FortiGate by HTTP (lookup Cloud **Zabbix, 7.0-2**, never import YAML), prune SNMP CG, ICMP Ping, shared TOKEN on Firewall, per-device FQDN | **do not re-run** (still SNMP) | `--apply-fortigate-http` (no Extreme YAML, no HostSync) |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |

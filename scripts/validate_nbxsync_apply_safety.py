@@ -147,10 +147,18 @@ def main() -> int:
         bool(fg) and 'import_extreme_templates' not in fg and 'SyncHostJob' not in fg,
         'no Extreme import / HostSync in --apply-fortigate-http',
     )
+    fg_import = _function_source(net_src, net_tree, 'import_fortigate_http_template') or ''
     record(
         'network_fortigate_http_reuses_existing_template',
-        'not re-importing' in ( _function_source(net_src, net_tree, 'import_fortigate_http_template') or ''),
+        'not re-importing' in fg_import,
         'Cloud 7.0-2 is not overwritten',
+    )
+    record(
+        'network_fortigate_http_never_imports_yaml',
+        'import_yaml_templates' not in fg_import
+        and 'configuration.import_' not in fg_import
+        and 'FORTIGATE_HTTP_YAML' in fg_import,
+        'lookup Cloud 7.0-2 only; bundled 7.0-3 is never imported',
     )
     record(
         'zerotouch_no_fortigate_http_auto_cutover',

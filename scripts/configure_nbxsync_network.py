@@ -46,11 +46,12 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
   * Firewall FortiGate HTTP: fleet macros + **shared** ``{$FGATE.API.TOKEN}`` on
     Device Role Firewall; per-device ``{$FGATE.API.FQDN}`` (``oob_ip`` then
-    ``primary_ip4``). FortiOS + Firewall floor → FortiGate by HTTP (ANY). Reuses
-    the template already in Zabbix (Cloud **7.0-2**); imports bundled YAML only
-    if it is missing. Prune FortiGate by SNMP and SNMP Monitoring from Firewall;
-    ICMP Ping on the role. Operator path is ``--apply-fortigate-http`` — do
-    **not** re-run zerotouch. Do not dual-link HTTP+SNMP.
+    ``primary_ip4``). FortiOS + Firewall floor → FortiGate by HTTP (ANY). Looks
+    up the template already in Zabbix Cloud (**Zabbix, 7.0-2**) and never
+    imports YAML (bundled 7.0-3 would overwrite it). Prune FortiGate by SNMP
+    and SNMP Monitoring from Firewall; ICMP Ping on the role. Operator path is
+    ``--apply-fortigate-http`` — do **not** re-run zerotouch. Do not dual-link
+    HTTP+SNMP.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -64,7 +65,7 @@ Stage matrix (what each flag enables):
                                     Speed Expect is nested on VOSS and EXOS Observability (empty ifAlias = not discovered).
                                     Also writes Device Role Firewall FortiGate HTTP macros (no Forti HostSync, no FortiOS retarget).
   ``--apply-firewall-macros``     = NetBox-only Device Role Firewall macros. No Extreme import, no Zabbix API, no HostSync, no FortiOS retarget.
-  ``--apply-fortigate-http``      = FortiGate HTTP cutover without zerotouch: reuse Cloud 7.0-2 (import YAML only if missing) + role macros/TOKEN + FortiOS/Firewall → HTTP ANY + prune SNMP + ICMP Ping + per-device FQDN. No HostSync.
+  ``--apply-fortigate-http``      = FortiGate HTTP cutover without zerotouch: lookup Cloud **Zabbix, 7.0-2** (never import YAML) + role macros/TOKEN + FortiOS/Firewall → HTTP ANY + prune SNMP + ICMP Ping + per-device FQDN. No HostSync.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -104,7 +105,8 @@ Usage::
   python scripts/configure_nbxsync_network.py --apply-firewall-macros
 
   # FortiGate HTTP cutover (no zerotouch, no Extreme YAML, no HostSync)
-  # Reuses FortiGate by HTTP already in Zabbix Cloud (vendor 7.0-2).
+  # Looks up FortiGate by HTTP already in Zabbix Cloud (vendor Zabbix, 7.0-2).
+  # Never imports bundled 7.0-3 — that would overwrite Cloud.
   export NBX_FGATE_TOKEN=...          # shared REST key on Device Role Firewall
   python scripts/configure_nbxsync_network.py --apply-fortigate-http
 
@@ -165,6 +167,7 @@ from fortigate_http import (
     FIREWALL_DEVICE_MACROS as _FIREWALL_DEVICE_MACROS,
     FIREWALL_ROLE as _FIREWALL_ROLE,
     FIREWALL_ROLE_MACROS as _FIREWALL_ROLE_MACROS,
+    FORTIGATE_HTTP_CLOUD_VENDOR as _FORTIGATE_HTTP_CLOUD_VENDOR,
     FORTIGATE_HTTP_TEMPLATE as _FORTIGATE_HTTP_TEMPLATE,
     FORTIGATE_SNMP_TEMPLATE as _FORTIGATE_SNMP_TEMPLATE,
     FORTIOS_PLATFORM_PATTERN as _FORTIOS_PLATFORM_PATTERN,
@@ -172,6 +175,8 @@ from fortigate_http import (
     ICMP_PING_TEMPLATE as _ICMP_PING_TEMPLATE,
     SNMP_MONITORING_CG as _SNMP_MONITORING_CG,
     fgate_token_env as _fgate_token_env,
+    format_vendor_label as _format_vendor_label,
+    is_cloud_fortigate_http_vendor as _is_cloud_fortigate_http_vendor,
     preferred_mgmt_ip as _preferred_mgmt_ip,
     should_write_secret as _should_write_secret,
 )
@@ -263,10 +268,10 @@ TEMPLATE_FILES = {
     'Extreme IQ Engine by SNMP': ROOT / 'zabbix/templates/extreme_iq_engine_snmp/template_net_extreme_iq_engine_snmp.yaml',
 }
 
+# Bundled YAML is vendor 7.0-3. Cloud is Zabbix, 7.0-2. Apply looks up Cloud
+# and never calls configuration.import_ on this file (updateExisting would
+# overwrite 7.0-2). Keep the file as a reference copy only.
 FORTIGATE_HTTP_YAML = ROOT / 'zabbix/templates/fortinet_fortigate_http/template_net_fortigate_http.yaml'
-_FORTIGATE_HTTP_FILES = {
-    _FORTIGATE_HTTP_TEMPLATE: FORTIGATE_HTTP_YAML,
-}
 
 _SPEED_EXPECT_TEMPLATE = 'Extreme Port Speed Expect by SNMP'
 _SPEED_EXPECT_DISCOVERY_KEY = 'net.if.speedexpect.discovery'
@@ -518,37 +523,49 @@ def import_extreme_templates(api) -> dict[str, tuple[int, str]]:
 
 
 def import_fortigate_http_template(api) -> tuple[int, str] | None:
-    """Reuse FortiGate by HTTP if it already exists. Import YAML only when missing.
+    """Look up FortiGate by HTTP. Never import YAML over the Cloud template.
 
-    Zabbix Cloud already has vendor **7.0-2**. Do not overwrite that with the
-    bundled 7.0-3 fallback. 7.0-2 already sends ``Authorization: Bearer``.
+    Live Zabbix Cloud is vendor **Zabbix, 7.0-2** (Bearer). Bundled YAML is
+    7.0-3; a Zabbix YAML import with ``updateExisting`` would overwrite it.
+    If the template is missing, skip FortiOS retarget — do not import 7.0-3.
     """
     logger.info('Network: resolve %s', _FORTIGATE_HTTP_TEMPLATE)
     existing = _template_row(api, _FORTIGATE_HTTP_TEMPLATE)
-    if existing is not None:
-        tid, name, vendor = existing
-        extra = f', vendor {vendor}' if vendor else ''
+    if existing is None:
+        logger.warning(
+            '  %s missing in Zabbix — skip FortiOS retarget. '
+            'Cloud is vendor %s; do not import %s (bundled 7.0-3).',
+            _FORTIGATE_HTTP_TEMPLATE,
+            _FORTIGATE_HTTP_CLOUD_VENDOR,
+            FORTIGATE_HTTP_YAML,
+        )
+        return None
+    tid, name, vendor = existing
+    extra = f', vendor {vendor}' if vendor else ', vendor unknown'
+    if _is_cloud_fortigate_http_vendor(vendor):
         logger.info(
-            '  %s already in Zabbix (id=%s%s) — not re-importing '
-            '(Cloud 7.0-2 stays; bundled YAML is missing-only fallback)',
+            '  %s already in Zabbix (id=%s%s) — confirmed Cloud template, not re-importing',
             name,
             tid,
             extra,
         )
-        return tid, name
-    logger.info(
-        '  %s missing — importing bundled YAML (fallback; do not use this to upgrade 7.0-2)',
-        _FORTIGATE_HTTP_TEMPLATE,
-    )
-    out = import_yaml_templates(api, _FORTIGATE_HTTP_FILES)
-    found = out.get(_FORTIGATE_HTTP_TEMPLATE)
-    if found is None:
+    elif vendor:
         logger.warning(
-            '  %s still missing after import — skip FortiOS retarget',
-            _FORTIGATE_HTTP_TEMPLATE,
+            '  %s already in Zabbix (id=%s%s); expected %s — not overwriting',
+            name,
+            tid,
+            extra,
+            _FORTIGATE_HTTP_CLOUD_VENDOR,
         )
-        return None
-    return found
+    else:
+        logger.info(
+            '  %s already in Zabbix (id=%s%s); expected %s — not re-importing',
+            name,
+            tid,
+            extra,
+            _FORTIGATE_HTTP_CLOUD_VENDOR,
+        )
+    return tid, name
 
 
 def _template_row(api, name: str) -> tuple[int, str, str] | None:
@@ -561,9 +578,7 @@ def _template_row(api, name: str) -> tuple[int, str, str] | None:
     if not found:
         return None
     row = found[0]
-    vendor = ', '.join(
-        part for part in (row.get('vendor_name'), row.get('vendor_version')) if part
-    )
+    vendor = _format_vendor_label(row.get('vendor_name'), row.get('vendor_version'))
     return int(row['templateid']), row['name'], vendor
 
 
@@ -3475,7 +3490,7 @@ def run_apply_firewall_macros() -> int:
         'Firewall role FortiGate HTTP macros written on Device Role %s '
         '(https/443, WAN/HA/mgmt LLD, empty policy LLD). Shared TOKEN from '
         '%s if set. FQDN stays per-device. No Extreme import, no HostSync, '
-        'no FortiOS retarget. Use --apply-fortigate-http to import HTTP and retarget.',
+        'no FortiOS retarget. Use --apply-fortigate-http to retarget FortiOS onto Cloud HTTP.',
         _FIREWALL_ROLE,
         _FGATE_TOKEN_ENV,
     )
@@ -3485,8 +3500,9 @@ def run_apply_firewall_macros() -> int:
 def run_apply_fortigate_http() -> int:
     """FortiGate HTTP cutover without zerotouch or Extreme YAML.
 
-    Reuses FortiGate by HTTP when Zabbix already has it (Cloud vendor
-    **7.0-2** — not overwritten). Imports bundled YAML only if missing.
+    Looks up FortiGate by HTTP already in Zabbix (Cloud vendor **Zabbix,
+    7.0-2**). Never imports bundled 7.0-3. If the template is missing, skip
+    FortiOS retarget rather than overwrite Cloud later.
     Writes Firewall role macros including shared TOKEN, retargets FortiOS +
     Firewall floor to HTTP (ANY), prunes FortiGate by SNMP and SNMP Monitoring
     from Firewall, assigns ICMP Ping on the role, and writes per-device FQDN
@@ -3509,7 +3525,7 @@ def run_apply_fortigate_http() -> int:
     _step_firewall_role_macros(server, required=True)
     if http is None:
         logger.warning(
-            '  %s not in Zabbix after import — skip FortiOS retarget, SNMP prune, and ICMP. '
+            '  %s not in Zabbix — skip FortiOS retarget, SNMP prune, and ICMP. '
             'FortiOS stays %s.',
             _FORTIGATE_HTTP_TEMPLATE,
             _FORTIGATE_SNMP_TEMPLATE,

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import unittest
 
+from pathlib import Path
+
 from fortigate_http import (
     FGATE_FQDN_MACRO,
     FGATE_TOKEN_ENV,
@@ -12,6 +14,9 @@ from fortigate_http import (
     FIREWALL_DEVICE_MACROS,
     FIREWALL_ROLE,
     FIREWALL_ROLE_MACROS,
+    FORTIGATE_HTTP_CLOUD_VENDOR,
+    FORTIGATE_HTTP_CLOUD_VENDOR_NAME,
+    FORTIGATE_HTTP_CLOUD_VENDOR_VERSION,
     FORTIGATE_HTTP_TEMPLATE,
     FORTIGATE_SNMP_TEMPLATE,
     FORTIOS_PLATFORM_PATTERN,
@@ -19,6 +24,8 @@ from fortigate_http import (
     ICMP_PING_TEMPLATE,
     SNMP_MONITORING_CG,
     fgate_token_env,
+    format_vendor_label,
+    is_cloud_fortigate_http_vendor,
     preferred_mgmt_ip,
     should_write_secret,
 )
@@ -90,6 +97,25 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(preferred_mgmt_ip('10.1.1.1', '1.2.3.4'), '10.1.1.1')
         self.assertEqual(preferred_mgmt_ip(None, '1.2.3.4'), '1.2.3.4')
         self.assertIsNone(preferred_mgmt_ip(None, None))
+
+    def test_cloud_vendor_is_zabbix_7_0_2(self):
+        self.assertEqual(FORTIGATE_HTTP_CLOUD_VENDOR_NAME, 'Zabbix')
+        self.assertEqual(FORTIGATE_HTTP_CLOUD_VENDOR_VERSION, '7.0-2')
+        self.assertEqual(FORTIGATE_HTTP_CLOUD_VENDOR, 'Zabbix, 7.0-2')
+        self.assertTrue(is_cloud_fortigate_http_vendor('Zabbix, 7.0-2'))
+        self.assertFalse(is_cloud_fortigate_http_vendor('Zabbix, 7.0-3'))
+        self.assertFalse(is_cloud_fortigate_http_vendor(''))
+        self.assertEqual(format_vendor_label('Zabbix', '7.0-2'), 'Zabbix, 7.0-2')
+        self.assertEqual(format_vendor_label(None, None), '')
+
+    def test_bundled_yaml_is_7_0_3_not_cloud(self):
+        yaml_path = (
+            Path(__file__).resolve().parents[1]
+            / 'zabbix/templates/fortinet_fortigate_http/template_net_fortigate_http.yaml'
+        )
+        text = yaml_path.read_text()
+        self.assertIn('version: 7.0-3', text)
+        self.assertNotEqual(FORTIGATE_HTTP_CLOUD_VENDOR_VERSION, '7.0-3')
 
 
 if __name__ == '__main__':

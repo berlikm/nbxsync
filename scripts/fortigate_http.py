@@ -12,15 +12,21 @@ Fleet HTTP defaults (https/443, WAN/HA/mgmt LLD) also belong on Device Role
 **Firewall**. Do not MATCH ``port``: on a 40F/100F ``port1`` is usually LAN.
 
 Live cutover is ``configure_nbxsync_network.py --apply-fortigate-http``.
-That reuses FortiGate by HTTP if Zabbix already has it (Cloud is vendor
-**7.0-2**) and only imports bundled YAML when the template is missing.
-Do not re-run zerotouch.
+That **looks up** FortiGate by HTTP already in Zabbix Cloud (vendor
+**Zabbix, 7.0-2**) and never imports YAML. Bundled 7.0-3 would
+``updateExisting`` over 7.0-2. Do not re-run zerotouch.
 """
 
 from __future__ import annotations
 
 FIREWALL_ROLE = 'Firewall'
 FORTIGATE_HTTP_TEMPLATE = 'FortiGate by HTTP'
+# Confirmed live Zabbix Cloud template. Do not import bundled 7.0-3 over it.
+FORTIGATE_HTTP_CLOUD_VENDOR_NAME = 'Zabbix'
+FORTIGATE_HTTP_CLOUD_VENDOR_VERSION = '7.0-2'
+FORTIGATE_HTTP_CLOUD_VENDOR = (
+    f'{FORTIGATE_HTTP_CLOUD_VENDOR_NAME}, {FORTIGATE_HTTP_CLOUD_VENDOR_VERSION}'
+)
 FORTIGATE_SNMP_TEMPLATE = 'FortiGate by SNMP'
 ICMP_PING_TEMPLATE = 'ICMP Ping'
 SNMP_MONITORING_CG = 'SNMP Monitoring'
@@ -64,3 +70,13 @@ def preferred_mgmt_ip(oob_ip: str | None, primary_ip: str | None) -> str | None:
         if ip:
             return ip
     return None
+
+
+def format_vendor_label(vendor_name: str | None, vendor_version: str | None) -> str:
+    """Zabbix template vendor as ``Name, version`` (empty if both missing)."""
+    return ', '.join(part for part in (vendor_name, vendor_version) if part)
+
+
+def is_cloud_fortigate_http_vendor(vendor: str) -> bool:
+    """True when the live template is the confirmed Cloud 7.0-2 vendor string."""
+    return vendor == FORTIGATE_HTTP_CLOUD_VENDOR

@@ -11,7 +11,7 @@ Sources: official Zabbix 7.0 `templates/net/fortinet/` (`FortiGate by HTTP`, `Fo
 
 Monitor FortiGates with stock **FortiGate by HTTP** (REST from the Swiss Zabbix proxy). Add **ICMP Ping** (the HTTP template has no `icmpping`). Do **not** also link **FortiGate by SNMP** or **Network Generic**.
 
-Live nbxSync today still points FortiOS at **FortiGate by SNMP**. That is the current estate, not the target. Retarget with `configure_nbxsync_network.py --apply-fortigate-http` — **do not re-run zerotouch**. Zabbix Cloud already has **FortiGate by HTTP** vendor **7.0-2** (Bearer); the flag reuses it and does not overwrite. The next HostSync of a firewall swaps templates. Canary-sync one HA pair.
+Live nbxSync today still points FortiOS at **FortiGate by SNMP**. That is the current estate, not the target. Retarget with `configure_nbxsync_network.py --apply-fortigate-http` — **do not re-run zerotouch**. Zabbix Cloud already has **FortiGate by HTTP** vendor **Zabbix, 7.0-2** (Bearer); the flag looks it up and never imports YAML. The next HostSync of a firewall swaps templates. Canary-sync one HA pair.
 
 ---
 
@@ -168,7 +168,7 @@ Live today (`configure_nbxsync_zerotouch.py` + locked GUI checklist) until the n
 
 Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-http`
 
-- Reuse **FortiGate by HTTP** already in Zabbix Cloud (**Zabbix, 7.0-2**). Import bundled YAML only if the template is missing. Do not overwrite 7.0-2.
+- Look up **FortiGate by HTTP** already in Zabbix Cloud (**Zabbix, 7.0-2**). Never import bundled 7.0-3. Do not overwrite 7.0-2.
 - FortiOS → HTTP (`HostInterfaceRequirement` **ANY**) when that template exists
 - Shared `{$FGATE.API.TOKEN}` on Device Role Firewall from `NBX_FGATE_TOKEN` (empty env does not wipe). Optional per-host override `NBX_FGATE_TOKEN_<HOSTNAME>`
 - Per-device `{$FGATE.API.FQDN}` prefers `oob_ip` then `primary_ip4` (both HA members via OOB, not a WAN VIP)

@@ -3,17 +3,18 @@
 Stock Zabbix **7.0** template. **Do not edit this YAML.**
 
 **Zabbix Cloud already has this template: vendor Zabbix, version 7.0-2.**
-`--apply-fortigate-http` **reuses it** and does **not** re-import. 7.0-2 already
-sends `Authorization: Bearer {$FGATE.API.TOKEN}`.
+`--apply-fortigate-http` **looks it up** and **never imports this file**. 7.0-2
+already sends `Authorization: Bearer {$FGATE.API.TOKEN}`.
 
-This file is a **missing-only fallback** (empty lab). It is vendor **7.0-3** from
-the 7.0 tree. Do not use it to overwrite Cloud 7.0-2.
+This file is a **reference copy** of vendor **7.0-3** from the 7.0 tree. Do not
+import it into Cloud — `configuration.import` with `updateExisting` would
+overwrite 7.0-2.
 
 | | |
 |---|---|
 | Template name | FortiGate by HTTP |
 | Live Cloud | **Zabbix, 7.0-2** — keep |
-| Bundled fallback | 7.0-3 |
+| This file | 7.0-3 (reference only; apply does not import) |
 | Auth | `Authorization: Bearer {$FGATE.API.TOKEN}` |
 | Upstream | [git.zabbix.com fortigate_http](https://git.zabbix.com/projects/ZBX/repos/zabbix/browse/templates/net/fortinet/fortigate_http?at=refs%2Fheads%2Frelease%2F7.0) |
 
