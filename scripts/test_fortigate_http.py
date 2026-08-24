@@ -39,6 +39,7 @@ from fortigate_http import (
     SNMP_MONITORING_CG,
     VDOM_STAR_SCRIPT_KEYS,
     _js_function_span,
+    _helpers_nested_in_gethttp,
     fgate_token_env,
     flatten_forti_cmdb_list,
     flatten_forti_monitor_map,
@@ -554,6 +555,10 @@ class FortiVdomStarTests(unittest.TestCase):
         self.assertIn('function fortiHttpRaw', patched)
         self.assertIn('code === 424', patched)
         self.assertEqual(patched.count('function fortiFetchVdom('), 1)
+        self.assertFalse(_helpers_nested_in_gethttp(patched))
+        gend = _js_function_span(patched, 'getHttpData')[1]
+        self.assertGreaterEqual(_js_function_span(patched, 'flattenFortiMonitorMap')[0], gend)
+        self.assertGreaterEqual(_js_function_span(patched, 'fortiFetchVdom')[0], gend)
         self.assertEqual(patch_vdom_star_script(patched), patched)
 
     def test_netif_vdom_star_500_keeps_data_array(self):
@@ -590,7 +595,31 @@ class FortiVdomStarTests(unittest.TestCase):
         self.assertIn('code === 500', patched)
         self.assertEqual(patched.count('function fortiFetchVdom('), 1)
         self.assertGreaterEqual(patched.count('fortiFetchVdom(api_url'), 3)
+        self.assertFalse(_helpers_nested_in_gethttp(patched))
+        gend = _js_function_span(patched, 'getHttpData')[1]
+        self.assertGreaterEqual(_js_function_span(patched, 'flattenFortiMonitorMap')[0], gend)
+        self.assertGreaterEqual(_js_function_span(patched, 'fortiFetchVdom')[0], gend)
         self.assertEqual(patch_vdom_star_script(patched), patched)
+
+    def test_lifts_helpers_nested_inside_gethttpdata(self):
+        raw = _yaml_script(_http_yaml(), 'fgate.sdwan.get_data')
+        patched = patch_vdom_star_script(patch_zbx27082_script(raw))
+        start = _js_function_span(patched, 'isFortiVdomBlock')[0]
+        end = _js_function_span(patched, 'fortiFetchVdom')[1]
+        helpers = patched[start:end]
+        without = patched[:start] + patched[end:]
+        gend = _js_function_span(without, 'getHttpData')[1]
+        nested = without[: gend - 1] + '\n' + helpers + '\n' + without[gend - 1 :]
+        self.assertTrue(_helpers_nested_in_gethttp(nested))
+        self.assertFalse(script_has_vdom_star(nested))
+        lifted = patch_vdom_star_script(nested)
+        self.assertTrue(script_has_vdom_star(lifted))
+        self.assertFalse(_helpers_nested_in_gethttp(lifted))
+        self.assertGreaterEqual(
+            _js_function_span(lifted, 'fortiFetchVdom')[0],
+            _js_function_span(lifted, 'getHttpData')[1],
+        )
+        self.assertEqual(lifted.count('function fortiFetchVdom('), 1)
 
     def test_sdwan_health_check_424_does_not_walk_vdoms(self):
         raw = _yaml_script(_http_yaml(), 'fgate.sdwan.get_data')

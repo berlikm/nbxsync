@@ -256,9 +256,6 @@ def patch_zbx27082_script(script: str) -> str:
 # of {vdom, results} blocks; stock JS assumes one object and would throw.
 # {#IFKEY} becomes vdom:ifName so port1 in two VDOMs does not collide.
 _VDOM_STAR_MARK = 'function fortiApiBlocks'
-_AFTER_GETHTTP = re.compile(
-    r'(function\s+getHttpData\s*\(\s*url\s*\)\s*\{[\s\S]*?return response;\s*\n\s*\};?\s*\n)'
-)
 _NOT_OBJECT_RE = re.compile(
     r"(if \(typeof response !== 'object' \|\| response === null\) \{[\s\S]*?"
     r"received data is not an object\.[\s\S]*?\}\s*\n)"
@@ -695,13 +692,16 @@ def script_has_vdom_star(script: str) -> bool:
     ``fortiFetchVdom`` that throws and walks every VDOM on any non-200
     (ZH5 ``health-check`` 424 × N VDOMs blows ``{$FGATE.DATA.TIMEOUT}``
     and leaves ``lastclock=0``). Those must keep looking unpatched until
-    ``fortiHttpRaw`` short-circuits 424/404.
+    ``fortiHttpRaw`` short-circuits 424/404. Helpers nested inside
+    ``getHttpData`` (array-guard ``return response`` fooled the old inserter)
+    must keep looking unpatched — Duktape cannot see those names from ``try``.
     """
     if (
         not script
         or _VDOM_STAR_MARK not in script
         or 'function fortiHttpRaw' not in script
         or 'code === 424' not in script
+        or _helpers_nested_in_gethttp(script)
     ):
         return False
     if 'virtual-wan/members' in script or '/cmdb/system/sdwan' in script:
@@ -842,6 +842,15 @@ _FETCH_HELPER_NAMES = (
     'fortiFetchPerVdom',
     'fortiFetchVdom',
 )
+_VDOM_HELPER_LIFT_NAMES = (
+    'isFortiVdomBlock',
+    'fortiApiBlocks',
+    'fortiIfaceId',
+    'fortiMonitorLookup',
+    'flattenFortiMonitorMap',
+    'flattenFortiCmdbList',
+    'flattenFortiSdwanCmdb',
+) + _FETCH_HELPER_NAMES
 
 
 def _js_function_span(text: str, name: str) -> tuple[int, int] | None:
@@ -881,6 +890,55 @@ def _js_function_span(text: str, name: str) -> tuple[int, int] | None:
     return None
 
 
+def _helpers_nested_in_gethttp(script: str) -> bool:
+    """True when vdom helpers were inserted inside getHttpData (Duktape-invisible)."""
+    span = _js_function_span(script, 'getHttpData')
+    if not span:
+        return False
+    inner = script[span[0] : span[1]]
+    return any(f'function {name}(' in inner for name in _VDOM_HELPER_LIFT_NAMES)
+
+
+def _lift_vdom_helpers_out_of_gethttp(script: str) -> str:
+    """Move nested helper declarations to program scope after getHttpData."""
+    span = _js_function_span(script, 'getHttpData')
+    if not span:
+        return script
+    gstart, gend = span
+    inner = script[gstart:gend]
+    found: list[tuple[int, int, str]] = []
+    for name in _VDOM_HELPER_LIFT_NAMES:
+        ispan = _js_function_span(inner, name)
+        if ispan:
+            found.append((ispan[0], ispan[1], inner[ispan[0] : ispan[1]]))
+    if not found:
+        return script
+    found.sort(key=lambda t: t[0], reverse=True)
+    for start, end, _src in found:
+        if end < len(inner) and inner[end] == '\n':
+            end += 1
+        inner = inner[:start] + inner[end:]
+    extracted = '\n\n'.join(
+        src.rstrip() for _s, _e, src in sorted(found, key=lambda t: t[0])
+    )
+    rest_at = gend
+    semi = ''
+    if rest_at < len(script) and script[rest_at] == ';':
+        semi = ';'
+        rest_at += 1
+    return script[:gstart] + inner + semi + '\n' + extracted + '\n' + script[rest_at:]
+
+
+def _insert_after_gethttp(script: str, block: str) -> str:
+    span = _js_function_span(script, 'getHttpData')
+    if not span:
+        return script + '\n' + block
+    end = span[1]
+    if end < len(script) and script[end] == ';':
+        end += 1
+    return script[:end] + '\n' + block + script[end:]
+
+
 def _extract_js_function(blob: str, name: str) -> str:
     span = _js_function_span(blob, name)
     if not span:
@@ -899,22 +957,7 @@ def _replace_js_function(text: str, name: str, new_fn: str) -> tuple[str, bool]:
 
 
 def _insert_js_before_fetch(text: str, block: str) -> str:
-    idx = text.find('function fortiFetchVdom(')
-    if idx >= 0:
-        return text[:idx] + block + text[idx:]
-    marker = "['scheme', 'api.token'"
-    at = text.find(marker)
-    if at >= 0:
-        try_idx = text.rfind('try {', 0, at)
-        if try_idx >= 0:
-            return text[:try_idx] + block + text[try_idx:]
-    if 'function flattenFortiSdwanCmdb' in text:
-        patched, n_fn = _FLATTEN_SDWAN_END.subn(
-            lambda m: m.group(1) + '\n' + block, text, count=1
-        )
-        if n_fn == 1:
-            return patched
-    return text + '\n' + block
+    return _insert_after_gethttp(text, block)
 
 
 def _ensure_fetch_helper(script: str) -> str:
@@ -1009,6 +1052,8 @@ def patch_vdom_star_script(script: str) -> str:
     if not script or script_has_vdom_star(script):
         return script
     patched = script
+    if _helpers_nested_in_gethttp(patched):
+        patched = _lift_vdom_helpers_out_of_gethttp(patched)
     if 'Array.isArray(response)' not in patched:
         patched, n_guard = _NOT_OBJECT_RE.subn(
             lambda m: m.group(1) + _ARRAY_GUARD, patched, count=1
@@ -1016,17 +1061,18 @@ def patch_vdom_star_script(script: str) -> str:
         if n_guard != 1:
             return script
     if _VDOM_STAR_MARK not in patched:
-        patched, n_help = _AFTER_GETHTTP.subn(
-            lambda m: m.group(1) + FORTI_VDOM_HELPERS, patched, count=1
-        )
-        if n_help != 1:
+        inserted = _insert_after_gethttp(patched, FORTI_VDOM_HELPERS)
+        if inserted == patched or _VDOM_STAR_MARK not in inserted:
             return script
+        patched = inserted
     for rx, repl in _VDOM_URLS:
         patched = rx.sub(repl, patched)
     if '/api/v2/monitor/system/interface' in script:
         patched = _ensure_netif_vdom_resilience(patched)
     if '/api/v2/cmdb/system/sdwan' in script:
         patched = _ensure_sdwan_vdom_resilience(patched)
+    if _helpers_nested_in_gethttp(patched):
+        return script
     return patched
 
 

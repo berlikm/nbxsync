@@ -225,7 +225,8 @@ def main() -> int:
         and 'vdom=*' in forti_http
         and 'VDOM_STAR_SCRIPT_KEYS' in forti_http
         and 'function fortiHttpRaw' in forti_http
-        and 'code === 424' in forti_http,
+        and 'code === 424' in forti_http
+        and '_helpers_nested_in_gethttp' in forti_http,
         'surgical vdom=* flatten on netif + SD-WAN scripts; 424 does not walk VDOMs; stock YAML is not imported',
     )
     record(
