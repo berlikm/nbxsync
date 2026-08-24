@@ -14,8 +14,8 @@ A **page** (Disaster/High) must be: user or forwarding impact now, urgent, **act
 | Channel | Zabbix sev | Use |
 |---|---|---|
 | SMS/call 24/7 | Disaster, High | Device ICMP down; temp **critical** |
-| Ticket, business hours | Average | PSU/fan, DOM alarm, memory, **every discovered** link down, “we are blind” (unsupported items) |
-| Next day / dashboard | Warning | SNMP dead, CPU, errors, flaps, duplex, speed-expect (when linked) |
+| Ticket, business hours | Average | PSU/fan, DOM alarm, memory, **every discovered** link down, MLT agg-down after it was up, “we are blind” (unsupported items) |
+| Next day / dashboard | Warning | SNMP dead, CPU, errors, flaps, duplex, speed-expect (when linked), FCS/alignment, leftover unsupported after allowlist |
 | Log | Info | Firmware / serial |
 
 On-box classes are identity, not a second severity map: `US` = server/storage (Pure), `USW` = switch/firewall/other network box, `UP` = AP, `MON` = important with no better class. On Core/Dist/Mgmt, **only important ports are admin-up**. On Access, a grammar **display-string** is that contract. Admin-up + nothing connected (or a labelled Access port that never came up) is a ticket so dayside can check and **admin-down**. Unlabelled Access desk ports are not discovered. A Pure/`US` path down is a critical service we most likely **cannot restore at 03:00** — still Average, not High. Page the **box** (ICMP) and overtemp. If a *storage switch host* must wake pikett, that is host tag `critical`, not a special `US` trigger.
@@ -45,11 +45,13 @@ The on-box label is the contract (`USW`→10G, `US`→10G, `UP`→1G, `MON`→1G
 | Docs said `USW`/`UP` link-down **High** | Stock/VOSS one **Average** for every discovered port | Average is the live contract. Admin-up = should be live; ticket, do not page. |
 | Observability listed flaps/errors as “page” | Warning (next day) | Graph/ticket, not 03:00 |
 | Speed Expect `{$IF.UTIL.MAX:"USW"}=80` | Would Warning 80% of intended 10G the moment it was linked | **101** (off) |
+| Stock EXOS `{$IF.UTIL.MAX}=90` | Template 90 beats global 101 → bandwidth Warnings | `--apply` patches EXOS/VOSS templates to **101**; assert effective host value |
 | Speed Expect discards at 1 pps + second link-down | Would Warning besides platform Average link-down | discards and duplicate link-down **DISABLED** |
-| VOSS ISIS circuit / card **High** ungated | 24/7 on unused SPBM / empty slots | `{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0` (same pattern as V-IST) |
+| VOSS ISIS circuit / card **High** ungated | 24/7 on unused SPBM / empty slots | Card stays `{$CARD.CONTROL}=0`. ISIS/V-IST host macros on VOSS fabric pairs only; trigger is **loss of an established session** |
+| VOSS MLT `.diff()` / `last(#1)<>last(#2)` | Problem recovers while still down | Three-sample down after it was up; recover on up; never-up silent |
 | Switch ICMP loss/RTT Warning | CH proxy RTT is WAN, not box health | **DISABLED** (items stay; same as APs) |
 | EXOS SNMP-dead | Stock Warning | VOSS/IQ match Warning |
-| “Never silent” | Census only | Average on unsupported-item count **and** on zero discovered interfaces (SNMP up 1h) |
+| “Never silent” | Census only | Average on unsupported-item count **and** on zero discovered interfaces (SNMP up 1h). Warning if any unsupported remains after optional-OID allowlist |
 | Host dashboards | Traffic gallery only | **Health** for chassis/diagnostics plus unified **Network interfaces** status map and graph grid |
 
 ## Zero-touch / re-apply (do not break existing hosts)

@@ -43,6 +43,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     live prototypes; LLD check-now copies the ASCII title onto discovered
     Speed Expect triggers. Open Problems keep the title from create.
   * Override stock Extreme EXOS/VOSS template ``{$TEMP_*}`` macros (stock 55/65 wins over globals)
+  * Patch stock Extreme EXOS/VOSS template ``{$IF.UTIL.MAX}=101`` so stock EXOS ``90`` cannot beat the global off-switch (effective-macro assert on Access/Core)
   * Disable ICMP loss/RTT triggers on EXOS/VOSS/IQ (items stay for Health; CH proxy RTT is WAN)
   * Health dashboards ship in YAML (VOSS/IQ + EXOS Observability companion). ``--apply`` patches the stock EXOS **Network interfaces** Overview + Port layout and drops leftover Health Diagnostics pages.
   * Platform TemplateRules: EXOS → Observability companion (nests stock); VOSS / IQ Engine → Extreme * by SNMP
@@ -63,8 +64,9 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     (Zabbix rejects a template linked both directly and through a parent).
 
 Stage matrix (what each flag enables):
-  ``--apply``                     = stages 0–3: template imports + EXOS/VOSS/IQ rules + IFALIAS + destination globals + TEMP/ICMP/Health patches.
+  ``--apply``                     = stages 0–3: template imports + EXOS/VOSS/IQ rules + IFALIAS + destination globals + TEMP/util/ICMP/Health patches.
                                     Speed Expect is nested on VOSS and EXOS Observability (empty ifAlias = not discovered).
+                                    Writes VOSS fabric-pair V-IST/ISIS host macros (loss of an established session).
                                     Also writes FortiOS platform FortiGate HTTP macros (no Forti HostSync, no FortiOS retarget).
   ``--apply-firewall-macros``     = NetBox-only FortiOS platform macros. No Extreme import, no Zabbix API, no HostSync, no FortiOS retarget.
   ``--apply-fortigate-http``      = FortiGate HTTP cutover without zerotouch: lookup Cloud **Zabbix, 7.0-2**, patch ZBX-27082 / WAN state, import Observability companion, FortiOS rule only (not role Firewall). Fail-closed preflight. No HostSync.
@@ -77,7 +79,10 @@ Re-apply safety (estate already has switches/APs in Zabbix):
   * Does **not** mass-sync every device (template updates inherit in Zabbix)
   * After role macros, writes Switch Access Zabbix **host** macros (IFALIAS /
     PORTID / ``{$LINKDOWN.IFALIAS}`` grammar regex) and logs remaining Switch*
-    drift. Does not mass-HostSync. Does not rewrite Core/Dist/Mgmt host macros.
+    drift. Does not mass-HostSync. Does not rewrite Core/Dist/Mgmt IFALIAS.
+    Also writes ``{$VIST.CONTROL}`` / ``{$ISIS.CONTROL}`` / ``{$ISIS.EXPECTED}``
+    on VOSS Core/Dist/Mgmt ``BASE-1``/``BASE-2`` name twins (not EXOS stacks,
+    not Access, not card). Cutover-silence writes those three to ``0``.
   * YAML ``deleteMissing: false`` — retired items linger; LLD is not wiped
   * ``--apply`` without ``--link-speed-expect`` does **not** unlink a leftover role assignment
     (Speed Expect is nested on the platform templates; skip the flag).
@@ -249,6 +254,18 @@ from extreme_psu import (
     psu_trigger_name_match as _psu_trigger_name_match,
     rewrite_psu_not_up_expr as _rewrite_psu_not_up_expr,
 )
+from extreme_util import (
+    IF_UTIL_DESCRIPTION as _IF_UTIL_DESCRIPTION,
+    IF_UTIL_MAX_MACRO as _IF_UTIL_MAX_MACRO,
+    IF_UTIL_MAX_OFF as _IF_UTIL_MAX_OFF,
+    IF_UTIL_TEMPLATE_NAMES as _IF_UTIL_TEMPLATE_NAMES,
+    effective_macro_from_layers as _effective_macro_from_layers,
+    if_util_is_off as _if_util_is_off,
+)
+from extreme_fabric import (
+    fabric_pair_hostnames as _fabric_pair_hostnames,
+    fabric_pair_macros as _fabric_pair_macros,
+)
 
 # Reuse zerotouch helpers when present (same ensure/ct/slugify contract).
 try:
@@ -347,8 +364,8 @@ DESTINATION_GLOBAL_MACROS = {
     '{$OPTIC.RX.DBM.FLOOR}': '-39',
     '{$OPTIC.DOM.ALARM_HIGH}': '3',
     '{$OPTIC.DOM.ALARM_LOW}': '5',
-    '{$MLT.CONTROL}': '1',  # .diff() keeps unused/disabled MLTs quiet
-    '{$VIST.CONTROL}': '0',  # set host macro =1 on VOSS fabric pairs
+    '{$MLT.CONTROL}': '1',  # three-sample down after the MLT was up; unused stay silent; recover on up
+    '{$VIST.CONTROL}': '0',  # --apply sets host 1 on VOSS BASE-1/BASE-2 pairs
     '{$IST.CONTROL}': '0',  # classic IST unused on FE fabric
     '{$SNMP.TIMEOUT}': '5m',
 }
@@ -1674,6 +1691,156 @@ def assert_extreme_template_temp_macros(api, template_name: str) -> tuple[bool, 
     detail = {k: have.get(k) for k in wanted}
     ok = all(have.get(k) == v for k, v in wanted.items())
     return ok, str(detail)
+
+
+def patch_extreme_template_util_macros(api, template_names: tuple[str, ...] | None = None) -> dict[str, str]:
+    """Set {$IF.UTIL.MAX}=101 on switch templates so stock EXOS 90 cannot beat global 101."""
+    logger.info('Network: Extreme template {$IF.UTIL.MAX}=101')
+    names = template_names or _IF_UTIL_TEMPLATE_NAMES
+    wanted = {_IF_UTIL_MAX_MACRO: _IF_UTIL_MAX_OFF}
+    descriptions = {_IF_UTIL_MAX_MACRO: _IF_UTIL_DESCRIPTION}
+    results: dict[str, str] = {}
+    for name in names:
+        results[name] = _upsert_template_macros(api, name, wanted, descriptions)
+        logger.info('  %s: {$IF.UTIL.MAX} %s', name, results[name])
+    return results
+
+
+def assert_extreme_template_util_macros(api, template_name: str) -> tuple[bool, str]:
+    tpls = api.template.get(
+        filter={'name': [template_name]},
+        output=['templateid'],
+        selectMacros='extend',
+    )
+    if not tpls:
+        return True, 'template absent — n/a'
+    have = _template_macro_map(tpls[0].get('macros') or [])
+    value = have.get(_IF_UTIL_MAX_MACRO)
+    return _if_util_is_off(value), f'template={value!r}'
+
+
+def zabbix_effective_macro(api, hostid: str, macro: str) -> tuple[str | None, str]:
+    """Resolve host > inherited/template > global. Live Zabbix, not NetBox."""
+    kwargs = {
+        'hostids': [hostid],
+        'output': ['hostid'],
+        'selectMacros': ['macro', 'value'],
+        'selectParentTemplates': ['templateid', 'name'],
+    }
+    host_row = None
+    inherited: dict[str, str] = {}
+    try:
+        rows = api.host.get(selectInheritedMacros=['macro', 'value'], **kwargs) or []
+        if rows:
+            host_row = rows[0]
+            inherited = _template_macro_map(host_row.get('inheritedMacros') or [])
+    except Exception as exc:
+        logger.info('  inherited macros unavailable (%s) — walk templates', exc)
+        rows = api.host.get(**kwargs) or []
+        host_row = rows[0] if rows else None
+    if not host_row:
+        return None, 'missing-host'
+    host_macros = _template_macro_map(host_row.get('macros') or [])
+    template_macros: dict[str, str] = {}
+    for tpl in host_row.get('parentTemplates') or []:
+        tid = tpl.get('templateid')
+        if not tid:
+            continue
+        full = api.template.get(
+            templateids=[tid],
+            output=['templateid'],
+            selectMacros='extend',
+            selectParentTemplates=['templateid'],
+        ) or []
+        if full:
+            template_macros.update(_template_macro_map(full[0].get('macros') or []))
+            for parent in full[0].get('parentTemplates') or []:
+                nested = api.template.get(
+                    templateids=[parent['templateid']],
+                    output=['templateid'],
+                    selectMacros='extend',
+                ) or []
+                if nested:
+                    # Nested (stock EXOS) fills gaps; direct companion wins if already set.
+                    for key, val in _template_macro_map(nested[0].get('macros') or []).items():
+                        template_macros.setdefault(key, val)
+    gmacros = {
+        m['macro']: m.get('value', '')
+        for m in (api.usermacro.get(globalmacro=True, output='extend') or [])
+        if isinstance(m, dict) and m.get('macro')
+    }
+    return _effective_macro_from_layers(
+        host=host_macros,
+        inherited=inherited,
+        template=template_macros,
+        global_macros=gmacros,
+        name=macro,
+    )
+
+
+def assert_effective_if_util(api, hostid: str) -> tuple[bool, str]:
+    value, source = zabbix_effective_macro(api, hostid, _IF_UTIL_MAX_MACRO)
+    return _if_util_is_off(value), f'{source}={value!r}'
+
+
+def patch_voss_fabric_pair_host_macros(api) -> dict[str, int | str]:
+    """Write {$VIST.CONTROL}=1 / ISIS on Zabbix hosts for VOSS BASE-1/BASE-2 pairs.
+
+    Not HostSync. Not Access. Card stays 0. Triggers require a prior up sample
+    so never-configured V-IST/ISIS stays silent.
+    """
+    logger.info(
+        'Network: VOSS fabric-pair host macros (V-IST / ISIS, not card%s)',
+        '; cutover-silence=0' if _CUTOVER_SILENCE else '',
+    )
+    devices = list(
+        Device.objects.filter(status='active').select_related('platform', 'role').order_by('name')
+    )
+    rows = [
+        (
+            d.name,
+            getattr(d.platform, 'name', None) or '',
+            getattr(d.role, 'name', None) or '',
+        )
+        for d in devices
+    ]
+    names = _fabric_pair_hostnames(rows)
+    if not names:
+        logger.info('  No VOSS CORE/DIST/MGMT BASE-1/BASE-2 pairs — skip')
+        return {'status': 'no-pairs', 'patched': 0, 'missing': 0, 'in_sync': 0}
+    wanted = _fabric_pair_macros(silence=_CUTOVER_SILENCE)
+    by_host = _zabbix_hosts_by_name(api, names)
+    patched: list[str] = []
+    missing: list[str] = []
+    in_sync = 0
+    for name in names:
+        row = by_host.get(name)
+        if row is None:
+            missing.append(name)
+            continue
+        changed = _upsert_host_macros(api, str(row['hostid']), wanted)
+        if changed:
+            patched.append(name)
+            logger.info('  %s: wrote %s', name, ', '.join(changed))
+        else:
+            in_sync += 1
+    logger.info(
+        '  Fabric pairs: patched=%s in_sync=%s missing_in_zabbix=%s sample=%s',
+        len(patched),
+        in_sync,
+        len(missing),
+        patched[:8],
+    )
+    if missing:
+        logger.warning('  Fabric-pair devices not in Zabbix (sample): %s', missing[:12])
+    return {
+        'status': 'ok',
+        'patched': len(patched),
+        'in_sync': in_sync,
+        'missing': len(missing),
+        'hosts': len(names),
+        'sample': patched[:12],
+    }
 
 
 def _patch_template_ascii_titles(api, templateid) -> int:
@@ -3162,6 +3329,18 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 ok, detail = assert_extreme_template_temp_macros(api, tname)
                 record(f'template_temp_assert_{tname}', ok, detail, group='import')
 
+            util_statuses = patch_extreme_template_util_macros(api)
+            for tname, status in util_statuses.items():
+                record(
+                    f'template_util_{tname}',
+                    status in ('ok', 'patched', 'missing'),
+                    status,
+                    group='import',
+                )
+            for tname in _IF_UTIL_TEMPLATE_NAMES:
+                ok, detail = assert_extreme_template_util_macros(api, tname)
+                record(f'template_util_assert_{tname}', ok or 'n/a' in detail, detail, group='import')
+
             health = step_health_patches(api)
             icmp_statuses = health.get('icmp_noise') or {}
             for tname, status in icmp_statuses.items():
@@ -3329,6 +3508,13 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
                 'access_host_macros',
                 access_macros.get('status') in ('ok', 'no-devices', 'no-role'),
                 str(access_macros),
+                group='import',
+            )
+            fabric_macros = patch_voss_fabric_pair_host_macros(api)
+            record(
+                'voss_fabric_pair_macros',
+                fabric_macros.get('status') in ('ok', 'no-pairs'),
+                str(fabric_macros),
                 group='import',
             )
 
@@ -3523,6 +3709,9 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             h = host(objects['voss_core'].name)
             record('zbx_voss_core_exists', bool(h), objects['voss_core'].name, group='zabbix')
             if h:
+                ok, detail = assert_effective_if_util(api, h['hostid'])
+                record('zbx_voss_core_effective_util_off', ok, detail, group='zabbix')
+            if h:
                 tpls = [t.get('name') for t in h.get('parentTemplates', [])]
                 record(
                     'zbx_voss_no_netgeneric',
@@ -3560,6 +3749,8 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
 
             h_a = host(objects['voss_access'].name)
             if h_a:
+                ok, detail = assert_effective_if_util(api, h_a['hostid'])
+                record('zbx_voss_access_effective_util_off', ok, detail, group='zabbix')
                 macros = {m['macro']: m.get('value', '') for m in (h_a.get('macros') or []) if isinstance(m, dict) and 'macro' in m}
                 record(
                     'zbx_access_ifalias_grammar_classes',
@@ -3590,6 +3781,8 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             if h_e:
                 tpls = [t.get('name') for t in h_e.get('parentTemplates', [])]
                 record('zbx_exos_template', any('EXOS' in (n or '') for n in tpls), str(tpls), group='zabbix')
+                ok, detail = assert_effective_if_util(api, h_e['hostid'])
+                record('zbx_exos_core_effective_util_off', ok, detail, group='zabbix')
 
             h_ap = host(objects['ap_access'].name)
             record('zbx_ap_exists', bool(h_ap), objects['ap_access'].name, group='zabbix')
@@ -3726,6 +3919,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
         patch_psu_not_up(api)
         patch_linkdown_one_average(api)
         patch_extreme_template_temp_macros(api)
+        patch_extreme_template_util_macros(api)
         step_health_patches(api)
         patch_ascii_trigger_titles(api)
     tpl_models = {name: ensure_nbx_template(server, tid, name) for name, (tid, name) in imported.items()}
@@ -3733,6 +3927,7 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     step_role_macros(server)
     with ZabbixConnection(server) as api:
         patch_access_port_scope_host_macros(api)
+        patch_voss_fabric_pair_host_macros(api)
     report_hosts_needing_macro_sync(server)
     step_template_rules(server, tpl_models)
     step_speed_expect_assignment(server, tpl_models, link=link_speed_expect)

@@ -8,12 +8,12 @@
 - [x] ~~**VOSS device-health OIDs**~~ **Answered** — `rcKhiSlotCpuCurrentUtil` / `rcKhiSlot*` memory. `rcSysCpuUtil` and `rcSysDramSize/Used/Free` return *No Such Object* — do not use.
 - [ ] **Charset** — confirm `:` is rejected and `-` accepted by `display-string` on our EXOS versions. `.` is now also forbidden by policy (labels use `_` for slot/port). Also test `,` and `;` (EXOS port-list separators, not on the vendor forbidden list).
 - [ ] **Compliance check** — any port where `description-string` is non-empty; it silently hijacks `ifAlias`.
+- [x] ~~**VOSS `hrSystemUptime` absent**~~ **Answered** — `hrSystemUptime` maps not-supported to 0. Reboot authority is `snmpEngineBoots`. `sysUpTime` is display/Health. Fallback reboot only if boots=0 and hrSystemUptime=0 and sysUpTime&lt;10m **and** previous sysUpTime `&lt; {$UPTIME.WRAP.MAX}` (34560000s ≈ 400d) so a ~497-day wrap does not false-reboot.
 - [ ] **VOSS hardware canary** — the lab is a *virtual* Fabric Engine. Fan (`rcChasFan*`), optics, LLDP peers, cards, ISIS/MLT and IST were absent, and temperature reads 0 °C. Re-run on a physical 5520 before trusting fan/temp/PSU triggers.
-- [ ] **VOSS `hrSystemUptime` absent** — restart trigger falls back to `sysUpTime.0` only, so the 497-day 32-bit wrap has **no mitigation** on VOSS. Accept the false restart, or suppress the trigger there.
 
 ## Must verify on the pilot before enabling alerts
 
-- [ ] **Do CRC errors actually show up?** `ifInErrors` is an aggregate and may not move for FCS errors. The proper counter is `dot3StatsFCSErrors` (EtherLike-MIB), which the stock template does **not** poll — its EtherLike LLD only pulls duplex. Test with a known-bad patch lead. If it doesn't move, the "dirty link" requirement is not covered.
+- [x] ~~**Do CRC errors actually show up?**~~ **Items live** — VOSS EtherLike LLD now polls `dot3StatsFCSErrors` / alignment / symbol + `ifCounterDiscontinuityTime`. EXOS uses Observability companion `net.if.fcs.discovery` (no stock YAML fork). Rate Warning 5m with 80% hysteresis. **Still need a faulty-link canary** to prove the OID moves; `ifInErrors` is an aggregate.
 - [x] ~~**PSU status from an empty slot**~~ **Answered** — VOSS `empty(2)` is not installed. Firmware often fills serial with `--` (CH-STA-L26-L02-MGMT03). LLD skips empty even when serial looks set; Average excludes empty so leftover PSU 2 recovers. Honeycomb paints empty red until the item is deleted.
 - [ ] **Stack temperature** — confirm non-master nodes report 0 (drives the "too low" silencing).
 - [ ] **ifIndex stability** across a reboot and across adding a stack member. If it shifts, everything re-discovers and history is lost.
@@ -40,7 +40,7 @@ The finalised port-identity doc dropped these; confirm they live in the plan or 
 
 ## Monitoring the monitoring — build these, they are not optional
 
-- [ ] Unsupported item count per host. An item that goes "not supported" stops polling silently.
+- [x] ~~Unsupported item count per host.~~ **Answered** — Average at `{$UNSUPPORTED.MAX}=5` (30m). Warning at `{$UNSUPPORTED.WARN}=0` for leftovers. Optional VOSS LLD (card / ISIS / SPBM / SMLT) maps not-supported to `[]`. V-IST status not-supported maps to 0. Chassis serial `nodata(...,2h)` Warning while SNMP is up. Do **not** set MAX to 0.
 - [ ] Alert if a switch has **zero** discovered interfaces (catches a broken LLD filter).
 - [ ] Alert on hosts with no template / no items (catches a switch nobody onboarded).
 - [ ] Zabbix proxy last-seen (a dead proxy makes its hosts *unknown*, not *down*).

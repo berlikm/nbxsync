@@ -129,7 +129,7 @@ How §2 maps to data. Most rows come from the stock Extreme EXOS by SNMP templat
 |---|---|---|---|
 | 1 | reachable? | icmpping | simple check |
 | 2 | answering management? | SNMP agent availability | Zabbix internal |
-| 3 | unplanned reboot? | uptime | SNMPv2-MIB / HOST-RESOURCES-MIB |
+| 3 | unplanned reboot? | `snmpEngineBoots` (VOSS); `sysUpTime` display | SNMP-FRAMEWORK-MIB / SNMPv2-MIB / HOST-RESOURCES-MIB |
 | 4 | overheating? | temperature value + vendor alarm status | EXTREME-SYSTEM-MIB |
 | 5 | PSU / fan failed? | PSU + fan status | EXTREME-SYSTEM-MIB |
 | 6 | running out of resources? | CPU, memory | EXTREME-SOFTWARE-MONITOR-MIB |
@@ -137,7 +137,7 @@ How §2 maps to data. Most rows come from the stock Extreme EXOS by SNMP templat
 | 8 | link down? | ifOperStatus | IF-MIB |
 | 9 | running at the wrong speed? | ifHighSpeed | IF-MIB |
 | 10 | dirty link? | in/out errors, discards | IF-MIB |
-| 11 | **CRC specifically?** | `dot3StatsFCSErrors` | EtherLike-MIB — **not in stock template, see §9** |
+| 11 | **CRC specifically?** | `dot3StatsFCSErrors` | EtherLike-MIB — VOSS duplex LLD + EXOS Observability companion; canary still needed |
 | 12 | half duplex? | `dot3StatsDuplexStatus` | EtherLike-MIB |
 | 13 | uplink sustainably full? | `ifHCInOctets` / `ifHCOutOctets` vs intended speed | IF-MIB, 1h average |
 | 14 | dropping traffic? | `ifOutDiscards` | IF-MIB |
@@ -432,7 +432,7 @@ One template set for every role — never a per-role copy of the template. Two c
 | Build | Platform `VOSS` | `Extreme VOSS by SNMP` — `templates/zabbix/net/extreme_voss_snmp/` |
 | Build | Both platforms | `Extreme Port Speed Expect by SNMP` — thin, own keys, own macro namespace |
 | Build | **Core / Dist roles** | `Extreme Routing by SNMP` — OSPF, platform-neutral |
-| Maybe build | Both platforms | CRC error items if `dot3StatsFCSErrors` turns out to be needed (§9) |
+| Build | Both platforms | CRC / FCS on VOSS EtherLike LLD + EXOS Observability companion (`net.if.fcs.discovery`); canary still needed |
 
 ### Macro assignments — destination standard
 
@@ -506,7 +506,7 @@ Silencing by macro rather than disabling triggers keeps the template untouched a
 - [x] ~~`display-string` max length~~ **Answered — 20 characters, silently truncated.** Confirmed on CH-NKN-G08-L02-CORE01. Fleet label budget is **20, not 64**. Generator must enforce ≤20 rather than let the switch truncate.
 - [ ] Confirm `:` is rejected by `display-string` on our EXOS versions; also test `,` and `;`
 - [ ] Compliance check: any port where `description-string` is non-empty (it would hijack `ifAlias`)
-- [ ] **Do CRC errors actually show up?** `ifInErrors` is an aggregate and may not move for FCS errors. The proper counter is `dot3StatsFCSErrors`, which the stock EtherLike LLD does **not** poll. Test with a known-bad patch lead before assuming §2 "dirty link" is covered
+- [x] ~~**Do CRC errors actually show up?**~~ **Items live** on VOSS EtherLike LLD and EXOS Observability companion. Faulty-link canary still needed to prove `dot3StatsFCSErrors` moves; `ifInErrors` is an aggregate.
 - [ ] `{$IF.ERRORS.WARN}` sane value — stock 2 pkt/s is a guess, set from baseline
 - [ ] `{$IF.DISCARDS.WARN}` and `{$IF.UTIL.MAX:"USW"}` — set from 4+ weeks of history, not guessed
 - [ ] Do our uplinks have predictable nightly backup windows that need time-of-day handling?

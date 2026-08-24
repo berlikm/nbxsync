@@ -22,6 +22,15 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
 from extreme_ascii_titles import yaml_title_fields_needing_ascii
+from extreme_fabric import (
+    VOSS_OPTIONAL_LLD_KEYS,
+    isis_expr_is_expected_loss,
+    lld_allowlists_unsupported,
+    mlt_expr_is_persistent_down,
+    reboot_expr_uses_engine_boots,
+    vist_expr_is_loss,
+)
+from extreme_fcs import FCS_KEY, fcs_expr_is_rate_with_hysteresis
 from extreme_linkdown import (
     IFNAME_NOT_MATCHES,
     ifname_not_matches_excludes_oob,
@@ -68,8 +77,6 @@ def validate_uuids(name: str, text: str) -> None:
 
 
 def load_yaml(path: Path) -> dict:
-    # Quoted 'y' keys stay strings; YAML 1.1 would otherwise coerce y → True.
-    return yaml.safe_load(path.read_text())
     # Quoted 'y' keys stay strings; YAML 1.1 would otherwise coerce y → True.
     return yaml.safe_load(path.read_text())
 
@@ -121,7 +128,7 @@ def _trigger_identity(trig: dict) -> tuple[str, str, str]:
     )
 
 
-def validate_yaml_trigger_dependencies(name: str, tpl: dict) -> None:
+def validate_yaml_trigger_dependencies(name: str, tpl: dict, doc: dict | None = None) -> None:
     """Import resolves ``dependencies:`` by name+expression+recovery, not display name.
 
     Editing a parent trigger and leaving child pointers on the old expression
@@ -129,7 +136,7 @@ def validate_yaml_trigger_dependencies(name: str, tpl: dict) -> None:
     is in the same YAML. That is what blocked Extreme VOSS by SNMP import after
     the Access ``{$LINKDOWN.IFALIAS}`` gate was added to Link down only.
     """
-    trigs = _walk_triggers(tpl)
+    trigs = _walk_triggers(tpl, doc)
     known = {_trigger_identity(t) for t in trigs}
     bad = []
     for trig in trigs:
@@ -147,7 +154,7 @@ def validate_yaml_trigger_dependencies(name: str, tpl: dict) -> None:
     )
 
 
-def _walk_triggers(tpl: dict) -> list[dict]:
+def _walk_triggers(tpl: dict, doc: dict | None = None) -> list[dict]:
     out: list[dict] = []
     for it in tpl.get('items') or []:
         out.extend(it.get('triggers') or [])
@@ -156,6 +163,8 @@ def _walk_triggers(tpl: dict) -> list[dict]:
             out.extend(it.get('trigger_prototypes') or [])
         out.extend(rule.get('trigger_prototypes') or [])
     out.extend(tpl.get('triggers') or [])
+    if doc is not None:
+        out.extend((doc.get('zabbix_export') or {}).get('triggers') or [])
     return out
 
 
@@ -594,17 +603,30 @@ def validate_voss(doc: dict) -> None:
         '{$ISIS.CONTROL}': '0',
         '{$CARD.CONTROL}': '0',
         '{$UNSUPPORTED.MAX}': '5',
+        '{$UNSUPPORTED.WARN}': '0',
         '{$IF.UTIL.MAX}': '101',
+        '{$IF.FCS.WARN}': '2',
         '{$VIST.CONTROL}': '0',
+        '{$VIST.UP_STATUS}': '1',
         '{$IST.CONTROL}': '0',
+        '{$MLT.EXPECTED}': '0',
+        '{$MLT.AGG.UP_STATUS}': '1',
+        '{$ISIS.EXPECTED}': '0',
+        '{$ISIS.CIRCUIT.UP_STATUS}': '1',
+        '{$UPTIME.WRAP.MAX}': '34560000',
     }.items():
         record(f'VOSS {k}', macros.get(k) == v, f'got={macros.get(k)!r}')
-    trigs = _walk_triggers(tpl)
+    trigs = _walk_triggers(tpl, doc)
     by_name = {t.get('name'): t for t in trigs}
     for n in ('Extreme VOSS: High ICMP ping loss', 'Extreme VOSS: High ICMP ping response time'):
         t = by_name.get(n)
         record(f'VOSS {n} DISABLED', bool(t) and t.get('status') == 'DISABLED', str((t or {}).get('status')))
-    for n in ('Extreme VOSS: Too many unsupported items', 'Extreme VOSS: No discovered interfaces after SNMP is up'):
+    for n in (
+        'Extreme VOSS: Too many unsupported items',
+        'Extreme VOSS: Unsupported item or discovery rule',
+        'Extreme VOSS: No discovered interfaces after SNMP is up',
+        'Extreme VOSS: Chassis identity is stale',
+    ):
         record(f'VOSS has {n}', n in by_name, '')
     record(
         'VOSS {$NET.IF.DISCOVERY.MIN}',
@@ -661,18 +683,54 @@ def validate_voss(doc: dict) -> None:
     )
     card = next((t for t in trigs if 'card' in (t.get('name') or '').lower() and 'down' in (t.get('name') or '').lower()), None)
     isis = next((t for t in trigs if 'isis' in (t.get('name') or '').lower() and 'circuit' in (t.get('name') or '').lower()), None)
+    vist = by_name.get('Extreme VOSS: V-IST session is down')
+    mlt = next((t for t in trigs if 'Aggregation disabled' in (t.get('name') or '')), None)
+    reboot = by_name.get('Extreme VOSS: Host has been restarted')
+    fcs = next((t for t in trigs if 'FCS' in (t.get('name') or '')), None)
+
+    def _recovery_expr(trig: dict | None) -> bool:
+        return str((trig or {}).get('recovery_mode') or '').upper() == 'RECOVERY_EXPRESSION'
+
     record(
         'VOSS card High gated',
         bool(card) and '{$CARD.CONTROL}=1' in (card.get('expression') or ''),
         (card or {}).get('expression', '')[:120],
     )
     record(
-        'VOSS ISIS High gated',
-        bool(isis) and '{$ISIS.CONTROL}=1' in (isis.get('expression') or ''),
-        (isis or {}).get('expression', '')[:120],
+        'VOSS ISIS expected-loss (never-configured silent)',
+        bool(isis)
+        and isis_expr_is_expected_loss(isis.get('expression') or '')
+        and _recovery_expr(isis),
+        (isis or {}).get('expression', '')[:160],
+    )
+    record(
+        'VOSS V-IST loss of established session',
+        bool(vist)
+        and vist_expr_is_loss(vist.get('expression') or '')
+        and _recovery_expr(vist),
+        (vist or {}).get('expression', '')[:160],
+    )
+    record(
+        'VOSS MLT persistent-down (never-up silent)',
+        bool(mlt)
+        and mlt_expr_is_persistent_down(mlt.get('expression') or '')
+        and _recovery_expr(mlt),
+        (mlt or {}).get('expression', '')[:160],
+    )
+    record(
+        'VOSS reboot uses snmpEngineBoots + wrap-safe sysUpTime fallback',
+        bool(reboot) and reboot_expr_uses_engine_boots(reboot.get('expression') or ''),
+        (reboot or {}).get('expression', '')[:200],
     )
     keys = _walk_item_keys(tpl)
     record('VOSS unsupported item', 'zabbix[host,,items_unsupported]' in keys, '')
+    record('VOSS snmpEngineBoots', any('snmpEngineBoots' in k for k in keys), '')
+    record('VOSS FCS item', FCS_KEY in keys, '')
+    record(
+        'VOSS FCS rate hysteresis',
+        bool(fcs) and fcs_expr_is_rate_with_hysteresis(fcs.get('expression') or '') and _recovery_expr(fcs),
+        (fcs or {}).get('expression', '')[:160],
+    )
     record('VOSS discovery count', 'net.if.discovery.count' in keys, '')
     validate_discovery_count_seed(
         'VOSS',
@@ -705,6 +763,10 @@ def validate_voss(doc: dict) -> None:
     record('VOSS temp value items named by SENSOR_DESCR', temp_value_named, '')
     record('VOSS temp status items keep SNMPINDEX', temp_status_index, '')
     by_key = {r.get('key'): r for r in (tpl.get('discovery_rules') or [])}
+    missing_allow = [
+        k for k in VOSS_OPTIONAL_LLD_KEYS if not lld_allowlists_unsupported(by_key.get(k) or {})
+    ]
+    record('VOSS optional LLD allowlists unsupported', not missing_allow, str(missing_allow))
     psu = by_key.get('psu.discovery') or {}
     psu_detail = by_key.get('psu.detail.discovery') or {}
     record(
@@ -876,6 +938,21 @@ def validate_exos_observability(doc: dict) -> None:
         macros.get('{$NET.IF.DISCOVERY.MIN}') == '1',
         str(macros.get('{$NET.IF.DISCOVERY.MIN}')),
     )
+    record(
+        'EXOS companion {$IF.FCS.WARN}',
+        macros.get('{$IF.FCS.WARN}') == '2',
+        str(macros.get('{$IF.FCS.WARN}')),
+    )
+    disc_keys = {r.get('key') for r in (tpl.get('discovery_rules') or [])}
+    record('EXOS companion FCS discovery', 'net.if.fcs.discovery' in disc_keys, str(sorted(disc_keys)))
+    fcs = next((t for t in trigs if 'FCS' in (t.get('name') or '')), None)
+    record(
+        'EXOS companion FCS rate hysteresis',
+        bool(fcs)
+        and fcs_expr_is_rate_with_hysteresis(fcs.get('expression') or '')
+        and str((fcs or {}).get('recovery_mode') or '').upper() == 'RECOVERY_EXPRESSION',
+        (fcs or {}).get('expression', '')[:160],
+    )
     validate_health_dashboard('EXOS companion', doc, tpl, pages=('Overview', 'Hardware'))
     psu_widget = None
     for dash in tpl.get('dashboards') or []:
@@ -893,10 +970,10 @@ def validate_exos_observability(doc: dict) -> None:
     )
 
 
-def validate_ascii_trigger_titles(name: str, tpl: dict) -> None:
+def validate_ascii_trigger_titles(name: str, tpl: dict, doc: dict | None = None) -> None:
     """Problem titles (name / event_name / opdata) must not use ≠ — it becomes Γëá."""
     bad: list[str] = []
-    for trig in _walk_triggers(tpl):
+    for trig in _walk_triggers(tpl, doc):
         bad.extend(yaml_title_fields_needing_ascii(trig))
     record(f'{name} ASCII trigger titles', not bad, '; '.join(bad[:4]))
 
@@ -968,11 +1045,11 @@ def validate_yaml() -> None:
         except Exception as exc:
             record(f'{name} LLD policy', False, str(exc))
         try:
-            validate_yaml_trigger_dependencies(name, _tpl(doc))
+            validate_yaml_trigger_dependencies(name, _tpl(doc), doc)
         except Exception as exc:
             record(f'{name} trigger deps resolve in YAML', False, str(exc))
         try:
-            validate_ascii_trigger_titles(name, _tpl(doc))
+            validate_ascii_trigger_titles(name, _tpl(doc), doc)
         except Exception as exc:
             record(f'{name} ASCII titles', False, str(exc))
         if name == 'Extreme VOSS by SNMP':

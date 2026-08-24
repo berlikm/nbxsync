@@ -48,7 +48,7 @@ Verified 2026-08-05 against Virtual Fabric Engine (`FEGNS3.9.3.1.0`) under QEMU 
 | `rcChasPowerSupplyOperStatus` | PASS (PS1/PS2 = up(3)) |
 | `rcChasFan*` | **absent on VOSS-VM** (keep LLD for hardware) |
 | `rcVossSystemTemperature*` | PASS LLD; values `0` ┬░C on VM; status `normal(1)` |
-| `hrSystemUptime` | **absent**; use `sysUpTime` fallback |
+| `hrSystemUptime` | **absent**; maps to 0. Reboot authority is `snmpEngineBoots`; `sysUpTime` is display with wrap guard |
 | `ifAlias` after CLI `name USW-ID01` | PASS (`ifAlias.192=USW-ID01`) |
 | `rcPortName` same port | empty ΓÇö prefer **ifAlias** |
 | Port ifIndex | `1/1` ΓåÆ `192`, `1/2` ΓåÆ `193`, ΓÇª |

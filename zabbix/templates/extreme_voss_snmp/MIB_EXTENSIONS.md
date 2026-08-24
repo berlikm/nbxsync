@@ -20,14 +20,14 @@ OID base: `1.3.6.1.4.1.2272.1` unless noted.
 
 | Feature | Keys / LLD | OID hint | Lab VOSS-VM |
 |---|---|---|---|
-| Card/slot LLD | `card.discovery` | `4.9.1.1.*` | empty (fixed VM) |
-| V-IST | status/peer/VLAN (+ optional trigger via `{$VIST.CONTROL}`) | `211.{1,2,3}` | status=down(2) unused |
+| Card/slot LLD | `card.discovery` | `4.9.1.1.*` | empty (fixed VM); not-supported → `[]` |
+| V-IST | status/peer/VLAN (loss of established session when host `{$VIST.CONTROL}=1`) | `211.{1,2,3}` | status=down(2) unused; not-supported → 0 |
 | IST | status/peer (+ `{$IST.CONTROL}`) | `17.{4,5}` | status OID absent on VM |
 | SPBM enable | `fabric.plsb.enable` | `78.1.2` | enable(1) |
-| ISIS circuits | `isis.circuit.discovery` | `63.2.1.*` | empty / absent |
-| ISIS adjacency | `isis.adj.discovery` | `63.10.1.*` | empty |
-| SPBM nickname | `spbm.node.discovery` | `63.4.1.*` | empty until SPBM peers |
-| MLT/SMLT | `mlt.discovery` | `17.10.1.*` | empty |
+| ISIS circuits | `isis.circuit.discovery` | `63.2.1.*` | empty / absent; not-supported → `[]` |
+| ISIS adjacency | `isis.adj.discovery` | `63.10.1.*` | empty; not-supported → `[]` |
+| SPBM nickname | `spbm.node.discovery` / `spbm.plsbstate.discovery` | `63.4.1.*` | empty until SPBM peers; not-supported → `[]` |
+| MLT/SMLT | `mlt.discovery` / `smlt.discovery` | `17.10.1.*` | empty; SMLT not-supported → `[]`. Agg-down is three-sample after up, not `.diff()` |
 | Port flap / shutdown | IF LLD prototypes | `4.10.1.1.{21,114}` | PASS on ifIndex 192 |
 | SNMP traps | fan/PSU/overheat/CPU/ISIS adj/LAG | `snmptrap["rcnΓÇª"]` | needs trap config |
 
@@ -35,14 +35,14 @@ OID base: `1.3.6.1.4.1.2272.1` unless noted.
 
 | Macro | Default | Meaning |
 |---|---|---|
-| `{$VIST.CONTROL}` | `0` | Set host `1` on VOSS fabric pairs (V-IST HA) |
+| `{$VIST.CONTROL}` | `0` | `--apply` sets host `1` on VOSS CORE/DIST/MGMT BASE-1/BASE-2 pairs |
 | `{$IST.CONTROL}` | `0` | Classic IST unused on FE — keep off |
 | `{$OPTIC.TEMP.CRIT}` | `70` | Optic °C **value** trigger (prefer DOM status) |
 | `{$OPTIC.TEMP.MAX}` | `150` | Ignore garbage DOM above this |
 | `{$OPTIC.RX.DBM.MIN}` | `-100` | RX dBm value trigger removed; DOM status only |
 | `{$OPTIC.RX.DBM.FLOOR}` | `-39` | Legacy |
 | `{$OPTIC.DOM.ALARM_HIGH}` / `LOW` | `3` / `5` | Vendor DOM highAlarm / lowAlarm |
-| `{$MLT.CONTROL}` | `1` | Gate MLT agg-down; trigger also requires `.diff()` |
+| `{$MLT.CONTROL}` | `1` | Three-sample down after the MLT was up; unused stay silent |
 | `{$TEMP_WARN}` / `{$TEMP_CRIT}` | `95` / `100` | Chassis °C destination |
 | `{$IF.FLAP.WARN}` | `0` | Flap change threshold (context) |
 

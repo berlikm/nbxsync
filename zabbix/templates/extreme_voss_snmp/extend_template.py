@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import re
+import sys
 import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATE = ROOT / "template_net_extreme_voss_snmp.yaml"
+sys.path.insert(0, str(ROOT.parents[2] / "scripts"))
+from extreme_fabric import (  # noqa: E402
+    isis_down_expr,
+    isis_recovery_expr,
+    mlt_down_expr,
+    mlt_recovery_expr,
+    vist_down_expr,
+    vist_recovery_expr,
+)
 
 OID = {
     "cpu5m": "1.3.6.1.4.1.2272.1.85.10.1.1.3",
@@ -73,6 +83,40 @@ def u() -> str:
     return uuid.uuid4().hex
 
 
+def _preproc_yaml(steps: list, indent: str) -> list[str]:
+    lines = [f"{indent}preprocessing:"]
+    for p in steps:
+        lines.append(f"{indent}- type: {p['type']}")
+        if "parameters" in p:
+            lines.append(f"{indent}  parameters:")
+            for param in p["parameters"]:
+                lines.append(f"{indent}  - '{param}'")
+        if "error_handler" in p:
+            lines.append(f"{indent}  error_handler: {p['error_handler']}")
+        if "error_handler_params" in p:
+            lines.append(f"{indent}  error_handler_params: '{p['error_handler_params']}'")
+    return lines
+
+
+def _trigger_yaml(tr: dict, indent: str) -> list[str]:
+    lines = [
+        f"{indent}- uuid: {u()}",
+        f"{indent}  expression: '{tr['expression']}'",
+    ]
+    if tr.get("recovery_expression"):
+        lines.append(f"{indent}  recovery_mode: RECOVERY_EXPRESSION")
+        lines.append(f"{indent}  recovery_expression: '{tr['recovery_expression']}'")
+    lines.append(f"{indent}  name: '{tr['name']}'")
+    if "priority" in tr:
+        lines.append(f"{indent}  priority: {tr['priority']}")
+    if "description" in tr:
+        lines.append(f"{indent}  description: '{tr['description']}'")
+    lines.append(f"{indent}  tags:")
+    lines.append(f"{indent}  - tag: scope")
+    lines.append(f"{indent}    value: {tr.get('scope', 'notice')}")
+    return lines
+
+
 def item_snmp(name, key, oid, **kw) -> str:
     lines = [
         f"    - uuid: {u()}",
@@ -98,12 +142,7 @@ def item_snmp(name, key, oid, **kw) -> str:
         lines.append("      valuemap:")
         lines.append(f"        name: '{kw['valuemap']}'")
     if "preprocessing" in kw:
-        lines.append("      preprocessing:")
-        for p in kw["preprocessing"]:
-            lines.append(f"      - type: {p['type']}")
-            lines.append("        parameters:")
-            for param in p["parameters"]:
-                lines.append(f"        - '{param}'")
+        lines.extend(_preproc_yaml(kw["preprocessing"], "      "))
     tags = kw.get("tags") or [("component", "system")]
     lines.append("      tags:")
     for t, v in tags:
@@ -112,16 +151,7 @@ def item_snmp(name, key, oid, **kw) -> str:
     if "triggers" in kw:
         lines.append("      triggers:")
         for tr in kw["triggers"]:
-            lines.append(f"      - uuid: {u()}")
-            lines.append(f"        expression: {tr['expression']}")
-            lines.append(f"        name: '{tr['name']}'")
-            if "priority" in tr:
-                lines.append(f"        priority: {tr['priority']}")
-            if "description" in tr:
-                lines.append(f"        description: '{tr['description']}'")
-            lines.append("        tags:")
-            lines.append("        - tag: scope")
-            lines.append(f"          value: {tr.get('scope', 'notice')}")
+            lines.extend(_trigger_yaml({**tr, "scope": tr.get("scope", "notice")}, "      "))
     return "\n".join(lines) + "\n"
 
 
@@ -254,16 +284,25 @@ def build_scalar_items() -> str:
             "V-IST session status",
             "fabric.vist.status[rcVirtualIstSessionStatus.0]",
             OID["vistStatus"],
-            description="MIB: rcVirtualIstSessionStatus ΓÇö up(1) down(2).",
+            description="MIB: rcVirtualIstSessionStatus — up(1) down(2). Not-supported maps to 0.",
             valuemap="RAPID-CITY::rcVirtualIstSessionStatus",
             tags=[("component", "fabric")],
             delay="1m",
+            preprocessing=[
+                {
+                    "type": "CHECK_NOT_SUPPORTED",
+                    "parameters": ["-1"],
+                    "error_handler": "CUSTOM_VALUE",
+                    "error_handler_params": "0",
+                }
+            ],
             triggers=[
                 {
-                    "expression": 'last(/Extreme VOSS by SNMP/fabric.vist.status[rcVirtualIstSessionStatus.0])={$VIST.DOWN_STATUS}',
+                    "expression": vist_down_expr(),
+                    "recovery_expression": vist_recovery_expr(),
                     "name": "Extreme VOSS: V-IST session is down",
                     "priority": "HIGH",
-                    "description": "Virtual IST session is down (if V-IST is used).",
+                    "description": "Loss of an established V-IST session. Always-down (never configured) stays silent.",
                     "scope": "availability",
                 }
             ],
@@ -375,12 +414,7 @@ def proto(name, key, oid, **kw) -> str:
         lines.append(f"{ind}  valuemap:")
         lines.append(f"{ind}    name: '{kw['valuemap']}'")
     if "preprocessing" in kw:
-        lines.append(f"{ind}  preprocessing:")
-        for p in kw["preprocessing"]:
-            lines.append(f"{ind}  - type: {p['type']}")
-            lines.append(f"{ind}    parameters:")
-            for param in p["parameters"]:
-                lines.append(f"{ind}    - '{param}'")
+        lines.extend(_preproc_yaml(kw["preprocessing"], f"{ind}  "))
     tags = kw.get("tags") or [("component", "system")]
     lines.append(f"{ind}  tags:")
     for t, v in tags:
@@ -389,14 +423,7 @@ def proto(name, key, oid, **kw) -> str:
     if "trigger_prototypes" in kw:
         lines.append(f"{ind}  trigger_prototypes:")
         for tr in kw["trigger_prototypes"]:
-            lines.append(f"{ind}  - uuid: {u()}")
-            lines.append(f"{ind}    expression: {tr['expression']}")
-            lines.append(f"{ind}    name: '{tr['name']}'")
-            if "priority" in tr:
-                lines.append(f"{ind}    priority: {tr['priority']}")
-            lines.append(f"{ind}    tags:")
-            lines.append(f"{ind}    - tag: scope")
-            lines.append(f"{ind}      value: {tr.get('scope', 'availability')}")
+            lines.extend(_trigger_yaml({**tr, "scope": tr.get("scope", "availability")}, f"{ind}  "))
     return "\n".join(lines) + "\n"
 
 
@@ -438,7 +465,9 @@ _PSU_FRU_LLD = """      lifetime: '0'
 """
 
 
-def discovery_rule(name, key, snmp_oid, items_yaml, description, delay="1h", filter_yaml=None) -> str:
+def discovery_rule(
+    name, key, snmp_oid, items_yaml, description, delay="1h", filter_yaml=None, allowlist_unsupported=False
+) -> str:
     body = f"""    - uuid: {u()}
       name: {name}
       type: SNMP_AGENT
@@ -448,6 +477,14 @@ def discovery_rule(name, key, snmp_oid, items_yaml, description, delay="1h", fil
 """
     if filter_yaml:
         body += filter_yaml
+    if allowlist_unsupported:
+        body += """      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '[]'
+"""
     body += f"""      description: {description}
       item_prototypes:
 {items_yaml}"""
@@ -791,7 +828,8 @@ def build_discovery_rules() -> str:
             "card.discovery",
             f"discovery[{{#SNMPVALUE}},{OID['cardIdx']}]",
             card_items,
-            "RAPID-CITY rcCardTable ΓÇö may be empty on fixed VOSS-VM.",
+            "RAPID-CITY rcCardTable — optional on fixed form-factor; not-supported becomes empty LLD.",
+            allowlist_unsupported=True,
         )
     )
 
@@ -808,9 +846,12 @@ def build_discovery_rules() -> str:
                 tags=[("component", "fabric")],
                 trigger_prototypes=[
                     {
-                        "expression": 'last(/Extreme VOSS by SNMP/fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}])={$ISIS.CIRCUIT.DOWN_STATUS}',
+                        "expression": isis_down_expr(),
+                        "recovery_expression": isis_recovery_expr(),
                         "name": "Extreme VOSS: ISIS circuit {#SNMPINDEX}: Circuit is down",
                         "priority": "HIGH",
+                        "description": "Loss of an expected ISIS adjacency. Unused always-down circuits stay silent.",
+                        "scope": "availability",
                     }
                 ],
             ),
@@ -830,7 +871,8 @@ def build_discovery_rules() -> str:
             "isis.circuit.discovery",
             f"discovery[{{#SNMPVALUE}},{OID['isisCircIdx']}]",
             isis_c,
-            "RAPID-CITY rcIsisCircuitTable.",
+            "RAPID-CITY rcIsisCircuitTable — optional off SPBM; not-supported becomes empty LLD.",
+            allowlist_unsupported=True,
         )
     )
 
@@ -863,7 +905,8 @@ def build_discovery_rules() -> str:
             "isis.adj.discovery",
             f"discovery[{{#SNMPVALUE}},{OID['isisAdjHost']}]",
             isis_a,
-            "RAPID-CITY rcIsisAdjTable ΓÇö SPBM/ISIS neighbors.",
+            "RAPID-CITY rcIsisAdjTable — optional off SPBM; not-supported becomes empty LLD.",
+            allowlist_unsupported=True,
         )
     )
 
@@ -897,7 +940,8 @@ def build_discovery_rules() -> str:
             "spbm.node.discovery",
             f"discovery[{{#SNMPVALUE}},{OID['isisPlsbNick']}]",
             plsb,
-            "RAPID-CITY rcIsisPlsbTable.",
+            "RAPID-CITY rcIsisPlsbTable — optional off SPBM; not-supported becomes empty LLD.",
+            allowlist_unsupported=True,
         )
     )
 
@@ -932,17 +976,15 @@ def build_discovery_rules() -> str:
                 tags=[("component", "network")],
                 trigger_prototypes=[
                     {
-                        "expression": (
-                            '{$MLT.CONTROL}=1 and '
-                            'last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.DOWN_STATUS} '
-                            'and diff(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])=1'
-                        ),
+                        "expression": mlt_down_expr(),
+                        "recovery_expression": mlt_recovery_expr(),
                         "name": "Extreme VOSS: MLT {#SNMPINDEX}: Aggregation disabled/down",
                         "priority": "AVERAGE",
                         "description": (
-                            "Fires only when aggregation transitions to disabled "
-                            "(not for MLTs that stay unused/disabled). Gate with {$MLT.CONTROL}."
+                            "Down for three 1m samples after the MLT was up "
+                            "(or {$MLT.EXPECTED}=1). Unused always-disabled MLTs stay silent."
                         ),
+                        "scope": "availability",
                     }
                 ],
             ),
@@ -963,13 +1005,18 @@ def build_discovery_rules() -> str:
 
 def build_macros() -> str:
     macros = [
-        ("{$VIST.CONTROL}", "0", "0=off (default). Set host macro 1 on VOSS fabric pairs that run V-IST."),
+        ("{$VIST.CONTROL}", "0", "0=collect only. --apply sets host 1 on VOSS CORE/DIST/MGMT BASE-1/BASE-2 pairs."),
+        ("{$VIST.UP_STATUS}", "1", "V-IST session up(1)"),
         ("{$VIST.DOWN_STATUS}", "2", "V-IST session down(2)"),
         ("{$IST.CONTROL}", "0", "Classic IST unused on Fabric Engine — keep 0. Use V-IST for HA."),
         ("{$IST.DOWN_STATUS}", "2", "IST session down(2)"),
         ("{$CARD.DOWN_STATUS}", "2", "rcCardOperStatus down(2)"),
+        ("{$ISIS.CIRCUIT.UP_STATUS}", "1", "rcIsisCircuitOperState up(1)"),
         ("{$ISIS.CIRCUIT.DOWN_STATUS}", "2", "rcIsisCircuitOperState down(2)"),
-        ("{$MLT.CONTROL}", "1", "1=destination (agg-down on transition via .diff()). 0=temporary cutover silence."),
+        ("{$ISIS.EXPECTED}", "0", "Fallback for {$ISIS.EXPECTED:\"{#SNMPINDEX}\"}. Host 1 on SPBM fabric pairs."),
+        ("{$MLT.CONTROL}", "1", "1=destination (three-sample down after the MLT was up). 0=temporary cutover silence."),
+        ("{$MLT.EXPECTED}", "0", "Fallback for {$MLT.EXPECTED:\"{#SNMPINDEX}\"}. 1 tickets a never-up expected MLT."),
+        ("{$MLT.AGG.UP_STATUS}", "1", "rcMltAggOperState enable(1)"),
         ("{$MLT.AGG.DOWN_STATUS}", "2", "rcMltAggOperState disable(2)"),
         ("{$OPTIC.TEMP.CRIT}", "70", "Optic °C critical (value trigger). Prefer DOM *Status alarms."),
         ("{$OPTIC.TEMP.MAX}", "150", "Ignore DOM garbage above this (°C)"),

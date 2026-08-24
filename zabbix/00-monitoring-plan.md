@@ -31,7 +31,7 @@ The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everythi
 | **OSPF adjacency** | LogicMonitor almost certainly is not watching it — deferring is not a regression |
 | Speed expectation | nested on VOSS / Observability now. Empty labels silent. Needs class `display-string` before any Warning. Util `101` |
 | Capacity: discards + utilisation | new capability. Needs 4+ weeks of history to threshold honestly |
-| CRC / `dot3StatsFCSErrors` | new capability, and unconfirmed |
+| CRC / `dot3StatsFCSErrors` | items live (VOSS EtherLike LLD + EXOS companion); OID canary still needed |
 | Full port-label rollout | parity only needs *link down* on Core/Dist/Mgmt; Access is `USW`+`UP` only |
 | Fortinet, Cato, circuits, VMs (03–06) | FortiGate API spec is written; live FortiOS stays SNMP. Do not block switch/AP cutover |
 

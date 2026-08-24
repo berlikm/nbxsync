@@ -274,6 +274,14 @@ zabbix_export:
         tags:
         - tag: scope
           value: notice
+      - uuid: 9a44331768fe4d9ba1937cfa46b3b4f0
+        expression: 'nodata(/Extreme VOSS by SNMP/system.hw.serialnumber,2h)=1 and last(/Extreme VOSS by SNMP/zabbix[host,snmp,available])=1'
+        name: 'Extreme VOSS: Chassis identity is stale'
+        priority: WARNING
+        description: 'Required serial has not updated for 2h while SNMP is up. Discovery/identity gap, not a reboot.'
+        tags:
+        - tag: scope
+          value: availability
     - uuid: e56bd27d5d4b45e8ac6d6db2e1902d0c
       name: Uptime (hardware)
       type: SNMP_AGENT
@@ -285,7 +293,7 @@ zabbix_export:
       description: 'MIB: HOST-RESOURCES-MIB
 
         HOST-RESOURCES hrSystemUptime — often unsupported on VOSS/Fabric Engine (No Such Object).
-        Preprocessing maps not-supported to 0; restart trigger falls back to sysUpTime.
+        Preprocessing maps not-supported to 0. Reboot authority is snmpEngineBoots; sysUpTime is display.
 
         '
       preprocessing:
@@ -381,12 +389,46 @@ zabbix_export:
       description: 'MIB: SNMPv2-MIB
 
         Time (in hundredths of a second) since the network management portion of the system was last re-initialized.
+        Display / Health tile. Not the long-lived reboot authority (32-bit wrap ~497 days).
 
         '
       preprocessing:
       - type: MULTIPLIER
         parameters:
         - '0.01'
+      tags:
+      - tag: component
+        value: system
+    - uuid: 8f625b50a91040cab7058ba0819d0d97
+      name: SNMP engine boots
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.6.3.10.2.1.2.0]
+      key: system.snmp.engine.boots[snmpEngineBoots.0]
+      delay: 1m
+      description: 'MIB: SNMP-FRAMEWORK-MIB snmpEngineBoots. Reboot authority. Not-supported maps to 0 and the trigger falls back to sysUpTime with wrap guard.'
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      tags:
+      - tag: component
+        value: system
+    - uuid: e211b927c5f342c3a98f1b2b082bfddc
+      name: SNMP engine time
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.6.3.10.2.1.3.0]
+      key: system.snmp.engine.time[snmpEngineTime.0]
+      delay: 1m
+      units: uptime
+      description: 'MIB: SNMP-FRAMEWORK-MIB snmpEngineTime (seconds). Display / correlate with boots. Not-supported maps to 0.'
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
       tags:
       - tag: component
         value: system
@@ -496,10 +538,21 @@ zabbix_export:
         expression: min(/Extreme VOSS by SNMP/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.MAX}
         name: 'Extreme VOSS: Too many unsupported items'
         priority: AVERAGE
-        description: 'Collection is lying. Check credentials, MIB/OID, or LLD filters.'
+        description: 'Collection is lying. Check credentials, MIB/OID, or LLD filters. Optional fabric/card LLD is allowlisted.'
         dependencies:
         - name: 'Extreme VOSS: Unavailable by ICMP ping'
           expression: max(/Extreme VOSS by SNMP/icmpping,#3)=0
+        tags:
+        - tag: scope
+          value: availability
+      - uuid: 753f67afa03649afab3ddfc98ee684f9
+        expression: min(/Extreme VOSS by SNMP/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.WARN}
+        name: 'Extreme VOSS: Unsupported item or discovery rule'
+        priority: WARNING
+        description: 'Data-quality: any remaining unsupported item after optional-OID allowlist. Average still waits for {$UNSUPPORTED.MAX}.'
+        dependencies:
+        - name: 'Extreme VOSS: Too many unsupported items'
+          expression: min(/Extreme VOSS by SNMP/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.MAX}
         tags:
         - tag: scope
           value: availability
@@ -669,7 +722,13 @@ zabbix_export:
       snmp_oid: get[1.3.6.1.4.1.2272.1.211.1.0]
       key: fabric.vist.status[rcVirtualIstSessionStatus.0]
       delay: 1m
-      description: 'MIB: rcVirtualIstSessionStatus — up(1) down(2).'
+      description: 'MIB: rcVirtualIstSessionStatus — up(1) down(2). Not-supported on non-VIST boxes is 0, not an unsupported item.'
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
       valuemap:
         name: 'RAPID-CITY::rcVirtualIstSessionStatus'
       tags:
@@ -677,10 +736,12 @@ zabbix_export:
         value: fabric
       triggers:
       - uuid: 95190b5f61e144b1bbb854521b10fc00
-        expression: '{$VIST.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.vist.status[rcVirtualIstSessionStatus.0])={$VIST.DOWN_STATUS}'
+        expression: '{$VIST.CONTROL}=1 and min(/Extreme VOSS by SNMP/fabric.vist.status[rcVirtualIstSessionStatus.0],#3)={$VIST.DOWN_STATUS} and max(/Extreme VOSS by SNMP/fabric.vist.status[rcVirtualIstSessionStatus.0],#15)={$VIST.UP_STATUS}'
+        recovery_mode: RECOVERY_EXPRESSION
+        recovery_expression: 'last(/Extreme VOSS by SNMP/fabric.vist.status[rcVirtualIstSessionStatus.0])={$VIST.UP_STATUS} or {$VIST.CONTROL}=0'
         name: 'Extreme VOSS: V-IST session is down'
         priority: HIGH
-        description: 'Virtual IST session is down (if V-IST is used).'
+        description: 'Loss of an established V-IST session. Host {$VIST.CONTROL}=1 on fabric pairs only. Always-down (never configured) stays silent.'
         tags:
         - tag: scope
           value: availability
@@ -1590,6 +1651,95 @@ zabbix_export:
           tags:
           - tag: scope
             value: performance
+      - uuid: 4e2e5b5e47584bd582c24c623e6a3337
+        name: 'Interface {#IFNAME}({#IFALIAS}): FCS errors'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.10.7.2.1.3.{#SNMPINDEX}]
+        key: net.if.in.fcs[dot3StatsFCSErrors.{#SNMPINDEX}]
+        delay: 3m
+        description: 'MIB: EtherLike-MIB dot3StatsFCSErrors. Physical-layer CRC. Not-supported maps to 0.'
+        preprocessing:
+        - type: CHECK_NOT_SUPPORTED
+          parameters:
+          - '-1'
+          error_handler: CUSTOM_VALUE
+          error_handler_params: '0'
+        - type: CHANGE_PER_SECOND
+        tags:
+        - tag: component
+          value: network
+        - tag: description
+          value: '{#IFALIAS}'
+        - tag: interface
+          value: '{#IFNAME}'
+        trigger_prototypes:
+        - uuid: d405f7f0710d44e5b45e84d0a6778a6e
+          expression: '(min(/Extreme VOSS by SNMP/net.if.in.fcs[dot3StatsFCSErrors.{#SNMPINDEX}],5m)>{$IF.FCS.WARN:"{#IFNAME}"} or min(/Extreme VOSS by SNMP/net.if.in.align[dot3StatsAlignmentErrors.{#SNMPINDEX}],5m)>{$IF.FCS.WARN:"{#IFNAME}"}) and last(/Extreme VOSS by SNMP/net.if.discontinuity[ifCounterDiscontinuityTime.{#SNMPINDEX}])=last(/Extreme VOSS by SNMP/net.if.discontinuity[ifCounterDiscontinuityTime.{#SNMPINDEX}],#2)'
+          recovery_mode: RECOVERY_EXPRESSION
+          recovery_expression: 'max(/Extreme VOSS by SNMP/net.if.in.fcs[dot3StatsFCSErrors.{#SNMPINDEX}],5m)<{$IF.FCS.WARN:"{#IFNAME}"}*0.8 and max(/Extreme VOSS by SNMP/net.if.in.align[dot3StatsAlignmentErrors.{#SNMPINDEX}],5m)<{$IF.FCS.WARN:"{#IFNAME}"}*0.8'
+          name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): High FCS/alignment error rate'
+          event_name: 'Extreme VOSS: Interface {#IFNAME}({#IFALIAS}): High FCS/alignment error rate (>{$IF.FCS.WARN:"{#IFNAME}"} for 5m)'
+          priority: WARNING
+          description: 'EtherLike CRC/alignment. Recovers below 80% of {$IF.FCS.WARN}. Ignores counter discontinuity/reset. Faulty-link canary still needed to prove the OID moves.'
+          tags:
+          - tag: scope
+            value: performance
+      - uuid: d7cd3c628d634390a04b448b77b11d0b
+        name: 'Interface {#IFNAME}({#IFALIAS}): Alignment errors'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.10.7.2.1.2.{#SNMPINDEX}]
+        key: net.if.in.align[dot3StatsAlignmentErrors.{#SNMPINDEX}]
+        delay: 3m
+        description: 'MIB: EtherLike-MIB dot3StatsAlignmentErrors. Not-supported maps to 0.'
+        preprocessing:
+        - type: CHECK_NOT_SUPPORTED
+          parameters:
+          - '-1'
+          error_handler: CUSTOM_VALUE
+          error_handler_params: '0'
+        - type: CHANGE_PER_SECOND
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+      - uuid: acf497e6eff84daca46e8b80690f367f
+        name: 'Interface {#IFNAME}({#IFALIAS}): Symbol errors'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.10.7.2.1.18.{#SNMPINDEX}]
+        key: net.if.in.symbol[dot3StatsSymbolErrors.{#SNMPINDEX}]
+        delay: 3m
+        description: 'MIB: EtherLike-MIB dot3StatsSymbolErrors. Collect where supported; not-supported maps to 0.'
+        preprocessing:
+        - type: CHECK_NOT_SUPPORTED
+          parameters:
+          - '-1'
+          error_handler: CUSTOM_VALUE
+          error_handler_params: '0'
+        - type: CHANGE_PER_SECOND
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+      - uuid: 6421897dba144f4b8cfb4f65df41d255
+        name: 'Interface {#IFNAME}({#IFALIAS}): Counter discontinuity'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.31.1.1.1.19.{#SNMPINDEX}]
+        key: net.if.discontinuity[ifCounterDiscontinuityTime.{#SNMPINDEX}]
+        delay: 3m
+        description: 'MIB: IF-MIB ifCounterDiscontinuityTime. FCS Warning ignores a counter reset.'
+        preprocessing:
+        - type: CHECK_NOT_SUPPORTED
+          parameters:
+          - '-1'
+          error_handler: CUSTOM_VALUE
+          error_handler_params: '0'
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
       preprocessing:
       - type: JAVASCRIPT
         parameters:
@@ -2128,7 +2278,13 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.4.9.1.1.1]
       key: card.discovery
       delay: 1h
-      description: RAPID-CITY rcCardTable — may be empty on fixed VOSS-VM.
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '[]'
+      description: RAPID-CITY rcCardTable — optional on fixed form-factor; not-supported becomes empty LLD, not an unsupported rule.
       item_prototypes:
       - uuid: 30fc14675051429586c18e58120e94e8
         name: 'Card {#SNMPINDEX}: Type'
@@ -2203,7 +2359,13 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.63.2.1.1]
       key: isis.circuit.discovery
       delay: 1h
-      description: RAPID-CITY rcIsisCircuitTable.
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '[]'
+      description: RAPID-CITY rcIsisCircuitTable — optional off SPBM; not-supported becomes empty LLD.
       item_prototypes:
       - uuid: 0bfd8647226d42ea990410d9a1e51781
         name: 'ISIS circuit {#SNMPINDEX}: Oper state'
@@ -2219,10 +2381,12 @@ zabbix_export:
           value: fabric
         trigger_prototypes:
         - uuid: 58b582cb293b4fc58fbf8cb46548474b
-          expression: '{$ISIS.CONTROL}=1 and last(/Extreme VOSS by SNMP/fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}])={$ISIS.CIRCUIT.DOWN_STATUS}'
+          expression: '{$ISIS.CONTROL}=1 and {$ISIS.EXPECTED:"{#SNMPINDEX}"}=1 and min(/Extreme VOSS by SNMP/fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}],#3)={$ISIS.CIRCUIT.DOWN_STATUS} and max(/Extreme VOSS by SNMP/fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}],#15)={$ISIS.CIRCUIT.UP_STATUS}'
+          recovery_mode: RECOVERY_EXPRESSION
+          recovery_expression: 'last(/Extreme VOSS by SNMP/fabric.isis.circuit.oper[rcIsisCircuitOperState.{#SNMPINDEX}])={$ISIS.CIRCUIT.UP_STATUS} or {$ISIS.CONTROL}=0'
           name: 'Extreme VOSS: ISIS circuit {#SNMPINDEX}: Circuit is down'
           priority: HIGH
-          description: 'Gated. Default {$ISIS.CONTROL}=0 so unused SPBM circuits do not page. Set 1 on a canary after a quiet pilot.'
+          description: 'Loss of an expected ISIS adjacency. Host {$ISIS.CONTROL}=1 and {$ISIS.EXPECTED}=1 on SPBM fabric pairs. Unused always-down circuits stay silent. Card High stays gated at 0.'
           tags:
           - tag: scope
             value: availability
@@ -2242,7 +2406,13 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.63.10.1.3]
       key: isis.adj.discovery
       delay: 1h
-      description: RAPID-CITY rcIsisAdjTable — SPBM/ISIS neighbors.
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '[]'
+      description: RAPID-CITY rcIsisAdjTable — optional off SPBM; not-supported becomes empty LLD.
       item_prototypes:
       - uuid: 7f7b7794aecc4df3a87cba62bba6f526
         name: 'ISIS adjacency {#SNMPINDEX}: Hostname'
@@ -2272,7 +2442,13 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.63.4.1.3]
       key: spbm.node.discovery
       delay: 1h
-      description: RAPID-CITY rcIsisPlsbTable.
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '[]'
+      description: RAPID-CITY rcIsisPlsbTable — optional off SPBM; not-supported becomes empty LLD.
       item_prototypes:
       - uuid: b466de718efd44f9b5b5b029e633b36e
         name: 'SPBM node {#SNMPINDEX}: Nickname'
@@ -2292,7 +2468,13 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.63.4.1.6]
       key: spbm.plsbstate.discovery
       delay: 1h
-      description: 'Discovers SPBM nodes with PLSB state (rcIsisPlsbState). SPBM-only devices without PLSB return no rows — avoids NOTSUPPORTED noise.'
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '[]'
+      description: 'Discovers SPBM nodes with PLSB state (rcIsisPlsbState). Not-supported or non-PLSB becomes empty LLD.'
       item_prototypes:
       - uuid: a21fc05bf91141d292341c955a908438
         name: 'SPBM node {#SNMPINDEX}: PLSB state'
@@ -2340,10 +2522,11 @@ zabbix_export:
           value: network
         trigger_prototypes:
         - uuid: 5054efcb8c1c4465a832c2095dde9d26
-          expression: '{$MLT.CONTROL}=1 and last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.DOWN_STATUS}
-            and (last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}],#1)<>last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}],#2))'
+          expression: '{$MLT.CONTROL}=1 and min(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}],#3)={$MLT.AGG.DOWN_STATUS} and (max(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}],#15)={$MLT.AGG.UP_STATUS} or {$MLT.EXPECTED:"{#SNMPINDEX}"}=1)'
+          recovery_mode: RECOVERY_EXPRESSION
+          recovery_expression: 'last(/Extreme VOSS by SNMP/net.mlt.agg.state[rcMltAggOperState.{#SNMPINDEX}])={$MLT.AGG.UP_STATUS} or {$MLT.CONTROL}=0'
           name: 'Extreme VOSS: MLT {#SNMPINDEX}: Aggregation disabled/down'
-          description: 'Fires only when aggregation *transitions* to disabled (not for MLTs that stay unused/disabled). Gate with {$MLT.CONTROL}.'
+          description: 'Down for three 1m samples after the MLT was up (or {$MLT.EXPECTED}=1). Unused always-disabled MLTs stay silent. Recovers immediately when up.'
           priority: AVERAGE
           tags:
           - tag: scope
@@ -2354,7 +2537,13 @@ zabbix_export:
       snmp_oid: discovery[{#SNMPVALUE},1.3.6.1.4.1.2272.1.17.10.1.13]
       key: smlt.discovery
       delay: 1h
-      description: 'Discovers SMLT-capable MLTs by walking rcMltSmltId. Non-SMLT MLTs return no rows — avoids NOTSUPPORTED noise on the rcMltSmltId OID.'
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '[]'
+      description: 'Discovers SMLT-capable MLTs by walking rcMltSmltId. Not-supported or non-SMLT becomes empty LLD.'
       item_prototypes:
       - uuid: 03b8930535ee466b94a8b58ac7729dfa
         name: 'MLT {#SNMPINDEX}: SMLT ID'
@@ -2388,6 +2577,9 @@ zabbix_export:
     - macro: '{$IF.ERRORS.WARN}'
       value: '2'
       description: Warning threshold of error packet rate. Can be used with interface name as context.
+    - macro: '{$IF.FCS.WARN}'
+      value: '2'
+      description: Warning threshold of EtherLike FCS/alignment error rate (pkt/s). Context {#IFNAME}. Hysteresis 80%.
     - macro: '{$IF.UTIL.MAX}'
       value: '101'
       description: Silence stock bandwidth trigger (101=off). Capacity uses Port Speed Expect + class context.
@@ -2452,7 +2644,10 @@ zabbix_export:
       description: 'Chassis °C warning (destination). Prefer vendor status for hard alarm.'
     - macro: '{$VIST.CONTROL}'
       value: '0'
-      description: '0=off (default). Set host macro 1 on VOSS fabric pairs that run V-IST.'
+      description: '0=collect only. --apply sets host 1 on VOSS CORE/DIST/MGMT BASE-1/BASE-2 pairs. Trigger is loss of an established session, not never-configured.'
+    - macro: '{$VIST.UP_STATUS}'
+      value: '1'
+      description: V-IST session up(1)
     - macro: '{$VIST.DOWN_STATUS}'
       value: '2'
       description: V-IST session down(2)
@@ -2467,22 +2662,40 @@ zabbix_export:
       description: rcCardOperStatus down(2)
     - macro: '{$CARD.CONTROL}'
       value: '0'
-      description: '0=collect only (default). Host/template 1 enables card-down High after a fabric pilot.'
+      description: '0=collect only (default). Host/template 1 enables card-down High after a fabric pilot. Keep 0 on fixed form-factor.'
+    - macro: '{$ISIS.CIRCUIT.UP_STATUS}'
+      value: '1'
+      description: rcIsisCircuitOperState up(1)
     - macro: '{$ISIS.CIRCUIT.DOWN_STATUS}'
       value: '2'
       description: rcIsisCircuitOperState down(2)
     - macro: '{$ISIS.CONTROL}'
       value: '0'
-      description: '0=collect only (default). Host/template 1 enables ISIS-circuit High after a fabric pilot.'
+      description: '0=collect only. --apply sets host 1 on VOSS fabric pairs. Trigger also requires {$ISIS.EXPECTED} and a prior up sample.'
+    - macro: '{$ISIS.EXPECTED}'
+      value: '0'
+      description: 'Fallback for {$ISIS.EXPECTED:"{#SNMPINDEX}"}. Host 1 on SPBM fabric pairs. Unused always-down circuits stay silent.'
     - macro: '{$UNSUPPORTED.MAX}'
       value: '5'
       description: Average ticket when unsupported items stay above this for 30m.
+    - macro: '{$UNSUPPORTED.WARN}'
+      value: '0'
+      description: Warning when any unsupported item remains after optional-OID allowlist.
+    - macro: '{$UPTIME.WRAP.MAX}'
+      value: '34560000'
+      description: 'sysUpTime seconds (~400d). Reboot fallback ignores a wrap from ~497d. 400*86400.'
     - macro: '{$NET.IF.DISCOVERY.MIN}'
       value: '1'
       description: Average ticket when SNMP is up 1h and enabled interface items stay below this.
     - macro: '{$MLT.CONTROL}'
       value: '1'
-      description: '1=destination (agg-down on transition via .diff()). 0=temporary cutover silence.'
+      description: '1=destination (three-sample down after the MLT was up). 0=temporary cutover silence.'
+    - macro: '{$MLT.EXPECTED}'
+      value: '0'
+      description: 'Fallback for {$MLT.EXPECTED:"{#SNMPINDEX}"}. 1 tickets a never-up expected MLT.'
+    - macro: '{$MLT.AGG.UP_STATUS}'
+      value: '1'
+      description: rcMltAggOperState enable(1)
     - macro: '{$MLT.AGG.DOWN_STATUS}'
       value: '2'
       description: rcMltAggOperState disable(2)
@@ -3882,12 +4095,11 @@ zabbix_export:
         newvalue: Unknown
   triggers:
   - uuid: db7291ebfca7432b967585b4853fc1ad
-    expression: (last(/Extreme VOSS by SNMP/system.hw.uptime[hrSystemUptime.0])>0 and last(/Extreme VOSS by SNMP/system.hw.uptime[hrSystemUptime.0])<10m)
-      or (last(/Extreme VOSS by SNMP/system.hw.uptime[hrSystemUptime.0])=0 and last(/Extreme VOSS by SNMP/system.net.uptime[sysUpTime.0])<10m)
+    expression: '(last(/Extreme VOSS by SNMP/system.snmp.engine.boots[snmpEngineBoots.0])>0 and last(/Extreme VOSS by SNMP/system.snmp.engine.boots[snmpEngineBoots.0])>last(/Extreme VOSS by SNMP/system.snmp.engine.boots[snmpEngineBoots.0],#2)) or (last(/Extreme VOSS by SNMP/system.snmp.engine.boots[snmpEngineBoots.0])=0 and last(/Extreme VOSS by SNMP/system.hw.uptime[hrSystemUptime.0])=0 and last(/Extreme VOSS by SNMP/system.net.uptime[sysUpTime.0])<10m and last(/Extreme VOSS by SNMP/system.net.uptime[sysUpTime.0],#2)<{$UPTIME.WRAP.MAX})'
     name: 'Extreme VOSS: Host has been restarted'
     event_name: 'Extreme VOSS: {HOST.NAME} has been restarted (uptime < 10m)'
     priority: WARNING
-    description: Uptime is less than 10 minutes.
+    description: 'snmpEngineBoots increase is the reboot. sysUpTime is display-only; the wrap guard ignores a ~497-day counter rollover.'
     manual_close: 'YES'
     dependencies:
     - name: 'Extreme VOSS: No SNMP data collection'

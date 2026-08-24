@@ -98,7 +98,7 @@ Walk description + value + status under `rcVossSystemTemperatureTable`
 | PSU critical | only if lab can force status |
 | Temp warning/critical | threshold macros |
 | Interface link down | shut port |
-| Host has been restarted | after reboot (uptime &lt; 10m) |
+| Host has been restarted | `snmpEngineBoots` increase; wrap-safe `sysUpTime` fallback |
 
 ## Port-identity canary (optional)
 

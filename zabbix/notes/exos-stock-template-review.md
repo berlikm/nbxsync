@@ -76,7 +76,7 @@ Two templates on the host, stock never cloned, upgrade path intact.
 4. Stock speed-drop trigger has **no settle time** and manual close.
 5. **The stock speed-drop trigger has a hole.** Its `last(speed)>0` guard correctly stops it firing when a port goes down (speed reads 0) — but that means `10G → down(0) → up at 1G` never fires. Almost every real degrade involves a link bounce, so this trigger catches far less than it appears to. That is the real justification for the absolute-expect trigger.
 6. **Item key collision.** Keys must be unique per host. The new speed-expect template must not reuse `net.if.discovery` or the stock prototype keys, or linking both templates to one host fails at import. Use `net.if.speedexpect.discovery` / `net.if.speed.expect[{#SNMPINDEX}]`.
-7. **CRC is probably not covered.** `ifInErrors` is an aggregate; the proper counter is `dot3StatsFCSErrors` (EtherLike-MIB), and the stock EtherLike LLD polls **only duplex**. Verify before claiming the "dirty link" requirement is met.
+7. **CRC is on the Observability companion**, not stock. Stock EtherLike LLD still polls **only duplex**. `dot3StatsFCSErrors` / alignment / symbol live on `net.if.fcs.discovery`. Faulty-link canary still needed to prove the OID moves.
 8. **VLAN interfaces are discovered.** EXOS presents VLANs in IF-MIB with no `ifAlias`, so the fabric rule (`NOT_MATCHES ^(X|N)`) picks them up. Filter with `{$NET.IF.IFTYPE.MATCHES}` = `^(6|161)$`.
 9. **LAG aggregates report summed speed.** `^6$` on the speed-expect template only — physical ports get the speed expectation, aggregates keep link-down/errors from the stock template.
 
@@ -91,6 +91,6 @@ Two templates on the host, stock never cloned, upgrade path intact.
 
 **Do not modify or clone the stock template.** Everything above is either a macro override at host-group level or a setting on the LLD rule. That keeps the upgrade path intact and makes every silencing decision reversible in one edit.
 
-The only new artefact is the thin `Extreme Port Speed Expect by SNMP` template, which stock cannot provide. If the CRC test (gotcha 7) shows `dot3StatsFCSErrors` is needed, add those items to that same thin template rather than editing stock.
+The only new artefact is the thin `Extreme Port Speed Expect by SNMP` template, which stock cannot provide. CRC/FCS items live on **Extreme EXOS Observability** (`net.if.fcs.discovery`), not Speed Expect and not a stock YAML fork.
 
 Keep macro overrides at **host group** level — a template re-import can clobber template-level values.

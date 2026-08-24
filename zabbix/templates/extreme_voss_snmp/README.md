@@ -43,10 +43,15 @@ See [OID_MAPPING.md](OID_MAPPING.md), [MIB_EXTENSIONS.md](MIB_EXTENSIONS.md), an
 | `{$OPTIC.TEMP.CRIT}` / `{$OPTIC.TEMP.MAX}` | **70** / 150 | °C value trigger; clamp garbage |
 | `{$OPTIC.RX.DBM.MIN}` / `FLOOR` | −100 / −39 | Legacy; RX alerts are DOM status only |
 | `{$OPTIC.DOM.ALARM_*}` | 3 / 5 | Vendor DOM highAlarm / lowAlarm (primary) |
-| `{$MLT.CONTROL}` | **1** | Agg-down on transition (`.diff()`); temporary silence = 0 |
-| `{$VIST.CONTROL}` / `{$IST.CONTROL}` | **0** / **0** | Host `VIST=1` on fabric pairs; classic IST unused |
-| `{$ISIS.CONTROL}` / `{$CARD.CONTROL}` | **0** / **0** | Fabric High gated until a canary |
+| `{$MLT.CONTROL}` | **1** | Three-sample down after the MLT was up; unused stay silent; recover when up |
+| `{$MLT.EXPECTED}` | **0** | Context fallback; `1` tickets a never-up expected MLT |
+| `{$VIST.CONTROL}` / `{$IST.CONTROL}` | **0** / **0** | `--apply` host `VIST=1` on VOSS fabric pairs; classic IST unused |
+| `{$ISIS.CONTROL}` / `{$ISIS.EXPECTED}` | **0** / **0** | `--apply` host `1` on fabric pairs; trigger is expected-session loss |
+| `{$CARD.CONTROL}` | **0** | Card High stays collect-only |
 | `{$UNSUPPORTED.MAX}` | **5** | Average ticket if unsupported items stay above this for 30m |
+| `{$UNSUPPORTED.WARN}` | **0** | Warning if any leftover after optional-OID allowlist |
+| `{$IF.FCS.WARN}` | **2** | EtherLike FCS/alignment rate Warning (pkt/s), 80% hysteresis |
+| `{$UPTIME.WRAP.MAX}` | **34560000** | sysUpTime fallback wrap guard (~400d) |
 | `{$IF.UTIL.MAX}` | **101** | Stock bandwidth trigger off until stage 6 |
 | `{$NET.IF.IFTYPE.MATCHES}` | `^(6\|161)$` | Physical + LAG only |
 
@@ -78,4 +83,4 @@ Export is Zabbix **7.0** (tested import on 7.0.29). Relative to the EXOS 8.0 sou
 
 Lab results against Virtual VOSS 9.3.1.0: see [LAB_RESULTS.md](LAB_RESULTS.md).
 
-Notable VM gaps (template still correct for hardware): fan table absent; temperature values stay `0`; `hrSystemUptime` unsupported. Port identity: CLI `name` populates **ifAlias** (prefer over `rcPortName`).
+Notable VM gaps (template still correct for hardware): fan table absent; temperature values stay `0`; `hrSystemUptime` unsupported (maps to 0; reboot uses `snmpEngineBoots`). Port identity: CLI `name` populates **ifAlias** (prefer over `rcPortName`).

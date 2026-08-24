@@ -65,4 +65,4 @@ MIB: **0.1 µA** (`×0.1` → µA). CLI shows **mA** (e.g. 5.9880 mA = 5988 µA)
 
 ## Import note
 
-MLT agg-down trigger must use `last(#1)<>last(#2)` — Zabbix 7 rejects history function `diff()`.
+MLT agg-down uses `min(#3)=down` after a recent up (or `{$MLT.EXPECTED}=1`), not history `diff()` (Zabbix 7 rejects it) and not `last(#1)<>last(#2)` (that recovers while still down).

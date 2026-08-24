@@ -11,12 +11,12 @@ Labels: [port-identity.md](port-identity.md). APs: [02-extreme-access-points.md]
 | Rule | Here |
 |---|---|
 | Page **symptoms** | ICMP down (**High**). Temp **critical**. |
-| **Ticket** (Average) | PSU/fan, optic DOM **alarm**, memory, unsupported-item count, **any discovered** link down |
-| **Graph** / next day | SNMP dead (**Warning** — same on EXOS/VOSS/IQ), CPU, traffic, util, ICMP loss/RTT (items on, triggers **off**), flaps, errors, duplex |
+| **Ticket** (Average) | PSU/fan, optic DOM **alarm**, memory, unsupported-item count, **any discovered** link down, MLT agg-down after it was up |
+| **Graph** / next day | SNMP dead (**Warning** — same on EXOS/VOSS/IQ), CPU, traffic, util, ICMP loss/RTT (items on, triggers **off**), flaps, errors, duplex, FCS/alignment, leftover unsupported after allowlist |
 | One incident | host triggers depend on SNMP → ICMP. Cable/PoE toward an AP is switch `UP-` Average plus AP ICMP High. |
-| Never silent | unsupported-item **Average**; **zero discovered interfaces** Average after SNMP is up 1h; proxy last-seen |
+| Never silent | unsupported-item **Average**; **zero discovered interfaces** Average after SNMP is up 1h; proxy last-seen; Warning if any unsupported remains |
 | Control plane | on-box `ifAlias` + role macros. Access collects **only** `USW`+`UP`; a mistyped uplink → no items |
-| Collect first | Speed Expect **nested** on VOSS / EXOS Observability (empty `ifAlias` = not discovered). Routing **imported, not linked**. Util off (`101`). ISIS/card High **gated off** |
+| Collect first | Speed Expect **nested** on VOSS / EXOS Observability (empty `ifAlias` = not discovered). Routing **imported, not linked**. Util off (`101` on templates, not only globals). Card High **gated off**. V-IST/ISIS High only on VOSS fabric pairs, and only after a session was up |
 | Host dashboards | **Health** for the box; **Network interfaces** for the status map, traffic grid, and (switches) one-port **Port** page. |
 | Severity | **Disaster** = site only. Warning = next day, not a dump bucket |
 
@@ -34,7 +34,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 |---|---|---|
 | ICMP down | yes | **High** |
 | SNMP dead (ICMP still up) | yes | **Warning** on VOSS, IQ, and stock EXOS — mgmt blind; forwarding / Wi-Fi may still work |
-| Unplanned reboot | yes | Warning |
+| Unplanned reboot | yes | Warning — VOSS: `snmpEngineBoots` increase; `sysUpTime` display-only with wrap guard |
 | Temperature **critical** (100 °C) / vendor alarm | yes | **High** |
 | Temperature warning (95 °C) | yes | Warning — next day; not stock 55 |
 | Temperature too low | **no** | `{$TEMP_CRIT_LOW}=-273` silences stack/VM 0 °C |
@@ -42,22 +42,24 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | CPU high | yes | Warning — baseline first |
 | Memory high | yes | Average — baseline first |
 | Optic DOM **status** alarm (VOSS) | yes | Average — prefer status, not raw dBm |
-| Unsupported item count | yes | Average — `{$UNSUPPORTED.MAX}` (default 5), 30m |
+| Unsupported item count | yes | Average — `{$UNSUPPORTED.MAX}` (default 5), 30m. Warning — any leftover after optional-OID allowlist (`{$UNSUPPORTED.WARN}=0`) |
 | Zero discovered interfaces (SNMP up 1h) | yes | Average — IFALIAS/LLD break; Access with no `USW`/`UP` is this ticket |
-| Firmware / OS / serial change | yes | Info |
+| Firmware / OS / serial change | yes | Info. Serial **nodata** 2h while SNMP up is Warning |
 | System name changed | stock **Info** | disable in Zabbix if it chatters |
 | ICMP loss / RTT | **no** | items on; triggers **DISABLED** (CH proxy RTT is WAN) |
-| ISIS circuit / card down | collect | High **gated** (`{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0`) until a fabric pilot |
-| V-IST / IST | collect | High gated (`{$VIST.CONTROL}=0`, `{$IST.CONTROL}=0`) |
+| ISIS circuit / card down | collect | Card High **gated** (`{$CARD.CONTROL}=0`). ISIS High on VOSS fabric pairs only (`--apply` host macros); trigger is **loss of an expected session**, never-configured stays silent |
+| V-IST / IST | collect | `--apply` sets host `{$VIST.CONTROL}=1` on VOSS CORE/DIST/MGMT `BASE-1`/`BASE-2` twins. Trigger is loss of an established session. Classic IST stays 0 |
 | **Site** unreachable | not on this template | Needs a site check — not EXOS/VOSS |
 
 | Ports in scope | Alert | Live (cutover) |
 |---|---|---|
 | Discovered link down (Core/Dist/Mgmt admin-up; Access grammar `display-string`) | yes | **Average** — one trigger on **EXOS and VOSS**, including never-up and `lowerLayerDown`. Unlabelled Access desk = not discovered and `{$LINKDOWN.IFALIAS}` stays 0. |
 | Link flapping | yes | Warning — VOSS has a counter; EXOS stock does not |
+| MLT aggregation down (VOSS) | yes | Average — three 1m samples after it was up (or `{$MLT.EXPECTED}=1`). Unused always-disabled stay silent. Recovers when up. Not `.diff()` |
 | Wrong speed vs **intended** label | **armed** | Nested; **no items** until `USW`/`US`/`UP`/`MON`. Then **Warning**, not a page |
 | Half duplex | yes | Warning |
 | Interface errors | yes | Warning |
+| EtherLike FCS / alignment | yes | Warning — 5m rate, 80% hysteresis, ignore `ifCounterDiscontinuityTime`. VOSS on duplex LLD; EXOS on Observability companion (no stock YAML fork). Faulty-link canary still needed to prove the OID moves |
 | Outbound discards (`USW`) | **no** | Speed Expect discards trigger is **DISABLED** until a pps baseline |
 | Sustained util vs **intended** speed | **no** | stock 15m off (`{$IF.UTIL.MAX}=101`); Speed Expect `USW` also **101** |
 | `X…` ports | **no** | not discovered |
@@ -126,8 +128,8 @@ Re-run `configure_nbxsync_zerotouch.py` then `configure_nbxsync_network.py --app
 - YAML `deleteMissing: false` — retired items linger; we do not wipe LLD  
 - Does **not** mass-sync every device (template updates inherit in Zabbix). Speed Expect nests on VOSS / Observability, so existing switch hosts pick up the LLD on `--apply` without HostSync. Empty display-string → nothing discovered.  
 - Empty SNMP secrets in env must not overwrite existing CG passphrases (zerotouch)  
-- Idempotent patches: TEMP_*, EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, chassis OOB ifName skip (`mgmt` / `Management`), EXOS PSU LLD keep installed FRUs (status not notPresent **or** a real serial; LLD JS defaults missing `{#PSU.SERIAL}` and wipes dummy `--`; API AND/OR updates omit `formulaid` — GET still shows `A or B`) and **VOSS PSU LLD skip empty(2) even with dummy serial `--`**, **delete lost VOSS PSU rows immediately**, PSU Average `last()<>{$PSU.OK_STATUS}` (VOSS also `and last()<>{$PSU.EMPTY_STATUS}`) so two present / one connected tickets without empty-bay noise, EXOS/VOSS link-down Average without `.diff()` (admin-up + oper **not up**, including `lowerLayerDown(7)`), Access `{$LINKDOWN.IFALIAS}` grammar gate, Speed Expect `event_name` ASCII `!=` (YAML import can leave `≠` / `Γëá`; open Problems keep the create-time title), EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
-- `--apply` writes Switch Access Zabbix **host** macros for IFALIAS / PORTID / `{$LINKDOWN.IFALIAS}` (grammar regex `USW|US|UP|MON|UW|TMON`). That is not HostSync and does not rewrite Core/Dist/Mgmt. Unlabelled Access desk ports then leave LLD (disable-now) and the Average cannot fire without a proper display-string. Core/Dist/Mgmt still ticket every admin-up port except `X`. Remaining Switch* drift is logged only.
+- Idempotent patches: TEMP_*, **`{$IF.UTIL.MAX}=101` on Extreme EXOS/VOSS templates** (stock EXOS 90 beats global 101), EtherLike IFALIAS, EXOS IF LLD 15m / disable-lost immediately / delete after 7d, chassis OOB ifName skip (`mgmt` / `Management`), EXOS PSU LLD keep installed FRUs (status not notPresent **or** a real serial; LLD JS defaults missing `{#PSU.SERIAL}` and wipes dummy `--`; API AND/OR updates omit `formulaid` — GET still shows `A or B`) and **VOSS PSU LLD skip empty(2) even with dummy serial `--`**, **delete lost VOSS PSU rows immediately**, PSU Average `last()<>{$PSU.OK_STATUS}` (VOSS also `and last()<>{$PSU.EMPTY_STATUS}`) so two present / one connected tickets without empty-bay noise, EXOS/VOSS link-down Average without `.diff()` (admin-up + oper **not up**, including `lowerLayerDown(7)`), Access `{$LINKDOWN.IFALIAS}` grammar gate, Speed Expect `event_name` ASCII `!=` (YAML import can leave `≠` / `Γëá`; open Problems keep the create-time title), EXOS ICMP loss/RTT disable and stock **Network interfaces** 3×2 layout; Health comes from YAML/companion. Leftover Speed Expect **role** assignments are pruned (the template is nested).  
+- `--apply` writes Switch Access Zabbix **host** macros for IFALIAS / PORTID / `{$LINKDOWN.IFALIAS}` (grammar regex `USW|US|UP|MON|UW|TMON`). That is not HostSync and does not rewrite Core/Dist/Mgmt IFALIAS. It also writes `{$VIST.CONTROL}` / `{$ISIS.CONTROL}` / `{$ISIS.EXPECTED}` on VOSS Core/Dist/Mgmt `BASE-1`/`BASE-2` name twins (not EXOS stacks, not card). Unlabelled Access desk ports then leave LLD (disable-now) and the Average cannot fire without a proper display-string. Core/Dist/Mgmt still ticket every admin-up port except `X`. Remaining Switch* drift is logged only.
 - `{$PORTID.LLD.*}` defaults live on **Extreme Port Speed Expect**. `--apply` will delete leftover Zabbix **global** PORTID macros (they bump config for every host).
 
 Per-host sync only when **that** device’s NetBox role/platform/macros changed.
@@ -175,7 +177,7 @@ A site WAN blip is one ICMP High per switch. That is accepted.
 | Extreme EXOS Observability | Platform EXOS Template Rule; nests stock **Extreme EXOS by SNMP** + **Port Speed Expect**; owns **Health** |
 | Extreme EXOS by SNMP (stock) | Parent of the companion; owns the native **Network interfaces** graph prototype/dashboard |
 
-We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, aligns EtherLike/interface LLD (15m, disable-lost immediately, delete after 7d), skips EXOS PSU padding (`notPresent` with no real serial — padding slots often omit the serial OID, so LLD JS defaults `{#PSU.SERIAL}` to empty and wipes dummy `--` before the filter), tickets installed PSUs that are not `presentOK` (`presentNotOK`, `presentPowerOff`, or serialled `notPresent`), keeps discovered link-down **Average** (drops leftover USW High), disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. Stock EXOS `net.if.discovery` is classic SNMP OID LLD, not `walk[`/`get[`, so the rule `timeout` field must stay empty (proxy/global SNMP timeout). The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory), the zero-interface Average trigger, and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
+We do **not** fork or add dashboards to the stock template. `--apply` idempotently sets `{$TEMP_WARN}=95`, `{$TEMP_CRIT}=100`, `{$TEMP_CRIT_LOW}=-273`, **`{$IF.UTIL.MAX}=101`** (stock EXOS ships 90, which beats global 101), aligns EtherLike/interface LLD (15m, disable-lost immediately, delete after 7d), skips EXOS PSU padding (`notPresent` with no real serial — padding slots often omit the serial OID, so LLD JS defaults `{#PSU.SERIAL}` to empty and wipes dummy `--` before the filter), tickets installed PSUs that are not `presentOK` (`presentNotOK`, `presentPowerOff`, or serialled `notPresent`), keeps discovered link-down **Average** (drops leftover USW High), disables ICMP loss/RTT noise and changes only the existing **Network interfaces** dashboard layout to the shared map + 3×2 grid plus a **Port** page. Stock EXOS `net.if.discovery` is classic SNMP OID LLD, not `walk[`/`get[`, so the rule `timeout` field must stay empty (proxy/global SNMP timeout). The companion carries calculated mirrors for Health (ICMP/CPU/memory/uptime, including slot-1 memory), the zero-interface Average trigger, EtherLike FCS/alignment discovery (no stock YAML fork), and owns **Health** (Overview / Hardware). Overview 4th tile is Uptime, same as VOSS/IQ — not Temp. Chassis temp lives on Hardware as a gauge next to Fans/PSU. Memory is on Overview with CPU, not a Hardware honeycomb — Zabbix svggraph item patterns on the companion throw `Array to string conversion` in `CSvgGraphHelper::getMetricsPattern`.
 
 Stock EXOS trigger severities stay upstream except those patches. SNMP-dead is **Warning** on EXOS, VOSS, and IQ.
 
@@ -196,18 +198,23 @@ Same `{$TEMP_*}` on **this template**. Re-import after this revision. PSU LLD ke
 {$OPTIC.DOM.ALARM_HIGH}= 3
 {$OPTIC.DOM.ALARM_LOW} = 5
 {$MLT.CONTROL}         = 1
+{$MLT.EXPECTED}        = 0
 {$VIST.CONTROL}        = 0
 {$IST.CONTROL}         = 0
 {$ISIS.CONTROL}        = 0
+{$ISIS.EXPECTED}       = 0
 {$CARD.CONTROL}        = 0
 {$UNSUPPORTED.MAX}     = 5
+{$UNSUPPORTED.WARN}    = 0
+{$IF.FCS.WARN}         = 2
+{$UPTIME.WRAP.MAX}     = 34560000
 {$SNMP.TIMEOUT}        = 5m
 {$IF.UTIL.MAX}         = 101
 ```
 
-V-IST: host `{$VIST.CONTROL}=1` only on fabric pairs. Classic IST stays 0. Fabric High (ISIS/card) stays collected; set the CONTROL macro to `1` on a canary **after** a quiet pilot — not on `--apply`. Traps: collect; do not page duplicates of polled items until seen on hardware.
+V-IST / ISIS: `--apply` writes host `{$VIST.CONTROL}=1`, `{$ISIS.CONTROL}=1`, `{$ISIS.EXPECTED}=1` on VOSS Core/Dist/Mgmt **`BASE-1` and `BASE-2` name twins** (platform `VOSS|Fabric Engine`; EXOS stacks ignored). Triggers are **loss of an established session** (`min(#3)=down` and `max(#15)=up`), so never-configured stays silent. Card High stays `0`. Classic IST stays 0. Traps: collect; do not page duplicates of polled items until seen on hardware.
 
-Poll weight (same idea as APs, more SNMP budget on a chassis): inventory **1h**; IF counters **3m**; oper-status default **1m**; chassis temp **1m**; optic DOM **5m** (Average tickets, not 03:00). Duplex LLD **15m**, same as `net.if.discovery`. Lost **interface** LLD resources: **disable immediately**, **delete after 7d** (not delete-now). A discovery rule that goes **not supported** (SNMP timeout) does not process lost resources — a full outage is a graph gap, history stays. Immediate delete is how a truncated GETBULK or a wrong IFALIAS filter wipes interface history. **VOSS PSU** LLD is the exception: **delete lost immediately** (`lifetime: 0`) — Health honeycomb keeps lastvalue on a disabled item, so a 7d lifetime leaves `empty(2)` hexes visible. Uptime **1m** (reboot Warning still sees `< 10m`). Do not 1-minute every optic on a Core.
+Poll weight (same idea as APs, more SNMP budget on a chassis): inventory **1h**; IF counters **3m**; oper-status default **1m**; chassis temp **1m**; optic DOM **5m** (Average tickets, not 03:00). Duplex LLD **15m**, same as `net.if.discovery`. Lost **interface** LLD resources: **disable immediately**, **delete after 7d** (not delete-now). A discovery rule that goes **not supported** (SNMP timeout) does not process lost resources — a full outage is a graph gap, history stays. Immediate delete is how a truncated GETBULK or a wrong IFALIAS filter wipes interface history. **VOSS PSU** LLD is the exception: **delete lost immediately** (`lifetime: 0`) — Health honeycomb keeps lastvalue on a disabled item, so a 7d lifetime leaves `empty(2)` hexes visible. Uptime **1m**. Reboot Warning is `snmpEngineBoots` (wrap-safe `sysUpTime` fallback only if boots and hrSystemUptime are 0). Do not 1-minute every optic on a Core.
 
 ---
 
