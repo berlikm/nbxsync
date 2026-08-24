@@ -217,6 +217,15 @@ def main() -> int:
         'estate companion YAML is imported; stock 7.0-3 is not',
     )
     forti_http = (SCRIPTS / 'fortigate_http.py').read_text(encoding='utf-8')
+    zbx_src = (SCRIPTS / 'fortigate_http_zabbix.py').read_text(encoding='utf-8')
+    record(
+        'network_fortigate_http_patches_vdom_star',
+        'patch_vdom_star_items' in zbx_src
+        and 'vdom_star' in zbx_src
+        and 'vdom=*' in forti_http
+        and 'VDOM_STAR_SCRIPT_KEYS' in forti_http,
+        'surgical vdom=* flatten on netif + SD-WAN scripts; stock YAML is not imported',
+    )
     record(
         'network_fortigate_fqdn_is_platform_jinja',
         "FGATE_FQDN_JINJA = '{{ object.primary_ip4.address.ip }}'" in forti_http

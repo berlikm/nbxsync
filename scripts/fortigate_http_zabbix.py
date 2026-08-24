@@ -18,13 +18,16 @@ from fortigate_http import (
     FORTIGATE_HTTP_CLOUD_VENDOR,
     REQUIRED_HTTP_SCRIPT_KEYS,
     SLOW_ITEM_DELAYS,
+    VDOM_STAR_SCRIPT_KEYS,
     format_vendor_label,
     forti_linkdown_problem_expr,
     forti_linkdown_recovery_expr,
     is_cloud_fortigate_http_vendor,
     netif_error_problem_expr,
     netif_error_recovery_expr,
+    patch_vdom_star_script,
     patch_zbx27082_script,
+    script_has_vdom_star,
     script_has_zbx27082,
     with_ha_role_gate,
 )
@@ -158,6 +161,41 @@ def patch_zbx27082_items(api, templateid) -> dict[str, str]:
     return results
 
 
+def patch_vdom_star_items(api, templateid) -> dict[str, str]:
+    """Stock HTTP is current-VDOM only. Fail closed if vdom=* cannot be applied."""
+    results: dict[str, str] = {}
+    remaining = []
+    items = {item['key_']: item for item in _script_items(api, templateid)}
+    for key in VDOM_STAR_SCRIPT_KEYS:
+        item = items.get(key)
+        if item is None:
+            remaining.append(key)
+            results[key] = 'missing'
+            continue
+        script = item.get('params') or ''
+        if script_has_vdom_star(script):
+            results[key] = 'ok'
+            continue
+        patched = patch_vdom_star_script(script)
+        if not script_has_vdom_star(patched):
+            remaining.append(key)
+            results[key] = 'unpatched'
+            continue
+        if script_has_zbx27082(patched):
+            remaining.append(key)
+            results[key] = 'zbx27082'
+            continue
+        api.item.update(itemid=item['itemid'], params=patched)
+        results[key] = 'patched'
+        logger.info('  %s: vdom=* interface/SD-WAN collection', key)
+    if remaining:
+        raise SystemExit(
+            'vdom=* patch failed on: ' + ', '.join(remaining)
+            + '. Aborting — stock HTTP would keep current-VDOM-only LLD.'
+        )
+    return results
+
+
 def ensure_ha_role_item(api, templateid) -> str:
     """Primary/standalone=1 on the HTTP parent so path triggers can gate."""
     found = api.item.get(
@@ -247,6 +285,9 @@ def upsert_http_template_macros(api, templateid) -> str:
             '{$SDWAN.HEALTH.IFNAME.MATCHES}',
             '{$SDWAN.MEMBER.NAME.MATCHES}',
             '{$FGATE.PATH.CONTROL}',
+            '{$NET.IF.DISCOVERY.MIN}',
+            '{$FGATE.SDWAN.EXPECTED}',
+            '{$FGATE.HA.EXPECTED}',
         }
     }
     existing = list(tpls[0].get('macros') or [])
@@ -381,7 +422,7 @@ def patch_slow_item_delays(api, templateid) -> dict[str, str]:
 
 
 def apply_fortigate_http_patches(api, templateid) -> dict:
-    """Fail closed: ZBX-27082 must be gone before NetBox writes."""
+    """Fail closed: ZBX-27082 must be gone, then vdom=* iface/SD-WAN, before NetBox writes."""
     logger.info('Network: patch live %s (no YAML import)', FORTIGATE_HTTP_TEMPLATE)
     zbx = patch_zbx27082_items(api, templateid)
     remaining = inspect_http_scripts(api, templateid)
@@ -391,6 +432,7 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
             'ZBX-27082 still present after patch on: ' + ', '.join(still)
             + '. Aborting — multi-request items (SD-WAN) would 401.'
         )
+    vdom = patch_vdom_star_items(api, templateid)
     ha = ensure_ha_role_item(api, templateid)
     if script_has_zbx27082(HA_ROLE_SCRIPT):
         raise SystemExit('HA role script is itself ZBX-27082-vulnerable — abort')
@@ -400,6 +442,7 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
     delays = patch_slow_item_delays(api, templateid)
     return {
         'zbx27082': zbx,
+        'vdom_star': vdom,
         'ha_role': ha,
         'macros': macros,
         'policy': policy,

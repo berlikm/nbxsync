@@ -29,7 +29,7 @@ Tested upstream on FortiGate **v7.6.4**. Production FortiOS must be treated as u
 | [ZBX-25448](https://support.zabbix.com/browse/ZBX-25448) | Token moved from URL query to Bearer header | Old HTTP templates 401 on FortiOS 7.4.5+ |
 | [ZBX-27082](https://support.zabbix.com/browse/ZBX-27082) | Reused `HttpRequest` sends **duplicate** Authorization → 401 | Fixed by recreating the request per call; **7.0.30rc1** (not 7.0.29rc1). Cloud 7.0-2 still has the bug — `--apply-fortigate-http` patches scripts in place and aborts if they stay vulnerable |
 | [ZBX-26072](https://support.zabbix.com/browse/ZBX-26072) | SD-WAN **member** LLD fails when a health-check is “all members” | Health-check LLD can still work; member graphs go empty. Census, not a silent “WAN is fine” |
-| [ZBX-26408](https://support.zabbix.com/browse/ZBX-26408) | Interface API omits VLANs unless `include_vlan=true` | Fine if we scope physical WAN/HA/mgmt; do not expect VLAN ifaces from stock HTTP |
+| [ZBX-26408](https://support.zabbix.com/browse/ZBX-26408) | Interface API omits VLANs unless `include_vlan=true` | Apply adds `include_vlan=true&vdom=*` on the monitor iface call so other-VDOM VLANs can appear during open canary LLD |
 
 ---
 
@@ -50,7 +50,7 @@ Tested upstream on FortiGate **v7.6.4**. Production FortiOS must be treated as u
 | Global session table `fgSysSesCount` | **no** (only per-policy / per-SD-WAN-member) | **yes** |
 | Hardware sensors (temp / PSU / fan) | **no** | **yes** |
 | IPS / AV event rates | **no** | yes (often HA-member scoped) |
-| VDOM LLD | current VDOM name only | **yes** |
+| VDOM LLD | all VDOMs the token can read after apply `?vdom=*`; `fgate.device.vdom` is still the login VDOM | **yes** |
 | FortiAP / WTP | **no** | yes — do not use; APs are [02](../02-extreme-access-points.md) |
 | SNMP traps | n/a | in template; collect ≠ page |
 
@@ -91,6 +91,8 @@ Do **not** fork the stock template. Macro / trigger-status patches on apply, sam
 | `{$SERVICE.LICENSE.CONTROL}`=`1`, expiry 7d | Average on unsuccessful; Warning at 7d | Keep for production licenses; context-0 lab/unused SKUs |
 | Policy LLD `{$FWP.FWNAME.MATCHES}`=`.*` | No policy **triggers**, but ~8 items × every policy | MATCHES=`^$` **and** disable `fgate.fwp.get_data` + discovery (MATCHES alone still polls) |
 | Link-down uses `.diff()` + **manual close** | ACK a down WAN and it **will not re-fire** until another up→down | `--apply-fortigate-http` patches to sustained `#3` + auto-recover + `ha.role` gate |
+| No `vdom=*` on iface/SD-WAN scripts | Only the REST login VDOM (usually `root`) is discovered — other VDOMs look empty | Apply patches `fgate.netif.get_data` / `fgate.sdwan.get_data` to `?vdom=*` and flatten. Token needs read on those VDOMs |
+| `{$NET.IF.IFNAME.NOT_MATCHES}`=`.*` | MATCHES `.*` **and** NOT_MATCHES `.*` excludes every iface | Keep **`CHANGE_IF_NEEDED`**. Never set NOT_MATCHES to `.*` |
 | Stock high-error trigger | README expression checks **in_errors twice** (no out_errors) | patched to in **or** out |
 | CPU CRIT 95 / mem CRIT 90 = **High** | 03:00 pages | `{$CPU.UTIL.CRIT}`/`{$MEMORY.UTIL.CRIT}`=101 on FortiOS; conserve-mode Average instead |
 

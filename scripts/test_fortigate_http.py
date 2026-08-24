@@ -35,16 +35,22 @@ from fortigate_http import (
     REQUIRED_HTTP_SCRIPT_KEYS,
     SLOW_ITEM_DELAYS,
     SNMP_MONITORING_CG,
+    VDOM_STAR_SCRIPT_KEYS,
     fgate_token_env,
+    flatten_forti_cmdb_list,
+    flatten_forti_monitor_map,
+    flatten_forti_sdwan_cmdb,
     format_vendor_label,
     forti_linkdown_problem_expr,
     ha_role_gate_expr,
     is_cloud_fortigate_http_vendor,
     netif_error_problem_expr,
+    patch_vdom_star_script,
     patch_zbx27082_script,
     platform_is_fmg_faz,
     platform_is_fortios,
     preferred_mgmt_ip,
+    script_has_vdom_star,
     script_has_zbx27082,
     should_write_secret,
     with_ha_role_gate,
@@ -97,6 +103,17 @@ class FirewallRoleMacroTests(unittest.TestCase):
     def test_ifname_lld_is_open_for_canary(self):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}'], '.*')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.NOT_MATCHES}'], 'CHANGE_IF_NEEDED')
+        self.assertNotEqual(FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.NOT_MATCHES}'], '.*')
+
+    def test_sdwan_lld_is_open_and_ha_expected_is_two(self):
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.IFNAME.MATCHES}'], '.*')
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'], '.*')
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SDWAN.EXPECTED}'], '1')
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.HA.EXPECTED}'], '2')
+        self.assertEqual(
+            FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'],
+            FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}'],
+        )
 
     def test_policy_lld_collects_none(self):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FWP.FWNAME.MATCHES}'], '^$')
@@ -193,16 +210,6 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(expr.count('in_errors'), 1)
         self.assertEqual(expr.count('out_errors'), 1)
 
-    def test_sdwan_lld_is_open_and_expected_is_one(self):
-        self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.IFNAME.MATCHES}'], '.*')
-        self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'], '.*')
-        self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SDWAN.EXPECTED}'], '1')
-        self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.HA.EXPECTED}'], '1')
-        self.assertEqual(
-            FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'],
-            FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}'],
-        )
-
     def test_device_dual_link_is_snmp_only_not_nested_parents(self):
         self.assertEqual(DEVICE_DUAL_LINK_TEMPLATES, (FORTIGATE_SNMP_TEMPLATE,))
         self.assertNotIn(FORTIGATE_HTTP_TEMPLATE, DEVICE_DUAL_LINK_TEMPLATES)
@@ -248,6 +255,7 @@ class FirewallRoleMacroTests(unittest.TestCase):
     def test_required_scripts_and_slow_delays(self):
         self.assertIn('fgate.netif.get_data', REQUIRED_HTTP_SCRIPT_KEYS)
         self.assertIn('fgate.sdwan.get_data', REQUIRED_HTTP_SCRIPT_KEYS)
+        self.assertEqual(VDOM_STAR_SCRIPT_KEYS, ('fgate.netif.get_data', 'fgate.sdwan.get_data'))
         self.assertEqual(SLOW_ITEM_DELAYS['fgate.firmware.get_data'], '12h')
         self.assertEqual(SLOW_ITEM_DELAYS['fgate.service.get_data'], '1h')
 
@@ -280,8 +288,167 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertIn("value: '.*'", companion)
         self.assertIn("macro: '{$FGATE.SDWAN.EXPECTED}'", companion)
         self.assertIn("value: '1'", companion)
+        self.assertIn("macro: '{$FGATE.HA.EXPECTED}'", companion)
+        self.assertIn("value: '2'", companion)
         self.assertIn('CHANGE_IF_NEEDED', companion)
         self.assertIn('Object.keys', companion)
+
+
+def _http_yaml() -> str:
+    return (
+        Path(__file__).resolve().parents[1]
+        / 'zabbix/templates/fortinet_fortigate_http/template_net_fortigate_http.yaml'
+    ).read_text(encoding='utf-8')
+
+
+def _yaml_script(text: str, key: str) -> str:
+    marker = f'          key: {key}\n'
+    start = 0
+    while True:
+        idx = text.find(marker, start)
+        if idx < 0:
+            raise AssertionError(f'missing YAML script key {key}')
+        params = text.find('params: |', idx)
+        next_item = text.find('\n          key:', idx + len(marker))
+        if params < 0 or (next_item != -1 and params > next_item):
+            start = idx + len(marker)
+            continue
+        end_at = text.find('\n          description:', params)
+        if end_at < 0:
+            end_at = text.find('\n          timeout:', params)
+        block = text[params:end_at]
+        lines = block.split('\n')[1:]
+        out = []
+        for line in lines:
+            if line.startswith('            '):
+                out.append(line[12:])
+            else:
+                out.append(line)
+        return '\n'.join(out).strip('\n') + '\n'
+
+
+class FortiVdomStarTests(unittest.TestCase):
+    def test_script_keys_are_netif_and_sdwan(self):
+        self.assertEqual(
+            VDOM_STAR_SCRIPT_KEYS,
+            ('fgate.netif.get_data', 'fgate.sdwan.get_data'),
+        )
+
+    def test_single_vdom_cmdb_keeps_root_prefix(self):
+        payload = {
+            'status': 'success',
+            'vdom': 'root',
+            'results': [
+                {'q_origin_key': 'ha', 'name': 'ha'},
+                {'q_origin_key': 'port1', 'name': 'port1'},
+            ],
+        }
+        rows = flatten_forti_cmdb_list(payload)
+        self.assertEqual([r['id'] for r in rows], ['root:ha', 'root:port1'])
+
+    def test_multi_vdom_cmdb_does_not_collide_on_port1(self):
+        payload = [
+            {
+                'status': 'success',
+                'vdom': 'root',
+                'results': [{'q_origin_key': 'port1', 'name': 'port1'}],
+            },
+            {
+                'status': 'success',
+                'vdom': 'corp',
+                'results': [{'q_origin_key': 'port1', 'name': 'port1'}],
+            },
+        ]
+        rows = flatten_forti_cmdb_list(payload)
+        self.assertEqual({r['id'] for r in rows}, {'root:port1', 'corp:port1'})
+
+    def test_multi_vdom_monitor_map_keys_are_prefixed(self):
+        payload = [
+            {
+                'status': 'success',
+                'vdom': 'root',
+                'results': {'port1': {'link': True, 'rx_bytes': 1}},
+            },
+            {
+                'status': 'success',
+                'vdom': 'corp',
+                'results': {'port1': {'link': False, 'rx_bytes': 2}},
+            },
+        ]
+        mapped = flatten_forti_monitor_map(payload)
+        self.assertEqual(mapped['root:port1']['rx_bytes'], 1)
+        self.assertEqual(mapped['corp:port1']['rx_bytes'], 2)
+        self.assertNotIn('port1', mapped)
+
+    def test_failed_vdom_block_is_skipped(self):
+        payload = [
+            {'status': 'error', 'vdom': 'broken', 'results': {'x': {}}},
+            {
+                'status': 'success',
+                'vdom': 'root',
+                'results': [{'q_origin_key': 'ha', 'name': 'ha'}],
+            },
+        ]
+        rows = flatten_forti_cmdb_list(payload)
+        self.assertEqual([r['id'] for r in rows], ['root:ha'])
+
+    def test_sdwan_cmdb_prefixes_member_ids(self):
+        payload = [
+            {
+                'status': 'success',
+                'vdom': 'root',
+                'results': {
+                    'members': [{'q_origin_key': 1, 'interface': 'port1'}],
+                    'health-check': [
+                        {
+                            'q_origin_key': 'ISP',
+                            'name': 'ISP',
+                            'members': [{'q_origin_key': 1}],
+                        }
+                    ],
+                },
+            },
+            {
+                'status': 'success',
+                'vdom': 'corp',
+                'results': {
+                    'members': [{'q_origin_key': 1, 'interface': 'port1'}],
+                    'health-check': [],
+                },
+            },
+        ]
+        merged = flatten_forti_sdwan_cmdb(payload)
+        self.assertEqual(
+            [m['q_origin_key'] for m in merged['members']],
+            ['root:1', 'corp:1'],
+        )
+        self.assertEqual(merged['health-check'][0]['q_origin_key'], 'root:ISP')
+        self.assertEqual(merged['health-check'][0]['members'][0]['q_origin_key'], 'root:1')
+
+    def test_bundled_netif_script_gets_vdom_star(self):
+        raw = _yaml_script(_http_yaml(), 'fgate.netif.get_data')
+        self.assertIn('/api/v2/monitor/system/interface', raw)
+        self.assertNotIn('vdom=*', raw)
+        self.assertTrue(script_has_zbx27082(raw))
+        patched = patch_vdom_star_script(patch_zbx27082_script(raw))
+        self.assertTrue(script_has_vdom_star(patched))
+        self.assertFalse(script_has_zbx27082(patched))
+        self.assertIn('include_vlan=true&vdom=*', patched)
+        self.assertIn('flattenFortiCmdbList(netif_list)', patched)
+        self.assertIn('fortiIfaceId(item)', patched)
+        self.assertEqual(patch_vdom_star_script(patched), patched)
+
+    def test_bundled_sdwan_script_gets_vdom_star(self):
+        raw = _yaml_script(_http_yaml(), 'fgate.sdwan.get_data')
+        self.assertIn('/api/v2/cmdb/system/sdwan', raw)
+        self.assertNotIn('vdom=*', raw)
+        patched = patch_vdom_star_script(patch_zbx27082_script(raw))
+        self.assertTrue(script_has_vdom_star(patched))
+        self.assertFalse(script_has_zbx27082(patched))
+        self.assertIn("api_url + '/api/v2/monitor/virtual-wan/members?vdom=*'", patched)
+        self.assertIn('flattenFortiSdwanCmdb(sdwan_list)', patched)
+        self.assertIn('fortiMonitorLookup(sdwan_member_data.results', patched)
+        self.assertEqual(patch_vdom_star_script(patched), patched)
 
 
 if __name__ == '__main__':

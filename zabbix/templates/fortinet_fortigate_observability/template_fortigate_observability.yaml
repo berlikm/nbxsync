@@ -15,7 +15,9 @@ zabbix_export:
 
         Gaps only: HA role for path-ticket gating, conserve mode, unsupported-item
         census, zero-interface / SD-WAN / HA-member counts, Health + Path dashboards,
-        estate macros (https/20443, CPU/mem CRIT 101, SD-WAN MATCHES).
+        estate macros (https/20443, CPU/mem CRIT 101, SD-WAN MATCHES,
+        HA.EXPECTED=2, IFNAME NOT_MATCHES=CHANGE_IF_NEEDED). Live HTTP parent
+        is patched for vdom=* iface/SD-WAN LLD; do not import bundled 7.0-3.
       groups:
         - name: 'Templates/Network devices'
       templates:
@@ -230,7 +232,7 @@ zabbix_export:
               value: '{$FGATE.SCHEME}'
             - name: token
               value: '{$FGATE.API.TOKEN}'
-          description: 'Checksums row count. Standalone/404 → 1. Set {$FGATE.HA.EXPECTED}=2 on HA pairs.'
+          description: 'Checksums row count. Standalone/404 → 1. Estate default {$FGATE.HA.EXPECTED}=2 (pairs). Host override 1 on standalone.'
           tags:
             - tag: component
               value: ha
@@ -239,7 +241,7 @@ zabbix_export:
               expression: 'min(/FortiGate Observability/fgate.observability.api,30m)=1 and last(/FortiGate Observability/fgate.observability.ha.member.count)<>{$FGATE.HA.EXPECTED}'
               name: 'FortiGate: HA member count unexpected'
               priority: AVERAGE
-              description: 'API is up and ha/checksums count ≠ {$FGATE.HA.EXPECTED}. Set EXPECTED=2 on pairs, 1 on standalone.'
+              description: 'API is up and ha/checksums count ≠ {$FGATE.HA.EXPECTED}. Estate default 2 (pairs). Host override 1 on standalone.'
               tags:
                 - tag: scope
                   value: availability
@@ -354,8 +356,8 @@ zabbix_export:
           value: '1'
           description: 'Minimum SD-WAN members. Canary 1 so empty LLD tickets. Set 0 on standalone without SD-WAN, 2+ after members are named.'
         - macro: '{$FGATE.HA.EXPECTED}'
-          value: '1'
-          description: 'Expected ha/checksums members. 1 = standalone. Set 2 on HA pair hosts.'
+          value: '2'
+          description: 'Expected ha/checksums members. Estate default 2 (HA pairs). Host override 1 on standalone.'
       tags:
         - tag: class
           value: network

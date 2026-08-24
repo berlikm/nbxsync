@@ -110,6 +110,7 @@ Canary LLD is **open** (`.*` / `CHANGE_IF_NEEDED`) so the first cluster names ev
 {$SDWAN.MEMBER.NAME.MATCHES}    = .*
 {$SDWAN.HEALTH.IFNAME.MATCHES}  = .*
 {$FGATE.SDWAN.EXPECTED}         = 1
+{$FGATE.HA.EXPECTED}            = 2
 {$FWP.FWNAME.MATCHES}           = ^$
 {$NET.IF.UTIL.MAX}              = 101
 ```
@@ -226,7 +227,7 @@ FortiOS **7.4.5+** requires `Authorization: Bearer`. Do **not** enable `rest-api
 
 TLS: verify the GUI cert from the proxy. Wrong name / private CA looks like API Average, not ICMP High.
 
-VDOM: the REST admin must see the VDOM(s) you monitor. HTTP exposes **current VDOM** only — not VDOM LLD.
+VDOM: stock FortiGate by HTTP polls **the REST admin’s current VDOM only** (usually `root`) — there is no VDOM LLD. That is why ZH4 showed `fgate.device.vdom=root` and only `ha` / `mgmt` / `mgmt.loopback`. `--apply-fortigate-http` patches `fgate.netif.get_data` and `fgate.sdwan.get_data` to call `?vdom=*` (and `include_vlan=true` on the monitor iface API) and flatten the multi-VDOM array. `{#IFKEY}` becomes `vdom:ifName` so `port1` in two VDOMs does not collide. `{#IFNAME}` stays the Forti ifName so MATCHES still works. The REST profile must have **read on every VDOM** you want named; `vdom=*` cannot see VDOMs the token cannot access. `fgate.device.vdom` remains the login VDOM, not a list. Do **not** put the token in the URL query (FortiOS 7.4.5+). Do **not** set `{$NET.IF.IFNAME.NOT_MATCHES}=.*` — LLD is MATCHES **and** NOT_MATCHES, so that hides every interface.
 
 HA: poll **each member’s unique OOB / ha-mgmt IP**. HostSync both. After failover, health items follow that chassis. Path/license tickets are gated on `fgate.ha.role=1`. If API 401s on the secondary: trusted-hosts / ha-mgmt, not the template. See [HA](#ha).
 
@@ -268,7 +269,7 @@ Tag events with `site`, `circuit_id`, `path`, `device/member`, `cluster`, `layer
 | Zero interfaces | IFNAME regex or `netif` API fail | `fgate.observability.netif.count` < `{$NET.IF.DISCOVERY.MIN}` |
 | SD-WAN site, too few members | [ZBX-26072](https://support.zabbix.com/browse/ZBX-26072) or not SD-WAN | `fgate.observability.sdwan.count` < `{$FGATE.SDWAN.EXPECTED}` (canary **1**) |
 | Duplicate Authorization 401 | 7.0-2/7.0-3 reuse `HttpRequest` in `getHttpData` ([ZBX-27082](https://support.zabbix.com/browse/ZBX-27082), fix in **7.0.30rc1**) | `--apply-fortigate-http` patches scripts in place; aborts if still vulnerable |
-| HA pair, wrong member count | backup never polled, or checksums API | `fgate.observability.ha.member.count` ≠ `{$FGATE.HA.EXPECTED}` (set 2 on pairs) |
+| HA pair, wrong member count | backup never polled, or checksums API | `fgate.observability.ha.member.count` ≠ `{$FGATE.HA.EXPECTED}` (estate **2**; host `1` on standalone) |
 | Secondary API 401, ICMP up | trusted-hosts on **that** unit’s ha-mgmt; token not valid there | Average Unexpected API |
 | Proxy last-seen | hosts go *unknown*, not *down* | nodata ICMP/API above. `zabbix[proxy,<name>,lastaccess]` needs a per-proxy name — Cloud console / later |
 
@@ -281,7 +282,7 @@ Do **not** clone stock FortiGate by HTTP.
 | Template | Where | Notes |
 |---|---|---|
 | FortiGate Observability | Platform FortiOS — **target** | Nests Cloud HTTP + ICMP Ping. Health + Path, census, conserve, ha.member.count |
-| FortiGate by HTTP (stock) | nested parent | Cloud is **Zabbix, 7.0-2**. Reuse; never import 7.0-3. Apply patches ZBX-27082 / WAN state / policy off / CRIT 101 / ha.role |
+| FortiGate by HTTP (stock) | nested parent | Cloud is **Zabbix, 7.0-2**. Reuse; never import 7.0-3. Apply patches ZBX-27082 / `vdom=*` iface+SD-WAN / WAN state / policy off / CRIT 101 / ha.role |
 | ICMP Ping | nested on Observability | HTTP has no `icmpping`. Not on role Firewall. FortiOS winning CG **FortiGate HTTP** has no ICMP Ping template. Do not strip ICMP from agent CGs. |
 | FortiGate by SNMP (stock) | Platform FortiOS — **live until `--apply-fortigate-http`** | Do not dual-link with HTTP. Pruned from role Firewall |
 | Network Generic Device by SNMP | **not** on FortiGate | FMG/FAZ only (SNMP Monitoring on those **platforms**) |
@@ -304,11 +305,11 @@ Template-level macros (not globals, not Switch roles, **not role Firewall**). **
 {$FGATE.PATH.CONTROL}           = 1
 {$NET.IF.DISCOVERY.MIN}         = 1
 {$FGATE.SDWAN.EXPECTED}         = 1
-{$FGATE.HA.EXPECTED}            = 1
+{$FGATE.HA.EXPECTED}            = 2
 {$FGATE.API.FQDN}               = {{ object.primary_ip4.address.ip }}
 ```
 
-`{$FGATE.API.FQDN}` is **Platform FortiOS Jinja**, not a Device row. HostSync renders `object` as that FortiGate, so HA members get different IPs from one assignment. Shared `{$FGATE.API.TOKEN}` is on **Platform FortiOS**. Empty env must not wipe the platform token. Set `{$FGATE.HA.EXPECTED}=2` on HA pair hosts after the canary.
+`{$FGATE.API.FQDN}` is **Platform FortiOS Jinja**, not a Device row. HostSync renders `object` as that FortiGate, so HA members get different IPs from one assignment. Shared `{$FGATE.API.TOKEN}` is on **Platform FortiOS**. Empty env must not wipe the platform token. Estate default `{$FGATE.HA.EXPECTED}=2` (pairs). Standalone Fortis need a **host** override of `1`.
 
 CPU/mem **High** are silenced with CRIT 101 on FortiOS / HTTP / Observability — **never** on role Firewall (zerotouch already uses `{$CPU.UTIL.CRIT}` on Server/MSSQL). Conserve mode is the memory page. ICMP Ping loss/RTT stays on the nested ICMP template (do not patch ICMP Ping globally).
 

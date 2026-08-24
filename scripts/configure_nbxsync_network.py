@@ -3770,6 +3770,12 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
             group='resolve',
         )
         record(
+            'firewall_ha_expected_pair',
+            m_fw.get('{$FGATE.HA.EXPECTED}') == '2',
+            str(m_fw),
+            group='resolve',
+        )
+        record(
             'firewall_no_policy_lld',
             m_fw.get('{$FWP.FWNAME.MATCHES}') == '^$',
             str(m_fw),

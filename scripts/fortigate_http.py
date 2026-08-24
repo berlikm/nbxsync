@@ -70,8 +70,10 @@ POLICY_DISCOVERY_KEY = 'fgate.fwp.discovery'
 # HostSync of a FortiOS device inherits platform macros onto the companion.
 # Canary LLD is wide open (stock ``.*`` / ``CHANGE_IF_NEEDED``) so ZH4 names
 # every iface and SD-WAN member. Tighten NET.IF after the dump; do not MATCH
-# ``port`` long-term (LAN on 200F). {$FGATE.SDWAN.EXPECTED}=1 tickets empty
-# member LLD while API is up. {$FGATE.HA.EXPECTED}=1 until the pair is 2.
+# ``port`` long-term (LAN on 200F). Do **not** set NOT_MATCHES to ``.*`` —
+# LLD is MATCHES AND NOT_MATCHES, so that excludes every interface.
+# {$FGATE.SDWAN.EXPECTED}=1 tickets empty member LLD while API is up.
+# Estate FortiOS boxes are HA pairs; standalone needs a host override of 1.
 FORTIOS_PLATFORM_MACROS = {
     '{$FGATE.SCHEME}': 'https',
     '{$FGATE.API.PORT}': FGATE_API_PORT,
@@ -88,9 +90,15 @@ FORTIOS_PLATFORM_MACROS = {
     FGATE_PATH_CONTROL_MACRO: '1',
     '{$NET.IF.DISCOVERY.MIN}': '1',
     '{$FGATE.SDWAN.EXPECTED}': '1',
-    '{$FGATE.HA.EXPECTED}': '1',
+    '{$FGATE.HA.EXPECTED}': '2',
     FGATE_FQDN_MACRO: FGATE_FQDN_JINJA,
 }
+
+# Live Cloud HTTP scripts patched in place (not a YAML import).
+VDOM_STAR_SCRIPT_KEYS = (
+    'fgate.netif.get_data',
+    'fgate.sdwan.get_data',
+)
 
 # Back-compat name used by older tests / Extreme --apply comments.
 FIREWALL_ROLE_MACROS = FORTIOS_PLATFORM_MACROS
@@ -228,6 +236,417 @@ def patch_zbx27082_script(script: str) -> str:
         patched,
         count=1,
     )
+    return patched
+
+
+# Stock FortiGate-by-HTTP calls interface/SD-WAN APIs with no vdom=*, so LLD is
+# the REST admin's current VDOM only (usually root). ?vdom=* returns an array
+# of {vdom, results} blocks; stock JS assumes one object and would throw.
+# {#IFKEY} becomes vdom:ifName so port1 in two VDOMs does not collide.
+_VDOM_STAR_MARK = 'function fortiApiBlocks'
+_AFTER_GETHTTP = re.compile(
+    r'(function\s+getHttpData\s*\(\s*url\s*\)\s*\{[\s\S]*?return response;\s*\n\s*\};?\s*\n)'
+)
+_NOT_OBJECT_RE = re.compile(
+    r"(if \(typeof response !== 'object' \|\| response === null\) \{[\s\S]*?"
+    r"received data is not an object\.[\s\S]*?\}\s*\n)"
+)
+_NETIF_LIST_GET = re.compile(r'(var netif_list = getHttpData\([\s\S]*?\);\s*\n)')
+_SDWAN_LIST_GET = re.compile(r'(var sdwan_list = getHttpData\([\s\S]*?\);\s*\n)')
+_NETIF_LOOKUP_RE = re.compile(
+    r"if \(typeof item\.q_origin_key !== 'undefined' && "
+    r"typeof netif_data\.results\[String\(item\.q_origin_key\)\] !== 'undefined'\) \{\s*"
+    r"Object\.assign\(item, netif_data\.results\[String\(item\.q_origin_key\)\]\);\s*"
+    r"\}"
+)
+_NETIF_ID_RE = re.compile(
+    r"if \(typeof item\.id === 'undefined'\) \{\s*"
+    r"item\.id = item\.q_origin_key;\s*"
+    r"\}"
+)
+_SDWAN_MEM_RE = re.compile(
+    r"if \(typeof v\.interface !== 'undefined' && "
+    r"typeof sdwan_member_data\.results\[v\.interface\] !== 'undefined'\) \{\s*"
+    r"Object\.assign\(v, sdwan_member_data\.results\[v\.interface\]\);\s*"
+    r"\}"
+)
+_SDWAN_HEALTH_RE = re.compile(
+    r"if \(typeof v\.name !== 'undefined' && "
+    r"typeof sdwan_health_data\.results\[v\.name\] !== 'undefined'\) \{\s*"
+    r"Object\.assign\(v, sdwan_health_data\.results\[v\.name\]\);\s*"
+    r"\}"
+)
+_VDOM_URLS = (
+    (
+        re.compile(r"api_url \+ '/api/v2/monitor/system/interface(?:\?[^']*)?'"),
+        "api_url + '/api/v2/monitor/system/interface?include_vlan=true&vdom=*'",
+    ),
+    (
+        re.compile(r"api_url \+ '/api/v2/cmdb/system/interface(?:\?[^']*)?'"),
+        "api_url + '/api/v2/cmdb/system/interface?vdom=*'",
+    ),
+    (
+        re.compile(r"api_url \+ '/api/v2/monitor/virtual-wan/members(?:\?[^']*)?'"),
+        "api_url + '/api/v2/monitor/virtual-wan/members?vdom=*'",
+    ),
+    (
+        re.compile(r"api_url \+ '/api/v2/monitor/virtual-wan/health-check(?:\?[^']*)?'"),
+        "api_url + '/api/v2/monitor/virtual-wan/health-check?vdom=*'",
+    ),
+    (
+        re.compile(r"api_url \+ '/api/v2/cmdb/system/sdwan(?:\?[^']*)?'"),
+        "api_url + '/api/v2/cmdb/system/sdwan?vdom=*'",
+    ),
+)
+_NETIF_KEYS = "['q_origin_key', 'name', 'mode', 'type', 'description']"
+_NETIF_KEYS_VDOM = "['q_origin_key', 'name', 'mode', 'type', 'description', 'vdom']"
+_ARRAY_GUARD = (
+    "\t\t\tif (Array.isArray(response)) {\n"
+    "\t\t\t\treturn response;\n"
+    "\t\t\t}\n"
+)
+_NETIF_NORMALIZE = (
+    "\n"
+    "\t\t\tnetif_data = { results: flattenFortiMonitorMap(netif_data) };\n"
+    "\t\t\tnetif_list = { results: flattenFortiCmdbList(netif_list) };\n"
+)
+_SDWAN_NORMALIZE = (
+    "\n"
+    "\t\t\tsdwan_member_data = { results: flattenFortiMonitorMap(sdwan_member_data) };\n"
+    "\t\t\tsdwan_health_data = { results: flattenFortiMonitorMap(sdwan_health_data) };\n"
+    "\t\t\tsdwan_list = { results: flattenFortiSdwanCmdb(sdwan_list) };\n"
+)
+_NETIF_LOOKUP = (
+    "var _mon = fortiMonitorLookup(netif_data.results, item.vdom, item.q_origin_key);\n"
+    "\t\t\t\tif (typeof item.q_origin_key !== 'undefined' && _mon) {\n"
+    "\t\t\t\t\tObject.assign(item, _mon);\n"
+    "\t\t\t\t}"
+)
+_SDWAN_MEM_LOOKUP = (
+    "var _mm = fortiMonitorLookup(sdwan_member_data.results, v.vdom, v.interface);\n"
+    "\t\t\t\t\tif (typeof v.interface !== 'undefined' && _mm) {\n"
+    "\t\t\t\t\t\tObject.assign(v, _mm);\n"
+    "\t\t\t\t\t}"
+)
+_SDWAN_HEALTH_LOOKUP = (
+    "var _hm = fortiMonitorLookup(sdwan_health_data.results, v.vdom, v.name);\n"
+    "\t\t\t\t\tif (typeof v.name !== 'undefined' && _hm) {\n"
+    "\t\t\t\t\t\tObject.assign(v, _hm);\n"
+    "\t\t\t\t\t}"
+)
+FORTI_VDOM_HELPERS = r'''
+function isFortiVdomBlock(obj) {
+	return obj && typeof obj === 'object' && typeof obj.results !== 'undefined';
+}
+
+function fortiApiBlocks(payload) {
+	var blocks;
+	if (payload == null) {
+		return [];
+	}
+	if (Array.isArray(payload)) {
+		blocks = payload;
+	} else if (isFortiVdomBlock(payload) && Array.isArray(payload.results) && payload.results.length > 0 && isFortiVdomBlock(payload.results[0])) {
+		blocks = payload.results;
+	} else if (isFortiVdomBlock(payload)) {
+		blocks = [payload];
+	} else {
+		return [];
+	}
+	var out = [];
+	for (var i = 0; i < blocks.length; i++) {
+		var b = blocks[i];
+		if (!isFortiVdomBlock(b)) {
+			continue;
+		}
+		if (typeof b.status !== 'undefined' && b.status != 'success') {
+			continue;
+		}
+		out.push(b);
+	}
+	return out;
+}
+
+function fortiIfaceId(item) {
+	var name = (item && (item.q_origin_key || item.name)) || '';
+	var vdom = (item && item.vdom) || '';
+	return vdom ? String(vdom) + ':' + name : name;
+}
+
+function fortiMonitorLookup(map, vdom, name) {
+	if (!map || name === undefined || name === null) {
+		return null;
+	}
+	var key = (vdom ? String(vdom) + ':' : '') + String(name);
+	if (typeof map[key] !== 'undefined') {
+		return map[key];
+	}
+	if (typeof map[String(name)] !== 'undefined') {
+		return map[String(name)];
+	}
+	return null;
+}
+
+function flattenFortiMonitorMap(payload) {
+	var out = {};
+	var blocks = fortiApiBlocks(payload);
+	for (var i = 0; i < blocks.length; i++) {
+		var block = blocks[i];
+		var vdom = block.vdom || '';
+		var results = block.results;
+		if (!results || typeof results !== 'object' || Array.isArray(results)) {
+			continue;
+		}
+		Object.keys(results).forEach(function (name) {
+			var row = results[name];
+			if (!row || typeof row !== 'object') {
+				return;
+			}
+			if (vdom && !row.vdom) {
+				row.vdom = vdom;
+			}
+			var key = (row.vdom ? String(row.vdom) + ':' : '') + name;
+			out[key] = row;
+		});
+	}
+	return out;
+}
+
+function flattenFortiCmdbList(payload) {
+	var out = [];
+	var blocks = fortiApiBlocks(payload);
+	for (var i = 0; i < blocks.length; i++) {
+		var block = blocks[i];
+		var vdom = block.vdom || '';
+		var results = block.results;
+		if (!Array.isArray(results)) {
+			continue;
+		}
+		results.forEach(function (row) {
+			if (!row || typeof row !== 'object') {
+				return;
+			}
+			if (vdom && !row.vdom) {
+				row.vdom = vdom;
+			}
+			row.id = fortiIfaceId(row);
+			out.push(row);
+		});
+	}
+	return out;
+}
+
+function flattenFortiSdwanCmdb(payload) {
+	var members = [];
+	var health = [];
+	var blocks = fortiApiBlocks(payload);
+	for (var bi = 0; bi < blocks.length; bi++) {
+		var block = blocks[bi];
+		var vdom = block.vdom || '';
+		var results = block.results;
+		if (!results || typeof results !== 'object' || Array.isArray(results)) {
+			continue;
+		}
+		(results.members || []).forEach(function (row) {
+			if (!row || typeof row !== 'object') {
+				return;
+			}
+			if (vdom && !row.vdom) {
+				row.vdom = vdom;
+			}
+			if (row.vdom && row.q_origin_key !== undefined) {
+				row.q_origin_key = String(row.vdom) + ':' + row.q_origin_key;
+			}
+			members.push(row);
+		});
+		(results['health-check'] || []).forEach(function (row) {
+			if (!row || typeof row !== 'object') {
+				return;
+			}
+			if (vdom && !row.vdom) {
+				row.vdom = vdom;
+			}
+			if (row.vdom && row.q_origin_key !== undefined) {
+				row.q_origin_key = String(row.vdom) + ':' + row.q_origin_key;
+			}
+			if (row.vdom && Array.isArray(row.members)) {
+				row.members.forEach(function (m) {
+					if (m && m.q_origin_key !== undefined) {
+						m.q_origin_key = String(row.vdom) + ':' + m.q_origin_key;
+					}
+				});
+			}
+			health.push(row);
+		});
+	}
+	return { members: members, 'health-check': health };
+}
+
+'''
+
+
+def script_has_vdom_star(script: str) -> bool:
+    """True when interface/SD-WAN collection already requests every VDOM."""
+    return bool(script) and _VDOM_STAR_MARK in script and 'vdom=*' in script
+
+
+def _is_vdom_block(obj) -> bool:
+    return isinstance(obj, dict) and 'results' in obj
+
+
+def forti_api_blocks(payload) -> list:
+    """Array-or-object FortiOS ?vdom=* envelope → per-VDOM blocks."""
+    if payload is None:
+        return []
+    if isinstance(payload, list):
+        blocks = payload
+    elif (
+        _is_vdom_block(payload)
+        and isinstance(payload.get('results'), list)
+        and payload['results']
+        and _is_vdom_block(payload['results'][0])
+    ):
+        blocks = payload['results']
+    elif _is_vdom_block(payload):
+        blocks = [payload]
+    else:
+        return []
+    out = []
+    for block in blocks:
+        if not _is_vdom_block(block):
+            continue
+        status = block.get('status')
+        if status is not None and status != 'success':
+            continue
+        out.append(block)
+    return out
+
+
+def flatten_forti_monitor_map(payload) -> dict:
+    """Monitor iface/SD-WAN maps keyed by vdom:name."""
+    out: dict = {}
+    for block in forti_api_blocks(payload):
+        vdom = block.get('vdom') or ''
+        results = block.get('results')
+        if not isinstance(results, dict):
+            continue
+        for name, row in results.items():
+            if not isinstance(row, dict):
+                continue
+            row = dict(row)
+            if vdom and not row.get('vdom'):
+                row['vdom'] = vdom
+            key = f'{row["vdom"]}:{name}' if row.get('vdom') else str(name)
+            out[key] = row
+    return out
+
+
+def flatten_forti_cmdb_list(payload) -> list:
+    """CMDB interface rows with id = vdom:ifName when vdom is present."""
+    out: list = []
+    for block in forti_api_blocks(payload):
+        vdom = block.get('vdom') or ''
+        results = block.get('results')
+        if not isinstance(results, list):
+            continue
+        for row in results:
+            if not isinstance(row, dict):
+                continue
+            row = dict(row)
+            if vdom and not row.get('vdom'):
+                row['vdom'] = vdom
+            name = row.get('q_origin_key') or row.get('name') or ''
+            row['id'] = f'{row["vdom"]}:{name}' if row.get('vdom') else name
+            out.append(row)
+    return out
+
+
+def flatten_forti_sdwan_cmdb(payload) -> dict:
+    """Merge per-VDOM SD-WAN cmdb; prefix q_origin_key so LLD ids stay unique."""
+    members: list = []
+    health: list = []
+    for block in forti_api_blocks(payload):
+        vdom = block.get('vdom') or ''
+        results = block.get('results')
+        if not isinstance(results, dict):
+            continue
+        for row in results.get('members') or []:
+            if not isinstance(row, dict):
+                continue
+            row = dict(row)
+            if vdom and not row.get('vdom'):
+                row['vdom'] = vdom
+            if row.get('vdom') and row.get('q_origin_key') is not None:
+                row['q_origin_key'] = f'{row["vdom"]}:{row["q_origin_key"]}'
+            members.append(row)
+        for row in results.get('health-check') or []:
+            if not isinstance(row, dict):
+                continue
+            row = dict(row)
+            if vdom and not row.get('vdom'):
+                row['vdom'] = vdom
+            if row.get('vdom') and row.get('q_origin_key') is not None:
+                row['q_origin_key'] = f'{row["vdom"]}:{row["q_origin_key"]}'
+            nested = []
+            for member in row.get('members') or []:
+                if not isinstance(member, dict):
+                    nested.append(member)
+                    continue
+                member = dict(member)
+                if row.get('vdom') and member.get('q_origin_key') is not None:
+                    member['q_origin_key'] = f'{row["vdom"]}:{member["q_origin_key"]}'
+                nested.append(member)
+            row['members'] = nested
+            health.append(row)
+    return {'members': members, 'health-check': health}
+
+
+def patch_vdom_star_script(script: str) -> str:
+    """Request vdom=* and flatten multi-VDOM payloads. Idempotent."""
+    if not script or script_has_vdom_star(script):
+        return script
+    patched = script
+    if 'Array.isArray(response)' not in patched:
+        patched, n_guard = _NOT_OBJECT_RE.subn(
+            lambda m: m.group(1) + _ARRAY_GUARD, patched, count=1
+        )
+        if n_guard != 1:
+            return script
+    if _VDOM_STAR_MARK not in patched:
+        patched, n_help = _AFTER_GETHTTP.subn(
+            lambda m: m.group(1) + FORTI_VDOM_HELPERS, patched, count=1
+        )
+        if n_help != 1:
+            return script
+    for rx, repl in _VDOM_URLS:
+        patched = rx.sub(repl, patched)
+    if '/api/v2/monitor/system/interface' in script:
+        if 'flattenFortiCmdbList(netif_list)' not in patched:
+            patched, n_norm = _NETIF_LIST_GET.subn(
+                lambda m: m.group(1) + _NETIF_NORMALIZE, patched, count=1
+            )
+            if n_norm != 1:
+                return script
+        patched = patched.replace(_NETIF_KEYS, _NETIF_KEYS_VDOM, 1)
+        patched, n_lookup = _NETIF_LOOKUP_RE.subn(_NETIF_LOOKUP, patched, count=1)
+        if n_lookup != 1:
+            return script
+        patched, n_id = _NETIF_ID_RE.subn('item.id = fortiIfaceId(item);', patched, count=1)
+        if n_id != 1:
+            return script
+    if '/api/v2/cmdb/system/sdwan' in script:
+        if 'flattenFortiSdwanCmdb(sdwan_list)' not in patched:
+            patched, n_norm = _SDWAN_LIST_GET.subn(
+                lambda m: m.group(1) + _SDWAN_NORMALIZE, patched, count=1
+            )
+            if n_norm != 1:
+                return script
+        patched, n_mem = _SDWAN_MEM_RE.subn(_SDWAN_MEM_LOOKUP, patched, count=1)
+        if n_mem != 1:
+            return script
+        patched, n_health = _SDWAN_HEALTH_RE.subn(_SDWAN_HEALTH_LOOKUP, patched, count=1)
+        if n_health != 1:
+            return script
     return patched
 
 
