@@ -2,7 +2,7 @@
 
 Prepared later. Same bar as [01](01-extreme-switching.md): a circuit page is not a fabric `USW` ticket. Tag them so Forti WAN and Extreme `UW-` can share the class later. On the switch template, `UW` is **Average** like every other discovered link.
 
-Depends on Extreme `UW-…` labels ([port-identity.md](port-identity.md)) and/or Forti WAN / SD-WAN health-checks ([03-fortinet.md](03-fortinet.md) — API, not SNMP). Do not page the same ISP cut as Extreme `UW`, Forti path, and Cato.
+Depends on Extreme `UW-…` labels ([port-identity.md](port-identity.md)) and/or Forti WAN / SD-WAN health-checks ([03-fortinet.md](03-fortinet.md) — API, not SNMP). Do not page the same ISP cut as Extreme `UW`, Forti path, and Cato. A Swiss central proxy only proves reachability from Switzerland.
 
 ---
 
@@ -10,10 +10,11 @@ Depends on Extreme `UW-…` labels ([port-identity.md](port-identity.md)) and/or
 
 | Thing | Alert | Sev |
 |---|---|---|
-| `UW` port / Forti WAN down | yes | **High** — tagged as circuit, not fabric |
+| One redundant `UW` / Forti WAN / SD-WAN member down | yes | **Average** — tagged as circuit, not fabric. Forti SD-WAN health-check is the authoritative underlay symptom; Extreme `UW` is the cause signal |
+| Last usable site underlay path lost | yes | **High** on the path; **Disaster** on the site (later parent) |
 | Flapping | yes | Warning |
 | Errors | yes | Warning |
-| All circuits at a site down | yes | **Disaster** — site-level, not on the switch template |
+| All circuits at a site down | yes | **Disaster** — site-level, not on the switch or Forti template |
 | Util vs commit bandwidth | later | graph; Average only after Circuit bandwidth exists |
 | Speed ≠ label | **no** | handoff speed rarely equals commit |
 

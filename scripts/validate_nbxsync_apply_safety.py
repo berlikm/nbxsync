@@ -28,7 +28,7 @@ def record(name: str, ok: bool, detail: str = '') -> None:
 
 
 def _parse(path: Path) -> tuple[str, ast.AST]:
-    src = path.read_text()
+    src = path.read_text(encoding='utf-8')
     return src, ast.parse(src, filename=str(path))
 
 
@@ -161,9 +161,58 @@ def main() -> int:
         'lookup Cloud 7.0-2 only; bundled 7.0-3 is never imported',
     )
     record(
+        'network_fortigate_http_aborts_unknown_vendor',
+        'if not _is_cloud_fortigate_http_vendor(vendor)' in fg_import
+        and 'if vendor and not _is_cloud_fortigate_http_vendor' not in fg_import,
+        'empty vendor is not treated as compatible',
+    )
+    record(
         'zerotouch_no_fortigate_http_auto_cutover',
         'fortigate_http' not in ztc_src,
         'Forti HTTP cutover is network --apply-fortigate-http, not zerotouch',
+    )
+    record(
+        'network_fortigate_http_fail_closed_preflight',
+        '_preflight_fortigate_http' in fg
+        and '_print_fortigate_http_plan' in fg
+        and '_preflight_fortigate_http_zabbix' in fg
+        and 'raise SystemExit' in fg,
+        'preflight prints the plan and aborts before NetBox/Zabbix writes',
+    )
+    record(
+        'network_fortigate_http_patches_zbx27082',
+        'apply_fortigate_http_patches' in fg,
+        'surgical ZBX-27082 / WAN / policy patches on Cloud HTTP',
+    )
+    nbx = _function_source(net_src, net_tree, '_step_fortigate_http_nbxsync') or ''
+    record(
+        'network_fortigate_http_fortios_only_no_firewall_floor',
+        'FortiGate Observability' in nbx
+        and 'ZabbixTemplateAssignment' not in nbx
+        and '_SNMP_MONITORING_CG' not in nbx,
+        'FortiOS companion rule; no Firewall role template/CG floor',
+    )
+    preflight = _function_source(net_src, net_tree, '_preflight_fortigate_http') or ''
+    record(
+        'network_fortigate_http_preflight_blocks_icmpping_dual_link',
+        '_DEVICE_DUAL_LINK_TEMPLATES' in preflight
+        and 'icmpping' in preflight,
+        'device-level SNMP/HTTP/ICMP Ping is an abort, not a warning',
+    )
+    record(
+        'network_reads_yaml_as_utf8',
+        "read_text(encoding='utf-8')" in net_src,
+        'YAML import does not depend on Windows CP1252',
+    )
+    record(
+        'validator_reads_sources_as_utf8',
+        "encoding='utf-8'" in Path(__file__).read_text(encoding='utf-8'),
+        'apply-safety validator is encoding-explicit',
+    )
+    record(
+        'network_fortigate_observability_imported',
+        'import_fortigate_observability_template' in fg,
+        'estate companion YAML is imported; stock 7.0-3 is not',
     )
 
     failed = sum(1 for _, ok, _ in RESULTS if not ok)

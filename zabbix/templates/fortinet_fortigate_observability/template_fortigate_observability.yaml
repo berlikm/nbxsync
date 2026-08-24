@@ -1,0 +1,631 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 36bff6c29af64692839d077febfc7079
+      name: 'Templates/Network devices'
+  templates:
+    - uuid: e7e2c7012c56494e87f0b717ecea934a
+      template: 'FortiGate Observability'
+      name: 'FortiGate Observability'
+      description: |
+        Estate companion for stock FortiGate by HTTP (Cloud Zabbix 7.0-2) + ICMP Ping.
+
+        Platform FortiOS Template Rule points here. Do not assign this template
+        on generic role Firewall (FortiManager / FortiAnalyzer share that role).
+
+        Gaps only: HA role for path-ticket gating, conserve mode, unsupported-item
+        census, zero-interface / SD-WAN / HA-member counts, Health + Path dashboards,
+        estate macros (https/443, CPU/mem CRIT 101, SD-WAN MATCHES).
+      groups:
+        - name: 'Templates/Network devices'
+      templates:
+        - name: 'FortiGate by HTTP'
+        - name: 'ICMP Ping'
+      items:
+        - uuid: f55e414be13f400fb4b1218fa5a7b11c
+          name: ICMP
+          type: CALCULATED
+          key: fgate.observability.icmp
+          delay: 1m
+          value_type: FLOAT
+          params: 'last(//icmpping)'
+          valuemap:
+            name: 'Service state'
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: bad9bf341eea4059ba50abf8c757852c
+              expression: 'nodata(/FortiGate Observability/fgate.observability.icmp,10m)=1'
+              name: 'FortiGate: no ICMP data for 10m'
+              priority: AVERAGE
+              description: 'Watcher — proxy/host unknown, not ICMP down. Dead box is stock ICMP High.'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: f34832e2daf644f489fb18256aaa9fe3
+          name: API
+          type: CALCULATED
+          key: fgate.observability.api
+          delay: 1m
+          value_type: FLOAT
+          params: 'last(//fgate.api.status)'
+          valuemap:
+            name: 'Service state'
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: 1ff7c54eb81344008f340b8d9236173e
+              expression: 'nodata(/FortiGate Observability/fgate.observability.api,10m)=1'
+              name: 'FortiGate: no API data for 10m'
+              priority: AVERAGE
+              description: 'Watcher gap — API item silent. Not a WAN path ticket.'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 6bb8892666d44fa38916fb150e486c40
+          name: CPU
+          type: CALCULATED
+          key: fgate.observability.cpu.util
+          delay: 1m
+          value_type: FLOAT
+          units: '%'
+          params: 'last(//fgate.cpu.util)'
+          tags:
+            - tag: component
+              value: cpu
+        - uuid: 3dbd521f004141919ea782d5db0bf0bd
+          name: Memory
+          type: CALCULATED
+          key: fgate.observability.memory.util
+          delay: 1m
+          value_type: FLOAT
+          units: '%'
+          params: 'last(//fgate.memory.util)'
+          tags:
+            - tag: component
+              value: memory
+        - uuid: 6d668a44c47948cfae2d30e439524aa6
+          name: 'Unsupported items'
+          type: INTERNAL
+          key: 'zabbix[host,,items_unsupported]'
+          delay: 1m
+          tags:
+            - tag: component
+              value: census
+          triggers:
+            - uuid: ebdf9babd27e4bfc86c12302165f5b8f
+              expression: 'min(/FortiGate Observability/zabbix[host,,items_unsupported],10m)>0'
+              name: 'FortiGate: unsupported items'
+              priority: AVERAGE
+              description: 'Watcher — HTTP/ICMP items not collecting. Not a WAN ticket.'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 9ca225a082ea4338baa8f998d32beea1
+          name: 'HA role'
+          type: CALCULATED
+          key: fgate.observability.ha.role
+          delay: 1m
+          value_type: FLOAT
+          params: 'last(//fgate.ha.role)'
+          description: '1 = primary/standalone. Script item lives on FortiGate by HTTP after apply patches.'
+          tags:
+            - tag: component
+              value: ha
+        - uuid: c3cada040fee41f6b233f7183fdd0250
+          name: 'Interface discovery seed (not a port)'
+          type: CALCULATED
+          key: 'fgate.netif.status[__seed]'
+          delay: 1m
+          history: 1d
+          trends: '0'
+          value_type: FLOAT
+          params: '0'
+          description: |
+            Always-present fgate.netif.status key so count(exists_foreach) stays
+            supported at zero discovered WAN/HA/mgmt ports.
+          tags:
+            - tag: component
+              value: census
+        - uuid: a8113cbbcfb04db18e43cb1effedc875
+          name: 'Discovered interface count'
+          type: CALCULATED
+          key: fgate.observability.netif.count
+          delay: 1m
+          value_type: FLOAT
+          params: 'count(exists_foreach(//fgate.netif.status[*]))-1'
+          description: 'Enabled FortiGate by HTTP netif.status items minus the seed.'
+          tags:
+            - tag: component
+              value: census
+          triggers:
+            - uuid: 76f7a92f7df746aa986b15e0d77c2ff3
+              expression: 'min(/FortiGate Observability/fgate.observability.api,30m)=1 and last(/FortiGate Observability/fgate.observability.netif.count)<{$NET.IF.DISCOVERY.MIN}'
+              name: 'FortiGate: no discovered interfaces'
+              priority: AVERAGE
+              description: 'API is up and LLD produced fewer in-scope interfaces than {$NET.IF.DISCOVERY.MIN}. IFNAME regex or netif API gap — not a WAN path ticket.'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 2b093bccf2954e83b72316ec93725947
+          name: 'SD-WAN member discovery seed'
+          type: CALCULATED
+          key: 'fgate.sdwan_member.link_status[__seed]'
+          delay: 1m
+          history: 1d
+          trends: '0'
+          value_type: FLOAT
+          params: '0'
+          description: 'Keeps SD-WAN member count supported when a box has no members.'
+          tags:
+            - tag: component
+              value: census
+        - uuid: 64adb3464ba64b41a667112877029310
+          name: 'SD-WAN member count'
+          type: CALCULATED
+          key: fgate.observability.sdwan.count
+          delay: 1m
+          value_type: FLOAT
+          params: 'count(exists_foreach(//fgate.sdwan_member.link_status[*]))-1'
+          description: 'Enabled SD-WAN member link_status items minus the seed. {$FGATE.SDWAN.EXPECTED}=0 keeps standalone quiet.'
+          tags:
+            - tag: component
+              value: census
+          triggers:
+            - uuid: 1925268d439243278aa7378cfe622b4a
+              expression: 'min(/FortiGate Observability/fgate.observability.api,30m)=1 and last(/FortiGate Observability/fgate.observability.sdwan.count)<{$FGATE.SDWAN.EXPECTED}'
+              name: 'FortiGate: fewer SD-WAN members than expected'
+              priority: AVERAGE
+              description: 'API is up and member LLD is below {$FGATE.SDWAN.EXPECTED}. ZBX-26072 "all members" or not an SD-WAN site — set EXPECTED=0 if none.'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: da10f96dc1c54b22aa959808ae998679
+          name: 'HA member count'
+          type: SCRIPT
+          key: fgate.observability.ha.member.count
+          delay: 1m
+          value_type: FLOAT
+          params: |
+            var params = JSON.parse(value);
+            function getHttpData(url) {
+            	request = new HttpRequest();
+            	if (typeof params.http_proxy !== 'undefined' && params.http_proxy !== '{' + '$FGATE.HTTP.PROXY}' && params.http_proxy !== '') {
+            		request.setProxy(params.http_proxy);
+            	}
+            	request.addHeader('Accept: application/json');
+            	request.addHeader('Authorization: Bearer ' + params.token);
+            	response = request.get(url);
+            	if (request.getStatus() !== 200) {
+            		throw 'status ' + request.getStatus();
+            	}
+            	return JSON.parse(response);
+            }
+            var api_url = params.scheme + '://' + params.fqdn + ':' + params.port;
+            try {
+            	var ha = getHttpData(api_url + '/api/v2/monitor/system/ha/checksums');
+            	var rows = ha.results || ha;
+            	if (!rows) {
+            		return 1;
+            	}
+            	if (!Array.isArray(rows)) {
+            		return 1;
+            	}
+            	return rows.length;
+            } catch (error) {
+            	return 1;
+            }
+          timeout: '{$FGATE.DATA.TIMEOUT}'
+          parameters:
+            - name: fqdn
+              value: '{$FGATE.API.FQDN}'
+            - name: http_proxy
+              value: '{$FGATE.HTTP.PROXY}'
+            - name: port
+              value: '{$FGATE.API.PORT}'
+            - name: scheme
+              value: '{$FGATE.SCHEME}'
+            - name: token
+              value: '{$FGATE.API.TOKEN}'
+          description: 'Checksums row count. Standalone/404 → 1. Set {$FGATE.HA.EXPECTED}=2 on HA pairs.'
+          tags:
+            - tag: component
+              value: ha
+          triggers:
+            - uuid: 3f185b781b924cccaa2e152e9dbf6519
+              expression: 'min(/FortiGate Observability/fgate.observability.api,30m)=1 and last(/FortiGate Observability/fgate.observability.ha.member.count)<>{$FGATE.HA.EXPECTED}'
+              name: 'FortiGate: HA member count unexpected'
+              priority: AVERAGE
+              description: 'API is up and ha/checksums count ≠ {$FGATE.HA.EXPECTED}. Set EXPECTED=2 on pairs, 1 on standalone.'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 516f83e6b539446cb898461796628c2e
+          name: 'Conserve mode'
+          type: SCRIPT
+          key: fgate.observability.conserve
+          delay: 1m
+          value_type: FLOAT
+          valuemap:
+            name: 'Conserve mode'
+          params: |
+            var params = JSON.parse(value);
+            function getHttpData(url) {
+            	request = new HttpRequest();
+            	if (typeof params.http_proxy !== 'undefined' && params.http_proxy !== '{' + '$FGATE.HTTP.PROXY}' && params.http_proxy !== '') {
+            		request.setProxy(params.http_proxy);
+            	}
+            	request.addHeader('Accept: application/json');
+            	request.addHeader('Authorization: Bearer ' + params.token);
+            	response = request.get(url);
+            	if (request.getStatus() !== 200) {
+            		throw 'status ' + request.getStatus();
+            	}
+            	return JSON.parse(response);
+            }
+            function isOn(v) {
+            	if (v === true || v === 1 || v === '1') return true;
+            	if (typeof v === 'string' && v.toLowerCase() === 'on') return true;
+            	return false;
+            }
+            function readConserve(obj) {
+            	if (!obj || typeof obj !== 'object') return null;
+            	var keys = ['conserve_mode', 'conserve-mode', 'conserve', 'mem_conserve', 'sys_conserve'];
+            	for (var i = 0; i < keys.length; i++) {
+            		if (typeof obj[keys[i]] !== 'undefined') return obj[keys[i]];
+            	}
+            	if (obj.results) return readConserve(obj.results);
+            	return null;
+            }
+            var api_url = params.scheme + '://' + params.fqdn + ':' + params.port;
+            try {
+            	var perf = getHttpData(api_url + '/api/v2/monitor/system/performance/status');
+            	var v = readConserve(perf);
+            	if (v !== null) return isOn(v) ? 1 : 0;
+            	var res = getHttpData(api_url + '/api/v2/monitor/system/resource/usage?interval=1-min');
+            	v = readConserve(res);
+            	if (v !== null) return isOn(v) ? 1 : 0;
+            	return 2;
+            } catch (error) {
+            	return 2;
+            }
+          timeout: '{$FGATE.DATA.TIMEOUT}'
+          parameters:
+            - name: fqdn
+              value: '{$FGATE.API.FQDN}'
+            - name: http_proxy
+              value: '{$FGATE.HTTP.PROXY}'
+            - name: port
+              value: '{$FGATE.API.PORT}'
+            - name: scheme
+              value: '{$FGATE.SCHEME}'
+            - name: token
+              value: '{$FGATE.API.TOKEN}'
+          description: '1 = conserve on (ticket). 0 = off. 2 = endpoint unknown (do not page). New HttpRequest per call (ZBX-27082).'
+          tags:
+            - tag: component
+              value: memory
+          triggers:
+            - uuid: 6e50014a4d83435f8b57e57d4dfcf5cd
+              expression: 'last(/FortiGate Observability/fgate.observability.conserve)=1'
+              name: 'FortiGate: conserve mode'
+              priority: AVERAGE
+              description: 'FortiOS conserve mode is on. More operational than stock memory % High (which is silenced at CRIT 101).'
+              tags:
+                - tag: scope
+                  value: capacity
+      macros:
+        - macro: '{$FGATE.SCHEME}'
+          value: https
+        - macro: '{$FGATE.API.PORT}'
+          value: '443'
+        - macro: '{$CPU.UTIL.CRIT}'
+          value: '101'
+          description: 'Quiet stock High CPU (CRIT 101). Conserve mode is the memory page, not this trigger.'
+        - macro: '{$MEMORY.UTIL.CRIT}'
+          value: '101'
+          description: 'Quiet stock High memory (CRIT 101). Ticket conserve mode instead.'
+        - macro: '{$DISK.FREE.CRIT}'
+          value: '0'
+        - macro: '{$NET.IF.UTIL.MAX}'
+          value: '101'
+        - macro: '{$FIRMWARE.UPDATES.CONTROL}'
+          value: '0'
+        - macro: '{$FWP.FWNAME.MATCHES}'
+          value: '^$'
+        - macro: '{$NET.IF.IFNAME.MATCHES}'
+          value: '^(wan|ha|mgmt|dmz)'
+        - macro: '{$NET.IF.IFNAME.NOT_MATCHES}'
+          value: '^(ssl\.|npu|fortilink|loopback|vlan)'
+        - macro: '{$FGATE.PATH.CONTROL}'
+          value: '1'
+          description: '1 = WAN/SD-WAN path tickets. ha.role=0 still mutes secondary.'
+        - macro: '{$SDWAN.HEALTH.IFNAME.MATCHES}'
+          value: '^(wan|ha|mgmt|dmz)'
+        - macro: '{$SDWAN.MEMBER.NAME.MATCHES}'
+          value: '^(wan|ha|mgmt|dmz)'
+        - macro: '{$NET.IF.DISCOVERY.MIN}'
+          value: '1'
+          description: 'Minimum in-scope netif.status items after LLD. Zero with API up is a watcher ticket.'
+        - macro: '{$FGATE.SDWAN.EXPECTED}'
+          value: '0'
+          description: 'Minimum SD-WAN members. 0 = no census (standalone). Set 2+ on SD-WAN sites after the canary names them.'
+        - macro: '{$FGATE.HA.EXPECTED}'
+          value: '1'
+          description: 'Expected ha/checksums members. 1 = standalone. Set 2 on HA pair hosts.'
+      tags:
+        - tag: class
+          value: network
+        - tag: target
+          value: fortigate
+      dashboards:
+        - uuid: c88d6982f9b64de6b7b35d48c5ba6c06
+          name: Health
+          pages:
+            - name: Overview
+              widgets:
+                - type: gauge
+                  name: ICMP
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FortiGate Observability'
+                        key: fgate.observability.icmp
+                    - type: STRING
+                      name: max
+                      value: '1'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: FF465C
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                - type: gauge
+                  name: API
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FortiGate Observability'
+                        key: fgate.observability.api
+                    - type: STRING
+                      name: max
+                      value: '1'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: FF465C
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                - type: gauge
+                  name: CPU
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FortiGate Observability'
+                        key: fgate.observability.cpu.util
+                    - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: units
+                      value: '%'
+                - type: gauge
+                  name: Memory
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FortiGate Observability'
+                        key: fgate.observability.memory.util
+                    - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: units
+                      value: '%'
+            - name: Path
+              widgets:
+                - type: gauge
+                  name: 'HA role'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FortiGate Observability'
+                        key: fgate.observability.ha.role
+                    - type: STRING
+                      name: max
+                      value: '1'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                - type: gauge
+                  name: Conserve
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FortiGate Observability'
+                        key: fgate.observability.conserve
+                    - type: STRING
+                      name: max
+                      value: '2'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: FF465C
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                - type: gauge
+                  name: Interfaces
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FortiGate Observability'
+                        key: fgate.observability.netif.count
+                    - type: STRING
+                      name: max
+                      value: '20'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                - type: gauge
+                  name: 'SD-WAN members'
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FortiGate Observability'
+                        key: fgate.observability.sdwan.count
+                    - type: STRING
+                      name: max
+                      value: '10'
+                    - type: STRING
+                      name: min
+                      value: '0'
+        - uuid: 61255111abfe4dbe91cad34140fcf15d
+          name: Path
+          pages:
+            - name: Overview
+              widgets:
+                - type: gauge
+                  name: 'HA role'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FortiGate Observability'
+                        key: fgate.observability.ha.role
+                    - type: STRING
+                      name: max
+                      value: '1'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                - type: gauge
+                  name: Conserve
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'FortiGate Observability'
+                        key: fgate.observability.conserve
+                    - type: STRING
+                      name: max
+                      value: '2'
+                    - type: STRING
+                      name: min
+                      value: '0'
+      valuemaps:
+        - uuid: 09c2078822e6460f81837ff61d4778f7
+          name: 'Service state'
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+        - uuid: e0b78907502b42f199edb685393c418c
+          name: 'Conserve mode'
+          mappings:
+            - value: '0'
+              newvalue: Off
+            - value: '1'
+              newvalue: On
+            - value: '2'
+              newvalue: Unknown

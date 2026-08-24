@@ -9,9 +9,9 @@ Sources: official Zabbix 7.0 `templates/net/fortinet/` (`FortiGate by HTTP`, `Fo
 
 ## Decision
 
-Monitor FortiGates with stock **FortiGate by HTTP** (REST from the Swiss Zabbix proxy). Add **ICMP Ping** (the HTTP template has no `icmpping`). Do **not** also link **FortiGate by SNMP** or **Network Generic**.
+Monitor FortiGates with companion **FortiGate Observability** (nests stock **FortiGate by HTTP** + **ICMP Ping**). Do **not** also link **FortiGate by SNMP** or **Network Generic**. Do **not** put Forti templates or the REST token on generic role **Firewall** (FMG/FAZ share it).
 
-Live nbxSync today still points FortiOS at **FortiGate by SNMP**. That is the current estate, not the target. Retarget with `configure_nbxsync_network.py --apply-fortigate-http` — **do not re-run zerotouch**. Zabbix Cloud already has **FortiGate by HTTP** vendor **Zabbix, 7.0-2** (Bearer); the flag looks it up and never imports YAML. HostSync **both members** of a cluster (unique OOB each); the next HostSync of that firewall swaps templates. First cluster, then the rest — not “primary only”.
+Live nbxSync today still points FortiOS at **FortiGate by SNMP**. Retarget with `configure_nbxsync_network.py --apply-fortigate-http` — **do not re-run zerotouch**. The flag fails closed, looks up Cloud **Zabbix, 7.0-2**, patches ZBX-27082 in place, and never imports bundled 7.0-3. HostSync **both members** of a cluster (`primary_ip4`).
 
 ---
 
@@ -27,7 +27,7 @@ Tested upstream on FortiGate **v7.6.4**. Production FortiOS must be treated as u
 | Bug | What | Why it matters here |
 |---|---|---|
 | [ZBX-25448](https://support.zabbix.com/browse/ZBX-25448) | Token moved from URL query to Bearer header | Old HTTP templates 401 on FortiOS 7.4.5+ |
-| [ZBX-27082](https://support.zabbix.com/browse/ZBX-27082) | Reused `HttpRequest` sends **duplicate** Authorization → 401 | Fixed by recreating the request per call; **7.0.29rc1**. Lab is 7.0.29 — still re-import latest YAML, do not assume the shipped template is current |
+| [ZBX-27082](https://support.zabbix.com/browse/ZBX-27082) | Reused `HttpRequest` sends **duplicate** Authorization → 401 | Fixed by recreating the request per call; **7.0.30rc1** (not 7.0.29rc1). Cloud 7.0-2 still has the bug — `--apply-fortigate-http` patches scripts in place and aborts if they stay vulnerable |
 | [ZBX-26072](https://support.zabbix.com/browse/ZBX-26072) | SD-WAN **member** LLD fails when a health-check is “all members” | Health-check LLD can still work; member graphs go empty. Census, not a silent “WAN is fine” |
 | [ZBX-26408](https://support.zabbix.com/browse/ZBX-26408) | Interface API omits VLANs unless `include_vlan=true` | Fine if we scope physical WAN/HA/mgmt; do not expect VLAN ifaces from stock HTTP |
 
@@ -89,9 +89,10 @@ Do **not** fork the stock template. Macro / trigger-status patches on apply, sam
 | CPU CRIT 95 = **High**, mem CRIT 90 = **High**, disk free 10% = **High** | 03:00 pages for busy/log disk | Intended: CPU Warning only; mem Average; disk Average unless that box **is** the log product. Disable or retune the **High** triggers without a fork |
 | `{$FIRMWARE.UPDATES.CONTROL}`=`1` | Info as long as FortiGuard lists an image | `0` if it never clears |
 | `{$SERVICE.LICENSE.CONTROL}`=`1`, expiry 7d | Average on unsuccessful; Warning at 7d | Keep for production licenses; context-0 lab/unused SKUs |
-| Policy LLD `{$FWP.FWNAME.MATCHES}`=`.*` | No policy **triggers**, but ~8 items × every policy | MATCHES a canary / empty until named policies exist |
-| Link-down uses `.diff()` + **manual close** | ACK a down WAN and it **will not re-fire** until another up→down | Prefer SD-WAN **health-check** as the WAN symptom. Document: do not ACK-to-silence a still-down path |
-| Stock high-error trigger | README expression checks **in_errors twice** (no out_errors) | Collect; do not trust outbound-error coverage |
+| Policy LLD `{$FWP.FWNAME.MATCHES}`=`.*` | No policy **triggers**, but ~8 items × every policy | MATCHES=`^$` **and** disable `fgate.fwp.get_data` + discovery (MATCHES alone still polls) |
+| Link-down uses `.diff()` + **manual close** | ACK a down WAN and it **will not re-fire** until another up→down | `--apply-fortigate-http` patches to sustained `#3` + auto-recover + `ha.role` gate |
+| Stock high-error trigger | README expression checks **in_errors twice** (no out_errors) | patched to in **or** out |
+| CPU CRIT 95 / mem CRIT 90 = **High** | 03:00 pages | `{$CPU.UTIL.CRIT}`/`{$MEMORY.UTIL.CRIT}`=101 on FortiOS; conserve-mode Average instead |
 
 SNMP-only landmines we **leave behind** by not using SNMP as the long-term path: ICMP loss/RTT Warning from the CH proxy (WAN RTT), HA member CPU High, FortiAP WTP noise. If SNMP stays on a host during the mixed cutover, those still apply.
 
@@ -127,11 +128,11 @@ Config **is** synced. HTTP LLD of SD-WAN / wan1 / policies on **both** members c
 
 HostSync of both members is the same job twice: shared role token + templates, unique `{$FGATE.API.FQDN}` from each `primary_ip4`. Do not give them different templates, and do not flip macros on failover as part of cutover.
 
-| Signal | Cutover (both members, unique OOB) | Later (optional `ha.role`) |
+| Signal | Cutover (both members, unique OOB) | After apply patches |
 |---|---|---|
-| ICMP, API, CPU, memory | **both** | still both |
-| SD-WAN / WAN iface tickets | both — accept a double Average | gate on primary |
-| Licenses / firmware Info | both — same SKU twice is noise | gate on primary |
+| ICMP, API, CPU, memory, conserve | **both** | still both |
+| SD-WAN / WAN iface tickets | both would double | gate on `fgate.ha.role=1` |
+| Licenses / firmware Info | both — same SKU twice is noise | gate on `fgate.ha.role=1` |
 
 Later thin item (`/api/v2/monitor/system/ha/peer` or equivalent) + trigger `and last(ha.role)=primary` is optional. It is not required to monitor the second box.
 
@@ -147,12 +148,12 @@ VIP- or primary-DNS-only when the backup is unreachable. Record it as a watcher 
 
 ## Health dashboard
 
-Stock HTTP has no host **Health** board (same gap as stock EXOS). Plan: upsert **Health** on **FortiGate by HTTP** (template dashboard).
+Stock HTTP has no host **Health** board (same gap as stock EXOS). Companion **FortiGate Observability** ships **Health** (ICMP/API/CPU/mem) and **Path** (HA role, conserve, interface/SD-WAN counts).
 
 | Page | 5-second read |
 |---|---|
-| **Health** | ICMP / API / CPU tiles. CPU + memory graphs |
-| **Path** | In-scope WAN / SD-WAN traffic + health-check loss/latency — **not** 40 policy graphs |
+| **Health** | ICMP / API / CPU / memory gauges |
+| **Path** | HA role, conserve, in-scope iface count, SD-WAN member count — **not** 40 policy graphs |
 
 ---
 
@@ -170,14 +171,13 @@ Live today (`configure_nbxsync_zerotouch.py` + locked GUI checklist) until the n
 
 Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-http`
 
-- Look up **FortiGate by HTTP** already in Zabbix Cloud (**Zabbix, 7.0-2**). Never import bundled 7.0-3. Do not overwrite 7.0-2.
-- FortiOS → HTTP (`HostInterfaceRequirement` **ANY**) when that template exists
-- Shared `{$FGATE.API.TOKEN}` on Device Role Firewall from `NBX_FGATE_TOKEN` (empty env does not wipe). Optional per-host override `NBX_FGATE_TOKEN_<HOSTNAME>`
-- Per-device `{$FGATE.API.FQDN}` from `primary_ip4` (this estate’s OOB / ha-mgmt on each HA member). NetBox `oob_ip` is BMC-only; used only if primary is empty. Not a WAN VIP
-- Fleet defaults (https/443, WAN/HA/mgmt IFNAME, empty policy LLD) on Device Role Firewall
-- ICMP Ping on role Firewall (lands on HostSync with HTTP). Prunes FortiGate by SNMP and SNMP Monitoring from Firewall
-- Do **not** dual-link HTTP+SNMP because OOB exists. OOB is how both **nodes** are reachable. SNMP would add a second `icmpping` and a second WAN/CPU ticket family
-- No Extreme YAML, no check-now, no mass-HostSync of the firewall fleet. HostSync **both members** of the first cluster (unique OOB), then the remaining clusters the same way.
+- Look up **FortiGate by HTTP** already in Zabbix Cloud (**Zabbix, 7.0-2**). Never import bundled 7.0-3. Fail closed if missing/wrong vendor
+- Patch ZBX-27082, WAN `.diff()`, policy master off, CPU/mem CRIT 101. Import **FortiGate Observability**
+- FortiOS → Observability (`HostInterfaceRequirement` **ANY**). Not role Firewall
+- Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS** from `NBX_FGATE_TOKEN` (empty env does not wipe). Optional per-host override `NBX_FGATE_TOKEN_<HOSTNAME>`
+- Per FortiOS-device `{$FGATE.API.FQDN}` from `primary_ip4`. NetBox `oob_ip` is BMC-only
+- Fleet defaults on Platform FortiOS. Prune Forti/ICMP templates from role Firewall; **keep** SNMP Monitoring for FMG/FAZ
+- Do **not** dual-link HTTP+SNMP. No Extreme YAML, no mass-HostSync. HostSync both members of the first cluster, then the rest
 
 Changing the FortiOS Template Rule on a live estate **will** retarget on next HostSync of that firewall.
 

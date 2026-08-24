@@ -9,7 +9,7 @@ If a script and that document disagree, **fix the script or the document so they
 | Order | Script | Applies |
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
-| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes Device Role Firewall FortiGate HTTP defaults only. `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS/Firewall → HTTP, prune SNMP CG, per-device TOKEN/FQDN) — **do not re-run zerotouch** for that. Neither Forti flag HostSyncs. |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults only (not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers from role Firewall, **keep** SNMP Monitoring for FMG/FAZ) — **do not re-run zerotouch** for that. Neither Forti flag HostSyncs. |
 | — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** and **Network interfaces** ship from platform templates/runtime patch |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
@@ -43,11 +43,11 @@ python scripts/configure_nbxsync_network.py --apply
 
 Always finish with the network script so VOSS / IQ Engine Template Rules are not left unresolved. Re-running both scripts on an estate that **already has** switches and APs in Zabbix is the maintenance path: YAML `deleteMissing: false`, no host delete, no mass `SyncHostJob`. Template Health dashboards and trigger status inherit in Zabbix without touching hostids.
 
-FortiGate HTTP cutover is **not** zerotouch and **not** Extreme `--apply`. Zabbix Cloud already has **FortiGate by HTTP** vendor **Zabbix, 7.0-2** — the flag looks that template up and **never imports YAML** (bundled 7.0-3 would overwrite Cloud):
+FortiGate HTTP cutover is **not** zerotouch and **not** Extreme `--apply`. Zabbix Cloud already has **FortiGate by HTTP** vendor **Zabbix, 7.0-2**. The flag looks that template up, **never imports 7.0-3**, patches ZBX-27082 in place, imports companion **FortiGate Observability**, and retargets **FortiOS only** (not role Firewall). It **fails closed** if token, FQDN, ICMP, or FortiOS inventory is missing:
 
 ```bash
 export NBX_ZABBIX_TOKEN=...
-export NBX_FGATE_TOKEN=...   # shared REST key on Device Role Firewall; empty env does not wipe
+export NBX_FGATE_TOKEN=...   # shared REST key on Platform FortiOS; empty env does not wipe
 python3 scripts/configure_nbxsync_network.py --apply-fortigate-http
 ```
 
@@ -102,7 +102,7 @@ Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **
 | Dell iDRAC SNMPv3 / SPACE :10060 | yes | — |
 | Extreme TemplateRules (EXOS/VOSS/IQ) | ensure when template exists; **never** fall back to Network Generic. Patterns: `EXOS\|Switch Engine`, `VOSS\|Fabric Engine`, `IQ ENGINE\|IQEngine\|IQ-ENGINE` | import + retarget if a rule still points at Network Generic |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
-| Firewall FortiGate HTTP fleet macros (https/443, WAN/HA/mgmt LLD) | — | yes (`--apply-firewall-macros` or `--apply`; no Forti HostSync) |
-| FortiOS / Firewall → FortiGate by HTTP (lookup Cloud **Zabbix, 7.0-2**, never import YAML), prune SNMP CG, ICMP Ping, shared TOKEN on Firewall, per-device FQDN | **do not re-run** (still SNMP) | `--apply-fortigate-http` (no Extreme YAML, no HostSync) |
+| Firewall FortiGate HTTP fleet macros (https/443, WAN/HA/mgmt LLD, CPU/mem CRIT 101) | — | yes on **Platform FortiOS** (`--apply-firewall-macros` or `--apply`; no Forti HostSync). Not role Firewall. |
+| FortiOS → FortiGate Observability (nests Cloud **Zabbix, 7.0-2**, never import 7.0-3), ZBX-27082 patch, prune Forti/ICMP from role Firewall, keep SNMP Monitoring, shared TOKEN on Platform FortiOS, per-device FQDN | **do not re-run** (still SNMP) | `--apply-fortigate-http` (fail-closed preflight, no Extreme YAML, no HostSync) |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |
