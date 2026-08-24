@@ -3509,8 +3509,9 @@ def run_apply_fortigate_http() -> int:
     from oob_ip / primary_ip4.
 
     Does not import Extreme YAML, does not check-now Extreme hosts, does not
-    mass-HostSync. Empty env does not wipe the role token. Inheritance lands on
-    HostSync of that firewall — canary one HA pair.
+    mass-HostSync the firewall fleet. Empty env does not wipe the role token.
+    Inheritance lands on HostSync of **both members** of a cluster (unique
+    OOB each) — first cluster, then the rest.
     """
     token = os.environ.get('NBX_ZABBIX_TOKEN')
     if not token:
@@ -3537,7 +3538,8 @@ def run_apply_fortigate_http() -> int:
         'FortiGate HTTP cutover written in NetBox. No HostSync. '
         'Shared %s is on Device Role %s (look there, not each Device). '
         'FQDN is per-device (oob_ip then primary_ip4). '
-        'Canary-sync one HA pair. Do not re-run zerotouch — it still floors '
+        'HostSync both members of the first cluster (unique OOB), then the rest. '
+        'Do not re-run zerotouch — it still floors '
         'FortiOS on %s. Do not dual-link %s.',
         _FGATE_TOKEN_MACRO,
         _FIREWALL_ROLE,

@@ -11,7 +11,7 @@ Sources: official Zabbix 7.0 `templates/net/fortinet/` (`FortiGate by HTTP`, `Fo
 
 Monitor FortiGates with stock **FortiGate by HTTP** (REST from the Swiss Zabbix proxy). Add **ICMP Ping** (the HTTP template has no `icmpping`). Do **not** also link **FortiGate by SNMP** or **Network Generic**.
 
-Live nbxSync today still points FortiOS at **FortiGate by SNMP**. That is the current estate, not the target. Retarget with `configure_nbxsync_network.py --apply-fortigate-http` — **do not re-run zerotouch**. Zabbix Cloud already has **FortiGate by HTTP** vendor **Zabbix, 7.0-2** (Bearer); the flag looks it up and never imports YAML. The next HostSync of a firewall swaps templates. Canary-sync one HA pair.
+Live nbxSync today still points FortiOS at **FortiGate by SNMP**. That is the current estate, not the target. Retarget with `configure_nbxsync_network.py --apply-fortigate-http` — **do not re-run zerotouch**. Zabbix Cloud already has **FortiGate by HTTP** vendor **Zabbix, 7.0-2** (Bearer); the flag looks it up and never imports YAML. HostSync **both members** of a cluster (unique OOB each); the next HostSync of that firewall swaps templates. First cluster, then the rest — not “primary only”.
 
 ---
 
@@ -121,17 +121,19 @@ A WAN/SD-WAN **data-plane VIP is never** `{$FGATE.API.FQDN}` — HTTPS GUI is no
 
 Polling only the current primary (shared DNS that always follows master) has the same blind spot as a VIP: the backup is unmonitored until it becomes master. Use it only when the secondary has **no** unique mgmt IP.
 
-### Duplicate path tickets (the real VIP argument)
+### Duplicate path tickets (not a HostSync problem)
 
-Config **is** synced. HTTP LLD of SD-WAN / wan1 / policies on **both** members will double every WAN-down Average. That is the only good argument for a single logical host — and it is solved by **gating path triggers**, not by deleting the second device.
+Config **is** synced. HTTP LLD of SD-WAN / wan1 / policies on **both** members can double every WAN-down Average. That is the only good argument for a single logical host — and it is solved later by **gating path triggers**, not by skipping HostSync of the backup or inventing a VIP host.
 
-| Signal | Both members | Primary only (until `ha.role` exists) |
+HostSync of both members is the same job twice: shared role token + templates, unique `{$FGATE.API.FQDN}` from each `oob_ip`. Do not give them different templates, and do not flip macros on failover as part of cutover.
+
+| Signal | Cutover (both members, unique OOB) | Later (optional `ha.role`) |
 |---|---|---|
-| ICMP, API, CPU, memory | **yes** | — |
-| SD-WAN / WAN iface tickets | — | **yes** (empty LLD macros on secondary) |
-| Licenses / firmware Info | — | **yes** (same SKU twice is noise) |
+| ICMP, API, CPU, memory | **both** | still both |
+| SD-WAN / WAN iface tickets | both — accept a double Average | gate on primary |
+| Licenses / firmware Info | both — same SKU twice is noise | gate on primary |
 
-After failover, path LLD stays on whoever still has MATCHES set. Later thin item (`/api/v2/monitor/system/ha/peer` or equivalent) + trigger `and last(ha.role)=primary` removes the manual flip.
+Later thin item (`/api/v2/monitor/system/ha/peer` or equivalent) + trigger `and last(ha.role)=primary` is optional. It is not required to monitor the second box.
 
 ### Token / trusted hosts
 
@@ -175,7 +177,7 @@ Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-h
 - Fleet defaults (https/443, WAN/HA/mgmt IFNAME, empty policy LLD) on Device Role Firewall
 - ICMP Ping on role Firewall (lands on HostSync with HTTP). Prunes FortiGate by SNMP and SNMP Monitoring from Firewall
 - Do **not** dual-link HTTP+SNMP because OOB exists. OOB is how both **nodes** are reachable. SNMP would add a second `icmpping` and a second WAN/CPU ticket family
-- No Extreme YAML, no check-now, no mass-HostSync. Canary-sync one HA pair.
+- No Extreme YAML, no check-now, no mass-HostSync of the firewall fleet. HostSync **both members** of the first cluster (unique OOB), then the remaining clusters the same way.
 
 Changing the FortiOS Template Rule on a live estate **will** retarget on next HostSync of that firewall.
 

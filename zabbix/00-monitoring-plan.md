@@ -7,7 +7,7 @@ Status: active
 **Hard deadline: LogicMonitor → Zabbix cutover.** That reframes everything below.
 
 **In scope now:** Extreme switches (01) and access points (02).  
-**Prepared, not blocking cutover:** FortiGate over **API** (03), network VMs (06). Same page shape and observability bar. Live FortiOS still SNMP until `--apply-fortigate-http` + canary HostSync (do not re-run zerotouch).  
+**Prepared, not blocking cutover:** FortiGate over **API** (03), network VMs (06). Same page shape and observability bar. Live FortiOS still SNMP until `--apply-fortigate-http` + HostSync of **both HA members** via unique OOB (do not re-run zerotouch).  
 **Later still:** Cato (04), circuits (05).
 
 The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everything in the design docs". Anything LM does not watch today cannot be a regression.
