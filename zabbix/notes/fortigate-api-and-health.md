@@ -83,7 +83,7 @@ Do **not** fork the stock template. Macro / trigger-status patches on apply, sam
 
 | Default | What happens if left stock | What we do |
 |---|---|---|
-| `{$FGATE.SCHEME}`=`http`, `{$FGATE.API.PORT}`=`80` | Port-unavailable Average immediately (GUI is HTTPS/443) | Template-level **https** / **443**. Per-host FQDN + token |
+| `{$FGATE.SCHEME}`=`http`, `{$FGATE.API.PORT}`=`80` | Port-unavailable Average immediately (GUI is HTTPS/20443 on ha-mgmt) | Template-level **https** / **20443**. Per-host FQDN + token |
 | `{$NET.IF.UTIL.MAX}`=`95` | 15m util Warning on any discovered iface | **101** (same as Extreme) |
 | `{$NET.IF.CONTROL}`=`1` on **all** discovered ifaces | Link-down Average on every VLAN/VPN/loopback that flaps | Scope LLD to WAN / SD-WAN members / HA / mgmt. Mute leftover with context `CONTROL=0`, not a second inventory |
 | CPU CRIT 95 = **High**, mem CRIT 90 = **High**, disk free 10% = **High** | 03:00 pages for busy/log disk | Intended: CPU Warning only; mem Average; disk Average unless that box **is** the log product. Disable or retune the **High** triggers without a fork |

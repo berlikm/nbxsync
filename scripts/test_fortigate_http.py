@@ -9,6 +9,7 @@ from pathlib import Path
 from fortigate_http import (
     AGENT_MONITORING_CG,
     DEVICE_DUAL_LINK_TEMPLATES,
+    FGATE_API_PORT,
     FGATE_FQDN_JINJA,
     FGATE_FQDN_MACRO,
     FGATE_PATH_CONTROL_MACRO,
@@ -57,7 +58,10 @@ class FirewallRoleMacroTests(unittest.TestCase):
 
     def test_https_not_stock_http_80(self):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SCHEME}'], 'https')
-        self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.API.PORT}'], '443')
+        self.assertEqual(FGATE_API_PORT, '20443')
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.API.PORT}'], FGATE_API_PORT)
+        self.assertNotEqual(FIREWALL_ROLE_MACROS['{$FGATE.API.PORT}'], '443')
+        self.assertNotEqual(FIREWALL_ROLE_MACROS['{$FGATE.API.PORT}'], '80')
 
     def test_role_macros_are_fleet_defaults_only(self):
         self.assertEqual(
@@ -272,6 +276,9 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertNotIn('FortiGate by SNMP', companion)
         self.assertIn('{$CPU.UTIL.CRIT}', companion)
         self.assertIn('101', companion)
+        self.assertIn("macro: '{$FGATE.API.PORT}'", companion)
+        self.assertIn("value: '20443'", companion)
+        self.assertNotIn("value: '443'", companion)
 
 
 if __name__ == '__main__':

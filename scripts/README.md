@@ -102,7 +102,7 @@ Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **
 | Dell iDRAC SNMPv3 / SPACE :10060 | yes | — |
 | Extreme TemplateRules (EXOS/VOSS/IQ) | ensure when template exists; **never** fall back to Network Generic. Patterns: `EXOS\|Switch Engine`, `VOSS\|Fabric Engine`, `IQ ENGINE\|IQEngine\|IQ-ENGINE` | import + retarget if a rule still points at Network Generic |
 | Switch* IFALIAS / IFTYPE macros | — | yes |
-| Firewall FortiGate HTTP fleet macros (https/443, WAN/HA/mgmt LLD, CPU/mem CRIT 101, FQDN Jinja) | — | yes on **Platform FortiOS** (`--apply-firewall-macros` or `--apply`; no Forti HostSync). Not role Firewall. |
+| Firewall FortiGate HTTP fleet macros (https/20443, WAN/HA/mgmt LLD, CPU/mem CRIT 101, FQDN Jinja) | — | yes on **Platform FortiOS** (`--apply-firewall-macros` or `--apply`; no Forti HostSync). Not role Firewall. |
 | FortiOS → FortiGate Observability (nests Cloud **Zabbix, 7.0-2**, never import 7.0-3), ZBX-27082 patch, prune Forti/ICMP **and SNMP Monitoring** from role Firewall, CG **FortiGate HTTP** on Platform FortiOS, SNMP Monitoring on FMG/FAZ platforms, shared TOKEN + FQDN Jinja on Platform FortiOS | **do not re-run** (still SNMP on role Firewall) | `--apply-fortigate-http` (fail-closed preflight, no Extreme YAML, no HostSync) |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |
