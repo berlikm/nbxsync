@@ -214,6 +214,29 @@ def main() -> int:
         'import_fortigate_observability_template' in fg,
         'estate companion YAML is imported; stock 7.0-3 is not',
     )
+    forti_http = (SCRIPTS / 'fortigate_http.py').read_text(encoding='utf-8')
+    record(
+        'network_fortigate_fqdn_is_platform_jinja',
+        "FGATE_FQDN_JINJA = '{{ object.primary_ip4.address.ip }}'" in forti_http
+        and 'FGATE_FQDN_MACRO: FGATE_FQDN_JINJA' in forti_http
+        and 'FIREWALL_DEVICE_MACROS = ()' in forti_http,
+        'FQDN is Platform FortiOS Jinja, not a device literal',
+    )
+    plat_macros = _function_source(net_src, net_tree, '_step_fortios_platform_macros') or ''
+    record(
+        'network_fortigate_prunes_device_fqdn',
+        '_prune_fortios_device_fqdn' in plat_macros,
+        'leftover device-level FQDN is deleted so platform Jinja inherits',
+    )
+    transport = _function_source(net_src, net_tree, '_step_fortigate_http_transport') or ''
+    record(
+        'network_fortigate_http_drops_snmp_cg_from_fortios',
+        bool(transport)
+        and '_prune_role_cg_names' in transport
+        and '_fmg_faz_platforms' in transport
+        and '_step_fortigate_http_transport()' in fg,
+        'SNMP Monitoring moves to FMG/FAZ platforms; FortiOS is HTTP',
+    )
 
     failed = sum(1 for _, ok, _ in RESULTS if not ok)
     print(f'\n{len(RESULTS) - failed}/{len(RESULTS)} apply-safety checks passed')

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fortigate_http import (
     DEVICE_DUAL_LINK_TEMPLATES,
+    FGATE_FQDN_JINJA,
     FGATE_FQDN_MACRO,
     FGATE_PATH_CONTROL_MACRO,
     FGATE_TOKEN_ENV,
@@ -23,6 +24,7 @@ from fortigate_http import (
     FORTIGATE_HTTP_TEMPLATE,
     FORTIGATE_OBSERVABILITY_TEMPLATE,
     FORTIGATE_SNMP_TEMPLATE,
+    FORTIOS_PLATFORM_MACROS,
     FORTIOS_PLATFORM_PATTERN,
     FORTIOS_TEMPLATE_RULE,
     ICMP_PING_TEMPLATE,
@@ -74,12 +76,15 @@ class FirewallRoleMacroTests(unittest.TestCase):
                 '{$NET.IF.DISCOVERY.MIN}',
                 '{$FGATE.SDWAN.EXPECTED}',
                 '{$FGATE.HA.EXPECTED}',
+                FGATE_FQDN_MACRO,
             },
         )
         for macro in FIREWALL_DEVICE_MACROS:
             self.assertNotIn(macro, FIREWALL_ROLE_MACROS)
         self.assertNotIn(FGATE_TOKEN_MACRO, FIREWALL_ROLE_MACROS)
-        self.assertEqual(FIREWALL_DEVICE_MACROS, (FGATE_FQDN_MACRO,))
+        self.assertEqual(FIREWALL_DEVICE_MACROS, ())
+        self.assertEqual(FORTIOS_PLATFORM_MACROS[FGATE_FQDN_MACRO], FGATE_FQDN_JINJA)
+        self.assertIn('object.primary_ip4.address.ip', FGATE_FQDN_JINJA)
         self.assertEqual(FGATE_TOKEN_ENV, 'NBX_FGATE_TOKEN')
 
     def test_ifname_is_wan_ha_mgmt_not_port1(self):

@@ -126,7 +126,7 @@ Polling only the current primary (shared DNS that always follows master) has the
 
 Config **is** synced. HTTP LLD of SD-WAN / wan1 / policies on **both** members can double every WAN-down Average. That is the only good argument for a single logical host — and it is solved later by **gating path triggers**, not by skipping HostSync of the backup or inventing a VIP host.
 
-HostSync of both members is the same job twice: shared role token + templates, unique `{$FGATE.API.FQDN}` from each `primary_ip4`. Do not give them different templates, and do not flip macros on failover as part of cutover.
+HostSync of both members is the same job twice: shared platform token + templates, unique rendered `{$FGATE.API.FQDN}` from each `primary_ip4`. Do not give them different templates, and do not flip macros on failover as part of cutover.
 
 | Signal | Cutover (both members, unique OOB) | After apply patches |
 |---|---|---|
@@ -175,8 +175,8 @@ Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-h
 - Patch ZBX-27082, WAN `.diff()`, policy master off, CPU/mem CRIT 101. Import **FortiGate Observability**
 - FortiOS → Observability (`HostInterfaceRequirement` **ANY**). Not role Firewall
 - Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS** from `NBX_FGATE_TOKEN` (empty env does not wipe). Optional per-host override `NBX_FGATE_TOKEN_<HOSTNAME>`
-- Per FortiOS-device `{$FGATE.API.FQDN}` from `primary_ip4`. NetBox `oob_ip` is BMC-only
-- Fleet defaults on Platform FortiOS. Prune Forti/ICMP templates from role Firewall; **keep** SNMP Monitoring for FMG/FAZ
+- `{$FGATE.API.FQDN}` on **Platform FortiOS** as Jinja `{{ object.primary_ip4.address.ip }}`. Leftover Device-level literals are pruned
+- Fleet defaults on Platform FortiOS. Prune Forti/ICMP templates **and SNMP Monitoring** from role Firewall; assign SNMP Monitoring on FortiManager / FortiAnalyzer platforms
 - Do **not** dual-link HTTP+SNMP. No Extreme YAML, no mass-HostSync. HostSync both members of the first cluster, then the rest
 
 Changing the FortiOS Template Rule on a live estate **will** retarget on next HostSync of that firewall.

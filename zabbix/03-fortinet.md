@@ -6,7 +6,7 @@ World-class here means: **page what users feel (box down, path down), never fail
 
 Same bar as [01-extreme-switching.md](01-extreme-switching.md). Scale: [_template.md](_template.md). Analysis: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md). WAN class: [05-internet-circuits.md](05-internet-circuits.md). Overlay: [04-cato.md](04-cato.md). Extreme Health notes do **not** apply to Forti.
 
-This page is the **target contract**. Live nbxSync still links **FortiGate by SNMP** until you run `--apply-fortigate-http` (network script, **not** zerotouch) and HostSync **both members** of a cluster (each unit’s unique `primary_ip4`). Shared token lives on **Platform FortiOS**; FQDN is per **Device**. Generic role **Firewall** is not the Forti lever (FMG/FAZ share it).
+This page is the **target contract**. Live nbxSync still links **FortiGate by SNMP** until you run `--apply-fortigate-http` (network script, **not** zerotouch) and HostSync **both members** of a cluster (each unit’s unique `primary_ip4`). Shared token lives on **Platform FortiOS**; `{$FGATE.API.FQDN}` is **Platform FortiOS Jinja** on `primary_ip4` (HostSync renders per device). Generic role **Firewall** is not the Forti lever (FMG/FAZ share it).
 
 ---
 
@@ -19,7 +19,7 @@ This page is the **target contract**. Live nbxSync still links **FortiGate by SN
 | **Graph** / next day | CPU, memory %, SD-WAN loss/latency/jitter, iface errors, license expiry, firmware available |
 | One incident | API → ICMP → **site**. Two HA **members** can both High (two chassis). Path/license tickets are gated on `ha.role=1`. The same WAN must not ticket on Forti **and** Extreme `UW` **and** Cato |
 | Never silent | unsupported items; nodata ICMP/API; zero interfaces; SD-WAN below `{$FGATE.SDWAN.EXPECTED}`; HA member count ≠ `{$FGATE.HA.EXPECTED}` |
-| Control plane | Shared REST token on **Platform FortiOS**. FQDN per **device** from `primary_ip4`. Scope ifaces with LLD macros |
+| Control plane | Shared REST token on **Platform FortiOS**. FQDN is platform Jinja on `primary_ip4`. Scope ifaces with LLD macros |
 | Collect first | Policy LLD **disabled**. util 95% silenced (101). CPU/mem **High** silenced (CRIT 101). firmware Info off if CONTROL=0. ICMP loss/RTT stay on ICMP Ping (do not patch that template globally) |
 | Host dashboard | Observability **Health** + **Path** |
 | Severity | **Disaster** = site only. Warning = next day, not a dump bucket |
@@ -119,7 +119,7 @@ If aliases follow the port-identity grammar, prefer `{$NET.IF.IFALIAS.MATCHES}` 
 
 **Both members, unique OOB, not a VIP.** Fortinet reserved HA management (`ha-mgmt` or in-band `management-ip`) exists so API/ICMP can reach **each** unit on its own address. Config on those IPs is **not** synced. NetBox already has two devices with two IPs; nbxSync already creates two Zabbix hosts — HostSync them the same way.
 
-That is the **simple** path. Do **not** invent a cluster VIP host, skip the backup, or give the two members different templates. `--apply-fortigate-http` already writes `{$FGATE.API.FQDN}` per device from **`primary_ip4`** (this estate’s OOB / ha-mgmt; NetBox `oob_ip` is BMC-only) and one shared token on **Platform FortiOS**. HostSync of member A and member B is two jobs with the same inheritance; only the FQDN differs. ICMP uses the same `primary_ip4`.
+That is the **simple** path. Do **not** invent a cluster VIP host, skip the backup, or give the two members different templates. `--apply-fortigate-http` writes `{$FGATE.API.FQDN}` as **Platform FortiOS Jinja** (`{{ object.primary_ip4.address.ip }}` — this estate’s OOB / ha-mgmt; NetBox `oob_ip` is BMC-only) and one shared token on **Platform FortiOS**. A leftover **Device**-level FQDN (literal IP) is pruned so inheritance wins. HostSync of member A and member B is two jobs with the same inheritance; only the rendered FQDN differs. ICMP uses the same `primary_ip4`.
 
 VIP-only polling hides a dead chassis: the floating address fails over, ICMP/API stay green, and stock HTTP has **no** HA member/sync LLD to tell you the peer is gone. That is a silent split-brain / silent RMA. “Primary only” has the same hole until failover.
 
@@ -154,7 +154,7 @@ OOB / ha-mgmt is how you poll **both HA members at once**. It is **not** a reaso
 3. Role Firewall → **SNMP Monitoring** CG (`MONITORING` MD5/DES)
 4. ICMP Ping is **not** on fleet SNMP Monitoring (Forti SNMP already has `icmpping`)
 5. FMG/FAZ rule → Network Generic
-6. `--apply-firewall-macros` writes HTTP fleet macros on **Platform FortiOS** (not role Firewall). Shared token belongs on that platform. FQDN is per FortiOS device (`primary_ip4`).
+6. `--apply-firewall-macros` writes HTTP fleet macros on **Platform FortiOS** (not role Firewall), including `{$FGATE.API.FQDN}` Jinja on `primary_ip4`. Shared token belongs on that platform.
 
 Locked GUI checklist still lists FortiGate by SNMP — that file is not updated here. Empty env must **not** wipe `{$FGATE.API.TOKEN}`.
 
@@ -173,11 +173,11 @@ That flag:
 | Lever | What it writes |
 |---|---|
 | Platform FortiOS | **FortiGate Observability** (nests Cloud HTTP + ICMP Ping) + `OS/Network`. ANY |
-| Role Firewall | **prune** FortiGate HTTP/SNMP and ICMP Ping leftovers. **Keep** SNMP Monitoring (FMG/FAZ) |
-| SNMP Monitoring | **stays** on Firewall — not removed from the whole role |
+| Role Firewall | **prune** FortiGate HTTP/SNMP and ICMP Ping leftovers. **Prune** SNMP Monitoring (FortiOS is HTTP) |
+| SNMP Monitoring | **moved** onto FortiManager / FortiAnalyzer **platforms**. Not on FortiGates |
 | ICMP | Nested on Observability — **not** on role Firewall |
 | Fleet HTTP defaults | **Platform FortiOS** — https/443, WAN/HA/mgmt LLD, CPU/mem CRIT 101, empty policy LLD |
-| Secrets | Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS** (`NBX_FGATE_TOKEN`). Per-device `{$FGATE.API.FQDN}` = **`primary_ip4`** |
+| Secrets | Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS** (`NBX_FGATE_TOKEN`). `{$FGATE.API.FQDN}` = platform Jinja `{{ object.primary_ip4.address.ip }}` |
 
 `--apply-firewall-macros` is the lighter sibling (FortiOS platform macros only). Extreme `--apply` still does **not** retarget FortiOS.
 
@@ -188,11 +188,11 @@ Then HostSync **both members of the first cluster** (each unique OOB). Inheritan
 | Lever | Target |
 |---|---|
 | Platform FortiOS | **FortiGate Observability** + `OS/Network`. Interface requirement **ANY**, not SNMP |
-| Role Firewall | no FortiGate template floor — FMG/FAZ keep SNMP Monitoring |
-| Secrets | Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS**. Per-device `{$FGATE.API.FQDN}` = **that unit’s `primary_ip4`** (OOB / ha-mgmt; not a WAN VIP) |
+| Role Firewall | no FortiGate template floor and no SNMP Monitoring CG |
+| Secrets | Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS**. `{$FGATE.API.FQDN}` = platform Jinja `{{ object.primary_ip4.address.ip }}` (OOB / ha-mgmt; not a WAN VIP). HostSync renders per device. |
 | Fleet HTTP defaults | **Platform FortiOS** — https/443, WAN/HA/mgmt LLD, `{$FWP.FWNAME.MATCHES}`=`^$`, util 101, CPU/mem CRIT 101. Not Switch* or Firewall role |
 | ICMP | nested on Observability (applied at HostSync with HTTP) |
-| SNMP Monitoring | **kept** on role Firewall for FMG/FAZ; not the Forti HTTP data path |
+| SNMP Monitoring | **FortiManager / FortiAnalyzer platforms only**. FortiOS falls through to the country Site Group Agent default (HTTP + ICMP). |
 | Health | already on the HTTP template after upsert — no dashboard script |
 
 Before the flag:
@@ -212,7 +212,7 @@ Production poller for NL/US/CH is the **Swiss proxy group**. HTTP items run **fr
 |---|---|---|
 | `{$FGATE.SCHEME}` | `http` | **https** |
 | `{$FGATE.API.PORT}` | `80` | **443** |
-| `{$FGATE.API.FQDN}` | empty | **that unit’s** `primary_ip4` (OOB / ha-mgmt on this estate). Not the WAN VIP. NetBox `oob_ip` only if primary is empty |
+| `{$FGATE.API.FQDN}` | empty | **Platform FortiOS** Jinja `{{ object.primary_ip4.address.ip }}` (OOB / ha-mgmt). Not the WAN VIP. A leftover Device-level literal IP is pruned so this inherits. |
 | `{$FGATE.API.TOKEN}` | empty | **one** secret on **Platform FortiOS** (`NBX_FGATE_TOKEN`). Same key for the FortiOS fleet. Not role Firewall. Per-cluster / Vault is later |
 | `{$FGATE.DATA.TIMEOUT}` | `15s` | keep unless slow VDOMs |
 | `{$FGATE.HTTP.PROXY}` | empty | leave empty — the Zabbix proxy **is** the poller, not an HTTP forward proxy unless required |
@@ -279,9 +279,9 @@ Do **not** clone stock FortiGate by HTTP.
 | FortiGate by HTTP (stock) | nested parent | Cloud is **Zabbix, 7.0-2**. Reuse; never import 7.0-3. Apply patches ZBX-27082 / WAN state / policy off / CRIT 101 / ha.role |
 | ICMP Ping | nested on Observability | HTTP has no `icmpping`. Not on role Firewall |
 | FortiGate by SNMP (stock) | Platform FortiOS — **live until `--apply-fortigate-http`** | Do not dual-link with HTTP. Pruned from role Firewall |
-| Network Generic Device by SNMP | **not** on FortiGate | FMG/FAZ only (role Firewall keeps SNMP Monitoring) |
+| Network Generic Device by SNMP | **not** on FortiGate | FMG/FAZ only (SNMP Monitoring on those **platforms**) |
 
-Template-level macros (not globals, not Switch roles, **not role Firewall**). **`--apply-fortigate-http` writes these as ZabbixMacroAssignment on Platform FortiOS** (same as `--apply-firewall-macros` / Extreme `--apply`). Shared TOKEN is also on that platform. FQDN stays per FortiOS device. None of these flags mass-HostSync Fortis.
+Template-level macros (not globals, not Switch roles, **not role Firewall**). **`--apply-fortigate-http` writes these as ZabbixMacroAssignment on Platform FortiOS** (same as `--apply-firewall-macros` / Extreme `--apply`). Shared TOKEN is also on that platform. FQDN is the same platform Jinja. None of these flags mass-HostSync Fortis.
 
 ```
 {$FGATE.SCHEME}                 = https
@@ -300,9 +300,10 @@ Template-level macros (not globals, not Switch roles, **not role Firewall**). **
 {$NET.IF.DISCOVERY.MIN}         = 1
 {$FGATE.SDWAN.EXPECTED}         = 0
 {$FGATE.HA.EXPECTED}            = 1
+{$FGATE.API.FQDN}               = {{ object.primary_ip4.address.ip }}
 ```
 
-Per **device** (not the role): `{$FGATE.API.FQDN}` = that unit’s **`primary_ip4`** (OOB / ha-mgmt on this estate). Shared `{$FGATE.API.TOKEN}` is on **Platform FortiOS**. Empty env must not wipe the platform token. Set `{$FGATE.HA.EXPECTED}=2` on HA pair hosts after the canary.
+`{$FGATE.API.FQDN}` is **Platform FortiOS Jinja**, not a Device row. HostSync renders `object` as that FortiGate, so HA members get different IPs from one assignment. Shared `{$FGATE.API.TOKEN}` is on **Platform FortiOS**. Empty env must not wipe the platform token. Set `{$FGATE.HA.EXPECTED}=2` on HA pair hosts after the canary.
 
 CPU/mem **High** are silenced with CRIT 101 on FortiOS / HTTP / Observability — **never** on role Firewall (zerotouch already uses `{$CPU.UTIL.CRIT}` on Server/MSSQL). Conserve mode is the memory page. ICMP Ping loss/RTT stays on the nested ICMP template (do not patch ICMP Ping globally).
 

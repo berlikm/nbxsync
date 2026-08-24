@@ -7,9 +7,14 @@ Scope is **platform FortiOS only** (Template Rule + Platform macros). Do not
 put FortiGate templates, the REST token, or FGATE LLD macros on generic role
 Firewall — that role is shared with FortiManager / FortiAnalyzer.
 
-``{$FGATE.API.FQDN}`` is per FortiOS device from NetBox ``primary_ip4``
-(this estate's OOB / ha-mgmt). ``oob_ip`` is BMC-only; used only if primary
-is empty.
+``{$FGATE.API.FQDN}`` is a **Platform FortiOS** Jinja assignment
+(``{{ object.primary_ip4.address.ip }}``). HostSync renders it per device
+from that unit's OOB / ha-mgmt. Do not write a literal IP on the Device —
+that assignment wins over the platform and shows as not inherited.
+
+FortiOS is HTTP + ICMP: do **not** inherit **SNMP Monitoring** from role
+Firewall. That CG stays on FortiManager / FortiAnalyzer platforms. A leftover
+device-level FQDN or SNMP CG on a FortiGate is pruned on apply.
 
 Shared token (``NBX_FGATE_TOKEN``) lands on **Platform FortiOS**, not role
 Firewall. Empty env must not wipe. Optional per-device override:
@@ -42,6 +47,7 @@ FMG_FAZ_PLATFORM_PATTERN = r'FortiAnalyzer|FortiManager'
 
 FGATE_TOKEN_MACRO = '{$FGATE.API.TOKEN}'
 FGATE_FQDN_MACRO = '{$FGATE.API.FQDN}'
+FGATE_FQDN_JINJA = '{{ object.primary_ip4.address.ip }}'
 FGATE_TOKEN_ENV = 'NBX_FGATE_TOKEN'
 FGATE_PATH_CONTROL_MACRO = '{$FGATE.PATH.CONTROL}'
 HA_ROLE_KEY = 'fgate.ha.role'
@@ -70,13 +76,15 @@ FORTIOS_PLATFORM_MACROS = {
     '{$NET.IF.DISCOVERY.MIN}': '1',
     '{$FGATE.SDWAN.EXPECTED}': '0',
     '{$FGATE.HA.EXPECTED}': '1',
+    FGATE_FQDN_MACRO: FGATE_FQDN_JINJA,
 }
 
 # Back-compat name used by older tests / Extreme --apply comments.
 FIREWALL_ROLE_MACROS = FORTIOS_PLATFORM_MACROS
 
-# FQDN only — TOKEN is the shared FortiOS-platform secret, not a per-device default.
-FIREWALL_DEVICE_MACROS = (FGATE_FQDN_MACRO,)
+# No per-device Forti defaults. FQDN is platform Jinja. TOKEN is the shared
+# FortiOS-platform secret (optional per-host override via env).
+FIREWALL_DEVICE_MACROS = ()
 FORTIOS_DEVICE_MACROS = FIREWALL_DEVICE_MACROS
 
 # Templates that must not sit on generic role Firewall after HTTP cutover.
