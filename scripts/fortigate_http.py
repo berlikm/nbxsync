@@ -25,14 +25,15 @@ Firewall. Empty env must not wipe. Optional per-device override:
 ``NBX_FGATE_TOKEN_<HOSTNAME>``.
 
 Companion **FortiGate Observability** nests stock FortiGate by HTTP + ICMP
-Ping. Do not also assign those parents on FortiOS objects. Apply prunes
-leftover ICMP/HTTP/SNMP from FortiOS devices, platforms, and device types.
-Do not strip ICMP Ping from agent-plane CGs. Apply never imports bundled
-7.0-3 over Cloud **Zabbix, 7.0-2**. Do not re-run zerotouch.
+Ping. Do not also assign those parents on FortiOS objects. Apply restores
+stock HTTP collectors (ZBX-27082 only) and puts all-VDOM SD-WAN/IPsec
+census on the companion. Apply never imports bundled 7.0-3 over Cloud
+**Zabbix, 7.0-2**. Do not re-run zerotouch.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 import re
 
 FIREWALL_ROLE = 'Firewall'
@@ -98,6 +99,14 @@ FORTIOS_PLATFORM_MACROS = {
 VDOM_STAR_SCRIPT_KEYS = (
     'fgate.netif.get_data',
     'fgate.sdwan.get_data',
+)
+
+# Overlay census on FortiGate Observability — not a rewrite of stock HTTP scripts.
+OVERLAY_INVENTORY_KEY = 'fgate.observability.inventory'
+
+_BUNDLED_HTTP_YAML = (
+    Path(__file__).resolve().parents[1]
+    / 'zabbix/templates/fortinet_fortigate_http/template_net_fortigate_http.yaml'
 )
 
 # Back-compat name used by older tests / Extreme --apply comments.
@@ -249,6 +258,49 @@ def patch_zbx27082_script(script: str) -> str:
         count=1,
     )
     return patched
+
+
+def bundled_http_script(key: str) -> str:
+    """Script body from the bundled 7.0-3 YAML (reference only — never imported)."""
+    text = _BUNDLED_HTTP_YAML.read_text(encoding='utf-8')
+    marker = f'          key: {key}\n'
+    start = 0
+    while True:
+        idx = text.find(marker, start)
+        if idx < 0:
+            raise ValueError(f'missing bundled HTTP script {key}')
+        params = text.find('params: |', idx)
+        next_item = text.find('\n          key:', idx + len(marker))
+        if params < 0 or (next_item != -1 and params > next_item):
+            start = idx + len(marker)
+            continue
+        end_at = text.find('\n          description:', params)
+        if end_at < 0:
+            end_at = text.find('\n          timeout:', params)
+        block = text[params:end_at]
+        lines = block.split('\n')[1:]
+        out = []
+        for line in lines:
+            if line.startswith('            '):
+                out.append(line[12:])
+            else:
+                out.append(line)
+        return '\n'.join(out).strip('\n') + '\n'
+
+
+def stock_http_collector_script(key: str) -> str:
+    """Vendor collector + ZBX-27082 only. No vdom=* rewrite."""
+    return patch_zbx27082_script(bundled_http_script(key))
+
+
+def script_is_vdom_mutated(script: str) -> bool:
+    """True when stock netif/SD-WAN JS was rewritten in place."""
+    text = script or ''
+    return (
+        'function fortiFetchVdom' in text
+        or 'function flattenFortiMonitorMap' in text
+        or 'function fortiHttpRaw' in text
+    )
 
 
 # Stock FortiGate-by-HTTP calls interface/SD-WAN APIs with no vdom=*, so LLD is

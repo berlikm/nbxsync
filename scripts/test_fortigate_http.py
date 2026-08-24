@@ -36,6 +36,7 @@ from fortigate_http import (
     SLOW_ITEM_DELAYS,
     RAW_MASTER_HISTORY,
     RAW_MASTER_HISTORY_KEYS,
+    OVERLAY_INVENTORY_KEY,
     SNMP_MONITORING_CG,
     VDOM_STAR_SCRIPT_KEYS,
     _js_function_span,
@@ -262,6 +263,7 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(VDOM_STAR_SCRIPT_KEYS, ('fgate.netif.get_data', 'fgate.sdwan.get_data'))
         self.assertEqual(SLOW_ITEM_DELAYS['fgate.firmware.get_data'], '12h')
         self.assertEqual(SLOW_ITEM_DELAYS['fgate.service.get_data'], '1h')
+        self.assertEqual(OVERLAY_INVENTORY_KEY, 'fgate.observability.inventory')
         self.assertEqual(RAW_MASTER_HISTORY, '1h')
         self.assertEqual(
             RAW_MASTER_HISTORY_KEYS,
@@ -305,6 +307,32 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertIn("value: '2'", companion)
         self.assertIn('CHANGE_IF_NEEDED', companion)
         self.assertIn('Object.keys', companion)
+        self.assertIn('fgate.observability.inventory', companion)
+        self.assertNotIn('patched for vdom=*', companion)
+
+    def test_stock_collectors_are_not_vdom_rewrites(self):
+        from fortigate_http import script_is_vdom_mutated, stock_http_collector_script
+
+        for key in ('fgate.netif.get_data', 'fgate.sdwan.get_data'):
+            stock = stock_http_collector_script(key)
+            self.assertFalse(script_has_zbx27082(stock))
+            self.assertFalse(script_is_vdom_mutated(stock))
+            self.assertIn('function getHttpData', stock)
+            self.assertNotIn('fortiFetchVdom', stock)
+
+    def test_overlay_inventory_script_is_standalone(self):
+        from fortigate_http_zabbix import OVERLAY_INVENTORY_SCRIPT
+
+        self.assertIn('function overlayRaw', OVERLAY_INVENTORY_SCRIPT)
+        self.assertTrue(
+            OVERLAY_INVENTORY_SCRIPT.find('function overlayRaw')
+            < OVERLAY_INVENTORY_SCRIPT.find('try {')
+        )
+        self.assertIn('code === 424', OVERLAY_INVENTORY_SCRIPT)
+        self.assertIn('/api/v2/monitor/vpn/ipsec', OVERLAY_INVENTORY_SCRIPT)
+        self.assertIn('/api/v2/monitor/virtual-wan/members', OVERLAY_INVENTORY_SCRIPT)
+        self.assertNotIn('function getHttpData', OVERLAY_INVENTORY_SCRIPT)
+        self.assertFalse(script_has_zbx27082(OVERLAY_INVENTORY_SCRIPT))
 
 
 def _http_yaml() -> str:

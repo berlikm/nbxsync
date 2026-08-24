@@ -201,7 +201,11 @@ from fortigate_http import (
     platform_is_fortios as _platform_is_fortios,
     should_write_secret as _should_write_secret,
 )
-from fortigate_http_zabbix import apply_fortigate_http_patches, inspect_http_scripts
+from fortigate_http_zabbix import (
+    apply_fortigate_http_patches,
+    ensure_overlay_census_items,
+    inspect_http_scripts,
+)
 from extreme_ascii_titles import title_payload as _title_payload
 from extreme_health_zabbix import (
     IQ_HEALTH_MACROS,
@@ -4134,9 +4138,10 @@ def run_apply_firewall_macros() -> int:
 def run_apply_fortigate_http() -> int:
     """FortiGate HTTP cutover without zerotouch or Extreme YAML. Fail closed.
 
-    Looks up Cloud FortiGate by HTTP (**Zabbix, 7.0-2**), patches ZBX-27082 and
-    WAN state triggers, imports FortiGate Observability, retargets **FortiOS
-    only**. Does not assign Forti templates or the REST token on role Firewall.
+    Looks up Cloud FortiGate by HTTP (**Zabbix, 7.0-2**), hotfixes ZBX-27082,
+    restores stock collectors, imports FortiGate Observability (overlay census),
+    retargets **FortiOS only**. Does not assign Forti templates or the REST token
+    on role Firewall.
     """
     token = os.environ.get('NBX_ZABBIX_TOKEN')
     if not token:
@@ -4160,6 +4165,7 @@ def run_apply_fortigate_http() -> int:
     with ZabbixConnection(server) as api:
         apply_fortigate_http_patches(api, http[0])
         observability = import_fortigate_observability_template(api)
+        ensure_overlay_census_items(api, observability[0])
 
     _step_fortios_platform_macros(server, required=True)
     _step_fortigate_http_nbxsync(

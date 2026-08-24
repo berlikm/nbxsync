@@ -13,11 +13,9 @@ zabbix_export:
         Platform FortiOS Template Rule points here. Do not assign this template
         on generic role Firewall (FortiManager / FortiAnalyzer share that role).
 
-        Gaps only: HA role for path-ticket gating, conserve mode, unsupported-item
-        census, zero-interface / SD-WAN / HA-member counts, Health + Path dashboards,
-        estate macros (https/20443, CPU/mem CRIT 101, SD-WAN MATCHES,
-        HA.EXPECTED=2, IFNAME NOT_MATCHES=CHANGE_IF_NEEDED). Live HTTP parent
-        is patched for vdom=* iface/SD-WAN LLD; do not import bundled 7.0-3.
+        Stock HTTP stays the vendor parent (ZBX-27082 hotfix only). All-VDOM
+        SD-WAN / IPsec names are overlay census (`fgate.observability.inventory`)
+        — see Latest data first, add path triggers later. Do not import bundled 7.0-3.
       groups:
         - name: 'Templates/Network devices'
       templates:

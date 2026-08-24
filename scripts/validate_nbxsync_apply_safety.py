@@ -219,15 +219,15 @@ def main() -> int:
     forti_http = (SCRIPTS / 'fortigate_http.py').read_text(encoding='utf-8')
     zbx_src = (SCRIPTS / 'fortigate_http_zabbix.py').read_text(encoding='utf-8')
     record(
-        'network_fortigate_http_patches_vdom_star',
-        'patch_vdom_star_items' in zbx_src
-        and 'vdom_star' in zbx_src
-        and 'vdom=*' in forti_http
-        and 'VDOM_STAR_SCRIPT_KEYS' in forti_http
-        and 'function fortiHttpRaw' in forti_http
-        and 'code === 424' in forti_http
-        and '_helpers_nested_in_gethttp' in forti_http,
-        'surgical vdom=* flatten on netif + SD-WAN scripts; 424 does not walk VDOMs; stock YAML is not imported',
+        'network_fortigate_http_overlay_census',
+        'restore_stock_http_scripts' in zbx_src
+        and 'ensure_overlay_census_items' in zbx_src
+        and 'ensure_overlay_census_items' in net_src
+        and 'OVERLAY_INVENTORY_KEY' in forti_http
+        and 'overlayRaw' in zbx_src
+        and 'stock_http_collector_script' in forti_http
+        and 'restore_stock_http_scripts(api, templateid)' in zbx_src,
+        'stock HTTP collectors restored; all-VDOM SD-WAN/IPsec census is Observability overlay',
     )
     record(
         'network_fortigate_http_raw_master_history',

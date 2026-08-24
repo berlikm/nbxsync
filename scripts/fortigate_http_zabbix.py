@@ -11,8 +11,10 @@ import logging
 
 from fortigate_http import (
     FORTIGATE_HTTP_TEMPLATE,
+    FORTIGATE_OBSERVABILITY_TEMPLATE,
     FORTIOS_PLATFORM_MACROS,
     HA_ROLE_KEY,
+    OVERLAY_INVENTORY_KEY,
     POLICY_DISCOVERY_KEY,
     POLICY_MASTER_KEY,
     FORTIGATE_HTTP_CLOUD_VENDOR,
@@ -31,6 +33,8 @@ from fortigate_http import (
     patch_zbx27082_script,
     script_has_vdom_star,
     script_has_zbx27082,
+    script_is_vdom_mutated,
+    stock_http_collector_script,
     with_ha_role_gate,
 )
 
@@ -88,6 +92,198 @@ try {
 } catch (error) {
 	return 1;
 }
+'''
+
+# Standalone overlay census. Functions are program-scope — never splice into
+# stock getHttpData. 424/404 on one endpoint leaves the others.
+OVERLAY_INVENTORY_SCRIPT = r'''var params = JSON.parse(value);
+
+function overlayRaw(url) {
+	var req = new HttpRequest();
+	if (typeof params.http_proxy !== 'undefined' && params.http_proxy !== '{' + '$FGATE.HTTP.PROXY}' && params.http_proxy !== '') {
+		req.setProxy(params.http_proxy);
+	}
+	req.addHeader('Accept: application/json');
+	req.addHeader('Authorization: Bearer ' + params.token);
+	var raw = null;
+	var code = 0;
+	try {
+		raw = req.get(url);
+		code = req.getStatus();
+	} catch (e) {
+		return { code: 0, body: null };
+	}
+	var parsed = null;
+	if (raw !== null && String(raw) !== '') {
+		try {
+			parsed = JSON.parse(raw);
+		} catch (e2) {
+			parsed = null;
+		}
+	}
+	if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.status == 'error' && typeof parsed.http_status !== 'undefined') {
+		code = parsed.http_status;
+	}
+	return { code: code, body: parsed };
+}
+
+function overlayOk(resp) {
+	if (!resp || resp.code !== 200 || resp.body == null) {
+		return false;
+	}
+	var b = resp.body;
+	if (Array.isArray(b)) {
+		return true;
+	}
+	if (typeof b !== 'object') {
+		return false;
+	}
+	if (typeof b.status !== 'undefined' && b.status != 'success') {
+		return false;
+	}
+	return true;
+}
+
+function overlayFetch(base, path) {
+	var sep = path.indexOf('?') >= 0 ? '&' : '?';
+	var star = overlayRaw(base + path + sep + 'vdom=*');
+	if (overlayOk(star)) {
+		return star.body;
+	}
+	if (star.code === 424 || star.code === 404) {
+		return null;
+	}
+	var plain = overlayRaw(base + path);
+	return overlayOk(plain) ? plain.body : null;
+}
+
+function overlayBlocks(payload) {
+	if (payload == null) {
+		return [];
+	}
+	if (Array.isArray(payload)) {
+		return payload;
+	}
+	if (typeof payload === 'object' && typeof payload.results !== 'undefined') {
+		return [payload];
+	}
+	return [];
+}
+
+function overlayMemberRows(payload) {
+	var out = [];
+	overlayBlocks(payload).forEach(function (block) {
+		if (!block || block.status == 'error') {
+			return;
+		}
+		var vdom = block.vdom || '';
+		var res = block.results;
+		if (res == null) {
+			return;
+		}
+		if (Array.isArray(res)) {
+			res.forEach(function (row) {
+				if (row && (row.interface || row.name)) {
+					out.push({ vdom: vdom, interface: String(row.interface || row.name) });
+				}
+			});
+			return;
+		}
+		if (typeof res === 'object') {
+			Object.keys(res).forEach(function (k) {
+				var row = res[k] || {};
+				var name = row.interface || row.name || k;
+				out.push({ vdom: vdom, interface: String(name) });
+			});
+		}
+	});
+	return out;
+}
+
+function overlayHealthRows(payload) {
+	var out = [];
+	overlayBlocks(payload).forEach(function (block) {
+		if (!block || block.status == 'error') {
+			return;
+		}
+		var vdom = block.vdom || '';
+		var res = block.results;
+		if (!res || typeof res !== 'object') {
+			return;
+		}
+		var keys = Array.isArray(res) ? res.map(function (row, i) { return row && (row.name || row.q_origin_key) || String(i); }) : Object.keys(res);
+		keys.forEach(function (name) {
+			if (name) {
+				out.push({ vdom: vdom, name: String(name) });
+			}
+		});
+	});
+	return out;
+}
+
+function overlayIpsecRows(payload) {
+	var out = [];
+	overlayBlocks(payload).forEach(function (block) {
+		if (!block || block.status == 'error') {
+			return;
+		}
+		var vdom = block.vdom || '';
+		var res = block.results;
+		if (res == null) {
+			return;
+		}
+		if (Array.isArray(res)) {
+			res.forEach(function (row) {
+				var name = row && (row.p1name || row.name || row.proxyid || row.q_origin_key);
+				if (name) {
+					out.push({ vdom: vdom, name: String(name) });
+				}
+			});
+			return;
+		}
+		if (typeof res === 'object') {
+			Object.keys(res).forEach(function (k) {
+				out.push({ vdom: vdom, name: String(k) });
+			});
+		}
+	});
+	return out;
+}
+
+var out = { error: '', vdoms: [], sdwan_members: [], sdwan_health: [], ipsec: [] };
+try {
+	if (!params.scheme || !params.token || !params.fqdn || !params.port) {
+		throw 'set FGATE scheme/token/fqdn/port';
+	}
+	var api = params.scheme + '://' + params.fqdn + ':' + params.port;
+	var vd = overlayRaw(api + '/api/v2/cmdb/system/vdom');
+	if (overlayOk(vd) && vd.body && Array.isArray(vd.body.results)) {
+		vd.body.results.forEach(function (row) {
+			var n = row && (row.name || row.q_origin_key);
+			if (n) {
+				out.vdoms.push(String(n));
+			}
+		});
+	}
+	out.sdwan_members = overlayMemberRows(overlayFetch(api, '/api/v2/monitor/virtual-wan/members'));
+	if (out.sdwan_members.length === 0) {
+		overlayBlocks(overlayFetch(api, '/api/v2/cmdb/system/sdwan')).forEach(function (block) {
+			if (!block || block.status == 'error' || !block.results) {
+				return;
+			}
+			(block.results.members || []).forEach(function (row) {
+				if (row && row.interface) {
+					out.sdwan_members.push({ vdom: block.vdom || '', interface: String(row.interface) });
+				}
+			});
+		});
+	}
+	out.sdwan_health = overlayHealthRows(overlayFetch(api, '/api/v2/monitor/virtual-wan/health-check'));
+	out.ipsec = overlayIpsecRows(overlayFetch(api, '/api/v2/monitor/vpn/ipsec'));
+} catch (e) {
+	out.error = String(e);
+}
+return JSON.stringify(out);
 '''
 
 _SCRIPT_PARAMETERS = [
@@ -163,6 +359,41 @@ def patch_zbx27082_items(api, templateid) -> dict[str, str]:
     return results
 
 
+def restore_stock_http_scripts(api, templateid) -> dict[str, str]:
+    """Put vendor netif/SD-WAN collectors back (ZBX-27082 only).
+
+    In-place vdom=* rewrites hid names from Duktape and emptied LLD. All-VDOM
+    census belongs on FortiGate Observability, not on the stock parent.
+    """
+    results: dict[str, str] = {}
+    remaining = []
+    items = {item['key_']: item for item in _script_items(api, templateid)}
+    for key in VDOM_STAR_SCRIPT_KEYS:
+        item = items.get(key)
+        if item is None:
+            remaining.append(key)
+            results[key] = 'missing'
+            continue
+        stock = stock_http_collector_script(key)
+        if script_has_zbx27082(stock):
+            remaining.append(key)
+            results[key] = 'zbx27082'
+            continue
+        current = item.get('params') or ''
+        if current == stock:
+            results[key] = 'ok'
+            continue
+        api.item.update(itemid=item['itemid'], params=stock)
+        results[key] = 'restored' if script_is_vdom_mutated(current) else 'aligned'
+        logger.info('  %s: stock HTTP collector (ZBX-27082 only)', key)
+    if remaining:
+        raise SystemExit(
+            'stock HTTP restore failed on: ' + ', '.join(remaining)
+            + '. Aborting — mutated collectors would keep empty LLD.'
+        )
+    return results
+
+
 def patch_vdom_star_items(api, templateid) -> dict[str, str]:
     """Stock HTTP is current-VDOM only. Fail closed if vdom=* cannot be applied."""
     results: dict[str, str] = {}
@@ -228,6 +459,49 @@ def ensure_ha_role_item(api, templateid) -> str:
         ),
     )
     logger.info('  created %s on %s', HA_ROLE_KEY, FORTIGATE_HTTP_TEMPLATE)
+    return 'created'
+
+
+def ensure_overlay_census_items(api, templateid) -> str:
+    """All-VDOM SD-WAN + IPsec names on Observability. See first, trigger later."""
+    found = api.item.get(
+        hostids=templateid,
+        filter={'key_': OVERLAY_INVENTORY_KEY},
+        output=['itemid', 'params', 'history'],
+    ) or []
+    if found:
+        item = found[0]
+        payload = {'itemid': item['itemid']}
+        changed = False
+        if (item.get('params') or '') != OVERLAY_INVENTORY_SCRIPT:
+            payload['params'] = OVERLAY_INVENTORY_SCRIPT
+            changed = True
+        if str(item.get('history') or '') != '1h':
+            payload['history'] = '1h'
+            changed = True
+        if changed:
+            api.item.update(**payload)
+            logger.info('  %s: overlay census script', OVERLAY_INVENTORY_KEY)
+            return 'patched'
+        return 'ok'
+    api.item.create(
+        name='SD-WAN / IPsec inventory (overlay)',
+        key_=OVERLAY_INVENTORY_KEY,
+        hostid=templateid,
+        type=_SCRIPT_TYPE,
+        value_type=4,
+        delay='1m',
+        history='1h',
+        trends='0',
+        params=OVERLAY_INVENTORY_SCRIPT,
+        timeout='{$FGATE.DATA.TIMEOUT}',
+        parameters=_SCRIPT_PARAMETERS,
+        description=(
+            'Census JSON for canary: VDOMs, SD-WAN members, health-check names, '
+            'IPsec names. Not a path trigger. 424 on one endpoint keeps the rest.'
+        ),
+    )
+    logger.info('  created %s on %s', OVERLAY_INVENTORY_KEY, FORTIGATE_OBSERVABILITY_TEMPLATE)
     return 'created'
 
 
@@ -446,8 +720,9 @@ def patch_slow_item_delays(api, templateid) -> dict[str, str]:
 
 
 def apply_fortigate_http_patches(api, templateid) -> dict:
-    """Fail closed: ZBX-27082 must be gone, then vdom=* iface/SD-WAN, before NetBox writes."""
+    """Fail closed: ZBX-27082 gone, stock collectors restored, before NetBox writes."""
     logger.info('Network: patch live %s (no YAML import)', FORTIGATE_HTTP_TEMPLATE)
+    restored = restore_stock_http_scripts(api, templateid)
     zbx = patch_zbx27082_items(api, templateid)
     remaining = inspect_http_scripts(api, templateid)
     still = [key for key, state in remaining.items() if state == 'vulnerable']
@@ -456,7 +731,6 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
             'ZBX-27082 still present after patch on: ' + ', '.join(still)
             + '. Aborting — multi-request items (SD-WAN) would 401.'
         )
-    vdom = patch_vdom_star_items(api, templateid)
     ha = ensure_ha_role_item(api, templateid)
     if script_has_zbx27082(HA_ROLE_SCRIPT):
         raise SystemExit('HA role script is itself ZBX-27082-vulnerable — abort')
@@ -467,7 +741,7 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
     history = patch_raw_master_history(api, templateid)
     return {
         'zbx27082': zbx,
-        'vdom_star': vdom,
+        'stock_scripts': restored,
         'ha_role': ha,
         'macros': macros,
         'policy': policy,
