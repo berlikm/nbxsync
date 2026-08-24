@@ -278,7 +278,7 @@ def main() -> int:
         and '_step_fortigate_http_transport(server)' in run_fg
         and '_ensure_fortigate_http_group' in transport
         and '_ensure_fortigate_http_agent_interface' in transport
-        and 'Observability nests it' in transport
+        and '_prune_icmp_from_fortigate_http_group' in transport
         and 'FORTIGATE_HTTP_CG' not in step4
         and 'forti_http' not in step4
         and 'forti_http' not in step5
