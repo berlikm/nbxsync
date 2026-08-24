@@ -38,7 +38,9 @@ Deltas vs the old checklist script:
        --verify census (unprofiled / no-template / SNMP-role-on-Agent / …)
   ΔICMP ICMP Ping on agent-plane CGs (Agent / SPACE / SAP / SNMP-by-tag), never SiteGroup
        or fleet SNMP Monitoring (icmpping collision with Extreme/Forti/Huawei).
-       FortiOS uses CG FortiGate HTTP (no ICMP Ping) once role SNMP is pruned.
+       FortiOS HTTP transport CG is created by the network Forti HTTP apply flag
+       (not this script). Do not re-run this script after that cutover — role
+       Firewall still floors SNMP Monitoring.
 
 Template vs hostgroup visibility (plugin model, not a script bug):
   * ZabbixTemplateAssignment hangs off NetBox objects (Role / SiteGroup / Device / …)
@@ -250,15 +252,14 @@ CH_PROXY_GROUP_NAME = 'Swiss proxy group'
 # ICMP Ping follows these CGs — not a role allowlist Template Rule.
 # Agent templates have no icmpping; Extreme/Forti/Huawei SNMP templates do
 # (never put ICMP on fleet SNMP Monitoring — duplicate item keys).
-# FortiGate HTTP is a transport CG only: Observability already nests ICMP Ping.
+# Do not add the FortiOS HTTP transport CG here. Observability nests ICMP;
+# that CG is created by the network Forti HTTP apply flag, not this script.
 ICMP_PING_CG_NAMES = (
     'Agent Monitoring',
     'Agent Monitoring (SPACE)',
     'SAP Agent+SNMP',
     'SNMP Monitoring (by tag)',
 )
-FORTIGATE_HTTP_CG = 'FortiGate HTTP'
-FORTIOS_PLATFORM_RE = r'FORTIOS|FortiOS'
 
 # Network SNMP only — Storage is HTTP/TBD (not MONITORING MD5/DES).
 SNMP_ROLES = [
@@ -996,20 +997,6 @@ def step4_configgroups():
         name='SNMP Monitoring (Huawei)',
         defaults={'description': 'SNMPv3 LogicMonitor SHA1/AES128 — Huawei OceanStor (per-device creds, non-fleet)'},
     )
-    # FortiOS HTTP transport. Role Firewall still gets SNMP Monitoring until the
-    # network Forti HTTP apply flag prunes it; platform CG then wins over Site
-    # Group Agent Monitoring. No ICMP Ping on this CG — Observability nests it.
-    forti_http_group, _ = ensure(
-        M.ZabbixConfigurationGroup,
-        name=FORTIGATE_HTTP_CG,
-        defaults={
-            'description': (
-                'FortiOS HTTP: Agent @ primary for nested ICMP. No ICMP Ping '
-                'template. Assigned on Platform FortiOS, not role Firewall.'
-            ),
-        },
-        update_fields=['description'],
-    )
     return {
         'snmp': snmp_group,
         'agent': agent_group,
@@ -1020,7 +1007,6 @@ def step4_configgroups():
         'sap_snmp': sap_snmp_group,
         'space_agent': space_agent_group,
         'huawei_snmp': huawei_snmp_group,
-        'forti_http': forti_http_group,
     }
 
 
@@ -1093,8 +1079,6 @@ def step5_host_interfaces(server, groups: dict):
     snmp_if(groups['snmp'], profile='network')
     # 5.2 Default agent — 10050
     agent_if(groups['agent'], port=10050)
-    # 5.2b FortiOS HTTP — Agent @ primary so nested ICMP has an address. No agent items.
-    agent_if(groups['forti_http'], port=10050)
     # 5.5 Dell iDRAC SNMPv3 — three tiers (ESXi AES256, AES128 exceptions, Cohesity Legacy)
     snmp_if(groups['dell_idrac'],        profile='idrac',        use_oob_ip=True)
     snmp_if(groups['dell_idrac_aes128'], profile='idrac_aes128', use_oob_ip=True)
@@ -1187,24 +1171,6 @@ def step5b_configgroup_assignments(groups: dict, country_slugs=None):
             defaults={},
         )
     logger.info('  Agent Monitoring → %s top SiteGroups', len(country_slugs))
-
-    forti_http_group = groups.get('forti_http')
-    if forti_http_group is not None:
-        fortios_plats = list(Platform.objects.filter(name__iregex=FORTIOS_PLATFORM_RE))
-        for plat in fortios_plats:
-            get_or_create(
-                M.ZabbixConfigurationGroupAssignment,
-                zabbixconfigurationgroup=forti_http_group,
-                assigned_object_type=ct(Platform),
-                assigned_object_id=plat.id,
-                defaults={},
-            )
-        if fortios_plats:
-            logger.info(
-                '  %s → %s FortiOS platform(s) (wins over Site Group Agent after role SNMP is pruned)',
-                forti_http_group.name,
-                len(fortios_plats),
-            )
 
     def assign_role(group, role_name):
         try:
@@ -1981,16 +1947,6 @@ def step7_template_assignments(server):
         ).delete()
         if _stale_icmp:
             logger.info('  PRUNED: %s stale ICMP Ping assignment(s) from SiteGroups/Roles/Tags', _stale_icmp)
-
-        forti_cg_names = {FORTIGATE_HTTP_CG, f'{PREFIX}{FORTIGATE_HTTP_CG}'}
-        for cg in M.ZabbixConfigurationGroup.objects.filter(name__in=forti_cg_names):
-            n, _ = M.ZabbixTemplateAssignment.objects.filter(
-                zabbixtemplate=tpl_icmp,
-                assigned_object_type=ct(M.ZabbixConfigurationGroup),
-                assigned_object_id=cg.id,
-            ).delete()
-            if n:
-                logger.info('  PRUNED: ICMP Ping from CG %s (Observability nests it)', cg.name)
 
     # Transport-only CGs except ICMP on the agent-plane set above.
     # Linux/Windows by SNMP come from tag TemplateRules, not from the CG.
@@ -2799,7 +2755,6 @@ def run_simulate() -> int:
             'sap_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SAP Agent+SNMP', defaults={'description': 'lab'})[0],
             'space_agent': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}Agent Monitoring (SPACE)', defaults={'description': 'lab'})[0],
             'huawei_snmp': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}SNMP Monitoring (Huawei)', defaults={'description': 'lab'})[0],
-            'forti_http': M.ZabbixConfigurationGroup.objects.get_or_create(name=f'{PREFIX}FortiGate HTTP', defaults={'description': 'lab'})[0],
         }
         snmp_group = cg_groups['snmp']
         agent_group = cg_groups['agent']

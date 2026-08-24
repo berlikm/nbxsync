@@ -168,8 +168,10 @@ def main() -> int:
     )
     record(
         'zerotouch_no_fortigate_http_auto_cutover',
-        'fortigate_http' not in ztc_src,
-        'Forti HTTP cutover is network --apply-fortigate-http, not zerotouch',
+        'fortigate_http' not in ztc_src
+        and 'FORTIGATE_HTTP_CG' not in ztc_src
+        and 'forti_http' not in ztc_src,
+        'Forti HTTP CG and cutover are network --apply-fortigate-http, not zerotouch',
     )
     record(
         'network_fortigate_http_fail_closed_preflight',
@@ -265,14 +267,23 @@ def main() -> int:
         and "FORTIGATE_HTTP_CG = 'FortiGate HTTP'" in forti_http,
         'ICMP/HTTP are nested parents; FortiOS uses FortiGate HTTP CG; only SNMP dual-link aborts apply',
     )
-    ztc_icmp = _function_source(ztc_src, ztc_tree, 'step4_configgroups') or ''
+    step4 = _function_source(ztc_src, ztc_tree, 'step4_configgroups') or ''
+    step5 = _function_source(ztc_src, ztc_tree, 'step5_host_interfaces') or ''
+    step5b = _function_source(ztc_src, ztc_tree, 'step5b_configgroup_assignments') or ''
+    run_fg = _function_source(net_src, net_tree, 'run_apply_fortigate_http') or ''
     record(
-        'zerotouch_fortigate_http_cg_has_no_icmp',
-        'FORTIGATE_HTTP_CG' in ztc_src
-        and 'forti_http' in ztc_icmp
-        and 'Observability nests it' in ztc_src
-        and 'fortigate_http' not in ztc_src,
-        'zerotouch creates FortiGate HTTP CG without importing the Forti HTTP cutover module',
+        'network_creates_fortigate_http_cg_not_zerotouch',
+        bool(transport)
+        and bool(run_fg)
+        and '_step_fortigate_http_transport(server)' in run_fg
+        and '_ensure_fortigate_http_group' in transport
+        and '_ensure_fortigate_http_agent_interface' in transport
+        and '_prune_icmp_from_fortigate_http_group' in transport
+        and 'FORTIGATE_HTTP_CG' not in step4
+        and 'forti_http' not in step4
+        and 'forti_http' not in step5
+        and 'forti_http' not in step5b,
+        'FortiGate HTTP CG is created by --apply-fortigate-http, not zerotouch',
     )
 
     failed = sum(1 for _, ok, _ in RESULTS if not ok)

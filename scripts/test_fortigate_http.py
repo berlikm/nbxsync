@@ -226,6 +226,17 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertNotEqual(FORTIGATE_HTTP_CG, SNMP_MONITORING_CG)
         self.assertNotIn(ICMP_PING_TEMPLATE, (FORTIGATE_HTTP_CG,))
 
+    def test_fortigate_http_cg_is_created_by_network_not_zerotouch(self):
+        scripts = Path(__file__).resolve().parent
+        ztc = (scripts / 'configure_nbxsync_zerotouch.py').read_text(encoding='utf-8')
+        net = (scripts / 'configure_nbxsync_network.py').read_text(encoding='utf-8')
+        self.assertNotIn('FORTIGATE_HTTP_CG', ztc)
+        self.assertNotIn('forti_http', ztc)
+        self.assertNotIn('fortigate_http', ztc)
+        self.assertIn('def _ensure_fortigate_http_group', net)
+        self.assertIn('def _step_fortigate_http_transport', net)
+        self.assertIn('_step_fortigate_http_transport(server)', net)
+
     def test_empty_vendor_is_not_cloud_compatible(self):
         self.assertFalse(is_cloud_fortigate_http_vendor(''))
         self.assertFalse(is_cloud_fortigate_http_vendor('Zabbix, 7.0-3'))
