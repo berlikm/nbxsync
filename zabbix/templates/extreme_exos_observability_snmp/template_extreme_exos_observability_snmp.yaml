@@ -89,30 +89,48 @@ zabbix_export:
       tags:
       - tag: component
         value: system
+    - uuid: 604840101ee549bcba2a7cc835fa1924
+      name: Interface discovery seed (not a port)
+      type: CALCULATED
+      key: 'net.if.status[ifOperStatus.__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: FLOAT
+      params: '0'
+      description: |
+        Always-present net.if.status key so count(exists_foreach) never becomes
+        unsupported when Access has zero labelled ports. Not a real interface —
+        subtracted in net.if.discovery.count. Do not graph.
+      tags:
+      - tag: component
+        value: health
     - uuid: 5b5f794571c34e6796b3b9424b7b32f4
       name: Discovered interface count
       type: CALCULATED
       key: net.if.discovery.count
-      delay: 15m
+      delay: 1m
       history: 7d
       value_type: FLOAT
-      params: 'count(exists_foreach(//net.if.status[*]))'
+      params: 'count(exists_foreach(//net.if.status[*]))-1'
       description: |
-        Enabled stock EXOS net.if.status items (nested template). Zero with SNMP up
-        is the IFALIAS / GETBULK break. foreach ignores disabled leftovers; empty
-        foreach → unsupported, which the trigger treats as nodata.
+        Enabled stock EXOS net.if.status items (nested template), minus the seed.
+        Zero with SNMP up is the IFALIAS / GETBULK break. foreach ignores disabled
+        leftovers. The seed keeps this item supported at 0 so LLD creating a port
+        recovers the Average without a manual Check now.
       tags:
       - tag: component
         value: health
       triggers:
       - uuid: 2efe8d519f8546ab978d215ec79aff60
-        expression: 'min(/Extreme EXOS Observability/exos.observability.snmp,1h)=1 and (last(/Extreme EXOS Observability/net.if.discovery.count)<{$NET.IF.DISCOVERY.MIN} or nodata(/Extreme EXOS Observability/net.if.discovery.count,1h)=1)'
+        expression: 'min(/Extreme EXOS Observability/exos.observability.snmp,1h)=1 and last(/Extreme EXOS Observability/net.if.discovery.count)<{$NET.IF.DISCOVERY.MIN}'
         name: 'Extreme EXOS: No discovered interfaces after SNMP is up'
         priority: AVERAGE
         description: |
           SNMP has been up for 1h and LLD produced no enabled net.if.status items.
           Access with no USW/UP labels is this ticket — fix the label, do not widen the regex.
           Dead box stays on stock ICMP High (snmp mirror is 0, so this does not double-page).
+          Count stays 0 (supported) while empty; it is not nodata / Not supported.
         tags:
         - tag: scope
           value: availability

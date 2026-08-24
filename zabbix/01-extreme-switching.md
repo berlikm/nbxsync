@@ -162,7 +162,7 @@ A site WAN blip is one ICMP High per switch. That is accepted.
 | Check | Why | Live |
 |---|---|---|
 | Unsupported item count | SNMP walk died; looks like health | Average trigger `{$UNSUPPORTED.MAX}` |
-| Switch with **zero** discovered interfaces | IFALIAS regex or LLD broken | Average after SNMP up 1h (`{$NET.IF.DISCOVERY.MIN}=1`). ICMP down is not this ticket. |
+| Switch with **zero** discovered interfaces | IFALIAS regex or LLD broken | Average after SNMP up 1h (`{$NET.IF.DISCOVERY.MIN}=1`). Count item stays **0 (supported)** while empty so it recovers when LLD creates a port — not nodata / Not supported. ICMP down is not this ticket. |
 | SNMP = 0, ICMP = 1 | credentials / proxy cache / UDP 161 — not a forwarding outage | SNMP Warning |
 | Proxy last-seen | hosts go *unknown*, not *down* | Zabbix internal / later |
 

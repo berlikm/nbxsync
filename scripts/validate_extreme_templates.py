@@ -119,6 +119,41 @@ def _walk_triggers(tpl: dict) -> list[dict]:
     return out
 
 
+def _item_by_key(tpl: dict, key: str) -> dict | None:
+    for it in tpl.get('items') or []:
+        if it.get('key') == key:
+            return it
+    return None
+
+
+def validate_discovery_count_seed(
+    label: str,
+    tpl: dict,
+    *,
+    count_key: str,
+    seed_key: str,
+    trigger_name: str,
+) -> None:
+    """Empty foreach must not go Not supported — seed + subtract 1, no nodata."""
+    keys = _walk_item_keys(tpl)
+    record(f'{label} {count_key} seed', seed_key in keys, seed_key)
+    item = _item_by_key(tpl, count_key) or {}
+    params = item.get('params') or ''
+    compact = params.replace(' ', '')
+    record(
+        f'{label} {count_key} subtracts seed',
+        'exists_foreach' in compact and compact.endswith('-1'),
+        params,
+    )
+    trig = next((t for t in _walk_triggers(tpl) if t.get('name') == trigger_name), None)
+    expr = (trig or {}).get('expression') or ''
+    record(
+        f'{label} {trigger_name} has no nodata',
+        bool(trig) and 'nodata(' not in expr,
+        expr[:200],
+    )
+
+
 _VOSS_PSU_LLD_KEYS = frozenset({'psu.discovery', 'psu.detail.discovery'})
 
 
@@ -598,6 +633,13 @@ def validate_voss(doc: dict) -> None:
     keys = _walk_item_keys(tpl)
     record('VOSS unsupported item', 'zabbix[host,,items_unsupported]' in keys, '')
     record('VOSS discovery count', 'net.if.discovery.count' in keys, '')
+    validate_discovery_count_seed(
+        'VOSS',
+        tpl,
+        count_key='net.if.discovery.count',
+        seed_key='net.if.status[ifOperStatus.__seed]',
+        trigger_name='Extreme VOSS: No discovered interfaces after SNMP is up',
+    )
     flap_ok = shutdown_ok = False
     for rule in tpl.get('discovery_rules') or []:
         for it in rule.get('item_prototypes') or []:
@@ -705,6 +747,20 @@ def validate_iq(doc: dict) -> None:
         macros.get('{$NET.IF.DISCOVERY.MIN}') == '1',
         str(macros.get('{$NET.IF.DISCOVERY.MIN}')),
     )
+    validate_discovery_count_seed(
+        'IQ',
+        tpl,
+        count_key='net.if.discovery.count',
+        seed_key='net.if.status[ifOperStatus.__seed]',
+        trigger_name='Extreme IQ Engine: No discovered interfaces after SNMP is up',
+    )
+    validate_discovery_count_seed(
+        'IQ',
+        tpl,
+        count_key='ah.radio.discovery.count',
+        seed_key='ah.radio.channel[__seed]',
+        trigger_name='Extreme IQ Engine: No discovered radios after SNMP is up',
+    )
     snmp = by_name.get('Extreme IQ Engine: No SNMP data collection')
     record(
         'IQ SNMP-dead Warning',
@@ -731,6 +787,13 @@ def validate_exos_observability(doc: dict) -> None:
     }
     record('EXOS companion calculated mirrors', expected <= keys, str(sorted(expected - keys)))
     record('EXOS companion discovery count', 'net.if.discovery.count' in keys, '')
+    validate_discovery_count_seed(
+        'EXOS companion',
+        tpl,
+        count_key='net.if.discovery.count',
+        seed_key='net.if.status[ifOperStatus.__seed]',
+        trigger_name='Extreme EXOS: No discovered interfaces after SNMP is up',
+    )
     trigs = _walk_triggers(tpl)
     record(
         'EXOS companion zero-interface trigger',

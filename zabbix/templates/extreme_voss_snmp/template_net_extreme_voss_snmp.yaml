@@ -503,31 +503,49 @@ zabbix_export:
         tags:
         - tag: scope
           value: availability
+    - uuid: a9ae863a45ce45a99bc764202e719a2f
+      name: Interface discovery seed (not a port)
+      type: CALCULATED
+      key: 'net.if.status[ifOperStatus.__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: FLOAT
+      params: '0'
+      description: |
+        Always-present net.if.status key so count(exists_foreach) never becomes
+        unsupported when Access has zero labelled ports. Subtracted in
+        net.if.discovery.count. Do not graph.
+      tags:
+      - tag: component
+        value: health
     - uuid: 7a3715bdd0224ad88ed7d3aa81b0e1ba
       name: Discovered interface count
       type: CALCULATED
       key: net.if.discovery.count
-      delay: 15m
+      delay: 1m
       history: 7d
       value_type: FLOAT
-      params: 'count(exists_foreach(//net.if.status[*]))'
+      params: 'count(exists_foreach(//net.if.status[*]))-1'
       description: |
-        Enabled IF-MIB oper-status items after LLD filters. Zero with SNMP up is the
-        IFALIAS / GETBULK break Watch the watcher must ticket. foreach ignores disabled
-        items (X-labelled / lost ports after disable-now). Empty foreach makes this
-        item unsupported — the trigger treats nodata the same as count 0.
+        Enabled IF-MIB oper-status items after LLD filters, minus the seed. Zero
+        with SNMP up is the IFALIAS / GETBULK break. foreach ignores disabled
+        items (X-labelled / lost ports after disable-now). The seed keeps this
+        item supported at 0 so LLD creating a port recovers the Average without
+        a manual Check now.
       tags:
       - tag: component
         value: health
       triggers:
       - uuid: 290c9ec628ac4e44ad0221201b97a2ee
-        expression: 'min(/Extreme VOSS by SNMP/zabbix[host,snmp,available],1h)=1 and (last(/Extreme VOSS by SNMP/net.if.discovery.count)<{$NET.IF.DISCOVERY.MIN} or nodata(/Extreme VOSS by SNMP/net.if.discovery.count,1h)=1)'
+        expression: 'min(/Extreme VOSS by SNMP/zabbix[host,snmp,available],1h)=1 and last(/Extreme VOSS by SNMP/net.if.discovery.count)<{$NET.IF.DISCOVERY.MIN}'
         name: 'Extreme VOSS: No discovered interfaces after SNMP is up'
         priority: AVERAGE
         description: |
           SNMP has been up for 1h and LLD produced no enabled net.if.status items.
           Access with no USW/UP labels is this ticket — fix the label, do not widen the regex.
           Core/Dist with admin-up ethernet at 0 is a broken walk or role macros.
+          Count stays 0 (supported) while empty; it is not nodata / Not supported.
         dependencies:
         - name: 'Extreme VOSS: Unavailable by ICMP ping'
           expression: max(/Extreme VOSS by SNMP/icmpping,#3)=0
