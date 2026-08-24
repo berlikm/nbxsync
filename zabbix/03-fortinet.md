@@ -118,7 +118,7 @@ If aliases follow the port-identity grammar, prefer `{$NET.IF.IFALIAS.MATCHES}` 
 
 **Both members, unique OOB, not a VIP.** Fortinet reserved HA management (`ha-mgmt` or in-band `management-ip`) exists so API/ICMP can reach **each** unit on its own address. Config on those IPs is **not** synced. NetBox already has two devices with two IPs; nbxSync already creates two Zabbix hosts — HostSync them the same way.
 
-That is the **simple** path. Do **not** invent a cluster VIP host, skip the backup, or give the two members different templates. `--apply-fortigate-http` already writes `{$FGATE.API.FQDN}` per device (`oob_ip` then `primary_ip4`) and one shared token on role Firewall. HostSync of member A and member B is two jobs with the same inheritance; only the FQDN differs.
+That is the **simple** path. Do **not** invent a cluster VIP host, skip the backup, or give the two members different templates. `--apply-fortigate-http` already writes `{$FGATE.API.FQDN}` per device from **`primary_ip4`** (this estate’s OOB / ha-mgmt; NetBox `oob_ip` is BMC-only) and one shared token on role Firewall. HostSync of member A and member B is two jobs with the same inheritance; only the FQDN differs. ICMP uses the same `primary_ip4`.
 
 VIP-only polling hides a dead chassis: the floating address fails over, ICMP/API stay green, and stock HTTP has **no** HA member/sync LLD to tell you the peer is gone. That is a silent split-brain / silent RMA. “Primary only” has the same hole until failover.
 
@@ -153,7 +153,7 @@ OOB / ha-mgmt is how you poll **both HA members at once**. It is **not** a reaso
 3. Role Firewall → **SNMP Monitoring** CG (`MONITORING` MD5/DES)
 4. ICMP Ping is **not** on fleet SNMP Monitoring (Forti SNMP already has `icmpping`)
 5. FMG/FAZ rule → Network Generic
-6. Device Role Firewall already has HTTP **fleet** macros if you ran `--apply-firewall-macros` (https/443, WAN/HA/mgmt LLD). Shared token belongs on the **role**. FQDN is per-device (`oob_ip` then `primary_ip4`).
+6. Device Role Firewall already has HTTP **fleet** macros if you ran `--apply-firewall-macros` (https/443, WAN/HA/mgmt LLD). Shared token belongs on the **role**. FQDN is per-device (`primary_ip4` = OOB / ha-mgmt).
 
 Locked GUI checklist still lists FortiGate by SNMP — that file is not updated here. Empty env must **not** wipe `{$FGATE.API.TOKEN}`.
 
@@ -176,7 +176,7 @@ That flag:
 | SNMP Monitoring | **off** Firewall |
 | ICMP | **ICMP Ping** on role Firewall (stock HTTP has no `icmpping`). Lands on HostSync together with HTTP — do not mass-HostSync |
 | Fleet HTTP defaults | Device Role **Firewall** — https/443, WAN/HA/mgmt LLD, empty policy LLD, util 101 |
-| Secrets | Shared `{$FGATE.API.TOKEN}` on role Firewall (`NBX_FGATE_TOKEN`). Per-device `{$FGATE.API.FQDN}` = **oob_ip then primary_ip4** (HA mgmt / OOB, not a WAN VIP) |
+| Secrets | Shared `{$FGATE.API.TOKEN}` on role Firewall (`NBX_FGATE_TOKEN`). Per-device `{$FGATE.API.FQDN}` = **`primary_ip4`** (OOB / ha-mgmt on this estate, not the WAN VIP; `oob_ip` only if primary is empty) |
 
 `--apply-firewall-macros` is the lighter sibling (role macros only). Extreme `--apply` still does **not** retarget FortiOS.
 
@@ -188,7 +188,7 @@ Then HostSync **both members of the first cluster** (each unique OOB). Inheritan
 |---|---|
 | Platform FortiOS | **FortiGate by HTTP** + `OS/Network`. Interface requirement **ANY**, not SNMP |
 | Role Firewall | HTTP template floor — not both SNMP and HTTP |
-| Secrets | Shared `{$FGATE.API.TOKEN}` on role Firewall. Per-device `{$FGATE.API.FQDN}` = **that unit’s OOB / HA mgmt IP** (not a WAN VIP) |
+| Secrets | Shared `{$FGATE.API.TOKEN}` on role Firewall. Per-device `{$FGATE.API.FQDN}` = **that unit’s `primary_ip4`** (OOB / ha-mgmt; not a WAN VIP) |
 | Fleet HTTP defaults | Device Role **Firewall** — https/443, WAN/HA/mgmt LLD, `{$FWP.FWNAME.MATCHES}`=`^$`, util 101. Not Switch* roles |
 | ICMP | **ICMP Ping** on role Firewall (applied at HostSync with HTTP) |
 | SNMP Monitoring | **off** the HTTP Forti (HTTP does not use UDP 161) |
@@ -211,7 +211,7 @@ Production poller for NL/US/CH is the **Swiss proxy group**. HTTP items run **fr
 |---|---|---|
 | `{$FGATE.SCHEME}` | `http` | **https** |
 | `{$FGATE.API.PORT}` | `80` | **443** |
-| `{$FGATE.API.FQDN}` | empty | **that unit’s** OOB / ha-mgmt IP — `oob_ip` then `primary_ip4`, not the WAN VIP |
+| `{$FGATE.API.FQDN}` | empty | **that unit’s** `primary_ip4` (OOB / ha-mgmt on this estate). Not the WAN VIP. NetBox `oob_ip` only if primary is empty |
 | `{$FGATE.API.TOKEN}` | empty | **one** secret on Device Role **Firewall** (`NBX_FGATE_TOKEN`). Same key for the fleet |
 | `{$FGATE.DATA.TIMEOUT}` | `15s` | keep unless slow VDOMs |
 | `{$FGATE.HTTP.PROXY}` | empty | leave empty — the Zabbix proxy **is** the poller, not an HTTP forward proxy unless required |
@@ -284,7 +284,7 @@ Template-level macros (not globals, not Switch roles). **`--apply-fortigate-http
 {$DISK.FREE.CRIT}               = 0
 ```
 
-Per **device** (not the role): `{$FGATE.API.FQDN}` = that unit’s OOB / ha-mgmt IP. Shared `{$FGATE.API.TOKEN}` is on Device Role Firewall. Empty env must not wipe the role token.
+Per **device** (not the role): `{$FGATE.API.FQDN}` = that unit’s **`primary_ip4`** (OOB / ha-mgmt on this estate). Shared `{$FGATE.API.TOKEN}` is on Device Role Firewall. Empty env must not wipe the role token.
 
 CPU/mem **High** stay a later HTTP-template trigger-status patch (do not put `{$CPU.UTIL.CRIT}` on Firewall — zerotouch already uses that name on Server/MSSQL). ICMP Ping loss/RTT and firmware Info if CONTROL=0 is not enough. Same apply-patch style as EXOS ICMP disable.
 

@@ -125,7 +125,7 @@ Polling only the current primary (shared DNS that always follows master) has the
 
 Config **is** synced. HTTP LLD of SD-WAN / wan1 / policies on **both** members can double every WAN-down Average. That is the only good argument for a single logical host — and it is solved later by **gating path triggers**, not by skipping HostSync of the backup or inventing a VIP host.
 
-HostSync of both members is the same job twice: shared role token + templates, unique `{$FGATE.API.FQDN}` from each `oob_ip`. Do not give them different templates, and do not flip macros on failover as part of cutover.
+HostSync of both members is the same job twice: shared role token + templates, unique `{$FGATE.API.FQDN}` from each `primary_ip4`. Do not give them different templates, and do not flip macros on failover as part of cutover.
 
 | Signal | Cutover (both members, unique OOB) | Later (optional `ha.role`) |
 |---|---|---|
@@ -173,7 +173,7 @@ Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-h
 - Look up **FortiGate by HTTP** already in Zabbix Cloud (**Zabbix, 7.0-2**). Never import bundled 7.0-3. Do not overwrite 7.0-2.
 - FortiOS → HTTP (`HostInterfaceRequirement` **ANY**) when that template exists
 - Shared `{$FGATE.API.TOKEN}` on Device Role Firewall from `NBX_FGATE_TOKEN` (empty env does not wipe). Optional per-host override `NBX_FGATE_TOKEN_<HOSTNAME>`
-- Per-device `{$FGATE.API.FQDN}` prefers `oob_ip` then `primary_ip4` (both HA members via OOB, not a WAN VIP)
+- Per-device `{$FGATE.API.FQDN}` from `primary_ip4` (this estate’s OOB / ha-mgmt on each HA member). NetBox `oob_ip` is BMC-only; used only if primary is empty. Not a WAN VIP
 - Fleet defaults (https/443, WAN/HA/mgmt IFNAME, empty policy LLD) on Device Role Firewall
 - ICMP Ping on role Firewall (lands on HostSync with HTTP). Prunes FortiGate by SNMP and SNMP Monitoring from Firewall
 - Do **not** dual-link HTTP+SNMP because OOB exists. OOB is how both **nodes** are reachable. SNMP would add a second `icmpping` and a second WAN/CPU ticket family

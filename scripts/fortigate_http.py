@@ -6,7 +6,9 @@ every unit uses the same REST key (``NBX_FGATE_TOKEN``). Empty env must not
 wipe it. Optional per-device override: ``NBX_FGATE_TOKEN_<HOSTNAME>``.
 
 ``{$FGATE.API.FQDN}`` stays **per device** — that unit's OOB / ha-mgmt IP
-(not a WAN VIP, not the role). Prefer ``oob_ip`` then ``primary_ip4``.
+(not a WAN VIP, not the role). This estate records that address on
+``primary_ip4``. NetBox ``oob_ip`` is a BMC slot (iDRAC); Firewalls do not
+use it. Fall back to ``oob_ip`` only when ``primary_ip4`` is empty.
 
 Fleet HTTP defaults (https/443, WAN/HA/mgmt LLD) also belong on Device Role
 **Firewall**. Do not MATCH ``port``: on a 40F/100F ``port1`` is usually LAN.
@@ -64,9 +66,9 @@ def should_write_secret(value: str | None) -> bool:
     return bool((value or '').strip())
 
 
-def preferred_mgmt_ip(oob_ip: str | None, primary_ip: str | None) -> str | None:
-    """HA mgmt / OOB first so both cluster members are reachable; not a WAN VIP."""
-    for ip in (oob_ip, primary_ip):
+def preferred_mgmt_ip(primary_ip: str | None, oob_ip: str | None = None) -> str | None:
+    """Forti OOB / ha-mgmt is NetBox ``primary_ip4``, not the BMC ``oob_ip`` field."""
+    for ip in (primary_ip, oob_ip):
         if ip:
             return ip
     return None

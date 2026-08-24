@@ -45,10 +45,11 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
   * Platform TemplateRules: EXOS → Observability companion (nests stock); VOSS / IQ Engine → Extreme * by SNMP
   * Switch role IFALIAS / IFTYPE macros via ZabbixMacroAssignment (inheritance resolves these)
   * Firewall FortiGate HTTP: fleet macros + **shared** ``{$FGATE.API.TOKEN}`` on
-    Device Role Firewall; per-device ``{$FGATE.API.FQDN}`` (``oob_ip`` then
-    ``primary_ip4``). FortiOS + Firewall floor → FortiGate by HTTP (ANY). Looks
-    up the template already in Zabbix Cloud (**Zabbix, 7.0-2**) and never
-    imports YAML (bundled 7.0-3 would overwrite it). Prune FortiGate by SNMP
+    Device Role Firewall; per-device ``{$FGATE.API.FQDN}`` from ``primary_ip4``
+    (this estate's OOB / ha-mgmt). FortiOS + Firewall floor → FortiGate by HTTP
+    (ANY). Looks up the template already in Zabbix Cloud (**Zabbix, 7.0-2**)
+    and never imports YAML (bundled 7.0-3 would overwrite it). Prune FortiGate
+    by SNMP
     and SNMP Monitoring from Firewall; ICMP Ping on the role. Operator path is
     ``--apply-fortigate-http`` — do **not** re-run zerotouch. Do not dual-link
     HTTP+SNMP.
@@ -2213,12 +2214,13 @@ def _nb_ip_addr(ipobj) -> str | None:
 
 
 def _step_firewall_device_macros(server) -> dict[str, int]:
-    """Per-device FQDN (OOB / primary_ip4). Optional per-host TOKEN override.
+    """Per-device FQDN from primary_ip4 (OOB / ha-mgmt). Optional per-host TOKEN override.
 
     Shared TOKEN lives on the role. Empty env does not wipe a per-host override.
+    NetBox oob_ip is BMC-only; used only if primary_ip4 is empty.
     """
     logger.info('=' * 60)
-    logger.info('Network: FortiGate per-device FQDN (OOB preferred; no HostSync)')
+    logger.info('Network: FortiGate per-device FQDN (primary_ip4; no HostSync)')
     logger.info('=' * 60)
     stats = {
         'devices': 0,
@@ -2247,7 +2249,10 @@ def _step_firewall_device_macros(server) -> dict[str, int]:
                 )
                 stats['token_override'] += 1
                 logger.info('  %s %s override from %s', dev.name, _FGATE_TOKEN_MACRO, env_key)
-            fqdn = _preferred_mgmt_ip(_nb_ip_addr(getattr(dev, 'oob_ip', None)), _nb_ip_addr(dev.primary_ip4))
+            fqdn = _preferred_mgmt_ip(
+                _nb_ip_addr(dev.primary_ip4),
+                _nb_ip_addr(getattr(dev, 'oob_ip', None)),
+            )
             if fqdn:
                 _upsert_object_macro_assignment(
                     server,
@@ -2262,7 +2267,7 @@ def _step_firewall_device_macros(server) -> dict[str, int]:
             else:
                 stats['fqdn_skipped_no_ip'] += 1
                 logger.warning(
-                    '  %s has no oob_ip/primary_ip4 — skip %s (HA mgmt / OOB IP)',
+                    '  %s has no primary_ip4 (or oob_ip fallback) — skip %s (HA mgmt / OOB IP)',
                     dev.name,
                     _FGATE_FQDN_MACRO,
                 )
@@ -3506,7 +3511,7 @@ def run_apply_fortigate_http() -> int:
     Writes Firewall role macros including shared TOKEN, retargets FortiOS +
     Firewall floor to HTTP (ANY), prunes FortiGate by SNMP and SNMP Monitoring
     from Firewall, assigns ICMP Ping on the role, and writes per-device FQDN
-    from oob_ip / primary_ip4.
+    from primary_ip4 (OOB / ha-mgmt; oob_ip only if primary is empty).
 
     Does not import Extreme YAML, does not check-now Extreme hosts, does not
     mass-HostSync the firewall fleet. Empty env does not wipe the role token.
@@ -3537,7 +3542,7 @@ def run_apply_fortigate_http() -> int:
     logger.info(
         'FortiGate HTTP cutover written in NetBox. No HostSync. '
         'Shared %s is on Device Role %s (look there, not each Device). '
-        'FQDN is per-device (oob_ip then primary_ip4). '
+        'FQDN is per-device (primary_ip4 = OOB / ha-mgmt). '
         'HostSync both members of the first cluster (unique OOB), then the rest. '
         'Do not re-run zerotouch — it still floors '
         'FortiOS on %s. Do not dual-link %s.',

@@ -51,7 +51,7 @@ export NBX_FGATE_TOKEN=...   # shared REST key on Device Role Firewall; empty en
 python3 scripts/configure_nbxsync_network.py --apply-fortigate-http
 ```
 
-Then HostSync **both members** of the first cluster (each unique OOB / ha-mgmt IP). After that cluster is green, HostSync the remaining Firewalls the same way. Do not skip the backup, and do not mass-HostSync the fleet in one click. Do not re-run zerotouch after that — it still floors FortiOS on FortiGate by SNMP.
+Then HostSync **both members** of the first cluster (each unique `primary_ip4` = OOB / ha-mgmt). After that cluster is green, HostSync the remaining Firewalls the same way. Do not skip the backup, and do not mass-HostSync the fleet in one click. Do not re-run zerotouch after that — it still floors FortiOS on FortiGate by SNMP.
 
 ```bash
 python3 scripts/validate_extreme_templates.py --zabbix   # lab: YAML contract + double import

@@ -93,9 +93,10 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertFalse(should_write_secret('   '))
         self.assertTrue(should_write_secret('abc'))
 
-    def test_fqdn_prefers_oob_over_primary(self):
-        self.assertEqual(preferred_mgmt_ip('10.1.1.1', '1.2.3.4'), '10.1.1.1')
-        self.assertEqual(preferred_mgmt_ip(None, '1.2.3.4'), '1.2.3.4')
+    def test_fqdn_prefers_primary_ip4(self):
+        self.assertEqual(preferred_mgmt_ip('1.2.3.4', '10.1.1.1'), '1.2.3.4')
+        self.assertEqual(preferred_mgmt_ip('1.2.3.4', None), '1.2.3.4')
+        self.assertEqual(preferred_mgmt_ip(None, '10.1.1.1'), '10.1.1.1')
         self.assertIsNone(preferred_mgmt_ip(None, None))
 
     def test_cloud_vendor_is_zabbix_7_0_2(self):
