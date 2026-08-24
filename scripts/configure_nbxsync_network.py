@@ -175,6 +175,7 @@ from nbxsync.utils.zabbixconnection import ZabbixConnection
 from fortigate_http import (
     AGENT_MONITORING_CG as _AGENT_MONITORING_CG,
     DEVICE_DUAL_LINK_TEMPLATES as _DEVICE_DUAL_LINK_TEMPLATES,
+    FGATE_API_PORT as _FGATE_API_PORT,
     FGATE_FQDN_JINJA as _FGATE_FQDN_JINJA,
     FGATE_FQDN_MACRO as _FGATE_FQDN_MACRO,
     FGATE_TOKEN_ENV as _FGATE_TOKEN_ENV,
@@ -3757,7 +3758,7 @@ def run_simulate(*, link_speed_expect: bool = False, cutover_silence: bool = Fal
         m_fw = macro_map(fortigate)
         record(
             'firewall_https_not_http_80',
-            m_fw.get('{$FGATE.SCHEME}') == 'https' and m_fw.get('{$FGATE.API.PORT}') == '443',
+            m_fw.get('{$FGATE.SCHEME}') == 'https' and m_fw.get('{$FGATE.API.PORT}') == _FGATE_API_PORT,
             str(m_fw),
             group='resolve',
         )
@@ -4092,10 +4093,11 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     logger.info('Network configuration applied (macros=%s)', 'cutover-silence' if cutover_silence else 'destination')
     logger.info(
         'FortiOS platform FortiGate HTTP macros are NetBox assignments only '
-        '(https/443, WAN/HA/mgmt LLD, CPU/mem CRIT 101). Shared TOKEN stays on '
+        '(https/%s, WAN/HA/mgmt LLD, CPU/mem CRIT 101). Shared TOKEN stays on '
         'Platform FortiOS. FQDN is platform Jinja on primary_ip4. '
         'This run does not HostSync Fortis and does not retarget FortiOS. '
         'Use --apply-fortigate-http for the HTTP cutover without zerotouch.',
+        _FGATE_API_PORT,
     )
     return 0
 
@@ -4113,9 +4115,10 @@ def run_apply_firewall_macros() -> int:
     _step_fortios_platform_macros(server, required=True)
     logger.info(
         'FortiOS platform FortiGate HTTP macros written '
-        '(https/443, WAN/HA/mgmt LLD, CPU/mem CRIT 101). Shared TOKEN from '
+        '(https/%s, WAN/HA/mgmt LLD, CPU/mem CRIT 101). Shared TOKEN from '
         '%s if set. %s is platform Jinja on primary_ip4. No Extreme import, no HostSync, '
         'no FortiOS retarget. Use --apply-fortigate-http for the companion cutover.',
+        _FGATE_API_PORT,
         _FGATE_TOKEN_ENV,
         _FGATE_FQDN_MACRO,
     )

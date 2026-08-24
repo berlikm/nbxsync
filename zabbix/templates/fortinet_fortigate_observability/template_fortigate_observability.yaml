@@ -15,7 +15,7 @@ zabbix_export:
 
         Gaps only: HA role for path-ticket gating, conserve mode, unsupported-item
         census, zero-interface / SD-WAN / HA-member counts, Health + Path dashboards,
-        estate macros (https/443, CPU/mem CRIT 101, SD-WAN MATCHES).
+        estate macros (https/20443, CPU/mem CRIT 101, SD-WAN MATCHES).
       groups:
         - name: 'Templates/Network devices'
       templates:
@@ -320,7 +320,7 @@ zabbix_export:
         - macro: '{$FGATE.SCHEME}'
           value: https
         - macro: '{$FGATE.API.PORT}'
-          value: '443'
+          value: '20443'
         - macro: '{$CPU.UTIL.CRIT}'
           value: '101'
           description: 'Quiet stock High CPU (CRIT 101). Conserve mode is the memory page, not this trigger.'

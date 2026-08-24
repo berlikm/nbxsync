@@ -224,6 +224,12 @@ def main() -> int:
         and 'FIREWALL_DEVICE_MACROS = ()' in forti_http,
         'FQDN is Platform FortiOS Jinja, not a device literal',
     )
+    record(
+        'network_fortigate_api_port_is_20443',
+        "FGATE_API_PORT = '20443'" in forti_http
+        and "'{$FGATE.API.PORT}': FGATE_API_PORT" in forti_http,
+        'ha-mgmt GUI is 20443, not stock 80 or HTTPS 443',
+    )
     plat_macros = _function_source(net_src, net_tree, '_step_fortios_platform_macros') or ''
     record(
         'network_fortigate_prunes_device_fqdn',

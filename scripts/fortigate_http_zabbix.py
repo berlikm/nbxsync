@@ -270,7 +270,7 @@ def upsert_http_template_macros(api, templateid) -> str:
             entry['type'] = m['type']
         payload.append(entry)
     api.template.update(templateid=templateid, macros=payload)
-    logger.info('  %s: estate macros (CPU/mem CRIT 101, https/443)', FORTIGATE_HTTP_TEMPLATE)
+    logger.info('  %s: estate macros (CPU/mem CRIT 101, https/%s)', FORTIGATE_HTTP_TEMPLATE, FORTIOS_PLATFORM_MACROS['{$FGATE.API.PORT}'])
     return 'patched'
 
 

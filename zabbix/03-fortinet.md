@@ -176,7 +176,7 @@ That flag:
 | Role Firewall | **prune** FortiGate HTTP/SNMP and ICMP Ping leftovers. **Prune** SNMP Monitoring (FortiOS is HTTP) |
 | SNMP Monitoring | **moved** onto FortiManager / FortiAnalyzer **platforms**. Not on FortiGates |
 | ICMP | Nested on Observability — **not** on role Firewall. Leftover ICMP/HTTP/SNMP on FortiOS devices, platforms, and device types is **pruned**. Agent-plane CGs keep ICMP Ping (servers). FortiOS winning CG is **FortiGate HTTP**. |
-| Fleet HTTP defaults | **Platform FortiOS** — https/443, WAN/HA/mgmt LLD, CPU/mem CRIT 101, empty policy LLD |
+| Fleet HTTP defaults | **Platform FortiOS** — https/20443, WAN/HA/mgmt LLD, CPU/mem CRIT 101, empty policy LLD |
 | Secrets | Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS** (`NBX_FGATE_TOKEN`). `{$FGATE.API.FQDN}` = platform Jinja `{{ object.primary_ip4.address.ip }}` |
 
 `--apply-firewall-macros` is the lighter sibling (FortiOS platform macros only). Extreme `--apply` still does **not** retarget FortiOS.
@@ -190,7 +190,7 @@ Then HostSync **both members of the first cluster** (each unique OOB). Inheritan
 | Platform FortiOS | **FortiGate Observability** + `OS/Network`. Interface requirement **ANY**, not SNMP |
 | Role Firewall | no FortiGate template floor and no SNMP Monitoring CG |
 | Secrets | Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS**. `{$FGATE.API.FQDN}` = platform Jinja `{{ object.primary_ip4.address.ip }}` (OOB / ha-mgmt; not a WAN VIP). HostSync renders per device. |
-| Fleet HTTP defaults | **Platform FortiOS** — https/443, WAN/HA/mgmt LLD, `{$FWP.FWNAME.MATCHES}`=`^$`, util 101, CPU/mem CRIT 101. Not Switch* or Firewall role |
+| Fleet HTTP defaults | **Platform FortiOS** — https/20443, WAN/HA/mgmt LLD, `{$FWP.FWNAME.MATCHES}`=`^$`, util 101, CPU/mem CRIT 101. Not Switch* or Firewall role |
 | ICMP | nested on Observability. Winning CG **FortiGate HTTP** (Platform FortiOS) beats Site Group Agent Monitoring so ICMP Ping is not assigned twice. Do not strip ICMP from agent CGs. |
 | SNMP Monitoring | **FortiManager / FortiAnalyzer platforms only**. FortiOS does **not** fall through to Site Group Agent Monitoring. |
 | Health | already on the HTTP template after upsert — no dashboard script |
@@ -213,7 +213,7 @@ Production poller for NL/US/CH is the **Swiss proxy group**. HTTP items run **fr
 | Macro | Default | We set |
 |---|---|---|
 | `{$FGATE.SCHEME}` | `http` | **https** |
-| `{$FGATE.API.PORT}` | `80` | **443** |
+| `{$FGATE.API.PORT}` | `80` | **20443** (ha-mgmt GUI; 443 is SSL-VPN) |
 | `{$FGATE.API.FQDN}` | empty | **Platform FortiOS** Jinja `{{ object.primary_ip4.address.ip }}` (OOB / ha-mgmt). Not the WAN VIP. A leftover Device-level literal IP is pruned so this inherits. |
 | `{$FGATE.API.TOKEN}` | empty | **one** secret on **Platform FortiOS** (`NBX_FGATE_TOKEN`). Same key for the FortiOS fleet. Not role Firewall. Per-cluster / Vault is later |
 | `{$FGATE.DATA.TIMEOUT}` | `15s` | keep unless slow VDOMs |
@@ -261,7 +261,7 @@ Tag events with `site`, `circuit_id`, `path`, `device/member`, `cluster`, `layer
 | No API data 10m | API item silent | Observability nodata on `fgate.observability.api` Average |
 | API = 0, ICMP = 1 | token, trusted-host, TLS, FortiOS Bearer, wrong FQDN/port | Average Unexpected API |
 | ICMP = 0 | box or path to mgmt | ICMP High |
-| HTTPS port down, API items stale | GUI port / scheme still `80`/`http` | Average port unavailable |
+| HTTPS port down, API items stale | GUI port / scheme still `80`/`http`, or poller still on `443` instead of `20443` | Average port unavailable |
 | Zero interfaces | IFNAME regex or `netif` API fail | `fgate.observability.netif.count` < `{$NET.IF.DISCOVERY.MIN}` |
 | SD-WAN site, too few members | [ZBX-26072](https://support.zabbix.com/browse/ZBX-26072) or not SD-WAN | `fgate.observability.sdwan.count` < `{$FGATE.SDWAN.EXPECTED}` (default 0) |
 | Duplicate Authorization 401 | 7.0-2/7.0-3 reuse `HttpRequest` in `getHttpData` ([ZBX-27082](https://support.zabbix.com/browse/ZBX-27082), fix in **7.0.30rc1**) | `--apply-fortigate-http` patches scripts in place; aborts if still vulnerable |
@@ -287,7 +287,7 @@ Template-level macros (not globals, not Switch roles, **not role Firewall**). **
 
 ```
 {$FGATE.SCHEME}                 = https
-{$FGATE.API.PORT}               = 443
+{$FGATE.API.PORT}               = 20443
 {$NET.IF.IFNAME.MATCHES}        = ^(wan|ha|mgmt|dmz)
 {$NET.IF.IFNAME.NOT_MATCHES}    = ^(ssl\.|npu|fortilink|loopback|vlan)
 {$SDWAN.HEALTH.IFNAME.MATCHES}  = ^(wan|ha|mgmt|dmz)

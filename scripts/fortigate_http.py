@@ -61,6 +61,8 @@ FGATE_FQDN_MACRO = '{$FGATE.API.FQDN}'
 FGATE_FQDN_JINJA = '{{ object.primary_ip4.address.ip }}'
 FGATE_TOKEN_ENV = 'NBX_FGATE_TOKEN'
 FGATE_PATH_CONTROL_MACRO = '{$FGATE.PATH.CONTROL}'
+# ha-mgmt GUI. 443 is SSL-VPN on these boxes; stock HTTP defaults to 80.
+FGATE_API_PORT = '20443'
 HA_ROLE_KEY = 'fgate.ha.role'
 POLICY_MASTER_KEY = 'fgate.fwp.get_data'
 POLICY_DISCOVERY_KEY = 'fgate.fwp.discovery'
@@ -72,7 +74,7 @@ POLICY_DISCOVERY_KEY = 'fgate.fwp.discovery'
 # on standalone boxes without SD-WAN.
 FORTIOS_PLATFORM_MACROS = {
     '{$FGATE.SCHEME}': 'https',
-    '{$FGATE.API.PORT}': '443',
+    '{$FGATE.API.PORT}': FGATE_API_PORT,
     '{$NET.IF.IFNAME.MATCHES}': '^(wan|ha|mgmt|dmz)',
     '{$NET.IF.IFNAME.NOT_MATCHES}': r'^(ssl\.|npu|fortilink|loopback|vlan)',
     '{$SDWAN.HEALTH.IFNAME.MATCHES}': '^(wan|ha|mgmt|dmz)',
