@@ -152,14 +152,17 @@ VIP- or primary-DNS-only when the backup is unreachable. Record it as a watcher 
 
 ## Health dashboard
 
-Stock HTTP has no host **Health** board. Companion **FortiGate Observability** ships **Health** and **Path**, same chrome as EXOS/VOSS/IQ Overview — not a second vendor gallery.
+Stock HTTP has no host **Health** board. Companion **FortiGate Observability** ships **Health**, **Network interfaces**, and **Path**, same chrome as EXOS/VOSS/IQ — not a second vendor gallery. Hex labels are **VDOM-prefixed** after apply (`root/wan1`, `Untrust/Google/wan1`) so production and guest internet-failover SD-WAN do not share a nameless pile of `wan1`s.
 
 | Page | 5-second read |
 |---|---|
 | **Health → Overview** | ICMP / API / CPU gauges + **Uptime** item tile. Problems. CPU+memory trend, Uptime history |
 | **Health → HA** | Memory (the Forti analog of EXOS Temp — conserve-mode kills sessions) + HA role / members / VDOM mismatches as **item** tiles |
-| **Path → Overview** | Honeycomb status maps for in-scope interfaces, SD-WAN members, health-checks |
-| **Path → Probe** | Navigator of loss/latency/jitter — not a traffic gallery |
+| **Network interfaces → Overview** | 72×6 link-status map + **3×2** traffic grid (apply-injected from the HTTP parent graph prototype) |
+| **Network interfaces → Port** | Navigator of link / speed / errors — not bits |
+| **Path → Overview** | Two 36×6 maps (SD-WAN members + health-checks) + **3×2** member traffic grid after apply |
+| **Path → Loss** | Packet-loss honeycomb (0 / 5 / 20). HTTP probe seed for [05](../05-internet-circuits.md) |
+| **Path → Probe** | Navigator grouped by **vdom** — loss / latency / jitter / status |
 
 ### Why each widget exists
 
@@ -174,13 +177,15 @@ Stock HTTP has no host **Health** board. Companion **FortiGate Observability** s
 | Who is primary? | HA | HA role **item** | 0/1 identity with valuemap — not a gauge with fake max=1 |
 | Is the peer still there? | HA | Member count item | Census, not a 0–10 gauge |
 | Are we split-brain on config? | HA | VDOM mismatch count item | 0 green, ≥1 red. Ticket is primary-only |
-| Which WAN/HA port is down? | Path | Honeycomb of **IFNAME** (`wan1`, `ha`) | Colour without an ID is a Christmas tree. Forti link 0=up 1=down (inverted vs IF-MIB). Compact **24×4** — a switch-sized 72×6 map of four WAN ports paints giant hexes (same lesson as IQ eth) |
-| Which SD-WAN member / probe is down? | Path | Two more compact maps | Member link vs health-check status. Empty = none discovered, not “WAN is fine” |
-| Why is *this* probe sick? | Path → Probe | Navigator of loss/latency/jitter | Does not repeat Overview maps. Traffic bits stay on stock **FortiGate: Statistics** — companion YAML cannot bind nested graph prototypes (Zabbix drops them on import) |
+| Which WAN/HA port is down? | Network interfaces | Honeycomb of **VDOM/IFNAME** (`root/wan1`) | Colour without an ID is a Christmas tree. Forti link 0=up 1=down (inverted vs IF-MIB). **72×6** like a switch; traffic is the 3×2 grid under the map, not a 1-column Statistics slide |
+| How much traffic on *this* WAN? | Network interfaces / Path | 3×2 native graphs, **height 14** | Same EXOS grid. Apply looks up HTTP parent prototypes — YAML cannot bind nested graphs |
+| Which SD-WAN member / probe is down? | Path | Two 36×6 maps | Member link (`root/wan1`) vs health-check (`root/Google/wan1`). Empty = none discovered, not “WAN is fine” |
+| What is loss on production vs guest internet? | Path → Loss | Metric honeycomb | Only HTTP probe we have (latency/jitter live on Probe). `Untrust` vs `root` must not share a cell label |
+| Why is *this* probe sick? | Path → Probe | Navigator grouped by **vdom** | Does not repeat Overview maps. Bits stay on the 3×2 grids |
 
 Do **not** put HA role, interface count, or SD-WAN count on a gauge with a hardcoded max. A site with 3 members looked 30% empty; a site with 12 looked broken. Item tiles and honeycombs scale.
 
-Path Overview is scan-only (three maps). Problems live on Health. Do not duplicate Path as a page *inside* Health.
+Path Overview is scan-only (two maps + traffic). Problems live on Health. Do not duplicate Path as a page *inside* Health. Do not put physical interfaces back on Path — they live on **Network interfaces**.
 
 ---
 
@@ -197,8 +202,8 @@ CPU / mem / license →  ICMP down
 |---|---|---|
 | SMS/call 24/7 | Disaster, High | ICMP down per **member**. Memory **extreme** (Disaster — exception; FortiOS is refusing new sessions). HA VDOM checksum **High** on primary. Memory **red** High |
 | Ticket, business hours | Average | API/port blind. Path down (primary only, sustained `#3`). HA member count. Unsupported items. Interface / SD-WAN census. License unsuccessful |
-| Next day | Warning | CPU 85%. SD-WAN loss. Interface errors. Per-endpoint API errors. License 7d |
-| Log | Info | Firmware (off if `CONTROL=0`). Serial / sysname. Reboot (stock Info — retune later) |
+| Next day | Warning | CPU 85%. SD-WAN loss. Interface errors. Per-endpoint API errors. License 7d. Reboot (`uptime < 10m`, apply retunes stock Info) |
+| Log | Info | Firmware (off if `CONTROL=0`). Serial / sysname |
 
 **One incident per chassis outage:** companion watchers depend on no-API → no-ICMP. **One incident per WAN cut:** path triggers gated on `ha.role=1`. Secondary still has ICMP/API/CPU so a dead backup is not silent.
 
@@ -212,13 +217,11 @@ Actions/media are **not** in this template. Cutover still needs the estate actio
 
 | Gap | Why it is not silent-fail | Do later |
 |---|---|---|
-| Stock **FortiGate: Statistics** 1-column traffic gallery | Graphs exist; they just look unlike EXOS 3×2 | `--apply` patch like stock EXOS **Network interfaces** — do not fork 7.0-2 YAML |
-| Path Average does not depend on stock ICMP High | Dead mgmt path can still open WAN tickets on the current primary | Parent after ICMP triggerid is stable |
+| Path Average does not depend on stock ICMP High | Dead mgmt path can still open WAN tickets on the current primary | Parent after ICMP triggerid is stable. Template-level parent needs a duplicate `icmpping` link — skip |
 | Memory **Disaster** vs “Disaster = site only” | Extreme *is* user impact (new sessions die). HA peer may still forward | Keep until site parent exists; then drop this to High |
 | No PSU/fan/temp | HTTP does not collect it | Thin SNMPv3 or HTTP sensor item — never a second `icmpping` |
 | IPsec state | Inventory census only | After endpoint semantics + expected-tunnel macros |
 | Site last-path Disaster | Contracted; not built | 05 + site host |
-| Reboot is Info | Stock | Warning, same as EXOS |
 | Proxy last-seen | Hosts go *unknown* | Cloud console / later |
 
 ---
@@ -239,7 +242,7 @@ Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-h
 
 - Look up **FortiGate by HTTP** already in Zabbix Cloud (**Zabbix, 7.0-2**). Never import bundled 7.0-3. Fail closed if missing/wrong vendor
 - Before any write, require HTTP 200 JSON from every FortiOS `primary_ip4` using NetBox inventory automation’s `NBX_FORTIGATE_TOKEN`; separately require the nbxSync Platform FortiOS monitoring token to exist. The NetBox-origin check does not prove the Zabbix proxy path
-- Patch the version-pinned parent with a fresh `HttpRequest` per request plus tested multi-VDOM interface/SD-WAN normalization; patch WAN state, policy master off, unsupported absolute-capacity items, and stock CPU/mem CRIT 101. Import **FortiGate Observability**
+- Patch the version-pinned parent with a fresh `HttpRequest` per request plus tested multi-VDOM interface/SD-WAN normalization; patch WAN state, policy master off, unsupported absolute-capacity items, stock CPU/mem CRIT 101, and reboot Info→Warning. Import **FortiGate Observability**, then inject EXOS 3×2 traffic grids onto companion **Network interfaces** and **Path** (YAML cannot bind nested HTTP graph prototypes)
 - FortiOS → Observability (`HostInterfaceRequirement` **ANY**). Not role Firewall
 - Preserve the existing NetBox `{$FGATE.API.TOKEN}` on Platform FortiOS. `NBX_FORTIGATE_TOKEN` remains the separate automation credential
 - Keep `{$FGATE.API.FQDN}` as Platform FortiOS Jinja. Prune Device-level literals

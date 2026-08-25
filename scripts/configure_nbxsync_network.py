@@ -215,6 +215,7 @@ from fortigate_http_zabbix import (
     ensure_observability_trigger_dependencies,
     ensure_observability_primary_trigger_gates,
     inspect_http_scripts,
+    patch_observability_traffic_grids,
 )
 from extreme_ascii_titles import title_payload as _title_payload
 from extreme_health_zabbix import (
@@ -4394,6 +4395,7 @@ def run_apply_fortigate_http() -> int:
     with ZabbixConnection(server) as api:
         apply_fortigate_http_patches(api, http[0])
         observability = import_fortigate_observability_template(api)
+        patch_observability_traffic_grids(api, observability[0], http[0])
         ensure_overlay_census_items(api, observability[0])
         ensure_observability_trigger_dependencies(api, observability[0])
         ensure_observability_primary_trigger_gates(api, observability[0])

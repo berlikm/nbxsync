@@ -6,6 +6,23 @@ Depends on Extreme `UW-…` labels ([port-identity.md](port-identity.md)) and/or
 
 ---
 
+## FortiGate HTTP is the probe we have
+
+SD-WAN health-checks (loss / latency / jitter / probe status) are the only underlay probe this estate collects today. They run for **internet failover** on at least two VDOMs: **`root` (production)** and **`Untrust` (guest)**. Do not build a second ICMP/SLA poller for the same circuit.
+
+Until this page has its own circuit host, operators use the FortiGate host boards from [03](03-fortinet.md):
+
+| Board | What to use for ISP work |
+|---|---|
+| **Path → Overview** | Member link vs health-check colour, VDOM-prefixed (`root/wan1`, `Untrust/Google/wan1`). 3×2 member traffic after apply |
+| **Path → Loss** | Packet loss honeycomb (0 green / 5 yellow / 20 red = stock Warning). Production vs guest are different cells |
+| **Path → Probe** | Navigator grouped by **vdom** — latency / jitter / loss / status |
+| **Network interfaces** | Physical WAN bits in a 3×2 grid — not the stock 1-column Statistics slide |
+
+A later circuit template should **reuse these items** (dependent items / a thin overlay), not poll FortiOS twice. Tag so Extreme `UW` and Forti path share a class without double-paging.
+
+---
+
 ## What we alert
 
 | Thing | Alert | Sev |
@@ -27,7 +44,7 @@ Do **not** alert on: fabric `USW` uplinks (01), Cato overlay (04).
 | Object | In | Out |
 |---|---|---|
 | Extreme WAN | `ifAlias` matching `^UW(-\|$)` | Fabric uplinks |
-| Forti WAN | Forti WAN iface **or** SD-WAN health-check for that circuit (HTTP) | Other Forti interfaces / policies |
+| Forti WAN | Forti WAN iface **or** SD-WAN health-check for that circuit (HTTP). Split `root` vs `Untrust` — they are different internet paths | Other Forti interfaces / policies |
 
 ---
 
@@ -42,7 +59,7 @@ No absolute speed-expect on `UW`. Commit rate lives on the NetBox Circuit, not i
 | Template | Where |
 |---|---|
 | ISP WAN Ports by SNMP (thin, build) | Extreme `UW` — dependent items on stock interface items where possible |
-| FortiGate by HTTP (SD-WAN / WAN LLD) | [03](03-fortinet.md) — not this SNMP template |
+| FortiGate by HTTP (SD-WAN / WAN LLD) | [03](03-fortinet.md) **Path** Loss/Probe — not this SNMP template |
 
 ---
 

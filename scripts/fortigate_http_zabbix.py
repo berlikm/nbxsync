@@ -1097,6 +1097,169 @@ def patch_dashboard_time_periods(api, templateid) -> dict[str, int]:
     return updated
 
 
+REBOOT_TRIGGER = 'FortiGate: Device has been restarted'
+_PRIORITY_WARNING = 2
+NETWORK_INTERFACES_DASHBOARD = 'Network interfaces'
+PATH_DASHBOARD = 'Path'
+INTERFACE_TRAFFIC_PREFIX = 'Interface '
+SDWAN_TRAFFIC_PREFIX = 'SD-WAN '
+TRAFFIC_GRAPH_SUFFIX = ']: Network traffic'
+
+
+def patch_reboot_warning(api, templateid) -> str:
+    """Stock reboot is Info. Warning matches EXOS unplanned reboot — next day, not a page."""
+    rows = api.trigger.get(
+        templateids=[str(templateid)],
+        output=['triggerid', 'description', 'priority'],
+    ) or []
+    matches = [row for row in rows if row.get('description') == REBOOT_TRIGGER]
+    if len(matches) != 1:
+        raise SystemExit(
+            f'{REBOOT_TRIGGER!r} resolution expected one trigger, found {len(matches)}'
+        )
+    trigger = matches[0]
+    if str(trigger.get('priority')) == str(_PRIORITY_WARNING):
+        return 'existing'
+    api.trigger.update(triggerid=str(trigger['triggerid']), priority=_PRIORITY_WARNING)
+    logger.info('  trigger priority: %s -> Warning', REBOOT_TRIGGER)
+    return 'updated'
+
+
+def _graph_prototype_id(api, templateid, prefix: str, suffix: str) -> str:
+    rows = api.graphprototype.get(
+        templateids=[str(templateid)],
+        output=['graphid', 'name'],
+    ) or []
+    matches = [
+        row
+        for row in rows
+        if str(row.get('name') or '').startswith(prefix)
+        and str(row.get('name') or '').endswith(suffix)
+    ]
+    if len(matches) != 1:
+        names = [str(row.get('name') or '') for row in matches]
+        raise SystemExit(
+            f'graph prototype {prefix!r}…{suffix!r} expected one match, '
+            f'found {len(matches)} {names}'
+        )
+    return str(matches[0]['graphid'])
+
+
+def _traffic_grid_widget(graphid: str, reference: str, y: str) -> dict:
+    return {
+        'type': 'graphprototype',
+        'name': 'Traffic',
+        'x': '0',
+        'y': y,
+        'width': '72',
+        'height': '14',
+        'view_mode': '0',
+        'fields': [
+            {'type': '0', 'name': 'columns', 'value': '3'},
+            {'type': '7', 'name': 'graphid.0', 'value': graphid},
+            {'type': '1', 'name': 'reference', 'value': reference},
+            {'type': '0', 'name': 'rows', 'value': '2'},
+        ],
+    }
+
+
+def _field_map(widget: dict) -> dict[str, str]:
+    return {str(field.get('name')): str(field.get('value')) for field in (widget.get('fields') or [])}
+
+
+def _keep_widget(widget: dict) -> dict:
+    payload = {
+        key: widget[key]
+        for key in ('widgetid', 'type', 'name', 'x', 'y', 'width', 'height', 'view_mode')
+        if key in widget
+    }
+    payload['fields'] = widget.get('fields') or []
+    return payload
+
+
+def _overview_with_traffic_grid(page: dict, graphid: str, reference: str) -> tuple[dict, bool]:
+    widgets = list(page.get('widgets') or [])
+    grid = next((widget for widget in widgets if widget.get('type') == 'graphprototype'), {})
+    fields = _field_map(grid)
+    ok = (
+        str(grid.get('name') or '') == 'Traffic'
+        and str(grid.get('width')) == '72'
+        and str(grid.get('height')) == '14'
+        and str(grid.get('y')) == '6'
+        and fields.get('columns') == '3'
+        and fields.get('rows') == '2'
+        and fields.get('graphid.0') == graphid
+    )
+    payload = {
+        key: page[key]
+        for key in ('dashboard_pageid', 'name', 'display_period')
+        if key in page
+    }
+    if ok:
+        payload['widgets'] = [_keep_widget(widget) for widget in widgets]
+        return payload, False
+    kept = [
+        _keep_widget(widget)
+        for widget in widgets
+        if widget.get('type') != 'graphprototype'
+    ]
+    payload['widgets'] = kept + [_traffic_grid_widget(graphid, reference, '6')]
+    return payload, True
+
+
+def _keep_page(page: dict) -> dict:
+    payload = {
+        key: page[key]
+        for key in ('dashboard_pageid', 'name', 'display_period')
+        if key in page
+    }
+    payload['widgets'] = [_keep_widget(widget) for widget in (page.get('widgets') or [])]
+    return payload
+
+
+def patch_observability_traffic_grids(api, observability_templateid, http_templateid) -> dict[str, str]:
+    """Inject EXOS 3x2 traffic grids onto companion maps. Graph prototypes live on HTTP."""
+    interface_graph = _graph_prototype_id(
+        api, http_templateid, INTERFACE_TRAFFIC_PREFIX, TRAFFIC_GRAPH_SUFFIX
+    )
+    sdwan_graph = _graph_prototype_id(
+        api, http_templateid, SDWAN_TRAFFIC_PREFIX, TRAFFIC_GRAPH_SUFFIX
+    )
+    dashboards = api.templatedashboard.get(
+        templateids=[str(observability_templateid)],
+        output=['dashboardid', 'name'],
+        selectPages='extend',
+    ) or []
+    wanted = {
+        NETWORK_INTERFACES_DASHBOARD: (interface_graph, 'FITGR'),
+        PATH_DASHBOARD: (sdwan_graph, 'FSTGR'),
+    }
+    out: dict[str, str] = {}
+    for dashboard in dashboards:
+        name = str(dashboard.get('name') or '')
+        if name not in wanted:
+            continue
+        graphid, reference = wanted[name]
+        pages = list(dashboard.get('pages') or [])
+        overview = next((page for page in pages if page.get('name') == 'Overview'), None)
+        if overview is None:
+            raise SystemExit(f'{name} dashboard has no Overview page')
+        overview_payload, changed = _overview_with_traffic_grid(overview, graphid, reference)
+        if not changed:
+            out[name] = 'existing'
+            continue
+        api.templatedashboard.update(
+            dashboardid=dashboard['dashboardid'],
+            pages=[overview_payload]
+            + [_keep_page(page) for page in pages if page is not overview],
+        )
+        out[name] = 'updated'
+        logger.info('  %s: 3x2 traffic grid on Overview', name)
+    missing = sorted(set(wanted) - set(out))
+    if missing:
+        raise SystemExit('FortiGate Observability dashboards missing: ' + ', '.join(missing))
+    return out
+
 
 def apply_fortigate_http_patches(api, templateid) -> dict:
     """Fail closed: version-pinned HTTP compatibility fixes before NetBox writes."""
@@ -1121,6 +1284,7 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
     wan = patch_wan_state_triggers(api, templateid)
     delays = patch_slow_item_delays(api, templateid)
     history = patch_raw_master_history(api, templateid)
+    reboot = patch_reboot_warning(api, templateid)
     return {
         'zbx27082': zbx,
         'collector_compatibility': collectors,
@@ -1133,4 +1297,5 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
         'wan_triggers': wan,
         'delays': delays,
         'history': history,
+        'reboot': reboot,
     }

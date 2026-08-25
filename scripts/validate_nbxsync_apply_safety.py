@@ -250,6 +250,26 @@ def main() -> int:
         and 'api.trigger.update' in zbx_src,
         'companion imports before its ten dependencies are added idempotently',
     )
+    apply_src = _function_source(zbx_src, ast.parse(zbx_src), 'apply_fortigate_http_patches') or ''
+    record(
+        'network_fortigate_reboot_is_warning',
+        'patch_reboot_warning(api, templateid)' in apply_src
+        and "REBOOT_TRIGGER = 'FortiGate: Device has been restarted'" in zbx_src
+        and '_PRIORITY_WARNING = 2' in zbx_src,
+        'stock reboot Info becomes Warning on the Cloud HTTP parent',
+    )
+    record(
+        'network_fortigate_observability_traffic_grids',
+        'patch_observability_traffic_grids' in net_src
+        and 'patch_observability_traffic_grids(api, observability[0], http[0])' in fg
+        and fg.find('import_fortigate_observability_template')
+        < fg.find('patch_observability_traffic_grids')
+        and "type': 'graphprototype'" in zbx_src
+        and "'columns', 'value': '3'" in zbx_src
+        and "'rows', 'value': '2'" in zbx_src
+        and 'type: graphprototype' not in companion,
+        '3x2 traffic grids are injected after companion import; YAML has no nested graphprototypes',
+    )
     record(
         'network_fortigate_http_raw_master_history',
         'patch_raw_master_history' in zbx_src

@@ -916,22 +916,22 @@ zabbix_export:
                     - type: INTEGER
                       name: value_size
                       value: '28'
-        - uuid: 61255111abfe4dbe91cad34140fcf15d
-          name: Path
+        - uuid: 30fa71816865400da034d5752c8b7d1c
+          name: 'Network interfaces'
           pages:
             - name: Overview
               widgets:
                 - type: honeycomb
                   name: Interfaces
-                  width: '24'
-                  height: '4'
+                  width: '72'
+                  height: '6'
                   fields:
                     - type: STRING
                       name: items.0
                       value: 'Interface *: Link status'
                     - type: STRING
                       name: primary_label
-                      value: '{{ITEM.NAME}.regsub("^Interface \[([^[(]+)(?:\(|\]: Link status).*","\1")}'
+                      value: '{{ITEM.NAME}.regsub("^Interface \[([^\]]+)\]:\[([^[(]+)(?:\(|\]: Link status).*","\1/\2")}'
                     - type: INTEGER
                       name: interpolation
                       value: '0'
@@ -953,18 +953,74 @@ zabbix_export:
                     - type: STRING
                       name: thresholds.1.threshold
                       value: '1'
+            - name: Port
+              widgets:
+                - type: itemnavigator
+                  name: Counters
+                  width: '28'
+                  height: '11'
+                  fields:
+                    - type: INTEGER
+                      name: group_by.0.attribute
+                      value: '3'
+                    - type: STRING
+                      name: group_by.0.tag_name
+                      value: interface
+                    - type: STRING
+                      name: items.0
+                      value: 'Interface *: Link status'
+                    - type: STRING
+                      name: items.1
+                      value: 'Interface *: Speed'
+                    - type: STRING
+                      name: items.2
+                      value: 'Interface *: Inbound packets with errors'
+                    - type: STRING
+                      name: items.3
+                      value: 'Interface *: Outbound packets with errors'
+                    - type: STRING
+                      name: reference
+                      value: FINAV
+                - type: svggraph
+                  name: History
+                  x: '28'
+                  width: '44'
+                  height: '11'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 42A5F5
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.itemids.0._reference
+                      value: FINAV._itemid
+                    - type: STRING
+                      name: reference
+                      value: FIGRF
+                    - type: INTEGER
+                      name: legend
+                      value: '0'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+        - uuid: 61255111abfe4dbe91cad34140fcf15d
+          name: Path
+          pages:
+            - name: Overview
+              widgets:
                 - type: honeycomb
                   name: 'SD-WAN members'
-                  x: '24'
-                  width: '24'
-                  height: '4'
+                  width: '36'
+                  height: '6'
                   fields:
                     - type: STRING
                       name: items.0
                       value: 'SD-WAN *: Link status'
                     - type: STRING
                       name: primary_label
-                      value: '{{ITEM.NAME}.regsub("^SD-WAN (?:\[.*\]:\[)(.*)\]: Link status.*","\1")}'
+                      value: '{{ITEM.NAME}.regsub("^SD-WAN \[([^\]]+)\]:(?:\[.*\]:\[)(.*)\]: Link status.*","\1/\2")}'
                     - type: INTEGER
                       name: interpolation
                       value: '0'
@@ -994,22 +1050,28 @@ zabbix_export:
                       value: '10'
                 - type: honeycomb
                   name: 'SD-WAN health'
-                  x: '48'
-                  width: '24'
-                  height: '4'
+                  x: '36'
+                  width: '36'
+                  height: '6'
                   fields:
                     - type: STRING
                       name: items.0
                       value: 'SD-WAN *: Interface status'
                     - type: STRING
                       name: primary_label
-                      value: '{{ITEM.NAME}.regsub("^SD-WAN \[([^\]]+)(?:\]:).*","\1")}'
+                      value: '{{ITEM.NAME}.regsub("^SD-WAN \[([^\]]+)\]:\[([^\]]+)\]:(?:\[)([^\]]+)\].*","\1/\2/\3")}'
                     - type: INTEGER
                       name: interpolation
                       value: '0'
                     - type: INTEGER
                       name: show.0
                       value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
                     - type: STRING
                       name: reference
                       value: FHMAP
@@ -1031,6 +1093,61 @@ zabbix_export:
                     - type: STRING
                       name: thresholds.2.threshold
                       value: '10'
+            - name: Loss
+              widgets:
+                - type: honeycomb
+                  name: 'SD-WAN loss'
+                  width: '72'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'SD-WAN *: Packets loss'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^SD-WAN \[([^\]]+)\]:\[([^\]]+)\]:(?:\[)([^\]]+)\].*","\1/\2/\3")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '1'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: secondary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: secondary_label_size
+                      value: '22'
+                    - type: STRING
+                      name: reference
+                      value: FLMAP
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '5'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: FF465C
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '20'
             - name: Probe
               widgets:
                 - type: itemnavigator
@@ -1043,7 +1160,7 @@ zabbix_export:
                       value: '3'
                     - type: STRING
                       name: group_by.0.tag_name
-                      value: interface
+                      value: vdom
                     - type: STRING
                       name: items.0
                       value: 'SD-WAN *: Interface status'

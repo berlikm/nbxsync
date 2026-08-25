@@ -27,7 +27,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/extreme_port_speed_expect_snmp/` | Extreme Port Speed Expect by SNMP | nested on VOSS + EXOS Observability; mismatch Warning on; empty `ifAlias` silent; discards **off**; `{$IF.UTIL.MAX:"USW"}=101` |
 | `templates/extreme_routing_snmp/` | Extreme Routing by SNMP (OSPF) | imported; not linked (YAML High if linked) |
 | `templates/extreme_iq_engine_snmp/` | Extreme IQ Engine by SNMP | imported; **Health** dashboard; severities per [02](02-extreme-access-points.md) |
-| `templates/fortinet_fortigate_observability/` | FortiGate Observability | companion; nests Cloud **FortiGate by HTTP** 7.0-2 + ICMP Ping; **Health** (Overview/HA) + **Path** (maps/Probe) — [03](03-fortinet.md) |
+| `templates/fortinet_fortigate_observability/` | FortiGate Observability | companion; nests Cloud **FortiGate by HTTP** 7.0-2 + ICMP Ping; **Health** + **Network interfaces** + **Path** (Loss/Probe) — [03](03-fortinet.md) |
 
 ## Related
 

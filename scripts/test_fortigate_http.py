@@ -80,14 +80,18 @@ def _companion_template() -> dict:
     return doc['zabbix_export']['templates'][0]
 
 
-def _zabbix_regsub_group1(macro: str, item_name: str) -> str | None:
-    match = re.search(r'\.regsub\("(.+)","\\1"\)}$', macro)
+def _zabbix_regsub(macro: str, item_name: str) -> str | None:
+    match = re.search(r'\.regsub\("(.+)","(.*)"\)}$', macro)
     if not match:
         return None
     found = re.search(match.group(1), item_name)
     if not found:
         return None
-    return found.group(1)
+    return found.expand(match.group(2))
+
+
+def _widget_fields(widget: dict) -> dict:
+    return {field.get('name'): field.get('value') for field in widget.get('fields') or []}
 
 
 class FirewallRoleMacroTests(unittest.TestCase):
@@ -411,6 +415,8 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertNotIn('/api/v2/monitor/system/ha-nonsync-checksums', companion)
         self.assertIn("typeof maps[j][vdom] === 'undefined'", companion)
         self.assertIn('name: Path', companion)
+        self.assertIn("name: 'Network interfaces'", companion)
+        self.assertIn('- name: Loss', companion)
         self.assertIn('request = new HttpRequest();', companion)
         self.assertNotIn('FortiGate by SNMP', companion)
         self.assertIn('{$CPU.UTIL.CRIT}', companion)
@@ -469,13 +475,11 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual((ha_item.get('valuemap') or {}).get('name'), 'HA role')
 
         dashes = {dash['name']: dash for dash in tpl.get('dashboards') or []}
-        self.assertEqual(set(dashes), {'Health', 'Path'})
+        self.assertEqual(set(dashes), {'Health', 'Network interfaces', 'Path'})
         health_pages = [page['name'] for page in dashes['Health']['pages']]
-        path_pages = [page['name'] for page in dashes['Path']['pages']]
         self.assertEqual(health_pages, ['Overview', 'HA'])
-        self.assertEqual(path_pages, ['Overview', 'Probe'])
         self.assertNotIn('Path', health_pages)
-        self.assertNotIn('Diagnostics', health_pages + path_pages)
+        self.assertNotIn('Diagnostics', health_pages)
 
         overview = next(page for page in dashes['Health']['pages'] if page['name'] == 'Overview')
         widgets = overview['widgets']
@@ -531,38 +535,157 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(memory_fields.get('thresholds.2.threshold'), '88')
         self.assertEqual(memory_fields.get('thresholds.3.threshold'), '95')
 
+    def test_observability_path_and_interfaces_are_vdom_maps(self):
+        tpl = _companion_template()
+        dashes = {dash['name']: dash for dash in tpl.get('dashboards') or []}
+        self.assertEqual(
+            [page['name'] for page in dashes['Network interfaces']['pages']],
+            ['Overview', 'Port'],
+        )
+        self.assertEqual(
+            [page['name'] for page in dashes['Path']['pages']],
+            ['Overview', 'Loss', 'Probe'],
+        )
+        self.assertFalse(
+            any(
+                widget.get('type') == 'graphprototype'
+                for dash in tpl['dashboards']
+                for page in dash['pages']
+                for widget in page['widgets']
+            )
+        )
+
+        ni_overview = next(
+            page for page in dashes['Network interfaces']['pages'] if page['name'] == 'Overview'
+        )
+        self.assertEqual([widget.get('type') for widget in ni_overview['widgets']], ['honeycomb'])
+        ni_map = ni_overview['widgets'][0]
+        self.assertEqual(ni_map.get('name'), 'Interfaces')
+        self.assertEqual((str(ni_map.get('width')), str(ni_map.get('height'))), ('72', '6'))
+        ni_fields = _widget_fields(ni_map)
+        self.assertEqual(ni_fields.get('items.0'), 'Interface *: Link status')
+        self.assertEqual(str(ni_fields.get('interpolation')), '0')
+        self.assertIsNone(ni_fields.get('show.1'))
+        self.assertIn('(?:', str(ni_fields.get('primary_label')))
+        self.assertEqual(
+            _zabbix_regsub(
+                str(ni_fields.get('primary_label')),
+                'Interface [root]:[wan1(WAN)]: Link status',
+            ),
+            'root/wan1',
+        )
+        self.assertEqual(
+            _zabbix_regsub(
+                str(ni_fields.get('primary_label')),
+                'Interface [Untrust]:[wan2]: Link status',
+            ),
+            'Untrust/wan2',
+        )
+
+        port = next(page for page in dashes['Network interfaces']['pages'] if page['name'] == 'Port')
+        nav = next(widget for widget in port['widgets'] if widget.get('type') == 'itemnavigator')
+        port_fields = _widget_fields(nav)
+        self.assertEqual(port_fields.get('group_by.0.tag_name'), 'interface')
+        self.assertEqual(port_fields.get('items.0'), 'Interface *: Link status')
+        self.assertEqual(port_fields.get('items.1'), 'Interface *: Speed')
+        self.assertNotIn('Bits received', ' '.join(str(value) for value in port_fields.values()))
+
         path_overview = next(page for page in dashes['Path']['pages'] if page['name'] == 'Overview')
         honey = [widget for widget in path_overview['widgets'] if widget.get('type') == 'honeycomb']
-        self.assertEqual([widget.get('name') for widget in honey], ['Interfaces', 'SD-WAN members', 'SD-WAN health'])
-        self.assertTrue(all(str(widget.get('width')) == '24' and str(widget.get('height')) == '4' for widget in honey))
-        self.assertEqual([widget.get('type') for widget in path_overview['widgets']], ['honeycomb', 'honeycomb', 'honeycomb'])
-        self.assertFalse(any(widget.get('type') == 'graphprototype' for dash in tpl['dashboards'] for page in dash['pages'] for widget in page['widgets']))
+        self.assertEqual([widget.get('name') for widget in honey], ['SD-WAN members', 'SD-WAN health'])
+        self.assertEqual(
+            [widget.get('type') for widget in path_overview['widgets']],
+            ['honeycomb', 'honeycomb'],
+        )
+        self.assertTrue(
+            all(str(widget.get('width')) == '36' and str(widget.get('height')) == '6' for widget in honey)
+        )
+        self.assertNotIn('Interfaces', [widget.get('name') for widget in honey])
 
-        samples = {
-            'Interfaces': ('Interface [wan1(WAN)]: Link status', 'wan1'),
-            'SD-WAN members': ('SD-WAN [virtual-wan-link]:[port1]: Link status', 'port1'),
-            'SD-WAN health': ('SD-WAN [Google]:[wan1]: Interface status', 'Google'),
-        }
-        for widget in honey:
-            fields = {field.get('name'): field.get('value') for field in widget.get('fields') or []}
-            label = str(fields.get('primary_label') or '')
-            self.assertIn('(?:', label, widget.get('name'))
-            self.assertEqual(str(fields.get('show.0')), '1', widget.get('name'))
-            self.assertIsNone(fields.get('show.1'), widget.get('name'))
-            self.assertIsNone(fields.get('primary_label_bold'), widget.get('name'))
-            item_name, want = samples[widget['name']]
-            self.assertEqual(_zabbix_regsub_group1(label, item_name), want, widget.get('name'))
-            self.assertEqual(str(fields.get('interpolation')), '0')
-            self.assertEqual(fields.get('thresholds.0.color'), '0EC9AC')
-            self.assertEqual(fields.get('thresholds.1.color'), 'FF465C')
+        member_fields = _widget_fields(honey[0])
+        health_fields = _widget_fields(honey[1])
+        self.assertEqual(member_fields.get('items.0'), 'SD-WAN *: Link status')
+        self.assertEqual(health_fields.get('items.0'), 'SD-WAN *: Interface status')
+        self.assertEqual(str(member_fields.get('interpolation')), '0')
+        self.assertEqual(str(health_fields.get('interpolation')), '0')
+        self.assertIsNone(member_fields.get('show.1'))
+        self.assertIsNone(health_fields.get('show.1'))
+        self.assertIn('(?:', str(member_fields.get('primary_label')))
+        self.assertIn('(?:', str(health_fields.get('primary_label')))
+        self.assertEqual(
+            _zabbix_regsub(
+                str(member_fields.get('primary_label')),
+                'SD-WAN [root]:[virtual-wan-link]:[wan1]: Link status',
+            ),
+            'root/wan1',
+        )
+        self.assertEqual(
+            _zabbix_regsub(
+                str(member_fields.get('primary_label')),
+                'SD-WAN [Untrust]:[virtual-wan-link]:[wan2]: Link status',
+            ),
+            'Untrust/wan2',
+        )
+        self.assertEqual(
+            _zabbix_regsub(
+                str(health_fields.get('primary_label')),
+                'SD-WAN [root]:[Google]:[wan1]: Interface status',
+            ),
+            'root/Google/wan1',
+        )
+        self.assertEqual(
+            _zabbix_regsub(
+                str(health_fields.get('primary_label')),
+                'SD-WAN [Untrust]:[Google]:[wan2]: Interface status',
+            ),
+            'Untrust/Google/wan2',
+        )
+        self.assertNotEqual(
+            _zabbix_regsub(
+                str(health_fields.get('primary_label')),
+                'SD-WAN [root]:[Google]:[wan1]: Interface status',
+            ),
+            _zabbix_regsub(
+                str(health_fields.get('primary_label')),
+                'SD-WAN [root]:[Google]:[wan2]: Interface status',
+            ),
+        )
+
+        loss = next(page for page in dashes['Path']['pages'] if page['name'] == 'Loss')
+        loss_map = loss['widgets'][0]
+        self.assertEqual(loss_map.get('type'), 'honeycomb')
+        loss_fields = _widget_fields(loss_map)
+        self.assertEqual(loss_fields.get('items.0'), 'SD-WAN *: Packets loss')
+        self.assertEqual(str(loss_fields.get('interpolation')), '1')
+        self.assertEqual(str(loss_fields.get('show.0')), '1')
+        self.assertEqual(str(loss_fields.get('show.1')), '2')
+        self.assertEqual(str(loss_fields.get('thresholds.1.threshold')), '5')
+        self.assertEqual(str(loss_fields.get('thresholds.2.threshold')), '20')
+        self.assertEqual(
+            _zabbix_regsub(
+                str(loss_fields.get('primary_label')),
+                'SD-WAN [root]:[Google]:[wan1]: Packets loss',
+            ),
+            'root/Google/wan1',
+        )
+        self.assertEqual(
+            _zabbix_regsub(
+                str(loss_fields.get('primary_label')),
+                'SD-WAN [Untrust]:[Google]:[wan1]: Packets loss',
+            ),
+            'Untrust/Google/wan1',
+        )
 
         probe = next(page for page in dashes['Path']['pages'] if page['name'] == 'Probe')
         nav = next(widget for widget in probe['widgets'] if widget.get('type') == 'itemnavigator')
         graph = next(widget for widget in probe['widgets'] if widget.get('type') == 'svggraph')
-        nav_fields = {field.get('name'): field.get('value') for field in nav.get('fields') or []}
-        graph_fields = {field.get('name'): field.get('value') for field in graph.get('fields') or []}
-        self.assertEqual(nav_fields.get('group_by.0.tag_name'), 'interface')
+        nav_fields = _widget_fields(nav)
+        graph_fields = _widget_fields(graph)
+        self.assertEqual(nav_fields.get('group_by.0.tag_name'), 'vdom')
+        self.assertEqual(nav_fields.get('items.0'), 'SD-WAN *: Interface status')
         self.assertEqual(nav_fields.get('items.2'), 'SD-WAN *: Packets loss')
+        self.assertEqual(nav_fields.get('items.3'), 'SD-WAN *: Latency')
+        self.assertEqual(nav_fields.get('items.4'), 'SD-WAN *: Jitter')
         self.assertEqual(graph_fields.get('ds.0.itemids.0._reference'), 'FNAVP._itemid')
 
     def test_observability_dependencies_are_idempotent(self):
@@ -751,6 +874,171 @@ class FirewallRoleMacroTests(unittest.TestCase):
             patch_dashboard_time_periods(api, '123'),
             {'dashboards': 0, 'widgets': 0},
         )
+
+    def test_reboot_warning_patch_is_idempotent(self):
+        from types import SimpleNamespace
+        from fortigate_http_zabbix import REBOOT_TRIGGER, patch_reboot_warning
+
+        class TriggerAPI:
+            def __init__(self):
+                self.row = {
+                    'triggerid': '9',
+                    'description': REBOOT_TRIGGER,
+                    'priority': '1',
+                }
+                self.updated = []
+
+            def get(self, **_kwargs):
+                return [self.row]
+
+            def update(self, **kwargs):
+                self.updated.append(kwargs)
+                self.row['priority'] = str(kwargs['priority'])
+
+        trigger = TriggerAPI()
+        api = SimpleNamespace(trigger=trigger)
+        self.assertEqual(patch_reboot_warning(api, '123'), 'updated')
+        self.assertEqual(patch_reboot_warning(api, '123'), 'existing')
+        self.assertEqual(len(trigger.updated), 1)
+        self.assertEqual(trigger.updated[0]['priority'], 2)
+
+        trigger.row = {'triggerid': '9', 'description': 'other', 'priority': '1'}
+        with self.assertRaises(SystemExit):
+            patch_reboot_warning(api, '123')
+
+    def test_observability_traffic_grids_are_idempotent(self):
+        from copy import deepcopy
+        from types import SimpleNamespace
+        from fortigate_http_zabbix import patch_observability_traffic_grids
+
+        class GraphPrototypeAPI:
+            def get(self, **_kwargs):
+                return [
+                    {
+                        'graphid': 'g-if',
+                        'name': 'Interface [{#VDOM}]:[{#IFNAME}({#IFALIAS})]: Network traffic',
+                    },
+                    {
+                        'graphid': 'g-sd',
+                        'name': 'SD-WAN [{#VDOM}]:[{#ZONE}]:[{#NAME}]: Network traffic',
+                    },
+                    {
+                        'graphid': 'g-bw',
+                        'name': 'SD-WAN [{#VDOM}]:[{#ZONE}]:[{#NAME}]: Bandwidth',
+                    },
+                ]
+
+        class TemplateDashboardAPI:
+            def __init__(self):
+                self.rows = [
+                    {
+                        'dashboardid': 'd-if',
+                        'name': 'Network interfaces',
+                        'pages': [
+                            {
+                                'dashboard_pageid': 'p-if',
+                                'name': 'Overview',
+                                'widgets': [{
+                                    'widgetid': 'w-if',
+                                    'type': 'honeycomb',
+                                    'name': 'Interfaces',
+                                    'x': '0',
+                                    'y': '0',
+                                    'width': '72',
+                                    'height': '6',
+                                    'fields': [],
+                                }],
+                            },
+                            {
+                                'dashboard_pageid': 'p-port',
+                                'name': 'Port',
+                                'widgets': [],
+                            },
+                        ],
+                    },
+                    {
+                        'dashboardid': 'd-path',
+                        'name': 'Path',
+                        'pages': [
+                            {
+                                'dashboard_pageid': 'p-path',
+                                'name': 'Overview',
+                                'widgets': [{
+                                    'widgetid': 'w-sd',
+                                    'type': 'honeycomb',
+                                    'name': 'SD-WAN members',
+                                    'x': '0',
+                                    'y': '0',
+                                    'width': '36',
+                                    'height': '6',
+                                    'fields': [],
+                                }],
+                            },
+                            {
+                                'dashboard_pageid': 'p-loss',
+                                'name': 'Loss',
+                                'widgets': [],
+                            },
+                        ],
+                    },
+                    {
+                        'dashboardid': 'd-health',
+                        'name': 'Health',
+                        'pages': [{'dashboard_pageid': 'p-h', 'name': 'Overview', 'widgets': []}],
+                    },
+                ]
+                self.updated = []
+
+            def get(self, **_kwargs):
+                return deepcopy(self.rows)
+
+            def update(self, **kwargs):
+                self.updated.append(kwargs)
+                for row in self.rows:
+                    if row['dashboardid'] == kwargs['dashboardid']:
+                        row['pages'] = deepcopy(kwargs['pages'])
+
+        templatedashboard = TemplateDashboardAPI()
+        api = SimpleNamespace(
+            graphprototype=GraphPrototypeAPI(),
+            templatedashboard=templatedashboard,
+        )
+        self.assertEqual(
+            patch_observability_traffic_grids(api, 'obs', 'http'),
+            {'Network interfaces': 'updated', 'Path': 'updated'},
+        )
+        self.assertEqual(
+            patch_observability_traffic_grids(api, 'obs', 'http'),
+            {'Network interfaces': 'existing', 'Path': 'existing'},
+        )
+        self.assertEqual(len(templatedashboard.updated), 2)
+        by_id = {row['dashboardid']: row for row in templatedashboard.updated}
+        if_pages = by_id['d-if']['pages']
+        path_pages = by_id['d-path']['pages']
+        self.assertEqual([page['name'] for page in if_pages], ['Overview', 'Port'])
+        self.assertEqual([page['name'] for page in path_pages], ['Overview', 'Loss'])
+        if_grid = next(
+            widget for widget in if_pages[0]['widgets'] if widget.get('type') == 'graphprototype'
+        )
+        path_grid = next(
+            widget for widget in path_pages[0]['widgets'] if widget.get('type') == 'graphprototype'
+        )
+        self.assertEqual(if_grid.get('name'), 'Traffic')
+        self.assertEqual((str(if_grid.get('y')), str(if_grid.get('width')), str(if_grid.get('height'))), ('6', '72', '14'))
+        if_fields = _widget_fields(if_grid)
+        path_fields = _widget_fields(path_grid)
+        self.assertEqual(if_fields.get('columns'), '3')
+        self.assertEqual(if_fields.get('rows'), '2')
+        self.assertEqual(if_fields.get('graphid.0'), 'g-if')
+        self.assertEqual(if_fields.get('reference'), 'FITGR')
+        self.assertEqual(path_fields.get('graphid.0'), 'g-sd')
+        self.assertEqual(path_fields.get('reference'), 'FSTGR')
+        self.assertEqual(if_pages[0]['widgets'][0].get('type'), 'honeycomb')
+
+        templatedashboard.rows = [row for row in templatedashboard.rows if row['name'] != 'Path']
+        with self.assertRaises(SystemExit):
+            patch_observability_traffic_grids(api, 'obs', 'http')
+
     def test_stock_collectors_are_not_vdom_rewrites(self):
         from fortigate_http import script_is_vdom_mutated, stock_http_collector_script
 
