@@ -198,6 +198,10 @@ TPL_NAMES = {
     'dell_r840_http': 'DELL PowerEdge R840 by HTTP',
     'mssql_odbc': 'MSSQL by ODBC',
     'mssql_agent2': 'MSSQL by Zabbix agent 2',
+    # Companion YAML in zabbix/templates/mssql_observability/. Soft-resolve:
+    # zerotouch assigns it on MSSQL roles only after someone imports the YAML.
+    # Missing in Cloud is a warning, not an apply abort, and never HostSyncs.
+    'mssql_observability': 'MSSQL Observability',
     'pure_storage_http': 'Pure Storage FlashArray v2 by HTTP',
     'gitlab_http': 'GitLab by HTTP',
     # Created in Zabbix: clone of Network Generic without snmptrap.fallback
@@ -587,6 +591,7 @@ OPTIONAL_TPL_KEYS = frozenset({
     'acronis_agent',
     'sccm_agent',
     'print_spool_agent',
+    'mssql_observability',
 })
 
 # Alternate Zabbix names tried in order when the primary TPL_NAMES entry is absent.
@@ -1926,6 +1931,9 @@ def step7_template_assignments(server):
         ('sap_agent', 'SAP HANA'),
         ('acronis_agent', 'Acronis Management'),
         ('sccm_agent', 'SCCM'),
+        # Companion YAML may not be imported yet — skip without failing apply.
+        ('mssql_observability', 'MSSQL'),
+        ('mssql_observability', 'MSSQL Query Server'),
     ]
     for tpl_key, role_name in stub_assignments:
         if tpl_key in TPL:
@@ -2334,6 +2342,8 @@ def step11_macros(server):
         ('{$CPU.UTIL.CRIT}', '80', 'Server'),
         ('{$MEM.UTIL.CRIT}', '85', 'VDI'),
         ('{$MSSQL.DSN}', 'nbxsync', 'MSSQL'),
+        ('{$MSSQL.URI}', 'sqlserver://localhost:1433', 'MSSQL'),
+        ('{$MSSQL.URI}', 'sqlserver://localhost:1433', 'MSSQL Query Server'),
         ('{$VMWARE.URL}', 'https://{{ object.primary_ip4.address.ip }}/sdk', 'vCenter'),
     ]
     for macro_name, macro_value, role_name in text_specs:

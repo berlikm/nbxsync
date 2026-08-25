@@ -1,0 +1,26 @@
+[
+  {
+    "Name": "MSSQLSERVER",
+    "DisplayName": "SQL Server (MSSQLSERVER)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "SQLBrowser",
+    "DisplayName": "SQL Server Browser",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "SQLSERVERAGENT",
+    "DisplayName": "SQL Server Agent (MSSQLSERVER)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "MSSQLFDLauncher",
+    "DisplayName": "SQL Full-text Filter Daemon Launcher (MSSQLSERVER)",
+    "State": "Running",
+    "StartMode": "Manual"
+  }
+]

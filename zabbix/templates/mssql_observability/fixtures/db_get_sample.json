@@ -1,0 +1,7 @@
+[
+  {"dbname": "master", "recovery_model": "3"},
+  {"dbname": "tempdb", "recovery_model": "3"},
+  {"dbname": "model", "recovery_model": "3"},
+  {"dbname": "msdb", "recovery_model": "3"},
+  {"dbname": "ASP", "recovery_model": "1"}
+]

@@ -1,0 +1,86 @@
+[
+  {
+    "Name": "MSSQLSERVER",
+    "DisplayName": "SQL Server (MSSQLSERVER)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "SQLBrowser",
+    "DisplayName": "SQL Server Browser",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "SQLSERVERAGENT",
+    "DisplayName": "SQL Server Agent (MSSQLSERVER)",
+    "State": "Stopped",
+    "StartMode": "Manual"
+  },
+  {
+    "Name": "MSSQLFDLauncher",
+    "DisplayName": "SQL Full-text Filter Daemon Launcher (MSSQLSERVER)",
+    "State": "Running",
+    "StartMode": "Manual"
+  },
+  {
+    "Name": "MSSQL$PITDV02",
+    "DisplayName": "SQL Server (PITDV02)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "SQLAgent$PITDV02",
+    "DisplayName": "SQL Server Agent (PITDV02)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "MSSQLFDLauncher$PITDV02",
+    "DisplayName": "SQL Full-text Filter Daemon Launcher (PITDV02)",
+    "State": "Running",
+    "StartMode": "Manual"
+  },
+  {
+    "Name": "MSSQL$PCONF02",
+    "DisplayName": "SQL Server (PCONF02)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "SQLAgent$PCONF02",
+    "DisplayName": "SQL Server Agent (PCONF02)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "MSSQL$PWARE01",
+    "DisplayName": "SQL Server (PWARE01)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "MSSQL$PJIRA01",
+    "DisplayName": "SQL Server (PJIRA01)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "MSSQL$PAPDB01",
+    "DisplayName": "SQL Server (PAPDB01)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "SQLTELEMETRY$PITDV02",
+    "DisplayName": "SQL Server CEIP (PITDV02)",
+    "State": "Running",
+    "StartMode": "Auto"
+  },
+  {
+    "Name": "SQLWriter",
+    "DisplayName": "SQL Server VSS Writer",
+    "State": "Running",
+    "StartMode": "Auto"
+  }
+]

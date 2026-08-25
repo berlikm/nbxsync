@@ -2,7 +2,7 @@
 
 Operator macros live in [`docs/netbox-zabbix/configuration.md`](../../docs/netbox-zabbix/configuration.md) §11.3. This note is the build spec for **SQL metrics on every named instance** without putting instance names in NetBox.
 
-YAML is **not** in this repo yet. Do not invent host prototypes. Do not return to **MSSQL by ODBC**.
+YAML: [`templates/mssql_observability/template_mssql_observability.yaml`](../templates/mssql_observability/template_mssql_observability.yaml). Tests: `python3 scripts/test_mssql_observability.py` (WMI fixtures + YAML contract; no live Windows/SQL here). Do not invent host prototypes. Do not return to **MSSQL by ODBC**. Do not bind stock graph prototypes (same nested-graph lesson as Forti).
 
 Verified against official Zabbix **7.0**:
 
@@ -16,7 +16,7 @@ Verified against official Zabbix **7.0**:
 
 Keep linking stock **MSSQL by Zabbix agent 2** on roles **MSSQL** and **MSSQL Query Server** (zerotouch already does). That template has **one** `{$MSSQL.URI}` and then LLD of databases / jobs / Always On **on that one connection**.
 
-Add a thin companion **MSSQL Observability** (name TBD, same pattern as FortiGate Observability):
+Add a thin companion **MSSQL Observability** (same pattern as FortiGate Observability, but **not** nested):
 
 - Discovers **named** Windows SQL instances (`MSSQL$PITDV02`, …)
 - Calls the **same plugin keys** as stock, with a URI that includes `{#MSSQL.INSTANCE}`
@@ -89,13 +89,13 @@ Windows by agent already owns `service.discovery`. A second template with the sa
 
 Type: Zabbix agent (active if that is how Windows is polled).
 
-Key (unique):
+Key (unique; **no `$` in the key**):
 
 ```
-wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE 'MSSQL$%'"]
+wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE 'MSSQL%'"]
 ```
 
-`MSSQLSERVER` is **intentionally omitted** (no `$`). `SQLSERVERAGENT` / `SQLAgent$…` / `SQLBrowser` do not match `MSSQL$%`.
+`LIKE 'MSSQL$%'` would put `$` in a Zabbix item key and still need a regex-safe filter (`$` is end-of-line in LLD regex). `LIKE 'MSSQL%'` is the documented `wmi.getall` shape; JS then keeps only `/^MSSQL\$/` and drops `MSSQLSERVER` plus `MSSQLFDLauncher` / `MSSQLFDLauncher$…`. `SQLSERVERAGENT` / `SQLAgent$…` / `SQLBrowser` never match `MSSQL%`. Default-only hosts (`MSQL01`) correctly yield `[]`.
 
 If WMI is locked down on some boxes, fallback is a loadable/userparameter that reads:
 
@@ -105,7 +105,7 @@ Same JSON shape after preprocessing. Do not enable `system.run`.
 
 ### Preprocessing → LLD JSON
 
-JavaScript (discard unchanged heartbeat `1h`):
+JavaScript (`lld_named_instances.js`, discard unchanged heartbeat `1h`). Same script is embedded in the YAML (tests compare them) and run under Node against WMI fixtures:
 
 For each WMI row `Name` = `MSSQL$PITDV02`:
 
@@ -211,7 +211,7 @@ Same password as `{$MSSQL.PASSWORD}` on that NetBox object. Repeat on PITDV02, P
 
 | Object | Assignment |
 |---|---|
-| Role **MSSQL** / **MSSQL Query Server** | stock **MSSQL by Zabbix agent 2** (already) + companion **MSSQL Observability** (when YAML exists) |
+| Role **MSSQL** / **MSSQL Query Server** | stock **MSSQL by Zabbix agent 2** (already) + companion **MSSQL Observability** (soft: only after YAML import) |
 | Role | `{$MSSQL.URI}` = `sqlserver://localhost:1433` |
 | Role | `{$MSSQL.USER}` only if the login **name** is global |
 | **Device / VM** | `{$MSSQL.PASSWORD}` (and USER if not global) — like vCenter, not like a shared Forti token |
@@ -274,14 +274,28 @@ Reporting Service QUEUE (LogicMonitor leftover) is still a **custom query**, not
 
 ---
 
-## Implementation sketch (when building YAML)
+## What the tests cover vs canary
 
-New folder: `zabbix/templates/mssql_observability/` (YAML + README). Template name **MSSQL Observability**.
+**Covered in-repo** (`scripts/test_mssql_observability.py`):
 
-- Group: Templates/Databases  
-- Do **not** nest stock MSSQL (nesting would still be one URI). **Link alongside** stock on the role (two templates, different keys).  
-- One LLD rule, filters, five prototype masters above, census item, valuemap none required.  
-- Dashboard optional and later: honeycomb of instance version/unsupported is enough; do not bind stock graph prototypes (same nested-graph lesson as Forti).  
-- Import from `configure_nbxsync_zerotouch.py` or a small `--apply-mssql` later; **do not** HostSync the fleet from a template import alone.
+- Default-only WMI fixture (`MSSQLSERVER` + Browser + Agent + FDLauncher) → LLD `[]`
+- `MSSQL10` fixture → five URIs `sqlserver://localhost/PITDV02` … `PAPDB01`, no port
+- JS drops `MSSQLFDLauncher$…`, `SQLAgent$…`, telemetry, writer
+- Single WMI object (not array) still becomes one LLD row
+- Invalid JSON throws (item unsupported) instead of a fake empty census
+- YAML: Zabbix 7.0, official `Templates/Databases` UUID, no nest of stock, no `service.discovery`, no `graphprototype`, no `net.tcp.service`, no Disaster, prototypes use `{#MSSQL.URI}` not `{$MSSQL.URI}`, MIN default 0
+- Zerotouch: optional template, no YAML import, URI on both MSSQL roles
 
-Assign on Device Role **MSSQL** and **MSSQL Query Server** the same way as stock (zerotouch `ZabbixTemplateAssignment`).
+**Still canary-only** (no Windows/SQL in this environment): plugin `mssql.version` against a real named instance, WMI on Agent 2, login created *inside each instance*, SQL Browser / dynamic port, HostSync not creating PITDV02 hosts.
+
+## Implementation (v1 shipped)
+
+Folder: `zabbix/templates/mssql_observability/` (YAML + `lld_named_instances.js` + fixtures). Template name **MSSQL Observability**.
+
+- Group: Templates/Databases (official UUID so import joins the existing group)
+- Do **not** nest stock MSSQL. **Link alongside** stock on the role (two templates, different keys).
+- One WMI master, dependent LLD + census, five plugin prototype masters, db count via `$.length()`, version nodata Average, census Average when MIN>0.
+- No dashboard (do not bind stock graph prototypes).
+- Import the YAML in Zabbix (GUI or a later `--apply-mssql`); **do not** HostSync the fleet from a template import alone.
+
+Zerotouch `ZabbixTemplateAssignment` on Device Role **MSSQL** and **MSSQL Query Server** is **soft**: if Cloud does not have the template yet, apply warns and continues. It also writes `{$MSSQL.URI}=sqlserver://localhost:1433` on those roles. `NBX_MSSQL_USER` / `NBX_MSSQL_PASS` still land on the **role** when set — move PASSWORD to the Device when hosts differ; this change does not migrate existing role secrets.

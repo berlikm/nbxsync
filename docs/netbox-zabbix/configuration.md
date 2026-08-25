@@ -361,6 +361,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 |---|---|---|
 | MSSQL by Zabbix agent 2 | Device Role MSSQL | |
 | MSSQL by Zabbix agent 2 | Device Role MSSQL Query Server | |
+| MSSQL Observability | Device Role MSSQL, MSSQL Query Server | Companion named-instance LLD. Zerotouch assigns **only after** the YAML is imported; missing template does not fail apply |
 | VMware FQDN | Device Role vCenter | **Only** on vCenter — not on ESXi platforms. Secrets via §11.3 |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if no platform rule matches |
@@ -573,7 +574,7 @@ Port-label grammar and staged enablement: *[Extreme switching — Confluence TBD
 | Macro | Value | Device Role |
 |---|---|---|
 | `{$CPU.UTIL.CRIT}` | 90 | MSSQL |
-| `{$MSSQL.URI}` | `sqlserver://localhost:1433` | MSSQL |
+| `{$MSSQL.URI}` | `sqlserver://localhost:1433` | MSSQL, MSSQL Query Server |
 | `{$CPU.UTIL.CRIT}` | 80 | Server |
 | `{$MEM.UTIL.CRIT}` | 85 | VDI |
 | `{$VMWARE.URL}` | `https://{{ object.primary_ip4.address.ip }}/sdk` | vCenter |
@@ -635,15 +636,16 @@ Username format: `<SSO_DOMAIN>\LogicMonitor` (e.g. `VCENTER-SSO.SENSIRION\LogicM
 
 #### MSSQL (Agent 2; URI + per-host login)
 
-Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}`, not ODBC DSN. Set URI once on the role. Put the password (and user if the login name is not fleet-wide) on the **Device or VM**. Do **not** create `{$MSSQL.DSN:"PITDV02"}` context rows — Agent 2 does not read DSN, and named instances are LLD on the host ([notes/mssql-agent2-instances.md](../../zabbix/notes/mssql-agent2-instances.md)).
+Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}`, not ODBC DSN. Set URI once on the role. Put the password (and user if the login name is not fleet-wide) on the **Device or VM**. Do **not** create `{$MSSQL.DSN:"PITDV02"}` context rows — Agent 2 does not read DSN, and named instances are LLD on the host ([notes/mssql-agent2-instances.md](../../zabbix/notes/mssql-agent2-instances.md)). Import companion **MSSQL Observability** for `MSSQL$*` instances; zerotouch will link it on the same roles once Zabbix has the template.
 
 | Macro | Target | Type | Value |
 |---|---|---|---|
-| `{$MSSQL.URI}` | DeviceRole: MSSQL | Text | `sqlserver://localhost:1433` |
+| `{$MSSQL.URI}` | DeviceRole: MSSQL **and** MSSQL Query Server | Text | `sqlserver://localhost:1433` |
 | `{$MSSQL.USER}` | DeviceRole: MSSQL **or** Device if the name differs | Secret | SQL login |
 | `{$MSSQL.PASSWORD}` | Device (per MSSQL host) | Secret | that host’s password |
+| `{$MSSQL.INSTANCE.DISCOVERY.MIN}` | Device, optional | Text | e.g. `5` on a named-instance box; template default `0` |
 
-Same template assignment on **MSSQL Query Server**. Leftover role `{$MSSQL.DSN}` is ODBC-era; ignore for Agent 2.
+Leftover role `{$MSSQL.DSN}` is ODBC-era; ignore for Agent 2. Companion filters `{$MSSQL.INSTANCE.MATCHES}` / `NOT_MATCHES` stay on the **template**, not in NetBox.
 
 #### Huawei SAN01 (CG Host Interface — not a macro)
 
