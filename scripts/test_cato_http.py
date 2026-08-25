@@ -272,11 +272,62 @@ class CatoTemplateContractTests(unittest.TestCase):
         ]
         self.assertNotIn('graphprototype', health_types)
         self.assertIn('honeycomb', health_types)
-        path_names = [widget['name'] for widget in by_name['Path']['pages'][0]['widgets']]
-        self.assertIn('Overlay loss', path_names)
-        self.assertIn('Last-mile loss', path_names)
-        self.assertIn('Overlay RTT', path_names)
-        self.assertIn('Overlay jitter', path_names)
+        self.assertIn('svggraph', health_types)
+        path_pages = {page['name']: page for page in by_name['Path']['pages']}
+        overview_names = [widget['name'] for widget in path_pages['Overview']['widgets']]
+        self.assertEqual(overview_names, ['Overlay loss', 'Overlay RTT', 'Overlay jitter'])
+        self.assertNotIn('Last-mile loss', overview_names)
+        last_mile_names = [widget['name'] for widget in path_pages['Last mile']['widgets']]
+        self.assertIn('Last-mile loss', last_mile_names)
+        self.assertIn('RX utilization', last_mile_names)
+        network_pages = {page['name']: page for page in by_name['Network']['pages']}
+        self.assertIn('HA', network_pages)
+        self.assertIn('Tunnels', network_pages)
+
+    def test_health_overview_matches_forti_chrome(self):
+        health = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Health')
+        overview = next(page for page in health['pages'] if page['name'] == 'Overview')
+
+        def wy(widget):
+            if 'y' in widget:
+                return str(widget['y'])
+            if True in widget:
+                return str(widget[True])
+            return '0'
+
+        tiles = [widget for widget in overview['widgets'] if wy(widget) == '0']
+        self.assertEqual([widget['name'] for widget in tiles], ['Snapshot', 'Metrics', 'Sites up', 'Sockets up'])
+        self.assertEqual([widget['type'] for widget in tiles], ['gauge', 'gauge', 'item', 'item'])
+        self.assertTrue(all(str(widget['width']) == '18' for widget in tiles))
+        problems = [widget for widget in overview['widgets'] if widget['type'] == 'problems']
+        self.assertEqual(len(problems), 1)
+        self.assertEqual(str(problems[0]['width']), '72')
+        self.assertEqual(wy(problems[0]), '4')
+        honey = next(widget for widget in overview['widgets'] if widget['type'] == 'honeycomb')
+        self.assertEqual(honey['name'], 'Sites')
+        self.assertEqual(str(honey['width']), '72')
+        graphs = [widget for widget in overview['widgets'] if widget['type'] == 'svggraph']
+        self.assertEqual([widget['name'] for widget in graphs], ['Census', 'Worst overlay loss'])
+        self.assertTrue(all(str(widget['width']) == '36' for widget in graphs))
+
+    def test_path_overlay_loss_is_full_width_interpolated(self):
+        path = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Path')
+        overview = next(page for page in path['pages'] if page['name'] == 'Overview')
+        loss = next(widget for widget in overview['widgets'] if widget['name'] == 'Overlay loss')
+        fields = {field['name']: field['value'] for field in loss['fields']}
+        self.assertEqual(str(loss['width']), '72')
+        self.assertEqual(str(fields['interpolation']), '1')
+        self.assertEqual(str(fields['show.1']), '2')
+        self.assertEqual(str(fields['thresholds.1.threshold']), '2')
+        label = str(fields['primary_label'])
+        self.assertIn('Cato WAN (.*): Overlay loss', label)
+        self.assertRegex(label, r',"\\1"\)')
+
+    def test_estate_rollup_items_use_foreach(self):
+        by_key = {item['key']: item for item in self.tpl['items']}
+        self.assertEqual(by_key['cato.site.up.count']['params'], 'count(last_foreach(//cato.site.connected[*]),eq,1)')
+        self.assertEqual(by_key['cato.wan.loss.worst.pct']['params'], 'max(last_foreach(//cato.wan.loss.max.pct[*]))')
+        self.assertEqual(by_key['cato.site.ha.not_ready.count']['params'], 'count(last_foreach(//cato.site.ha.readiness.code[*]),eq,0)')
 
     def test_collector_trigger_names(self):
         names = {

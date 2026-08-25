@@ -92,13 +92,24 @@ EXPECTED_TEMPLATE_ITEM_KEYS = {
     'cato.socket.discovery.count',
     'cato.wan.discovery.count',
     'cato.wan.metrics.discovery.count',
+    'cato.site.up.count',
+    'cato.socket.up.count',
+    'cato.wan.up.count',
+    'cato.site.ha.not_ready.count',
+    'cato.wan.loss.worst.pct',
+    'cato.wan.rtt.worst.ms',
+    'cato.wan.jitter.worst.ms',
+    'cato.wan.lastmile.loss.worst.pct',
+    'cato.wan.lastmile.latency.worst.ms',
+    'cato.wan.rx.util.worst.pct',
+    'cato.wan.tx.util.worst.pct',
     'zabbix[host,,items_unsupported]',
 }
 EXPECTED_DISCOVERY_KEYS = set(LLD_JS)
 EXPECTED_DASHBOARD_NAMES = {'Health', 'Path', 'Network'}
-EXPECTED_HEALTH_PAGES = {'Overview'}
-EXPECTED_PATH_PAGES = {'Overview', 'Probe'}
-EXPECTED_NETWORK_PAGES = {'Overview'}
+EXPECTED_HEALTH_PAGES = {'Overview', 'Census', 'API'}
+EXPECTED_PATH_PAGES = {'Overview', 'Last mile', 'Probe'}
+EXPECTED_NETWORK_PAGES = {'Overview', 'Tunnels', 'HA'}
 EXPECTED_GRAPH_PROTOTYPES = {
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth',
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Packet loss',
@@ -137,6 +148,7 @@ EXPECTED_ITEM_PROTOTYPE_KEYS = {
     'cato.site.operational_status[{#SITE.ID}]',
     'cato.site.ha[{#SITE.ID}]',
     'cato.site.ha.readiness[{#SITE.ID}]',
+    'cato.site.ha.readiness.code[{#SITE.ID}]',
     'cato.site.ha.socket_version[{#SITE.ID}]',
     'cato.socket.connected[{#SITE.ID},{#SOCKET.ID}]',
     'cato.wan.connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]',
@@ -147,6 +159,7 @@ EXPECTED_ITEM_PROTOTYPE_KEYS = {
     'cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]',
+    'cato.wan.jitter.max.ms[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]',

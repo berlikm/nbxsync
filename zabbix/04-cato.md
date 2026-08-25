@@ -122,14 +122,21 @@ collector failure remain separate problem classes.
 
 ## Dashboards
 
-Same chrome as Forti/EXOS. Graph prototypes stay on this template (same-template
-refs are valid) but are not dumped onto Health.
+Same chrome as Forti/EXOS: four header tiles, problems strip, interpolated
+honeycombs with identity labels, svggraph history. Graph prototypes stay on
+this template (same-template refs are valid) but are not dumped onto Health.
 
-| Dashboard | What it is |
-|---|---|
-| **Health** | The collector box: Snapshot/Metrics gauges, site and Socket counts, problems, **site** honeycomb (names, not serials), compact GraphQL/unsupported watchers. |
-| **Path** | Interpolated honeycombs for overlay loss / RTT / jitter; separate last-mile loss and latency; itemnavigator drill-down. Not a 51-graph gallery. |
-| **Network** | WAN connectivity honeycomb labeled `site / serial / link`, Socket honeycomb `site / serial`, tunnel uptime and PoP via navigator. |
+| Dashboard | Pages | What it is |
+|---|---|---|
+| **Health → Overview** | Snapshot / Metrics gauges, **Sites up** / **Sockets up**, problems, full-width **site** honeycomb (names, not serials), census and worst-overlay-loss history | The collector box plus the estate map |
+| **Health → Census** | Discovered vs up counts (sites / Sockets / WAN / SLA), HA not-ready count, worst overlay loss / RTT / last-mile loss / RX util gauges, discovery and connected history | 11 / 21 / 33 / 17 expected; 33 vs 17 is `groupDevices: true` |
+| **Health → API** | GraphQL error and schema-violation tiles, unsupported items, Snapshot/Metrics gauges, error history | Collector failures, not overlay outages |
+| **Path → Overview** | Full-width overlay **loss** honeycomb (yellow at CMA 2%), then RTT and jitter | Overlay quality scan |
+| **Path → Last mile** | Last-mile loss, last-mile latency, RX/TX utilization honeycombs | Underlay toward the Socket, plus WAN fill |
+| **Path → Probe** | Navigator (loss / RTT / jitter / last-mile / bps / util / discards) plus selected-metric history | Drill-down, not a 51-graph gallery |
+| **Network → Overview** | Full-width WAN connectivity (`site / serial / link`) then Socket honeycomb (`site / serial`) | Tunnel and Socket up/down |
+| **Network → Tunnels** | Navigator for connectivity, tunnel uptime, PoP | Per-Socket WAN drill-down |
+| **Network → HA** | Site HA-ready honeycomb (standalone counts as ready) plus readiness / socket-version / operational-status navigator | Pair health without dumping CHAR items onto Overview |
 
 ## Deployment and rollout
 

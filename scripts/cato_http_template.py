@@ -67,8 +67,18 @@ UUID = {
     'graph_loss': '37ee3ca9378a4557876b22a83c17d39b',
     'graph_lat': '02f3f94cce42445c89e7c795fbf89517',
     'valuemap': '4c65ce16533446d78da1b96a2e1aad9a',
+    'valuemap_ha': 'c3d8e1f04a6b4e1e9f2a7c5d8b1e4a90',
     'dash_health': '8806cd45dc714c0a9840b518f4472bb1',
+    'dash_path': '2489297dba645f46ac922129ae119b29',
+    'dash_net': 'eb24b530cc1c5902860c361c03842d00',
 }
+
+LOSS_THRESHOLDS = [('0EC9AC', '0'), ('FFD54F', '2'), ('FF465C', '5')]
+RTT_THRESHOLDS = [('0EC9AC', '0'), ('FFD54F', '80'), ('FF465C', '150')]
+JITTER_THRESHOLDS = [('0EC9AC', '0'), ('FFD54F', '10'), ('FF465C', '30')]
+UTIL_THRESHOLDS = [('0EC9AC', '0'), ('FFD54F', '70'), ('FF465C', '90')]
+UP_THRESHOLDS = [('FF465C', '0'), ('0EC9AC', '1')]
+ERROR_THRESHOLDS = [('0EC9AC', '0'), ('FF465C', '1')]
 
 
 def uid(name: str) -> str:
@@ -247,6 +257,34 @@ def census_item(
         '        priority: AVERAGE',
         *collector_tags(8),
     ]
+
+
+def calc_item(
+    uid_key: str,
+    name: str,
+    key: str,
+    params: str,
+    *,
+    units: str | None = None,
+    value_type: str = 'FLOAT',
+    history: str = '7d',
+    trends: str = '365d',
+) -> list[str]:
+    lines = [
+        f'    - uuid: {uid(uid_key)}',
+        f'      name: {name}',
+        '      type: CALCULATED',
+        f'      key: {key}',
+        '      delay: 1m',
+        f'      history: {history}',
+        f'      trends: {trends}',
+        f'      value_type: {value_type}',
+    ]
+    if units:
+        lines.append(f'      units: {q(units)}')
+    lines.append(f'      params: {q(params)}')
+    lines.extend(collector_tags())
+    return lines
 
 
 SNAPSHOT_SITE_PREAMBLE = """\
@@ -528,7 +566,9 @@ def widget_fields(fields: list[dict]) -> list[str]:
         if isinstance(value, dict):
             lines.append('            value:')
             for key, val in value.items():
-                lines.append(f'              {key}: {q(val) if " " in str(val) or ":" in str(val) else val}')
+                text = str(val)
+                needs_quote = any(ch in text for ch in ' :[]{},*\\\'')
+                lines.append(f'              {key}: {q(text) if needs_quote else text}')
         else:
             text = str(value)
             needs_quote = field['type'] == 'STRING' or any(ch in text for ch in ":{}[]*\\'")
@@ -565,44 +605,102 @@ def widget(
     return lines
 
 
-def honeycomb_status(name: str, items: str, label: str, **pos) -> list[str]:
+def honeycomb_label(kind: str, metric: str) -> str:
+    return '{{ITEM.NAME}.regsub("^' + kind + ' (.*): ' + metric + '$","\\1")}'
+
+
+def _threshold_fields(thresholds: list[tuple[str, str]]) -> list[dict]:
+    fields = []
+    for idx, (color, threshold) in enumerate(thresholds):
+        fields.append({'type': 'STRING', 'name': f'thresholds.{idx}.color', 'value': color})
+        fields.append({'type': 'STRING', 'name': f'thresholds.{idx}.threshold', 'value': threshold})
+    return fields
+
+
+def honeycomb_status(
+    name: str,
+    items: str,
+    label: str,
+    *,
+    reference: str,
+    label_size: str = '20',
+    **pos,
+) -> list[str]:
+    fields = [
+        {'type': 'STRING', 'name': 'items.0', 'value': items},
+        {'type': 'STRING', 'name': 'primary_label', 'value': label},
+        {'type': 'INTEGER', 'name': 'interpolation', 'value': '0'},
+        {'type': 'INTEGER', 'name': 'primary_label_bold', 'value': '1'},
+        {'type': 'INTEGER', 'name': 'primary_label_size_type', 'value': '1'},
+        {'type': 'INTEGER', 'name': 'primary_label_size', 'value': label_size},
+        {'type': 'INTEGER', 'name': 'show.0', 'value': '1'},
+        {'type': 'STRING', 'name': 'reference', 'value': reference},
+        *_threshold_fields([('FF465C', '0'), ('0EC9AC', '1'), ('878787', '2')]),
+    ]
     return widget(
         'honeycomb',
         name,
         width=pos.get('width', '72'),
-        height=pos.get('height', '5'),
+        height=pos.get('height', '6'),
         x=pos.get('x'),
         y=pos.get('y'),
-        fields=[
-            {'type': 'STRING', 'name': 'items.0', 'value': items},
-            {'type': 'STRING', 'name': 'primary_label', 'value': label},
-            {'type': 'INTEGER', 'name': 'interpolation', 'value': '0'},
-            {'type': 'INTEGER', 'name': 'show.0', 'value': '1'},
-            {'type': 'STRING', 'name': 'thresholds.0.color', 'value': 'FF465C'},
-            {'type': 'STRING', 'name': 'thresholds.0.threshold', 'value': '0'},
-            {'type': 'STRING', 'name': 'thresholds.1.color', 'value': '0EC9AC'},
-            {'type': 'STRING', 'name': 'thresholds.1.threshold', 'value': '1'},
-            {'type': 'STRING', 'name': 'thresholds.2.color', 'value': '878787'},
-            {'type': 'STRING', 'name': 'thresholds.2.threshold', 'value': '2'},
-        ],
+        fields=fields,
     )
 
 
-def honeycomb_metric(name: str, items: str, label: str, thresholds: list[tuple[str, str]], **pos) -> list[str]:
+def honeycomb_metric(
+    name: str,
+    items: str,
+    label: str,
+    thresholds: list[tuple[str, str]],
+    *,
+    reference: str,
+    label_size: str = '20',
+    **pos,
+) -> list[str]:
     fields = [
         {'type': 'STRING', 'name': 'items.0', 'value': items},
         {'type': 'STRING', 'name': 'primary_label', 'value': label},
         {'type': 'INTEGER', 'name': 'interpolation', 'value': '1'},
+        {'type': 'INTEGER', 'name': 'primary_label_bold', 'value': '1'},
+        {'type': 'INTEGER', 'name': 'primary_label_size_type', 'value': '1'},
+        {'type': 'INTEGER', 'name': 'primary_label_size', 'value': label_size},
+        {'type': 'INTEGER', 'name': 'secondary_label_size_type', 'value': '1'},
+        {'type': 'INTEGER', 'name': 'secondary_label_size', 'value': '22'},
         {'type': 'INTEGER', 'name': 'show.0', 'value': '1'},
         {'type': 'INTEGER', 'name': 'show.1', 'value': '2'},
+        {'type': 'STRING', 'name': 'reference', 'value': reference},
+        *_threshold_fields(thresholds),
     ]
-    for idx, (color, threshold) in enumerate(thresholds):
-        fields.append({'type': 'STRING', 'name': f'thresholds.{idx}.color', 'value': color})
-        fields.append({'type': 'STRING', 'name': f'thresholds.{idx}.threshold', 'value': threshold})
-    return widget('honeycomb', name, width=pos.get('width', '36'), height=pos.get('height', '5'), x=pos.get('x'), y=pos.get('y'), fields=fields)
+    return widget(
+        'honeycomb',
+        name,
+        width=pos.get('width', '36'),
+        height=pos.get('height', '6'),
+        x=pos.get('x'),
+        y=pos.get('y'),
+        fields=fields,
+    )
 
 
-def item_tile(name: str, key: str, **pos) -> list[str]:
+def item_tile(
+    name: str,
+    key: str,
+    *,
+    thresholds: list[tuple[str, str]] | None = None,
+    decimal_places: str | None = None,
+    **pos,
+) -> list[str]:
+    fields: list[dict] = [
+        {'type': 'ITEM', 'name': 'itemid.0', 'value': {'host': TPL, 'key': key}},
+        {'type': 'INTEGER', 'name': 'show.0', 'value': '2'},
+        {'type': 'INTEGER', 'name': 'value_bold', 'value': '1'},
+        {'type': 'INTEGER', 'name': 'value_size', 'value': pos.get('value_size', '28')},
+    ]
+    if decimal_places is not None:
+        fields.append({'type': 'INTEGER', 'name': 'decimal_places', 'value': decimal_places})
+    if thresholds:
+        fields.extend(_threshold_fields(thresholds))
     return widget(
         'item',
         name,
@@ -610,14 +708,44 @@ def item_tile(name: str, key: str, **pos) -> list[str]:
         height=pos.get('height', '4'),
         x=pos.get('x'),
         y=pos.get('y'),
-        fields=[
-            {'type': 'ITEM', 'name': 'itemid.0', 'value': {'host': TPL, 'key': key}},
-            {'type': 'INTEGER', 'name': 'show.0', 'value': '2'},
-        ],
+        fields=fields,
     )
 
 
-def gauge_tile(name: str, key: str, **pos) -> list[str]:
+def gauge_tile(
+    name: str,
+    key: str,
+    *,
+    min_val: str | None = '0',
+    max_val: str | None = '1',
+    units: str | None = None,
+    thresholds: list[tuple[str, str]] | None = None,
+    decimal_places: str = '0',
+    **pos,
+) -> list[str]:
+    if thresholds is None:
+        thresholds = [('FF465C', '0'), ('0EC9AC', '1')]
+    fields: list[dict] = [
+        {'type': 'INTEGER', 'name': 'angle', 'value': '270'},
+        {'type': 'INTEGER', 'name': 'decimal_places', 'value': decimal_places},
+        {'type': 'INTEGER', 'name': 'show.0', 'value': '2'},
+        {'type': 'INTEGER', 'name': 'show.1', 'value': '5'},
+        {'type': 'INTEGER', 'name': 'th_arc_size', 'value': '6'},
+        {'type': 'INTEGER', 'name': 'units_size', 'value': '14'},
+        {'type': 'INTEGER', 'name': 'value_arc_size', 'value': '16'},
+        {'type': 'INTEGER', 'name': 'value_bold', 'value': '1'},
+        {'type': 'INTEGER', 'name': 'value_size', 'value': '25'},
+        {'type': 'ITEM', 'name': 'itemid.0', 'value': {'host': TPL, 'key': key}},
+    ]
+    if max_val is not None:
+        fields.append({'type': 'STRING', 'name': 'max', 'value': max_val})
+    if min_val is not None:
+        fields.append({'type': 'STRING', 'name': 'min', 'value': min_val})
+    fields.extend(_threshold_fields(thresholds))
+    fields.append({'type': 'INTEGER', 'name': 'th_show_arc', 'value': '1'})
+    fields.append({'type': 'INTEGER', 'name': 'th_show_labels', 'value': '0'})
+    if units:
+        fields.append({'type': 'STRING', 'name': 'units', 'value': units})
     return widget(
         'gauge',
         name,
@@ -625,27 +753,415 @@ def gauge_tile(name: str, key: str, **pos) -> list[str]:
         height=pos.get('height', '4'),
         x=pos.get('x'),
         y=pos.get('y'),
+        fields=fields,
+    )
+
+
+def svggraph(
+    name: str,
+    series: list[tuple[str, str]],
+    *,
+    reference: str,
+    lefty_min: str | None = None,
+    lefty_max: str | None = None,
+    legend: str = '1',
+    show_problems: str = '1',
+    **pos,
+) -> list[str]:
+    fields: list[dict] = []
+    for idx, (_key, color) in enumerate(series):
+        fields.append({'type': 'STRING', 'name': f'ds.0.color.{idx}', 'value': color})
+    fields.append({'type': 'INTEGER', 'name': 'ds.0.dataset_type', 'value': '0'})
+    for idx, (key, _color) in enumerate(series):
+        fields.append({'type': 'ITEM', 'name': f'ds.0.itemids.{idx}', 'value': {'host': TPL, 'key': key}})
+    if lefty_max is not None:
+        fields.append({'type': 'STRING', 'name': 'lefty_max', 'value': lefty_max})
+    if lefty_min is not None:
+        fields.append({'type': 'STRING', 'name': 'lefty_min', 'value': lefty_min})
+    fields.append({'type': 'STRING', 'name': 'reference', 'value': reference})
+    fields.append({'type': 'INTEGER', 'name': 'show_problems', 'value': show_problems})
+    fields.append({'type': 'INTEGER', 'name': 'legend', 'value': legend})
+    return widget('svggraph', name, width=pos.get('width', '36'), height=pos.get('height', '6'), x=pos.get('x'), y=pos.get('y'), fields=fields)
+
+
+def problems_strip(*, y: str = '4', reference: str = 'CPROB') -> list[str]:
+    return widget(
+        'problems',
+        'Problems',
+        y=y,
+        width='72',
+        height='3',
         fields=[
-            {'type': 'INTEGER', 'name': 'angle', 'value': '270'},
-            {'type': 'INTEGER', 'name': 'decimal_places', 'value': '0'},
-            {'type': 'INTEGER', 'name': 'show.0', 'value': '2'},
-            {'type': 'INTEGER', 'name': 'show.1', 'value': '5'},
-            {'type': 'INTEGER', 'name': 'th_arc_size', 'value': '6'},
-            {'type': 'INTEGER', 'name': 'units_size', 'value': '14'},
-            {'type': 'INTEGER', 'name': 'value_arc_size', 'value': '16'},
-            {'type': 'INTEGER', 'name': 'value_bold', 'value': '1'},
-            {'type': 'INTEGER', 'name': 'value_size', 'value': '25'},
-            {'type': 'ITEM', 'name': 'itemid.0', 'value': {'host': TPL, 'key': key}},
-            {'type': 'STRING', 'name': 'max', 'value': '1'},
-            {'type': 'STRING', 'name': 'min', 'value': '0'},
-            {'type': 'STRING', 'name': 'thresholds.0.color', 'value': 'FF465C'},
-            {'type': 'STRING', 'name': 'thresholds.0.threshold', 'value': '0'},
-            {'type': 'STRING', 'name': 'thresholds.1.color', 'value': '0EC9AC'},
-            {'type': 'STRING', 'name': 'thresholds.1.threshold', 'value': '1'},
-            {'type': 'INTEGER', 'name': 'th_show_arc', 'value': '1'},
-            {'type': 'INTEGER', 'name': 'th_show_labels', 'value': '0'},
+            {'type': 'STRING', 'name': 'reference', 'value': reference},
+            {'type': 'INTEGER', 'name': 'show', 'value': '3'},
+            {'type': 'INTEGER', 'name': 'show_opdata', 'value': '2'},
         ],
     )
+
+
+def navigator_and_history(
+    *,
+    items: list[str],
+    group_tag: str,
+    nav_ref: str,
+    graph_ref: str,
+    nav_name: str = 'Counters',
+    y: str | None = None,
+    height: str = '11',
+    nav_width: str = '28',
+) -> list[str]:
+    nav_fields: list[dict] = [
+        {'type': 'INTEGER', 'name': 'group_by.0.attribute', 'value': '3'},
+        {'type': 'STRING', 'name': 'group_by.0.tag_name', 'value': group_tag},
+    ]
+    for idx, item in enumerate(items):
+        nav_fields.append({'type': 'STRING', 'name': f'items.{idx}', 'value': item})
+    nav_fields.append({'type': 'STRING', 'name': 'reference', 'value': nav_ref})
+    graph_width = str(72 - int(nav_width))
+    return [
+        *widget(
+            'itemnavigator',
+            nav_name,
+            width=nav_width,
+            height=height,
+            y=y,
+            fields=nav_fields,
+        ),
+        *widget(
+            'svggraph',
+            'History',
+            x=nav_width,
+            y=y,
+            width=graph_width,
+            height=height,
+            fields=[
+                {'type': 'STRING', 'name': 'ds.0.color.0', 'value': '42A5F5'},
+                {'type': 'INTEGER', 'name': 'ds.0.dataset_type', 'value': '0'},
+                {'type': 'STRING', 'name': 'ds.0.itemids.0._reference', 'value': f'{nav_ref}._itemid'},
+                {'type': 'STRING', 'name': 'reference', 'value': graph_ref},
+                {'type': 'INTEGER', 'name': 'legend', 'value': '0'},
+                {'type': 'INTEGER', 'name': 'righty', 'value': '0'},
+            ],
+        ),
+    ]
+
+
+def health_overview_widgets() -> list[str]:
+    return [
+        *gauge_tile('Snapshot', 'cato.api.snapshot.available'),
+        *gauge_tile('Metrics', 'cato.api.metrics.available', x='18'),
+        *item_tile('Sites up', 'cato.site.up.count', x='36', thresholds=UP_THRESHOLDS, decimal_places='0'),
+        *item_tile('Sockets up', 'cato.socket.up.count', x='54', thresholds=UP_THRESHOLDS, decimal_places='0'),
+        *problems_strip(),
+        *honeycomb_status(
+            'Sites',
+            'Cato site *: Connectivity',
+            honeycomb_label('Cato site', 'Connectivity'),
+            reference='CHSIT',
+            y='7',
+            height='6',
+        ),
+        *svggraph(
+            'Census',
+            [
+                ('cato.site.discovery.count', '199C0D'),
+                ('cato.socket.discovery.count', '2774A4'),
+                ('cato.wan.discovery.count', 'F7941D'),
+            ],
+            reference='CHCEN',
+            lefty_min='0',
+            y='13',
+        ),
+        *svggraph(
+            'Worst overlay loss',
+            [('cato.wan.loss.worst.pct', 'FF465C')],
+            reference='CHLOS',
+            lefty_min='0',
+            lefty_max='10',
+            legend='0',
+            x='36',
+            y='13',
+        ),
+    ]
+
+
+def health_census_widgets() -> list[str]:
+    return [
+        *item_tile('Sites', 'cato.site.discovery.count', decimal_places='0'),
+        *item_tile('Sockets', 'cato.socket.discovery.count', x='18', decimal_places='0'),
+        *item_tile('WAN links', 'cato.wan.discovery.count', x='36', decimal_places='0'),
+        *item_tile('SLA rows', 'cato.wan.metrics.discovery.count', x='54', decimal_places='0'),
+        *item_tile('Sites up', 'cato.site.up.count', y='4', thresholds=UP_THRESHOLDS, decimal_places='0'),
+        *item_tile('Sockets up', 'cato.socket.up.count', x='18', y='4', thresholds=UP_THRESHOLDS, decimal_places='0'),
+        *item_tile('WAN up', 'cato.wan.up.count', x='36', y='4', thresholds=UP_THRESHOLDS, decimal_places='0'),
+        *item_tile('HA not ready', 'cato.site.ha.not_ready.count', x='54', y='4', thresholds=ERROR_THRESHOLDS, decimal_places='0'),
+        *gauge_tile(
+            'Worst overlay loss',
+            'cato.wan.loss.worst.pct',
+            y='8',
+            min_val='0',
+            max_val='10',
+            units='%',
+            thresholds=LOSS_THRESHOLDS,
+            decimal_places='1',
+        ),
+        *gauge_tile(
+            'Worst overlay RTT',
+            'cato.wan.rtt.worst.ms',
+            x='18',
+            y='8',
+            min_val='0',
+            max_val='200',
+            units='ms',
+            thresholds=RTT_THRESHOLDS,
+            decimal_places='0',
+        ),
+        *gauge_tile(
+            'Worst last-mile loss',
+            'cato.wan.lastmile.loss.worst.pct',
+            x='36',
+            y='8',
+            min_val='0',
+            max_val='10',
+            units='%',
+            thresholds=LOSS_THRESHOLDS,
+            decimal_places='1',
+        ),
+        *gauge_tile(
+            'Worst RX util',
+            'cato.wan.rx.util.worst.pct',
+            x='54',
+            y='8',
+            min_val='0',
+            max_val='100',
+            units='%',
+            thresholds=UTIL_THRESHOLDS,
+            decimal_places='0',
+        ),
+        *svggraph(
+            'Discovery',
+            [
+                ('cato.site.discovery.count', '199C0D'),
+                ('cato.socket.discovery.count', '2774A4'),
+                ('cato.wan.discovery.count', 'F7941D'),
+                ('cato.wan.metrics.discovery.count', '42A5F5'),
+            ],
+            reference='CCDIS',
+            lefty_min='0',
+            y='12',
+        ),
+        *svggraph(
+            'Connected',
+            [
+                ('cato.site.up.count', '0EC9AC'),
+                ('cato.socket.up.count', '199C0D'),
+                ('cato.wan.up.count', '2774A4'),
+            ],
+            reference='CCUP',
+            lefty_min='0',
+            x='36',
+            y='12',
+        ),
+    ]
+
+
+def health_api_widgets() -> list[str]:
+    return [
+        *item_tile('Snapshot GraphQL', 'cato.api.snapshot.error_count', thresholds=ERROR_THRESHOLDS),
+        *item_tile('Metrics GraphQL', 'cato.api.metrics.error_count', x='18', thresholds=ERROR_THRESHOLDS),
+        *item_tile('Snapshot schema', 'cato.api.snapshot.schema_violation_count', x='36', thresholds=ERROR_THRESHOLDS),
+        *item_tile('Metrics schema', 'cato.api.metrics.schema_violation_count', x='54', thresholds=ERROR_THRESHOLDS),
+        *item_tile(
+            'Unsupported items',
+            'zabbix[host,,items_unsupported]',
+            y='4',
+            thresholds=ERROR_THRESHOLDS,
+        ),
+        *gauge_tile('Snapshot', 'cato.api.snapshot.available', x='18', y='4'),
+        *gauge_tile('Metrics', 'cato.api.metrics.available', x='36', y='4'),
+        *svggraph(
+            'GraphQL errors',
+            [
+                ('cato.api.snapshot.error_count', 'FF465C'),
+                ('cato.api.metrics.error_count', 'F7941D'),
+            ],
+            reference='CAPIE',
+            lefty_min='0',
+            y='8',
+            width='36',
+        ),
+        *svggraph(
+            'Schema violations',
+            [
+                ('cato.api.snapshot.schema_violation_count', 'FFD54F'),
+                ('cato.api.metrics.schema_violation_count', 'FF9800'),
+            ],
+            reference='CAPIS',
+            lefty_min='0',
+            x='36',
+            y='8',
+            width='36',
+        ),
+    ]
+
+
+def path_overview_widgets() -> list[str]:
+    return [
+        *honeycomb_metric(
+            'Overlay loss',
+            'Cato WAN *: Overlay loss',
+            honeycomb_label('Cato WAN', 'Overlay loss'),
+            LOSS_THRESHOLDS,
+            reference='PLOSS',
+            width='72',
+            height='6',
+        ),
+        *honeycomb_metric(
+            'Overlay RTT',
+            'Cato WAN *: RTT',
+            honeycomb_label('Cato WAN', 'RTT'),
+            RTT_THRESHOLDS,
+            reference='PRTT',
+            y='6',
+            height='5',
+        ),
+        *honeycomb_metric(
+            'Overlay jitter',
+            'Cato WAN *: Overlay jitter',
+            honeycomb_label('Cato WAN', 'Overlay jitter'),
+            JITTER_THRESHOLDS,
+            reference='PJIT',
+            x='36',
+            y='6',
+            height='5',
+        ),
+    ]
+
+
+def path_lastmile_widgets() -> list[str]:
+    return [
+        *honeycomb_metric(
+            'Last-mile loss',
+            'Cato WAN *: Last-mile loss',
+            honeycomb_label('Cato WAN', 'Last-mile loss'),
+            LOSS_THRESHOLDS,
+            reference='PLMLS',
+            width='72',
+            height='6',
+        ),
+        *honeycomb_metric(
+            'Last-mile latency',
+            'Cato WAN *: Last-mile latency',
+            honeycomb_label('Cato WAN', 'Last-mile latency'),
+            RTT_THRESHOLDS,
+            reference='PLMLT',
+            y='6',
+            height='5',
+        ),
+        *honeycomb_metric(
+            'RX utilization',
+            'Cato WAN *: RX utilization',
+            honeycomb_label('Cato WAN', 'RX utilization'),
+            UTIL_THRESHOLDS,
+            reference='PRXUT',
+            x='36',
+            y='6',
+            height='5',
+        ),
+        *honeycomb_metric(
+            'TX utilization',
+            'Cato WAN *: TX utilization',
+            honeycomb_label('Cato WAN', 'TX utilization'),
+            UTIL_THRESHOLDS,
+            reference='PTXUT',
+            y='11',
+            width='72',
+            height='5',
+        ),
+    ]
+
+
+def path_probe_widgets() -> list[str]:
+    return navigator_and_history(
+        group_tag='scope',
+        nav_ref='CNAVP',
+        graph_ref='CGRFP',
+        items=[
+            'Cato WAN *: Overlay loss',
+            'Cato WAN *: RTT',
+            'Cato WAN *: Overlay jitter',
+            'Cato WAN *: Last-mile loss',
+            'Cato WAN *: Last-mile latency',
+            'Cato WAN *: RX bandwidth',
+            'Cato WAN *: TX bandwidth',
+            'Cato WAN *: RX utilization',
+            'Cato WAN *: TX utilization',
+            'Cato WAN *: RX discarded',
+            'Cato WAN *: TX discarded',
+        ],
+    )
+
+
+def network_overview_widgets() -> list[str]:
+    return [
+        *honeycomb_status(
+            'WAN links',
+            'Cato WAN *: Connectivity',
+            honeycomb_label('Cato WAN', 'Connectivity'),
+            reference='NWAN',
+            label_size='16',
+            height='6',
+        ),
+        *honeycomb_status(
+            'Sockets',
+            'Cato Socket *: Connectivity',
+            honeycomb_label('Cato Socket', 'Connectivity'),
+            reference='NSOCK',
+            y='6',
+            height='5',
+        ),
+    ]
+
+
+def network_tunnels_widgets() -> list[str]:
+    return navigator_and_history(
+        nav_name='Tunnels',
+        group_tag='serial',
+        nav_ref='CNNAV',
+        graph_ref='CNGRA',
+        items=[
+            'Cato WAN *: Connectivity',
+            'Cato WAN *: Tunnel uptime',
+            'Cato WAN *: POP',
+        ],
+    )
+
+
+def network_ha_widgets() -> list[str]:
+    return [
+        *honeycomb_status(
+            'HA ready',
+            'Cato site *: HA ready',
+            honeycomb_label('Cato site', 'HA ready'),
+            reference='NHAM',
+            height='5',
+        ),
+        *navigator_and_history(
+            nav_name='HA',
+            group_tag='scope',
+            nav_ref='NHAV',
+            graph_ref='NHAG',
+            y='5',
+            height='8',
+            items=[
+                'Cato site *: HA ready',
+                'Cato site *: HA readiness',
+                'Cato site *: HA socket version',
+                'Cato site *: Operational status',
+                'Cato site *: HA enabled',
+            ],
+        ),
+    ]
 
 
 def render_template() -> str:
@@ -705,6 +1221,15 @@ def render_template() -> str:
         + "  throw 'HA socketVersion missing';\n"
         + '}\n'
         + 'return String(state);\n'
+    )
+    site_ready_code_js = (
+        find_site_js()
+        + 'var info = found.info || {};\n'
+        + 'var ha = found.haStatus || {};\n'
+        + "if (info.isHA === true || String(info.isHA).toLowerCase() === 'true') {\n"
+        + "  return String(ha.readiness || '').toLowerCase() === 'ready' ? 1 : 0;\n"
+        + '}\n'
+        + 'return 1;\n'
     )
     sock_conn_js = find_device_js() + connectivity_from_bool_js('device.connected')
     sock_site_js = find_site_js() + connectivity_from_status_js('found.connectivityStatus')
@@ -789,6 +1314,17 @@ def render_template() -> str:
         *census_item('socket_count', 'Cato discovered Socket count', 'cato.socket.discovery.count', 'cato.socket.connected', 'socket_count_tr', 'Cato census: fewer Sockets than expected', '{$CATO.SOCKETS.EXPECTED}', 'cato.api.snapshot.available'),
         *census_item('wan_count', 'Cato discovered WAN link count', 'cato.wan.discovery.count', 'cato.wan.connected', 'wan_count_tr', 'Cato census: fewer WAN links than expected', '{$CATO.WAN.EXPECTED}', 'cato.api.snapshot.available'),
         *census_item('sla_count', 'Cato discovered WAN SLA row count', 'cato.wan.metrics.discovery.count', 'cato.wan.rx.bps', 'sla_count_tr', 'Cato census: fewer WAN SLA rows than expected', '{$CATO.SLA.EXPECTED}', 'cato.api.metrics.available'),
+        *calc_item('site_up', 'Cato connected Socket site count', 'cato.site.up.count', 'count(last_foreach(//cato.site.connected[*]),eq,1)'),
+        *calc_item('socket_up', 'Cato connected Socket count', 'cato.socket.up.count', 'count(last_foreach(//cato.socket.connected[*]),eq,1)'),
+        *calc_item('wan_up', 'Cato connected WAN link count', 'cato.wan.up.count', 'count(last_foreach(//cato.wan.connected[*]),eq,1)'),
+        *calc_item('ha_not_ready', 'Cato HA not-ready site count', 'cato.site.ha.not_ready.count', 'count(last_foreach(//cato.site.ha.readiness.code[*]),eq,0)'),
+        *calc_item('wan_loss_worst', 'Cato worst overlay loss', 'cato.wan.loss.worst.pct', 'max(last_foreach(//cato.wan.loss.max.pct[*]))', units='%'),
+        *calc_item('wan_rtt_worst', 'Cato worst overlay RTT', 'cato.wan.rtt.worst.ms', 'max(last_foreach(//cato.wan.rtt.ms[*]))', units='ms'),
+        *calc_item('wan_jit_worst', 'Cato worst overlay jitter', 'cato.wan.jitter.worst.ms', 'max(last_foreach(//cato.wan.jitter.max.ms[*]))', units='ms'),
+        *calc_item('wan_lm_loss_worst', 'Cato worst last-mile loss', 'cato.wan.lastmile.loss.worst.pct', 'max(last_foreach(//cato.wan.lastmile.loss.pct[*]))', units='%'),
+        *calc_item('wan_lm_lat_worst', 'Cato worst last-mile latency', 'cato.wan.lastmile.latency.worst.ms', 'max(last_foreach(//cato.wan.lastmile.latency.ms[*]))', units='ms'),
+        *calc_item('wan_rx_util_worst', 'Cato worst RX utilization', 'cato.wan.rx.util.worst.pct', 'max(last_foreach(//cato.wan.rx.util.pct[*]))', units='%'),
+        *calc_item('wan_tx_util_worst', 'Cato worst TX utilization', 'cato.wan.tx.util.worst.pct', 'max(last_foreach(//cato.wan.tx.util.pct[*]))', units='%'),
         '    discovery_rules:',
         f'    - uuid: {uid("site_lld")}',
         '      name: Cato Socket site discovery',
@@ -853,6 +1389,15 @@ def render_template() -> str:
                 'name': 'Cato site {#SITE.NAME}: HA not ready',
                 'priority': 'AVERAGE',
             }],
+        ),
+        *proto_item(
+            uid_key='site_ready_code',
+            name='Cato site {#SITE.NAME}: HA ready',
+            key='cato.site.ha.readiness.code[{#SITE.ID}]',
+            master='cato.account.snapshot',
+            js=site_ready_code_js,
+            scope='site',
+            valuemap='Cato HA readiness',
         ),
         *proto_item(
             uid_key='site_ha_ver',
@@ -1084,167 +1629,50 @@ def render_template() -> str:
             '        newvalue: Connected',
             "      - value: '2'",
             '        newvalue: Unknown',
+            f'    - uuid: {uid("valuemap_ha")}',
+            '      name: Cato HA readiness',
+            '      mappings:',
+            "      - value: '0'",
+            '        newvalue: Not ready',
+            "      - value: '1'",
+            '        newvalue: Ready',
             '    dashboards:',
             f'    - uuid: {uid("dash_health")}',
             '      name: Health',
             '      pages:',
             '      - name: Overview',
             '        widgets:',
-            *gauge_tile('Snapshot', 'cato.api.snapshot.available'),
-            *gauge_tile('Metrics', 'cato.api.metrics.available', x='18'),
-            *item_tile('Sites', 'cato.site.discovery.count', x='36'),
-            *item_tile('Sockets', 'cato.socket.discovery.count', x='54'),
-            *widget(
-                'problems',
-                'Problems',
-                y='4',
-                width='72',
-                height='3',
-                fields=[
-                    {'type': 'STRING', 'name': 'reference', 'value': 'CPROB'},
-                    {'type': 'INTEGER', 'name': 'show', 'value': '3'},
-                    {'type': 'INTEGER', 'name': 'show_opdata', 'value': '2'},
-                ],
-            ),
-            *honeycomb_status(
-                'Sites',
-                'Cato site *: Connectivity',
-                '{{ITEM.NAME}.regsub("^Cato site (.*): Connectivity$","\\\\1")}',
-                y='7',
-                width='72',
-                height='5',
-            ),
-            *item_tile('Snapshot GraphQL errors', 'cato.api.snapshot.error_count', y='12', height='3'),
-            *item_tile('Metrics GraphQL errors', 'cato.api.metrics.error_count', x='18', y='12', height='3'),
-            *item_tile('Snapshot schema violations', 'cato.api.snapshot.schema_violation_count', x='36', y='12', height='3'),
-            *item_tile('Unsupported items', 'zabbix[host,,items_unsupported]', x='54', y='12', height='3'),
+            *health_overview_widgets(),
+            '      - name: Census',
+            '        widgets:',
+            *health_census_widgets(),
+            '      - name: API',
+            '        widgets:',
+            *health_api_widgets(),
             f'    - uuid: {uid("dash_path")}',
             '      name: Path',
             '      pages:',
             '      - name: Overview',
             '        widgets:',
-            *honeycomb_metric(
-                'Overlay loss',
-                'Cato WAN *: Overlay loss',
-                '{{ITEM.NAME}.regsub("^Cato WAN (.*): Overlay loss$","\\\\1")}',
-                [('0EC9AC', '0'), ('FFD54F', '2'), ('FF465C', '5')],
-            ),
-            *honeycomb_metric(
-                'Overlay RTT',
-                'Cato WAN *: RTT',
-                '{{ITEM.NAME}.regsub("^Cato WAN (.*): RTT$","\\\\1")}',
-                [('0EC9AC', '0'), ('FFD54F', '80'), ('FF465C', '150')],
-                x='36',
-            ),
-            *honeycomb_metric(
-                'Overlay jitter',
-                'Cato WAN *: Overlay jitter',
-                '{{ITEM.NAME}.regsub("^Cato WAN (.*): Overlay jitter$","\\\\1")}',
-                [('0EC9AC', '0'), ('FFD54F', '10'), ('FF465C', '30')],
-                y='5',
-            ),
-            *honeycomb_metric(
-                'Last-mile loss',
-                'Cato WAN *: Last-mile loss',
-                '{{ITEM.NAME}.regsub("^Cato WAN (.*): Last-mile loss$","\\\\1")}',
-                [('0EC9AC', '0'), ('FFD54F', '2'), ('FF465C', '5')],
-                x='36',
-                y='5',
-            ),
-            *honeycomb_metric(
-                'Last-mile latency',
-                'Cato WAN *: Last-mile latency',
-                '{{ITEM.NAME}.regsub("^Cato WAN (.*): Last-mile latency$","\\\\1")}',
-                [('0EC9AC', '0'), ('FFD54F', '80'), ('FF465C', '150')],
-                y='10',
-                width='72',
-            ),
+            *path_overview_widgets(),
+            '      - name: Last mile',
+            '        widgets:',
+            *path_lastmile_widgets(),
             '      - name: Probe',
             '        widgets:',
-            *widget(
-                'itemnavigator',
-                'Counters',
-                width='28',
-                height='11',
-                fields=[
-                    {'type': 'INTEGER', 'name': 'group_by.0.attribute', 'value': '3'},
-                    {'type': 'STRING', 'name': 'group_by.0.tag_name', 'value': 'scope'},
-                    {'type': 'STRING', 'name': 'items.0', 'value': 'Cato WAN *: Overlay loss'},
-                    {'type': 'STRING', 'name': 'items.1', 'value': 'Cato WAN *: RTT'},
-                    {'type': 'STRING', 'name': 'items.2', 'value': 'Cato WAN *: Overlay jitter'},
-                    {'type': 'STRING', 'name': 'items.3', 'value': 'Cato WAN *: Last-mile loss'},
-                    {'type': 'STRING', 'name': 'items.4', 'value': 'Cato WAN *: Last-mile latency'},
-                    {'type': 'STRING', 'name': 'items.5', 'value': 'Cato WAN *: RX bandwidth'},
-                    {'type': 'STRING', 'name': 'items.6', 'value': 'Cato WAN *: TX bandwidth'},
-                    {'type': 'STRING', 'name': 'reference', 'value': 'CNAVP'},
-                ],
-            ),
-            *widget(
-                'svggraph',
-                'History',
-                x='28',
-                width='44',
-                height='11',
-                fields=[
-                    {'type': 'STRING', 'name': 'ds.0.color.0', 'value': '42A5F5'},
-                    {'type': 'INTEGER', 'name': 'ds.0.dataset_type', 'value': '0'},
-                    {'type': 'STRING', 'name': 'ds.0.itemids.0._reference', 'value': 'CNAVP._itemid'},
-                    {'type': 'STRING', 'name': 'reference', 'value': 'CGRFP'},
-                    {'type': 'INTEGER', 'name': 'legend', 'value': '0'},
-                    {'type': 'INTEGER', 'name': 'righty', 'value': '0'},
-                ],
-            ),
+            *path_probe_widgets(),
             f'    - uuid: {uid("dash_net")}',
             '      name: Network',
             '      pages:',
             '      - name: Overview',
             '        widgets:',
-            *honeycomb_status(
-                'WAN links',
-                'Cato WAN *: Connectivity',
-                '{{ITEM.NAME}.regsub("^Cato WAN (.*): Connectivity$","\\\\1")}',
-                width='36',
-                height='6',
-            ),
-            *honeycomb_status(
-                'Sockets',
-                'Cato Socket *: Connectivity',
-                '{{ITEM.NAME}.regsub("^Cato Socket (.*): Connectivity$","\\\\1")}',
-                x='36',
-                width='36',
-                height='6',
-            ),
-            *widget(
-                'itemnavigator',
-                'Tunnels',
-                y='6',
-                width='28',
-                height='8',
-                fields=[
-                    {'type': 'INTEGER', 'name': 'group_by.0.attribute', 'value': '3'},
-                    {'type': 'STRING', 'name': 'group_by.0.tag_name', 'value': 'serial'},
-                    {'type': 'STRING', 'name': 'items.0', 'value': 'Cato WAN *: Connectivity'},
-                    {'type': 'STRING', 'name': 'items.1', 'value': 'Cato WAN *: Tunnel uptime'},
-                    {'type': 'STRING', 'name': 'items.2', 'value': 'Cato WAN *: POP'},
-                    {'type': 'STRING', 'name': 'reference', 'value': 'CNNAV'},
-                ],
-            ),
-            *widget(
-                'svggraph',
-                'History',
-                x='28',
-                y='6',
-                width='44',
-                height='8',
-                fields=[
-                    {'type': 'STRING', 'name': 'ds.0.color.0', 'value': '42A5F5'},
-                    {'type': 'INTEGER', 'name': 'ds.0.dataset_type', 'value': '0'},
-                    {'type': 'STRING', 'name': 'ds.0.itemids.0._reference', 'value': 'CNNAV._itemid'},
-                    {'type': 'STRING', 'name': 'reference', 'value': 'CNGRA'},
-                    {'type': 'INTEGER', 'name': 'legend', 'value': '0'},
-                    {'type': 'INTEGER', 'name': 'righty', 'value': '0'},
-                ],
-            ),
+            *network_overview_widgets(),
+            '      - name: Tunnels',
+            '        widgets:',
+            *network_tunnels_widgets(),
+            '      - name: HA',
+            '        widgets:',
+            *network_ha_widgets(),
         ]
     )
     return '\n'.join(lines) + '\n'

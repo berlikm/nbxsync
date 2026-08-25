@@ -505,6 +505,189 @@ zabbix_export:
           value: cato_overlay
         - tag: scope
           value: collector
+    - uuid: 0de8f4d226195cf1bcfb3db7b932886b
+      name: Cato connected Socket site count
+      type: CALCULATED
+      key: cato.site.up.count
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      params: 'count(last_foreach(//cato.site.connected[*]),eq,1)'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 0ff299302a055819b17cbfe403486324
+      name: Cato connected Socket count
+      type: CALCULATED
+      key: cato.socket.up.count
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      params: 'count(last_foreach(//cato.socket.connected[*]),eq,1)'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 8cc9e886ee8154a196c67e65a263dc7f
+      name: Cato connected WAN link count
+      type: CALCULATED
+      key: cato.wan.up.count
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      params: 'count(last_foreach(//cato.wan.connected[*]),eq,1)'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: f9eab25e7649545ba5a29b830bdc959d
+      name: Cato HA not-ready site count
+      type: CALCULATED
+      key: cato.site.ha.not_ready.count
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      params: 'count(last_foreach(//cato.site.ha.readiness.code[*]),eq,0)'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: c61503654d2557e5adb30e47e921e940
+      name: Cato worst overlay loss
+      type: CALCULATED
+      key: cato.wan.loss.worst.pct
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      units: '%'
+      params: 'max(last_foreach(//cato.wan.loss.max.pct[*]))'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 42f9990a256c543e9c673bd4f8ea9292
+      name: Cato worst overlay RTT
+      type: CALCULATED
+      key: cato.wan.rtt.worst.ms
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      units: 'ms'
+      params: 'max(last_foreach(//cato.wan.rtt.ms[*]))'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: d5a597c0fa7e583cb0c91cafa2521fd1
+      name: Cato worst overlay jitter
+      type: CALCULATED
+      key: cato.wan.jitter.worst.ms
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      units: 'ms'
+      params: 'max(last_foreach(//cato.wan.jitter.max.ms[*]))'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 86efb5fa4d5f51caa2afb432f10ef86b
+      name: Cato worst last-mile loss
+      type: CALCULATED
+      key: cato.wan.lastmile.loss.worst.pct
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      units: '%'
+      params: 'max(last_foreach(//cato.wan.lastmile.loss.pct[*]))'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 81a899dd0a48505790082366354a5a20
+      name: Cato worst last-mile latency
+      type: CALCULATED
+      key: cato.wan.lastmile.latency.worst.ms
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      units: 'ms'
+      params: 'max(last_foreach(//cato.wan.lastmile.latency.ms[*]))'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: f9ea184d014058928f56aa9b596bb642
+      name: Cato worst RX utilization
+      type: CALCULATED
+      key: cato.wan.rx.util.worst.pct
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      units: '%'
+      params: 'max(last_foreach(//cato.wan.rx.util.pct[*]))'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 3edd636398cd52f7a897d0c520535a8d
+      name: Cato worst TX utilization
+      type: CALCULATED
+      key: cato.wan.tx.util.worst.pct
+      delay: 1m
+      history: 7d
+      trends: 365d
+      value_type: FLOAT
+      units: '%'
+      params: 'max(last_foreach(//cato.wan.tx.util.pct[*]))'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
     discovery_rules:
     - uuid: 22ad6215cbf846a6b7a1f7a332ecf02d
       name: Cato Socket site discovery
@@ -747,6 +930,51 @@ zabbix_export:
             value: cato_overlay
           - tag: scope
             value: site
+      - uuid: 13a2ec8154255d0087c5d2bca777ed6f
+        name: 'Cato site {#SITE.NAME}: HA ready'
+        type: DEPENDENT
+        key: 'cato.site.ha.readiness.code[{#SITE.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: UNSIGNED
+        valuemap:
+          name: Cato HA readiness
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var found = null;
+            for (var i = 0; i < sites.length; i++) {
+              if (String(sites[i].id) === '{#SITE.ID}') {
+                found = sites[i];
+                break;
+              }
+            }
+            if (!found) {
+              throw 'site missing';
+            }
+            var info = found.info || {};
+            var ha = found.haStatus || {};
+            if (info.isHA === true || String(info.isHA).toLowerCase() === 'true') {
+              return String(ha.readiness || '').toLowerCase() === 'ready' ? 1 : 0;
+            }
+            return 1;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: site
       - uuid: 5e72cd0c0b01500ca85c94eb8af9814f
         name: 'Cato site {#SITE.NAME}: HA socket version'
         type: DEPENDENT
@@ -2120,6 +2348,13 @@ zabbix_export:
         newvalue: Connected
       - value: '2'
         newvalue: Unknown
+    - uuid: c3d8e1f04a6b4e1e9f2a7c5d8b1e4a90
+      name: Cato HA readiness
+      mappings:
+      - value: '0'
+        newvalue: Not ready
+      - value: '1'
+        newvalue: Ready
     dashboards:
     - uuid: 8806cd45dc714c0a9840b518f4472bb1
       name: Health
@@ -2250,7 +2485,7 @@ zabbix_export:
             name: th_show_labels
             value: '0'
         - type: item
-          name: Sites
+          name: 'Sites up'
           x: '36'
           width: '18'
           height: '4'
@@ -2259,12 +2494,33 @@ zabbix_export:
             name: itemid.0
             value:
               host: 'Cato Networks by HTTP'
-              key: cato.site.discovery.count
+              key: cato.site.up.count
           - type: INTEGER
             name: show.0
             value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
         - type: item
-          name: Sockets
+          name: 'Sockets up'
           x: '54'
           width: '18'
           height: '4'
@@ -2273,10 +2529,31 @@ zabbix_export:
             name: itemid.0
             value:
               host: 'Cato Networks by HTTP'
-              key: cato.socket.discovery.count
+              key: cato.socket.up.count
           - type: INTEGER
             name: show.0
             value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
         - type: problems
           name: Problems
           'y': '4'
@@ -2296,20 +2573,32 @@ zabbix_export:
           name: Sites
           'y': '7'
           width: '72'
-          height: '5'
+          height: '6'
           fields:
           - type: STRING
             name: items.0
             value: 'Cato site *: Connectivity'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato site (.*): Connectivity$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato site (.*): Connectivity$","\1")}'
           - type: INTEGER
             name: interpolation
             value: '0'
           - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '20'
+          - type: INTEGER
             name: show.0
             value: '1'
+          - type: STRING
+            name: reference
+            value: 'CHSIT'
           - type: STRING
             name: thresholds.0.color
             value: 'FF465C'
@@ -2328,11 +2617,712 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '2'
+        - type: svggraph
+          name: Census
+          'y': '13'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: '199C0D'
+          - type: STRING
+            name: ds.0.color.1
+            value: '2774A4'
+          - type: STRING
+            name: ds.0.color.2
+            value: 'F7941D'
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.site.discovery.count
+          - type: ITEM
+            name: ds.0.itemids.1
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.socket.discovery.count
+          - type: ITEM
+            name: ds.0.itemids.2
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.discovery.count
+          - type: STRING
+            name: lefty_min
+            value: '0'
+          - type: STRING
+            name: reference
+            value: 'CHCEN'
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+          - type: INTEGER
+            name: legend
+            value: '1'
+        - type: svggraph
+          name: 'Worst overlay loss'
+          x: '36'
+          'y': '13'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: 'FF465C'
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.loss.worst.pct
+          - type: STRING
+            name: lefty_max
+            value: '10'
+          - type: STRING
+            name: lefty_min
+            value: '0'
+          - type: STRING
+            name: reference
+            value: 'CHLOS'
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+          - type: INTEGER
+            name: legend
+            value: '0'
+      - name: Census
+        widgets:
         - type: item
-          name: 'Snapshot GraphQL errors'
-          'y': '12'
+          name: Sites
           width: '18'
-          height: '3'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.site.discovery.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+        - type: item
+          name: Sockets
+          x: '18'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.socket.discovery.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+        - type: item
+          name: 'WAN links'
+          x: '36'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.discovery.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+        - type: item
+          name: 'SLA rows'
+          x: '54'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.metrics.discovery.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+        - type: item
+          name: 'Sites up'
+          'y': '4'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.site.up.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+        - type: item
+          name: 'Sockets up'
+          x: '18'
+          'y': '4'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.socket.up.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+        - type: item
+          name: 'WAN up'
+          x: '36'
+          'y': '4'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.up.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+        - type: item
+          name: 'HA not ready'
+          x: '54'
+          'y': '4'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.site.ha.not_ready.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+        - type: gauge
+          name: 'Worst overlay loss'
+          'y': '8'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
+            name: decimal_places
+            value: '1'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: th_arc_size
+            value: '6'
+          - type: INTEGER
+            name: units_size
+            value: '14'
+          - type: INTEGER
+            name: value_arc_size
+            value: '16'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.loss.worst.pct
+          - type: STRING
+            name: max
+            value: '10'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FFD54F'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '2'
+          - type: STRING
+            name: thresholds.2.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '5'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+          - type: STRING
+            name: units
+            value: '%'
+        - type: gauge
+          name: 'Worst overlay RTT'
+          x: '18'
+          'y': '8'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: th_arc_size
+            value: '6'
+          - type: INTEGER
+            name: units_size
+            value: '14'
+          - type: INTEGER
+            name: value_arc_size
+            value: '16'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.rtt.worst.ms
+          - type: STRING
+            name: max
+            value: '200'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FFD54F'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '80'
+          - type: STRING
+            name: thresholds.2.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '150'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+          - type: STRING
+            name: units
+            value: 'ms'
+        - type: gauge
+          name: 'Worst last-mile loss'
+          x: '36'
+          'y': '8'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
+            name: decimal_places
+            value: '1'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: th_arc_size
+            value: '6'
+          - type: INTEGER
+            name: units_size
+            value: '14'
+          - type: INTEGER
+            name: value_arc_size
+            value: '16'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.lastmile.loss.worst.pct
+          - type: STRING
+            name: max
+            value: '10'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FFD54F'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '2'
+          - type: STRING
+            name: thresholds.2.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '5'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+          - type: STRING
+            name: units
+            value: '%'
+        - type: gauge
+          name: 'Worst RX util'
+          x: '54'
+          'y': '8'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: th_arc_size
+            value: '6'
+          - type: INTEGER
+            name: units_size
+            value: '14'
+          - type: INTEGER
+            name: value_arc_size
+            value: '16'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.rx.util.worst.pct
+          - type: STRING
+            name: max
+            value: '100'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FFD54F'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '70'
+          - type: STRING
+            name: thresholds.2.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '90'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+          - type: STRING
+            name: units
+            value: '%'
+        - type: svggraph
+          name: Discovery
+          'y': '12'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: '199C0D'
+          - type: STRING
+            name: ds.0.color.1
+            value: '2774A4'
+          - type: STRING
+            name: ds.0.color.2
+            value: 'F7941D'
+          - type: STRING
+            name: ds.0.color.3
+            value: '42A5F5'
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.site.discovery.count
+          - type: ITEM
+            name: ds.0.itemids.1
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.socket.discovery.count
+          - type: ITEM
+            name: ds.0.itemids.2
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.discovery.count
+          - type: ITEM
+            name: ds.0.itemids.3
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.metrics.discovery.count
+          - type: STRING
+            name: lefty_min
+            value: '0'
+          - type: STRING
+            name: reference
+            value: 'CCDIS'
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+          - type: INTEGER
+            name: legend
+            value: '1'
+        - type: svggraph
+          name: Connected
+          x: '36'
+          'y': '12'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: '0EC9AC'
+          - type: STRING
+            name: ds.0.color.1
+            value: '199C0D'
+          - type: STRING
+            name: ds.0.color.2
+            value: '2774A4'
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.site.up.count
+          - type: ITEM
+            name: ds.0.itemids.1
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.socket.up.count
+          - type: ITEM
+            name: ds.0.itemids.2
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.up.count
+          - type: STRING
+            name: lefty_min
+            value: '0'
+          - type: STRING
+            name: reference
+            value: 'CCUP'
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+          - type: INTEGER
+            name: legend
+            value: '1'
+      - name: API
+        widgets:
+        - type: item
+          name: 'Snapshot GraphQL'
+          width: '18'
+          height: '4'
           fields:
           - type: ITEM
             name: itemid.0
@@ -2342,12 +3332,29 @@ zabbix_export:
           - type: INTEGER
             name: show.0
             value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
         - type: item
-          name: 'Metrics GraphQL errors'
+          name: 'Metrics GraphQL'
           x: '18'
-          'y': '12'
           width: '18'
-          height: '3'
+          height: '4'
           fields:
           - type: ITEM
             name: itemid.0
@@ -2357,12 +3364,29 @@ zabbix_export:
           - type: INTEGER
             name: show.0
             value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
         - type: item
-          name: 'Snapshot schema violations'
+          name: 'Snapshot schema'
           x: '36'
-          'y': '12'
           width: '18'
-          height: '3'
+          height: '4'
           fields:
           - type: ITEM
             name: itemid.0
@@ -2372,21 +3396,289 @@ zabbix_export:
           - type: INTEGER
             name: show.0
             value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
         - type: item
-          name: 'Unsupported items'
+          name: 'Metrics schema'
           x: '54'
-          'y': '12'
           width: '18'
-          height: '3'
+          height: '4'
           fields:
           - type: ITEM
             name: itemid.0
             value:
               host: 'Cato Networks by HTTP'
-              key: zabbix[host,,items_unsupported]
+              key: cato.api.metrics.schema_violation_count
           - type: INTEGER
             name: show.0
             value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+        - type: item
+          name: 'Unsupported items'
+          'y': '4'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: 'zabbix[host,,items_unsupported]'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+        - type: gauge
+          name: Snapshot
+          x: '18'
+          'y': '4'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: th_arc_size
+            value: '6'
+          - type: INTEGER
+            name: units_size
+            value: '14'
+          - type: INTEGER
+            name: value_arc_size
+            value: '16'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.snapshot.available
+          - type: STRING
+            name: max
+            value: '1'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+        - type: gauge
+          name: Metrics
+          x: '36'
+          'y': '4'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: th_arc_size
+            value: '6'
+          - type: INTEGER
+            name: units_size
+            value: '14'
+          - type: INTEGER
+            name: value_arc_size
+            value: '16'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.metrics.available
+          - type: STRING
+            name: max
+            value: '1'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+        - type: svggraph
+          name: 'GraphQL errors'
+          'y': '8'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: 'FF465C'
+          - type: STRING
+            name: ds.0.color.1
+            value: 'F7941D'
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.snapshot.error_count
+          - type: ITEM
+            name: ds.0.itemids.1
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.metrics.error_count
+          - type: STRING
+            name: lefty_min
+            value: '0'
+          - type: STRING
+            name: reference
+            value: 'CAPIE'
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+          - type: INTEGER
+            name: legend
+            value: '1'
+        - type: svggraph
+          name: 'Schema violations'
+          x: '36'
+          'y': '8'
+          width: '36'
+          height: '6'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: 'FFD54F'
+          - type: STRING
+            name: ds.0.color.1
+            value: 'FF9800'
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: ITEM
+            name: ds.0.itemids.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.snapshot.schema_violation_count
+          - type: ITEM
+            name: ds.0.itemids.1
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.metrics.schema_violation_count
+          - type: STRING
+            name: lefty_min
+            value: '0'
+          - type: STRING
+            name: reference
+            value: 'CAPIS'
+          - type: INTEGER
+            name: show_problems
+            value: '1'
+          - type: INTEGER
+            name: legend
+            value: '1'
     - uuid: 2489297dba645f46ac922129ae119b29
       name: Path
       pages:
@@ -2394,24 +3686,42 @@ zabbix_export:
         widgets:
         - type: honeycomb
           name: 'Overlay loss'
-          width: '36'
-          height: '5'
+          width: '72'
+          height: '6'
           fields:
           - type: STRING
             name: items.0
             value: 'Cato WAN *: Overlay loss'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Overlay loss$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Overlay loss$","\1")}'
           - type: INTEGER
             name: interpolation
             value: '1'
+          - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '20'
+          - type: INTEGER
+            name: secondary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: secondary_label_size
+            value: '22'
           - type: INTEGER
             name: show.0
             value: '1'
           - type: INTEGER
             name: show.1
             value: '2'
+          - type: STRING
+            name: reference
+            value: 'PLOSS'
           - type: STRING
             name: thresholds.0.color
             value: '0EC9AC'
@@ -2432,7 +3742,7 @@ zabbix_export:
             value: '5'
         - type: honeycomb
           name: 'Overlay RTT'
-          x: '36'
+          'y': '6'
           width: '36'
           height: '5'
           fields:
@@ -2441,16 +3751,34 @@ zabbix_export:
             value: 'Cato WAN *: RTT'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): RTT$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): RTT$","\1")}'
           - type: INTEGER
             name: interpolation
             value: '1'
+          - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '20'
+          - type: INTEGER
+            name: secondary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: secondary_label_size
+            value: '22'
           - type: INTEGER
             name: show.0
             value: '1'
           - type: INTEGER
             name: show.1
             value: '2'
+          - type: STRING
+            name: reference
+            value: 'PRTT'
           - type: STRING
             name: thresholds.0.color
             value: '0EC9AC'
@@ -2471,7 +3799,8 @@ zabbix_export:
             value: '150'
         - type: honeycomb
           name: 'Overlay jitter'
-          'y': '5'
+          x: '36'
+          'y': '6'
           width: '36'
           height: '5'
           fields:
@@ -2480,16 +3809,34 @@ zabbix_export:
             value: 'Cato WAN *: Overlay jitter'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Overlay jitter$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Overlay jitter$","\1")}'
           - type: INTEGER
             name: interpolation
             value: '1'
+          - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '20'
+          - type: INTEGER
+            name: secondary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: secondary_label_size
+            value: '22'
           - type: INTEGER
             name: show.0
             value: '1'
           - type: INTEGER
             name: show.1
             value: '2'
+          - type: STRING
+            name: reference
+            value: 'PJIT'
           - type: STRING
             name: thresholds.0.color
             value: '0EC9AC'
@@ -2508,28 +3855,46 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '30'
+      - name: Last mile
+        widgets:
         - type: honeycomb
           name: 'Last-mile loss'
-          x: '36'
-          'y': '5'
-          width: '36'
-          height: '5'
+          width: '72'
+          height: '6'
           fields:
           - type: STRING
             name: items.0
             value: 'Cato WAN *: Last-mile loss'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Last-mile loss$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Last-mile loss$","\1")}'
           - type: INTEGER
             name: interpolation
             value: '1'
+          - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '20'
+          - type: INTEGER
+            name: secondary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: secondary_label_size
+            value: '22'
           - type: INTEGER
             name: show.0
             value: '1'
           - type: INTEGER
             name: show.1
             value: '2'
+          - type: STRING
+            name: reference
+            value: 'PLMLS'
           - type: STRING
             name: thresholds.0.color
             value: '0EC9AC'
@@ -2550,8 +3915,8 @@ zabbix_export:
             value: '5'
         - type: honeycomb
           name: 'Last-mile latency'
-          'y': '10'
-          width: '72'
+          'y': '6'
+          width: '36'
           height: '5'
           fields:
           - type: STRING
@@ -2559,16 +3924,34 @@ zabbix_export:
             value: 'Cato WAN *: Last-mile latency'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Last-mile latency$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Last-mile latency$","\1")}'
           - type: INTEGER
             name: interpolation
             value: '1'
+          - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '20'
+          - type: INTEGER
+            name: secondary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: secondary_label_size
+            value: '22'
           - type: INTEGER
             name: show.0
             value: '1'
           - type: INTEGER
             name: show.1
             value: '2'
+          - type: STRING
+            name: reference
+            value: 'PLMLT'
           - type: STRING
             name: thresholds.0.color
             value: '0EC9AC'
@@ -2587,6 +3970,121 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '150'
+        - type: honeycomb
+          name: 'RX utilization'
+          x: '36'
+          'y': '6'
+          width: '36'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Cato WAN *: RX utilization'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): RX utilization$","\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '1'
+          - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '20'
+          - type: INTEGER
+            name: secondary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: secondary_label_size
+            value: '22'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: STRING
+            name: reference
+            value: 'PRXUT'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FFD54F'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '70'
+          - type: STRING
+            name: thresholds.2.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '90'
+        - type: honeycomb
+          name: 'TX utilization'
+          'y': '11'
+          width: '72'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Cato WAN *: TX utilization'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): TX utilization$","\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '1'
+          - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '20'
+          - type: INTEGER
+            name: secondary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: secondary_label_size
+            value: '22'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: STRING
+            name: reference
+            value: 'PTXUT'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FFD54F'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '70'
+          - type: STRING
+            name: thresholds.2.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '90'
       - name: Probe
         widgets:
         - type: itemnavigator
@@ -2622,6 +4120,18 @@ zabbix_export:
             name: items.6
             value: 'Cato WAN *: TX bandwidth'
           - type: STRING
+            name: items.7
+            value: 'Cato WAN *: RX utilization'
+          - type: STRING
+            name: items.8
+            value: 'Cato WAN *: TX utilization'
+          - type: STRING
+            name: items.9
+            value: 'Cato WAN *: RX discarded'
+          - type: STRING
+            name: items.10
+            value: 'Cato WAN *: TX discarded'
+          - type: STRING
             name: reference
             value: 'CNAVP'
         - type: svggraph
@@ -2655,7 +4165,7 @@ zabbix_export:
         widgets:
         - type: honeycomb
           name: 'WAN links'
-          width: '36'
+          width: '72'
           height: '6'
           fields:
           - type: STRING
@@ -2663,13 +4173,25 @@ zabbix_export:
             value: 'Cato WAN *: Connectivity'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Connectivity$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Connectivity$","\1")}'
           - type: INTEGER
             name: interpolation
             value: '0'
           - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '16'
+          - type: INTEGER
             name: show.0
             value: '1'
+          - type: STRING
+            name: reference
+            value: 'NWAN'
           - type: STRING
             name: thresholds.0.color
             value: 'FF465C'
@@ -2690,22 +4212,34 @@ zabbix_export:
             value: '2'
         - type: honeycomb
           name: Sockets
-          x: '36'
-          width: '36'
-          height: '6'
+          'y': '6'
+          width: '72'
+          height: '5'
           fields:
           - type: STRING
             name: items.0
             value: 'Cato Socket *: Connectivity'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato Socket (.*): Connectivity$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato Socket (.*): Connectivity$","\1")}'
           - type: INTEGER
             name: interpolation
             value: '0'
           - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '20'
+          - type: INTEGER
             name: show.0
             value: '1'
+          - type: STRING
+            name: reference
+            value: 'NSOCK'
           - type: STRING
             name: thresholds.0.color
             value: 'FF465C'
@@ -2724,11 +4258,12 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '2'
+      - name: Tunnels
+        widgets:
         - type: itemnavigator
           name: Tunnels
-          'y': '6'
           width: '28'
-          height: '8'
+          height: '11'
           fields:
           - type: INTEGER
             name: group_by.0.attribute
@@ -2751,9 +4286,8 @@ zabbix_export:
         - type: svggraph
           name: History
           x: '28'
-          'y': '6'
           width: '44'
-          height: '8'
+          height: '11'
           fields:
           - type: STRING
             name: ds.0.color.0
@@ -2767,6 +4301,110 @@ zabbix_export:
           - type: STRING
             name: reference
             value: 'CNGRA'
+          - type: INTEGER
+            name: legend
+            value: '0'
+          - type: INTEGER
+            name: righty
+            value: '0'
+      - name: HA
+        widgets:
+        - type: honeycomb
+          name: 'HA ready'
+          width: '72'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Cato site *: HA ready'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato site (.*): HA ready$","\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '0'
+          - type: INTEGER
+            name: primary_label_bold
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size_type
+            value: '1'
+          - type: INTEGER
+            name: primary_label_size
+            value: '20'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: STRING
+            name: reference
+            value: 'NHAM'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: STRING
+            name: thresholds.2.color
+            value: '878787'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '2'
+        - type: itemnavigator
+          name: HA
+          'y': '5'
+          width: '28'
+          height: '8'
+          fields:
+          - type: INTEGER
+            name: group_by.0.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.0.tag_name
+            value: 'scope'
+          - type: STRING
+            name: items.0
+            value: 'Cato site *: HA ready'
+          - type: STRING
+            name: items.1
+            value: 'Cato site *: HA readiness'
+          - type: STRING
+            name: items.2
+            value: 'Cato site *: HA socket version'
+          - type: STRING
+            name: items.3
+            value: 'Cato site *: Operational status'
+          - type: STRING
+            name: items.4
+            value: 'Cato site *: HA enabled'
+          - type: STRING
+            name: reference
+            value: 'NHAV'
+        - type: svggraph
+          name: History
+          x: '28'
+          'y': '5'
+          width: '44'
+          height: '8'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: '42A5F5'
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: STRING
+            name: ds.0.itemids.0._reference
+            value: 'NHAV._itemid'
+          - type: STRING
+            name: reference
+            value: 'NHAG'
           - type: INTEGER
             name: legend
             value: '0'
