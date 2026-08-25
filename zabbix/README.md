@@ -4,7 +4,7 @@
 **Prepared:** [03 Fortinet](03-fortinet.md) (FortiGate **API** spec written; not live), [06 network VMs](06-network-vms.md).  
 Copy [_template.md](_template.md) for the next domain. Same observability bar everywhere.
 
-**Rules:** one short page per domain; one data path per doc; OID/lab notes in `templates/<name>/` or `notes/`. Extreme alerting + host **Health**: [notes/alerting-and-health.md](notes/alerting-and-health.md). FortiGate API + Health: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md).
+**Rules:** one short page per domain; one data path per doc; OID/lab notes in `templates/<name>/` or `notes/`. Extreme alerting + host **Health**: [notes/alerting-and-health.md](notes/alerting-and-health.md). FortiGate API + Health: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md). MSSQL named instances (Agent 2 companion): [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md).
 
 ## Doc set
 
@@ -28,6 +28,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/extreme_routing_snmp/` | Extreme Routing by SNMP (OSPF) | imported; not linked (YAML High if linked) |
 | `templates/extreme_iq_engine_snmp/` | Extreme IQ Engine by SNMP | imported; **Health** dashboard; severities per [02](02-extreme-access-points.md) |
 | `templates/fortinet_fortigate_observability/` | FortiGate Observability | companion; nests Cloud **FortiGate by HTTP** 7.0-2 + ICMP Ping; **Health** + **Network interfaces** + **Path** (Loss/Probe) — [03](03-fortinet.md) |
+| `templates/mssql_observability/` | MSSQL Observability | **spec only** — named-instance Agent 2 companion; YAML not imported — [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md) |
 
 ## Related
 

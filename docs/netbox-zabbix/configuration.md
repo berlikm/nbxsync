@@ -554,6 +554,7 @@ Port-label grammar and staged enablement: *[Extreme switching — Confluence TBD
 | Macro | Value | Device Role |
 |---|---|---|
 | `{$CPU.UTIL.CRIT}` | 90 | MSSQL |
+| `{$MSSQL.URI}` | `sqlserver://localhost:1433` | MSSQL |
 | `{$CPU.UTIL.CRIT}` | 80 | Server |
 | `{$MEM.UTIL.CRIT}` | 85 | VDI |
 | `{$VMWARE.URL}` | `https://{{ object.primary_ip4.address.ip }}/sdk` | vCenter |
@@ -613,17 +614,17 @@ SSO domains differ per site. The macro assignment is on each **VM** (not the rol
 
 Username format: `<SSO_DOMAIN>\LogicMonitor` (e.g. `VCENTER-SSO.SENSIRION\LogicMonitor`).
 
-#### MSSQL (DSN per Device; user/password on the role)
+#### MSSQL (Agent 2; URI + per-host login)
 
-`{$MSSQL.DSN}` is the ODBC Data Source Name on that Windows host — unique per database. Assign it on the **Device** (or VM), not the role. The service account is shared: `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}` on **DeviceRole = MSSQL**.
+Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}`, not ODBC DSN. Set URI once on the role. Put the password (and user if the login name is not fleet-wide) on the **Device or VM**. Do **not** create `{$MSSQL.DSN:"PITDV02"}` context rows — Agent 2 does not read DSN, and named instances are LLD on the host ([notes/mssql-agent2-instances.md](../../zabbix/notes/mssql-agent2-instances.md)).
 
 | Macro | Target | Type | Value |
 |---|---|---|---|
-| `{$MSSQL.DSN}` | Device (per MSSQL host) | Text | ODBC DSN name on that host |
-| `{$MSSQL.USER}` | DeviceRole: MSSQL | Secret | Shared service account |
-| `{$MSSQL.PASSWORD}` | DeviceRole: MSSQL | Secret | Shared service account |
+| `{$MSSQL.URI}` | DeviceRole: MSSQL | Text | `sqlserver://localhost:1433` |
+| `{$MSSQL.USER}` | DeviceRole: MSSQL **or** Device if the name differs | Secret | SQL login |
+| `{$MSSQL.PASSWORD}` | Device (per MSSQL host) | Secret | that host’s password |
 
-Same DSN assignment on **MSSQL Query Server** hosts that use the template.
+Same template assignment on **MSSQL Query Server**. Leftover role `{$MSSQL.DSN}` is ODBC-era; ignore for Agent 2.
 
 #### Huawei SAN01 (CG Host Interface — not a macro)
 
