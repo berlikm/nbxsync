@@ -31,9 +31,10 @@ Do **not** put `do_not_monitor` on a Site Group or on role **Server** for waves.
 3. Organization → Tags → **onboarding** → Zabbix tab → Tags → assign **`do_not_monitor`**.
 4. Permanent roles keep role-level Zabbix `do_not_monitor` (Messpc, VDI),
    except for the explicitly deferred Cato Socket rollout below.
-5. The Cato account collector is live. Its Socket migration is deliberately
-   deferred to preserve GUI-managed NetBox and nbxSync configuration; do **not**
-   run `configure_nbxsync_zerotouch.py --enable-cato --mutate-netbox` in the
+5. The Cato account collector is live. Refresh it with
+   `configure_nbxsync_network.py --apply-cato` (not zerotouch). Socket
+   migration is deliberately deferred; do **not** run
+   `configure_nbxsync_zerotouch.py --enable-cato --mutate-netbox` in the
    current rollout.
 
 ---

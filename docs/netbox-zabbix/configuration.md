@@ -511,10 +511,11 @@ Sync **skips** excluded objects (no host/interfaces/templates). An existing
 Zabbix host from a prior sync is **deleted**.
 
 The current legacy Cato inventory tag `do_not_monitor` and role-level Zabbix
-exclusion remain intentionally in place. A future
-`--enable-cato --mutate-netbox` migration replaces the former with `onboarding`
-before removing the latter, with no sync gap. Do **not** run it during the
-account-collector-only rollout.
+exclusion remain intentionally in place. Refresh the account collector with
+`configure_nbxsync_network.py --apply-cato` — **do not** re-run zerotouch for
+that. A future `--enable-cato --mutate-netbox` migration replaces the Socket
+hold with `onboarding` before removing the role exclusion, with no sync gap.
+Do **not** run that migration during the account-collector-only rollout.
 
 Do **not** put Zabbix `do_not_monitor` on role Server (or a Site Group) for
 waves — you cannot open a single child while the parent excludes.

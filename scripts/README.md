@@ -9,13 +9,13 @@ If a script and that document disagree, **fix the script or the document so they
 | Order | Script | Applies |
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
-| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. Neither Forti flag HostSyncs. |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. None of those flags HostSync. |
 | — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** and **Network interfaces** ship from platform templates/runtime patch |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
 | — | `validate_extreme_templates.py` | YAML contract + optional `--zabbix` double-import |
 | — | `zabbix_api.py` | Shared JSON-RPC helper |
-| — | `configure_cato_zabbix.py` | Idempotent Cato account collector template/host; never manages NetBox Socket hosts |
+| — | `configure_cato_zabbix.py` | Zabbix-API implementation for the Cato collector (lab `--simulate`, used by `--apply-cato`). Never manages NetBox Socket hosts |
 
 ## Lab first build
 
@@ -59,37 +59,32 @@ Then verify API 200 from the assigned Swiss proxies and HostSync **both members*
 python3 scripts/validate_extreme_templates.py --zabbix   # lab: YAML contract + double import
 ```
 
-## Cato Socket rollout
-The production account collector is live. The Socket migration is deliberately
-deferred: all 21 production `Sd Wan Socket` devices retain their existing
-role-level exclusion. Do **not** run the NetBox-mutating step below merely to
-refresh the collector or Zabbix configuration.
+## Cato collector refresh
 
-The following is a future, separately approved migration sequence. It mutates
-Socket inventory tags and nbxSync configuration, so validate it in development
-before any production use.
+The production account collector is live. Refresh it with the network script,
+same pattern as FortiGate HTTP: **do not re-run zerotouch**.
 
 ```bash
-export NBX_ZABBIX_URL=https://zabbix.example
-export NBX_ZABBIX_TOKEN=...
 export NBX_CATO_API_KEY=...
+python3 scripts/configure_nbxsync_network.py --check-cato
+python3 scripts/configure_nbxsync_network.py --apply-cato
+```
 
-# 1. Import Cato Networks by HTTP and create/update the owned account host.
-python scripts/configure_cato_zabbix.py --apply
+That fail-closes on GraphQL preflight, imports `Cato Networks by HTTP`, and
+converges `cato-account-964`. No HostSync, no Extreme import, no Socket role
+change.
 
-# 2. Future approved migration only: move every current Sd Wan Socket from the
-#    legacy role exclusion into the per-device onboarding hold.
+The Socket ICMP migration is separately approved and still deferred: all 21
+production `Sd Wan Socket` devices retain their existing role-level exclusion.
+Do **not** run the NetBox-mutating step below merely to refresh the collector.
+
+```bash
+# Future approved migration only — mutates Socket inventory tags / nbxSync.
 python scripts/configure_nbxsync_zerotouch.py --enable-cato --mutate-netbox
-
-# 3. Release Socket hosts one at a time only after their primary IP and
-#    regional proxy path are ready; use the exact runbook command below.
 ```
 
 `configure_cato_zabbix.py --simulate` requires `NBX_CATO_API_KEY` and a local
-Zabbix lab. It imports twice, verifies discovery/history, then waits through
-the 5m/15m no-data windows to prove an invalid API token produces only
-collector problems. `--verify` is read-only and requires only
-`NBX_ZABBIX_URL` and `NBX_ZABBIX_TOKEN`.
+Zabbix lab. `--verify` is collector-only unless you pass `--require-sockets`.
 
 
 ## Re-syncing a single host (testing)
@@ -138,5 +133,6 @@ Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **
 | Switch* IFALIAS / IFTYPE macros | — | yes |
 | Firewall FortiGate HTTP fleet macros (https/20443, WAN/HA/mgmt LLD with `mgmt` link trigger context-disabled, CPU/mem CRIT 101, FQDN Jinja) | — | yes on **Platform FortiOS** (`--apply-firewall-macros` or `--apply`; no Forti HostSync). Not role Firewall. |
 | FortiOS → FortiGate Observability (nests Cloud **Zabbix, 7.0-2**, never import 7.0-3), ZBX-27082 patch, prune Forti/ICMP **and SNMP Monitoring** from role Firewall, CG **FortiGate HTTP** on Platform FortiOS, SNMP Monitoring on FMG/FAZ platforms, Zabbix monitoring TOKEN + FQDN Jinja on Platform FortiOS | **do not re-run** (still SNMP on role Firewall) | `--apply-fortigate-http` (fail-closed preflight, no Extreme YAML, no HostSync) |
+| Cato account collector (`Cato Networks by HTTP`, GraphQL preflight, `cato-account-*`) | **do not re-run** | `--apply-cato` / `--check-cato` (no HostSync, no Socket role mutation) |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |

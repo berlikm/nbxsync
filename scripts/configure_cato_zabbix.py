@@ -5,17 +5,24 @@ The Cato API represents an account, not a NetBox device.  This script owns the
 single collector host and its secret macro.  It deliberately does not create or
 manage Socket hosts; nbxSync owns those NetBox-backed ICMP hosts.
 
+Production collector refresh is ``configure_nbxsync_network.py --apply-cato``.
+This module is the Zabbix-API implementation that flag calls. Do not re-run
+zerotouch to update the collector.
+
 Usage:
   NBX_CATO_API_KEY=... python scripts/configure_cato_zabbix.py --simulate
   NBX_ZABBIX_URL=https://zabbix.example NBX_ZABBIX_TOKEN=... \\
     NBX_CATO_API_KEY=... python scripts/configure_cato_zabbix.py --apply
   NBX_ZABBIX_URL=https://zabbix.example NBX_ZABBIX_TOKEN=... \\
     python scripts/configure_cato_zabbix.py --verify
+  NBX_ZABBIX_URL=https://zabbix.example NBX_ZABBIX_TOKEN=... \\
+    python scripts/configure_cato_zabbix.py --verify --require-sockets
 
 ``--simulate`` uses the local Zabbix lab and creates only ``cato-sim-account-964``.
 It exercises a valid Cato collection, then an invalid-token collector failure;
 it is intentionally slow because it waits through the template's 5m/15m
-no-data windows.
+no-data windows. ``--apply`` fail-closes on GraphQL preflight before import.
+``--verify`` is collector-only unless ``--require-sockets`` is passed.
 """
 
 from __future__ import annotations
@@ -34,90 +41,51 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from zabbix_api import ZabbixAPI  # noqa: E402
+from cato_http import (  # noqa: E402
+    CATO_API_KEY_ENV,
+    CATO_API_URL,
+    CATO_PROXY_GROUP_ENV,
+    COLLECTOR_COUNTER_KEYS,
+    EXPECTED_COLLECTOR_TRIGGER_NAMES,
+    EXPECTED_DASHBOARD_NAMES,
+    EXPECTED_DISCOVERY_KEYS,
+    EXPECTED_GRAPH_PROTOTYPES,
+    EXPECTED_HEALTH_PAGES,
+    EXPECTED_ITEM_PROTOTYPE_KEYS,
+    EXPECTED_NETWORK_PAGES,
+    EXPECTED_PATH_PAGES,
+    EXPECTED_STATE_TRIGGER_PROTOTYPE_NAMES,
+    EXPECTED_TEMPLATE_ITEM_KEYS,
+    EXPECTED_UNSUPPORTED_TRIGGER_DEPENDENCIES,
+    HOST_GROUP,
+    ICMP_TEMPLATE_NAME,
+    MANAGED_TAGS,
+    MASTER_KEYS,
+    METRICS_FRESH_SECONDS,
+    PROXY_GROUP_MONITORED,
+    SECRET_TEXT,
+    SERVER_MONITORED,
+    SIM_EXPECTED_CENSUS,
+    SLA_PREFIXES,
+    SNAPSHOT_FRESH_SECONDS,
+    TEMPLATE_NAME,
+    TEMPLATE_PATH,
+    TEXT,
+    collector_host,
+    collector_visible_name,
+    default_account_id,
+    host_macros,
+    metrics_sla_census,
+    preflight_cato_graphql,
+    sim_host,
+    snapshot_census,
+    snapshot_socket_serials,
+)
 
-TEMPLATE_NAME = "Cato Networks by HTTP"
-HOST = "cato-account-964"
-VISIBLE_NAME = "Cato Account 964"
-HOST_GROUP = "Applications/Cato"
-SIM_HOST = "cato-sim-account-964"
-ICMP_TEMPLATE_NAME = "ICMP Ping"
-
-TEMPLATE_PATH = ROOT / "zabbix/templates/cato_http/template_cato_networks_http.yaml"
-CATO_API_URL = "https://api.catonetworks.com/api/v1/graphql2"
-CATO_ACCOUNT_ID = "964"
-SECRET_TEXT = 1
-TEXT = 0
-SERVER_MONITORED = 0
-PROXY_GROUP_MONITORED = 2
-
-MANAGED_TAGS = [
-    {"tag": "managed_by", "value": "cato-pack"},
-    {"tag": "component", "value": "cato"},
-    {"tag": "monitoring_domain", "value": "cato_overlay"},
-]
-CATO_MACROS = {
-    "{$CATO.API.URL}": (CATO_API_URL, TEXT),
-    "{$CATO.ACCOUNT.ID}": (CATO_ACCOUNT_ID, TEXT),
-}
-MASTER_KEYS = ("cato.account.snapshot", "cato.account.metrics")
-EXPECTED_TEMPLATE_ITEM_KEYS = {
-    "cato.account.snapshot",
-    "cato.account.metrics",
-    "cato.api.snapshot.error_count",
-    "cato.api.metrics.error_count",
-    "cato.api.snapshot.schema_violation_count",
-    "cato.api.metrics.schema_violation_count",
-    "zabbix[host,,items_unsupported]",
-}
-EXPECTED_DISCOVERY_KEYS = {
-    "cato.site.discovery",
-    "cato.socket.discovery",
-    "cato.wan.discovery",
-    "cato.wan.metrics.discovery",
-}
-EXPECTED_GRAPH_PROTOTYPES = {
-    "Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth",
-    "Cato WAN {#SITE.NAME} / {#LINK.NAME}: Packet loss",
-    "Cato WAN {#SITE.NAME} / {#LINK.NAME}: Latency and jitter",
-}
-EXPECTED_COLLECTOR_TRIGGER_NAMES = {
-    "Cato API: Snapshot GraphQL errors",
-    "Cato API: Metrics GraphQL errors",
-    "Cato API: Snapshot GraphQL schema violations",
-    "Cato API: Metrics GraphQL schema violations",
-    "Cato API: Unsupported items present",
-    "Cato API: No snapshot data for 5m",
-    "Cato API: No metrics data for 15m",
-}
-EXPECTED_STATE_TRIGGER_PROTOTYPE_NAMES = {
-    "Cato site {#SITE.NAME}: Disconnected",
-    "Cato Socket {#SERIAL}: Disconnected while site is up",
-    "Cato WAN {#SITE.NAME} / {#LINK.NAME}: Disconnected while site is up",
-}
-EXPECTED_UNSUPPORTED_TRIGGER_DEPENDENCIES = {
-    "Cato API: No snapshot data for 5m",
-    "Cato API: No metrics data for 15m",
-}
-
-SLA_PREFIXES = {
-    "cato.wan.rx.bps[": "RX bandwidth",
-    "cato.wan.tx.bps[": "TX bandwidth",
-    "cato.wan.loss.rx.pct[": "RX loss",
-    "cato.wan.loss.tx.pct[": "TX loss",
-    "cato.wan.jitter.rx.ms[": "RX jitter",
-    "cato.wan.jitter.tx.ms[": "TX jitter",
-    "cato.wan.rtt.ms[": "RTT",
-}
-COLLECTOR_COUNTER_KEYS = {
-    "cato.api.snapshot.error_count",
-    "cato.api.metrics.error_count",
-    "cato.api.snapshot.schema_violation_count",
-    "cato.api.metrics.schema_violation_count",
-    "zabbix[host,,items_unsupported]",
-}
-SNAPSHOT_FRESH_SECONDS = 5 * 60
-METRICS_FRESH_SECONDS = 15 * 60
-SIM_EXPECTED_CENSUS = {"sites": 11, "sockets": 21, "wan_rows": 33, "sla_rows": 17}
+HOST = collector_host()
+VISIBLE_NAME = collector_visible_name()
+SIM_HOST = sim_host()
+CATO_MACROS = host_macros()
 
 
 def import_rules() -> dict[str, dict[str, bool]]:
@@ -279,7 +247,7 @@ def _set_host_macro(
 
 
 def _set_cato_macros(api: ZabbixAPI, hostid: str, api_token: str) -> None:
-    for macro, (value, macro_type) in CATO_MACROS.items():
+    for macro, (value, macro_type) in host_macros().items():
         _set_host_macro(api, hostid, macro, value, macro_type)
     _set_host_macro(api, hostid, "{$CATO.API.TOKEN}", api_token, SECRET_TEXT)
 
@@ -441,7 +409,10 @@ def _template_pack_checks(api: ZabbixAPI, templateid: str) -> list[dict[str, Any
     )
     trigger_prototypes = api.call(
         "triggerprototype.get",
-        {"hostids": templateid, "output": ["triggerid", "description", "expression"]},
+        {
+            "hostids": templateid,
+            "output": ["triggerid", "description", "expression", "priority"],
+        },
     )
     trigger_prototype_names = {
         trigger_prototype["description"] for trigger_prototype in trigger_prototypes
@@ -486,17 +457,69 @@ def _template_pack_checks(api: ZabbixAPI, templateid: str) -> list[dict[str, Any
             "selectPages": ["name"],
         },
     )
-    health = [dashboard for dashboard in dashboards if dashboard["name"] == "Health"]
-    page_names = (
-        {page["name"] for page in health[0].get("pages", [])}
-        if len(health) == 1
-        else set()
-    )
+    dash_by_name = {dashboard["name"]: dashboard for dashboard in dashboards}
+    missing_dash = sorted(EXPECTED_DASHBOARD_NAMES - set(dash_by_name))
     checks.append(
         _record(
-            "Cato Health dashboard",
-            len(health) == 1 and page_names == {"Overview", "WAN SLA"},
-            f"count={len(health)} pages={sorted(page_names)}",
+            "Cato Health/Path/Network dashboards",
+            not missing_dash,
+            f"missing={missing_dash} present={sorted(dash_by_name)}",
+        )
+    )
+    health = dash_by_name.get("Health") or {}
+    health_pages = {page["name"] for page in health.get("pages", [])}
+    checks.append(
+        _record(
+            "Cato Health dashboard pages",
+            health_pages == EXPECTED_HEALTH_PAGES,
+            f"pages={sorted(health_pages)}",
+        )
+    )
+    path = dash_by_name.get("Path") or {}
+    path_pages = {page["name"] for page in path.get("pages", [])}
+    checks.append(
+        _record(
+            "Cato Path dashboard pages",
+            path_pages == EXPECTED_PATH_PAGES,
+            f"pages={sorted(path_pages)}",
+        )
+    )
+    network = dash_by_name.get("Network") or {}
+    network_pages = {page["name"] for page in network.get("pages", [])}
+    checks.append(
+        _record(
+            "Cato Network dashboard pages",
+            network_pages == EXPECTED_NETWORK_PAGES,
+            f"pages={sorted(network_pages)}",
+        )
+    )
+    prototypes = api.call(
+        "itemprototype.get",
+        {"hostids": templateid, "output": ["itemid", "key_"]},
+    )
+    prototype_keys = {item["key_"] for item in prototypes}
+    missing_prototypes = sorted(EXPECTED_ITEM_PROTOTYPE_KEYS - prototype_keys)
+    checks.append(
+        _record(
+            "Cato template item prototypes",
+            not missing_prototypes,
+            f"missing={missing_prototypes}",
+        )
+    )
+    site_disconnected = next(
+        (
+            trigger_prototype
+            for trigger_prototype in trigger_prototypes
+            if trigger_prototype["description"] == "Cato site {#SITE.NAME}: Disconnected"
+        ),
+        None,
+    )
+    site_priority = str((site_disconnected or {}).get("priority", ""))
+    checks.append(
+        _record(
+            "Cato site disconnected is High not Disaster",
+            site_priority == "4",
+            f"priority={site_priority}",
         )
     )
     return checks
@@ -529,7 +552,8 @@ def verify_account_host(api: ZabbixAPI, hostid: str) -> list[dict[str, Any]]:
     checks.append(
         _record(
             "Cato account host ownership",
-            _owned(collector) and collector["host"] in {HOST, SIM_HOST},
+            _owned(collector)
+            and collector["host"] in {collector_host(), sim_host(), HOST, SIM_HOST},
             collector["host"],
         )
     )
@@ -540,7 +564,7 @@ def verify_account_host(api: ZabbixAPI, hostid: str) -> list[dict[str, Any]]:
             f"status={collector.get('status')}",
         )
     )
-    proxy_group = os.environ.get("NBX_CATO_PROXY_GROUP") or None
+    proxy_group = os.environ.get(CATO_PROXY_GROUP_ENV) or None
     if proxy_group:
         expected_proxy_groupid = _get_proxy_group_id(api, proxy_group)
         transport_ok = (
@@ -604,7 +628,7 @@ def verify_account_host(api: ZabbixAPI, hostid: str) -> list[dict[str, Any]]:
     checks.append(
         _record(
             "Cato account ID macro",
-            macros.get("{$CATO.ACCOUNT.ID}", {}).get("value") == CATO_ACCOUNT_ID,
+            macros.get("{$CATO.ACCOUNT.ID}", {}).get("value") == default_account_id(),
             "present" if "{$CATO.ACCOUNT.ID}" in macros else "missing",
         )
     )
@@ -646,23 +670,25 @@ def _latest_text_history(api: ZabbixAPI, itemid: str) -> str | None:
 
 
 def _snapshot_socket_serials(snapshot_value: str) -> set[str]:
-    root = json.loads(snapshot_value)
-    data = root.get("data") or {}
-    snapshot = data.get("accountSnapshot") or {}
-    serials: set[str] = set()
-    for site in snapshot.get("sites", []) or []:
-        info = site.get("info") or {}
-        if not str(info.get("connType") or "").startswith("SOCKET_"):
-            continue
-        for device in site.get("devices", []) or []:
-            serial = str((device.get("socketInfo") or {}).get("serial") or "").strip()
-            if serial:
-                serials.add(serial)
-    return serials
+    return snapshot_socket_serials(snapshot_value)
 
 
-def verify_socket_hosts(api: ZabbixAPI, account_hostid: str) -> list[dict[str, Any]]:
-    """Compare Cato's last snapshot serials with NetBox-owned Socket ICMP hosts."""
+def _is_discovered_key(key: str, prefix: str) -> bool:
+    return key.startswith(prefix) and "__seed" not in key
+
+
+def verify_socket_hosts(
+    api: ZabbixAPI,
+    account_hostid: str,
+    *,
+    require_sockets: bool = False,
+) -> list[dict[str, Any]]:
+    """Compare Cato's last snapshot serials with NetBox-owned Socket ICMP hosts.
+
+    Default is collector-safe: 0/N Socket ICMP hosts (the current hold) does
+    not fail. Pass require_sockets=True only after the approved Socket
+    migration.
+    """
     checks: list[dict[str, Any]] = []
     masters = _master_items(api, account_hostid)
     snapshot_value = _latest_text_history(
@@ -690,7 +716,7 @@ def verify_socket_hosts(api: ZabbixAPI, account_hostid: str) -> list[dict[str, A
         )
     )
 
-    all_hosts = api.call(
+    tagged = api.call(
         "host.get",
         {
             "output": ["hostid", "host", "name"],
@@ -698,11 +724,16 @@ def verify_socket_hosts(api: ZabbixAPI, account_hostid: str) -> list[dict[str, A
             "selectInterfaces": ["interfaceid", "type", "main", "ip"],
             "selectParentTemplates": ["templateid", "name"],
             "selectInventory": ["serialno_a"],
+            "tags": [
+                {"tag": "component", "value": "cato", "operator": 0},
+                {"tag": "monitoring_domain", "value": "cato_socket", "operator": 0},
+            ],
+            "evaltype": 0,
         },
     )
     sockets = [
         host
-        for host in all_hosts
+        for host in tagged
         if str(host["hostid"]) != str(account_hostid)
         and {("component", "cato"), ("monitoring_domain", "cato_socket")}
         <= _tag_map(host)
@@ -714,18 +745,22 @@ def verify_socket_hosts(api: ZabbixAPI, account_hostid: str) -> list[dict[str, A
     host_serials.discard("")
     missing_serials = sorted(snapshot_serials - host_serials)
     unexpected_serials = sorted(host_serials - snapshot_serials)
+    identity_ok = len(host_serials) == len(sockets) and not unexpected_serials
+    if require_sockets:
+        identity_ok = identity_ok and not missing_serials and len(sockets) > 0
     checks.append(
         _record(
             "Cato Socket ICMP host census",
-            len(sockets) <= len(snapshot_serials),
+            (not require_sockets and len(sockets) <= len(snapshot_serials))
+            or (require_sockets and len(sockets) == len(snapshot_serials)),
             f"{len(sockets)}/{len(snapshot_serials)} hosts tagged component=cato, monitoring_domain=cato_socket",
         )
     )
     checks.append(
         _record(
             "Cato Socket inventory serial identity",
-            len(host_serials) == len(sockets) and not unexpected_serials,
-            f"missing={missing_serials} unexpected={unexpected_serials}",
+            identity_ok,
+            f"missing={missing_serials} unexpected={unexpected_serials} require_sockets={require_sockets}",
         )
     )
     account_ping = api.call(
@@ -841,44 +876,11 @@ def _all_host_items(api: ZabbixAPI, hostid: str) -> list[dict[str, Any]]:
 
 
 def _socket_snapshot_census(snapshot_value: str) -> dict[str, int]:
-    root = json.loads(snapshot_value)
-    data = root.get("data") or {}
-    snapshot = data.get("accountSnapshot") or {}
-    sites = sockets = wan_rows = 0
-    for site in snapshot.get("sites", []) or []:
-        info = site.get("info") or {}
-        if not str(info.get("connType") or "").startswith("SOCKET_"):
-            continue
-        sites += 1
-        for device in site.get("devices", []) or []:
-            socket = device.get("socketInfo") or {}
-            if not str(socket.get("serial") or "").strip():
-                continue
-            sockets += 1
-            wan_rows += sum(
-                1
-                for interface in device.get("interfaces", []) or []
-                if (interface.get("info") or {}).get("id") is not None
-            )
-    return {"sites": sites, "sockets": sockets, "wan_rows": wan_rows}
+    return snapshot_census(snapshot_value)
 
 
 def _metrics_sla_census(metrics_value: str) -> int:
-    root = json.loads(metrics_value)
-    data = root.get("data") or {}
-    metrics = data.get("accountMetrics") or {}
-    pairs: set[tuple[str, str]] = set()
-    for site in metrics.get("sites", []) or []:
-        info = site.get("info") or {}
-        site_id = site.get("id")
-        if site_id is None or not str(info.get("connType") or "").startswith("SOCKET_"):
-            continue
-        for interface in site.get("interfaces", []) or []:
-            interface_info = interface.get("interfaceInfo") or {}
-            link_id = interface_info.get("id")
-            if link_id is not None:
-                pairs.add((str(site_id), str(link_id)))
-    return len(pairs)
+    return metrics_sla_census(metrics_value)
 
 
 def _is_fresh(item: dict[str, Any], now: int, window: int) -> bool:
@@ -937,6 +939,11 @@ def _expected_data_families(census: dict[str, int]) -> dict[str, tuple[int, int,
             prefix: (census["sla_rows"], METRICS_FRESH_SECONDS, label)
             for prefix, label in SLA_PREFIXES.items()
         }
+    )
+    families["cato.wan.jitter.max.ms["] = (
+        census["sla_rows"],
+        METRICS_FRESH_SECONDS,
+        "overlay jitter",
     )
     return families
 
@@ -1020,7 +1027,7 @@ def _collector_data_checks(
 
     expected_prefixes = _expected_data_families(census)
     for prefix, (expected, window, label) in expected_prefixes.items():
-        family = [item for item in items if item["key_"].startswith(prefix)]
+        family = [item for item in items if _is_discovered_key(item["key_"], prefix)]
         stale = sum(not _is_fresh(item, now, window) for item in family)
         records.append(
             _record(
@@ -1139,7 +1146,7 @@ def _wait_for_data_families(
     while True:
         items = _all_host_items(api, hostid)
         counts = {
-            prefix: sum(item["key_"].startswith(prefix) for item in items)
+            prefix: sum(_is_discovered_key(item["key_"], prefix) for item in items)
             for prefix in expected
         }
         counts_ready = all(counts[prefix] >= expected[prefix][0] for prefix in expected)
@@ -1148,7 +1155,7 @@ def _wait_for_data_families(
             and all(
                 _is_fresh(item, int(time.time()), expected[prefix][1])
                 for item in items
-                if item["key_"].startswith(prefix)
+                if _is_discovered_key(item["key_"], prefix)
             )
             for prefix in expected
         )
@@ -1362,11 +1369,68 @@ def _run_collector_isolation(
     return records
 
 
+def apply_cato_pack(
+    api: ZabbixAPI,
+    api_token: str,
+    *,
+    host: str | None = None,
+    visible_name: str | None = None,
+    proxy_group: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fail-closed GraphQL preflight, then import YAML and converge the collector."""
+    if not api_token:
+        raise RuntimeError(f"{CATO_API_KEY_ENV} is required")
+    errors = preflight_cato_graphql(api_key=api_token, account_id=default_account_id())
+    if errors:
+        raise RuntimeError("Cato GraphQL preflight failed:\n  " + "\n  ".join(errors))
+    if proxy_group:
+        _get_proxy_group_id(api, proxy_group)
+    templateid = import_template(api)
+    hostid = ensure_account_host(
+        api,
+        templateid,
+        api_token,
+        host=host or collector_host(),
+        visible_name=visible_name or collector_visible_name(),
+        proxy_group=proxy_group,
+    )
+    return verify_account_host(api, hostid)
+
+
+def verify_cato_collector(
+    api: ZabbixAPI,
+    *,
+    require_sockets: bool = False,
+    check_live_data: bool = True,
+) -> list[dict[str, Any]]:
+    """Read-only collector verification. Socket ICMP census is optional."""
+    template = _exact_template(api)
+    if template is None:
+        return [_record("Cato template", False, "missing")]
+    collector = _get_host(api, collector_host())
+    if collector is None:
+        records = [_record("Cato account host", False, "missing")]
+        records.extend(_template_pack_checks(api, str(template["templateid"])))
+        return records
+    hostid = str(collector["hostid"])
+    records = verify_account_host(api, hostid)
+    if check_live_data:
+        records.extend(_collector_data_checks(api, hostid))
+    if require_sockets:
+        records.extend(verify_socket_hosts(api, hostid, require_sockets=True))
+    else:
+        records.extend(verify_socket_hosts(api, hostid, require_sockets=False))
+    return records
+
+
 def run_simulate() -> int:
     """Exercise import, owned host lifecycle, discovery, and isolation in the lab."""
-    api_token = os.environ.get("NBX_CATO_API_KEY", "")
+    api_token = os.environ.get(CATO_API_KEY_ENV, "")
     if not api_token:
-        raise RuntimeError("NBX_CATO_API_KEY is required for --simulate")
+        raise RuntimeError(f"{CATO_API_KEY_ENV} is required for --simulate")
+    errors = preflight_cato_graphql(api_key=api_token, account_id=default_account_id())
+    if errors:
+        raise RuntimeError("Cato GraphQL preflight failed:\n  " + "\n  ".join(errors))
     api = ZabbixAPI.from_lab()
     _delete_sim_host(api)
     first_templateid = import_template(api)
@@ -1425,34 +1489,26 @@ def _production_api() -> ZabbixAPI:
 
 def run_apply() -> int:
     """Import the pack and converge the one production account host."""
-    api_token = os.environ.get("NBX_CATO_API_KEY", "")
+    api_token = os.environ.get(CATO_API_KEY_ENV, "")
     if not api_token:
-        raise RuntimeError("NBX_CATO_API_KEY is required for --apply")
+        raise RuntimeError(f"{CATO_API_KEY_ENV} is required for --apply")
     api = _production_api()
-    proxy_group = os.environ.get("NBX_CATO_PROXY_GROUP") or None
-    if proxy_group:
-        _get_proxy_group_id(api, proxy_group)
-    templateid = import_template(api)
-    hostid = ensure_account_host(api, templateid, api_token, proxy_group=proxy_group)
-    records = verify_account_host(api, hostid)
+    records = apply_cato_pack(
+        api,
+        api_token,
+        proxy_group=os.environ.get(CATO_PROXY_GROUP_ENV) or None,
+    )
     return 0 if _all_pass(records) else 1
 
 
-def run_verify() -> int:
-    """Read only: verify the imported pack, collector host, and Socket ICMP census."""
+def run_verify(*, require_sockets: bool = False) -> int:
+    """Read only: verify the imported pack and collector host.
+
+    Socket ICMP serial matching is informational during the 0/21 hold.
+    Pass ``--require-sockets`` only after the approved Socket migration.
+    """
     api = _production_api()
-    template = _exact_template(api)
-    if template is None:
-        records = [_record("Cato template", False, "missing")]
-        return 0 if _all_pass(records) else 1
-    collector = _get_host(api, HOST)
-    if collector is None:
-        records = [_record("Cato account host", False, "missing")]
-        records.extend(_template_pack_checks(api, str(template["templateid"])))
-        return 0 if _all_pass(records) else 1
-    records = verify_account_host(api, str(collector["hostid"]))
-    records.extend(_collector_data_checks(api, str(collector["hostid"])))
-    records.extend(verify_socket_hosts(api, str(collector["hostid"])))
+    records = verify_cato_collector(api, require_sockets=require_sockets)
     return 0 if _all_pass(records) else 1
 
 
@@ -1467,20 +1523,27 @@ def main() -> int:
     actions.add_argument(
         "--apply",
         action="store_true",
-        help="import pack and converge production account host",
+        help="GraphQL preflight, import pack, converge production account host",
     )
     actions.add_argument(
         "--verify",
         action="store_true",
-        help="read-only production account and Socket-host verification",
+        help="read-only production collector verification (Socket ICMP optional)",
+    )
+    parser.add_argument(
+        "--require-sockets",
+        action="store_true",
+        help="with --verify, fail when snapshot serials are missing from Socket ICMP hosts",
     )
     args = parser.parse_args()
+    if args.require_sockets and not args.verify:
+        raise SystemExit("--require-sockets is only valid with --verify")
     try:
         if args.simulate:
             return run_simulate()
         if args.apply:
             return run_apply()
-        return run_verify()
+        return run_verify(require_sockets=args.require_sockets)
     except Exception as exc:
         # Do not include environment values, request bodies, or macro contents in errors.
         print(f"ERROR: {exc}", file=sys.stderr)

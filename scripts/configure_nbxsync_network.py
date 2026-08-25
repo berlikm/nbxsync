@@ -59,6 +59,10 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     leftover ICMP/HTTP/SNMP from FortiOS devices/platforms/device types —
     not from agent CGs. Operator path is ``--apply-fortigate-http`` — do
     **not** re-run zerotouch. Do not dual-link HTTP+SNMP.
+  * Cato account collector: ``--apply-cato`` / ``--check-cato`` import
+    **Cato Networks by HTTP**, fail-close on GraphQL preflight, and converge
+    the one owned interface-free host. No HostSync, no Extreme import, no
+    Socket role mutation. Do **not** re-run zerotouch to refresh the collector.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -74,6 +78,7 @@ Stage matrix (what each flag enables):
                                     Also writes FortiOS platform FortiGate HTTP macros (no Forti HostSync, no FortiOS retarget).
   ``--apply-firewall-macros``     = NetBox-only FortiOS platform macros. No Extreme import, no Zabbix API, no HostSync, no FortiOS retarget.
   ``--apply-fortigate-http``      = FortiGate HTTP cutover without zerotouch: lookup Cloud **Zabbix, 7.0-2**, patch ZBX-27082 / WAN state, import Observability companion, FortiOS rule only (not role Firewall). Fail-closed preflight. No HostSync.
+  ``--check-cato`` / ``--apply-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -118,9 +123,12 @@ Usage::
   # FortiGate HTTP cutover (no zerotouch, no Extreme YAML, no HostSync)
   # Looks up FortiGate by HTTP already in Zabbix Cloud (vendor Zabbix, 7.0-2).
   # Never imports bundled 7.0-3 — that would overwrite Cloud.
-  export NBX_FORTIGATE_TOKEN=...      # shared REST key on Platform FortiOS
   python scripts/configure_nbxsync_network.py --check-fortigate-http  # read-only
   python scripts/configure_nbxsync_network.py --apply-fortigate-http
+
+  # Cato account collector refresh (no zerotouch, no Extreme YAML, no HostSync)
+  python scripts/configure_nbxsync_network.py --check-cato   # GraphQL preflight + collector shape
+  python scripts/configure_nbxsync_network.py --apply-cato
 
   # Temporary LM cutover silence only (not the long-term target)
   python scripts/configure_nbxsync_network.py --apply --cutover-silence
@@ -322,6 +330,7 @@ FORTIGATE_HTTP_YAML = ROOT / 'zabbix/templates/fortinet_fortigate_http/template_
 FORTIGATE_OBSERVABILITY_YAML = (
     ROOT / 'zabbix/templates/fortinet_fortigate_observability/template_fortigate_observability.yaml'
 )
+CATO_HTTP_YAML = ROOT / 'zabbix/templates/cato_http/template_cato_networks_http.yaml'
 
 _SPEED_EXPECT_TEMPLATE = 'Extreme Port Speed Expect by SNMP'
 _SPEED_EXPECT_DISCOVERY_KEY = 'net.if.speedexpect.discovery'
@@ -4426,6 +4435,106 @@ def run_apply_fortigate_http() -> int:
     return 0
 
 
+def _cato_rpc(server):
+    """JSON-RPC helper used by the Cato pack (not zabbix_utils object methods)."""
+    from zabbix_api import ZabbixAPI
+
+    return ZabbixAPI(server.url, token=server.token)
+
+
+def _print_cato_plan(*, errors: list[str], apply: bool) -> None:
+    from cato_http import (
+        CATO_API_KEY_ENV,
+        CATO_API_URL,
+        collector_host,
+        collector_visible_name,
+        default_account_id,
+    )
+
+    logger.info('=' * 60)
+    logger.info('Cato collector proposed writes (nothing written yet)' if apply else 'Cato collector check (read-only)')
+    logger.info('=' * 60)
+    logger.info('GraphQL preflight: %s account %s', CATO_API_URL, default_account_id())
+    logger.info('Token source: %s (never printed)', CATO_API_KEY_ENV)
+    logger.info('Zabbix host: %s (%s)', collector_host(), collector_visible_name())
+    logger.info('Import template from %s', CATO_HTTP_YAML)
+    logger.info('No HostSync, no Extreme import, no Socket role mutation, no zerotouch')
+    if errors:
+        logger.info('Preflight errors (%s) — abort, no writes:', len(errors))
+        for err in errors:
+            logger.info('  %s', err)
+
+
+def _require_cato_preflight(*, server=None, apply: bool = True):
+    """Fail-closed GraphQL gate. Does not import YAML or touch Socket hosts."""
+    from cato_http import preflight_cato_graphql
+
+    if server is None:
+        server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
+        if server is None:
+            raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
+    errors = preflight_cato_graphql()
+    _print_cato_plan(errors=errors, apply=apply)
+    if errors:
+        for error in errors:
+            logger.error('  preflight: %s', error)
+        raise SystemExit('Cato GraphQL preflight failed — no writes:\n  ' + '\n  '.join(errors))
+    return server
+
+
+def run_check_cato() -> int:
+    """Read-only Cato GraphQL preflight plus collector host/template shape."""
+    from configure_cato_zabbix import _all_pass, verify_account_host
+    from cato_http import collector_host
+    from configure_cato_zabbix import _exact_template, _get_host, _template_pack_checks
+
+    server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
+    if server is None:
+        raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
+    _require_cato_preflight(server=server, apply=False)
+    api = _cato_rpc(server)
+    template = _exact_template(api)
+    if template is None:
+        logger.info('Cato template not imported yet — preflight OK, nothing else to check')
+        return 0
+    collector = _get_host(api, collector_host())
+    if collector is None:
+        records = _template_pack_checks(api, str(template['templateid']))
+        logger.info('Cato template present; collector host not created yet')
+        return 0 if _all_pass(records) else 1
+    records = verify_account_host(api, str(collector['hostid']))
+    logger.info('Cato collector check OK — wrote nothing')
+    return 0 if _all_pass(records) else 1
+
+
+def run_apply_cato() -> int:
+    """Refresh the Cato account collector without zerotouch or HostSync."""
+    from configure_cato_zabbix import _all_pass, apply_cato_pack
+    from cato_http import CATO_API_KEY_ENV, CATO_PROXY_GROUP_ENV
+
+    server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
+    if server is None:
+        raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
+    api_token = (os.environ.get(CATO_API_KEY_ENV) or '').strip()
+    if not api_token:
+        raise SystemExit(f'Set {CATO_API_KEY_ENV} for --apply-cato')
+    server = _require_cato_preflight(server=server)
+    logger.info('Preflight OK — importing Cato template and converging the account host')
+    api = _cato_rpc(server)
+    records = apply_cato_pack(
+        api,
+        api_token,
+        proxy_group=os.environ.get(CATO_PROXY_GROUP_ENV) or None,
+    )
+    if not _all_pass(records):
+        raise SystemExit('Cato collector apply verification failed')
+    logger.info(
+        'Cato collector written. No HostSync. No Socket role change. '
+        'Do not re-run zerotouch to refresh this pack.'
+    )
+    return 0
+
+
 def run_zabbix_only(*, link_speed_expect: bool = False) -> int:
     """Fallback smoke without NetBox object graph — delegates to run_network_zabbix_sim."""
     from run_network_zabbix_sim import main as sim_main
@@ -4458,6 +4567,16 @@ def main() -> int:
         action='store_true',
         help='Read-only FortiGate HTTP preflight: Zabbix parent + every FortiOS API endpoint/token',
     )
+    mode.add_argument(
+        '--apply-cato',
+        action='store_true',
+        help='Cato collector refresh: GraphQL preflight, import Cato Networks by HTTP, converge account host; no HostSync, no zerotouch',
+    )
+    mode.add_argument(
+        '--check-cato',
+        action='store_true',
+        help='Read-only Cato GraphQL preflight and collector host/template shape; no writes',
+    )
     parser.add_argument('--link-speed-expect', action='store_true', help='Also assign Port Speed Expect on Switch roles (avoid if already nested on VOSS/Observability)')
     parser.add_argument(
         '--cutover-silence',
@@ -4481,6 +4600,14 @@ def main() -> int:
         if args.link_speed_expect or args.cutover_silence:
             raise SystemExit('--apply-fortigate-http does not take --link-speed-expect or --cutover-silence')
         return run_apply_fortigate_http()
+    if args.check_cato:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--check-cato does not take --link-speed-expect or --cutover-silence')
+        return run_check_cato()
+    if args.apply_cato:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--apply-cato does not take --link-speed-expect or --cutover-silence')
+        return run_apply_cato()
     return run_apply(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
 
 

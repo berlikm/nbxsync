@@ -370,6 +370,41 @@ def main() -> int:
         'zerotouch creates FortiGate HTTP CG without importing the Forti HTTP cutover module',
     )
 
+    cato = _function_source(net_src, net_tree, 'run_apply_cato') or ''
+    record(
+        'network_cato_apply_exists',
+        bool(cato),
+        'run_apply_cato',
+    )
+    record(
+        'network_cato_apply_skips_extreme_and_hostsync',
+        bool(cato)
+        and 'import_extreme_templates' not in cato
+        and 'SyncHostJob' not in cato
+        and 'enable_cato' not in cato
+        and 'mutate_netbox' not in cato,
+        'no Extreme import / HostSync / Socket migration in --apply-cato',
+    )
+    cato_preflight = _function_source(net_src, net_tree, '_require_cato_preflight') or ''
+    record(
+        'network_cato_fail_closed_preflight',
+        '_require_cato_preflight' in cato
+        and 'preflight_cato_graphql' in cato_preflight
+        and '_print_cato_plan' in cato_preflight
+        and 'raise SystemExit' in cato_preflight,
+        'Cato GraphQL preflight aborts before YAML/host writes',
+    )
+    record(
+        'network_cato_uses_pack_module',
+        'apply_cato_pack' in cato and 'CATO_HTTP_YAML' in net_src,
+        'network --apply-cato reuses configure_cato_zabbix.apply_cato_pack',
+    )
+    record(
+        'zerotouch_no_cato_collector_apply',
+        'apply-cato' not in ztc_src and 'apply_cato_pack' not in ztc_src,
+        'Cato collector refresh is network --apply-cato, not zerotouch',
+    )
+
     failed = sum(1 for _, ok, _ in RESULTS if not ok)
     print(f'\n{len(RESULTS) - failed}/{len(RESULTS)} apply-safety checks passed')
     return 1 if failed else 0

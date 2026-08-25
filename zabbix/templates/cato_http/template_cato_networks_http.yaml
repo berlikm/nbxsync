@@ -7,13 +7,14 @@ zabbix_export:
   - uuid: 8eaf4d5dcc474db99c4e84b02a47b5be
     template: Cato Networks by HTTP
     name: Cato Networks by HTTP
-    description: 'One account-scoped HTTP collector for Cato Socket overlay state and SLA.
+    description: |
+      One account-scoped HTTP collector for Cato Socket overlay state and SLA.
 
-      The NetBox-backed Socket hosts remain direct ICMP monitoring targets. This
-      template intentionally owns no ICMP item and never turns account collector
-      loss into a site, Socket, or WAN outage.
+      NetBox Socket hosts remain ICMP-only. This template owns no ICMP item
+      and never turns collector loss into a site, Socket, or WAN outage.
 
-      '
+      Refresh with configure_nbxsync_network.py --apply-cato. Do not re-run
+      zerotouch to update this pack.
     groups:
     - name: Templates/Network devices
     items:
@@ -27,19 +28,19 @@ zabbix_export:
       url: '{$CATO.API.URL}'
       request_method: POST
       post_type: JSON
-      posts: '{"query":"query AccountSnapshot($accountID: ID!) { accountSnapshot(accountID: $accountID) { sites { id connectivityStatus info { name type connType isHA sockets { id serial isPrimary platform version } } devices { id name connected connectedSince haRole version socketInfo { id serial isPrimary platform version } interfaces { id name connected popName tunnelUptime type info { id name upstreamBandwidth downstreamBandwidth destType } } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
+      posts: '{"query":"query AccountSnapshot($accountID: ID!) { accountSnapshot(accountID: $accountID) { sites { id connectivityStatus operationalStatus lastConnected connectedSince info { name type connType isHA sockets { id serial isPrimary platform version } } haStatus { readiness wanConnectivity keepalive socketVersion } devices { id name connected connectedSince haRole version socketInfo { id serial isPrimary platform version } interfaces { id name connected popName tunnelUptime type info { id name upstreamBandwidth downstreamBandwidth destType } } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
       headers:
       - name: Content-Type
         value: application/json
       - name: x-api-key
         value: '{$CATO.API.TOKEN}'
       status_codes: '200'
-      follow_redirects: 'YES'
+      follow_redirects: YES
       retrieve_mode: BODY
       timeout: 30s
-      verify_peer: 'YES'
-      verify_host: 'YES'
-      allow_traps: 'NO'
+      verify_peer: YES
+      verify_host: YES
+      allow_traps: NO
       tags:
       - tag: component
         value: cato
@@ -57,19 +58,19 @@ zabbix_export:
       url: '{$CATO.API.URL}'
       request_method: POST
       post_type: JSON
-      posts: '{"query":"query AccountMetrics($accountID: ID!) { accountMetrics(accountID: $accountID, timeFrame: \"last.PT5M\", groupDevices: true, groupInterfaces: false) { sites { id name info { connType } interfaces { name interfaceInfo { id name upstreamBandwidth downstreamBandwidth } metrics(toRate: true) { bytesDownstream bytesUpstream lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
+      posts: '{"query":"query AccountMetrics($accountID: ID!) { accountMetrics(accountID: $accountID, timeFrame: \"last.PT5M\", groupDevices: true, groupInterfaces: false) { sites { id name info { connType } interfaces { name interfaceInfo { id name upstreamBandwidth downstreamBandwidth } metrics(toRate: true) { bytesDownstream bytesUpstream lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt lastmilePacketLoss lastmileLatency packetsDiscardedDownstream packetsDiscardedUpstream } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
       headers:
       - name: Content-Type
         value: application/json
       - name: x-api-key
         value: '{$CATO.API.TOKEN}'
       status_codes: '200'
-      follow_redirects: 'YES'
+      follow_redirects: YES
       retrieve_mode: BODY
       timeout: 30s
-      verify_peer: 'YES'
-      verify_host: 'YES'
-      allow_traps: 'NO'
+      verify_peer: YES
+      verify_host: YES
+      allow_traps: NO
       tags:
       - tag: component
         value: cato
@@ -328,6 +329,182 @@ zabbix_export:
           value: cato_overlay
         - tag: scope
           value: collector
+    - uuid: 6a7fbae432dd5e4988db9581010849d3
+      name: Cato site discovery seed
+      type: CALCULATED
+      key: 'cato.site.connected[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: UNSIGNED
+      params: '0'
+      description: Always-present seed so count(exists_foreach) stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: a709a2c130b95c5d8936f39e2068a136
+      name: Cato Socket discovery seed
+      type: CALCULATED
+      key: 'cato.socket.connected[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: UNSIGNED
+      params: '0'
+      description: Always-present seed so count(exists_foreach) stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: fa4fb8323426519eaa31eee395402bbd
+      name: Cato WAN discovery seed
+      type: CALCULATED
+      key: 'cato.wan.connected[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: UNSIGNED
+      params: '0'
+      description: Always-present seed so count(exists_foreach) stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: d04f4197773e5ebcb1911a95f3346385
+      name: Cato WAN SLA discovery seed
+      type: CALCULATED
+      key: 'cato.wan.rx.bps[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: FLOAT
+      params: '0'
+      description: Always-present seed so count(exists_foreach) stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: f2c4c1add0de57bf85c2ce4139ff7fb4
+      name: Cato discovered Socket site count
+      type: CALCULATED
+      key: cato.site.discovery.count
+      delay: 1m
+      history: 7d
+      value_type: FLOAT
+      params: 'count(exists_foreach(//cato.site.connected[*]))-1'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: 5a65c4f017da54dabc367d1a5a21c1fc
+        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.SITES.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.site.discovery.count)<{$CATO.SITES.EXPECTED}'
+        name: 'Cato census: fewer Socket sites than expected'
+        priority: AVERAGE
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    - uuid: 65fcecc6e2f455ee9b7539d745192f9b
+      name: Cato discovered Socket count
+      type: CALCULATED
+      key: cato.socket.discovery.count
+      delay: 1m
+      history: 7d
+      value_type: FLOAT
+      params: 'count(exists_foreach(//cato.socket.connected[*]))-1'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: baeee4213b8952e4912a557ad9c92700
+        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.SOCKETS.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.socket.discovery.count)<{$CATO.SOCKETS.EXPECTED}'
+        name: 'Cato census: fewer Sockets than expected'
+        priority: AVERAGE
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    - uuid: 3028d259991b5306ac8f8931e7266699
+      name: Cato discovered WAN link count
+      type: CALCULATED
+      key: cato.wan.discovery.count
+      delay: 1m
+      history: 7d
+      value_type: FLOAT
+      params: 'count(exists_foreach(//cato.wan.connected[*]))-1'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: 9089fdcc970d5316b8f8968d30cc9a8b
+        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.WAN.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.wan.discovery.count)<{$CATO.WAN.EXPECTED}'
+        name: 'Cato census: fewer WAN links than expected'
+        priority: AVERAGE
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    - uuid: 066926d5552f5267adf0888d0453b648
+      name: Cato discovered WAN SLA row count
+      type: CALCULATED
+      key: cato.wan.metrics.discovery.count
+      delay: 1m
+      history: 7d
+      value_type: FLOAT
+      params: 'count(exists_foreach(//cato.wan.rx.bps[*]))-1'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: 8d536e059a905736a966042f2f784c05
+        expression: 'last(/Cato Networks by HTTP/cato.api.metrics.available)=1 and {$CATO.SLA.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.wan.metrics.discovery.count)<{$CATO.SLA.EXPECTED}'
+        name: 'Cato census: fewer WAN SLA rows than expected'
+        priority: AVERAGE
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
     discovery_rules:
     - uuid: 22ad6215cbf846a6b7a1f7a332ecf02d
       name: Cato Socket site discovery
@@ -356,7 +533,8 @@ zabbix_export:
             out.push({
               '{#SITE.ID}': String(site.id),
               '{#SITE.NAME}': String(info.name || ''),
-              '{#CONN.TYPE}': String(info.connType || '')
+              '{#CONN.TYPE}': String(info.connType || ''),
+              '{#IS.HA}': (info.isHA === true || String(info.isHA).toLowerCase() === 'true') ? '1' : '0'
             });
           }
           return JSON.stringify(out);
@@ -422,7 +600,201 @@ zabbix_export:
         - uuid: 7cde94b309424911b9b91c057c80c335
           expression: 'max(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}],#3)=0'
           name: 'Cato site {#SITE.NAME}: Disconnected'
-          priority: DISASTER
+          priority: HIGH
+          tags:
+          - tag: component
+            value: cato
+          - tag: monitoring_domain
+            value: cato_overlay
+          - tag: scope
+            value: site
+      - uuid: 17f454dfc83c57d090863bf998630a1f
+        name: 'Cato site {#SITE.NAME}: Operational status'
+        type: DEPENDENT
+        key: 'cato.site.operational_status[{#SITE.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: CHAR
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var found = null;
+            for (var i = 0; i < sites.length; i++) {
+              if (String(sites[i].id) === '{#SITE.ID}') {
+                found = sites[i];
+                break;
+              }
+            }
+            if (!found) {
+              throw 'site missing';
+            }
+            var state = found.operationalStatus;
+            if (state === undefined || state === null || state === '') {
+              throw 'operationalStatus missing';
+            }
+            return String(state);
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: site
+      - uuid: 309db70e052f501aaeb39c986aaf17f5
+        name: 'Cato site {#SITE.NAME}: HA enabled'
+        type: DEPENDENT
+        key: 'cato.site.ha[{#SITE.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: UNSIGNED
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var found = null;
+            for (var i = 0; i < sites.length; i++) {
+              if (String(sites[i].id) === '{#SITE.ID}') {
+                found = sites[i];
+                break;
+              }
+            }
+            if (!found) {
+              throw 'site missing';
+            }
+            var info = found.info || {};
+            if (info.isHA === true || String(info.isHA).toLowerCase() === 'true') {
+              return 1;
+            }
+            return 0;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: site
+      - uuid: b5e2bd1328795c9f8f692a0262ae30ec
+        name: 'Cato site {#SITE.NAME}: HA readiness'
+        type: DEPENDENT
+        key: 'cato.site.ha.readiness[{#SITE.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: CHAR
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var found = null;
+            for (var i = 0; i < sites.length; i++) {
+              if (String(sites[i].id) === '{#SITE.ID}') {
+                found = sites[i];
+                break;
+              }
+            }
+            if (!found) {
+              throw 'site missing';
+            }
+            var ha = found.haStatus || {};
+            var state = ha.readiness;
+            if (state === undefined || state === null || state === '') {
+              throw 'HA readiness missing';
+            }
+            return String(state);
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: site
+        trigger_prototypes:
+        - uuid: 5b2dda8cfe615558b7cc1be35056fc65
+          expression: 'last(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}])=1 and last(/Cato Networks by HTTP/cato.site.ha[{#SITE.ID}])=1 and last(/Cato Networks by HTTP/cato.site.ha.readiness[{#SITE.ID}])<>{$CATO.HA.READINESS.OK}'
+          name: 'Cato site {#SITE.NAME}: HA not ready'
+          priority: AVERAGE
+          tags:
+          - tag: component
+            value: cato
+          - tag: monitoring_domain
+            value: cato_overlay
+          - tag: scope
+            value: site
+      - uuid: 5e72cd0c0b01500ca85c94eb8af9814f
+        name: 'Cato site {#SITE.NAME}: HA socket version'
+        type: DEPENDENT
+        key: 'cato.site.ha.socket_version[{#SITE.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: CHAR
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var found = null;
+            for (var i = 0; i < sites.length; i++) {
+              if (String(sites[i].id) === '{#SITE.ID}') {
+                found = sites[i];
+                break;
+              }
+            }
+            if (!found) {
+              throw 'site missing';
+            }
+            var ha = found.haStatus || {};
+            var state = ha.socketVersion;
+            if (state === undefined || state === null || state === '') {
+              throw 'HA socketVersion missing';
+            }
+            return String(state);
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: site
+        trigger_prototypes:
+        - uuid: f90bad8936e4539dac107b9494cc8583
+          expression: 'last(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}])=1 and last(/Cato Networks by HTTP/cato.site.ha[{#SITE.ID}])=1 and last(/Cato Networks by HTTP/cato.site.ha.socket_version[{#SITE.ID}])<>{$CATO.HA.VERSION.OK}'
+          name: 'Cato site {#SITE.NAME}: HA socket version not ok'
+          priority: WARNING
           tags:
           - tag: component
             value: cato
@@ -451,6 +823,7 @@ zabbix_export:
             if (!site || !info || site.id === undefined || site.id === null || !pattern.test(String(info.connType || ''))) {
               continue;
             }
+            var isHA = info.isHA === true || String(info.isHA).toLowerCase() === 'true';
             var devices = Array.isArray(site.devices) ? site.devices : [];
             for (var j = 0; j < devices.length; j++) {
               var device = devices[j];
@@ -458,12 +831,17 @@ zabbix_export:
               if (!socket || socket.id === undefined || socket.id === null || !String(socket.serial || '').trim()) {
                 continue;
               }
+              var haRole = 'standalone';
+              if (isHA) {
+                haRole = (socket.isPrimary === true || String(socket.isPrimary).toLowerCase() === 'true') ? 'primary' : 'secondary';
+              }
               out.push({
                 '{#SITE.ID}': String(site.id),
+                '{#SITE.NAME}': String(info.name || ''),
                 '{#SOCKET.ID}': String(socket.id),
                 '{#SOCKET.NAME}': String(device.name || ''),
                 '{#SERIAL}': String(socket.serial),
-                '{#HA.ROLE}': String(device.haRole || ''),
+                '{#HA.ROLE}': haRole,
                 '{#PLATFORM}': String(socket.platform || '')
               });
             }
@@ -473,7 +851,7 @@ zabbix_export:
         key: cato.account.snapshot
       item_prototypes:
       - uuid: bc0349d5922d4d30a32f44ad10f94154
-        name: 'Cato Socket {#SERIAL}: Connectivity'
+        name: 'Cato Socket {#SITE.NAME} / {#SERIAL}: Connectivity'
         type: DEPENDENT
         key: 'cato.socket.connected[{#SITE.ID},{#SOCKET.ID}]'
         delay: '0'
@@ -533,7 +911,7 @@ zabbix_export:
         trigger_prototypes:
         - uuid: 484894fac52e42e1b01b857f2fa6296c
           expression: 'max(/Cato Networks by HTTP/cato.socket.connected[{#SITE.ID},{#SOCKET.ID}],#3)=0 and last(/Cato Networks by HTTP/cato.socket.site_connected[{#SITE.ID},{#SOCKET.ID}])=1'
-          name: 'Cato Socket {#SERIAL}: Disconnected while site is up'
+          name: 'Cato Socket {#SITE.NAME} / {#SERIAL}: Disconnected while site is up'
           priority: AVERAGE
           tags:
           - tag: component
@@ -543,7 +921,7 @@ zabbix_export:
           - tag: scope
             value: socket
       - uuid: 09507f47ee9545ceb60ab918ba58dc8b
-        name: 'Cato Socket {#SERIAL}: Site connectivity'
+        name: 'Cato Socket {#SITE.NAME} / {#SERIAL}: Site connectivity'
         type: DEPENDENT
         key: 'cato.socket.site_connected[{#SITE.ID},{#SOCKET.ID}]'
         delay: '0'
@@ -561,17 +939,17 @@ zabbix_export:
             if (!sites) {
               throw 'accountSnapshot missing';
             }
-            var site = null;
+            var found = null;
             for (var i = 0; i < sites.length; i++) {
               if (String(sites[i].id) === '{#SITE.ID}') {
-                site = sites[i];
+                found = sites[i];
                 break;
               }
             }
-            if (!site) {
+            if (!found) {
               throw 'site missing';
             }
-            var state = String(site.connectivityStatus || '').toLowerCase();
+            var state = String(found.connectivityStatus || '').toLowerCase();
             if (state === 'connected') {
               return 1;
             }
@@ -592,7 +970,7 @@ zabbix_export:
         - tag: serial
           value: '{#SERIAL}'
       - uuid: 5f8c41b2a3bc44d7923de6a40569d8fd
-        name: 'Cato Socket {#SERIAL}: Version'
+        name: 'Cato Socket {#SITE.NAME} / {#SERIAL}: Version'
         type: DEPENDENT
         key: 'cato.socket.version[{#SITE.ID},{#SOCKET.ID}]'
         delay: '0'
@@ -694,7 +1072,7 @@ zabbix_export:
         key: cato.account.snapshot
       item_prototypes:
       - uuid: 9cb564ad02b042f580da8063fc330ba4
-        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Connectivity'
+        name: 'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Connectivity'
         type: DEPENDENT
         key: 'cato.wan.connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
         delay: '0'
@@ -756,7 +1134,7 @@ zabbix_export:
         trigger_prototypes:
         - uuid: bf5a6efca8894a9ea0a3f88b84107d6a
           expression: 'max(/Cato Networks by HTTP/cato.wan.connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}],#3)=0 and last(/Cato Networks by HTTP/cato.wan.site_connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}])=1'
-          name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Disconnected while site is up'
+          name: 'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Disconnected while site is up'
           priority: AVERAGE
           tags:
           - tag: component
@@ -766,7 +1144,7 @@ zabbix_export:
           - tag: scope
             value: wan
       - uuid: 9e064d9dc7bc450d9f372d0d8ac44999
-        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Site connectivity'
+        name: 'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Site connectivity'
         type: DEPENDENT
         key: 'cato.wan.site_connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
         delay: '0'
@@ -784,17 +1162,17 @@ zabbix_export:
             if (!sites) {
               throw 'accountSnapshot missing';
             }
-            var site = null;
+            var found = null;
             for (var i = 0; i < sites.length; i++) {
               if (String(sites[i].id) === '{#SITE.ID}') {
-                site = sites[i];
+                found = sites[i];
                 break;
               }
             }
-            if (!site) {
+            if (!found) {
               throw 'site missing';
             }
-            var state = String(site.connectivityStatus || '').toLowerCase();
+            var state = String(found.connectivityStatus || '').toLowerCase();
             if (state === 'connected') {
               return 1;
             }
@@ -815,13 +1193,13 @@ zabbix_export:
         - tag: serial
           value: '{#SERIAL}'
       - uuid: 1cc0eca59bd94725a44f227246c82de6
-        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Tunnel uptime'
+        name: 'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Tunnel uptime'
         type: DEPENDENT
         key: 'cato.wan.tunnel_uptime[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
         delay: '0'
         history: 30d
         value_type: UNSIGNED
-        units: uptime
+        units: 'uptime'
         preprocessing:
         - type: JAVASCRIPT
           parameters:
@@ -851,7 +1229,10 @@ zabbix_export:
                 }
               }
             }
-            if (!iface || iface.tunnelUptime === undefined || iface.tunnelUptime === null || iface.tunnelUptime === '') {
+            if (!iface) {
+              throw 'WAN interface missing';
+            }
+            if (iface.tunnelUptime === undefined || iface.tunnelUptime === null || iface.tunnelUptime === '') {
               throw 'tunnel uptime missing';
             }
             return iface.tunnelUptime;
@@ -868,7 +1249,7 @@ zabbix_export:
         - tag: serial
           value: '{#SERIAL}'
       - uuid: 1982f6f59c5642369abecb152525b361
-        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: POP'
+        name: 'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: POP'
         type: DEPENDENT
         key: 'cato.wan.pop[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
         delay: '0'
@@ -903,7 +1284,10 @@ zabbix_export:
                 }
               }
             }
-            if (!iface || iface.popName === undefined || iface.popName === null || iface.popName === '') {
+            if (!iface) {
+              throw 'WAN interface missing';
+            }
+            if (iface.popName === undefined || iface.popName === null || iface.popName === '') {
               throw 'POP missing';
             }
             return String(iface.popName);
@@ -951,7 +1335,7 @@ zabbix_export:
                 '{#SITE.ID}': String(site.id),
                 '{#LINK.ID}': String(interfaceInfo.id),
                 '{#SITE.NAME}': String(site.name || ''),
-                '{#LINK.NAME}': String(iface.name || '')
+                '{#LINK.NAME}': String(iface.name || interfaceInfo.name || '')
               });
             }
           }
@@ -967,7 +1351,7 @@ zabbix_export:
         history: 30d
         trends: 365d
         value_type: FLOAT
-        units: bps
+        units: 'bps'
         preprocessing:
         - type: JAVASCRIPT
           parameters:
@@ -1015,7 +1399,7 @@ zabbix_export:
         history: 30d
         trends: 365d
         value_type: FLOAT
-        units: bps
+        units: 'bps'
         preprocessing:
         - type: JAVASCRIPT
           parameters:
@@ -1151,6 +1535,35 @@ zabbix_export:
           value: cato_overlay
         - tag: scope
           value: wan_sla
+      - uuid: f575e0bec6e75ad8a676531904d166bf
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Overlay loss'
+        type: CALCULATED
+        key: 'cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}]'
+        delay: 1m
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: '%'
+        params: 'max(last(//cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}]),last(//cato.wan.loss.tx.pct[{#SITE.ID},{#LINK.ID}]))'
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+        trigger_prototypes:
+        - uuid: c27fab1b02b750d3a3de4466d5e9c490
+          expression: 'min(/Cato Networks by HTTP/cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}],15m)>{$CATO.LOSS.WARN}'
+          name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay packet loss'
+          priority: WARNING
+          tags:
+          - tag: component
+            value: cato
+          - tag: monitoring_domain
+            value: cato_overlay
+          - tag: scope
+            value: wan_sla
       - uuid: cbc353c2d2974df3aa2028fc45c3a14e
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX jitter'
         type: DEPENDENT
@@ -1159,7 +1572,7 @@ zabbix_export:
         history: 30d
         trends: 365d
         value_type: FLOAT
-        units: ms
+        units: 'ms'
         preprocessing:
         - type: JAVASCRIPT
           parameters:
@@ -1207,7 +1620,7 @@ zabbix_export:
         history: 30d
         trends: 365d
         value_type: FLOAT
-        units: ms
+        units: 'ms'
         preprocessing:
         - type: JAVASCRIPT
           parameters:
@@ -1247,6 +1660,23 @@ zabbix_export:
           value: cato_overlay
         - tag: scope
           value: wan_sla
+      - uuid: 856eba87c9a352c0abcd313d9009c5bc
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Overlay jitter'
+        type: CALCULATED
+        key: 'cato.wan.jitter.max.ms[{#SITE.ID},{#LINK.ID}]'
+        delay: 1m
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: 'ms'
+        params: 'max(last(//cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]),last(//cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]))'
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
       - uuid: 600f2c74742c4782876a4e75d3d9b306
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RTT'
         type: DEPENDENT
@@ -1255,7 +1685,7 @@ zabbix_export:
         history: 30d
         trends: 365d
         value_type: FLOAT
-        units: ms
+        units: 'ms'
         preprocessing:
         - type: JAVASCRIPT
           parameters:
@@ -1295,6 +1725,326 @@ zabbix_export:
           value: cato_overlay
         - tag: scope
           value: wan_sla
+        trigger_prototypes:
+        - uuid: 9982aabadf8a5bfdb2b45344b4ee55e4
+          expression: 'min(/Cato Networks by HTTP/cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}],15m)>{$CATO.RTT.WARN}'
+          name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT'
+          priority: WARNING
+          tags:
+          - tag: component
+            value: cato
+          - tag: monitoring_domain
+            value: cato_overlay
+          - tag: scope
+            value: wan_sla
+      - uuid: 54d9037887395439ac32d6073be60953
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile loss'
+        type: DEPENDENT
+        key: 'cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: '%'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.lastmilePacketLoss : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'last-mile loss missing';
+            }
+            return numeric;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+        trigger_prototypes:
+        - uuid: a87e38724f7e5efe9013aafd2685407b
+          expression: 'min(/Cato Networks by HTTP/cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}],15m)>{$CATO.LASTMILE.LOSS.WARN}'
+          name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile packet loss'
+          priority: WARNING
+          tags:
+          - tag: component
+            value: cato
+          - tag: monitoring_domain
+            value: cato_overlay
+          - tag: scope
+            value: wan_sla
+      - uuid: 3a5e77b96eb85065b60882d1d313af42
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency'
+        type: DEPENDENT
+        key: 'cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: 'ms'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.lastmileLatency : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'last-mile latency missing';
+            }
+            return numeric;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      - uuid: 00fc8863944651888f06ec45216cb5bc
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX discarded'
+        type: DEPENDENT
+        key: 'cato.wan.discard.rx.pps[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: 'pps'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.packetsDiscardedDownstream : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'RX discarded missing';
+            }
+            return numeric;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      - uuid: d4d7d04406c359e2a93ff236aa167615
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX discarded'
+        type: DEPENDENT
+        key: 'cato.wan.discard.tx.pps[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: 'pps'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.packetsDiscardedUpstream : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'TX discarded missing';
+            }
+            return numeric;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      - uuid: 0647815918df5bc7a83ebb5f9d16df40
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX utilization'
+        type: DEPENDENT
+        key: 'cato.wan.rx.util.pct[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: '%'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var cap = iface && iface.interfaceInfo ? Number(iface.interfaceInfo.downstreamBandwidth) : 0;
+            if (!isFinite(cap) || cap <= 0) {
+              throw 'RX cap missing';
+            }
+            var raw = iface && iface.metrics ? iface.metrics.bytesDownstream : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'RX rate missing';
+            }
+            return (numeric * 8) / (cap * 1000000) * 100;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      - uuid: 1414dd85342850b298df6f104ba817d6
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX utilization'
+        type: DEPENDENT
+        key: 'cato.wan.tx.util.pct[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: '%'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var cap = iface && iface.interfaceInfo ? Number(iface.interfaceInfo.upstreamBandwidth) : 0;
+            if (!isFinite(cap) || cap <= 0) {
+              throw 'TX cap missing';
+            }
+            var raw = iface && iface.metrics ? iface.metrics.bytesUpstream : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'TX rate missing';
+            }
+            return (numeric * 8) / (cap * 1000000) * 100;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
       graph_prototypes:
       - uuid: 822b1fdf634a49028f608f35023ab3fb
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth'
@@ -1320,19 +2070,21 @@ zabbix_export:
           item:
             host: Cato Networks by HTTP
             key: 'cato.wan.loss.tx.pct[{#SITE.ID},{#LINK.ID}]'
-      - uuid: 02f3f94cce42445c89e7c795fbf89517
-        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Latency and jitter'
+      - uuid: 5ccc5d365fb656e987dc76b248052948
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RTT'
         graph_items:
         - color: 2774A4
           item:
             host: Cato Networks by HTTP
             key: 'cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}]'
-        - sortorder: '1'
-          color: 199C0D
+      - uuid: 0831494508c45e7080f1da7f2f8aa3cd
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Jitter'
+        graph_items:
+        - color: 199C0D
           item:
             host: Cato Networks by HTTP
             key: 'cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]'
-        - sortorder: '2'
+        - sortorder: '1'
           color: F7941D
           item:
             host: Cato Networks by HTTP
@@ -1340,7 +2092,24 @@ zabbix_export:
     macros:
     - macro: '{$CATO.SITE.CONN_TYPE.MATCHES}'
       value: '^SOCKET_'
-      description: Restrict Cato discovery to Socket connection types; IPSEC_V2 remains out of scope.
+    - macro: '{$CATO.SITES.EXPECTED}'
+      value: '11'
+    - macro: '{$CATO.SOCKETS.EXPECTED}'
+      value: '21'
+    - macro: '{$CATO.WAN.EXPECTED}'
+      value: '33'
+    - macro: '{$CATO.SLA.EXPECTED}'
+      value: '17'
+    - macro: '{$CATO.LOSS.WARN}'
+      value: '2'
+    - macro: '{$CATO.LASTMILE.LOSS.WARN}'
+      value: '2'
+    - macro: '{$CATO.RTT.WARN}'
+      value: '101'
+    - macro: '{$CATO.HA.READINESS.OK}'
+      value: 'ready'
+    - macro: '{$CATO.HA.VERSION.OK}'
+      value: 'ok'
     valuemaps:
     - uuid: 4c65ce16533446d78da1b96a2e1aad9a
       name: Cato connectivity
@@ -1357,14 +2126,166 @@ zabbix_export:
       pages:
       - name: Overview
         widgets:
+        - type: gauge
+          name: Snapshot
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: th_arc_size
+            value: '6'
+          - type: INTEGER
+            name: units_size
+            value: '14'
+          - type: INTEGER
+            name: value_arc_size
+            value: '16'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.snapshot.available
+          - type: STRING
+            name: max
+            value: '1'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+        - type: gauge
+          name: Metrics
+          x: '18'
+          width: '18'
+          height: '4'
+          fields:
+          - type: INTEGER
+            name: angle
+            value: '270'
+          - type: INTEGER
+            name: decimal_places
+            value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+          - type: INTEGER
+            name: show.1
+            value: '5'
+          - type: INTEGER
+            name: th_arc_size
+            value: '6'
+          - type: INTEGER
+            name: units_size
+            value: '14'
+          - type: INTEGER
+            name: value_arc_size
+            value: '16'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.metrics.available
+          - type: STRING
+            name: max
+            value: '1'
+          - type: STRING
+            name: min
+            value: '0'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: INTEGER
+            name: th_show_arc
+            value: '1'
+          - type: INTEGER
+            name: th_show_labels
+            value: '0'
+        - type: item
+          name: Sites
+          x: '36'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.site.discovery.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+        - type: item
+          name: Sockets
+          x: '54'
+          width: '18'
+          height: '4'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.socket.discovery.count
+          - type: INTEGER
+            name: show.0
+            value: '2'
         - type: problems
           name: Problems
+          'y': '4'
           width: '72'
           height: '3'
           fields:
           - type: STRING
             name: reference
-            value: CPROB
+            value: 'CPROB'
           - type: INTEGER
             name: show
             value: '3'
@@ -1373,9 +2294,9 @@ zabbix_export:
             value: '2'
         - type: honeycomb
           name: Sites
-          'y': '3'
-          width: '24'
-          height: '4'
+          'y': '7'
+          width: '72'
+          height: '5'
           fields:
           - type: STRING
             name: items.0
@@ -1391,13 +2312,13 @@ zabbix_export:
             value: '1'
           - type: STRING
             name: thresholds.0.color
-            value: FF465C
+            value: 'FF465C'
           - type: STRING
             name: thresholds.0.threshold
             value: '0'
           - type: STRING
             name: thresholds.1.color
-            value: 0EC9AC
+            value: '0EC9AC'
           - type: STRING
             name: thresholds.1.threshold
             value: '1'
@@ -1407,49 +2328,335 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '2'
+        - type: item
+          name: 'Snapshot GraphQL errors'
+          'y': '12'
+          width: '18'
+          height: '3'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.snapshot.error_count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+        - type: item
+          name: 'Metrics GraphQL errors'
+          x: '18'
+          'y': '12'
+          width: '18'
+          height: '3'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.metrics.error_count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+        - type: item
+          name: 'Snapshot schema violations'
+          x: '36'
+          'y': '12'
+          width: '18'
+          height: '3'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.api.snapshot.schema_violation_count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+        - type: item
+          name: 'Unsupported items'
+          x: '54'
+          'y': '12'
+          width: '18'
+          height: '3'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              key: zabbix[host,,items_unsupported]
+          - type: INTEGER
+            name: show.0
+            value: '2'
+    - uuid: 2489297dba645f46ac922129ae119b29
+      name: Path
+      pages:
+      - name: Overview
+        widgets:
         - type: honeycomb
-          name: Sockets
-          x: '24'
-          'y': '3'
-          width: '24'
-          height: '4'
+          name: 'Overlay loss'
+          width: '36'
+          height: '5'
           fields:
           - type: STRING
             name: items.0
-            value: 'Cato Socket *: Connectivity'
+            value: 'Cato WAN *: Overlay loss'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato Socket (.*): Connectivity$","\\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Overlay loss$","\\1")}'
           - type: INTEGER
             name: interpolation
-            value: '0'
+            value: '1'
           - type: INTEGER
             name: show.0
             value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
           - type: STRING
             name: thresholds.0.color
-            value: FF465C
+            value: '0EC9AC'
           - type: STRING
             name: thresholds.0.threshold
             value: '0'
           - type: STRING
             name: thresholds.1.color
-            value: 0EC9AC
+            value: 'FFD54F'
           - type: STRING
             name: thresholds.1.threshold
-            value: '1'
+            value: '2'
           - type: STRING
             name: thresholds.2.color
-            value: '878787'
+            value: 'FF465C'
           - type: STRING
             name: thresholds.2.threshold
-            value: '2'
+            value: '5'
         - type: honeycomb
-          name: WAN links
-          x: '48'
-          'y': '3'
-          width: '24'
-          height: '4'
+          name: 'Overlay RTT'
+          x: '36'
+          width: '36'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Cato WAN *: RTT'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): RTT$","\\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '1'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FFD54F'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '80'
+          - type: STRING
+            name: thresholds.2.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '150'
+        - type: honeycomb
+          name: 'Overlay jitter'
+          'y': '5'
+          width: '36'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Cato WAN *: Overlay jitter'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Overlay jitter$","\\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '1'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FFD54F'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '10'
+          - type: STRING
+            name: thresholds.2.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '30'
+        - type: honeycomb
+          name: 'Last-mile loss'
+          x: '36'
+          'y': '5'
+          width: '36'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Cato WAN *: Last-mile loss'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Last-mile loss$","\\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '1'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FFD54F'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '2'
+          - type: STRING
+            name: thresholds.2.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '5'
+        - type: honeycomb
+          name: 'Last-mile latency'
+          'y': '10'
+          width: '72'
+          height: '5'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Cato WAN *: Last-mile latency'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Last-mile latency$","\\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '1'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: STRING
+            name: thresholds.0.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 'FFD54F'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '80'
+          - type: STRING
+            name: thresholds.2.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '150'
+      - name: Probe
+        widgets:
+        - type: itemnavigator
+          name: Counters
+          width: '28'
+          height: '11'
+          fields:
+          - type: INTEGER
+            name: group_by.0.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.0.tag_name
+            value: 'scope'
+          - type: STRING
+            name: items.0
+            value: 'Cato WAN *: Overlay loss'
+          - type: STRING
+            name: items.1
+            value: 'Cato WAN *: RTT'
+          - type: STRING
+            name: items.2
+            value: 'Cato WAN *: Overlay jitter'
+          - type: STRING
+            name: items.3
+            value: 'Cato WAN *: Last-mile loss'
+          - type: STRING
+            name: items.4
+            value: 'Cato WAN *: Last-mile latency'
+          - type: STRING
+            name: items.5
+            value: 'Cato WAN *: RX bandwidth'
+          - type: STRING
+            name: items.6
+            value: 'Cato WAN *: TX bandwidth'
+          - type: STRING
+            name: reference
+            value: 'CNAVP'
+        - type: svggraph
+          name: History
+          x: '28'
+          width: '44'
+          height: '11'
+          fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: '42A5F5'
+          - type: INTEGER
+            name: ds.0.dataset_type
+            value: '0'
+          - type: STRING
+            name: ds.0.itemids.0._reference
+            value: 'CNAVP._itemid'
+          - type: STRING
+            name: reference
+            value: 'CGRFP'
+          - type: INTEGER
+            name: legend
+            value: '0'
+          - type: INTEGER
+            name: righty
+            value: '0'
+    - uuid: eb24b530cc1c5902860c361c03842d00
+      name: Network
+      pages:
+      - name: Overview
+        widgets:
+        - type: honeycomb
+          name: 'WAN links'
+          width: '36'
+          height: '6'
           fields:
           - type: STRING
             name: items.0
@@ -1465,13 +2672,13 @@ zabbix_export:
             value: '1'
           - type: STRING
             name: thresholds.0.color
-            value: FF465C
+            value: 'FF465C'
           - type: STRING
             name: thresholds.0.threshold
             value: '0'
           - type: STRING
             name: thresholds.1.color
-            value: 0EC9AC
+            value: '0EC9AC'
           - type: STRING
             name: thresholds.1.threshold
             value: '1'
@@ -1481,128 +2688,88 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '2'
-        - type: item
-          name: Snapshot GraphQL errors
-          'y': '7'
-          width: '18'
-          height: '3'
-          fields:
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Cato Networks by HTTP
-              key: cato.api.snapshot.error_count
-          - type: INTEGER
-            name: show.0
-            value: '2'
-        - type: item
-          name: Metrics GraphQL errors
-          x: '18'
-          'y': '7'
-          width: '18'
-          height: '3'
-          fields:
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Cato Networks by HTTP
-              key: cato.api.metrics.error_count
-          - type: INTEGER
-            name: show.0
-            value: '2'
-        - type: item
-          name: Snapshot schema violations
+        - type: honeycomb
+          name: Sockets
           x: '36'
-          'y': '7'
-          width: '18'
-          height: '3'
+          width: '36'
+          height: '6'
           fields:
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Cato Networks by HTTP
-              key: cato.api.snapshot.schema_violation_count
+          - type: STRING
+            name: items.0
+            value: 'Cato Socket *: Connectivity'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato Socket (.*): Connectivity$","\\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '0'
           - type: INTEGER
             name: show.0
+            value: '1'
+          - type: STRING
+            name: thresholds.0.color
+            value: 'FF465C'
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: '0EC9AC'
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: STRING
+            name: thresholds.2.color
+            value: '878787'
+          - type: STRING
+            name: thresholds.2.threshold
             value: '2'
-        - type: item
-          name: Metrics schema violations
-          x: '54'
-          'y': '7'
-          width: '18'
-          height: '3'
-          fields:
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Cato Networks by HTTP
-              key: cato.api.metrics.schema_violation_count
-          - type: INTEGER
-            name: show.0
-            value: '2'
-        - type: item
-          name: Unsupported items
-          'y': '10'
-          width: '18'
-          height: '3'
-          fields:
-          - type: ITEM
-            name: itemid.0
-            value:
-              host: Cato Networks by HTTP
-              key: 'zabbix[host,,items_unsupported]'
-          - type: INTEGER
-            name: show.0
-            value: '2'
-      - name: WAN SLA
-        widgets:
-        - type: graphprototype
-          name: Bandwidth
-          width: '72'
-          height: '5'
+        - type: itemnavigator
+          name: Tunnels
+          'y': '6'
+          width: '28'
+          height: '8'
           fields:
           - type: INTEGER
-            name: columns
-            value: '2'
-          - type: GRAPH_PROTOTYPE
-            name: graphid.0
-            value:
-              host: Cato Networks by HTTP
-              name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth'
+            name: group_by.0.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.0.tag_name
+            value: 'serial'
+          - type: STRING
+            name: items.0
+            value: 'Cato WAN *: Connectivity'
+          - type: STRING
+            name: items.1
+            value: 'Cato WAN *: Tunnel uptime'
+          - type: STRING
+            name: items.2
+            value: 'Cato WAN *: POP'
           - type: STRING
             name: reference
-            value: CBAND
-        - type: graphprototype
-          name: Packet loss
-          'y': '5'
-          width: '72'
-          height: '5'
+            value: 'CNNAV'
+        - type: svggraph
+          name: History
+          x: '28'
+          'y': '6'
+          width: '44'
+          height: '8'
           fields:
+          - type: STRING
+            name: ds.0.color.0
+            value: '42A5F5'
           - type: INTEGER
-            name: columns
-            value: '2'
-          - type: GRAPH_PROTOTYPE
-            name: graphid.0
-            value:
-              host: Cato Networks by HTTP
-              name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Packet loss'
+            name: ds.0.dataset_type
+            value: '0'
+          - type: STRING
+            name: ds.0.itemids.0._reference
+            value: 'CNNAV._itemid'
           - type: STRING
             name: reference
-            value: CLOSS
-        - type: graphprototype
-          name: Latency and jitter
-          'y': '10'
-          width: '72'
-          height: '5'
-          fields:
+            value: 'CNGRA'
           - type: INTEGER
-            name: columns
-            value: '2'
-          - type: GRAPH_PROTOTYPE
-            name: graphid.0
-            value:
-              host: Cato Networks by HTTP
-              name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Latency and jitter'
-          - type: STRING
-            name: reference
-            value: CLAT
+            name: legend
+            value: '0'
+          - type: INTEGER
+            name: righty
+            value: '0'

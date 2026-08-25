@@ -1,0 +1,371 @@
+#!/usr/bin/env python3
+"""YAML/JS contract tests for the Cato HTTP collector (no Django, no Zabbix)."""
+
+from __future__ import annotations
+
+import json
+import unittest
+from pathlib import Path
+
+import yaml
+
+from cato_http import (
+    EXPECTED_COLLECTOR_TRIGGER_NAMES,
+    EXPECTED_DASHBOARD_NAMES,
+    EXPECTED_DISCOVERY_KEYS,
+    EXPECTED_GRAPH_PROTOTYPES,
+    EXPECTED_HEALTH_PAGES,
+    EXPECTED_ITEM_PROTOTYPE_KEYS,
+    EXPECTED_NETWORK_PAGES,
+    EXPECTED_PATH_PAGES,
+    EXPECTED_STATE_TRIGGER_PROTOTYPE_NAMES,
+    EXPECTED_TEMPLATE_ITEM_KEYS,
+    LLD_JS,
+    METRICS_QUERY,
+    SNAPSHOT_QUERY,
+    TEMPLATE_MACROS,
+    TEMPLATE_NAME,
+    TEMPLATE_PATH,
+    collector_host,
+    graphql_posts,
+    load_lld_js,
+    metrics_sla_census,
+    run_lld_js,
+    snapshot_census,
+    snapshot_socket_serials,
+)
+from cato_http_template import render_template
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _template() -> dict:
+    doc = yaml.safe_load(TEMPLATE_PATH.read_text(encoding='utf-8'))
+    return doc['zabbix_export']['templates'][0]
+
+
+def _js(rule: dict) -> str:
+    return rule['preprocessing'][0]['parameters'][0]
+
+
+SNAPSHOT_FIXTURE = {
+    'data': {
+        'accountSnapshot': {
+            'sites': [
+                {
+                    'id': '10',
+                    'connectivityStatus': 'connected',
+                    'info': {
+                        'name': 'Zurich',
+                        'connType': 'SOCKET_X1500',
+                        'isHA': True,
+                    },
+                    'devices': [
+                        {
+                            'name': 'zh-pri',
+                            'connected': True,
+                            'socketInfo': {
+                                'id': 's1',
+                                'serial': 'SOCK-A',
+                                'isPrimary': True,
+                                'platform': 'X1500',
+                            },
+                            'interfaces': [
+                                {
+                                    'name': 'WAN1',
+                                    'connected': True,
+                                    'popName': 'ZRH',
+                                    'tunnelUptime': 100,
+                                    'info': {'id': 'l1', 'name': 'WAN1'},
+                                },
+                                {
+                                    'name': 'WAN2',
+                                    'connected': True,
+                                    'info': {'id': 'l2', 'name': 'WAN2'},
+                                },
+                            ],
+                        },
+                        {
+                            'name': 'zh-sec',
+                            'connected': True,
+                            'socketInfo': {
+                                'id': 's2',
+                                'serial': 'SOCK-B',
+                                'isPrimary': False,
+                                'platform': 'X1500',
+                            },
+                            'interfaces': [
+                                {
+                                    'name': 'WAN1',
+                                    'connected': True,
+                                    'info': {'id': 'l1', 'name': 'WAN1'},
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    'id': '20',
+                    'connectivityStatus': 'connected',
+                    'info': {
+                        'name': 'Azure',
+                        'connType': 'IPSEC_V2',
+                        'isHA': False,
+                    },
+                    'devices': [
+                        {
+                            'name': 'azure',
+                            'connected': True,
+                            'socketInfo': {
+                                'id': 's9',
+                                'serial': 'IPSEC-1',
+                                'isPrimary': True,
+                            },
+                            'interfaces': [
+                                {'name': 'WAN1', 'info': {'id': 'x1', 'name': 'WAN1'}}
+                            ],
+                        }
+                    ],
+                },
+            ]
+        }
+    }
+}
+
+METRICS_FIXTURE = {
+    'data': {
+        'accountMetrics': {
+            'sites': [
+                {
+                    'id': '10',
+                    'name': 'Zurich',
+                    'info': {'connType': 'SOCKET_X1500'},
+                    'interfaces': [
+                        {
+                            'name': 'WAN1',
+                            'interfaceInfo': {'id': 'l1', 'name': 'WAN1'},
+                            'metrics': {'bytesDownstream': 1},
+                        },
+                        {
+                            'name': 'WAN2',
+                            'interfaceInfo': {'id': 'l2', 'name': 'WAN2'},
+                            'metrics': {'bytesDownstream': 1},
+                        },
+                    ],
+                },
+                {
+                    'id': '20',
+                    'name': 'Azure',
+                    'info': {'connType': 'IPSEC_V2'},
+                    'interfaces': [
+                        {
+                            'name': 'WAN1',
+                            'interfaceInfo': {'id': 'x1', 'name': 'WAN1'},
+                        }
+                    ],
+                },
+            ]
+        }
+    }
+}
+
+
+class CatoTemplateContractTests(unittest.TestCase):
+    def setUp(self):
+        self.tpl = _template()
+
+    def test_generated_yaml_matches_renderer(self):
+        self.assertEqual(TEMPLATE_PATH.read_text(encoding='utf-8'), render_template())
+
+    def test_lld_js_files_are_embedded(self):
+        by_key = {rule['key']: rule for rule in self.tpl['discovery_rules']}
+        self.assertEqual(set(by_key), EXPECTED_DISCOVERY_KEYS)
+        for key, path in LLD_JS.items():
+            self.assertTrue(path.exists(), path)
+            self.assertEqual(_js(by_key[key]), load_lld_js(key))
+
+    def test_masters_use_expanded_queries_and_omit_wan_role(self):
+        items = {item['key']: item for item in self.tpl['items']}
+        self.assertEqual(items['cato.account.snapshot']['posts'], graphql_posts(SNAPSHOT_QUERY))
+        self.assertEqual(items['cato.account.metrics']['posts'], graphql_posts(METRICS_QUERY))
+        self.assertIn('haStatus', items['cato.account.snapshot']['posts'])
+        self.assertIn('lastmilePacketLoss', items['cato.account.metrics']['posts'])
+        self.assertIn('packetsDiscardedDownstream', items['cato.account.metrics']['posts'])
+        self.assertNotIn('wanRole', items['cato.account.snapshot']['posts'])
+        self.assertIn('groupDevices: true', items['cato.account.metrics']['posts'])
+
+    def test_template_item_keys_and_macros(self):
+        keys = {item['key'] for item in self.tpl['items']}
+        self.assertTrue(EXPECTED_TEMPLATE_ITEM_KEYS <= keys)
+        macros = {row['macro']: row['value'] for row in self.tpl['macros']}
+        self.assertEqual(macros, TEMPLATE_MACROS)
+        self.assertEqual(macros['{$CATO.LOSS.WARN}'], '2')
+        self.assertEqual(macros['{$CATO.RTT.WARN}'], '101')
+
+    def test_no_icmp_or_nested_service_discovery(self):
+        blob = TEMPLATE_PATH.read_text(encoding='utf-8')
+        self.assertNotIn('icmpping', blob)
+        self.assertNotIn('service.discovery', blob)
+        self.assertNotIn('type: ICMPPING', blob)
+        self.assertNotIn('priority: DISASTER', blob)
+
+    def test_site_disconnected_is_high(self):
+        site = next(
+            rule for rule in self.tpl['discovery_rules'] if rule['key'] == 'cato.site.discovery'
+        )
+        conn = next(item for item in site['item_prototypes'] if item['key'] == 'cato.site.connected[{#SITE.ID}]')
+        trigger = conn['trigger_prototypes'][0]
+        self.assertEqual(trigger['priority'], 'HIGH')
+        self.assertNotIn('nodata(', trigger['expression'].lower())
+        self.assertEqual(trigger['name'], 'Cato site {#SITE.NAME}: Disconnected')
+
+    def test_state_trigger_names_and_no_nodata(self):
+        names = set()
+        for rule in self.tpl['discovery_rules']:
+            for item in rule.get('item_prototypes') or []:
+                for trigger in item.get('trigger_prototypes') or []:
+                    names.add(trigger['name'])
+                    self.assertNotIn('nodata(', trigger['expression'].lower(), trigger['name'])
+        self.assertTrue(EXPECTED_STATE_TRIGGER_PROTOTYPE_NAMES <= names)
+
+    def test_item_prototype_keys(self):
+        keys = {
+            item['key']
+            for rule in self.tpl['discovery_rules']
+            for item in rule.get('item_prototypes') or []
+        }
+        self.assertTrue(EXPECTED_ITEM_PROTOTYPE_KEYS <= keys)
+
+    def test_socket_and_wan_names_include_site_and_serial(self):
+        socket = next(
+            rule for rule in self.tpl['discovery_rules'] if rule['key'] == 'cato.socket.discovery'
+        )
+        wan = next(rule for rule in self.tpl['discovery_rules'] if rule['key'] == 'cato.wan.discovery')
+        sock_conn = next(item for item in socket['item_prototypes'] if 'socket.connected[' in item['key'])
+        wan_conn = next(item for item in wan['item_prototypes'] if item['key'].startswith('cato.wan.connected['))
+        self.assertEqual(sock_conn['name'], 'Cato Socket {#SITE.NAME} / {#SERIAL}: Connectivity')
+        self.assertEqual(
+            wan_conn['name'],
+            'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Connectivity',
+        )
+
+    def test_graph_prototypes_split_rtt_and_jitter(self):
+        sla = next(
+            rule
+            for rule in self.tpl['discovery_rules']
+            if rule['key'] == 'cato.wan.metrics.discovery'
+        )
+        names = {graph['name'] for graph in sla.get('graph_prototypes') or []}
+        self.assertEqual(names, EXPECTED_GRAPH_PROTOTYPES)
+        self.assertNotIn('Latency and jitter', ' '.join(names))
+
+    def test_dashboards_health_path_network(self):
+        by_name = {dash['name']: dash for dash in self.tpl['dashboards']}
+        self.assertEqual(set(by_name), EXPECTED_DASHBOARD_NAMES)
+        self.assertEqual({page['name'] for page in by_name['Health']['pages']}, EXPECTED_HEALTH_PAGES)
+        self.assertEqual({page['name'] for page in by_name['Path']['pages']}, EXPECTED_PATH_PAGES)
+        self.assertEqual({page['name'] for page in by_name['Network']['pages']}, EXPECTED_NETWORK_PAGES)
+        health_types = [
+            widget['type']
+            for page in by_name['Health']['pages']
+            for widget in page['widgets']
+        ]
+        self.assertNotIn('graphprototype', health_types)
+        self.assertIn('honeycomb', health_types)
+        path_names = [widget['name'] for widget in by_name['Path']['pages'][0]['widgets']]
+        self.assertIn('Overlay loss', path_names)
+        self.assertIn('Last-mile loss', path_names)
+        self.assertIn('Overlay RTT', path_names)
+        self.assertIn('Overlay jitter', path_names)
+
+    def test_collector_trigger_names(self):
+        names = {
+            trigger['name']
+            for item in self.tpl['items']
+            for trigger in item.get('triggers') or []
+        }
+        self.assertTrue(EXPECTED_COLLECTOR_TRIGGER_NAMES <= names)
+
+    def test_census_uses_exists_foreach_and_availability(self):
+        by_key = {item['key']: item for item in self.tpl['items']}
+        site = by_key['cato.site.discovery.count']
+        self.assertIn('count(exists_foreach(//cato.site.connected[*]))-1', site['params'])
+        expr = site['triggers'][0]['expression']
+        self.assertIn('cato.api.snapshot.available', expr)
+        self.assertIn('{$CATO.SITES.EXPECTED}>0', expr)
+        sla = by_key['cato.wan.metrics.discovery.count']
+        self.assertIn('cato.api.metrics.available', sla['triggers'][0]['expression'])
+
+    def test_host_name_uses_account_id(self):
+        self.assertEqual(collector_host('964'), 'cato-account-964')
+        self.assertEqual(collector_host('12'), 'cato-account-12')
+
+    def test_template_name_stable(self):
+        self.assertEqual(self.tpl['name'], TEMPLATE_NAME)
+
+
+class CatoLldJsTests(unittest.TestCase):
+    def test_sites_filter_socket_and_drop_ipsec(self):
+        rows = run_lld_js(load_lld_js('cato.site.discovery'), json.dumps(SNAPSHOT_FIXTURE))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['{#SITE.NAME}'], 'Zurich')
+        self.assertEqual(rows[0]['{#IS.HA}'], '1')
+        self.assertTrue(all(not row['{#CONN.TYPE}'].startswith('IPSEC') for row in rows))
+
+    def test_sockets_ha_roles_and_site_name(self):
+        rows = run_lld_js(load_lld_js('cato.socket.discovery'), json.dumps(SNAPSHOT_FIXTURE))
+        by_serial = {row['{#SERIAL}']: row for row in rows}
+        self.assertEqual(set(by_serial), {'SOCK-A', 'SOCK-B'})
+        self.assertEqual(by_serial['SOCK-A']['{#HA.ROLE}'], 'primary')
+        self.assertEqual(by_serial['SOCK-B']['{#HA.ROLE}'], 'secondary')
+        self.assertEqual(by_serial['SOCK-A']['{#SITE.NAME}'], 'Zurich')
+        self.assertNotIn('IPSEC-1', by_serial)
+
+    def test_wan_snapshot_is_per_socket(self):
+        rows = run_lld_js(load_lld_js('cato.wan.discovery'), json.dumps(SNAPSHOT_FIXTURE))
+        self.assertEqual(len(rows), 3)
+        labels = {(row['{#SERIAL}'], row['{#LINK.NAME}']) for row in rows}
+        self.assertEqual(labels, {('SOCK-A', 'WAN1'), ('SOCK-A', 'WAN2'), ('SOCK-B', 'WAN1')})
+
+    def test_wan_metrics_ha_merge(self):
+        rows = run_lld_js(load_lld_js('cato.wan.metrics.discovery'), json.dumps(METRICS_FIXTURE))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({row['{#LINK.NAME}'] for row in rows}, {'WAN1', 'WAN2'})
+        self.assertTrue(all('{#SERIAL}' not in row for row in rows))
+
+    def test_missing_snapshot_returns_empty(self):
+        empty = json.dumps({'data': {}})
+        for key in (
+            'cato.site.discovery',
+            'cato.socket.discovery',
+            'cato.wan.discovery',
+        ):
+            self.assertEqual(run_lld_js(load_lld_js(key), empty), [])
+
+    def test_invalid_json_throws(self):
+        with self.assertRaises(RuntimeError):
+            run_lld_js(load_lld_js('cato.site.discovery'), 'not-json')
+
+    def test_python_census_matches_lld_counts(self):
+        census = snapshot_census(SNAPSHOT_FIXTURE)
+        self.assertEqual(census, {'sites': 1, 'sockets': 2, 'wan_rows': 3})
+        self.assertEqual(metrics_sla_census(METRICS_FIXTURE), 2)
+        self.assertEqual(snapshot_socket_serials(SNAPSHOT_FIXTURE), {'SOCK-A', 'SOCK-B'})
+
+
+class CatoApplyWiringTests(unittest.TestCase):
+    def test_network_script_documents_apply_cato(self):
+        src = (ROOT / 'scripts/configure_nbxsync_network.py').read_text(encoding='utf-8')
+        self.assertIn('--apply-cato', src)
+        self.assertIn('--check-cato', src)
+        self.assertIn('run_apply_cato', src)
+        self.assertIn('preflight_cato_graphql', src)
+
+    def test_zerotouch_is_not_the_collector_refresh(self):
+        src = (ROOT / 'scripts/configure_nbxsync_zerotouch.py').read_text(encoding='utf-8')
+        self.assertNotIn('--apply-cato', src)
+        self.assertNotIn('apply_cato_pack', src)
+
+
+if __name__ == '__main__':
+    unittest.main()
