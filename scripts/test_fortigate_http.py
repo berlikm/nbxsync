@@ -534,8 +534,8 @@ class FirewallRoleMacroTests(unittest.TestCase):
         )
         self.assertNotIn('1=1 and', triggerprototype.updated[0]['expression'])
 
-    def test_vdom_labels_are_unambiguous_and_idempotent(self):
-        from fortigate_http_zabbix import _with_vdom_label
+    def test_vdom_labels_and_tags_are_unambiguous_and_idempotent(self):
+        from fortigate_http_zabbix import _with_vdom_label, _with_vdom_tag
 
         self.assertEqual(
             _with_vdom_label('Interface [{#IFNAME}]: Network traffic'),
@@ -548,6 +548,19 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(
             _with_vdom_label('SD-WAN [{#VDOM}]:[{#NAME}]: Network traffic'),
             'SD-WAN [{#VDOM}]:[{#NAME}]: Network traffic',
+        )
+        expected = [
+            {'tag': 'component', 'value': 'sd_wan'},
+            {'tag': 'vdom', 'value': '{#VDOM}'},
+        ]
+        self.assertEqual(
+            _with_vdom_tag([{'tag': 'component', 'value': 'sd_wan'}]),
+            expected,
+        )
+        self.assertEqual(_with_vdom_tag(expected), expected)
+        self.assertEqual(
+            _with_vdom_tag(expected + [{'tag': 'vdom', 'value': 'wrong'}]),
+            expected,
         )
 
     def test_stock_collectors_are_not_vdom_rewrites(self):

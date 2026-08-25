@@ -933,9 +933,29 @@ def _with_vdom_label(name: str) -> str:
             return prefix + '[{#VDOM}]:' + name[len(prefix):]
     return name
 
+def _with_vdom_tag(tags: list[dict]) -> list[dict]:
+    """Return one canonical VDOM tag while preserving unrelated prototype tags."""
+    wanted = {'tag': 'vdom', 'value': '{#VDOM}'}
+    out = []
+    found = False
+    for entry in tags or []:
+        tag = {
+            'tag': str(entry.get('tag') or ''),
+            'value': str(entry.get('value') or ''),
+        }
+        if tag['tag'] != wanted['tag']:
+            out.append(tag)
+        elif not found:
+            out.append(wanted.copy())
+            found = True
+    if not found:
+        out.append(wanted.copy())
+    return out
+
+
 
 def patch_vdom_lld_metadata(api, templateid) -> dict[str, int]:
-    """Expose {#VDOM} and include it in all interface/SD-WAN prototype labels."""
+    """Expose {#VDOM} in interface/SD-WAN names and filterable tags."""
     keys = ('fgate.netif.discovery', 'fgate.sdwan_health.discovery', 'fgate.sdwan_member.discovery')
     rules = api.discoveryrule.get(
         templateids=[str(templateid)],
@@ -959,10 +979,17 @@ def patch_vdom_lld_metadata(api, templateid) -> dict[str, int]:
         for item in api.itemprototype.get(
             discoveryids=[str(rule['itemid'])],
             output=['itemid', 'name'],
+            selectTags='extend',
         ):
+            payload = {}
             wanted = _with_vdom_label(str(item.get('name') or ''))
             if wanted != item.get('name'):
-                api.itemprototype.update(itemid=item['itemid'], name=wanted)
+                payload['name'] = wanted
+            tags = _with_vdom_tag(list(item.get('tags') or []))
+            if tags != list(item.get('tags') or []):
+                payload['tags'] = tags
+            if payload:
+                api.itemprototype.update(itemid=item['itemid'], **payload)
                 updated['items'] += 1
 
         for graph in api.graphprototype.get(
@@ -977,6 +1004,7 @@ def patch_vdom_lld_metadata(api, templateid) -> dict[str, int]:
         for trigger in api.triggerprototype.get(
             discoveryids=[str(rule['itemid'])],
             output=['triggerid', 'description', 'event_name'],
+            selectTags='extend',
         ):
             payload = {}
             description = _with_vdom_label(str(trigger.get('description') or ''))
@@ -985,6 +1013,9 @@ def patch_vdom_lld_metadata(api, templateid) -> dict[str, int]:
                 payload['description'] = description
             if event_name != trigger.get('event_name'):
                 payload['event_name'] = event_name
+            tags = _with_vdom_tag(list(trigger.get('tags') or []))
+            if tags != list(trigger.get('tags') or []):
+                payload['tags'] = tags
             if payload:
                 api.triggerprototype.update(triggerid=trigger['triggerid'], **payload)
                 updated['triggers'] += 1

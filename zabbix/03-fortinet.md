@@ -73,6 +73,8 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 
 Do **not** alert on: every policy, every VLAN, FortiGuard “firmware exists”, CPU as High, the same ISP cut as Extreme `UW` **and** Cato, FMG/FAZ as if they were FortiGates. Path tickets on the secondary HA member are gated; ICMP/API/CPU health stays on both.
 
+Latest data and Problems expose a `vdom` tag subfilter for every discovered interface and SD-WAN item/trigger. Values are the actual FortiOS VDOM names (for example `root`, `Untrust`, `Lumiphase`, and `Zoning`), not interface-name inference.
+
 ---
 
 ## Health dashboard (host, from the template)

@@ -226,12 +226,14 @@ def main() -> int:
         'patch_vdom_star_items(api, templateid)' in zbx_src
         and 'patch_vdom_lld_metadata(api, templateid)' in zbx_src
         and "paths.append({'lld_macro': '{#VDOM}', 'path': '$.vdom'})" in zbx_src
+        and '_with_vdom_tag' in zbx_src
+        and "{'tag': 'vdom', 'value': '{#VDOM}'}" in zbx_src
         and 'ensure_overlay_census_items' in zbx_src
         and 'ensure_overlay_census_items' in net_src
         and 'OVERLAY_INVENTORY_KEY' in forti_http
         and 'overlayRaw' in zbx_src
         and 'code === 424' in forti_http,
-        'multi-VDOM collectors, unique LLD labels, and independent SD-WAN/IPsec census',
+        'multi-VDOM collectors, names, filter tags, and independent SD-WAN/IPsec census',
     )
     record(
         'network_fortigate_observability_dependencies',
