@@ -300,7 +300,7 @@ zabbix_export:
             	return { code: code, body: body };
             }
             var api_url = params.scheme + '://' + params.fqdn + ':' + params.port;
-            var ha = getHttpData(api_url + '/api/v2/monitor/system/ha-nonsync-checksums');
+            var ha = getHttpData(api_url + '/api/v2/monitor/system/ha-checksums');
             if (ha.code === 404 || ha.code === 424) {
             	return 0;
             }
@@ -314,22 +314,31 @@ zabbix_export:
             if (rows.length < 2) {
             	return 0;
             }
-            var baseline = {};
+            var maps = [];
+            var names = {};
             var mismatches = {};
             for (var i = 0; i < rows.length; i++) {
             	var vdoms = rows[i] && rows[i].checksum && rows[i].checksum.vdoms;
             	if (!vdoms || typeof vdoms !== 'object') {
             		throw 'HA checksum row has no VDOM map';
             	}
+            	maps.push(vdoms);
             	Object.keys(vdoms).forEach(function (vdom) {
-            		var checksum = String(vdoms[vdom]);
-            		if (typeof baseline[vdom] === 'undefined') {
-            			baseline[vdom] = checksum;
-            		} else if (baseline[vdom] !== checksum) {
-            			mismatches[vdom] = 1;
-            		}
+            		names[vdom] = 1;
             	});
             }
+            Object.keys(names).forEach(function (vdom) {
+            	var baseline;
+            	for (var j = 0; j < maps.length; j++) {
+            		if (typeof maps[j][vdom] === 'undefined') {
+            			mismatches[vdom] = 1;
+            		} else if (typeof baseline === 'undefined') {
+            			baseline = String(maps[j][vdom]);
+            		} else if (baseline !== String(maps[j][vdom])) {
+            			mismatches[vdom] = 1;
+            		}
+            	}
+            });
             return Object.keys(mismatches).length;
           timeout: '{$FGATE.DATA.TIMEOUT}'
           parameters:
@@ -343,7 +352,7 @@ zabbix_export:
               value: '{$FGATE.SCHEME}'
             - name: token
               value: '{$FGATE.API.TOKEN}'
-          description: 'Number of VDOM configuration checksum mismatches across HA peers. Global checksum is intentionally excluded because member-local global settings can differ.'
+          description: 'Number of authoritative synchronized VDOM configuration checksum mismatches across HA peers from system/ha-checksums. Intentionally non-synchronized member-local settings are not compared.'
           tags:
             - tag: component
               value: ha
@@ -352,7 +361,7 @@ zabbix_export:
               expression: 'last(/FortiGate Observability/fgate.observability.ha.role)=1 and min(/FortiGate Observability/fgate.observability.api,30m)=1 and min(/FortiGate Observability/fgate.observability.ha.vdom_mismatches,15m)>0'
               name: 'FortiGate: HA VDOM configuration is out of sync'
               priority: HIGH
-              description: 'At least one VDOM checksum differs across HA members for 15 minutes. Primary-only ticket prevents duplicate incidents from both cluster members.'
+              description: 'At least one authoritative synchronized VDOM checksum differs across HA members for 15 minutes. Primary-only ticket prevents duplicate incidents from both cluster members.'
               tags:
                 - tag: scope
                   value: availability

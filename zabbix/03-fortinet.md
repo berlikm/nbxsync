@@ -53,7 +53,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | Serial / system name changed | yes | Info | Info, manual close |
 | ICMP loss / RTT | **no** | — | items on ICMP Ping; triggers **off** (CH proxy RTT is WAN) |
 | HA peer / member lost | yes | Average | companion `system/ha-peer` member count |
-| HA VDOM config out of sync | yes | **High** | companion `system/ha-nonsync-checksums`; member-local global checksum intentionally excluded |
+| HA VDOM config out of sync | yes | **High** | companion `system/ha-checksums`; authoritative synchronized VDOM maps must differ. Never compare `system/ha-nonsync-checksums`: that endpoint covers intentionally member-local/non-synchronized settings |
 | IPsec | inventory now; state alert after endpoint semantics are proven | — | overlay records VDOM, Phase 1/2 identity, state/type, and counters |
 | Hardware temp / PSU / fan | later | — | **HTTP does not collect this** |
 | **Site** last path down | yes | **Disaster** — site-level, **not** on this template | later |

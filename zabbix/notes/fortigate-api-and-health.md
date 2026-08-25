@@ -138,7 +138,7 @@ HostSync of both members is the same job twice: shared Zabbix monitoring token f
 | Licenses / firmware Info | collect on both | primary-only gate avoids duplicates |
 | HA membership and VDOM checksums | compare from both | member count Average on each chassis; VDOM checksum mismatch High on the primary only |
 
-Role collection matches the local system serial to `/api/v2/monitor/system/ha-peer`. Unknown transport/auth/role is unsupported, never primary. `/api/v2/monitor/system/ha-nonsync-checksums` supplies the VDOM checksum signal; member-local global checksums are excluded. The mismatch metric remains on both hosts for visibility, but only `ha.role=1` creates the incident.
+Role collection matches the local system serial to `/api/v2/monitor/system/ha-peer`. Unknown transport/auth/role is unsupported, never primary. `/api/v2/monitor/system/ha-checksums` supplies the authoritative synchronized VDOM checksum signal; `/api/v2/monitor/system/ha-nonsync-checksums` contains intentionally member-local/non-synchronized configuration and must not drive an HA sync alarm. The mismatch metric remains on both hosts for visibility, but only `ha.role=1` creates the incident.
 
 ### Token / trusted hosts
 

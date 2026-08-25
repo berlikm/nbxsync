@@ -221,6 +221,10 @@ def main() -> int:
     )
     forti_http = (SCRIPTS / 'fortigate_http.py').read_text(encoding='utf-8')
     zbx_src = (SCRIPTS / 'fortigate_http_zabbix.py').read_text(encoding='utf-8')
+    companion = (
+        SCRIPTS.parent
+        / 'zabbix/templates/fortinet_fortigate_observability/template_fortigate_observability.yaml'
+    ).read_text(encoding='utf-8')
     record(
         'network_fortigate_http_overlay_census',
         'patch_vdom_star_items(api, templateid)' in zbx_src
@@ -230,6 +234,8 @@ def main() -> int:
         and "{'tag': 'vdom', 'value': '{#VDOM}'}" in zbx_src
         and 'patch_dashboard_time_periods(api, templateid)' in zbx_src
         and "'name': 'time_period.to'" in zbx_src
+        and "'/api/v2/monitor/system/ha-checksums'" in companion
+        and 'ha-nonsync-checksums' not in companion
         and 'ensure_overlay_census_items' in zbx_src
         and 'ensure_overlay_census_items' in net_src
         and 'OVERLAY_INVENTORY_KEY' in forti_http
