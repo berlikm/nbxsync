@@ -177,7 +177,7 @@ Stock HTTP has no host **Health** board. Companion **FortiGate Observability** s
 | Who is primary? | HA | HA role **item** | 0/1 identity with valuemap — not a gauge with fake max=1 |
 | Is the peer still there? | HA | Member count item | Census, not a 0–10 gauge |
 | Are we split-brain on config? | HA | VDOM mismatch count item | 0 green, ≥1 red. Ticket is primary-only |
-| Which WAN/HA port is down? | Network interfaces | Honeycomb of **VDOM/IFNAME** (`root/wan1`) | Colour without an ID is a Christmas tree. Forti link 0=up 1=down (inverted vs IF-MIB). **72×6** like a switch |
+| Which WAN/HA port is down? | Network interfaces | Honeycomb of **VDOM/IFNAME** (`root/wan1`) | Colour without an ID is a Christmas tree. Forti physical-interface link state is **0=down, 1=up**. **72×6** like a switch |
 | How much traffic on *this* WAN? | Network interfaces → Port / Path → Probe | Navigator + selected-metric history | It selects inherited HTTP items by name; template dashboards cannot refer to graph prototypes owned by a nested parent |
 | Which SD-WAN member / probe is down? | Path | Two 36×6 maps | Member link (`root/wan1`) vs health-check (`root/Google/wan1`). Empty = none discovered, not “WAN is fine” |
 | What is loss on production vs guest internet? | Path → Loss | Metric honeycomb | Only HTTP probe we have (latency/jitter and byte rate live on Probe). `Untrust` vs `root` must not share a cell label |
