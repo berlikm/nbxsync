@@ -14,10 +14,10 @@ Until this page has its own circuit host, operators use the FortiGate host board
 
 | Board | What to use for ISP work |
 |---|---|
-| **Path → Overview** | Member link vs health-check colour, VDOM-prefixed (`root/wan1`, `Untrust/Google/wan1`). 3×2 member traffic after apply |
+| **Path → Overview** | Member link vs health-check colour, VDOM-prefixed (`root/wan1`, `Untrust/Google/wan1`) |
 | **Path → Loss** | Packet loss honeycomb (0 green / 5 yellow / 20 red = stock Warning). Production vs guest are different cells |
-| **Path → Probe** | Navigator grouped by **vdom** — latency / jitter / loss / status |
-| **Network interfaces** | Physical WAN bits in a 3×2 grid — not the stock 1-column Statistics slide |
+| **Path → Probe** | Navigator grouped by **vdom** — latency / jitter / loss / status / byte rate |
+| **Network interfaces → Port** | Physical WAN bits through the per-interface navigator — not the stock 1-column Statistics slide |
 
 A later circuit template should **reuse these items** (dependent items / a thin overlay), not poll FortiOS twice. Tag so Extreme `UW` and Forti path share a class without double-paging.
 

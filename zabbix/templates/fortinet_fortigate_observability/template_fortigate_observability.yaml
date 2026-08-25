@@ -979,6 +979,12 @@ zabbix_export:
                       name: items.3
                       value: 'Interface *: Outbound packets with errors'
                     - type: STRING
+                      name: items.4
+                      value: 'Interface *: Bits received'
+                    - type: STRING
+                      name: items.5
+                      value: 'Interface *: Bits sent'
+                    - type: STRING
                       name: reference
                       value: FINAV
                 - type: svggraph
@@ -1176,6 +1182,12 @@ zabbix_export:
                     - type: STRING
                       name: items.4
                       value: 'SD-WAN *: Jitter'
+                    - type: STRING
+                      name: items.5
+                      value: 'SD-WAN *: Bytes received per second'
+                    - type: STRING
+                      name: items.6
+                      value: 'SD-WAN *: Bytes sent per second'
                     - type: STRING
                       name: reference
                       value: FNAVP

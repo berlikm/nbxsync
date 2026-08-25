@@ -259,16 +259,13 @@ def main() -> int:
         'stock reboot Info becomes Warning on the Cloud HTTP parent',
     )
     record(
-        'network_fortigate_observability_traffic_grids',
-        'patch_observability_traffic_grids' in net_src
-        and 'patch_observability_traffic_grids(api, observability[0], http[0])' in fg
-        and fg.find('import_fortigate_observability_template')
-        < fg.find('patch_observability_traffic_grids')
-        and "type': 'graphprototype'" in zbx_src
-        and "'columns', 'value': '3'" in zbx_src
-        and "'rows', 'value': '2'" in zbx_src
+        'network_fortigate_observability_traffic_navigation',
+        "'Interface *: Bits received'" in companion
+        and "'Interface *: Bits sent'" in companion
+        and "'SD-WAN *: Bytes received per second'" in companion
+        and "'SD-WAN *: Bytes sent per second'" in companion
         and 'type: graphprototype' not in companion,
-        '3x2 traffic grids are injected after companion import; YAML has no nested graphprototypes',
+        'companion navigators select nested HTTP traffic items without invalid graph prototype references',
     )
     record(
         'network_fortigate_http_raw_master_history',

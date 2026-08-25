@@ -21,7 +21,7 @@ This page is the **target contract**. Use only `configure_nbxsync_network.py --a
 | Never silent | unsupported items; nodata ICMP/API; overlay endpoint errors; NetBox∩FortiOS interface baseline; SD-WAN below the exact per-device `{$FGATE.SDWAN.EXPECTED}`; HA member count ≠ `{$FGATE.HA.EXPECTED}`; HA VDOM checksum mismatch |
 | Control plane | Zabbix REST token in nbxSync on **Platform FortiOS**; separate NetBox inventory automation token in `NBX_FORTIGATE_TOKEN`. FQDN is platform Jinja on `primary_ip4`. Interface LLD is an exact per-device regex from enabled+cabled NetBox interfaces observable in FortiOS CMDB; device context `{$NET.IF.CONTROL:mgmt}=0` suppresses only the unreliable reserved-management link signal while ICMP/API monitor that path |
 | Collect first | Policy LLD **disabled**. util 95% silenced (101). Duplicate stock CPU/mem **High** silenced (CRIT 101); companion memory alert uses FortiOS green/red/extreme thresholds. Firmware Info off if CONTROL=0 |
-| Host dashboard | **Health** (Overview / HA) + **Network interfaces** (map + 3×2 traffic) + **Path** (SD-WAN maps / Loss / Probe). Same chrome as EXOS |
+| Host dashboard | **Health** (Overview / HA) + **Network interfaces** (map + traffic navigator) + **Path** (SD-WAN maps / Loss / Probe). Same chrome as EXOS |
 | Severity | **Disaster** = site only (memory **extreme** is the documented exception). Warning = next day, not a dump bucket |
 
 Data path: companion **FortiGate Observability** (nests stock **FortiGate by HTTP** + **ICMP Ping**). Do **not** also assign ICMP Ping or FortiGate by HTTP on FortiOS objects — they are nested parents, and Zabbix rejects a duplicate parent link. Do **not** also link FortiGate by SNMP or Network Generic (`icmpping` collision). After SNMP Monitoring is pruned from role Firewall, Platform FortiOS uses CG **FortiGate HTTP** (Agent @ primary, no ICMP Ping template) so Site Group **Agent Monitoring** does not win.
@@ -109,13 +109,13 @@ Widget type follows the EXOS rule: gauge = one headline number with a scale; ite
 |---|---|
 | **Health → Overview** | ICMP / API / CPU / **Uptime** — same four-tile chrome as EXOS (API stands in for SNMP). Problems strip. CPU+memory trend plus Uptime history |
 | **Health → HA** | Memory gauge (FortiOS 82/88/95 colours) + trend. HA role (Primary/Secondary), member count, VDOM mismatch count |
-| **Network interfaces → Overview** | 72×6 link-status map (`root/wan1`) plus a **3×2** traffic grid after `--apply-fortigate-http`. No more sliding the stock **FortiGate: Statistics** gallery to find the WAN |
-| **Network interfaces → Port** | One-iface picker (link / speed / in+out errors) — not bits |
-| **Path → Overview** | Two 36×6 maps: **SD-WAN members** (`root/wan1`) and **health-checks** (`root/Google/wan1`). 3×2 member traffic grid after apply. Colour is Forti link/probe state (0=up) |
+| **Network interfaces → Overview** | 72×6 link-status map (`root/wan1`). No more sliding the stock **FortiGate: Statistics** gallery to find the WAN |
+| **Network interfaces → Port** | One-iface picker (link / speed / in+out errors / **bits**) with history |
+| **Path → Overview** | Two 36×6 maps: **SD-WAN members** (`root/wan1`) and **health-checks** (`root/Google/wan1`). Colour is Forti link/probe state (0=up) |
 | **Path → Loss** | Metric honeycomb of SD-WAN packet loss (green / 5 yellow / 20 red). This is the HTTP probe seed for [05](05-internet-circuits.md) |
-| **Path → Probe** | Navigator grouped by **vdom** (loss / latency / jitter / status) — not bits |
+| **Path → Probe** | Navigator grouped by **vdom** (loss / latency / jitter / status / **byte rate**) with history |
 
-Stock HTTP has **no** host Health board (`FortiGate: General` / `Statistics` stay as vendor galleries). Observability owns the three host boards. Do **not** bind svggraph item patterns on this companion (same PHP `Array to string` hole as EXOS). Companion YAML cannot reference graph prototypes on the nested HTTP parent (Zabbix drops them on import) — `--apply-fortigate-http` injects the 3×2 grids onto **Network interfaces** and **Path** after import, looking up the HTTP parent graphs. Re-import keeps leftover widgets (`deleteMissing: false`); apply re-adds the grid if missing. The cutover still completes the stock **General → Disk usage** SVG interval as `now-1d` through `now`; Cloud 7.0-2 otherwise omits `time_period.to` and Zabbix rejects the widget.
+Stock HTTP has **no** host Health board (`FortiGate: General` / `Statistics` stay as vendor galleries). Observability owns the three host boards. Do **not** bind svggraph item patterns on this companion (same PHP `Array to string` hole as EXOS). Zabbix template dashboards may reference only objects owned by that exact template: the HTTP-parent graph prototypes cannot appear on the companion. The navigators select the inherited traffic items by name instead, so the YAML is importable and the selected metric has a history graph. The cutover still completes the stock **General → Disk usage** SVG interval as `now-1d` through `now`; Cloud 7.0-2 otherwise omits `time_period.to` and Zabbix rejects the widget.
 
 ---
 

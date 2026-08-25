@@ -588,7 +588,8 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(port_fields.get('group_by.0.tag_name'), 'interface')
         self.assertEqual(port_fields.get('items.0'), 'Interface *: Link status')
         self.assertEqual(port_fields.get('items.1'), 'Interface *: Speed')
-        self.assertNotIn('Bits received', ' '.join(str(value) for value in port_fields.values()))
+        self.assertEqual(port_fields.get('items.4'), 'Interface *: Bits received')
+        self.assertEqual(port_fields.get('items.5'), 'Interface *: Bits sent')
 
         path_overview = next(page for page in dashes['Path']['pages'] if page['name'] == 'Overview')
         honey = [widget for widget in path_overview['widgets'] if widget.get('type') == 'honeycomb']
@@ -686,6 +687,8 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(nav_fields.get('items.2'), 'SD-WAN *: Packets loss')
         self.assertEqual(nav_fields.get('items.3'), 'SD-WAN *: Latency')
         self.assertEqual(nav_fields.get('items.4'), 'SD-WAN *: Jitter')
+        self.assertEqual(nav_fields.get('items.5'), 'SD-WAN *: Bytes received per second')
+        self.assertEqual(nav_fields.get('items.6'), 'SD-WAN *: Bytes sent per second')
         self.assertEqual(graph_fields.get('ds.0.itemids.0._reference'), 'FNAVP._itemid')
 
     def test_observability_dependencies_are_idempotent(self):
@@ -906,138 +909,6 @@ class FirewallRoleMacroTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             patch_reboot_warning(api, '123')
 
-    def test_observability_traffic_grids_are_idempotent(self):
-        from copy import deepcopy
-        from types import SimpleNamespace
-        from fortigate_http_zabbix import patch_observability_traffic_grids
-
-        class GraphPrototypeAPI:
-            def get(self, **_kwargs):
-                return [
-                    {
-                        'graphid': 'g-if',
-                        'name': 'Interface [{#VDOM}]:[{#IFNAME}({#IFALIAS})]: Network traffic',
-                    },
-                    {
-                        'graphid': 'g-sd',
-                        'name': 'SD-WAN [{#VDOM}]:[{#ZONE}]:[{#NAME}]: Network traffic',
-                    },
-                    {
-                        'graphid': 'g-bw',
-                        'name': 'SD-WAN [{#VDOM}]:[{#ZONE}]:[{#NAME}]: Bandwidth',
-                    },
-                ]
-
-        class TemplateDashboardAPI:
-            def __init__(self):
-                self.rows = [
-                    {
-                        'dashboardid': 'd-if',
-                        'name': 'Network interfaces',
-                        'pages': [
-                            {
-                                'dashboard_pageid': 'p-if',
-                                'name': 'Overview',
-                                'widgets': [{
-                                    'widgetid': 'w-if',
-                                    'type': 'honeycomb',
-                                    'name': 'Interfaces',
-                                    'x': '0',
-                                    'y': '0',
-                                    'width': '72',
-                                    'height': '6',
-                                    'fields': [],
-                                }],
-                            },
-                            {
-                                'dashboard_pageid': 'p-port',
-                                'name': 'Port',
-                                'widgets': [],
-                            },
-                        ],
-                    },
-                    {
-                        'dashboardid': 'd-path',
-                        'name': 'Path',
-                        'pages': [
-                            {
-                                'dashboard_pageid': 'p-path',
-                                'name': 'Overview',
-                                'widgets': [{
-                                    'widgetid': 'w-sd',
-                                    'type': 'honeycomb',
-                                    'name': 'SD-WAN members',
-                                    'x': '0',
-                                    'y': '0',
-                                    'width': '36',
-                                    'height': '6',
-                                    'fields': [],
-                                }],
-                            },
-                            {
-                                'dashboard_pageid': 'p-loss',
-                                'name': 'Loss',
-                                'widgets': [],
-                            },
-                        ],
-                    },
-                    {
-                        'dashboardid': 'd-health',
-                        'name': 'Health',
-                        'pages': [{'dashboard_pageid': 'p-h', 'name': 'Overview', 'widgets': []}],
-                    },
-                ]
-                self.updated = []
-
-            def get(self, **_kwargs):
-                return deepcopy(self.rows)
-
-            def update(self, **kwargs):
-                self.updated.append(kwargs)
-                for row in self.rows:
-                    if row['dashboardid'] == kwargs['dashboardid']:
-                        row['pages'] = deepcopy(kwargs['pages'])
-
-        templatedashboard = TemplateDashboardAPI()
-        api = SimpleNamespace(
-            graphprototype=GraphPrototypeAPI(),
-            templatedashboard=templatedashboard,
-        )
-        self.assertEqual(
-            patch_observability_traffic_grids(api, 'obs', 'http'),
-            {'Network interfaces': 'updated', 'Path': 'updated'},
-        )
-        self.assertEqual(
-            patch_observability_traffic_grids(api, 'obs', 'http'),
-            {'Network interfaces': 'existing', 'Path': 'existing'},
-        )
-        self.assertEqual(len(templatedashboard.updated), 2)
-        by_id = {row['dashboardid']: row for row in templatedashboard.updated}
-        if_pages = by_id['d-if']['pages']
-        path_pages = by_id['d-path']['pages']
-        self.assertEqual([page['name'] for page in if_pages], ['Overview', 'Port'])
-        self.assertEqual([page['name'] for page in path_pages], ['Overview', 'Loss'])
-        if_grid = next(
-            widget for widget in if_pages[0]['widgets'] if widget.get('type') == 'graphprototype'
-        )
-        path_grid = next(
-            widget for widget in path_pages[0]['widgets'] if widget.get('type') == 'graphprototype'
-        )
-        self.assertEqual(if_grid.get('name'), 'Traffic')
-        self.assertEqual((str(if_grid.get('y')), str(if_grid.get('width')), str(if_grid.get('height'))), ('6', '72', '14'))
-        if_fields = _widget_fields(if_grid)
-        path_fields = _widget_fields(path_grid)
-        self.assertEqual(if_fields.get('columns'), '3')
-        self.assertEqual(if_fields.get('rows'), '2')
-        self.assertEqual(if_fields.get('graphid.0'), 'g-if')
-        self.assertEqual(if_fields.get('reference'), 'FITGR')
-        self.assertEqual(path_fields.get('graphid.0'), 'g-sd')
-        self.assertEqual(path_fields.get('reference'), 'FSTGR')
-        self.assertEqual(if_pages[0]['widgets'][0].get('type'), 'honeycomb')
-
-        templatedashboard.rows = [row for row in templatedashboard.rows if row['name'] != 'Path']
-        with self.assertRaises(SystemExit):
-            patch_observability_traffic_grids(api, 'obs', 'http')
 
     def test_stock_collectors_are_not_vdom_rewrites(self):
         from fortigate_http import script_is_vdom_mutated, stock_http_collector_script

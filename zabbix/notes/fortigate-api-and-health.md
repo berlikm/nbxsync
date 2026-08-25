@@ -158,11 +158,11 @@ Stock HTTP has no host **Health** board. Companion **FortiGate Observability** s
 |---|---|
 | **Health → Overview** | ICMP / API / CPU gauges + **Uptime** item tile. Problems. CPU+memory trend, Uptime history |
 | **Health → HA** | Memory (the Forti analog of EXOS Temp — conserve-mode kills sessions) + HA role / members / VDOM mismatches as **item** tiles |
-| **Network interfaces → Overview** | 72×6 link-status map + **3×2** traffic grid (apply-injected from the HTTP parent graph prototype) |
-| **Network interfaces → Port** | Navigator of link / speed / errors — not bits |
-| **Path → Overview** | Two 36×6 maps (SD-WAN members + health-checks) + **3×2** member traffic grid after apply |
+| **Network interfaces → Overview** | 72×6 link-status map |
+| **Network interfaces → Port** | Navigator of link / speed / errors / **bits** with history |
+| **Path → Overview** | Two 36×6 maps (SD-WAN members + health-checks) |
 | **Path → Loss** | Packet-loss honeycomb (0 / 5 / 20). HTTP probe seed for [05](../05-internet-circuits.md) |
-| **Path → Probe** | Navigator grouped by **vdom** — loss / latency / jitter / status |
+| **Path → Probe** | Navigator grouped by **vdom** — loss / latency / jitter / status / **byte rate** |
 
 ### Why each widget exists
 
@@ -177,11 +177,11 @@ Stock HTTP has no host **Health** board. Companion **FortiGate Observability** s
 | Who is primary? | HA | HA role **item** | 0/1 identity with valuemap — not a gauge with fake max=1 |
 | Is the peer still there? | HA | Member count item | Census, not a 0–10 gauge |
 | Are we split-brain on config? | HA | VDOM mismatch count item | 0 green, ≥1 red. Ticket is primary-only |
-| Which WAN/HA port is down? | Network interfaces | Honeycomb of **VDOM/IFNAME** (`root/wan1`) | Colour without an ID is a Christmas tree. Forti link 0=up 1=down (inverted vs IF-MIB). **72×6** like a switch; traffic is the 3×2 grid under the map, not a 1-column Statistics slide |
-| How much traffic on *this* WAN? | Network interfaces / Path | 3×2 native graphs, **height 14** | Same EXOS grid. Apply looks up HTTP parent prototypes — YAML cannot bind nested graphs |
+| Which WAN/HA port is down? | Network interfaces | Honeycomb of **VDOM/IFNAME** (`root/wan1`) | Colour without an ID is a Christmas tree. Forti link 0=up 1=down (inverted vs IF-MIB). **72×6** like a switch |
+| How much traffic on *this* WAN? | Network interfaces → Port / Path → Probe | Navigator + selected-metric history | It selects inherited HTTP items by name; template dashboards cannot refer to graph prototypes owned by a nested parent |
 | Which SD-WAN member / probe is down? | Path | Two 36×6 maps | Member link (`root/wan1`) vs health-check (`root/Google/wan1`). Empty = none discovered, not “WAN is fine” |
-| What is loss on production vs guest internet? | Path → Loss | Metric honeycomb | Only HTTP probe we have (latency/jitter live on Probe). `Untrust` vs `root` must not share a cell label |
-| Why is *this* probe sick? | Path → Probe | Navigator grouped by **vdom** | Does not repeat Overview maps. Bits stay on the 3×2 grids |
+| What is loss on production vs guest internet? | Path → Loss | Metric honeycomb | Only HTTP probe we have (latency/jitter and byte rate live on Probe). `Untrust` vs `root` must not share a cell label |
+| Why is *this* probe sick? | Path → Probe | Navigator grouped by **vdom** | Does not repeat Overview maps |
 
 Do **not** put HA role, interface count, or SD-WAN count on a gauge with a hardcoded max. A site with 3 members looked 30% empty; a site with 12 looked broken. Item tiles and honeycombs scale.
 
@@ -242,7 +242,7 @@ Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-h
 
 - Look up **FortiGate by HTTP** already in Zabbix Cloud (**Zabbix, 7.0-2**). Never import bundled 7.0-3. Fail closed if missing/wrong vendor
 - Before any write, require HTTP 200 JSON from every FortiOS `primary_ip4` using NetBox inventory automation’s `NBX_FORTIGATE_TOKEN`; separately require the nbxSync Platform FortiOS monitoring token to exist. The NetBox-origin check does not prove the Zabbix proxy path
-- Patch the version-pinned parent with a fresh `HttpRequest` per request plus tested multi-VDOM interface/SD-WAN normalization; patch WAN state, policy master off, unsupported absolute-capacity items, stock CPU/mem CRIT 101, and reboot Info→Warning. Import **FortiGate Observability**, then inject EXOS 3×2 traffic grids onto companion **Network interfaces** and **Path** (YAML cannot bind nested HTTP graph prototypes)
+- Patch the version-pinned parent with a fresh `HttpRequest` per request plus tested multi-VDOM interface/SD-WAN normalization; patch WAN state, policy master off, unsupported absolute-capacity items, stock CPU/mem CRIT 101, and reboot Info→Warning. Import **FortiGate Observability** with navigators for inherited interface and SD-WAN traffic items; a companion dashboard cannot reference graph prototypes owned by the nested HTTP parent
 - FortiOS → Observability (`HostInterfaceRequirement` **ANY**). Not role Firewall
 - Preserve the existing NetBox `{$FGATE.API.TOKEN}` on Platform FortiOS. `NBX_FORTIGATE_TOKEN` remains the separate automation credential
 - Keep `{$FGATE.API.FQDN}` as Platform FortiOS Jinja. Prune Device-level literals
