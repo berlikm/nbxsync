@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 
 from fortigate_http import (
+    FORTIGATE_HTTP_CLOUD_VENDOR,
     FORTIGATE_HTTP_TEMPLATE,
     FORTIGATE_OBSERVABILITY_TEMPLATE,
     FORTIOS_PLATFORM_MACROS,
@@ -17,7 +18,6 @@ from fortigate_http import (
     OVERLAY_INVENTORY_KEY,
     POLICY_DISCOVERY_KEY,
     POLICY_MASTER_KEY,
-    FORTIGATE_HTTP_CLOUD_VENDOR,
     RAW_MASTER_HISTORY,
     RAW_MASTER_HISTORY_KEYS,
     REQUIRED_HTTP_SCRIPT_KEYS,
@@ -33,8 +33,6 @@ from fortigate_http import (
     patch_zbx27082_script,
     script_has_vdom_star,
     script_has_zbx27082,
-    script_is_vdom_mutated,
-    stock_http_collector_script,
     with_ha_role_gate,
 )
 
@@ -44,6 +42,24 @@ logger = logging.getLogger(__name__)
 _SCRIPT_TYPE = 21
 _DISABLED = 1
 _MANUAL_CLOSE_NO = 0
+_MANUAL_CLOSE_YES = 1
+
+NETIF_CENSUS_TRIGGER = 'FortiGate: fewer discovered interfaces than expected'
+HA_VDOM_TRIGGER = 'FortiGate: HA VDOM configuration is out of sync'
+HA_VDOM_PRIMARY_GATE = 'last(/FortiGate Observability/fgate.observability.ha.role)=1'
+
+OBSERVABILITY_TRIGGER_DEPENDENCIES = (
+    ('FortiGate: no API data for 10m', 'FortiGate: no ICMP data for 10m'),
+    ('FortiGate: memory pressure is above the configured extreme threshold', 'FortiGate: no API data for 10m'),
+    ('FortiGate: memory pressure is above the configured red threshold', 'FortiGate: memory pressure is above the configured extreme threshold'),
+    ('FortiGate: memory pressure is above the configured red threshold', 'FortiGate: no API data for 10m'),
+    ('FortiGate: unsupported items', 'FortiGate: no API data for 10m'),
+    (NETIF_CENSUS_TRIGGER, 'FortiGate: no API data for 10m'),
+    ('FortiGate: fewer SD-WAN members than expected', 'FortiGate: no API data for 10m'),
+    ('FortiGate: HA member count unexpected', 'FortiGate: no API data for 10m'),
+    (HA_VDOM_TRIGGER, 'FortiGate: no API data for 10m'),
+    (HA_VDOM_TRIGGER, 'FortiGate: HA member count unexpected'),
+)
 
 HA_ROLE_SCRIPT = r'''var params = JSON.parse(value);
 
@@ -61,42 +77,82 @@ function getHttpData(url) {
 	return JSON.parse(response);
 }
 
+function isTrue(value) {
+	return value === true || value === 1 || value === '1';
+}
+
 var api_url = params.scheme + '://' + params.fqdn + ':' + params.port;
 try {
 	var status = getHttpData(api_url + '/api/v2/monitor/system/status');
 	var serial = (status.serial || (status.results && status.results.serial) || '').toString();
+	if (!serial) {
+		throw 'system status has no local serial';
+	}
 	var ha;
 	try {
-		ha = getHttpData(api_url + '/api/v2/monitor/system/ha/checksums');
+		ha = getHttpData(api_url + '/api/v2/monitor/system/ha-peer');
 	} catch (e) {
-		return 1;
-	}
-	var rows = ha.results || ha;
-	if (!rows || (Array.isArray(rows) && rows.length === 0)) {
-		return 1;
-	}
-	if (!Array.isArray(rows)) {
-		if (rows.mode === 'standalone' || typeof rows.is_manage_master === 'undefined') {
+		var ha_error = String(e);
+		if (ha_error.indexOf('status 404') !== -1 || ha_error.indexOf('status 424') !== -1) {
 			return 1;
 		}
-		rows = [rows];
+		throw e;
 	}
+	var rows = ha.results || ha;
+	if (!Array.isArray(rows)) {
+		rows = rows && typeof rows === 'object' ? [rows] : [];
+	}
+	if (rows.length === 0) {
+		return 1;
+	}
+	var localFound = false;
+	var primarySerial = '';
 	for (var i = 0; i < rows.length; i++) {
-		var row = rows[i];
-		var row_serial = (row.serial_no || row.serial || '').toString();
-		if (serial && row_serial && row_serial === serial) {
-			return (row.is_manage_master === true || row.is_manage_master === 1) ? 1 : 0;
+		var row = rows[i] || {};
+		var rowSerial = (row.serial_no || row.serial || '').toString();
+		if (rowSerial === serial) {
+			localFound = true;
+		}
+		var roleFields = [
+			row.primary,
+			row.master,
+			row.is_manage_primary,
+			row.is_manage_master,
+			row.is_root_primary,
+			row.is_root_master
+		];
+		for (var j = 0; j < roleFields.length; j++) {
+			if (!isTrue(roleFields[j])) {
+				continue;
+			}
+			if (!rowSerial) {
+				throw 'primary HA peer has no serial';
+			}
+			if (primarySerial && primarySerial !== rowSerial) {
+				throw 'multiple HA peers claim primary';
+			}
+			primarySerial = rowSerial;
 		}
 	}
-	return 1;
+	if (!localFound) {
+		throw 'local serial not present in HA peers';
+	}
+	if (rows.length === 1) {
+		return 1;
+	}
+	if (!primarySerial) {
+		throw 'HA peers have no authoritative primary';
+	}
+	return primarySerial === serial ? 1 : 0;
 } catch (error) {
-	return 1;
+	throw 'HA role collection failed: ' + error;
 }
 '''
 
 # Standalone overlay census. Functions are program-scope — never splice into
 # stock getHttpData. 424/404 on one endpoint leaves the others.
 OVERLAY_INVENTORY_SCRIPT = r'''var params = JSON.parse(value);
+var overlayErrors = [];
 
 function overlayRaw(url) {
 	var req = new HttpRequest();
@@ -111,20 +167,20 @@ function overlayRaw(url) {
 		raw = req.get(url);
 		code = req.getStatus();
 	} catch (e) {
-		return { code: 0, body: null };
+		return { code: 0, body: null, error: String(e) };
 	}
 	var parsed = null;
 	if (raw !== null && String(raw) !== '') {
 		try {
 			parsed = JSON.parse(raw);
 		} catch (e2) {
-			parsed = null;
+			return { code: code, body: null, error: 'invalid JSON' };
 		}
 	}
 	if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.status == 'error' && typeof parsed.http_status !== 'undefined') {
 		code = parsed.http_status;
 	}
-	return { code: code, body: parsed };
+	return { code: code, body: parsed, error: '' };
 }
 
 function overlayOk(resp) {
@@ -144,6 +200,11 @@ function overlayOk(resp) {
 	return true;
 }
 
+function overlayFailure(path, resp) {
+	var detail = resp && resp.error ? resp.error : 'HTTP ' + (resp ? resp.code : 0);
+	overlayErrors.push(path + ': ' + detail);
+}
+
 function overlayFetch(base, path) {
 	var sep = path.indexOf('?') >= 0 ? '&' : '?';
 	var star = overlayRaw(base + path + sep + 'vdom=*');
@@ -153,8 +214,16 @@ function overlayFetch(base, path) {
 	if (star.code === 424 || star.code === 404) {
 		return null;
 	}
+	if (star.code === 401 || star.code === 403 || star.code === 0) {
+		overlayFailure(path, star);
+		return null;
+	}
 	var plain = overlayRaw(base + path);
-	return overlayOk(plain) ? plain.body : null;
+	if (overlayOk(plain)) {
+		return plain.body;
+	}
+	overlayFailure(path, plain);
+	return null;
 }
 
 function overlayBlocks(payload) {
@@ -172,6 +241,19 @@ function overlayBlocks(payload) {
 
 function overlayMemberRows(payload) {
 	var out = [];
+	function add(vdom, name, row) {
+		row = row || {};
+		out.push({
+			vdom: vdom,
+			interface: String(name),
+			status: row.status !== undefined ? row.status : row.link,
+			session: row.session !== undefined ? row.session : null,
+			tx_bytes: row.tx_bytes !== undefined ? row.tx_bytes : null,
+			rx_bytes: row.rx_bytes !== undefined ? row.rx_bytes : null,
+			tx_bandwidth: row.tx_bandwidth !== undefined ? row.tx_bandwidth : null,
+			rx_bandwidth: row.rx_bandwidth !== undefined ? row.rx_bandwidth : null
+		});
+	}
 	overlayBlocks(payload).forEach(function (block) {
 		if (!block || block.status == 'error') {
 			return;
@@ -184,7 +266,7 @@ function overlayMemberRows(payload) {
 		if (Array.isArray(res)) {
 			res.forEach(function (row) {
 				if (row && (row.interface || row.name)) {
-					out.push({ vdom: vdom, interface: String(row.interface || row.name) });
+					add(vdom, row.interface || row.name, row);
 				}
 			});
 			return;
@@ -192,8 +274,7 @@ function overlayMemberRows(payload) {
 		if (typeof res === 'object') {
 			Object.keys(res).forEach(function (k) {
 				var row = res[k] || {};
-				var name = row.interface || row.name || k;
-				out.push({ vdom: vdom, interface: String(name) });
+				add(vdom, row.interface || row.name || k, row);
 			});
 		}
 	});
@@ -202,6 +283,17 @@ function overlayMemberRows(payload) {
 
 function overlayHealthRows(payload) {
 	var out = [];
+	function add(vdom, name, row) {
+		row = row || {};
+		out.push({
+			vdom: vdom,
+			name: String(name),
+			status: row.status !== undefined ? row.status : row.state,
+			latency: row.latency !== undefined ? row.latency : null,
+			jitter: row.jitter !== undefined ? row.jitter : null,
+			packet_loss: row.packet_loss !== undefined ? row.packet_loss : null
+		});
+	}
 	overlayBlocks(payload).forEach(function (block) {
 		if (!block || block.status == 'error') {
 			return;
@@ -211,11 +303,14 @@ function overlayHealthRows(payload) {
 		if (!res || typeof res !== 'object') {
 			return;
 		}
-		var keys = Array.isArray(res) ? res.map(function (row, i) { return row && (row.name || row.q_origin_key) || String(i); }) : Object.keys(res);
-		keys.forEach(function (name) {
-			if (name) {
-				out.push({ vdom: vdom, name: String(name) });
-			}
+		if (Array.isArray(res)) {
+			res.forEach(function (row, i) {
+				add(vdom, row && (row.name || row.q_origin_key) || String(i), row);
+			});
+			return;
+		}
+		Object.keys(res).forEach(function (name) {
+			add(vdom, name, res[name]);
 		});
 	});
 	return out;
@@ -223,6 +318,19 @@ function overlayHealthRows(payload) {
 
 function overlayIpsecRows(payload) {
 	var out = [];
+	function add(vdom, name, row) {
+		row = row || {};
+		out.push({
+			vdom: vdom,
+			name: String(name),
+			phase1: row.p1name !== undefined ? row.p1name : null,
+			phase2: row.p2name !== undefined ? row.p2name : (row.proxyid !== undefined ? row.proxyid : null),
+			status: row.status !== undefined ? row.status : row.state,
+			type: row.type !== undefined ? row.type : null,
+			incoming_bytes: row.incoming_bytes !== undefined ? row.incoming_bytes : null,
+			outgoing_bytes: row.outgoing_bytes !== undefined ? row.outgoing_bytes : null
+		});
+	}
 	overlayBlocks(payload).forEach(function (block) {
 		if (!block || block.status == 'error') {
 			return;
@@ -236,14 +344,14 @@ function overlayIpsecRows(payload) {
 			res.forEach(function (row) {
 				var name = row && (row.p1name || row.name || row.proxyid || row.q_origin_key);
 				if (name) {
-					out.push({ vdom: vdom, name: String(name) });
+					add(vdom, name, row);
 				}
 			});
 			return;
 		}
 		if (typeof res === 'object') {
 			Object.keys(res).forEach(function (k) {
-				out.push({ vdom: vdom, name: String(k) });
+				add(vdom, k, res[k]);
 			});
 		}
 	});
@@ -264,6 +372,8 @@ try {
 				out.vdoms.push(String(n));
 			}
 		});
+	} else if (vd.code !== 404 && vd.code !== 424) {
+		overlayFailure('/api/v2/cmdb/system/vdom', vd);
 	}
 	out.sdwan_members = overlayMemberRows(overlayFetch(api, '/api/v2/monitor/virtual-wan/members'));
 	if (out.sdwan_members.length === 0) {
@@ -281,7 +391,10 @@ try {
 	out.sdwan_health = overlayHealthRows(overlayFetch(api, '/api/v2/monitor/virtual-wan/health-check'));
 	out.ipsec = overlayIpsecRows(overlayFetch(api, '/api/v2/monitor/vpn/ipsec'));
 } catch (e) {
-	out.error = String(e);
+	overlayErrors.push(String(e));
+}
+if (overlayErrors.length > 0) {
+	throw 'overlay census failed: ' + overlayErrors.join('; ');
 }
 return JSON.stringify(out);
 '''
@@ -359,43 +472,10 @@ def patch_zbx27082_items(api, templateid) -> dict[str, str]:
     return results
 
 
-def restore_stock_http_scripts(api, templateid) -> dict[str, str]:
-    """Put vendor netif/SD-WAN collectors back (ZBX-27082 only).
-
-    In-place vdom=* rewrites hid names from Duktape and emptied LLD. All-VDOM
-    census belongs on FortiGate Observability, not on the stock parent.
-    """
-    results: dict[str, str] = {}
-    remaining = []
-    items = {item['key_']: item for item in _script_items(api, templateid)}
-    for key in VDOM_STAR_SCRIPT_KEYS:
-        item = items.get(key)
-        if item is None:
-            remaining.append(key)
-            results[key] = 'missing'
-            continue
-        stock = stock_http_collector_script(key)
-        if script_has_zbx27082(stock):
-            remaining.append(key)
-            results[key] = 'zbx27082'
-            continue
-        current = item.get('params') or ''
-        if current == stock:
-            results[key] = 'ok'
-            continue
-        api.item.update(itemid=item['itemid'], params=stock)
-        results[key] = 'restored' if script_is_vdom_mutated(current) else 'aligned'
-        logger.info('  %s: stock HTTP collector (ZBX-27082 only)', key)
-    if remaining:
-        raise SystemExit(
-            'stock HTTP restore failed on: ' + ', '.join(remaining)
-            + '. Aborting — mutated collectors would keep empty LLD.'
-        )
-    return results
 
 
 def patch_vdom_star_items(api, templateid) -> dict[str, str]:
-    """Stock HTTP is current-VDOM only. Fail closed if vdom=* cannot be applied."""
+    """Apply tested multi-VDOM compatibility; fail closed if normalization fails."""
     results: dict[str, str] = {}
     remaining = []
     items = {item['key_']: item for item in _script_items(api, templateid)}
@@ -406,9 +486,6 @@ def patch_vdom_star_items(api, templateid) -> dict[str, str]:
             results[key] = 'missing'
             continue
         script = item.get('params') or ''
-        if script_has_vdom_star(script):
-            results[key] = 'ok'
-            continue
         patched = patch_vdom_star_script(script)
         if not script_has_vdom_star(patched):
             remaining.append(key)
@@ -417,6 +494,9 @@ def patch_vdom_star_items(api, templateid) -> dict[str, str]:
         if script_has_zbx27082(patched):
             remaining.append(key)
             results[key] = 'zbx27082'
+            continue
+        if patched == script:
+            results[key] = 'ok'
             continue
         api.item.update(itemid=item['itemid'], params=patched)
         results[key] = 'patched'
@@ -430,17 +510,27 @@ def patch_vdom_star_items(api, templateid) -> dict[str, str]:
 
 
 def ensure_ha_role_item(api, templateid) -> str:
-    """Primary/standalone=1 on the HTTP parent so path triggers can gate."""
+    """Primary/standalone=1, secondary=0; collection failure stays unknown."""
+    description = (
+        '1 = primary or standalone (path tickets). 0 = secondary. '
+        'Role comes from system/ha-peer matched to the local serial; '
+        'unknown/error is unsupported, never primary.'
+    )
     found = api.item.get(
         hostids=templateid,
         filter={'key_': HA_ROLE_KEY},
-        output=['itemid', 'params', 'type'],
+        output=['itemid', 'params', 'type', 'description'],
     ) or []
     if found:
         item = found[0]
-        if script_has_zbx27082(item.get('params') or ''):
-            api.item.update(itemid=item['itemid'], params=HA_ROLE_SCRIPT)
-            logger.info('  %s: replaced vulnerable HA role script', HA_ROLE_KEY)
+        payload = {'itemid': item['itemid']}
+        if (item.get('params') or '') != HA_ROLE_SCRIPT:
+            payload['params'] = HA_ROLE_SCRIPT
+        if (item.get('description') or '') != description:
+            payload['description'] = description
+        if len(payload) > 1:
+            api.item.update(**payload)
+            logger.info('  %s: authoritative ha-peer role script', HA_ROLE_KEY)
             return 'patched'
         return 'ok'
     api.item.create(
@@ -453,17 +543,14 @@ def ensure_ha_role_item(api, templateid) -> str:
         params=HA_ROLE_SCRIPT,
         timeout='{$FGATE.DATA.TIMEOUT}',
         parameters=_SCRIPT_PARAMETERS,
-        description=(
-            '1 = primary or standalone (path tickets). 0 = secondary. '
-            'New HttpRequest per call (ZBX-27082).'
-        ),
+        description=description,
     )
     logger.info('  created %s on %s', HA_ROLE_KEY, FORTIGATE_HTTP_TEMPLATE)
     return 'created'
 
 
 def ensure_overlay_census_items(api, templateid) -> str:
-    """All-VDOM SD-WAN + IPsec names on Observability. See first, trigger later."""
+    """All-VDOM SD-WAN/IPsec census; failures become unsupported and alert."""
     found = api.item.get(
         hostids=templateid,
         filter={'key_': OVERLAY_INVENTORY_KEY},
@@ -498,7 +585,7 @@ def ensure_overlay_census_items(api, templateid) -> str:
         parameters=_SCRIPT_PARAMETERS,
         description=(
             'Census JSON for canary: VDOMs, SD-WAN members, health-check names, '
-            'IPsec names. Not a path trigger. 424 on one endpoint keeps the rest.'
+            'IPsec names. 404/424 is unavailable; other failures become unsupported.'
         ),
     )
     logger.info('  created %s on %s', OVERLAY_INVENTORY_KEY, FORTIGATE_OBSERVABILITY_TEMPLATE)
@@ -534,6 +621,28 @@ def disable_policy_collection(api, templateid) -> dict[str, str]:
         logger.info('  disabled %s', POLICY_DISCOVERY_KEY)
     return out
 
+def disable_unavailable_capacity_items(api, templateid) -> dict[str, str]:
+    """Disable stock absolute capacity items absent from FortiOS 7.6 responses."""
+    keys = ('fgate.cpu.num', 'fgate.memory.total')
+    out: dict[str, str] = {}
+    for key in keys:
+        items = api.item.get(
+            hostids=templateid,
+            filter={'key_': key},
+            output=['itemid', 'status'],
+        ) or []
+        if not items:
+            out[key] = 'missing'
+            continue
+        item = items[0]
+        if str(item.get('status')) == str(_DISABLED):
+            out[key] = 'already-disabled'
+            continue
+        api.item.update(itemid=item['itemid'], status=_DISABLED)
+        out[key] = 'disabled'
+        logger.info('  disabled %s (FortiOS 7.6 API exposes utilization, not absolute capacity)', key)
+    return out
+
 
 def upsert_http_template_macros(api, templateid) -> str:
     """CPU/mem CRIT 101 on the parent so stock High never pages."""
@@ -564,6 +673,9 @@ def upsert_http_template_macros(api, templateid) -> str:
             '{$NET.IF.DISCOVERY.MIN}',
             '{$FGATE.SDWAN.EXPECTED}',
             '{$FGATE.HA.EXPECTED}',
+            '{$FGATE.MEMORY.GREEN}',
+            '{$FGATE.MEMORY.RED}',
+            '{$FGATE.MEMORY.EXTREME}',
         }
     }
     existing = list(tpls[0].get('macros') or [])
@@ -594,6 +706,25 @@ def upsert_http_template_macros(api, templateid) -> str:
 def _proto_name(row: dict) -> str:
     return str(row.get('description') or row.get('name') or '')
 
+def _license_problem_expr(name: str, current: str) -> str:
+    """Restore stock context macros before adding the HA-primary gate."""
+    control = '{$SERVICE.LICENSE.CONTROL:"{#KEY}"}'
+    if 'License expires soon' in name:
+        expiry = 'last(/FortiGate by HTTP/fgate.service.expire["{#KEY}"])'
+        base = (
+            f'{control}=1 and ({expiry} - now()) / 86400 < '
+            '{$SERVICE.EXPIRY.WARN:"{#KEY}"}'
+            f' and {expiry} > now()'
+        )
+        return with_ha_role_gate(base)
+    if 'License status is unsuccessful' in name:
+        return with_ha_role_gate(
+            f'{control}=1 and '
+            'last(/FortiGate by HTTP/fgate.service.license["{#KEY}"])>5'
+        )
+    return with_ha_role_gate(current)
+
+
 
 def patch_wan_state_triggers(api, templateid) -> dict[str, int]:
     """Replace .diff()+manual close with sustained down; gate on ha.role."""
@@ -608,7 +739,7 @@ def patch_wan_state_triggers(api, templateid) -> dict[str, int]:
             'recovery_mode',
             'manual_close',
         ],
-        expandExpression='true',
+        expandExpression=False,
     ) or []
     for proto in protos:
         name = _proto_name(proto)
@@ -648,16 +779,16 @@ def patch_wan_state_triggers(api, templateid) -> dict[str, int]:
                 _linkdown_payload(proto, item, control, '2')
             )
         elif 'License' in name:
-            wanted = with_ha_role_gate(expr)
+            wanted = _license_problem_expr(name, expr)
             if expr != wanted:
                 payload['expression'] = wanted
-            if str(proto.get('manual_close')) not in {'0', str(_MANUAL_CLOSE_NO)}:
-                payload['manual_close'] = _MANUAL_CLOSE_NO
+            if str(proto.get('manual_close')) not in {'1', str(_MANUAL_CLOSE_YES)}:
+                payload['manual_close'] = _MANUAL_CLOSE_YES
         if not payload:
             continue
         api.triggerprototype.update(triggerid=proto['triggerid'], **payload)
         changed += 1
-        logger.info('  trigger prototype %s: sustained state, no manual close', name)
+        logger.info('  trigger prototype %s: controls updated', name)
     return {'patched': changed, 'seen': len(protos)}
 
 
@@ -719,11 +850,154 @@ def patch_slow_item_delays(api, templateid) -> dict[str, str]:
     return out
 
 
+def ensure_observability_trigger_dependencies(api, templateid) -> dict[str, int]:
+    """Create companion trigger dependencies after import so a fresh import is valid."""
+    rows = api.trigger.get(
+        templateids=[str(templateid)],
+        output=['triggerid', 'description'],
+        selectDependencies=['triggerid'],
+    )
+    by_name: dict[str, dict] = {}
+    duplicates: set[str] = set()
+    for row in rows:
+        name = str(row.get('description') or '')
+        if name in by_name:
+            duplicates.add(name)
+        by_name[name] = row
+    required_names = {name for pair in OBSERVABILITY_TRIGGER_DEPENDENCIES for name in pair}
+    missing = sorted(required_names - by_name.keys())
+    if missing or duplicates:
+        details = []
+        if missing:
+            details.append('missing=' + ', '.join(missing))
+        if duplicates:
+            details.append('duplicate=' + ', '.join(sorted(duplicates)))
+        raise SystemExit('FortiGate Observability trigger dependency resolution failed: ' + '; '.join(details))
+
+    created = 0
+    existing = 0
+    for child_name, parent_name in OBSERVABILITY_TRIGGER_DEPENDENCIES:
+        child = by_name[child_name]
+        parent = by_name[parent_name]
+        parent_id = str(parent['triggerid'])
+        dependency_ids = {str(dep['triggerid']) for dep in child.get('dependencies') or []}
+        if parent_id in dependency_ids:
+
+
+            existing += 1
+            continue
+        dependency_ids.add(parent_id)
+        api.trigger.update(
+            triggerid=str(child['triggerid']),
+            dependencies=[{'triggerid': triggerid} for triggerid in sorted(dependency_ids, key=int)],
+        )
+        child.setdefault('dependencies', []).append({'triggerid': parent_id})
+        created += 1
+        logger.info('  trigger dependency: %s -> %s', child_name, parent_name)
+    return {'created': created, 'existing': existing}
+
+
+def ensure_observability_primary_trigger_gates(api, templateid) -> str:
+    """HA-cluster state tickets live on the current primary, not both members."""
+    rows = api.trigger.get(
+        templateids=[str(templateid)],
+        output=['triggerid', 'description', 'expression'],
+        expandExpression=True,
+    )
+    matches = [row for row in rows if row.get('description') == HA_VDOM_TRIGGER]
+    if len(matches) != 1:
+        raise SystemExit(
+            f'FortiGate Observability primary-gate resolution expected one {HA_VDOM_TRIGGER!r}, '
+            f'found {len(matches)}'
+        )
+    trigger = matches[0]
+    expression = str(trigger.get('expression') or '')
+    if HA_VDOM_PRIMARY_GATE in expression:
+        return 'existing'
+    if not expression:
+        raise SystemExit(f'{HA_VDOM_TRIGGER} has an empty expression')
+    api.trigger.update(
+        triggerid=str(trigger['triggerid']),
+        expression=f'{HA_VDOM_PRIMARY_GATE} and ({expression})',
+    )
+    logger.info('  trigger primary gate: %s', HA_VDOM_TRIGGER)
+    return 'updated'
+
+
+def _with_vdom_label(name: str) -> str:
+    """Make all-VDOM discovered entities unambiguous without renaming unrelated rows."""
+    if not name or '{#VDOM}' in name:
+        return name
+    for prefix in ('FortiGate: Interface ', 'Interface ', 'FortiGate: SD-WAN ', 'SD-WAN '):
+        if name.startswith(prefix):
+            return prefix + '[{#VDOM}]:' + name[len(prefix):]
+    return name
+
+
+def patch_vdom_lld_metadata(api, templateid) -> dict[str, int]:
+    """Expose {#VDOM} and include it in all interface/SD-WAN prototype labels."""
+    keys = ('fgate.netif.discovery', 'fgate.sdwan_health.discovery', 'fgate.sdwan_member.discovery')
+    rules = api.discoveryrule.get(
+        templateids=[str(templateid)],
+        filter={'key_': list(keys)},
+        output=['itemid', 'key_'],
+        selectLLDMacroPaths='extend',
+    )
+    found = {str(rule.get('key_')) for rule in rules}
+    missing = sorted(set(keys) - found)
+    if missing:
+        raise SystemExit('FortiGate VDOM LLD metadata rules missing: ' + ', '.join(missing))
+
+    updated = {'rules': 0, 'items': 0, 'graphs': 0, 'triggers': 0}
+    for rule in rules:
+        paths = list(rule.get('lld_macro_paths') or [])
+        if not any(path.get('lld_macro') == '{#VDOM}' for path in paths):
+            paths.append({'lld_macro': '{#VDOM}', 'path': '$.vdom'})
+            api.discoveryrule.update(itemid=rule['itemid'], lld_macro_paths=paths)
+            updated['rules'] += 1
+
+        for item in api.itemprototype.get(
+            discoveryids=[str(rule['itemid'])],
+            output=['itemid', 'name'],
+        ):
+            wanted = _with_vdom_label(str(item.get('name') or ''))
+            if wanted != item.get('name'):
+                api.itemprototype.update(itemid=item['itemid'], name=wanted)
+                updated['items'] += 1
+
+        for graph in api.graphprototype.get(
+            discoveryids=[str(rule['itemid'])],
+            output=['graphid', 'name'],
+        ):
+            wanted = _with_vdom_label(str(graph.get('name') or ''))
+            if wanted != graph.get('name'):
+                api.graphprototype.update(graphid=graph['graphid'], name=wanted)
+                updated['graphs'] += 1
+
+        for trigger in api.triggerprototype.get(
+            discoveryids=[str(rule['itemid'])],
+            output=['triggerid', 'description', 'event_name'],
+        ):
+            payload = {}
+            description = _with_vdom_label(str(trigger.get('description') or ''))
+            event_name = _with_vdom_label(str(trigger.get('event_name') or ''))
+            if description != trigger.get('description'):
+                payload['description'] = description
+            if event_name != trigger.get('event_name'):
+                payload['event_name'] = event_name
+            if payload:
+                api.triggerprototype.update(triggerid=trigger['triggerid'], **payload)
+                updated['triggers'] += 1
+    logger.info('  VDOM LLD labels: %s', updated)
+    return updated
+
+
 def apply_fortigate_http_patches(api, templateid) -> dict:
-    """Fail closed: ZBX-27082 gone, stock collectors restored, before NetBox writes."""
+    """Fail closed: version-pinned HTTP compatibility fixes before NetBox writes."""
     logger.info('Network: patch live %s (no YAML import)', FORTIGATE_HTTP_TEMPLATE)
-    restored = restore_stock_http_scripts(api, templateid)
     zbx = patch_zbx27082_items(api, templateid)
+    collectors = patch_vdom_star_items(api, templateid)
+    vdom_metadata = patch_vdom_lld_metadata(api, templateid)
     remaining = inspect_http_scripts(api, templateid)
     still = [key for key, state in remaining.items() if state == 'vulnerable']
     if still:
@@ -735,16 +1009,19 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
     if script_has_zbx27082(HA_ROLE_SCRIPT):
         raise SystemExit('HA role script is itself ZBX-27082-vulnerable — abort')
     macros = upsert_http_template_macros(api, templateid)
+    capacity = disable_unavailable_capacity_items(api, templateid)
     policy = disable_policy_collection(api, templateid)
     wan = patch_wan_state_triggers(api, templateid)
     delays = patch_slow_item_delays(api, templateid)
     history = patch_raw_master_history(api, templateid)
     return {
         'zbx27082': zbx,
-        'stock_scripts': restored,
+        'collector_compatibility': collectors,
+        'vdom_metadata': vdom_metadata,
         'ha_role': ha,
         'macros': macros,
         'policy': policy,
+        'capacity_items': capacity,
         'wan_triggers': wan,
         'delays': delays,
         'history': history,

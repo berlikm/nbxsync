@@ -10,10 +10,10 @@ from fortigate_http import (
     AGENT_MONITORING_CG,
     DEVICE_DUAL_LINK_TEMPLATES,
     FGATE_API_PORT,
+    FGATE_AUTOMATION_TOKEN_ENV,
     FGATE_FQDN_JINJA,
     FGATE_FQDN_MACRO,
     FGATE_PATH_CONTROL_MACRO,
-    FGATE_TOKEN_ENV,
     FGATE_TOKEN_MACRO,
     FIREWALL_DEVICE_MACROS,
     FIREWALL_ROLE,
@@ -32,20 +32,25 @@ from fortigate_http import (
     FORTIOS_PLATFORM_PATTERN,
     FORTIOS_TEMPLATE_RULE,
     ICMP_PING_TEMPLATE,
-    REQUIRED_HTTP_SCRIPT_KEYS,
-    SLOW_ITEM_DELAYS,
+    MEMORY_EXTREME_MACRO,
+    MEMORY_GREEN_MACRO,
+    MEMORY_RED_MACRO,
+    OVERLAY_INVENTORY_KEY,
     RAW_MASTER_HISTORY,
     RAW_MASTER_HISTORY_KEYS,
-    OVERLAY_INVENTORY_KEY,
+    REQUIRED_HTTP_SCRIPT_KEYS,
+    SLOW_ITEM_DELAYS,
     SNMP_MONITORING_CG,
     VDOM_STAR_SCRIPT_KEYS,
-    _js_function_span,
     _helpers_nested_in_gethttp,
-    fgate_token_env,
+    _js_function_span,
     flatten_forti_cmdb_list,
     flatten_forti_monitor_map,
     flatten_forti_sdwan_cmdb,
+    fetch_fortigate_api,
     format_vendor_label,
+    fortigate_ifname_regex,
+    fortigate_memory_thresholds,
     forti_linkdown_problem_expr,
     ha_role_gate_expr,
     is_cloud_fortigate_http_vendor,
@@ -55,9 +60,9 @@ from fortigate_http import (
     platform_is_fmg_faz,
     platform_is_fortios,
     preferred_mgmt_ip,
+    probe_fortigate_api,
     script_has_vdom_star,
     script_has_zbx27082,
-    should_write_secret,
     with_ha_role_gate,
 )
 
@@ -94,6 +99,9 @@ class FirewallRoleMacroTests(unittest.TestCase):
                 '{$NET.IF.DISCOVERY.MIN}',
                 '{$FGATE.SDWAN.EXPECTED}',
                 '{$FGATE.HA.EXPECTED}',
+                MEMORY_GREEN_MACRO,
+                MEMORY_RED_MACRO,
+                MEMORY_EXTREME_MACRO,
                 FGATE_FQDN_MACRO,
             },
         )
@@ -103,19 +111,24 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(FIREWALL_DEVICE_MACROS, ())
         self.assertEqual(FORTIOS_PLATFORM_MACROS[FGATE_FQDN_MACRO], FGATE_FQDN_JINJA)
         self.assertIn('object.primary_ip4.address.ip', FGATE_FQDN_JINJA)
-        self.assertEqual(FGATE_TOKEN_ENV, 'NBX_FGATE_TOKEN')
+        self.assertEqual(FGATE_AUTOMATION_TOKEN_ENV, 'NBX_FORTIGATE_TOKEN')
 
-    def test_ifname_lld_is_open_for_canary(self):
-        self.assertEqual(FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}'], '.*')
+    def test_ifname_lld_defaults_closed_until_netbox_scope_is_rendered(self):
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}'], '^$')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.NOT_MATCHES}'], 'CHANGE_IF_NEEDED')
-        self.assertNotEqual(FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.NOT_MATCHES}'], '.*')
+        self.assertEqual(FIREWALL_ROLE_MACROS['{$NET.IF.DISCOVERY.MIN}'], '0')
+        self.assertEqual(
+            fortigate_ifname_regex(['port1', 'ssl.root', 'port1', 'x+1']),
+            r'^(?:port1|ssl\.root|x\+1)$',
+        )
+        self.assertEqual(fortigate_ifname_regex([]), '^$')
 
     def test_sdwan_lld_is_open_and_ha_expected_is_two(self):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.IFNAME.MATCHES}'], '.*')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'], '.*')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SDWAN.EXPECTED}'], '1')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.HA.EXPECTED}'], '2')
-        self.assertEqual(
+        self.assertNotEqual(
             FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'],
             FIREWALL_ROLE_MACROS['{$NET.IF.IFNAME.MATCHES}'],
         )
@@ -129,6 +142,36 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$DISK.FREE.CRIT}'], '0')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$CPU.UTIL.CRIT}'], '101')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$MEMORY.UTIL.CRIT}'], '101')
+        self.assertEqual(FIREWALL_ROLE_MACROS[MEMORY_GREEN_MACRO], '82')
+        self.assertEqual(FIREWALL_ROLE_MACROS[MEMORY_RED_MACRO], '88')
+        self.assertEqual(FIREWALL_ROLE_MACROS[MEMORY_EXTREME_MACRO], '95')
+        self.assertEqual(
+            fortigate_memory_thresholds(
+                {
+                    'results': {
+                        'memory-use-threshold-green': 82,
+                        'memory-use-threshold-red': 88,
+                        'memory-use-threshold-extreme': 95,
+                    }
+                }
+            ),
+            {
+                MEMORY_GREEN_MACRO: '82',
+                MEMORY_RED_MACRO: '88',
+                MEMORY_EXTREME_MACRO: '95',
+            },
+        )
+        self.assertIsNone(
+            fortigate_memory_thresholds(
+                {
+                    'results': {
+                        'memory-use-threshold-green': 90,
+                        'memory-use-threshold-red': 88,
+                        'memory-use-threshold-extreme': 95,
+                    }
+                }
+            )
+        )
 
     def test_cutover_names_are_stock_zabbix_and_netbox(self):
         self.assertEqual(FORTIGATE_HTTP_TEMPLATE, 'FortiGate by HTTP')
@@ -142,17 +185,60 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertIn(ICMP_PING_TEMPLATE, FIREWALL_ROLE_FORTI_TEMPLATES)
         self.assertEqual(FGATE_PATH_CONTROL_MACRO, '{$FGATE.PATH.CONTROL}')
 
-    def test_token_env_uppercases_and_underscores_dashes(self):
-        self.assertEqual(
-            fgate_token_env('ch-zrh-p-fw01'),
-            'NBX_FGATE_TOKEN_CH_ZRH_P_FW01',
-        )
 
-    def test_empty_env_must_not_wipe_token(self):
-        self.assertFalse(should_write_secret(None))
-        self.assertFalse(should_write_secret(''))
-        self.assertFalse(should_write_secret('   '))
-        self.assertTrue(should_write_secret('abc'))
+    def test_api_probe_requires_endpoint_and_token(self):
+        self.assertEqual(probe_fortigate_api('', 'token'), 'missing API FQDN')
+        self.assertEqual(probe_fortigate_api('10.0.0.1', ''), 'missing API token')
+
+    def test_api_probe_requires_http_200_json_object(self):
+        class Response:
+            def __init__(self, status, body):
+                self.status = status
+                self.body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return self.body
+
+        def open_ok(request, **_kwargs):
+            self.assertEqual(request.get_header('Authorization'), 'Bearer token')
+            return Response(200, b'{"status":"success"}')
+
+        def open_unauthorized(_request, **_kwargs):
+            return Response(401, b'')
+
+        def open_bad_json(_request, **_kwargs):
+            return Response(200, b'not-json')
+        def open_array(_request, **_kwargs):
+            return Response(200, b'[{"status":"success","vdom":"root","results":[]}]')
+
+
+        self.assertIsNone(probe_fortigate_api('10.0.0.1', 'token', opener=open_ok))
+        self.assertEqual(
+            probe_fortigate_api('10.0.0.1', 'token', opener=open_unauthorized),
+            'HTTP 401',
+        )
+        self.assertEqual(
+            probe_fortigate_api('10.0.0.1', 'token', opener=open_bad_json),
+            'HTTP 200 with invalid JSON',
+        )
+        payload, error = fetch_fortigate_api(
+            '10.0.0.1',
+            'token',
+            '/api/v2/cmdb/system/interface?vdom=*',
+            opener=open_array,
+        )
+        self.assertIsNone(error)
+        self.assertIsInstance(payload, list)
+        self.assertEqual(
+            probe_fortigate_api('10.0.0.1', 'token', opener=open_array),
+            'HTTP 200 with unexpected JSON payload',
+        )
 
     def test_fqdn_prefers_primary_ip4(self):
         self.assertEqual(preferred_mgmt_ip('1.2.3.4', '10.1.1.1'), '1.2.3.4')
@@ -279,9 +365,14 @@ class FirewallRoleMacroTests(unittest.TestCase):
 
         self.assertFalse(script_has_zbx27082(HA_ROLE_SCRIPT))
         self.assertIn('new HttpRequest()', HA_ROLE_SCRIPT)
-        self.assertIn('/api/v2/monitor/system/ha/checksums', HA_ROLE_SCRIPT)
+        self.assertIn('/api/v2/monitor/system/ha-peer', HA_ROLE_SCRIPT)
+        self.assertIn("throw 'HA role collection failed: ' + error", HA_ROLE_SCRIPT)
+        self.assertNotIn('} catch (error) {\n\treturn 1;', HA_ROLE_SCRIPT)
+        self.assertIn('row.primary', HA_ROLE_SCRIPT)
+        self.assertIn('primarySerial === serial ? 1 : 0', HA_ROLE_SCRIPT)
+        self.assertNotIn('local HA peer has no role fields', HA_ROLE_SCRIPT)
 
-    def test_companion_yaml_has_census_conserve_and_path(self):
+    def test_companion_yaml_has_authoritative_health_and_path(self):
         companion = (
             Path(__file__).resolve().parents[1]
             / 'zabbix/templates/fortinet_fortigate_observability/template_fortigate_observability.yaml'
@@ -289,8 +380,12 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertIn('zabbix[host,,items_unsupported]', companion)
         self.assertIn('fgate.observability.netif.count', companion)
         self.assertIn('fgate.observability.sdwan.count', companion)
-        self.assertIn('fgate.observability.conserve', companion)
+        self.assertNotIn('fgate.observability.conserve', companion)
         self.assertIn('fgate.observability.ha.member.count', companion)
+        self.assertIn('fgate.observability.ha.vdom_mismatches', companion)
+        self.assertIn('/api/v2/monitor/system/ha-peer', companion)
+        self.assertIn('/api/v2/monitor/system/ha-nonsync-checksums', companion)
+        self.assertIn('rows[i].checksum && rows[i].checksum.vdoms', companion)
         self.assertIn('name: Path', companion)
         self.assertIn('request = new HttpRequest();', companion)
         self.assertNotIn('FortiGate by SNMP', companion)
@@ -302,13 +397,158 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertIn("macro: '{$SDWAN.MEMBER.NAME.MATCHES}'", companion)
         self.assertIn("value: '.*'", companion)
         self.assertIn("macro: '{$FGATE.SDWAN.EXPECTED}'", companion)
-        self.assertIn("value: '1'", companion)
+        self.assertIn("value: '0'", companion)
         self.assertIn("macro: '{$FGATE.HA.EXPECTED}'", companion)
         self.assertIn("value: '2'", companion)
+        self.assertIn("macro: '{$FGATE.MEMORY.GREEN}'", companion)
+        self.assertIn("macro: '{$FGATE.MEMORY.RED}'", companion)
+        self.assertIn("macro: '{$FGATE.MEMORY.EXTREME}'", companion)
         self.assertIn('CHANGE_IF_NEEDED', companion)
         self.assertIn('Object.keys', companion)
         self.assertIn('fgate.observability.inventory', companion)
-        self.assertNotIn('patched for vdom=*', companion)
+        self.assertNotIn('dependencies:', companion)
+        self.assertLess(
+            companion.index("name: 'FortiGate: memory pressure is above the configured extreme threshold'"),
+            companion.index("name: 'FortiGate: memory pressure is above the configured red threshold'"),
+        )
+        from fortigate_http_zabbix import OBSERVABILITY_TRIGGER_DEPENDENCIES
+
+        self.assertEqual(len(OBSERVABILITY_TRIGGER_DEPENDENCIES), 10)
+        self.assertIn(
+            (
+                'FortiGate: memory pressure is above the configured red threshold',
+                'FortiGate: memory pressure is above the configured extreme threshold',
+            ),
+            OBSERVABILITY_TRIGGER_DEPENDENCIES,
+        )
+        self.assertIn(
+            (
+                'FortiGate: HA VDOM configuration is out of sync',
+                'FortiGate: HA member count unexpected',
+            ),
+            OBSERVABILITY_TRIGGER_DEPENDENCIES,
+        )
+        self.assertIn(
+            'last(/FortiGate Observability/fgate.observability.ha.role)=1',
+            companion,
+        )
+
+    def test_observability_dependencies_are_idempotent(self):
+        from types import SimpleNamespace
+        from fortigate_http_zabbix import (
+            OBSERVABILITY_TRIGGER_DEPENDENCIES,
+            ensure_observability_trigger_dependencies,
+        )
+
+        names = sorted({name for pair in OBSERVABILITY_TRIGGER_DEPENDENCIES for name in pair})
+
+        class TriggerAPI:
+            def __init__(self):
+                self.rows = [
+                    {'triggerid': str(index), 'description': name, 'dependencies': []}
+                    for index, name in enumerate(names, start=1)
+                ]
+                self.updated = []
+
+            def get(self, **kwargs):
+                return self.rows
+
+            def update(self, **kwargs):
+                self.updated.append(kwargs)
+
+        trigger = TriggerAPI()
+        api = SimpleNamespace(trigger=trigger)
+        first = ensure_observability_trigger_dependencies(api, '123')
+        second = ensure_observability_trigger_dependencies(api, '123')
+        self.assertEqual(first, {'created': 10, 'existing': 0})
+        self.assertEqual(second, {'created': 0, 'existing': 10})
+        self.assertEqual(len(trigger.updated), 10)
+
+    def test_ha_vdom_trigger_is_primary_gated_idempotently(self):
+        from types import SimpleNamespace
+        from fortigate_http_zabbix import (
+            HA_VDOM_PRIMARY_GATE,
+            HA_VDOM_TRIGGER,
+            ensure_observability_primary_trigger_gates,
+        )
+
+        class TriggerAPI:
+            def __init__(self):
+                self.row = {
+                    'triggerid': '42',
+                    'description': HA_VDOM_TRIGGER,
+                    'expression': 'min(/FortiGate Observability/fgate.observability.ha.vdom_mismatches,15m)>0',
+                }
+                self.updated = []
+
+            def get(self, **_kwargs):
+                return [self.row]
+
+            def update(self, **kwargs):
+                self.updated.append(kwargs)
+                self.row['expression'] = kwargs['expression']
+
+        trigger = TriggerAPI()
+        api = SimpleNamespace(trigger=trigger)
+        self.assertEqual(ensure_observability_primary_trigger_gates(api, '123'), 'updated')
+        self.assertEqual(ensure_observability_primary_trigger_gates(api, '123'), 'existing')
+        self.assertEqual(len(trigger.updated), 1)
+        self.assertIn(HA_VDOM_PRIMARY_GATE, trigger.updated[0]['expression'])
+
+    def test_license_patch_preserves_context_macro(self):
+        from types import SimpleNamespace
+        from fortigate_http_zabbix import patch_wan_state_triggers
+
+        class TriggerPrototypeAPI:
+            def __init__(self):
+                self.get_kwargs = {}
+                self.updated = []
+
+            def get(self, **kwargs):
+                self.get_kwargs = kwargs
+                return [{
+                    'triggerid': '7',
+                    'description': 'FortiGate: Service [{#NAME}]: License status is unsuccessful',
+                    'expression': (
+                        '{$SERVICE.LICENSE.CONTROL:"{#KEY}"}=1 and '
+                        'last(/FortiGate by HTTP/fgate.service.license["{#KEY}"])>5'
+                    ),
+                    'recovery_expression': '',
+                    'recovery_mode': '0',
+                    'manual_close': '0',
+                }]
+
+            def update(self, **kwargs):
+                self.updated.append(kwargs)
+
+        triggerprototype = TriggerPrototypeAPI()
+        api = SimpleNamespace(triggerprototype=triggerprototype)
+        self.assertEqual(
+            patch_wan_state_triggers(api, '123'),
+            {'patched': 1, 'seen': 1},
+        )
+        self.assertFalse(triggerprototype.get_kwargs['expandExpression'])
+        self.assertIn(
+            '{$SERVICE.LICENSE.CONTROL:"{#KEY}"}=1',
+            triggerprototype.updated[0]['expression'],
+        )
+        self.assertNotIn('1=1 and', triggerprototype.updated[0]['expression'])
+
+    def test_vdom_labels_are_unambiguous_and_idempotent(self):
+        from fortigate_http_zabbix import _with_vdom_label
+
+        self.assertEqual(
+            _with_vdom_label('Interface [{#IFNAME}]: Network traffic'),
+            'Interface [{#VDOM}]:[{#IFNAME}]: Network traffic',
+        )
+        self.assertEqual(
+            _with_vdom_label('FortiGate: SD-WAN [{#NAME}]: Link down'),
+            'FortiGate: SD-WAN [{#VDOM}]:[{#NAME}]: Link down',
+        )
+        self.assertEqual(
+            _with_vdom_label('SD-WAN [{#VDOM}]:[{#NAME}]: Network traffic'),
+            'SD-WAN [{#VDOM}]:[{#NAME}]: Network traffic',
+        )
 
     def test_stock_collectors_are_not_vdom_rewrites(self):
         from fortigate_http import script_is_vdom_mutated, stock_http_collector_script
@@ -333,6 +573,9 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertIn('/api/v2/monitor/virtual-wan/members', OVERLAY_INVENTORY_SCRIPT)
         self.assertNotIn('function getHttpData', OVERLAY_INVENTORY_SCRIPT)
         self.assertFalse(script_has_zbx27082(OVERLAY_INVENTORY_SCRIPT))
+        self.assertIn('overlayErrors.join', OVERLAY_INVENTORY_SCRIPT)
+        self.assertIn('star.code === 401', OVERLAY_INVENTORY_SCRIPT)
+        self.assertIn("throw 'overlay census failed: '", OVERLAY_INVENTORY_SCRIPT)
 
 
 def _http_yaml() -> str:
@@ -503,6 +746,15 @@ class FortiVdomStarTests(unittest.TestCase):
         rows = flatten_forti_cmdb_list(payload)
         self.assertEqual({r['id'] for r in rows}, {'root:port1', 'corp:port1'})
 
+    def test_cmdb_star_duplicate_blocks_collapse_by_interface_id(self):
+        row = {'q_origin_key': 'port1', 'name': 'port1', 'vdom': 'root'}
+        payload = [
+            {'status': 'success', 'vdom': 'root', 'results': [row]},
+            {'status': 'success', 'vdom': 'corp', 'results': [row]},
+        ]
+        rows = flatten_forti_cmdb_list(payload)
+        self.assertEqual([r['id'] for r in rows], ['root:port1'])
+
     def test_multi_vdom_monitor_map_keys_are_prefixed(self):
         payload = [
             {
@@ -579,7 +831,8 @@ class FortiVdomStarTests(unittest.TestCase):
         self.assertIn('{"data": [], "error": ""}', patched)
         self.assertIn('(netif_list.results || []).map', patched)
         self.assertIn('flattenFortiCmdbList(netif_list)', patched)
-        self.assertIn('fortiIfaceId(item)', patched)
+        self.assertIn('item.id = fortiIfaceId(item);', patched)
+        self.assertIn('var byId = {};', patched)
         self.assertIn('function fortiHttpRaw', patched)
         self.assertIn('code === 424', patched)
         self.assertEqual(patched.count('function fortiFetchVdom('), 1)
@@ -588,6 +841,20 @@ class FortiVdomStarTests(unittest.TestCase):
         self.assertGreaterEqual(_js_function_span(patched, 'flattenFortiMonitorMap')[0], gend)
         self.assertGreaterEqual(_js_function_span(patched, 'fortiFetchVdom')[0], gend)
         self.assertEqual(patch_vdom_star_script(patched), patched)
+
+    def test_existing_vdom_patch_upgrades_interface_identity(self):
+        raw = _yaml_script(_http_yaml(), 'fgate.netif.get_data')
+        patched = patch_vdom_star_script(patch_zbx27082_script(raw))
+        legacy = patched.replace(
+            'item.id = fortiIfaceId(item);',
+            'item.id = item.q_origin_key;',
+            1,
+        )
+        self.assertTrue(script_has_vdom_star(legacy))
+        upgraded = patch_vdom_star_script(legacy)
+        self.assertIn('item.id = fortiIfaceId(item);', upgraded)
+        self.assertNotIn('item.id = item.q_origin_key;', upgraded)
+        self.assertEqual(patch_vdom_star_script(upgraded), upgraded)
 
     def test_netif_vdom_star_500_keeps_data_array(self):
         raw = _yaml_script(_http_yaml(), 'fgate.netif.get_data')

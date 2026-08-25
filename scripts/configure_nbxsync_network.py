@@ -118,7 +118,8 @@ Usage::
   # FortiGate HTTP cutover (no zerotouch, no Extreme YAML, no HostSync)
   # Looks up FortiGate by HTTP already in Zabbix Cloud (vendor Zabbix, 7.0-2).
   # Never imports bundled 7.0-3 — that would overwrite Cloud.
-  export NBX_FGATE_TOKEN=...          # shared REST key on Platform FortiOS
+  export NBX_FORTIGATE_TOKEN=...      # shared REST key on Platform FortiOS
+  python scripts/configure_nbxsync_network.py --check-fortigate-http  # read-only
   python scripts/configure_nbxsync_network.py --apply-fortigate-http
 
   # Temporary LM cutover silence only (not the long-term target)
@@ -176,9 +177,9 @@ from fortigate_http import (
     AGENT_MONITORING_CG as _AGENT_MONITORING_CG,
     DEVICE_DUAL_LINK_TEMPLATES as _DEVICE_DUAL_LINK_TEMPLATES,
     FGATE_API_PORT as _FGATE_API_PORT,
+    FGATE_AUTOMATION_TOKEN_ENV as _FGATE_AUTOMATION_TOKEN_ENV,
     FGATE_FQDN_JINJA as _FGATE_FQDN_JINJA,
     FGATE_FQDN_MACRO as _FGATE_FQDN_MACRO,
-    FGATE_TOKEN_ENV as _FGATE_TOKEN_ENV,
     FGATE_TOKEN_MACRO as _FGATE_TOKEN_MACRO,
     FIREWALL_ROLE as _FIREWALL_ROLE,
     FIREWALL_ROLE_FORTI_TEMPLATES as _FIREWALL_ROLE_FORTI_TEMPLATES,
@@ -194,16 +195,25 @@ from fortigate_http import (
     FORTIOS_TEMPLATE_RULE as _FORTIOS_TEMPLATE_RULE,
     ICMP_PING_TEMPLATE as _ICMP_PING_TEMPLATE,
     SNMP_MONITORING_CG as _SNMP_MONITORING_CG,
-    fgate_token_env as _fgate_token_env,
+    MEMORY_EXTREME_MACRO as _MEMORY_EXTREME_MACRO,
+    MEMORY_GREEN_MACRO as _MEMORY_GREEN_MACRO,
+    MEMORY_RED_MACRO as _MEMORY_RED_MACRO,
     format_vendor_label as _format_vendor_label,
+    fetch_fortigate_api as _fetch_fortigate_api,
+    flatten_forti_cmdb_list as _flatten_forti_cmdb_list,
+    flatten_forti_sdwan_cmdb as _flatten_forti_sdwan_cmdb,
+    fortigate_ifname_regex as _fortigate_ifname_regex,
+    fortigate_memory_thresholds as _fortigate_memory_thresholds,
     is_cloud_fortigate_http_vendor as _is_cloud_fortigate_http_vendor,
     platform_is_fmg_faz as _platform_is_fmg_faz,
     platform_is_fortios as _platform_is_fortios,
-    should_write_secret as _should_write_secret,
+    probe_fortigate_api as _probe_fortigate_api,
 )
 from fortigate_http_zabbix import (
     apply_fortigate_http_patches,
     ensure_overlay_census_items,
+    ensure_observability_trigger_dependencies,
+    ensure_observability_primary_trigger_gates,
     inspect_http_scripts,
 )
 from extreme_ascii_titles import title_payload as _title_payload
@@ -521,8 +531,8 @@ def import_rules() -> dict:
     }
 
 
-def import_yaml_templates(api, files: dict[str, Path]) -> dict[str, tuple[int, str]]:
-    """Import YAML templates; return name → (templateid, name). Same as VOSS --apply."""
+def import_yaml_templates(api, files: dict[str, Path], *, strict: bool = False) -> dict[str, tuple[int, str]]:
+    """Import YAML templates; strict callers never reuse stale state after failure."""
     out: dict[str, tuple[int, str]] = {}
     for name, path in files.items():
         if not path.exists():
@@ -537,6 +547,8 @@ def import_yaml_templates(api, files: dict[str, Path]) -> dict[str, tuple[int, s
             )
         except Exception as exc:
             import_error = exc
+            if strict:
+                raise RuntimeError(f'Import failed for required template: {name}') from exc
             logger.warning('  Import failed for %s; checking for an existing exact template: %s', name, exc)
         found = api.template.get(filter={'name': [name]}, output=['templateid', 'host', 'name'])
         if not found:
@@ -596,7 +608,11 @@ def import_fortigate_http_template(api) -> tuple[int, str]:
 def import_fortigate_observability_template(api) -> tuple[int, str]:
     """Import the estate companion (nests Cloud HTTP + ICMP Ping)."""
     logger.info('Network: import %s', _FORTIGATE_OBSERVABILITY_TEMPLATE)
-    out = import_yaml_templates(api, {_FORTIGATE_OBSERVABILITY_TEMPLATE: FORTIGATE_OBSERVABILITY_YAML})
+    out = import_yaml_templates(
+        api,
+        {_FORTIGATE_OBSERVABILITY_TEMPLATE: FORTIGATE_OBSERVABILITY_YAML},
+        strict=True,
+    )
     found = out.get(_FORTIGATE_OBSERVABILITY_TEMPLATE)
     if found is None:
         raise SystemExit(f'{_FORTIGATE_OBSERVABILITY_TEMPLATE} missing after import')
@@ -2177,7 +2193,7 @@ def _fortios_devices():
 
 
 def _step_fortios_platform_macros(server, *, required: bool = False) -> int:
-    """HTTPS / WAN LLD / quiet CPU-mem High + FQDN Jinja + shared TOKEN on Platform FortiOS."""
+    """HTTPS / WAN LLD / quiet CPU-mem High + FQDN Jinja; preserve monitoring token."""
     platforms = _fortios_platforms()
     if not platforms:
         msg = 'No FortiOS platform in NetBox — FortiGate HTTP macros not applied'
@@ -2198,6 +2214,15 @@ def _step_fortios_platform_macros(server, *, required: bool = False) -> int:
                 mtype=ZabbixMacroTypeChoices.TEXT,
                 description=f'nwn:fortios:{macro_name}',
             )
+        _upsert_object_macro_assignment(
+            server,
+            plat,
+            '{$SERVICE.LICENSE.CONTROL}',
+            '0',
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description='nwn:fortios:unused-forticloud-license',
+            context='forticloud',
+        )
         logger.info(
             '  Platform %s FortiGate HTTP macros (%s Jinja; no HostSync)',
             plat.name,
@@ -2211,29 +2236,20 @@ def _step_fortios_platform_macros(server, *, required: bool = False) -> int:
 
 
 def _step_fortios_platform_token(server, platforms) -> None:
-    """Shared {$FGATE.API.TOKEN} on Platform FortiOS. Empty env does not wipe."""
-    token = os.environ.get(_FGATE_TOKEN_ENV, '')
-    if not _should_write_secret(token):
-        logger.info(
-            '  Env var %s not set — platform %s left untouched',
-            _FGATE_TOKEN_ENV,
-            _FGATE_TOKEN_MACRO,
-        )
-        return
+    """Preserve the Zabbix monitoring secret stored in NetBox."""
     for plat in platforms:
-        _upsert_object_macro_assignment(
-            server,
-            plat,
-            _FGATE_TOKEN_MACRO,
-            token.strip(),
-            mtype=ZabbixMacroTypeChoices.SECRET,
-            description='nwn:secret:fgate:fortios',
-        )
-        logger.info(
-            '  Platform %s %s from %s (FortiOS fleet key, not role Firewall)',
+        current = _assignment_value(server, plat, _FGATE_TOKEN_MACRO)
+        if current:
+            logger.info(
+                '  Platform %s existing %s preserved (NetBox is authoritative)',
+                plat.name,
+                _FGATE_TOKEN_MACRO,
+            )
+            continue
+        logger.warning(
+            '  Platform %s has no %s; set the Zabbix monitoring token in nbxSync',
             plat.name,
             _FGATE_TOKEN_MACRO,
-            _FGATE_TOKEN_ENV,
         )
 
 
@@ -2527,6 +2543,7 @@ def _upsert_object_macro_assignment(
     *,
     mtype,
     description: str,
+    context: str = '',
 ) -> None:
     """Server-level ZabbixMacro + assignment on Device/Role/Platform. Empty callers must skip."""
     zmacro, _ = ensure(
@@ -2545,7 +2562,7 @@ def _upsert_object_macro_assignment(
         zabbixmacro=zmacro,
         assigned_object_type=ct(type(obj)),
         assigned_object_id=obj.id,
-        context='',
+        context=context,
         is_regex=False,
     ).first()
     if ma is None:
@@ -2554,7 +2571,7 @@ def _upsert_object_macro_assignment(
             assigned_object_type=ct(type(obj)),
             assigned_object_id=obj.id,
             value=value,
-            context='',
+            context=context,
             is_regex=False,
         )
         return
@@ -2579,6 +2596,17 @@ def _assignment_value(server, obj, macro_name: str) -> str:
         is_regex=False,
     ).first()
     return (ma.value or '').strip() if ma is not None else ''
+
+
+def _effective_fortigate_token(server, dev) -> str:
+    """Resolve the Zabbix monitoring token that HostSync renders."""
+    device_token = _assignment_value(server, dev, _FGATE_TOKEN_MACRO)
+    if device_token:
+        return device_token
+    platform = getattr(dev, 'platform', None)
+    if platform is None:
+        return ''
+    return _assignment_value(server, platform, _FGATE_TOKEN_MACRO)
 
 
 def _nb_ip_addr(ipobj) -> str | None:
@@ -2654,11 +2682,11 @@ def _print_fortigate_http_plan(
     existing = get_template_rule(server, _FORTIOS_TEMPLATE_RULE)
     current = getattr(getattr(existing, 'zabbixtemplate', None), 'name', None) or '(missing)'
     logger.info('NetBox TemplateRule %s: %s → %s', _FORTIOS_TEMPLATE_RULE, current, _FORTIGATE_OBSERVABILITY_TEMPLATE)
-    env_token = os.environ.get(_FGATE_TOKEN_ENV, '')
     logger.info(
-        '  Platform FortiOS TEXT macros + TOKEN from %s: %s',
-        _FGATE_TOKEN_ENV,
-        'write' if _should_write_secret(env_token) else 'leave existing',
+        '  Platform FortiOS %s is the Zabbix monitoring token; %s remains '
+        'the separate NetBox automation token',
+        _FGATE_TOKEN_MACRO,
+        _FGATE_AUTOMATION_TOKEN_ENV,
     )
     logger.info('  prune Forti/ICMP templates from role %s', _FIREWALL_ROLE)
     logger.info(
@@ -2668,13 +2696,16 @@ def _print_fortigate_http_plan(
     logger.info('  prune %s / %s from FortiOS devices and platforms (not Site Groups)', _SNMP_MONITORING_CG, _AGENT_MONITORING_CG)
     logger.info('  prune %s from role %s; assign it on FMG/FAZ platforms', _SNMP_MONITORING_CG, _FIREWALL_ROLE)
     logger.info('  Platform FortiOS %s = %s', _FGATE_FQDN_MACRO, _FGATE_FQDN_JINJA)
+    logger.info(
+        '  require HTTP 200 from every FortiOS primary_ip4 using the NetBox '
+        '%s automation token; verify the separate monitoring token from each Zabbix proxy',
+        _FGATE_AUTOMATION_TOKEN_ENV,
+    )
     logger.info('FortiOS mutation set:')
     for dev in _fortios_devices():
         plat = getattr(getattr(dev, 'platform', None), 'name', '') or ''
         fqdn = _nb_ip_addr(dev.primary_ip4) or '(no primary_ip4)'
-        override = os.environ.get(_fgate_token_env(dev.name), '')
-        extra = ' TOKEN override' if _should_write_secret(override) else ''
-        logger.info('  %s platform=%s %s→%s%s', dev.name, plat or '-', _FGATE_FQDN_MACRO, fqdn, extra)
+        logger.info('  %s platform=%s %s→%s', dev.name, plat or '-', _FGATE_FQDN_MACRO, fqdn)
     logger.info('Skipped (not FortiOS):')
     skipped = 0
     for role in _firewall_roles(required=False):
@@ -2694,19 +2725,18 @@ def _print_fortigate_http_plan(
 
 
 def _preflight_fortigate_http(server, *, icmp_ok: bool) -> list[str]:
-    """Abort reasons. Empty list = safe to write."""
+    """Validate inventory structure, NetBox automation access, and Zabbix token presence."""
     errors: list[str] = []
     devices = list(_fortios_devices())
     if not devices:
         errors.append('no FortiOS-platform devices in NetBox')
     if not icmp_ok:
         errors.append(f'{_ICMP_PING_TEMPLATE} missing in Zabbix')
-    env_token = os.environ.get(_FGATE_TOKEN_ENV, '')
-    platforms = _fortios_platforms()
-    platform_token = any(_assignment_value(server, p, _FGATE_TOKEN_MACRO) for p in platforms)
-    if not _should_write_secret(env_token) and not platform_token:
+    automation_token = (os.environ.get(_FGATE_AUTOMATION_TOKEN_ENV) or '').strip()
+    if not automation_token:
         errors.append(
-            f'no effective {_FGATE_TOKEN_MACRO}: set {_FGATE_TOKEN_ENV} or assign it on Platform FortiOS'
+            f'{_FGATE_AUTOMATION_TOKEN_ENV} is missing; '
+            'NetBox inventory automation preflight cannot authenticate'
         )
     seen_ip: dict[str, list[str]] = {}
     for dev in devices:
@@ -2727,9 +2757,37 @@ def _preflight_fortigate_http(server, *, icmp_ok: bool) -> list[str]:
                     f'{dev.name}: device-level {name} would dual-link Observability '
                     f'(icmpping collision; SNMP is not a nested parent) — remove it first'
                 )
-        override = os.environ.get(_fgate_token_env(dev.name), '')
-        if not _should_write_secret(env_token) and not platform_token and not _should_write_secret(override):
-            errors.append(f'{dev.name}: no token (platform/env/override)')
+        if not _effective_fortigate_token(server, dev):
+            errors.append(
+                f'{dev.name}: no effective Zabbix monitoring {_FGATE_TOKEN_MACRO} '
+                '(Device or Platform assignment)'
+            )
+        if fqdn and automation_token:
+            probe_error = _probe_fortigate_api(fqdn, automation_token)
+            if probe_error:
+                errors.append(
+                    f'{dev.name}: NetBox automation API preflight '
+                    f'{fqdn}:{_FGATE_API_PORT} failed: {probe_error}'
+                )
+            if not probe_error:
+                interface_payload, interface_error = _fetch_fortigate_api(
+                    fqdn,
+                    automation_token,
+                    '/api/v2/cmdb/system/interface?vdom=*',
+                    port=_FGATE_API_PORT,
+                )
+                if interface_error:
+                    errors.append(f'{dev.name}: FortiOS interface inventory failed: {interface_error}')
+                elif not _flatten_forti_cmdb_list(interface_payload):
+                    errors.append(f'{dev.name}: FortiOS interface inventory returned no rows')
+                _sdwan_payload, sdwan_error = _fetch_fortigate_api(
+                    fqdn,
+                    automation_token,
+                    '/api/v2/cmdb/system/sdwan?vdom=*',
+                    port=_FGATE_API_PORT,
+                )
+                if sdwan_error:
+                    errors.append(f'{dev.name}: FortiOS SD-WAN inventory failed: {sdwan_error}')
     for ip, names in seen_ip.items():
         if len(names) > 1:
             errors.append(f'duplicate management IP {ip}: {", ".join(names)}')
@@ -2816,36 +2874,181 @@ def _step_fortigate_http_nbxsync(
     _prune_fortios_colliding_templates()
 
 
+def _fortigate_desired_ifnames(dev, *, observable_names=None) -> list[str]:
+    """Enabled+cabled NetBox links intersected with FortiOS-observable names."""
+    names = list(
+        Interface.objects.filter(device=dev, enabled=True, cable__isnull=False)
+        .exclude(name='')
+        .order_by('name')
+        .values_list('name', flat=True)
+    )
+    if observable_names is None:
+        return names
+    observable = {str(name) for name in observable_names}
+    return [name for name in names if name in observable]
+
+
 def _step_fortios_device_macros(server) -> dict[str, int]:
-    """Optional per-host TOKEN override. FQDN is platform Jinja — prune device leftovers."""
+    """Write observable NetBox link scope plus FortiOS thresholds per device."""
     logger.info('=' * 60)
-    logger.info('Network: FortiOS per-device TOKEN override (FQDN is platform Jinja)')
+    logger.info('Network: FortiOS per-device discovery and threshold macros')
     logger.info('=' * 60)
+    devices = list(_fortios_devices())
+    automation_token = (os.environ.get(_FGATE_AUTOMATION_TOKEN_ENV) or '').strip()
+    inventory: dict[int, dict] = {}
+    errors: list[str] = []
+    for dev in devices:
+        fqdn = _nb_ip_addr(dev.primary_ip4)
+        if not fqdn or not automation_token:
+            errors.append(f'{dev.name}: cannot derive FortiOS interface/SD-WAN scope')
+            continue
+        interface_payload, interface_error = _fetch_fortigate_api(
+            fqdn,
+            automation_token,
+            '/api/v2/cmdb/system/interface?vdom=*',
+            port=_FGATE_API_PORT,
+        )
+        sdwan_payload, sdwan_error = _fetch_fortigate_api(
+            fqdn,
+            automation_token,
+            '/api/v2/cmdb/system/sdwan?vdom=*',
+            port=_FGATE_API_PORT,
+        )
+        memory_payload, memory_error = _fetch_fortigate_api(
+            fqdn,
+            automation_token,
+            '/api/v2/cmdb/system/global',
+            port=_FGATE_API_PORT,
+        )
+        interface_rows = _flatten_forti_cmdb_list(interface_payload)
+        if interface_error or not interface_rows:
+            errors.append(
+                f'{dev.name}: FortiOS interface inventory failed: '
+                f'{interface_error or "no interface rows"}'
+            )
+        if sdwan_error:
+            errors.append(f'{dev.name}: FortiOS SD-WAN inventory failed: {sdwan_error}')
+        inventory[dev.pk] = {
+            'interface_rows': interface_rows,
+            'sdwan': _flatten_forti_sdwan_cmdb(sdwan_payload) if not sdwan_error else None,
+            'thresholds': _fortigate_memory_thresholds(memory_payload),
+            'threshold_error': memory_error,
+        }
+    if errors:
+        raise SystemExit(
+            'FortiOS device macro inventory failed — no per-device macros written:\n  '
+            + '\n  '.join(errors)
+        )
+
     stats = {
         'devices': 0,
-        'token_override': 0,
+        'token_assignment': 0,
         'fqdn_pruned': _prune_fortios_device_fqdn(),
+        'interface_macros': 0,
+        'sdwan_expectations': 0,
+        'memory_thresholds': 0,
     }
-    for dev in _fortios_devices():
+    for dev in devices:
         stats['devices'] += 1
-        env_key = _fgate_token_env(dev.name)
-        override = os.environ.get(env_key, '')
-        if _should_write_secret(override):
+        if _assignment_value(server, dev, _FGATE_TOKEN_MACRO):
+            stats['token_assignment'] += 1
+
+        data = inventory[dev.pk]
+        observable = {
+            row.get('name') or row.get('q_origin_key')
+            for row in data['interface_rows']
+            if row.get('name') or row.get('q_origin_key')
+        }
+        netbox_ifnames = _fortigate_desired_ifnames(dev)
+        ifnames = _fortigate_desired_ifnames(dev, observable_names=observable)
+        unobservable = sorted(set(netbox_ifnames) - set(ifnames))
+        scoped = {
+            '{$NET.IF.IFNAME.MATCHES}': _fortigate_ifname_regex(ifnames),
+            '{$NET.IF.DISCOVERY.MIN}': str(len(ifnames)),
+        }
+        for macro_name, macro_value in scoped.items():
             _upsert_object_macro_assignment(
                 server,
                 dev,
-                _FGATE_TOKEN_MACRO,
-                override.strip(),
-                mtype=ZabbixMacroTypeChoices.SECRET,
-                description=f'nwn:secret:fgate:{dev.name}',
+                macro_name,
+                macro_value,
+                mtype=ZabbixMacroTypeChoices.TEXT,
+                description='nwn:fortios:netbox-observable-interface-scope',
             )
-            stats['token_override'] += 1
-            logger.info('  %s %s override from %s', dev.name, _FGATE_TOKEN_MACRO, env_key)
+        stats['interface_macros'] += len(scoped)
+        _upsert_object_macro_assignment(
+            server,
+            dev,
+            '{$NET.IF.CONTROL}',
+            '0',
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description='nwn:fortios:mgmt-link-state-unavailable',
+            context='mgmt',
+        )
+        stats['interface_macros'] += 1
+
+        sdwan_members = data['sdwan']['members']
+        sdwan_expected = len(
+            {
+                str(row.get('q_origin_key') or row.get('interface'))
+                for row in sdwan_members
+                if row.get('q_origin_key') is not None or row.get('interface')
+            }
+        )
+        _upsert_object_macro_assignment(
+            server,
+            dev,
+            '{$FGATE.SDWAN.EXPECTED}',
+            str(sdwan_expected),
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description='nwn:fortios:configured-sdwan-member-count',
+        )
+        stats['sdwan_expectations'] += 1
+
+        thresholds = data['thresholds']
+        threshold_error = data['threshold_error']
+        if thresholds:
+            for macro_name, macro_value in thresholds.items():
+                _upsert_object_macro_assignment(
+                    server,
+                    dev,
+                    macro_name,
+                    macro_value,
+                    mtype=ZabbixMacroTypeChoices.TEXT,
+                    description='nwn:fortios:configured-memory-threshold',
+                )
+            stats['memory_thresholds'] += len(thresholds)
+        elif threshold_error:
+            logger.warning(
+                '  %s: memory thresholds not refreshed (%s); preserving device override/platform defaults',
+                dev.name,
+                threshold_error,
+            )
+        if unobservable:
+            logger.warning(
+                '  %s: excluding NetBox enabled+cabled names absent from FortiOS CMDB: %s',
+                dev.name,
+                ', '.join(unobservable),
+            )
+        logger.info(
+            '  %s: IFNAME=%s (%s observable of %s enabled+cabled), SD-WAN expected=%s, memory=%s',
+            dev.name,
+            scoped['{$NET.IF.IFNAME.MATCHES}'],
+            len(ifnames),
+            len(netbox_ifnames),
+            sdwan_expected,
+            '/'.join(thresholds.values()) if thresholds else 'platform/default',
+        )
+
     logger.info(
-        '  FortiOS devices=%s token_override=%s fqdn_pruned=%s',
+        '  FortiOS devices=%s token_assignment=%s fqdn_pruned=%s '
+        'interface_macros=%s sdwan_expectations=%s memory_thresholds=%s',
         stats['devices'],
-        stats['token_override'],
+        stats['token_assignment'],
         stats['fqdn_pruned'],
+        stats['interface_macros'],
+        stats['sdwan_expectations'],
+        stats['memory_thresholds'],
     )
     return stats
 
@@ -4103,11 +4306,13 @@ def run_apply(*, link_speed_expect: bool = False, cutover_silence: bool = False)
     logger.info('Network configuration applied (macros=%s)', 'cutover-silence' if cutover_silence else 'destination')
     logger.info(
         'FortiOS platform FortiGate HTTP macros are NetBox assignments only '
-        '(https/%s, WAN/HA/mgmt LLD, CPU/mem CRIT 101). Shared TOKEN stays on '
-        'Platform FortiOS. FQDN is platform Jinja on primary_ip4. '
-        'This run does not HostSync Fortis and does not retarget FortiOS. '
-        'Use --apply-fortigate-http for the HTTP cutover without zerotouch.',
+        '(https/%s, WAN/HA/mgmt LLD, CPU/mem CRIT 101). Zabbix monitoring TOKEN '
+        'stays on Platform FortiOS; %s is reserved for inventory automation. '
+        'FQDN is platform Jinja on primary_ip4. This run does not HostSync Fortis '
+        'and does not retarget FortiOS. Use --apply-fortigate-http for the HTTP '
+        'cutover without zerotouch.',
         _FGATE_API_PORT,
+        _FGATE_AUTOMATION_TOKEN_ENV,
     )
     return 0
 
@@ -4125,47 +4330,73 @@ def run_apply_firewall_macros() -> int:
     _step_fortios_platform_macros(server, required=True)
     logger.info(
         'FortiOS platform FortiGate HTTP macros written '
-        '(https/%s, WAN/HA/mgmt LLD, CPU/mem CRIT 101). Shared TOKEN from '
-        '%s if set. %s is platform Jinja on primary_ip4. No Extreme import, no HostSync, '
-        'no FortiOS retarget. Use --apply-fortigate-http for the companion cutover.',
+        '(https/%s, WAN/HA/mgmt LLD, CPU/mem CRIT 101). Existing NetBox '
+        '%s monitoring assignment is preserved. %s is platform Jinja on primary_ip4. '
+        'No Extreme import, no HostSync, no FortiOS retarget. '
+        'Use --apply-fortigate-http for the companion cutover.',
         _FGATE_API_PORT,
-        _FGATE_TOKEN_ENV,
+        _FGATE_TOKEN_MACRO,
         _FGATE_FQDN_MACRO,
     )
+    return 0
+
+
+def _require_fortigate_http_preflight(*, server=None):
+    """Run the complete read-only cutover gate and return resolved objects."""
+    if server is None:
+        token = os.environ.get('NBX_ZABBIX_TOKEN')
+        if not token:
+            raise SystemExit('Set NBX_ZABBIX_TOKEN')
+        server = resolve_apply_zabbix_server(token=token)
+    with ZabbixConnection(server) as api:
+        http = import_fortigate_http_template(api)
+        snmp = _lookup_zabbix_template(api, _FORTIGATE_SNMP_TEMPLATE)
+        icmp = _lookup_zabbix_template(api, _ICMP_PING_TEMPLATE)
+        zbx_errors, scripts = _preflight_fortigate_http_zabbix(api, http[0])
+    errors = zbx_errors + _preflight_fortigate_http(server, icmp_ok=icmp is not None)
+    _print_fortigate_http_plan(
+        server,
+        scripts=scripts,
+        icmp_ok=icmp is not None,
+        errors=errors,
+    )
+    if errors:
+        for error in errors:
+            logger.error('  preflight: %s', error)
+        raise SystemExit('FortiGate HTTP preflight failed — no writes:\n  ' + '\n  '.join(errors))
+    return server, http, snmp, icmp
+
+
+def run_check_fortigate_http() -> int:
+    """Check NetBox automation access, monitoring-token presence, and Zabbix state."""
+    server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
+    if server is None:
+        raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
+    _require_fortigate_http_preflight(server=server)
+    logger.info('FortiGate HTTP preflight OK — check-only mode wrote nothing')
     return 0
 
 
 def run_apply_fortigate_http() -> int:
     """FortiGate HTTP cutover without zerotouch or Extreme YAML. Fail closed.
 
-    Looks up Cloud FortiGate by HTTP (**Zabbix, 7.0-2**), hotfixes ZBX-27082,
-    restores stock collectors, imports FortiGate Observability (overlay census),
-    retargets **FortiOS only**. Does not assign Forti templates or the REST token
-    on role Firewall.
+    Looks up Cloud FortiGate by HTTP (**Zabbix, 7.0-2**), applies bounded
+    ZBX-27082 and multi-VDOM collector compatibility fixes, imports FortiGate
+    Observability, and retargets **FortiOS only**. Does not assign Forti
+    templates or the REST token on role Firewall.
     """
-    token = os.environ.get('NBX_ZABBIX_TOKEN')
-    if not token:
-        raise SystemExit('Set NBX_ZABBIX_TOKEN')
-    server = resolve_apply_zabbix_server(token=token)
-
-    with ZabbixConnection(server) as api:
-        http = import_fortigate_http_template(api)
-        snmp = _lookup_zabbix_template(api, _FORTIGATE_SNMP_TEMPLATE)
-        icmp = _lookup_zabbix_template(api, _ICMP_PING_TEMPLATE)
-        zbx_errors, scripts = _preflight_fortigate_http_zabbix(api, http[0])
-
-    errors = zbx_errors + _preflight_fortigate_http(server, icmp_ok=icmp is not None)
-    _print_fortigate_http_plan(server, scripts=scripts, icmp_ok=icmp is not None, errors=errors)
-    if errors:
-        for err in errors:
-            logger.error('  preflight: %s', err)
-        raise SystemExit('FortiGate HTTP preflight failed — no writes:\n  ' + '\n  '.join(errors))
+    server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
+    if server is None:
+        raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
+    server, http, snmp, icmp = _require_fortigate_http_preflight(server=server)
     logger.info('Preflight OK — patching Cloud HTTP, importing Observability, writing FortiOS levers')
 
     with ZabbixConnection(server) as api:
         apply_fortigate_http_patches(api, http[0])
         observability = import_fortigate_observability_template(api)
         ensure_overlay_census_items(api, observability[0])
+        ensure_observability_trigger_dependencies(api, observability[0])
+        ensure_observability_primary_trigger_gates(api, observability[0])
 
     _step_fortios_platform_macros(server, required=True)
     _step_fortigate_http_nbxsync(
@@ -4222,6 +4453,11 @@ def main() -> int:
         action='store_true',
         help='FortiGate HTTP cutover: FortiOS Observability companion, fail-closed preflight, no Firewall-role Forti templates, no HostSync',
     )
+    mode.add_argument(
+        '--check-fortigate-http',
+        action='store_true',
+        help='Read-only FortiGate HTTP preflight: Zabbix parent + every FortiOS API endpoint/token',
+    )
     parser.add_argument('--link-speed-expect', action='store_true', help='Also assign Port Speed Expect on Switch roles (avoid if already nested on VOSS/Observability)')
     parser.add_argument(
         '--cutover-silence',
@@ -4237,6 +4473,10 @@ def main() -> int:
         if args.link_speed_expect or args.cutover_silence:
             raise SystemExit('--apply-firewall-macros does not take --link-speed-expect or --cutover-silence')
         return run_apply_firewall_macros()
+    if args.check_fortigate_http:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--check-fortigate-http does not take --link-speed-expect or --cutover-silence')
+        return run_check_fortigate_http()
     if args.apply_fortigate_http:
         if args.link_speed_expect or args.cutover_silence:
             raise SystemExit('--apply-fortigate-http does not take --link-speed-expect or --cutover-silence')

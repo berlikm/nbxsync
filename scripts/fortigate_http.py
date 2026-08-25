@@ -20,21 +20,28 @@ nested ICMP Ping IP, no ICMP Ping template on the CG. FMG/FAZ platforms
 keep SNMP Monitoring. A leftover device-level FQDN or SNMP/Agent CG on a
 FortiGate is pruned on apply.
 
-Shared token (``NBX_FGATE_TOKEN``) lands on **Platform FortiOS**, not role
-Firewall. Empty env must not wipe. Optional per-device override:
-``NBX_FGATE_TOKEN_<HOSTNAME>``.
+Shared Zabbix monitoring token is the existing NetBox
+``{$FGATE.API.TOKEN}`` assignment on **Platform FortiOS**, not role
+Firewall and never ``NBX_FORTIGATE_TOKEN``. That environment variable is
+reserved for NetBox inventory automation.
 
 Companion **FortiGate Observability** nests stock FortiGate by HTTP + ICMP
-Ping. Do not also assign those parents on FortiOS objects. Apply restores
-stock HTTP collectors (ZBX-27082 only) and puts all-VDOM SD-WAN/IPsec
-census on the companion. Apply never imports bundled 7.0-3 over Cloud
-**Zabbix, 7.0-2**. Do not re-run zerotouch.
+Ping. Do not also assign those parents on FortiOS objects. Apply keeps the
+Cloud parent version-pinned and installs only bounded compatibility fixes:
+ZBX-27082 plus multi-VDOM interface/SD-WAN normalization. HA, memory pressure,
+HA synchronization, and IPsec inventory remain organization-owned companion
+signals. Apply never imports bundled 7.0-3 over Cloud **Zabbix, 7.0-2**.
+Do not re-run zerotouch.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+import json
 import re
+import ssl
+import urllib.error
+import urllib.request
+from pathlib import Path
 
 FIREWALL_ROLE = 'Firewall'
 FORTIGATE_HTTP_TEMPLATE = 'FortiGate by HTTP'
@@ -60,7 +67,7 @@ FMG_FAZ_PLATFORM_PATTERN = r'FortiAnalyzer|FortiManager'
 FGATE_TOKEN_MACRO = '{$FGATE.API.TOKEN}'
 FGATE_FQDN_MACRO = '{$FGATE.API.FQDN}'
 FGATE_FQDN_JINJA = '{{ object.primary_ip4.address.ip }}'
-FGATE_TOKEN_ENV = 'NBX_FGATE_TOKEN'
+FGATE_AUTOMATION_TOKEN_ENV = 'NBX_FORTIGATE_TOKEN'
 FGATE_PATH_CONTROL_MACRO = '{$FGATE.PATH.CONTROL}'
 # ha-mgmt GUI. 443 is SSL-VPN on these boxes; stock HTTP defaults to 80.
 FGATE_API_PORT = '20443'
@@ -68,17 +75,18 @@ HA_ROLE_KEY = 'fgate.ha.role'
 POLICY_MASTER_KEY = 'fgate.fwp.get_data'
 POLICY_DISCOVERY_KEY = 'fgate.fwp.discovery'
 
-# HostSync of a FortiOS device inherits platform macros onto the companion.
-# Canary LLD is wide open (stock ``.*`` / ``CHANGE_IF_NEEDED``) so ZH4 names
-# every iface and SD-WAN member. Tighten NET.IF after the dump; do not MATCH
-# ``port`` long-term (LAN on 200F). Do **not** set NOT_MATCHES to ``.*`` —
-# LLD is MATCHES AND NOT_MATCHES, so that excludes every interface.
-# {$FGATE.SDWAN.EXPECTED}=1 tickets empty member LLD while API is up.
+MEMORY_GREEN_MACRO = '{$FGATE.MEMORY.GREEN}'
+MEMORY_RED_MACRO = '{$FGATE.MEMORY.RED}'
+MEMORY_EXTREME_MACRO = '{$FGATE.MEMORY.EXTREME}'
+# HostSync of a FortiOS device inherits platform defaults onto the companion.
+# Apply writes a per-device exact-match IFNAME regex from enabled+cabled NetBox
+# interfaces, and device-specific FortiOS memory thresholds when readable.
+# NOT_MATCHES remains a denylist; setting it to ``.*`` excludes every interface.
 # Estate FortiOS boxes are HA pairs; standalone needs a host override of 1.
 FORTIOS_PLATFORM_MACROS = {
     '{$FGATE.SCHEME}': 'https',
     '{$FGATE.API.PORT}': FGATE_API_PORT,
-    '{$NET.IF.IFNAME.MATCHES}': '.*',
+    '{$NET.IF.IFNAME.MATCHES}': '^$',
     '{$NET.IF.IFNAME.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
     '{$SDWAN.HEALTH.IFNAME.MATCHES}': '.*',
     '{$SDWAN.MEMBER.NAME.MATCHES}': '.*',
@@ -88,8 +96,11 @@ FORTIOS_PLATFORM_MACROS = {
     '{$DISK.FREE.CRIT}': '0',
     '{$CPU.UTIL.CRIT}': '101',
     '{$MEMORY.UTIL.CRIT}': '101',
+    MEMORY_GREEN_MACRO: '82',
+    MEMORY_RED_MACRO: '88',
+    MEMORY_EXTREME_MACRO: '95',
     FGATE_PATH_CONTROL_MACRO: '1',
-    '{$NET.IF.DISCOVERY.MIN}': '1',
+    '{$NET.IF.DISCOVERY.MIN}': '0',
     '{$FGATE.SDWAN.EXPECTED}': '1',
     '{$FGATE.HA.EXPECTED}': '2',
     FGATE_FQDN_MACRO: FGATE_FQDN_JINJA,
@@ -188,20 +199,128 @@ GET_HTTP_DATA_FIXED_PREFIX = """
 	}
 """
 
+
+def fortigate_ifname_regex(names) -> str:
+    """Exact Zabbix LLD regex for NetBox-approved interface names."""
+    unique = sorted({str(name).strip() for name in names if name is not None and str(name).strip()})
+    if not unique:
+        return '^$'
+    return '^(?:' + '|'.join(re.escape(name) for name in unique) + ')$'
+
+
+def fortigate_memory_thresholds(payload: dict | None) -> dict[str, str] | None:
+    """Validated FortiOS green/red/extreme memory thresholds."""
+    if not isinstance(payload, dict):
+        return None
+    results = payload.get('results', payload)
+    if not isinstance(results, dict):
+        return None
+    keys = {
+        MEMORY_GREEN_MACRO: 'memory-use-threshold-green',
+        MEMORY_RED_MACRO: 'memory-use-threshold-red',
+        MEMORY_EXTREME_MACRO: 'memory-use-threshold-extreme',
+    }
+    try:
+        values = {macro: int(results[key]) for macro, key in keys.items()}
+    except (KeyError, TypeError, ValueError):
+        return None
+    green = values[MEMORY_GREEN_MACRO]
+    red = values[MEMORY_RED_MACRO]
+    extreme = values[MEMORY_EXTREME_MACRO]
+    if not (0 < green < red < extreme <= 100):
+        return None
+    return {macro: str(value) for macro, value in values.items()}
+
+
+def fetch_fortigate_api(
+    fqdn: str,
+    token: str,
+    path: str,
+    *,
+    scheme: str = 'https',
+    port: str = FGATE_API_PORT,
+    timeout: float = 10,
+    opener=None,
+) -> tuple[dict | list | None, str | None]:
+    """Fetch one FortiOS JSON object or multi-VDOM array with an operator-safe error."""
+    fqdn = (fqdn or '').strip()
+    token = (token or '').strip()
+    if not fqdn:
+        return None, 'missing API FQDN'
+    if not token:
+        return None, 'missing API token'
+    if not path.startswith('/'):
+        return None, 'API path must start with /'
+
+    request = urllib.request.Request(
+        f'{scheme}://{fqdn}:{port}{path}',
+        headers={
+            'Accept': 'application/json',
+            'Authorization': f'Bearer {token}',
+        },
+    )
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    open_request = opener or urllib.request.urlopen
+    try:
+        with open_request(request, context=context, timeout=timeout) as response:
+            status = getattr(response, 'status', None) or response.getcode()
+            body = response.read()
+    except urllib.error.HTTPError as error:
+        return None, f'HTTP {error.code}'
+    except urllib.error.URLError as error:
+        return None, f'connection failed: {error.reason}'
+    except (OSError, TimeoutError) as error:
+        return None, f'connection failed: {error}'
+
+    if status != 200:
+        return None, f'HTTP {status}'
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None, 'HTTP 200 with invalid JSON'
+    if not isinstance(payload, (dict, list)):
+        return None, 'HTTP 200 with unexpected JSON payload'
+    return payload, None
+
+
 LINKDOWN_SAMPLES = 3
 NETIF_STATUS_DOWN = '0'  # valuemap Link state: 0=down, 1=up
 SDWAN_STATUS_DOWN = '1'  # JS indexOf up/down/error → 1=down
 SDWAN_STATUS_ERROR = '2'
 
 
-def fgate_token_env(hostname: str) -> str:
-    """Optional per-device override. Same shape as ``NBX_PURE_TOKEN_*``."""
-    return f'NBX_FGATE_TOKEN_{hostname.upper().replace("-", "_")}'
 
 
-def should_write_secret(value: str | None) -> bool:
-    """Empty / whitespace env must not wipe an existing token assignment."""
-    return bool((value or '').strip())
+def probe_fortigate_api(
+    fqdn: str,
+    token: str,
+    *,
+    scheme: str = 'https',
+    port: str = FGATE_API_PORT,
+    timeout: float = 10,
+    opener=None,
+) -> str | None:
+    """Return an operator-safe error, or ``None`` after a valid status response.
+
+    This runs from the NetBox process with its inventory automation token. It
+    proves that path, not the separate Zabbix monitoring token or proxy path.
+    """
+    payload, error = fetch_fortigate_api(
+        fqdn,
+        token,
+        '/api/v2/monitor/system/status',
+        scheme=scheme,
+        port=port,
+        timeout=timeout,
+        opener=opener,
+    )
+    if error:
+        return error
+    if not isinstance(payload, dict):
+        return 'HTTP 200 with unexpected JSON payload'
+    return None
 
 
 def preferred_mgmt_ip(primary_ip: str | None, oob_ip: str | None = None) -> str | None:
@@ -537,7 +656,8 @@ function flattenFortiMonitorMap(payload) {
 }
 
 function flattenFortiCmdbList(payload) {
-	var out = [];
+	var byId = {};
+	var order = [];
 	var blocks = fortiApiBlocks(payload);
 	for (var i = 0; i < blocks.length; i++) {
 		var block = blocks[i];
@@ -554,10 +674,13 @@ function flattenFortiCmdbList(payload) {
 				row.vdom = vdom;
 			}
 			row.id = fortiIfaceId(row);
-			out.push(row);
+			if (typeof byId[row.id] === 'undefined') {
+				order.push(row.id);
+			}
+			byId[row.id] = row;
 		});
 	}
-	return out;
+	return order.map(function (id) { return byId[id]; });
 }
 
 function flattenFortiSdwanCmdb(payload) {
@@ -827,8 +950,8 @@ def flatten_forti_monitor_map(payload) -> dict:
 
 
 def flatten_forti_cmdb_list(payload) -> list:
-    """CMDB interface rows with id = vdom:ifName when vdom is present."""
-    out: list = []
+    """CMDB interface rows deduplicated by vdom:ifName."""
+    out: dict[str, dict] = {}
     for block in forti_api_blocks(payload):
         vdom = block.get('vdom') or ''
         results = block.get('results')
@@ -842,8 +965,8 @@ def flatten_forti_cmdb_list(payload) -> list:
                 row['vdom'] = vdom
             name = row.get('q_origin_key') or row.get('name') or ''
             row['id'] = f'{row["vdom"]}:{name}' if row.get('vdom') else name
-            out.append(row)
-    return out
+            out[row['id']] = row
+    return list(out.values())
 
 
 def flatten_forti_sdwan_cmdb(payload) -> dict:
@@ -1021,7 +1144,7 @@ def _ensure_fetch_helper(script: str) -> str:
     """
     text = script
     missing: list[str] = []
-    for name in _FETCH_HELPER_NAMES:
+    for name in _VDOM_HELPER_LIFT_NAMES:
         src = _extract_js_function(FORTI_VDOM_HELPERS, name)
         if not src:
             return script
@@ -1059,8 +1182,11 @@ def _ensure_netif_vdom_resilience(script: str) -> str:
         patched, n_lookup = _NETIF_LOOKUP_RE.subn(_NETIF_LOOKUP, patched, count=1)
         if n_lookup != 1:
             return script
-    if 'fortiIfaceId(item)' not in patched:
+    if 'item.id = fortiIfaceId(item);' not in patched:
         patched, n_id = _NETIF_ID_RE.subn('item.id = fortiIfaceId(item);', patched, count=1)
+        if n_id == 0 and 'item.id = item.q_origin_key;' in patched:
+            patched = patched.replace('item.id = item.q_origin_key;', 'item.id = fortiIfaceId(item);', 1)
+            n_id = 1
         if n_id != 1:
             return script
     if 'netif_list.results.map' in patched and '(netif_list.results || []).map' not in patched:
@@ -1101,7 +1227,7 @@ def _ensure_sdwan_vdom_resilience(script: str) -> str:
 
 def patch_vdom_star_script(script: str) -> str:
     """Request vdom=* and flatten multi-VDOM payloads. Idempotent."""
-    if not script or script_has_vdom_star(script):
+    if not script:
         return script
     patched = script
     if _helpers_nested_in_gethttp(patched):

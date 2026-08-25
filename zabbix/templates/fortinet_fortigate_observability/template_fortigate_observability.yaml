@@ -13,9 +13,11 @@ zabbix_export:
         Platform FortiOS Template Rule points here. Do not assign this template
         on generic role Firewall (FortiManager / FortiAnalyzer share that role).
 
-        Stock HTTP stays the vendor parent (ZBX-27082 hotfix only). All-VDOM
-        SD-WAN / IPsec names are overlay census (`fgate.observability.inventory`)
-        — see Latest data first, add path triggers later. Do not import bundled 7.0-3.
+        Stock HTTP remains the version-pinned vendor parent with bounded
+        ZBX-27082 and multi-VDOM collector compatibility patches. This companion
+        owns HA, configured memory-pressure alerting, and the runtime-managed
+        `fgate.observability.inventory` SD-WAN/IPsec census. Do not import
+        bundled 7.0-3 over the Cloud template.
       groups:
         - name: 'Templates/Network devices'
       templates:
@@ -86,6 +88,27 @@ zabbix_export:
           tags:
             - tag: component
               value: memory
+          triggers:
+            - uuid: fd0d551e32fb44beb3ca58ba8c64724e
+              expression: 'min(/FortiGate Observability/fgate.observability.memory.util,3m)>={$FGATE.MEMORY.EXTREME}'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'max(/FortiGate Observability/fgate.observability.memory.util,5m)<{$FGATE.MEMORY.GREEN}'
+              name: 'FortiGate: memory pressure is above the configured extreme threshold'
+              priority: DISASTER
+              description: 'Sustained memory use is above FortiOS memory-use-threshold-extreme. Recovery requires the configured green threshold.'
+              tags:
+                - tag: scope
+                  value: capacity
+            - uuid: 307cb12157024b69a6892a3ac96855fa
+              expression: 'min(/FortiGate Observability/fgate.observability.memory.util,5m)>={$FGATE.MEMORY.RED}'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'max(/FortiGate Observability/fgate.observability.memory.util,5m)<{$FGATE.MEMORY.GREEN}'
+              name: 'FortiGate: memory pressure is above the configured red threshold'
+              priority: HIGH
+              description: 'Sustained memory use is above FortiOS memory-use-threshold-red. Recovery requires the configured green threshold.'
+              tags:
+                - tag: scope
+                  value: capacity
         - uuid: 6d668a44c47948cfae2d30e439524aa6
           name: 'Unsupported items'
           type: INTERNAL
@@ -143,9 +166,9 @@ zabbix_export:
           triggers:
             - uuid: 76f7a92f7df746aa986b15e0d77c2ff3
               expression: 'min(/FortiGate Observability/fgate.observability.api,30m)=1 and last(/FortiGate Observability/fgate.observability.netif.count)<{$NET.IF.DISCOVERY.MIN}'
-              name: 'FortiGate: no discovered interfaces'
+              name: 'FortiGate: fewer discovered interfaces than expected'
               priority: AVERAGE
-              description: 'API is up and LLD produced fewer in-scope interfaces than {$NET.IF.DISCOVERY.MIN}. IFNAME regex or netif API gap — not a WAN path ticket.'
+              description: 'API is up and LLD produced fewer in-scope interfaces than {$NET.IF.DISCOVERY.MIN}. The baseline is enabled+cabled NetBox names observable in FortiOS CMDB — this is an API/LLD regression, not a WAN-path ticket.'
               tags:
                 - tag: scope
                   value: availability
@@ -169,7 +192,7 @@ zabbix_export:
           delay: 1m
           value_type: FLOAT
           params: 'count(exists_foreach(//fgate.sdwan_member.link_status[*]))-1'
-          description: 'Enabled SD-WAN member link_status items minus the seed. {$FGATE.SDWAN.EXPECTED}=1 tickets empty LLD while API is up (canary).'
+          description: 'Enabled SD-WAN member link_status items minus the seed. Apply sets {$FGATE.SDWAN.EXPECTED} to the exact configured member count per device.'
           tags:
             - tag: component
               value: census
@@ -178,7 +201,7 @@ zabbix_export:
               expression: 'min(/FortiGate Observability/fgate.observability.api,30m)=1 and last(/FortiGate Observability/fgate.observability.sdwan.count)<{$FGATE.SDWAN.EXPECTED}'
               name: 'FortiGate: fewer SD-WAN members than expected'
               priority: AVERAGE
-              description: 'API is up and member LLD is below {$FGATE.SDWAN.EXPECTED}. ZBX-26072 "all members" or not an SD-WAN site — set EXPECTED=0 if none. Canary is 1.'
+              description: 'API is up and member LLD is below the configured per-device {$FGATE.SDWAN.EXPECTED}.'
               tags:
                 - tag: scope
                   value: availability
@@ -191,33 +214,38 @@ zabbix_export:
           params: |
             var params = JSON.parse(value);
             function getHttpData(url) {
-            	request = new HttpRequest();
+            	var request = new HttpRequest();
             	if (typeof params.http_proxy !== 'undefined' && params.http_proxy !== '{' + '$FGATE.HTTP.PROXY}' && params.http_proxy !== '') {
             		request.setProxy(params.http_proxy);
             	}
             	request.addHeader('Accept: application/json');
             	request.addHeader('Authorization: Bearer ' + params.token);
-            	response = request.get(url);
-            	if (request.getStatus() !== 200) {
-            		throw 'status ' + request.getStatus();
+            	var response = request.get(url);
+            	var code = request.getStatus();
+            	var body = null;
+            	try {
+            		body = JSON.parse(response);
+            	} catch (error) {
+            		if (code === 200) throw 'invalid JSON';
             	}
-            	return JSON.parse(response);
+            	if (body && body.status === 'error' && typeof body.http_status !== 'undefined') {
+            		code = body.http_status;
+            	}
+            	return { code: code, body: body };
             }
             var api_url = params.scheme + '://' + params.fqdn + ':' + params.port;
-            try {
-            	var ha = getHttpData(api_url + '/api/v2/monitor/system/ha/checksums');
-            	var rows = ha.results || ha;
-            	if (Array.isArray(rows)) {
-            		return rows.length || 1;
-            	}
-            	if (rows && typeof rows === 'object') {
-            		var n = Object.keys(rows).length;
-            		return n || 1;
-            	}
-            	return 1;
-            } catch (error) {
+            var ha = getHttpData(api_url + '/api/v2/monitor/system/ha-peer');
+            if (ha.code === 404 || ha.code === 424) {
             	return 1;
             }
+            if (ha.code !== 200 || !ha.body) {
+            	throw 'HA peer request failed: HTTP ' + ha.code;
+            }
+            var rows = ha.body.results || ha.body;
+            if (!Array.isArray(rows)) {
+            	rows = rows && typeof rows === 'object' ? [rows] : [];
+            }
+            return rows.length || 1;
           timeout: '{$FGATE.DATA.TIMEOUT}'
           parameters:
             - name: fqdn
@@ -230,7 +258,7 @@ zabbix_export:
               value: '{$FGATE.SCHEME}'
             - name: token
               value: '{$FGATE.API.TOKEN}'
-          description: 'Checksums row count. Standalone/404 → 1. Estate default {$FGATE.HA.EXPECTED}=2 (pairs). Host override 1 on standalone.'
+          description: 'Authoritative system/ha-peer row count. Standalone 404/424 → 1; other failures are unsupported. Estate default {$FGATE.HA.EXPECTED}=2.'
           tags:
             - tag: component
               value: ha
@@ -239,59 +267,70 @@ zabbix_export:
               expression: 'min(/FortiGate Observability/fgate.observability.api,30m)=1 and last(/FortiGate Observability/fgate.observability.ha.member.count)<>{$FGATE.HA.EXPECTED}'
               name: 'FortiGate: HA member count unexpected'
               priority: AVERAGE
-              description: 'API is up and ha/checksums count ≠ {$FGATE.HA.EXPECTED}. Estate default 2 (pairs). Host override 1 on standalone.'
+              description: 'API is up and system/ha-peer count differs from {$FGATE.HA.EXPECTED}. Estate default 2; host override 1 on standalone.'
               tags:
                 - tag: scope
                   value: availability
-        - uuid: 516f83e6b539446cb898461796628c2e
-          name: 'Conserve mode'
+        - uuid: 400b4a31654c4ae5bdd392723ae74f07
+          name: 'HA VDOM checksum mismatches'
           type: SCRIPT
-          key: fgate.observability.conserve
-          delay: 1m
+          key: fgate.observability.ha.vdom_mismatches
+          delay: 5m
           value_type: FLOAT
-          valuemap:
-            name: 'Conserve mode'
           params: |
             var params = JSON.parse(value);
             function getHttpData(url) {
-            	request = new HttpRequest();
+            	var request = new HttpRequest();
             	if (typeof params.http_proxy !== 'undefined' && params.http_proxy !== '{' + '$FGATE.HTTP.PROXY}' && params.http_proxy !== '') {
             		request.setProxy(params.http_proxy);
             	}
             	request.addHeader('Accept: application/json');
             	request.addHeader('Authorization: Bearer ' + params.token);
-            	response = request.get(url);
-            	if (request.getStatus() !== 200) {
-            		throw 'status ' + request.getStatus();
+            	var response = request.get(url);
+            	var code = request.getStatus();
+            	var body = null;
+            	try {
+            		body = JSON.parse(response);
+            	} catch (error) {
+            		if (code === 200) throw 'invalid JSON';
             	}
-            	return JSON.parse(response);
-            }
-            function isOn(v) {
-            	if (v === true || v === 1 || v === '1') return true;
-            	if (typeof v === 'string' && v.toLowerCase() === 'on') return true;
-            	return false;
-            }
-            function readConserve(obj) {
-            	if (!obj || typeof obj !== 'object') return null;
-            	var keys = ['conserve_mode', 'conserve-mode', 'conserve', 'mem_conserve', 'sys_conserve'];
-            	for (var i = 0; i < keys.length; i++) {
-            		if (typeof obj[keys[i]] !== 'undefined') return obj[keys[i]];
+            	if (body && body.status === 'error' && typeof body.http_status !== 'undefined') {
+            		code = body.http_status;
             	}
-            	if (obj.results) return readConserve(obj.results);
-            	return null;
+            	return { code: code, body: body };
             }
             var api_url = params.scheme + '://' + params.fqdn + ':' + params.port;
-            try {
-            	var perf = getHttpData(api_url + '/api/v2/monitor/system/performance/status');
-            	var v = readConserve(perf);
-            	if (v !== null) return isOn(v) ? 1 : 0;
-            	var res = getHttpData(api_url + '/api/v2/monitor/system/resource/usage?interval=1-min');
-            	v = readConserve(res);
-            	if (v !== null) return isOn(v) ? 1 : 0;
-            	return 2;
-            } catch (error) {
-            	return 2;
+            var ha = getHttpData(api_url + '/api/v2/monitor/system/ha-nonsync-checksums');
+            if (ha.code === 404 || ha.code === 424) {
+            	return 0;
             }
+            if (ha.code !== 200 || !ha.body) {
+            	throw 'HA checksum request failed: HTTP ' + ha.code;
+            }
+            var rows = ha.body.results || ha.body;
+            if (!Array.isArray(rows)) {
+            	rows = rows && typeof rows === 'object' ? [rows] : [];
+            }
+            if (rows.length < 2) {
+            	return 0;
+            }
+            var baseline = {};
+            var mismatches = {};
+            for (var i = 0; i < rows.length; i++) {
+            	var vdoms = rows[i] && rows[i].checksum && rows[i].checksum.vdoms;
+            	if (!vdoms || typeof vdoms !== 'object') {
+            		throw 'HA checksum row has no VDOM map';
+            	}
+            	Object.keys(vdoms).forEach(function (vdom) {
+            		var checksum = String(vdoms[vdom]);
+            		if (typeof baseline[vdom] === 'undefined') {
+            			baseline[vdom] = checksum;
+            		} else if (baseline[vdom] !== checksum) {
+            			mismatches[vdom] = 1;
+            		}
+            	});
+            }
+            return Object.keys(mismatches).length;
           timeout: '{$FGATE.DATA.TIMEOUT}'
           parameters:
             - name: fqdn
@@ -304,19 +343,19 @@ zabbix_export:
               value: '{$FGATE.SCHEME}'
             - name: token
               value: '{$FGATE.API.TOKEN}'
-          description: '1 = conserve on (ticket). 0 = off. 2 = endpoint unknown (do not page). New HttpRequest per call (ZBX-27082).'
+          description: 'Number of VDOM configuration checksum mismatches across HA peers. Global checksum is intentionally excluded because member-local global settings can differ.'
           tags:
             - tag: component
-              value: memory
+              value: ha
           triggers:
-            - uuid: 6e50014a4d83435f8b57e57d4dfcf5cd
-              expression: 'last(/FortiGate Observability/fgate.observability.conserve)=1'
-              name: 'FortiGate: conserve mode'
-              priority: AVERAGE
-              description: 'FortiOS conserve mode is on. More operational than stock memory % High (which is silenced at CRIT 101).'
+            - uuid: 55f7a8c069864d9caa96ba9ceaf1b7f8
+              expression: 'last(/FortiGate Observability/fgate.observability.ha.role)=1 and min(/FortiGate Observability/fgate.observability.api,30m)=1 and min(/FortiGate Observability/fgate.observability.ha.vdom_mismatches,15m)>0'
+              name: 'FortiGate: HA VDOM configuration is out of sync'
+              priority: HIGH
+              description: 'At least one VDOM checksum differs across HA members for 15 minutes. Primary-only ticket prevents duplicate incidents from both cluster members.'
               tags:
                 - tag: scope
-                  value: capacity
+                  value: availability
       macros:
         - macro: '{$FGATE.SCHEME}'
           value: https
@@ -324,10 +363,10 @@ zabbix_export:
           value: '20443'
         - macro: '{$CPU.UTIL.CRIT}'
           value: '101'
-          description: 'Quiet stock High CPU (CRIT 101). Conserve mode is the memory page, not this trigger.'
+          description: 'Quiet duplicate stock High CPU trigger; companion retains the metric for dashboards.'
         - macro: '{$MEMORY.UTIL.CRIT}'
           value: '101'
-          description: 'Quiet stock High memory (CRIT 101). Ticket conserve mode instead.'
+          description: 'Quiet duplicate stock High memory trigger; companion alerts on configured FortiOS thresholds.'
         - macro: '{$DISK.FREE.CRIT}'
           value: '0'
         - macro: '{$NET.IF.UTIL.MAX}'
@@ -337,7 +376,7 @@ zabbix_export:
         - macro: '{$FWP.FWNAME.MATCHES}'
           value: '^$'
         - macro: '{$NET.IF.IFNAME.MATCHES}'
-          value: '.*'
+          value: '^$'
         - macro: '{$NET.IF.IFNAME.NOT_MATCHES}'
           value: CHANGE_IF_NEEDED
         - macro: '{$FGATE.PATH.CONTROL}'
@@ -348,14 +387,23 @@ zabbix_export:
         - macro: '{$SDWAN.MEMBER.NAME.MATCHES}'
           value: '.*'
         - macro: '{$NET.IF.DISCOVERY.MIN}'
-          value: '1'
-          description: 'Minimum in-scope netif.status items after LLD. Zero with API up is a watcher ticket.'
+          value: '0'
+          description: 'Apply overrides this per device from enabled+cabled NetBox interfaces.'
         - macro: '{$FGATE.SDWAN.EXPECTED}'
-          value: '1'
-          description: 'Minimum SD-WAN members. Canary 1 so empty LLD tickets. Set 0 on standalone without SD-WAN, 2+ after members are named.'
+          value: '0'
+          description: 'Minimum SD-WAN members. Apply sets the exact configured member count per Device; safe template default is zero.'
         - macro: '{$FGATE.HA.EXPECTED}'
           value: '2'
-          description: 'Expected ha/checksums members. Estate default 2 (HA pairs). Host override 1 on standalone.'
+          description: 'Expected system/ha-peer members. Estate default 2; host override 1 on standalone.'
+        - macro: '{$FGATE.MEMORY.GREEN}'
+          value: '82'
+          description: 'FortiOS memory-use-threshold-green; apply refreshes a device override.'
+        - macro: '{$FGATE.MEMORY.RED}'
+          value: '88'
+          description: 'FortiOS memory-use-threshold-red; apply refreshes a device override.'
+        - macro: '{$FGATE.MEMORY.EXTREME}'
+          value: '95'
+          description: 'FortiOS memory-use-threshold-extreme; apply refreshes a device override.'
       tags:
         - tag: class
           value: network
@@ -498,7 +546,7 @@ zabbix_export:
                       name: min
                       value: '0'
                 - type: gauge
-                  name: Conserve
+                  name: 'HA VDOM checksum mismatches'
                   x: '18'
                   width: '18'
                   height: '4'
@@ -510,7 +558,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: 'FortiGate Observability'
-                        key: fgate.observability.conserve
+                        key: fgate.observability.ha.vdom_mismatches
                     - type: STRING
                       name: max
                       value: '2'
@@ -594,7 +642,7 @@ zabbix_export:
                       name: min
                       value: '0'
                 - type: gauge
-                  name: Conserve
+                  name: 'HA VDOM checksum mismatches'
                   x: '18'
                   width: '18'
                   height: '4'
@@ -606,7 +654,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: 'FortiGate Observability'
-                        key: fgate.observability.conserve
+                        key: fgate.observability.ha.vdom_mismatches
                     - type: STRING
                       name: max
                       value: '2'
@@ -621,12 +669,3 @@ zabbix_export:
               newvalue: Down
             - value: '1'
               newvalue: Up
-        - uuid: e0b78907502b42f199edb685393c418c
-          name: 'Conserve mode'
-          mappings:
-            - value: '0'
-              newvalue: Off
-            - value: '1'
-              newvalue: On
-            - value: '2'
-              newvalue: Unknown

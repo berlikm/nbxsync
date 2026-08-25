@@ -85,21 +85,21 @@ Do **not** fork the stock template. Macro / trigger-status patches on apply, sam
 |---|---|---|
 | `{$FGATE.SCHEME}`=`http`, `{$FGATE.API.PORT}`=`80` | Port-unavailable Average immediately (GUI is HTTPS/20443 on ha-mgmt) | Template-level **https** / **20443**. Per-host FQDN + token |
 | `{$NET.IF.UTIL.MAX}`=`95` | 15m util Warning on any discovered iface | **101** (same as Extreme) |
-| `{$NET.IF.CONTROL}`=`1` on **all** discovered ifaces | Link-down Average on every VLAN/VPN/loopback that flaps | Scope LLD to WAN / SD-WAN members / HA / mgmt. Mute leftover with context `CONTROL=0`, not a second inventory |
-| CPU CRIT 95 = **High**, mem CRIT 90 = **High**, disk free 10% = **High** | 03:00 pages for busy/log disk | Intended: CPU Warning only; mem Average; disk Average unless that box **is** the log product. Disable or retune the **High** triggers without a fork |
+| `{$NET.IF.CONTROL}`=`1` on **all** discovered ifaces | Link-down Average on every VLAN/VPN/loopback that flaps | Scope LLD to enabled+cabled NetBox links. Keep reserved `mgmt` discovered but apply device context `{$NET.IF.CONTROL:mgmt}=0`: FortiOS reports false physical-down there, while ICMP/API own availability |
+| CPU CRIT 95 = **High**, mem CRIT 90 = **High**, disk free 10% = **High** | 03:00 pages for busy/log disk | Duplicate stock CPU/memory High is silenced at 101. Companion memory pressure uses configured green/red/extreme thresholds; disk High remains off |
 | `{$FIRMWARE.UPDATES.CONTROL}`=`1` | Info as long as FortiGuard lists an image | `0` if it never clears |
-| `{$SERVICE.LICENSE.CONTROL}`=`1`, expiry 7d | Average on unsuccessful; Warning at 7d | Keep for production licenses; context-0 lab/unused SKUs |
+| `{$SERVICE.LICENSE.CONTROL}`=`1`, expiry 7d | Average on unsuccessful; Warning at 7d | Keep for production FortiGuard SKUs. Platform context `{$SERVICE.LICENSE.CONTROL:forticloud}=0` silences unused FortiCloud `Unknown (30)` while retaining the metric |
 | Policy LLD `{$FWP.FWNAME.MATCHES}`=`.*` | No policy **triggers**, but ~8 items × every policy | MATCHES=`^$` **and** disable `fgate.fwp.get_data` + discovery (MATCHES alone still polls) |
-| Link-down uses `.diff()` + **manual close** | ACK a down WAN and it **will not re-fire** until another up→down | `--apply-fortigate-http` patches to sustained `#3` + auto-recover + `ha.role` gate |
-| No `vdom=*` on iface/SD-WAN scripts | Only the REST login VDOM (usually `root`) is discovered — other VDOMs look empty | **Leave stock collectors stock** (ZBX-27082 only). All-VDOM SD-WAN / IPsec names are Observability overlay `fgate.observability.inventory`. 424 on ZH5 health-check must not drop members |
-| Rewriting stock JS in place | `fortiFetchVdom` undefined, LLD 0, vendor template cannot be updated cleanly | Restore stock scripts on apply; overlay census lives on the companion |
-| `{$NET.IF.IFNAME.NOT_MATCHES}`=`.*` | MATCHES `.*` **and** NOT_MATCHES `.*` excludes every iface | Keep **`CHANGE_IF_NEEDED`**. Never set NOT_MATCHES to `.*` |
+| Link-down uses `.diff()` + **manual close** | ACK a down WAN and it **will not re-fire** until another up→down | Patch to sustained `#3` + auto-recover + `ha.role` gate |
+| No `vdom=*` on iface/SD-WAN scripts | Only the REST login VDOM is discovered; FortiOS 7.6 SD-WAN monitor results may be arrays | Version-pinned compatibility patch normalizes array/object envelopes and all VDOMs |
+| Secondary 404/424 aborts a multi-request collector | Healthy member/CMDB data is discarded | Fetch wrapper classifies inactive-secondary 404/424 as absent endpoint and preserves successful data |
+| Broad interface LLD | VLAN/VPN/loopback/unused interfaces generate noise | Exact Device regex from enabled+cabled NetBox interfaces observable in FortiOS CMDB; reserved `mgmt` remains discovered with its link trigger context-disabled; safe template default `^$` |
+| `{$NET.IF.IFNAME.NOT_MATCHES}`=`.*` | MATCHES `.*` **and** NOT_MATCHES `.*` excludes every iface | Keep `CHANGE_IF_NEEDED`; never set NOT_MATCHES to `.*` |
 | Stock high-error trigger | README expression checks **in_errors twice** (no out_errors) | patched to in **or** out |
-| CPU CRIT 95 / mem CRIT 90 = **High** | 03:00 pages | `{$CPU.UTIL.CRIT}`/`{$MEMORY.UTIL.CRIT}`=101 on FortiOS; conserve-mode Average instead |
 
 SNMP-only landmines we **leave behind** by not using SNMP as the long-term path: ICMP loss/RTT Warning from the CH proxy (WAN RTT), HA member CPU High, FortiAP WTP noise. If SNMP stays on a host during the mixed cutover, those still apply.
 
-FortiGate `port1` is **not** a WAN class long-term. On 40F/60F/100F/200F it is usually inside LAN. Canary LLD is stock `.*` / `CHANGE_IF_NEEDED` so ZH4 names every iface; tighten `{$NET.IF.IFNAME.MATCHES}` after that dump and do not keep `port` in the fleet regex. SD-WAN member/health LLD stays `.*`. `{$FGATE.SDWAN.EXPECTED}` is **1** on the canary so empty member LLD tickets. Once aliases exist, prefer IFALIAS the way Access uses grammar classes (`USW|US|UP|MON|UW|TMON`).
+FortiGate `port1` is **not** a WAN class. Apply intersects each device’s enabled+cabled NetBox interfaces with names exposed by FortiOS CMDB, then writes `{$NET.IF.IFNAME.MATCHES}` and the matching `{$NET.IF.DISCOVERY.MIN}`. Unobservable model-specific ports are logged instead of becoming permanent false alarms. It also writes `{$NET.IF.CONTROL:mgmt}=0`: `mgmt` telemetry stays visible, but the unreliable FortiOS physical-link field cannot page; ICMP/API monitor management availability. SD-WAN member/health LLD remains independently scoped with `.*`; apply sets `{$FGATE.SDWAN.EXPECTED}` to the exact configured member count, including zero.
 
 ---
 
@@ -129,15 +129,16 @@ Polling only the current primary (shared DNS that always follows master) has the
 
 Config **is** synced. HTTP LLD of SD-WAN / wan1 / policies on **both** members can double every WAN-down Average. That is the only good argument for a single logical host — and it is solved later by **gating path triggers**, not by skipping HostSync of the backup or inventing a VIP host.
 
-HostSync of both members is the same job twice: shared platform token + templates, unique rendered `{$FGATE.API.FQDN}` from each `primary_ip4`. Do not give them different templates, and do not flip macros on failover as part of cutover.
+HostSync of both members is the same job twice: shared Zabbix monitoring token from nbxSync Platform FortiOS + templates, unique rendered `{$FGATE.API.FQDN}` from each `primary_ip4`. The NetBox inventory automation token is separate. Do not give the members different templates, and do not flip macros on failover as part of cutover.
 
-| Signal | Cutover (both members, unique OOB) | After apply patches |
+| Signal | Both physical members | Alert ownership |
 |---|---|---|
-| ICMP, API, CPU, memory, conserve | **both** | still both |
-| SD-WAN / WAN iface tickets | both would double | gate on `fgate.ha.role=1` |
-| Licenses / firmware Info | both — same SKU twice is noise | gate on `fgate.ha.role=1` |
+| ICMP, API, CPU, memory | collect on both | chassis health remains per member |
+| SD-WAN / WAN iface tickets | collect on both | gate on authoritative `fgate.ha.role=1` from `system/ha-peer` |
+| Licenses / firmware Info | collect on both | primary-only gate avoids duplicates |
+| HA membership and VDOM checksums | compare from both | member count Average on each chassis; VDOM checksum mismatch High on the primary only |
 
-Later thin item (`/api/v2/monitor/system/ha/peer` or equivalent) + trigger `and last(ha.role)=primary` is optional. It is not required to monitor the second box.
+Role collection matches the local system serial to `/api/v2/monitor/system/ha-peer`. Unknown transport/auth/role is unsupported, never primary. `/api/v2/monitor/system/ha-nonsync-checksums` supplies the VDOM checksum signal; member-local global checksums are excluded. The mismatch metric remains on both hosts for visibility, but only `ha.role=1` creates the incident.
 
 ### Token / trusted hosts
 
@@ -151,12 +152,12 @@ VIP- or primary-DNS-only when the backup is unreachable. Record it as a watcher 
 
 ## Health dashboard
 
-Stock HTTP has no host **Health** board (same gap as stock EXOS). Companion **FortiGate Observability** ships **Health** (ICMP/API/CPU/mem) and **Path** (HA role, conserve, interface/SD-WAN counts).
+Stock HTTP has no host **Health** board. Companion **FortiGate Observability** ships **Health** (ICMP/API/CPU/memory) and **Path** (HA role, VDOM checksum mismatches, interface/SD-WAN counts).
 
 | Page | 5-second read |
 |---|---|
 | **Health** | ICMP / API / CPU / memory gauges |
-| **Path** | HA role, conserve, in-scope iface count, SD-WAN member count — **not** 40 policy graphs |
+| **Path** | HA role, HA VDOM checksum mismatch, in-scope iface count, SD-WAN member count — **not** policy graphs |
 
 ---
 
@@ -175,12 +176,15 @@ Live today (`configure_nbxsync_zerotouch.py` + locked GUI checklist) until the n
 Operator path: `python3 scripts/configure_nbxsync_network.py --apply-fortigate-http`
 
 - Look up **FortiGate by HTTP** already in Zabbix Cloud (**Zabbix, 7.0-2**). Never import bundled 7.0-3. Fail closed if missing/wrong vendor
-- Patch ZBX-27082, WAN `.diff()`, policy master off, CPU/mem CRIT 101. Import **FortiGate Observability**
+- Before any write, require HTTP 200 JSON from every FortiOS `primary_ip4` using NetBox inventory automation’s `NBX_FORTIGATE_TOKEN`; separately require the nbxSync Platform FortiOS monitoring token to exist. The NetBox-origin check does not prove the Zabbix proxy path
+- Patch the version-pinned parent with a fresh `HttpRequest` per request plus tested multi-VDOM interface/SD-WAN normalization; patch WAN state, policy master off, unsupported absolute-capacity items, and stock CPU/mem CRIT 101. Import **FortiGate Observability**
 - FortiOS → Observability (`HostInterfaceRequirement` **ANY**). Not role Firewall
-- Shared `{$FGATE.API.TOKEN}` on **Platform FortiOS** from `NBX_FGATE_TOKEN` (empty env does not wipe). Optional per-host override `NBX_FGATE_TOKEN_<HOSTNAME>`
-- `{$FGATE.API.FQDN}` on **Platform FortiOS** as Jinja `{{ object.primary_ip4.address.ip }}`. Leftover Device-level literals are pruned
-- Fleet defaults on Platform FortiOS. Prune Forti/ICMP templates **and SNMP Monitoring** from role Firewall; prune leftover ICMP/HTTP/SNMP from FortiOS devices, platforms, and device types; assign SNMP Monitoring on FortiManager / FortiAnalyzer platforms. Do **not** strip ICMP Ping from agent-plane CGs.
-- Assign CG **FortiGate HTTP** on Platform FortiOS (Agent @ primary, no ICMP Ping template) so Site Group Agent Monitoring does not win. Observability already nests ICMP.
+- Preserve the existing NetBox `{$FGATE.API.TOKEN}` on Platform FortiOS. `NBX_FORTIGATE_TOKEN` remains the separate automation credential
+- Keep `{$FGATE.API.FQDN}` as Platform FortiOS Jinja. Prune Device-level literals
+- Write an exact per-device interface LLD regex/count from enabled+cabled NetBox interfaces observable in FortiOS, set the exact configured SD-WAN member count, context-disable only reserved `mgmt` link alerts (ICMP/API own availability), and refresh device green/red/extreme memory threshold macros
+- Prune Forti/ICMP templates and SNMP Monitoring from generic role Firewall/FortiOS objects; assign SNMP only to FortiManager/FortiAnalyzer platforms
+- Assign CG **FortiGate HTTP** on Platform FortiOS (Agent @ primary, no duplicate ICMP parent)
+- Overlay auth/transport/JSON failures become unsupported; optional 404/424 endpoints do not abort successful census data. HA role failures never return primary
 - Do **not** dual-link HTTP+SNMP. No Extreme YAML, no mass-HostSync. HostSync both members of the first cluster, then the rest
 
 Changing the FortiOS Template Rule on a live estate **will** retarget on next HostSync of that firewall.

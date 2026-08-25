@@ -171,12 +171,14 @@ def main() -> int:
         'fortigate_http' not in ztc_src,
         'Forti HTTP cutover is network --apply-fortigate-http, not zerotouch',
     )
+    forti_preflight = _function_source(net_src, net_tree, '_require_fortigate_http_preflight') or ''
     record(
         'network_fortigate_http_fail_closed_preflight',
-        '_preflight_fortigate_http' in fg
-        and '_print_fortigate_http_plan' in fg
-        and '_preflight_fortigate_http_zabbix' in fg
-        and 'raise SystemExit' in fg,
+        '_require_fortigate_http_preflight' in fg
+        and '_preflight_fortigate_http' in forti_preflight
+        and '_print_fortigate_http_plan' in forti_preflight
+        and '_preflight_fortigate_http_zabbix' in forti_preflight
+        and 'raise SystemExit' in forti_preflight,
         'preflight prints the plan and aborts before NetBox/Zabbix writes',
     )
     record(
@@ -211,23 +213,32 @@ def main() -> int:
         "encoding='utf-8'" in Path(__file__).read_text(encoding='utf-8'),
         'apply-safety validator is encoding-explicit',
     )
+    forti_import = _function_source(net_src, net_tree, 'import_fortigate_observability_template') or ''
     record(
         'network_fortigate_observability_imported',
-        'import_fortigate_observability_template' in fg,
-        'estate companion YAML is imported; stock 7.0-3 is not',
+        'import_fortigate_observability_template' in fg and 'strict=True' in forti_import,
+        'estate companion YAML import is mandatory and fail-closed; stock 7.0-3 is not imported',
     )
     forti_http = (SCRIPTS / 'fortigate_http.py').read_text(encoding='utf-8')
     zbx_src = (SCRIPTS / 'fortigate_http_zabbix.py').read_text(encoding='utf-8')
     record(
         'network_fortigate_http_overlay_census',
-        'restore_stock_http_scripts' in zbx_src
+        'patch_vdom_star_items(api, templateid)' in zbx_src
+        and 'patch_vdom_lld_metadata(api, templateid)' in zbx_src
+        and "paths.append({'lld_macro': '{#VDOM}', 'path': '$.vdom'})" in zbx_src
         and 'ensure_overlay_census_items' in zbx_src
         and 'ensure_overlay_census_items' in net_src
         and 'OVERLAY_INVENTORY_KEY' in forti_http
         and 'overlayRaw' in zbx_src
-        and 'stock_http_collector_script' in forti_http
-        and 'restore_stock_http_scripts(api, templateid)' in zbx_src,
-        'stock HTTP collectors restored; all-VDOM SD-WAN/IPsec census is Observability overlay',
+        and 'code === 424' in forti_http,
+        'multi-VDOM collectors, unique LLD labels, and independent SD-WAN/IPsec census',
+    )
+    record(
+        'network_fortigate_observability_dependencies',
+        'ensure_observability_trigger_dependencies(api, observability[0])' in fg
+        and 'OBSERVABILITY_TRIGGER_DEPENDENCIES' in zbx_src
+        and 'api.trigger.update' in zbx_src,
+        'companion imports before its ten dependencies are added idempotently',
     )
     record(
         'network_fortigate_http_raw_master_history',
@@ -235,6 +246,32 @@ def main() -> int:
         and 'RAW_MASTER_HISTORY' in forti_http
         and "RAW_MASTER_HISTORY = '1h'" in forti_http,
         'netif/sdwan/system masters keep 1h history so lastclock is visible',
+    )
+    device_macros = _function_source(net_src, net_tree, '_step_fortios_device_macros') or ''
+    object_macro = _function_source(net_src, net_tree, '_upsert_object_macro_assignment') or ''
+    record(
+        'network_fortigate_mgmt_link_alert_is_context_disabled',
+        "context: str = ''" in object_macro
+        and 'context=context' in object_macro
+        and "'{$NET.IF.CONTROL}'" in device_macros
+        and "context='mgmt'" in device_macros,
+        'mgmt remains discovered; only its unreliable physical-link trigger is disabled per Device',
+    )
+    record(
+        'network_fortigate_device_scope_matches_observable_inventory',
+        '/api/v2/cmdb/system/interface?vdom=*' in device_macros
+        and '_flatten_forti_cmdb_list' in device_macros
+        and 'observable_names=observable' in device_macros
+        and '/api/v2/cmdb/system/sdwan?vdom=*' in device_macros
+        and "'{$FGATE.SDWAN.EXPECTED}'" in device_macros,
+        'interface baseline is NetBox∩FortiOS; SD-WAN expectation is exact per Device',
+    )
+    record(
+        'network_fortigate_ha_sync_is_primary_only',
+        'ensure_observability_primary_trigger_gates(api, observability[0])' in fg
+        and 'HA_VDOM_PRIMARY_GATE' in zbx_src
+        and 'fgate.observability.ha.role)=1' in zbx_src,
+        'HA VDOM mismatch remains collected on both members but tickets on the primary',
     )
     record(
         'network_fortigate_fqdn_is_platform_jinja',
@@ -254,6 +291,12 @@ def main() -> int:
         'network_fortigate_prunes_device_fqdn',
         '_prune_fortios_device_fqdn' in plat_macros,
         'leftover device-level FQDN is deleted so platform Jinja inherits',
+    )
+    record(
+        'network_fortigate_unused_forticloud_license_is_silent',
+        "'{$SERVICE.LICENSE.CONTROL}'" in plat_macros
+        and "context='forticloud'" in plat_macros,
+        'FortiCloud status stays visible but its unused Unknown license cannot page',
     )
     transport = _function_source(net_src, net_tree, '_step_fortigate_http_transport') or ''
     record(
