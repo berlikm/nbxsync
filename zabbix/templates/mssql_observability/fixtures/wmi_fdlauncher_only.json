@@ -1,0 +1,14 @@
+[
+  {
+    "Name": "MSSQLFDLauncher",
+    "DisplayName": "SQL Full-text Filter Daemon Launcher (MSSQLSERVER)",
+    "State": "Running",
+    "StartMode": "Manual"
+  },
+  {
+    "Name": "MSSQLFDLauncher$PITDV02",
+    "DisplayName": "SQL Full-text Filter Daemon Launcher (PITDV02)",
+    "State": "Running",
+    "StartMode": "Manual"
+  }
+]

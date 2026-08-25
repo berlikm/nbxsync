@@ -1,0 +1,320 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 748ad4d098d447d492bb935c907f652f
+      name: Templates/Databases
+  templates:
+    - uuid: 52bd809ec8a54feb8364f3d13a9c8074
+      template: 'MSSQL Observability'
+      name: 'MSSQL Observability'
+      description: |
+        Estate companion for stock MSSQL by Zabbix agent 2 (vendor 7.0-6).
+
+        Link this template *alongside* stock Agent 2 on roles MSSQL and
+        MSSQL Query Server. Do not nest stock — nesting would still be one
+        {$MSSQL.URI}. Stock keeps sqlserver://localhost:1433 (default
+        instance). This companion discovers Windows named instances
+        (MSSQL$…) and calls the same plugin keys with
+        sqlserver://localhost/{#MSSQL.INSTANCE} (no port; plugin 7.0.6+).
+
+        Requires Zabbix agent 2 with MSSQL loadable plugin >= 7.0.10 and
+        server/proxy >= 7.0.6. Uses wmi.getall, not service.discovery
+        (Windows by Zabbix agent already owns that key). No host prototypes,
+        no stock graph prototypes, no TCP-1433 Disaster clone.
+
+        See zabbix/notes/mssql-agent2-instances.md.
+      groups:
+        - name: Templates/Databases
+      items:
+        - uuid: 3f55ba471ea249e6a93c97cc8e67baee
+          name: 'MSSQL: Named instance WMI'
+          key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL%''"]'
+          delay: 1h
+          history: 1h
+          value_type: TEXT
+          trends: '0'
+          description: |
+            Win32_Service rows whose Name starts with MSSQL. LIKE 'MSSQL%'
+            (no $ in the item key). JS keeps only MSSQL$<instance>;
+            MSSQLSERVER and MSSQLFDLauncher* are dropped. Default-only
+            hosts correctly yield an empty LLD array.
+          timeout: 30s
+          tags:
+            - tag: component
+              value: census
+        - uuid: 3ecd3acbb9b04143a837cbc412cc20c1
+          name: 'MSSQL: Named instance count'
+          type: DEPENDENT
+          key: mssql.observability.instance.count
+          delay: '0'
+          history: 90d
+          value_type: FLOAT
+          description: |
+            Count of named instances after JS filter. Census trigger is off
+            while {$MSSQL.INSTANCE.DISCOVERY.MIN}=0 (default-only boxes).
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var parsed;
+                  try {
+                    parsed = JSON.parse(value);
+                  } catch (e) {
+                    throw 'MSSQL named-instance LLD: invalid WMI JSON';
+                  }
+                  var rows = [];
+                  if (parsed === null) {
+                    return '[]';
+                  }
+                  if (Object.prototype.toString.call(parsed) === '[object Array]') {
+                    rows = parsed;
+                  } else if (typeof parsed === 'object') {
+                    rows = [parsed];
+                  } else {
+                    return '[]';
+                  }
+                  var PREFIX = 'MSSQL$';
+                  var out = [];
+                  for (var i = 0; i < rows.length; i++) {
+                    var row = rows[i];
+                    var name = row && row.Name;
+                    if (typeof name !== 'string') {
+                      continue;
+                    }
+                    if (name.indexOf(PREFIX) !== 0) {
+                      continue;
+                    }
+                    if (name.indexOf('MSSQLFDLauncher') === 0) {
+                      continue;
+                    }
+                    var instance = name.substring(PREFIX.length);
+                    if (!instance) {
+                      continue;
+                    }
+                    out.push({
+                      '{#MSSQL.SERVICE}': name,
+                      '{#MSSQL.INSTANCE}': instance,
+                      '{#MSSQL.URI}': 'sqlserver://localhost/' + instance,
+                      '{#MSSQL.DISPLAY}': row.DisplayName || name
+                    });
+                  }
+                  return JSON.stringify(out);
+            - type: JSONPATH
+              parameters:
+                - $.length()
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL%''"]'
+          tags:
+            - tag: component
+              value: census
+          triggers:
+            - uuid: 33a0e2815f7245a9a40f8fffeec4c0c8
+              expression: 'last(/MSSQL Observability/mssql.observability.instance.count)<{$MSSQL.INSTANCE.DISCOVERY.MIN} and {$MSSQL.INSTANCE.DISCOVERY.MIN}>0'
+              name: 'MSSQL: fewer named instances than expected'
+              event_name: 'MSSQL: named instance count {ITEM.LASTVALUE1} < {$MSSQL.INSTANCE.DISCOVERY.MIN}'
+              priority: AVERAGE
+              description: |
+                WMI named-instance census is below {$MSSQL.INSTANCE.DISCOVERY.MIN}.
+                Default MIN is 0 so default-only hosts stay quiet. Set MIN on the
+                Device only when you know how many named instances that box has.
+              tags:
+                - tag: scope
+                  value: availability
+      discovery_rules:
+        - uuid: cb908a0bf4d64704b69907e919467af3
+          name: 'MSSQL: Named instance discovery'
+          type: DEPENDENT
+          key: mssql.named.instance.discovery
+          delay: '0'
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: |
+            Named SQL Server instances (MSSQL$PITDV02, …). Stock Agent 2 owns
+            the default instance. Filter on {#MSSQL.INSTANCE}; do not put
+            instance names in NetBox.
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#MSSQL.INSTANCE}'
+                value: '{$MSSQL.INSTANCE.MATCHES}'
+                formulaid: A
+              - macro: '{#MSSQL.INSTANCE}'
+                operator: NOT_MATCHES_REGEX
+                value: '{$MSSQL.INSTANCE.NOT_MATCHES}'
+                formulaid: B
+          item_prototypes:
+            - uuid: 0625bb035bb240dbaac8b402852eeb93
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Version'
+              key: 'mssql.version["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 5m
+              value_type: CHAR
+              trends: '0'
+              description: 'Plugin version probe for this named instance. URI is LLD, not {$MSSQL.URI}.'
+              timeout: 30s
+              preprocessing:
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                - tag: component
+                  value: application
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+              trigger_prototypes:
+                - uuid: 70b0db2ec48940d2912ad06244c7fe17
+                  expression: 'nodata(/MSSQL Observability/mssql.version["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],15m)=1'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: no version data for 15m'
+                  priority: AVERAGE
+                  description: |
+                    Named-instance plugin item is unsupported or silent. Typical
+                    causes: login missing on that instance, plugin too old for
+                    instance-in-URI, SQL Browser/port, or the Windows service
+                    is stopped (Windows by agent already tickets the service).
+                    Not a site Disaster and not a TCP-1433 simple check.
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+            - uuid: 945c5894c04248aa9aafaf11d753df2f
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Get performance counters'
+              key: 'mssql.perfcounter.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 1m
+              history: '0'
+              value_type: TEXT
+              trends: '0'
+              description: 'Stock perfcounter master, keyed by named-instance URI. JSON dependents are v1-out of scope.'
+              timeout: 30s
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: b6b8df024f6140728afe38346cd4980b
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Get job status'
+              key: 'mssql.job.status.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 10m
+              history: '0'
+              value_type: TEXT
+              trends: '0'
+              description: 'Stock job-status master for this named instance. No nested job LLD in v1.'
+              timeout: 30s
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: 3e701a797e4e4c3a91227d823c504b00
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Get last backup'
+              key: 'mssql.last.backup.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 10m
+              history: '0'
+              value_type: TEXT
+              trends: '0'
+              description: 'Stock last-backup master for this named instance. Per-DB backup age is v2.'
+              timeout: 30s
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: 45b50c5a4ea6461e82186d0a3b265ac5
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Get database'
+              key: 'mssql.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 1h
+              history: '0'
+              value_type: TEXT
+              trends: '0'
+              description: 'Stock db.get master. Count only in v1; no {#DBNAME} LLD (Zabbix cannot nest discovery under each instance on the same host).'
+              timeout: 30s
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: cc5e55eea05e459ab565ebd64e119f82
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Database count'
+              type: DEPENDENT
+              key: 'mssql.observability.db.count["{#MSSQL.INSTANCE}"]'
+              delay: '0'
+              history: 90d
+              value_type: FLOAT
+              description: 'What SQL returned (includes system DBs). Not the stock DBNAME.NOT_MATCHES filter.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - $.length()
+              master_item:
+                key: 'mssql.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              tags:
+                - tag: component
+                  value: application
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var parsed;
+                  try {
+                    parsed = JSON.parse(value);
+                  } catch (e) {
+                    throw 'MSSQL named-instance LLD: invalid WMI JSON';
+                  }
+                  var rows = [];
+                  if (parsed === null) {
+                    return '[]';
+                  }
+                  if (Object.prototype.toString.call(parsed) === '[object Array]') {
+                    rows = parsed;
+                  } else if (typeof parsed === 'object') {
+                    rows = [parsed];
+                  } else {
+                    return '[]';
+                  }
+                  var PREFIX = 'MSSQL$';
+                  var out = [];
+                  for (var i = 0; i < rows.length; i++) {
+                    var row = rows[i];
+                    var name = row && row.Name;
+                    if (typeof name !== 'string') {
+                      continue;
+                    }
+                    if (name.indexOf(PREFIX) !== 0) {
+                      continue;
+                    }
+                    if (name.indexOf('MSSQLFDLauncher') === 0) {
+                      continue;
+                    }
+                    var instance = name.substring(PREFIX.length);
+                    if (!instance) {
+                      continue;
+                    }
+                    out.push({
+                      '{#MSSQL.SERVICE}': name,
+                      '{#MSSQL.INSTANCE}': instance,
+                      '{#MSSQL.URI}': 'sqlserver://localhost/' + instance,
+                      '{#MSSQL.DISPLAY}': row.DisplayName || name
+                    });
+                  }
+                  return JSON.stringify(out);
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL%''"]'
+      macros:
+        - macro: '{$MSSQL.INSTANCE.DISCOVERY.MIN}'
+          value: '0'
+          description: 'Expected named-instance count. 0 disables the census trigger (default-only hosts).'
+        - macro: '{$MSSQL.INSTANCE.MATCHES}'
+          value: '.*'
+          description: 'Include discovered named instances (regex on {#MSSQL.INSTANCE}).'
+        - macro: '{$MSSQL.INSTANCE.NOT_MATCHES}'
+          value: CHANGE_IF_NEEDED
+          description: 'Exclude discovered named instances (e.g. SQLEXPRESS).'
