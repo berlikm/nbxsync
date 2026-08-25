@@ -1022,6 +1022,81 @@ def patch_vdom_lld_metadata(api, templateid) -> dict[str, int]:
     logger.info('  VDOM LLD labels: %s', updated)
     return updated
 
+def _complete_time_period(fields: list[dict]) -> tuple[list[dict], bool]:
+    """Complete a widget's relative interval when a vendor template omits `to`."""
+    out = [
+        {
+            'type': field.get('type'),
+            'name': str(field.get('name') or ''),
+            'value': str(field.get('value') or ''),
+        }
+        for field in fields or []
+    ]
+    by_name = {field['name']: field for field in out}
+    if 'time_period.from' not in by_name or 'time_period.to' in by_name:
+        return out, False
+    out.append({
+        'type': by_name['time_period.from'].get('type', 1),
+        'name': 'time_period.to',
+        'value': 'now',
+    })
+    return out, True
+
+
+def patch_dashboard_time_periods(api, templateid) -> dict[str, int]:
+    """Repair incomplete SVG time ranges without replacing the vendor dashboard."""
+    dashboards = api.templatedashboard.get(
+        templateids=[str(templateid)],
+        output=['dashboardid', 'name'],
+        selectPages='extend',
+    ) or []
+    updated = {'dashboards': 0, 'widgets': 0}
+    for dashboard in dashboards:
+        pages = []
+        dashboard_changed = False
+        for page in dashboard.get('pages', []):
+            widgets = []
+            for widget in page.get('widgets', []):
+                fields = list(widget.get('fields') or [])
+                changed = False
+                if widget.get('type') == 'svggraph':
+                    fields, changed = _complete_time_period(fields)
+                payload = {
+                    key: widget[key]
+                    for key in (
+                        'widgetid',
+                        'type',
+                        'name',
+                        'x',
+                        'y',
+                        'width',
+                        'height',
+                        'view_mode',
+                    )
+                    if key in widget
+                }
+                payload['fields'] = fields
+                widgets.append(payload)
+                if changed:
+                    dashboard_changed = True
+                    updated['widgets'] += 1
+            page_payload = {
+                key: page[key]
+                for key in ('dashboard_pageid', 'name', 'display_period')
+                if key in page
+            }
+            page_payload['widgets'] = widgets
+            pages.append(page_payload)
+        if dashboard_changed:
+            api.templatedashboard.update(
+                dashboardid=dashboard['dashboardid'],
+                pages=pages,
+            )
+            updated['dashboards'] += 1
+    logger.info('  dashboard time periods: %s', updated)
+    return updated
+
+
 
 def apply_fortigate_http_patches(api, templateid) -> dict:
     """Fail closed: version-pinned HTTP compatibility fixes before NetBox writes."""
@@ -1029,6 +1104,7 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
     zbx = patch_zbx27082_items(api, templateid)
     collectors = patch_vdom_star_items(api, templateid)
     vdom_metadata = patch_vdom_lld_metadata(api, templateid)
+    dashboards = patch_dashboard_time_periods(api, templateid)
     remaining = inspect_http_scripts(api, templateid)
     still = [key for key, state in remaining.items() if state == 'vulnerable']
     if still:
@@ -1049,6 +1125,7 @@ def apply_fortigate_http_patches(api, templateid) -> dict:
         'zbx27082': zbx,
         'collector_compatibility': collectors,
         'vdom_metadata': vdom_metadata,
+        'dashboard_time_periods': dashboards,
         'ha_role': ha,
         'macros': macros,
         'policy': policy,

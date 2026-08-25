@@ -563,6 +563,62 @@ class FirewallRoleMacroTests(unittest.TestCase):
             expected,
         )
 
+
+    def test_dashboard_time_period_patch_is_complete_and_idempotent(self):
+        from copy import deepcopy
+        from types import SimpleNamespace
+        from fortigate_http_zabbix import patch_dashboard_time_periods
+
+        class TemplateDashboardAPI:
+            def __init__(self):
+                self.rows = [{
+                    'dashboardid': '302',
+                    'name': 'FortiGate: General',
+                    'pages': [{
+                        'dashboard_pageid': '10',
+                        'name': 'Overview',
+                        'display_period': '0',
+                        'widgets': [{
+                            'widgetid': '20',
+                            'type': 'svggraph',
+                            'name': 'Disk usage',
+                            'x': '0',
+                            'y': '8',
+                            'width': '36',
+                            'height': '5',
+                            'view_mode': '0',
+                            'fields': [{
+                                'type': '1',
+                                'name': 'time_period.from',
+                                'value': 'now-1d',
+                            }],
+                        }],
+                    }],
+                }]
+                self.updated = []
+
+            def get(self, **_kwargs):
+                return deepcopy(self.rows)
+
+            def update(self, **kwargs):
+                self.updated.append(kwargs)
+                self.rows[0]['pages'] = deepcopy(kwargs['pages'])
+
+        templatedashboard = TemplateDashboardAPI()
+        api = SimpleNamespace(templatedashboard=templatedashboard)
+        self.assertEqual(
+            patch_dashboard_time_periods(api, '123'),
+            {'dashboards': 1, 'widgets': 1},
+        )
+        fields = templatedashboard.updated[0]['pages'][0]['widgets'][0]['fields']
+        self.assertIn(
+            {'type': '1', 'name': 'time_period.to', 'value': 'now'},
+            fields,
+        )
+        self.assertEqual(
+            patch_dashboard_time_periods(api, '123'),
+            {'dashboards': 0, 'widgets': 0},
+        )
     def test_stock_collectors_are_not_vdom_rewrites(self):
         from fortigate_http import script_is_vdom_mutated, stock_http_collector_script
 

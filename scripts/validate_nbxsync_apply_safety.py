@@ -228,6 +228,8 @@ def main() -> int:
         and "paths.append({'lld_macro': '{#VDOM}', 'path': '$.vdom'})" in zbx_src
         and '_with_vdom_tag' in zbx_src
         and "{'tag': 'vdom', 'value': '{#VDOM}'}" in zbx_src
+        and 'patch_dashboard_time_periods(api, templateid)' in zbx_src
+        and "'name': 'time_period.to'" in zbx_src
         and 'ensure_overlay_census_items' in zbx_src
         and 'ensure_overlay_census_items' in net_src
         and 'OVERLAY_INVENTORY_KEY' in forti_http

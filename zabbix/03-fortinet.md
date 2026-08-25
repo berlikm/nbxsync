@@ -86,7 +86,7 @@ After **FortiGate Observability** is linked, **Monitoring → Hosts → host →
 | **Health** | ICMP / API / CPU / memory gauges |
 | **Path** | HA role, HA VDOM checksum mismatch count, in-scope interface count, SD-WAN member count. Stock LLD WAN graphs stay on the HTTP parent |
 
-Stock HTTP has **no** host Health board. Observability ships **Health** and **Path**. Traffic graphs from interface/SD-WAN LLD remain on the stock parent until a later board wires them in.
+Stock HTTP has **no** host Health board. Observability ships **Health** and **Path**. Traffic graphs from interface/SD-WAN LLD remain on the stock parent until a later board wires them in. The cutover also completes the stock **General → Disk usage** SVG interval as `now-1d` through `now`; Cloud 7.0-2 otherwise omits `time_period.to` and Zabbix rejects the widget.
 
 ---
 
