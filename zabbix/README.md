@@ -28,7 +28,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/extreme_routing_snmp/` | Extreme Routing by SNMP (OSPF) | imported; not linked (YAML High if linked) |
 | `templates/extreme_iq_engine_snmp/` | Extreme IQ Engine by SNMP | imported; **Health** dashboard; severities per [02](02-extreme-access-points.md) |
 | `templates/fortinet_fortigate_observability/` | FortiGate Observability | companion; nests Cloud **FortiGate by HTTP** 7.0-2 + ICMP Ping; **Health** + **Network interfaces** + **Path** (Loss/Probe) — [03](03-fortinet.md) |
-| `templates/mssql_observability/` | MSSQL Observability | **spec only** — named-instance Agent 2 companion; YAML not imported — [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md) |
+| `templates/mssql_observability/` | MSSQL Observability | companion YAML + LLD fixtures; **soft** zerotouch assign; import before canary — [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md) |
 
 ## Related
 
