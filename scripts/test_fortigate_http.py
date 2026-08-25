@@ -885,6 +885,7 @@ class FortiVdomStarTests(unittest.TestCase):
         self.assertIn('"member_lld": []', patched)
         self.assertIn('(sdwan_list.results.members || []).filter', patched)
         self.assertIn('fortiMonitorLookup(sdwan_member_data.results', patched)
+        self.assertIn("'vdom': item.vdom", patched)
         self.assertIn('function fortiHttpRaw', patched)
         self.assertIn('code === 424', patched)
         self.assertIn('code === 500', patched)
@@ -895,6 +896,16 @@ class FortiVdomStarTests(unittest.TestCase):
         self.assertGreaterEqual(_js_function_span(patched, 'flattenFortiMonitorMap')[0], gend)
         self.assertGreaterEqual(_js_function_span(patched, 'fortiFetchVdom')[0], gend)
         self.assertEqual(patch_vdom_star_script(patched), patched)
+
+    def test_existing_sdwan_patch_adds_health_lld_vdom(self):
+        raw = _yaml_script(_http_yaml(), 'fgate.sdwan.get_data')
+        patched = patch_vdom_star_script(patch_zbx27082_script(raw))
+        legacy = patched.replace("\t\t\t\t'vdom': item.vdom,\n", '', 1)
+        self.assertFalse(script_has_vdom_star(legacy))
+        upgraded = patch_vdom_star_script(legacy)
+        self.assertTrue(script_has_vdom_star(upgraded))
+        self.assertIn("'vdom': item.vdom", upgraded)
+        self.assertEqual(patch_vdom_star_script(upgraded), upgraded)
 
     def test_lifts_helpers_nested_inside_gethttpdata(self):
         raw = _yaml_script(_http_yaml(), 'fgate.sdwan.get_data')

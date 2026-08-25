@@ -494,6 +494,8 @@ _SDWAN_NORMALIZE = (
     "\t\t\tsdwan_health_data = { results: flattenFortiMonitorMap(sdwan_health_data) };\n"
     "\t\t\tsdwan_list = { results: flattenFortiSdwanCmdb(sdwan_list) };\n"
 )
+_SDWAN_HEALTH_NAME_LINE = "\t\t\t\t'health_name': item.name,\n"
+_SDWAN_HEALTH_VDOM_LINE = "\t\t\t\t'vdom': item.vdom,\n"
 _SDWAN_EMPTY_DATA = (
     '{"data": {"member_lld": [], "health_lld": [], "health_data": []}, "error": ""}'
 )
@@ -880,7 +882,10 @@ def script_has_vdom_star(script: str) -> bool:
     ):
         return False
     if 'virtual-wan/members' in script or '/cmdb/system/sdwan' in script:
-        return '"member_lld": []' in script
+        return (
+            '"member_lld": []' in script
+            and _SDWAN_HEALTH_VDOM_LINE in script
+        )
     if '/monitor/system/interface' in script or '/cmdb/system/interface' in script:
         return (
             "fortiFetchVdom(api_url, '/api/v2/cmdb/system/interface')" in script
@@ -1217,6 +1222,14 @@ def _ensure_sdwan_vdom_resilience(script: str) -> str:
         patched, n_health = _SDWAN_HEALTH_RE.subn(_SDWAN_HEALTH_LOOKUP, patched, count=1)
         if n_health != 1:
             return script
+    if _SDWAN_HEALTH_VDOM_LINE not in patched:
+        if patched.count(_SDWAN_HEALTH_NAME_LINE) != 1:
+            return script
+        patched = patched.replace(
+            _SDWAN_HEALTH_NAME_LINE,
+            _SDWAN_HEALTH_NAME_LINE + _SDWAN_HEALTH_VDOM_LINE,
+            1,
+        )
     if _SDWAN_STOCK_DATA in patched and '"member_lld": []' not in patched:
         patched = patched.replace(_SDWAN_STOCK_DATA, _SDWAN_EMPTY_DATA, 1)
     for old, new in _SDWAN_FOREACH:
