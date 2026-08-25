@@ -152,12 +152,74 @@ VIP- or primary-DNS-only when the backup is unreachable. Record it as a watcher 
 
 ## Health dashboard
 
-Stock HTTP has no host **Health** board. Companion **FortiGate Observability** ships **Health** (ICMP/API/CPU/memory) and **Path** (HA role, VDOM checksum mismatches, interface/SD-WAN counts).
+Stock HTTP has no host **Health** board. Companion **FortiGate Observability** ships **Health** and **Path**, same chrome as EXOS/VOSS/IQ Overview — not a second vendor gallery.
 
 | Page | 5-second read |
 |---|---|
-| **Health** | ICMP / API / CPU / memory gauges |
-| **Path** | HA role, HA VDOM checksum mismatch, in-scope iface count, SD-WAN member count — **not** policy graphs |
+| **Health → Overview** | ICMP / API / CPU gauges + **Uptime** item tile. Problems. CPU+memory trend, Uptime history |
+| **Health → HA** | Memory (the Forti analog of EXOS Temp — conserve-mode kills sessions) + HA role / members / VDOM mismatches as **item** tiles |
+| **Path → Overview** | Honeycomb status maps for in-scope interfaces, SD-WAN members, health-checks |
+| **Path → Probe** | Navigator of loss/latency/jitter — not a traffic gallery |
+
+### Why each widget exists
+
+| Question | Where | Widget | Why this type |
+|---|---|---|---|
+| Can we reach the box? | Overview | ICMP gauge | Binary, same chrome as EXOS |
+| Can we see inside it? | Overview | API gauge | Control plane — SNMP's job on EXOS |
+| Is compute saturating? | Overview | CPU gauge; **CPU / memory** graph | Memory belongs on the trend, not a 4th gauge (EXOS rule). Conserve-mode still pages from the trigger |
+| How long has the OS been up? | Overview | **Uptime** item tile + graph | Same 4th tile as EXOS/VOSS/IQ. Duration, not 0–100 |
+| What is broken right now? | Overview | Problems strip | Tickets, not decoration |
+| Is this chassis in conserve-mode? | HA | Memory gauge (82/88/95) + trend | FortiOS green/red/extreme. Display colours are the estate defaults; triggers use per-device macros |
+| Who is primary? | HA | HA role **item** | 0/1 identity with valuemap — not a gauge with fake max=1 |
+| Is the peer still there? | HA | Member count item | Census, not a 0–10 gauge |
+| Are we split-brain on config? | HA | VDOM mismatch count item | 0 green, ≥1 red. Ticket is primary-only |
+| Which WAN/HA port is down? | Path | Honeycomb of **IFNAME** (`wan1`, `ha`) | Colour without an ID is a Christmas tree. Forti link 0=up 1=down (inverted vs IF-MIB). Compact **24×4** — a switch-sized 72×6 map of four WAN ports paints giant hexes (same lesson as IQ eth) |
+| Which SD-WAN member / probe is down? | Path | Two more compact maps | Member link vs health-check status. Empty = none discovered, not “WAN is fine” |
+| Why is *this* probe sick? | Path → Probe | Navigator of loss/latency/jitter | Does not repeat Overview maps. Traffic bits stay on stock **FortiGate: Statistics** — companion YAML cannot bind nested graph prototypes (Zabbix drops them on import) |
+
+Do **not** put HA role, interface count, or SD-WAN count on a gauge with a hardcoded max. A site with 3 members looked 30% empty; a site with 12 looked broken. Item tiles and honeycombs scale.
+
+Path Overview is scan-only (three maps). Problems live on Health. Do not duplicate Path as a page *inside* Health.
+
+---
+
+## How we alert
+
+Same SRE bar as Extreme: page symptoms, ticket partials, graph causes, never fail silent.
+
+```
+SD-WAN / WAN iface  →  API dead  →  ICMP down  →  site unreachable
+CPU / mem / license →  ICMP down
+```
+
+| Channel | Zabbix sev | Forti |
+|---|---|---|
+| SMS/call 24/7 | Disaster, High | ICMP down per **member**. Memory **extreme** (Disaster — exception; FortiOS is refusing new sessions). HA VDOM checksum **High** on primary. Memory **red** High |
+| Ticket, business hours | Average | API/port blind. Path down (primary only, sustained `#3`). HA member count. Unsupported items. Interface / SD-WAN census. License unsuccessful |
+| Next day | Warning | CPU 85%. SD-WAN loss. Interface errors. Per-endpoint API errors. License 7d |
+| Log | Info | Firmware (off if `CONTROL=0`). Serial / sysname. Reboot (stock Info — retune later) |
+
+**One incident per chassis outage:** companion watchers depend on no-API → no-ICMP. **One incident per WAN cut:** path triggers gated on `ha.role=1`. Secondary still has ICMP/API/CPU so a dead backup is not silent.
+
+**What must not page:** util 95%, stock CPU/mem High, every policy, VLAN/VPN LLD, firmware-available Info, ICMP loss/RTT from the Swiss proxy, reserved `mgmt` physical-down, both HA members for the same SD-WAN member.
+
+Actions/media are **not** in this template. Cutover still needs the estate action that maps High/Disaster → pikett and Average → ticket. LogicMonitor parity failed open there.
+
+---
+
+## Remaining gaps (after dashboards)
+
+| Gap | Why it is not silent-fail | Do later |
+|---|---|---|
+| Stock **FortiGate: Statistics** 1-column traffic gallery | Graphs exist; they just look unlike EXOS 3×2 | `--apply` patch like stock EXOS **Network interfaces** — do not fork 7.0-2 YAML |
+| Path Average does not depend on stock ICMP High | Dead mgmt path can still open WAN tickets on the current primary | Parent after ICMP triggerid is stable |
+| Memory **Disaster** vs “Disaster = site only” | Extreme *is* user impact (new sessions die). HA peer may still forward | Keep until site parent exists; then drop this to High |
+| No PSU/fan/temp | HTTP does not collect it | Thin SNMPv3 or HTTP sensor item — never a second `icmpping` |
+| IPsec state | Inventory census only | After endpoint semantics + expected-tunnel macros |
+| Site last-path Disaster | Contracted; not built | 05 + site host |
+| Reboot is Info | Stock | Warning, same as EXOS |
+| Proxy last-seen | Hosts go *unknown* | Cloud console / later |
 
 ---
 

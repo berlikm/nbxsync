@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
+
+import yaml
 
 from fortigate_http import (
     AGENT_MONITORING_CG,
@@ -65,6 +68,26 @@ from fortigate_http import (
     script_has_zbx27082,
     with_ha_role_gate,
 )
+
+_COMPANION_YAML = (
+    Path(__file__).resolve().parents[1]
+    / 'zabbix/templates/fortinet_fortigate_observability/template_fortigate_observability.yaml'
+)
+
+
+def _companion_template() -> dict:
+    doc = yaml.safe_load(_COMPANION_YAML.read_text(encoding='utf-8'))
+    return doc['zabbix_export']['templates'][0]
+
+
+def _zabbix_regsub_group1(macro: str, item_name: str) -> str | None:
+    match = re.search(r'\.regsub\("(.+)","\\1"\)}$', macro)
+    if not match:
+        return None
+    found = re.search(match.group(1), item_name)
+    if not found:
+        return None
+    return found.group(1)
 
 
 class FirewallRoleMacroTests(unittest.TestCase):
@@ -433,6 +456,114 @@ class FirewallRoleMacroTests(unittest.TestCase):
             'last(/FortiGate Observability/fgate.observability.ha.role)=1',
             companion,
         )
+        self.assertIn('fgate.observability.uptime', companion)
+        self.assertIn("name: 'HA role'", companion)
+
+    def test_observability_health_matches_exos_overview_chrome(self):
+        tpl = _companion_template()
+        keys = {item['key'] for item in tpl.get('items') or []}
+        self.assertIn('fgate.observability.uptime', keys)
+        valuemaps = {row['name'] for row in tpl.get('valuemaps') or []}
+        self.assertEqual(valuemaps, {'Service state', 'HA role'})
+        ha_item = next(item for item in tpl['items'] if item['key'] == 'fgate.observability.ha.role')
+        self.assertEqual((ha_item.get('valuemap') or {}).get('name'), 'HA role')
+
+        dashes = {dash['name']: dash for dash in tpl.get('dashboards') or []}
+        self.assertEqual(set(dashes), {'Health', 'Path'})
+        health_pages = [page['name'] for page in dashes['Health']['pages']]
+        path_pages = [page['name'] for page in dashes['Path']['pages']]
+        self.assertEqual(health_pages, ['Overview', 'HA'])
+        self.assertEqual(path_pages, ['Overview', 'Probe'])
+        self.assertNotIn('Path', health_pages)
+        self.assertNotIn('Diagnostics', health_pages + path_pages)
+
+        overview = next(page for page in dashes['Health']['pages'] if page['name'] == 'Overview')
+        widgets = overview['widgets']
+        self.assertFalse(any(True in widget and 'y' not in widget for widget in widgets))
+
+        def _wy(widget):
+            if 'y' in widget:
+                return str(widget.get('y'))
+            if True in widget:
+                return str(widget.get(True))
+            return '0'
+
+        tiles = [widget for widget in widgets if _wy(widget) == '0']
+        self.assertEqual([widget.get('name') for widget in tiles], ['ICMP', 'API', 'CPU', 'Uptime'])
+        self.assertEqual([widget.get('type') for widget in tiles], ['gauge', 'gauge', 'gauge', 'item'])
+        self.assertTrue(all(str(widget.get('width')) == '18' for widget in tiles))
+
+        problems = [widget for widget in widgets if widget.get('type') == 'problems']
+        self.assertEqual(len(problems), 1)
+        self.assertEqual((str(problems[0].get('width')), str(problems[0].get('height')), _wy(problems[0])), ('72', '3', '4'))
+
+        histories = [widget for widget in widgets if widget.get('type') == 'svggraph']
+        self.assertEqual([widget.get('name') for widget in histories], ['CPU / memory', 'Uptime'])
+        self.assertTrue(all(str(widget.get('width')) == '36' and str(widget.get('height')) == '6' and _wy(widget) == '7' for widget in histories))
+        history_keys = []
+        for widget in histories:
+            for field in widget.get('fields') or []:
+                value = field.get('value')
+                if isinstance(value, dict) and value.get('key'):
+                    history_keys.append(value['key'])
+        self.assertEqual(history_keys, ['fgate.observability.cpu.util', 'fgate.observability.memory.util', 'fgate.observability.uptime'])
+
+        gauges = [widget for widget in widgets if widget.get('type') == 'gauge']
+        for gauge in gauges:
+            fields = {field.get('name'): field.get('value') for field in gauge.get('fields') or []}
+            shows = {str(field.get('value')) for field in gauge.get('fields') or [] if str(field.get('name')).startswith('show.')}
+            self.assertEqual(shows, {'2', '5'}, gauge.get('name'))
+            self.assertEqual(str(fields.get('th_show_labels')), '0', gauge.get('name'))
+            self.assertEqual(str(fields.get('angle')), '270', gauge.get('name'))
+            self.assertEqual(str(fields.get('value_size')), '25', gauge.get('name'))
+            self.assertEqual(str(fields.get('value_bold')), '1', gauge.get('name'))
+
+        cpu_fields = {field.get('name'): field.get('value') for field in tiles[2].get('fields') or []}
+        self.assertEqual(cpu_fields.get('thresholds.1.threshold'), '80')
+        self.assertEqual(cpu_fields.get('thresholds.2.threshold'), '90')
+
+        ha_page = next(page for page in dashes['Health']['pages'] if page['name'] == 'HA')
+        ha_names = [widget.get('name') for widget in ha_page['widgets']]
+        self.assertEqual(ha_names, ['Memory', 'Memory', 'HA role', 'HA members', 'VDOM mismatches'])
+        memory_gauge = next(widget for widget in ha_page['widgets'] if widget.get('type') == 'gauge')
+        memory_fields = {field.get('name'): field.get('value') for field in memory_gauge.get('fields') or []}
+        self.assertEqual(memory_fields.get('thresholds.1.threshold'), '82')
+        self.assertEqual(memory_fields.get('thresholds.2.threshold'), '88')
+        self.assertEqual(memory_fields.get('thresholds.3.threshold'), '95')
+
+        path_overview = next(page for page in dashes['Path']['pages'] if page['name'] == 'Overview')
+        honey = [widget for widget in path_overview['widgets'] if widget.get('type') == 'honeycomb']
+        self.assertEqual([widget.get('name') for widget in honey], ['Interfaces', 'SD-WAN members', 'SD-WAN health'])
+        self.assertTrue(all(str(widget.get('width')) == '24' and str(widget.get('height')) == '4' for widget in honey))
+        self.assertEqual([widget.get('type') for widget in path_overview['widgets']], ['honeycomb', 'honeycomb', 'honeycomb'])
+        self.assertFalse(any(widget.get('type') == 'graphprototype' for dash in tpl['dashboards'] for page in dash['pages'] for widget in page['widgets']))
+
+        samples = {
+            'Interfaces': ('Interface [wan1(WAN)]: Link status', 'wan1'),
+            'SD-WAN members': ('SD-WAN [virtual-wan-link]:[port1]: Link status', 'port1'),
+            'SD-WAN health': ('SD-WAN [Google]:[wan1]: Interface status', 'Google'),
+        }
+        for widget in honey:
+            fields = {field.get('name'): field.get('value') for field in widget.get('fields') or []}
+            label = str(fields.get('primary_label') or '')
+            self.assertIn('(?:', label, widget.get('name'))
+            self.assertEqual(str(fields.get('show.0')), '1', widget.get('name'))
+            self.assertIsNone(fields.get('show.1'), widget.get('name'))
+            self.assertIsNone(fields.get('primary_label_bold'), widget.get('name'))
+            item_name, want = samples[widget['name']]
+            self.assertEqual(_zabbix_regsub_group1(label, item_name), want, widget.get('name'))
+            self.assertEqual(str(fields.get('interpolation')), '0')
+            self.assertEqual(fields.get('thresholds.0.color'), '0EC9AC')
+            self.assertEqual(fields.get('thresholds.1.color'), 'FF465C')
+
+        probe = next(page for page in dashes['Path']['pages'] if page['name'] == 'Probe')
+        nav = next(widget for widget in probe['widgets'] if widget.get('type') == 'itemnavigator')
+        graph = next(widget for widget in probe['widgets'] if widget.get('type') == 'svggraph')
+        nav_fields = {field.get('name'): field.get('value') for field in nav.get('fields') or []}
+        graph_fields = {field.get('name'): field.get('value') for field in graph.get('fields') or []}
+        self.assertEqual(nav_fields.get('group_by.0.tag_name'), 'interface')
+        self.assertEqual(nav_fields.get('items.2'), 'SD-WAN *: Packets loss')
+        self.assertEqual(graph_fields.get('ds.0.itemids.0._reference'), 'FNAVP._itemid')
 
     def test_observability_dependencies_are_idempotent(self):
         from types import SimpleNamespace

@@ -21,8 +21,8 @@ This page is the **target contract**. Use only `configure_nbxsync_network.py --a
 | Never silent | unsupported items; nodata ICMP/API; overlay endpoint errors; NetBox∩FortiOS interface baseline; SD-WAN below the exact per-device `{$FGATE.SDWAN.EXPECTED}`; HA member count ≠ `{$FGATE.HA.EXPECTED}`; HA VDOM checksum mismatch |
 | Control plane | Zabbix REST token in nbxSync on **Platform FortiOS**; separate NetBox inventory automation token in `NBX_FORTIGATE_TOKEN`. FQDN is platform Jinja on `primary_ip4`. Interface LLD is an exact per-device regex from enabled+cabled NetBox interfaces observable in FortiOS CMDB; device context `{$NET.IF.CONTROL:mgmt}=0` suppresses only the unreliable reserved-management link signal while ICMP/API monitor that path |
 | Collect first | Policy LLD **disabled**. util 95% silenced (101). Duplicate stock CPU/mem **High** silenced (CRIT 101); companion memory alert uses FortiOS green/red/extreme thresholds. Firmware Info off if CONTROL=0 |
-| Host dashboard | Observability **Health** + **Path** |
-| Severity | **Disaster** = site only. Warning = next day, not a dump bucket |
+| Host dashboard | **Health** (Overview / HA) + **Path** (maps / Probe). Same chrome as EXOS |
+| Severity | **Disaster** = site only (memory **extreme** is the documented exception). Warning = next day, not a dump bucket |
 
 Data path: companion **FortiGate Observability** (nests stock **FortiGate by HTTP** + **ICMP Ping**). Do **not** also assign ICMP Ping or FortiGate by HTTP on FortiOS objects — they are nested parents, and Zabbix rejects a duplicate parent link. Do **not** also link FortiGate by SNMP or Network Generic (`icmpping` collision). After SNMP Monitoring is pruned from role Firewall, Platform FortiOS uses CG **FortiGate HTTP** (Agent @ primary, no ICMP Ping template) so Site Group **Agent Monitoring** does not win.
 
@@ -77,16 +77,42 @@ Latest data and Problems expose a `vdom` tag subfilter for every discovered inte
 
 ---
 
+## How it pages
+
+Template triggers are the contract. **Actions / media are estate-wide** (not this YAML): Disaster+High SMS/call 24/7, Average ticket, Warning next day, Info log. A trigger with nobody listening is not monitoring.
+
+| What the operator sees | What actually fired | Do this |
+|---|---|---|
+| Member unreachable | Nested **ICMP Ping** **High** (3 misses). Per chassis, not the VIP | Is the **peer** still forwarding? Secondary High is still a dead box — RMA / console / OOB. Not a WAN ticket |
+| GUI/API blind, ping lives | Stock **Unexpected response from API** Average, and/or **port unavailable** Average. Companion **no API data 10m** if the item went silent | Token, trusted-hosts on **that** ha-mgmt, TLS name, scheme/port still `https`/`20443` |
+| One underlay member / health-check dead | Stock SD-WAN or WAN iface **Average**, sustained `#3`, **primary/standalone only** (`fgate.ha.role=1`) | Circuit / SFP / ISP. Mute with `{$SDWAN.*.CONTROL}=0` or maintenance — never ACK a `.diff()` hole (already patched) |
+| Last usable site path | **Not this template.** Later: High on the path, **Disaster** on the site | Do not also ticket Extreme `UW` and Cato for the same ISP cut |
+| HA peer missing | Companion **HA member count unexpected** Average (`system/ha-peer` ≠ `{$FGATE.HA.EXPECTED}`) | Backup down, never HostSynced, or standalone still at estate default 2 |
+| Cluster config drift | Companion **HA VDOM configuration is out of sync** **High**, primary only, 15m | Authoritative `system/ha-checksums` only — not `ha-nonsync-checksums` |
+| Conserve-mode | Companion memory **High** (red) / **Disaster** (extreme), recover below **green**. Stock CPU/mem **High** is silenced (`CRIT` 101) | Fail over; extreme is FortiOS dropping new sessions. Disaster here is a known exception to “site only” |
+| We went blind | Companion **unsupported items** / **fewer interfaces** / **fewer SD-WAN members** Average | IFNAME regex, ZBX-26072, script item, proxy. Not a WAN outage |
+| CPU 85% | Stock **Warning** (`{$CPU.UTIL.WARN}`) | Next day. Do not page |
+| License unsuccessful / 7d expiry | Average / Warning, primary-gated after apply | FortiGuard SKU — FortiCloud `Unknown` is context-muted |
+| Reboot | Stock **Info** (`uptime < 10m`) | Retune to Warning later; do not fork now |
+
+Dependencies (companion, applied after import): watchers and memory/HA tickets hang off **no API data**, which hangs off **no ICMP data**. A dead box is one ICMP High, not a census fan-out. Path tickets do **not** yet depend on stock ICMP High — a mgmt-path failure can still open WAN Averages on the current primary; that is a later parent, not a reason to skip the backup host.
+
+---
+
 ## Health dashboard (host, from the template)
 
-After **FortiGate Observability** is linked, **Monitoring → Hosts → host → Dashboards → Health** (and **Path**).
+After **FortiGate Observability** is linked, **Monitoring → Hosts → host → Dashboards → Health** and **Path**.
+
+Widget type follows the EXOS rule: gauge = one headline number with a scale; item tile = identity or duration; honeycomb = many similar status cells; graph = trend. Honeycomb is **not** for HA role or a single memory pool.
 
 | Page | What you see in 5 seconds |
 |---|---|
-| **Health** | ICMP / API / CPU / memory gauges |
-| **Path** | HA role, HA VDOM checksum mismatch count, in-scope interface count, SD-WAN member count. Stock LLD WAN graphs stay on the HTTP parent |
+| **Health → Overview** | ICMP / API / CPU / **Uptime** — same four-tile chrome as EXOS (API stands in for SNMP). Problems strip. CPU+memory trend plus Uptime history |
+| **Health → HA** | Memory gauge (FortiOS 82/88/95 colours) + trend. HA role (Primary/Secondary), member count, VDOM mismatch count |
+| **Path → Overview** | Three compact status maps: in-scope **Interfaces**, **SD-WAN members**, **SD-WAN health-checks**. Colour is link/probe state (Forti 0=up). Empty map = none discovered |
+| **Path → Probe** | One-path picker (loss / latency / jitter / status) — not bits |
 
-Stock HTTP has **no** host Health board. Observability ships **Health** and **Path**. Traffic graphs from interface/SD-WAN LLD remain on the stock parent until a later board wires them in. The cutover also completes the stock **General → Disk usage** SVG interval as `now-1d` through `now`; Cloud 7.0-2 otherwise omits `time_period.to` and Zabbix rejects the widget.
+Stock HTTP has **no** host Health board (`FortiGate: General` / `Statistics` stay as vendor galleries). Observability owns Health + Path. Do **not** bind svggraph item patterns on this companion (same PHP `Array to string` hole as EXOS). Template dashboards cannot reference graph prototypes on the nested HTTP parent — traffic stays on **FortiGate: Statistics** until a later `--apply` patch (EXOS did this to stock **Network interfaces**). The cutover still completes the stock **General → Disk usage** SVG interval as `now-1d` through `now`; Cloud 7.0-2 otherwise omits `time_period.to` and Zabbix rejects the widget.
 
 ---
 
@@ -374,6 +400,6 @@ Use **one standalone** and **one HA pair**. Do not mass-HostSync until this list
 
 ## Later
 
-Per-cluster REST tokens and Zabbix Vault secrets (fleet-wide token blast radius). Certificate verification + unique DNS/SANs per ha-mgmt. Logical HA cluster host if `ha.role` gating is not enough. Thin IPsec / session-table / sensor items (HTTP or a **minimal** SNMPv3 `authPriv` SHA/AES companion — never another `icmpping`, CPU family, or interface LLD). Named policy canaries. Site Disaster parent. FMG device-sync. FAZ log ingest vs native.
+Per-cluster REST tokens and Zabbix Vault secrets (fleet-wide token blast radius). Certificate verification + unique DNS/SANs per ha-mgmt. Logical HA cluster host if `ha.role` gating is not enough. Thin IPsec / session-table / sensor items (HTTP or a **minimal** SNMPv3 `authPriv` SHA/AES companion — never another `icmpping`, CPU family, or interface LLD). Named policy canaries. Site Disaster parent. Path Average → stock ICMP High parent. `--apply` 3×2 traffic grid on stock **FortiGate: Statistics** (do not fork 7.0-2). Reboot Info → Warning. Memory extreme Disaster → High once the site parent exists. FMG device-sync. FAZ log ingest vs native.
 
 Do not block Extreme/AP cutover on this page.
