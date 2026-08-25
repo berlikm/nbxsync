@@ -4,7 +4,7 @@ Zabbix does not browse NetBox. The **nbxSync** plugin in NetBox pushes devices a
 
 | Layer | Where | What it does |
 |---|---|---|
-| **1 — Can this object sync?** | Device / VM in NetBox | Country **Site Group** (or cluster site) selects the Zabbix server + proxy. Role **Messpc / Sd Wan Socket / VDI** or tag **`onboarding`** → excluded (`do_not_monitor`). No site → not profiled. |
+| **1 — Can this object sync?** | Device / VM in NetBox | Country **Site Group** (or cluster site) selects the Zabbix server + proxy. Role **Messpc / VDI** or tag **`onboarding`** → excluded (`do_not_monitor`). Production `Sd Wan Socket` intentionally retains a separate role-level `do_not_monitor` hold while its account collector is live; its controlled per-device `onboarding` model is a future approved migration. No site → not profiled. |
 | **2 — How does Zabbix talk to it?** | **Zabbix → Configuration groups** | One **winning** CG supplies **Host Interfaces** (Agent / SNMP). Default is **Agent Monitoring** on every country Site Group. Role / manufacturer / device / tag assignments override that default. SNMPv3 **auth/priv protocol is an integer on the interface** — a macro cannot switch SHA vs MD5. Different crypto = a different CG. |
 | **3 — Which Zabbix templates?** | **Template Rules** then role/object **Templates** | **Every matching enabled Template Rule applies** (they merge). Direct template links on a role fill gaps (MSSQL, vCenter, GitLab, …). |
 
@@ -481,24 +481,43 @@ Environment is encoded in the hostname; no second taxonomy.
 |---|---|---|
 | cluster | `{{ object.cluster.name }}` | each Cluster |
 
-### 9.3 Exclusion — `do_not_monitor` (two assignment targets)
+### 9.3 Exclusion — `do_not_monitor` (permanent and controlled holds)
 
 Plugin `exclude_tag` = `do_not_monitor` (§12) — one setting. Same nbxSync **Zabbix** tag; two places you assign it:
 
 | Zabbix tag | Value | Assign to | Operator day-2 |
 |---|---|---|---|
-| do_not_monitor | *(empty)* | **Device Role** — Messpc, Sd Wan Socket, VDI | Permanent — leave on the role |
-| do_not_monitor | *(empty)* | **NetBox Tag `onboarding`** (Organization → Tags → **onboarding** → Zabbix tab → Tags) | Temporary waves — tag/untag Devices/VMs with NetBox **`onboarding`** |
+| do_not_monitor | *(empty)* | **Device Role** — Messpc, VDI | Permanent — leave on the role. |
+| do_not_monitor | *(empty)* | **NetBox Tag `onboarding`** (Organization → Tags → **onboarding** → Zabbix tab → Tags) | Temporary wave or controlled release hold. |
 
-nbxSync resolves assignments on a NetBox Tag onto every Device/VM that carries that tag. Assign Zabbix `do_not_monitor` on NetBox tag `onboarding` and on the permanent roles (Messpc, Sd Wan Socket, VDI).
+**Current production state (2026-08-25):** `Sd Wan Socket` remains covered by
+the existing role-level `do_not_monitor` assignment. The live Cato account
+collector does not manage Socket hosts, and no Socket ICMP host exists. This
+deliberate hold avoids mutating GUI-managed NetBox and nbxSync configuration.
 
-**Wave enable:** remove NetBox tag **`onboarding`** from the Device/VM → next sync starts monitoring. No per-host Zabbix-tab exclude row needed.
+**Future approved migration only:** each Socket moves to NetBox inventory tag
+`onboarding` before its first nbxSync run and remains excluded until its primary
+IP and proxy path are ready. Removing `onboarding` from one Socket starts
+monitoring it. Once that migration is complete, the role has `component=cato`
+and `monitoring_domain=cato_socket` host tags, while inherited Agent Monitoring
+supplies the one stock `ICMP Ping` template.
 
-Sync **skips** excluded objects (no host/interfaces/templates). An existing Zabbix host from a prior sync is **deleted**.
+nbxSync resolves assignments on a NetBox Tag onto every Device/VM that carries
+that tag. The generic onboarding sweep must not tag or untag controlled-release
+Socket devices; use the idempotent hold/release command in
+[`runbooks/onboarding.md`](runbooks/onboarding.md) only after the migration.
 
-**Name collision:** a NetBox inventory tag named `do_not_monitor` may exist on some devices (Cato / Messpc). That inventory tag is **not** the wave switch and does not exclude by itself. Waves use NetBox tag **`onboarding`** only. Plugin exclude matches the **Zabbix** tag name `do_not_monitor`.
+Sync **skips** excluded objects (no host/interfaces/templates). An existing
+Zabbix host from a prior sync is **deleted**.
 
-Do **not** put Zabbix `do_not_monitor` on role Server (or a Site Group) for waves — you cannot open a single child while the parent excludes.
+The current legacy Cato inventory tag `do_not_monitor` and role-level Zabbix
+exclusion remain intentionally in place. A future
+`--enable-cato --mutate-netbox` migration replaces the former with `onboarding`
+before removing the latter, with no sync gap. Do **not** run it during the
+account-collector-only rollout.
+
+Do **not** put Zabbix `do_not_monitor` on role Server (or a Site Group) for
+waves — you cannot open a single child while the parent excludes.
 
 ## 10. Host inventory
 

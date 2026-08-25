@@ -13,7 +13,8 @@ Plugin setting `exclude_tag` = `do_not_monitor`.
 | Intent | How |
 |---|---|
 | **Onboarding / not ready** | NetBox inventory tag **`onboarding`** on the Device/VM. Once: assign Zabbix tag `do_not_monitor` on the **NetBox Tag** object (Tag → Zabbix tab). Every host carrying `onboarding` inherits exclude. |
-| **Permanent never-monitor** | Zabbix tag `do_not_monitor` on the **Device Role** (Messpc, Sd Wan Socket, VDI) |
+| **Permanent never-monitor** | Zabbix tag `do_not_monitor` on the **Device Role** (Messpc, VDI) |
+| **Cato Socket controlled release (future only)** | Production currently retains the role-level `do_not_monitor` hold; do not run its migration or `CATO_ACTION` command without separate approval. |
 
 **Enable a host:** remove NetBox tag **`onboarding`** from that Device/VM → next sync creates/updates the Zabbix host.
 
@@ -28,7 +29,12 @@ Do **not** put `do_not_monitor` on a Site Group or on role **Server** for waves.
 1. Plugin `exclude_tag` = `do_not_monitor` (§12).
 2. Create NetBox tag **`onboarding`**.
 3. Organization → Tags → **onboarding** → Zabbix tab → Tags → assign **`do_not_monitor`**.
-4. Permanent roles keep role-level Zabbix `do_not_monitor` (Messpc, Sd Wan Socket, VDI).
+4. Permanent roles keep role-level Zabbix `do_not_monitor` (Messpc, VDI),
+   except for the explicitly deferred Cato Socket rollout below.
+5. The Cato account collector is live. Its Socket migration is deliberately
+   deferred to preserve GUI-managed NetBox and nbxSync configuration; do **not**
+   run `configure_nbxsync_zerotouch.py --enable-cato --mutate-netbox` in the
+   current rollout.
 
 ---
 
@@ -42,6 +48,7 @@ Policy (Servers through Macros) can be fully built first. Hosts only appear in Z
 | **1 — SNMP-ready** | Switch*, AP, Firewall, OOB/storage SNMP, … | No agent; credentials + reachability are enough |
 | **2 — Agent hosts** | Servers / VMs / SPACE / … | Enable only after agent installed and reachable |
 | **3 — Overlays** | `snmp` / `oracle` / `critical` where needed | Opt-in transport and hostgroups on already-synced hosts |
+| **4 — Cato Sockets** | One Socket at a time after migration | Primary IP and regional proxy path must be ready; use the controlled command below. |
 
 Adjust wave order to your cutover; the switch is always: **add/remove NetBox tag `onboarding`**.
 
@@ -57,6 +64,10 @@ Adjust wave order to your cutover; the switch is always: **add/remove NetBox tag
 4. Re-sync (or wait for the job cycle). Those objects stay out of Zabbix.
 
 SNMP classes you want live in wave 1: **do not** assign `onboarding` on them.
+
+Generic bulk sweeps must not tag, untag, hold, or release `Sd Wan Socket`;
+Cato uses the controlled-release procedure below after its separately approved
+migration.
 
 ---
 
@@ -75,6 +86,48 @@ When that object is ready to monitor:
 
 No new configuration group or Template Rule is required for a normal agent host — Site Group Agent default already covers it once exclusion is gone.
 
+## Cato Socket hold and release (future approved migration)
+
+**Current production state (2026-08-25):** all 21 Cato Sockets retain the
+existing role-level exclusion, so no Socket ICMP host exists. This procedure is
+not active in the account-collector-only rollout.
+
+Only after a separately approved migration, a new Socket becomes an
+operator-owned NetBox action. Do this immediately after the Socket appears in
+NetBox, before its first nbxSync run. The command is idempotent; `hold` adds
+`onboarding`, and `release` removes it only when the Socket has a primary IPv4
+address. It always runs one `SyncHostJob` for that Socket.
+
+Run from `/opt/netbox/netbox` after sourcing `/etc/netbox.env`:
+
+```bash
+export CATO_SOCKET='CH-NKN-CATO01'
+export CATO_ACTION='hold'
+PYTHONPATH=. DJANGO_SETTINGS_MODULE=netbox.settings \
+  /opt/netbox/venv/bin/python3 -c '
+import django, os; django.setup()
+from dcim.models import Device
+from extras.models import Tag
+from nbxsync.jobs.synchost import SyncHostJob
+action = os.environ["CATO_ACTION"]
+assert action in {"hold", "release"}
+device = Device.objects.get(name=os.environ["CATO_SOCKET"], role__slug="sd-wan-socket")
+onboarding = Tag.objects.get(slug="onboarding")
+if action == "hold":
+    device.tags.add(onboarding)
+else:
+    assert device.primary_ip4 is not None
+    device.tags.remove(onboarding)
+SyncHostJob(instance=device).run()
+'
+```
+
+After the approved migration, set `CATO_ACTION=release` only after the NetBox
+primary IP and regional proxy route are ready. Verify the resulting host has one
+primary-IP Agent interface, stock `ICMP Ping`, exactly one `icmpping`, and tags
+`component=cato`, `monitoring_domain=cato_socket`. Do not attach the Cato
+account template to a Socket host.
+
 ---
 
 ## What not to use for this problem
@@ -82,6 +135,7 @@ No new configuration group or Template Rule is required for a normal agent host 
 | Approach | Why it is a poor fit here |
 |---|---|
 | Role-level `do_not_monitor` on Server / VM roles | Cannot enable a single host until the whole role is opened |
+| Role-level `do_not_monitor` on `Sd Wan Socket` | Current approved hold. After the future migration it prevents controlled per-Socket release and duplicates the onboarding hold. |
 | Per-device Zabbix-tab `do_not_monitor` for waves | Works, but harder to bulk-edit than a NetBox inventory tag — prefer `onboarding` |
 | NetBox status `planned` / `staged` → Zabbix disabled | Host still created; meant for lifecycle status, not “agent not installed” |
 | Soft-state / `NO_ALERTING` | Host still polled; different problem |
@@ -92,5 +146,10 @@ No new configuration group or Template Rule is required for a normal agent host 
 ## After go-live
 
 - New objects that are not ready yet: add NetBox tag `onboarding` at create time (or leave them until ready — if Agent default would sync them immediately, prefer tag-first).
-- Permanent never-monitor classes: keep **role-level** Zabbix tag `do_not_monitor` only.
+- New Cato Socket: in the current account-collector-only rollout, retain the
+  role hold. After the approved migration, set `CATO_ACTION=hold` before first
+  nbxSync and release only when its primary IP and proxy path are ready.
+- Permanent never-monitor classes: keep **role-level** Zabbix tag
+  `do_not_monitor` only on Messpc and VDI, except for the currently deferred
+  Cato Socket rollout.
 - Day-2 policy changes: [`day2.md`](day2.md).

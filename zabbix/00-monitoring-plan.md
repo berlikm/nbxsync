@@ -8,7 +8,7 @@ Status: active
 
 **In scope now:** Extreme switches (01) and access points (02).  
 **Prepared, not blocking cutover:** FortiGate over **API** (03), network VMs (06). Same page shape and observability bar. Live FortiOS still SNMP until `--apply-fortigate-http` + HostSync of **both HA members** via unique OOB (do not re-run zerotouch).  
-**Later still:** Cato (04), circuits (05).
+**Later still:** circuits (05).
 
 The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everything in the design docs". Anything LM does not watch today cannot be a regression.
 
@@ -33,7 +33,7 @@ The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everythi
 | Capacity: discards + utilisation | new capability. Needs 4+ weeks of history to threshold honestly |
 | CRC / `dot3StatsFCSErrors` | items live (VOSS EtherLike LLD + EXOS companion); OID canary still needed |
 | Full port-label rollout | parity only needs *link down* on Core/Dist/Mgmt; Access is `USW`+`UP` only |
-| Fortinet, Cato, circuits, VMs (03–06) | FortiGate API spec is written; live FortiOS stays SNMP. Do not block switch/AP cutover |
+| Fortinet, circuits, VMs (03, 05–06) | FortiGate API spec is written; live FortiOS stays SNMP. Do not block switch/AP cutover |
 
 **Rule for the migration window:** if a request is not in the "cutover minimum" table, it goes on the post-cutover list. Scope creep is the main risk to the date, not technical difficulty.
 
@@ -77,7 +77,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 03 | FortiGate | stock **FortiGate by HTTP** (7.0) + ICMP Ping | yes — [03](03-fortinet.md) | no | no (live nbxSync still **SNMP** until `--apply-fortigate-http`) |
 | 03 | FortiManager | none official (Network Generic) | yes — short block in 03 | no | no |
 | 03 | FortiAnalyzer | none official (Network Generic) | yes — short block in 03 | no | no |
-| 04 | Cato | none (HTTP agent) | scaffold | no | no |
+| 04 | Cato | **built** — `Cato Networks by HTTP` | yes (`04`) | collector validated; Socket pilots deferred | partial (0/21 Socket ICMP hosts held) |
 | 05 | Circuits | n/a | scaffold | no | no |
 | 06 | Network VMs | stock OS templates | scaffold | no | no |
 

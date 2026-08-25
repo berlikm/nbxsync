@@ -1,0 +1,1608 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: 36bff6c29af64692839d077febfc7079
+    name: Templates/Network devices
+  templates:
+  - uuid: 8eaf4d5dcc474db99c4e84b02a47b5be
+    template: Cato Networks by HTTP
+    name: Cato Networks by HTTP
+    description: 'One account-scoped HTTP collector for Cato Socket overlay state and SLA.
+
+      The NetBox-backed Socket hosts remain direct ICMP monitoring targets. This
+      template intentionally owns no ICMP item and never turns account collector
+      loss into a site, Socket, or WAN outage.
+
+      '
+    groups:
+    - name: Templates/Network devices
+    items:
+    - uuid: e04b5f18f8da4c5cb38b5a48eefe601a
+      name: Cato account snapshot
+      type: HTTP_AGENT
+      key: cato.account.snapshot
+      delay: 1m
+      history: 1d
+      value_type: TEXT
+      url: '{$CATO.API.URL}'
+      request_method: POST
+      post_type: JSON
+      posts: '{"query":"query AccountSnapshot($accountID: ID!) { accountSnapshot(accountID: $accountID) { sites { id connectivityStatus info { name type connType isHA sockets { id serial isPrimary platform version } } devices { id name connected connectedSince haRole version socketInfo { id serial isPrimary platform version } interfaces { id name connected popName tunnelUptime type info { id name upstreamBandwidth downstreamBandwidth destType } } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
+      headers:
+      - name: Content-Type
+        value: application/json
+      - name: x-api-key
+        value: '{$CATO.API.TOKEN}'
+      status_codes: '200'
+      follow_redirects: 'YES'
+      retrieve_mode: BODY
+      timeout: 30s
+      verify_peer: 'YES'
+      verify_host: 'YES'
+      allow_traps: 'NO'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 431c7bf7febc490ea998ecaf4f118b33
+      name: Cato account metrics
+      type: HTTP_AGENT
+      key: cato.account.metrics
+      delay: 5m
+      history: 1d
+      value_type: TEXT
+      url: '{$CATO.API.URL}'
+      request_method: POST
+      post_type: JSON
+      posts: '{"query":"query AccountMetrics($accountID: ID!) { accountMetrics(accountID: $accountID, timeFrame: \"last.PT5M\", groupDevices: true, groupInterfaces: false) { sites { id name info { connType } interfaces { name interfaceInfo { id name upstreamBandwidth downstreamBandwidth } metrics(toRate: true) { bytesDownstream bytesUpstream lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
+      headers:
+      - name: Content-Type
+        value: application/json
+      - name: x-api-key
+        value: '{$CATO.API.TOKEN}'
+      status_codes: '200'
+      follow_redirects: 'YES'
+      retrieve_mode: BODY
+      timeout: 30s
+      verify_peer: 'YES'
+      verify_host: 'YES'
+      allow_traps: 'NO'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 74b3e7a912ec47939a5e8f193c602726
+      name: Cato API snapshot GraphQL error count
+      type: DEPENDENT
+      key: cato.api.snapshot.error_count
+      delay: '0'
+      history: 30d
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          return Array.isArray(root.errors) ? root.errors.length : 0;
+      master_item:
+        key: cato.account.snapshot
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: a4695fe6acb34c6fade1c10280ce8362
+        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.error_count)>0'
+        name: 'Cato API: Snapshot GraphQL errors'
+        priority: AVERAGE
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    - uuid: d6874a4d6dc043bea6b7940c549c4058
+      name: Cato API metrics GraphQL error count
+      type: DEPENDENT
+      key: cato.api.metrics.error_count
+      delay: '0'
+      history: 30d
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          return Array.isArray(root.errors) ? root.errors.length : 0;
+      master_item:
+        key: cato.account.metrics
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: b66a55318b864751bbe9986bcd09c6c1
+        expression: 'last(/Cato Networks by HTTP/cato.api.metrics.error_count)>0'
+        name: 'Cato API: Metrics GraphQL errors'
+        priority: AVERAGE
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    - uuid: 7c9cb63fa8e442998d1787a7ce84258f
+      name: Cato API snapshot schema violation count
+      type: DEPENDENT
+      key: cato.api.snapshot.schema_violation_count
+      delay: '0'
+      history: 30d
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          var errors = Array.isArray(root.errors) ? root.errors : [];
+          var count = 0;
+          for (var i = 0; i < errors.length; i++) {
+            var extensions = errors[i] && errors[i].extensions;
+            if (extensions && Array.isArray(extensions.schemaViolations)) {
+              count += extensions.schemaViolations.length;
+            }
+          }
+          return count;
+      master_item:
+        key: cato.account.snapshot
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: cb99b6e4c3f442d497517e87a275edd2
+        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.schema_violation_count)>0'
+        name: 'Cato API: Snapshot GraphQL schema violations'
+        priority: WARNING
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    - uuid: 3b75236505e9440d8c6ce0a9366067a6
+      name: Cato API metrics schema violation count
+      type: DEPENDENT
+      key: cato.api.metrics.schema_violation_count
+      delay: '0'
+      history: 30d
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          var errors = Array.isArray(root.errors) ? root.errors : [];
+          var count = 0;
+          for (var i = 0; i < errors.length; i++) {
+            var extensions = errors[i] && errors[i].extensions;
+            if (extensions && Array.isArray(extensions.schemaViolations)) {
+              count += extensions.schemaViolations.length;
+            }
+          }
+          return count;
+      master_item:
+        key: cato.account.metrics
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: a73987c6230246a3aa6b5b88fee80593
+        expression: 'last(/Cato Networks by HTTP/cato.api.metrics.schema_violation_count)>0'
+        name: 'Cato API: Metrics GraphQL schema violations'
+        priority: WARNING
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    - uuid: 1b2e04c322d942e78f70ab7b474240ca
+      name: Cato API unsupported item count
+      type: INTERNAL
+      key: 'zabbix[host,,items_unsupported]'
+      delay: 15m
+      history: 30d
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: 51d3b6b5d9d4422b8ebc4161cee2fa68
+        expression: 'min(/Cato Networks by HTTP/zabbix[host,,items_unsupported],30m)>0'
+        name: 'Cato API: Unsupported items present'
+        priority: AVERAGE
+        dependencies:
+        - name: 'Cato API: No snapshot data for 5m'
+          expression: 'nodata(/Cato Networks by HTTP/cato.account.snapshot,5m)=1'
+        - name: 'Cato API: No metrics data for 15m'
+          expression: 'nodata(/Cato Networks by HTTP/cato.account.metrics,15m)=1'
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    - uuid: 761b05a86ee5498cb407b91d62458b59
+      name: Cato API snapshot availability
+      type: DEPENDENT
+      key: cato.api.snapshot.available
+      delay: '0'
+      history: 30d
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          return root && root.data && root.data.accountSnapshot ? 1 : 0;
+      master_item:
+        key: cato.account.snapshot
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: 3944821d0dd945698628d960ce1bc204
+        expression: 'nodata(/Cato Networks by HTTP/cato.account.snapshot,5m)=1'
+        name: 'Cato API: No snapshot data for 5m'
+        priority: AVERAGE
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    - uuid: 0749ea23152e4b578fc8ad1269ac5ffc
+      name: Cato API metrics availability
+      type: DEPENDENT
+      key: cato.api.metrics.available
+      delay: '0'
+      history: 30d
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          return root && root.data && root.data.accountMetrics ? 1 : 0;
+      master_item:
+        key: cato.account.metrics
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: 652cea1670a546f48da9f693b0614ef2
+        expression: 'nodata(/Cato Networks by HTTP/cato.account.metrics,15m)=1'
+        name: 'Cato API: No metrics data for 15m'
+        priority: AVERAGE
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    discovery_rules:
+    - uuid: 22ad6215cbf846a6b7a1f7a332ecf02d
+      name: Cato Socket site discovery
+      type: DEPENDENT
+      key: cato.site.discovery
+      delay: '0'
+      lifetime: 7d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          var snapshot = root && root.data && root.data.accountSnapshot;
+          var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : [];
+          var pattern = new RegExp('{$CATO.SITE.CONN_TYPE.MATCHES}');
+          var out = [];
+          for (var i = 0; i < sites.length; i++) {
+            var site = sites[i];
+            var info = site && site.info;
+            if (!site || !info || site.id === undefined || site.id === null) {
+              continue;
+            }
+            if (!pattern.test(String(info.connType || ''))) {
+              continue;
+            }
+            out.push({
+              '{#SITE.ID}': String(site.id),
+              '{#SITE.NAME}': String(info.name || ''),
+              '{#CONN.TYPE}': String(info.connType || '')
+            });
+          }
+          return JSON.stringify(out);
+      master_item:
+        key: cato.account.snapshot
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#CONN.TYPE}'
+          value: '{$CATO.SITE.CONN_TYPE.MATCHES}'
+          formulaid: A
+      item_prototypes:
+      - uuid: aa25334e124944128fd73970a5b2ae31
+        name: 'Cato site {#SITE.NAME}: Connectivity'
+        type: DEPENDENT
+        key: 'cato.site.connected[{#SITE.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: UNSIGNED
+        valuemap:
+          name: Cato connectivity
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var found = null;
+            for (var i = 0; i < sites.length; i++) {
+              if (String(sites[i].id) === '{#SITE.ID}') {
+                found = sites[i];
+                break;
+              }
+            }
+            if (!found) {
+              throw 'site missing';
+            }
+            var state = String(found.connectivityStatus || '').toLowerCase();
+            if (state === 'connected') {
+              return 1;
+            }
+            if (state === 'disconnected') {
+              return 0;
+            }
+            return 2;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: site
+        - tag: connection_type
+          value: '{#CONN.TYPE}'
+        trigger_prototypes:
+        - uuid: 7cde94b309424911b9b91c057c80c335
+          expression: 'max(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}],#3)=0'
+          name: 'Cato site {#SITE.NAME}: Disconnected'
+          priority: DISASTER
+          tags:
+          - tag: component
+            value: cato
+          - tag: monitoring_domain
+            value: cato_overlay
+          - tag: scope
+            value: site
+    - uuid: c4473b456a8640e6998d7b9f271801a2
+      name: Cato Socket discovery
+      type: DEPENDENT
+      key: cato.socket.discovery
+      delay: '0'
+      lifetime: 7d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          var snapshot = root && root.data && root.data.accountSnapshot;
+          var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : [];
+          var pattern = new RegExp('{$CATO.SITE.CONN_TYPE.MATCHES}');
+          var out = [];
+          for (var i = 0; i < sites.length; i++) {
+            var site = sites[i];
+            var info = site && site.info;
+            if (!site || !info || site.id === undefined || site.id === null || !pattern.test(String(info.connType || ''))) {
+              continue;
+            }
+            var devices = Array.isArray(site.devices) ? site.devices : [];
+            for (var j = 0; j < devices.length; j++) {
+              var device = devices[j];
+              var socket = device && device.socketInfo;
+              if (!socket || socket.id === undefined || socket.id === null || !String(socket.serial || '').trim()) {
+                continue;
+              }
+              out.push({
+                '{#SITE.ID}': String(site.id),
+                '{#SOCKET.ID}': String(socket.id),
+                '{#SOCKET.NAME}': String(device.name || ''),
+                '{#SERIAL}': String(socket.serial),
+                '{#HA.ROLE}': String(device.haRole || ''),
+                '{#PLATFORM}': String(socket.platform || '')
+              });
+            }
+          }
+          return JSON.stringify(out);
+      master_item:
+        key: cato.account.snapshot
+      item_prototypes:
+      - uuid: bc0349d5922d4d30a32f44ad10f94154
+        name: 'Cato Socket {#SERIAL}: Connectivity'
+        type: DEPENDENT
+        key: 'cato.socket.connected[{#SITE.ID},{#SOCKET.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: UNSIGNED
+        valuemap:
+          name: Cato connectivity
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var device = null;
+            for (var i = 0; i < sites.length && !device; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var devices = Array.isArray(sites[i].devices) ? sites[i].devices : [];
+              for (var j = 0; j < devices.length; j++) {
+                if (devices[j].socketInfo && String(devices[j].socketInfo.id) === '{#SOCKET.ID}') {
+                  device = devices[j];
+                  break;
+                }
+              }
+            }
+            if (!device) {
+              throw 'socket missing';
+            }
+            if (device.connected === true || String(device.connected).toLowerCase() === 'true') {
+              return 1;
+            }
+            if (device.connected === false || String(device.connected).toLowerCase() === 'false') {
+              return 0;
+            }
+            return 2;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: socket
+        - tag: serial
+          value: '{#SERIAL}'
+        - tag: ha_role
+          value: '{#HA.ROLE}'
+        - tag: platform
+          value: '{#PLATFORM}'
+        trigger_prototypes:
+        - uuid: 484894fac52e42e1b01b857f2fa6296c
+          expression: 'max(/Cato Networks by HTTP/cato.socket.connected[{#SITE.ID},{#SOCKET.ID}],#3)=0 and last(/Cato Networks by HTTP/cato.socket.site_connected[{#SITE.ID},{#SOCKET.ID}])=1'
+          name: 'Cato Socket {#SERIAL}: Disconnected while site is up'
+          priority: AVERAGE
+          tags:
+          - tag: component
+            value: cato
+          - tag: monitoring_domain
+            value: cato_overlay
+          - tag: scope
+            value: socket
+      - uuid: 09507f47ee9545ceb60ab918ba58dc8b
+        name: 'Cato Socket {#SERIAL}: Site connectivity'
+        type: DEPENDENT
+        key: 'cato.socket.site_connected[{#SITE.ID},{#SOCKET.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: UNSIGNED
+        valuemap:
+          name: Cato connectivity
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var site = null;
+            for (var i = 0; i < sites.length; i++) {
+              if (String(sites[i].id) === '{#SITE.ID}') {
+                site = sites[i];
+                break;
+              }
+            }
+            if (!site) {
+              throw 'site missing';
+            }
+            var state = String(site.connectivityStatus || '').toLowerCase();
+            if (state === 'connected') {
+              return 1;
+            }
+            if (state === 'disconnected') {
+              return 0;
+            }
+            return 2;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: socket
+        - tag: serial
+          value: '{#SERIAL}'
+      - uuid: 5f8c41b2a3bc44d7923de6a40569d8fd
+        name: 'Cato Socket {#SERIAL}: Version'
+        type: DEPENDENT
+        key: 'cato.socket.version[{#SITE.ID},{#SOCKET.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: CHAR
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var device = null;
+            for (var i = 0; i < sites.length && !device; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var devices = Array.isArray(sites[i].devices) ? sites[i].devices : [];
+              for (var j = 0; j < devices.length; j++) {
+                if (devices[j].socketInfo && String(devices[j].socketInfo.id) === '{#SOCKET.ID}') {
+                  device = devices[j];
+                  break;
+                }
+              }
+            }
+            if (!device) {
+              throw 'socket missing';
+            }
+            var version = device.version || (device.socketInfo && device.socketInfo.version);
+            if (version === undefined || version === null || version === '') {
+              throw 'socket version missing';
+            }
+            return String(version);
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: socket
+        - tag: serial
+          value: '{#SERIAL}'
+        - tag: platform
+          value: '{#PLATFORM}'
+    - uuid: 621623bbad2e402aac2350e0ea74dd6b
+      name: Cato Socket WAN discovery
+      type: DEPENDENT
+      key: cato.wan.discovery
+      delay: '0'
+      lifetime: 7d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          var snapshot = root && root.data && root.data.accountSnapshot;
+          var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : [];
+          var pattern = new RegExp('{$CATO.SITE.CONN_TYPE.MATCHES}');
+          var out = [];
+          for (var i = 0; i < sites.length; i++) {
+            var site = sites[i];
+            var siteInfo = site && site.info;
+            if (!site || !siteInfo || site.id === undefined || site.id === null || !pattern.test(String(siteInfo.connType || ''))) {
+              continue;
+            }
+            var devices = Array.isArray(site.devices) ? site.devices : [];
+            for (var j = 0; j < devices.length; j++) {
+              var device = devices[j];
+              var socket = device && device.socketInfo;
+              if (!socket || socket.id === undefined || socket.id === null || !String(socket.serial || '').trim()) {
+                continue;
+              }
+              var interfaces = Array.isArray(device.interfaces) ? device.interfaces : [];
+              for (var k = 0; k < interfaces.length; k++) {
+                var iface = interfaces[k];
+                var info = iface && iface.info;
+                if (!info || info.id === undefined || info.id === null) {
+                  continue;
+                }
+                out.push({
+                  '{#SITE.ID}': String(site.id),
+                  '{#SITE.NAME}': String(siteInfo.name || ''),
+                  '{#SOCKET.ID}': String(socket.id),
+                  '{#LINK.ID}': String(info.id),
+                  '{#LINK.NAME}': String(info.name || iface.name || ''),
+                  '{#SERIAL}': String(socket.serial)
+                });
+              }
+            }
+          }
+          return JSON.stringify(out);
+      master_item:
+        key: cato.account.snapshot
+      item_prototypes:
+      - uuid: 9cb564ad02b042f580da8063fc330ba4
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Connectivity'
+        type: DEPENDENT
+        key: 'cato.wan.connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: UNSIGNED
+        valuemap:
+          name: Cato connectivity
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var devices = Array.isArray(sites[i].devices) ? sites[i].devices : [];
+              for (var j = 0; j < devices.length && !iface; j++) {
+                if (!devices[j].socketInfo || String(devices[j].socketInfo.id) !== '{#SOCKET.ID}') {
+                  continue;
+                }
+                var interfaces = Array.isArray(devices[j].interfaces) ? devices[j].interfaces : [];
+                for (var k = 0; k < interfaces.length; k++) {
+                  if (interfaces[k].info && String(interfaces[k].info.id) === '{#LINK.ID}') {
+                    iface = interfaces[k];
+                    break;
+                  }
+                }
+              }
+            }
+            if (!iface) {
+              throw 'WAN interface missing';
+            }
+            if (iface.connected === true || String(iface.connected).toLowerCase() === 'true') {
+              return 1;
+            }
+            if (iface.connected === false || String(iface.connected).toLowerCase() === 'false') {
+              return 0;
+            }
+            return 2;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan
+        - tag: serial
+          value: '{#SERIAL}'
+        trigger_prototypes:
+        - uuid: bf5a6efca8894a9ea0a3f88b84107d6a
+          expression: 'max(/Cato Networks by HTTP/cato.wan.connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}],#3)=0 and last(/Cato Networks by HTTP/cato.wan.site_connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}])=1'
+          name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Disconnected while site is up'
+          priority: AVERAGE
+          tags:
+          - tag: component
+            value: cato
+          - tag: monitoring_domain
+            value: cato_overlay
+          - tag: scope
+            value: wan
+      - uuid: 9e064d9dc7bc450d9f372d0d8ac44999
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Site connectivity'
+        type: DEPENDENT
+        key: 'cato.wan.site_connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: UNSIGNED
+        valuemap:
+          name: Cato connectivity
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var site = null;
+            for (var i = 0; i < sites.length; i++) {
+              if (String(sites[i].id) === '{#SITE.ID}') {
+                site = sites[i];
+                break;
+              }
+            }
+            if (!site) {
+              throw 'site missing';
+            }
+            var state = String(site.connectivityStatus || '').toLowerCase();
+            if (state === 'connected') {
+              return 1;
+            }
+            if (state === 'disconnected') {
+              return 0;
+            }
+            return 2;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan
+        - tag: serial
+          value: '{#SERIAL}'
+      - uuid: 1cc0eca59bd94725a44f227246c82de6
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Tunnel uptime'
+        type: DEPENDENT
+        key: 'cato.wan.tunnel_uptime[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: UNSIGNED
+        units: uptime
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var devices = Array.isArray(sites[i].devices) ? sites[i].devices : [];
+              for (var j = 0; j < devices.length && !iface; j++) {
+                if (!devices[j].socketInfo || String(devices[j].socketInfo.id) !== '{#SOCKET.ID}') {
+                  continue;
+                }
+                var interfaces = Array.isArray(devices[j].interfaces) ? devices[j].interfaces : [];
+                for (var k = 0; k < interfaces.length; k++) {
+                  if (interfaces[k].info && String(interfaces[k].info.id) === '{#LINK.ID}') {
+                    iface = interfaces[k];
+                    break;
+                  }
+                }
+              }
+            }
+            if (!iface || iface.tunnelUptime === undefined || iface.tunnelUptime === null || iface.tunnelUptime === '') {
+              throw 'tunnel uptime missing';
+            }
+            return iface.tunnelUptime;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan
+        - tag: serial
+          value: '{#SERIAL}'
+      - uuid: 1982f6f59c5642369abecb152525b361
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: POP'
+        type: DEPENDENT
+        key: 'cato.wan.pop[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        value_type: CHAR
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var snapshot = root && root.data && root.data.accountSnapshot;
+            var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : null;
+            if (!sites) {
+              throw 'accountSnapshot missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var devices = Array.isArray(sites[i].devices) ? sites[i].devices : [];
+              for (var j = 0; j < devices.length && !iface; j++) {
+                if (!devices[j].socketInfo || String(devices[j].socketInfo.id) !== '{#SOCKET.ID}') {
+                  continue;
+                }
+                var interfaces = Array.isArray(devices[j].interfaces) ? devices[j].interfaces : [];
+                for (var k = 0; k < interfaces.length; k++) {
+                  if (interfaces[k].info && String(interfaces[k].info.id) === '{#LINK.ID}') {
+                    iface = interfaces[k];
+                    break;
+                  }
+                }
+              }
+            }
+            if (!iface || iface.popName === undefined || iface.popName === null || iface.popName === '') {
+              throw 'POP missing';
+            }
+            return String(iface.popName);
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.snapshot
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan
+        - tag: serial
+          value: '{#SERIAL}'
+    - uuid: 2439eeb702a34b04910337f3ae297140
+      name: Cato WAN SLA discovery
+      type: DEPENDENT
+      key: cato.wan.metrics.discovery
+      delay: '0'
+      lifetime: 7d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          var metrics = root && root.data && root.data.accountMetrics;
+          var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : [];
+          var pattern = new RegExp('{$CATO.SITE.CONN_TYPE.MATCHES}');
+          var out = [];
+          for (var i = 0; i < sites.length; i++) {
+            var site = sites[i];
+            var info = site && site.info;
+            if (!site || !info || site.id === undefined || site.id === null || !pattern.test(String(info.connType || ''))) {
+              continue;
+            }
+            var interfaces = Array.isArray(site.interfaces) ? site.interfaces : [];
+            for (var j = 0; j < interfaces.length; j++) {
+              var iface = interfaces[j];
+              var interfaceInfo = iface && iface.interfaceInfo;
+              if (!interfaceInfo || interfaceInfo.id === undefined || interfaceInfo.id === null) {
+                continue;
+              }
+              out.push({
+                '{#SITE.ID}': String(site.id),
+                '{#LINK.ID}': String(interfaceInfo.id),
+                '{#SITE.NAME}': String(site.name || ''),
+                '{#LINK.NAME}': String(iface.name || '')
+              });
+            }
+          }
+          return JSON.stringify(out);
+      master_item:
+        key: cato.account.metrics
+      item_prototypes:
+      - uuid: 1e6795a1afa543ee88fe00651034a4dd
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX bandwidth'
+        type: DEPENDENT
+        key: 'cato.wan.rx.bps[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: bps
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.bytesDownstream : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'RX rate missing';
+            }
+            return numeric * 8;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      - uuid: a8100b9a34eb45329a72b94606907c06
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX bandwidth'
+        type: DEPENDENT
+        key: 'cato.wan.tx.bps[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: bps
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.bytesUpstream : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'TX rate missing';
+            }
+            return numeric * 8;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      - uuid: dd939f2e72bc42028a40a9fd2240293d
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX packet loss'
+        type: DEPENDENT
+        key: 'cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: '%'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.lostDownstreamPcnt : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'RX loss missing';
+            }
+            return numeric;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      - uuid: 9d0949f801ea423d968c6865fbb8b0cf
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX packet loss'
+        type: DEPENDENT
+        key: 'cato.wan.loss.tx.pct[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: '%'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.lostUpstreamPcnt : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'TX loss missing';
+            }
+            return numeric;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      - uuid: cbc353c2d2974df3aa2028fc45c3a14e
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX jitter'
+        type: DEPENDENT
+        key: 'cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: ms
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.jitterDownstream : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'RX jitter missing';
+            }
+            return numeric;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      - uuid: 2887ff26b2fb4f10b5f38978912c411b
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX jitter'
+        type: DEPENDENT
+        key: 'cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: ms
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.jitterUpstream : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'TX jitter missing';
+            }
+            return numeric;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      - uuid: 600f2c74742c4782876a4e75d3d9b306
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RTT'
+        type: DEPENDENT
+        key: 'cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: ms
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            var raw = iface && iface.metrics ? iface.metrics.rtt : null;
+            var numeric = Number(raw);
+            if (raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'RTT missing';
+            }
+            return numeric;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: wan_sla
+      graph_prototypes:
+      - uuid: 822b1fdf634a49028f608f35023ab3fb
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth'
+        graph_items:
+        - color: 199C0D
+          item:
+            host: Cato Networks by HTTP
+            key: 'cato.wan.rx.bps[{#SITE.ID},{#LINK.ID}]'
+        - sortorder: '1'
+          color: 2774A4
+          item:
+            host: Cato Networks by HTTP
+            key: 'cato.wan.tx.bps[{#SITE.ID},{#LINK.ID}]'
+      - uuid: 37ee3ca9378a4557876b22a83c17d39b
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Packet loss'
+        graph_items:
+        - color: F63100
+          item:
+            host: Cato Networks by HTTP
+            key: 'cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}]'
+        - sortorder: '1'
+          color: F7941D
+          item:
+            host: Cato Networks by HTTP
+            key: 'cato.wan.loss.tx.pct[{#SITE.ID},{#LINK.ID}]'
+      - uuid: 02f3f94cce42445c89e7c795fbf89517
+        name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Latency and jitter'
+        graph_items:
+        - color: 2774A4
+          item:
+            host: Cato Networks by HTTP
+            key: 'cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}]'
+        - sortorder: '1'
+          color: 199C0D
+          item:
+            host: Cato Networks by HTTP
+            key: 'cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]'
+        - sortorder: '2'
+          color: F7941D
+          item:
+            host: Cato Networks by HTTP
+            key: 'cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]'
+    macros:
+    - macro: '{$CATO.SITE.CONN_TYPE.MATCHES}'
+      value: '^SOCKET_'
+      description: Restrict Cato discovery to Socket connection types; IPSEC_V2 remains out of scope.
+    valuemaps:
+    - uuid: 4c65ce16533446d78da1b96a2e1aad9a
+      name: Cato connectivity
+      mappings:
+      - value: '0'
+        newvalue: Disconnected
+      - value: '1'
+        newvalue: Connected
+      - value: '2'
+        newvalue: Unknown
+    dashboards:
+    - uuid: 8806cd45dc714c0a9840b518f4472bb1
+      name: Health
+      pages:
+      - name: Overview
+        widgets:
+        - type: problems
+          name: Problems
+          width: '72'
+          height: '3'
+          fields:
+          - type: STRING
+            name: reference
+            value: CPROB
+          - type: INTEGER
+            name: show
+            value: '3'
+          - type: INTEGER
+            name: show_opdata
+            value: '2'
+        - type: honeycomb
+          name: Sites
+          'y': '3'
+          width: '24'
+          height: '4'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Cato site *: Connectivity'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato site (.*): Connectivity$","\\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: STRING
+            name: thresholds.0.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: STRING
+            name: thresholds.2.color
+            value: '878787'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '2'
+        - type: honeycomb
+          name: Sockets
+          x: '24'
+          'y': '3'
+          width: '24'
+          height: '4'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Cato Socket *: Connectivity'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato Socket (.*): Connectivity$","\\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: STRING
+            name: thresholds.0.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: STRING
+            name: thresholds.2.color
+            value: '878787'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '2'
+        - type: honeycomb
+          name: WAN links
+          x: '48'
+          'y': '3'
+          width: '24'
+          height: '4'
+          fields:
+          - type: STRING
+            name: items.0
+            value: 'Cato WAN *: Connectivity'
+          - type: STRING
+            name: primary_label
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Connectivity$","\\1")}'
+          - type: INTEGER
+            name: interpolation
+            value: '0'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: STRING
+            name: thresholds.0.color
+            value: FF465C
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 0EC9AC
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: STRING
+            name: thresholds.2.color
+            value: '878787'
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '2'
+        - type: item
+          name: Snapshot GraphQL errors
+          'y': '7'
+          width: '18'
+          height: '3'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Cato Networks by HTTP
+              key: cato.api.snapshot.error_count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+        - type: item
+          name: Metrics GraphQL errors
+          x: '18'
+          'y': '7'
+          width: '18'
+          height: '3'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Cato Networks by HTTP
+              key: cato.api.metrics.error_count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+        - type: item
+          name: Snapshot schema violations
+          x: '36'
+          'y': '7'
+          width: '18'
+          height: '3'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Cato Networks by HTTP
+              key: cato.api.snapshot.schema_violation_count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+        - type: item
+          name: Metrics schema violations
+          x: '54'
+          'y': '7'
+          width: '18'
+          height: '3'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Cato Networks by HTTP
+              key: cato.api.metrics.schema_violation_count
+          - type: INTEGER
+            name: show.0
+            value: '2'
+        - type: item
+          name: Unsupported items
+          'y': '10'
+          width: '18'
+          height: '3'
+          fields:
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: Cato Networks by HTTP
+              key: 'zabbix[host,,items_unsupported]'
+          - type: INTEGER
+            name: show.0
+            value: '2'
+      - name: WAN SLA
+        widgets:
+        - type: graphprototype
+          name: Bandwidth
+          width: '72'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '2'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: Cato Networks by HTTP
+              name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth'
+          - type: STRING
+            name: reference
+            value: CBAND
+        - type: graphprototype
+          name: Packet loss
+          'y': '5'
+          width: '72'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '2'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: Cato Networks by HTTP
+              name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Packet loss'
+          - type: STRING
+            name: reference
+            value: CLOSS
+        - type: graphprototype
+          name: Latency and jitter
+          'y': '10'
+          width: '72'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '2'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: Cato Networks by HTTP
+              name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Latency and jitter'
+          - type: STRING
+            name: reference
+            value: CLAT

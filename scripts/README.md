@@ -15,6 +15,7 @@ If a script and that document disagree, **fix the script or the document so they
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
 | — | `validate_extreme_templates.py` | YAML contract + optional `--zabbix` double-import |
 | — | `zabbix_api.py` | Shared JSON-RPC helper |
+| — | `configure_cato_zabbix.py` | Idempotent Cato account collector template/host; never manages NetBox Socket hosts |
 
 ## Lab first build
 
@@ -57,6 +58,38 @@ Then verify API 200 from the assigned Swiss proxies and HostSync **both members*
 ```bash
 python3 scripts/validate_extreme_templates.py --zabbix   # lab: YAML contract + double import
 ```
+
+## Cato Socket rollout
+The production account collector is live. The Socket migration is deliberately
+deferred: all 21 production `Sd Wan Socket` devices retain their existing
+role-level exclusion. Do **not** run the NetBox-mutating step below merely to
+refresh the collector or Zabbix configuration.
+
+The following is a future, separately approved migration sequence. It mutates
+Socket inventory tags and nbxSync configuration, so validate it in development
+before any production use.
+
+```bash
+export NBX_ZABBIX_URL=https://zabbix.example
+export NBX_ZABBIX_TOKEN=...
+export NBX_CATO_API_KEY=...
+
+# 1. Import Cato Networks by HTTP and create/update the owned account host.
+python scripts/configure_cato_zabbix.py --apply
+
+# 2. Future approved migration only: move every current Sd Wan Socket from the
+#    legacy role exclusion into the per-device onboarding hold.
+python scripts/configure_nbxsync_zerotouch.py --enable-cato --mutate-netbox
+
+# 3. Release Socket hosts one at a time only after their primary IP and
+#    regional proxy path are ready; use the exact runbook command below.
+```
+
+`configure_cato_zabbix.py --simulate` requires `NBX_CATO_API_KEY` and a local
+Zabbix lab. It imports twice, verifies discovery/history, then waits through
+the 5m/15m no-data windows to prove an invalid API token produces only
+collector problems. `--verify` is read-only and requires only
+`NBX_ZABBIX_URL` and `NBX_ZABBIX_TOKEN`.
 
 
 ## Re-syncing a single host (testing)

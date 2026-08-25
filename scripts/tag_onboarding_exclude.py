@@ -16,7 +16,8 @@ Only infrastructure roles are left untagged (they go to Zabbix immediately):
 
 Everything else (Server, Cohesity, MSSQL, Storage, Firewall, Domain Controller,
 Database, etc.) gets the 'onboarding' tag → excluded from Zabbix until the tag
-is removed per-wave.
+is removed per-wave. `Sd Wan Socket` is a controlled-release role: this utility
+never adds or removes its onboarding hold.
 
 Usage on NetBox host (dev or prod):
   sudo -n bash -c 'set -a; source /etc/netbox.env; set +a; \
@@ -24,8 +25,8 @@ Usage on NetBox host (dev or prod):
     /opt/netbox/venv/bin/python3 scripts/tag_onboarding_exclude.py [--dry-run]'
 
 Options:
-  --dry-run  Show counts without tagging
-  --untag    REMOVE onboarding tag from all hosts (bring everything back)
+  --dry-run  Show counts without changing tags
+  --untag    REMOVE onboarding tag from ordinary hosts; leave controlled-release roles held
 """
 from __future__ import annotations
 
@@ -57,8 +58,13 @@ INFRASTRUCTURE_ROLES = [
 # Roles that are permanently excluded (do_not_monitor on role)
 PERMANENT_EXCLUDE = [
     'Messpc',
-    'Sd Wan Socket',
     'VDI',
+]
+
+# Cato Socket onboarding is an explicit operator operation. Generic bulk
+# sweep/untag actions must neither hold a released Socket nor release a held one.
+CONTROLLED_RELEASE_ROLES = [
+    'Sd Wan Socket',
 ]
 
 
@@ -67,7 +73,11 @@ def main() -> int:
         description='Tag devices/VMs with onboarding to exclude from Zabbix sync.',
     )
     parser.add_argument('--dry-run', action='store_true', help='Show counts without tagging')
-    parser.add_argument('--untag', action='store_true', help='Remove onboarding tag from all hosts')
+    parser.add_argument(
+        '--untag',
+        action='store_true',
+        help='Remove onboarding from ordinary hosts only',
+    )
     args = parser.parse_args()
 
     tag = Tag.objects.filter(slug='onboarding').first()
@@ -76,23 +86,33 @@ def main() -> int:
         return 1
 
     if args.untag:
-        # Remove onboarding tag from all devices and VMs
-        dev_count = 0
-        for dev in Device.objects.filter(tags=tag):
-            dev.tags.remove(tag)
-            dev_count += 1
-        vm_count = 0
-        for vm in VirtualMachine.objects.filter(tags=tag):
-            vm.tags.remove(tag)
-            vm_count += 1
-        print(f'Removed onboarding tag from {dev_count} devices + {vm_count} VMs')
-        print('Run a sync to bring hosts back into Zabbix.')
+        # Never release a controlled Socket through a broad --untag operation.
+        devs = Device.objects.filter(tags=tag).exclude(
+            role__name__in=CONTROLLED_RELEASE_ROLES
+        )
+        vms = VirtualMachine.objects.filter(tags=tag).exclude(
+            role__name__in=CONTROLLED_RELEASE_ROLES
+        )
+        dev_count = devs.count()
+        vm_count = vms.count()
+        if not args.dry_run:
+            for dev in devs:
+                dev.tags.remove(tag)
+            for vm in vms:
+                vm.tags.remove(tag)
+        action = 'Would remove' if args.dry_run else 'Removed'
+        print(f'{action} onboarding tag from {dev_count} devices + {vm_count} VMs')
+        print(f'Controlled release (unchanged): {", ".join(CONTROLLED_RELEASE_ROLES)}')
+        if not args.dry_run:
+            print('Run a sync to bring released hosts back into Zabbix.')
         return 0
 
-    # Tag everything EXCEPT infrastructure roles and permanent excludes
+    # Tag everything EXCEPT infrastructure, permanent exclusions, and
+    # controlled-release roles.
     exclude_q = (
         Q(role__name__in=INFRASTRUCTURE_ROLES)
         | Q(role__name__in=PERMANENT_EXCLUDE)
+        | Q(role__name__in=CONTROLLED_RELEASE_ROLES)
         | Q(role__isnull=True)
     )
 
@@ -100,22 +120,26 @@ def main() -> int:
     devs = Device.objects.exclude(exclude_q)
     dev_count = 0
     for dev in devs:
-        if tag not in dev.tags.all():
-            dev.tags.add(tag)
+        if not dev.tags.filter(pk=tag.pk).exists():
             dev_count += 1
+            if not args.dry_run:
+                dev.tags.add(tag)
 
-    # VMs
     vms = VirtualMachine.objects.exclude(exclude_q)
     vm_count = 0
     for vm in vms:
-        if tag not in vm.tags.all():
-            vm.tags.add(tag)
+        if not vm.tags.filter(pk=tag.pk).exists():
             vm_count += 1
+            if not args.dry_run:
+                vm.tags.add(tag)
 
     mode = 'DRY RUN' if args.dry_run else 'TAGGED'
     print(f'{mode}: {dev_count} devices + {vm_count} VMs with onboarding tag')
     print(f'Excluded (stay in Zabbix): {", ".join(INFRASTRUCTURE_ROLES)}')
     print(f'Permanent exclude (do_not_monitor): {", ".join(PERMANENT_EXCLUDE)}')
+    print(
+        f'Controlled release (manual onboarding only): {", ".join(CONTROLLED_RELEASE_ROLES)}'
+    )
     if not args.dry_run:
         print('\nNext: sync all hosts to exclude tagged hosts from Zabbix.')
         print('  sudo -n bash -c \'set -a; source /etc/netbox.env; set +a; \\')

@@ -126,6 +126,7 @@ import django
 django.setup()
 
 from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
 from django.db.models import Q
 from dcim.models import Device, DeviceRole, DeviceType, Interface, Manufacturer, Platform, Site, SiteGroup
 from extras.models import Tag
@@ -725,23 +726,36 @@ def _snmp_v3_fields(profile: str = 'network') -> dict:
 # =============================================================================
 
 
-def step0_cleanup(*, mutate_netbox: bool):
+def step0_cleanup(*, mutate_netbox: bool, enable_cato: bool = False):
     logger.info('=' * 60)
-    logger.info('Step 0: Plugin-side tags / roles%s', ' + NetBox mutations' if mutate_netbox else '')
+    logger.info(
+        'Step 0: Plugin-side tags / roles%s',
+        ' + NetBox mutations' if mutate_netbox else '',
+    )
     logger.info('=' * 60)
 
     tag, created = Tag.objects.get_or_create(
         slug='do_not_monitor',
-        defaults={'name': 'do_not_monitor', 'description': 'Excluded from Zabbix monitoring by nbxsync'},
+        defaults={
+            'name': 'do_not_monitor',
+            'description': 'Excluded from Zabbix monitoring by nbxsync',
+        },
     )
-    logger.info("  Tag 'do_not_monitor': %s (id=%s)", 'CREATED' if created else 'EXISTS', tag.id)
+    logger.info(
+        "  Tag 'do_not_monitor': %s (id=%s)",
+        'CREATED' if created else 'EXISTS',
+        tag.id,
+    )
 
     # Overlays / opt-ins: critical → Priority HG; snmp → Linux SNMP CG+templates;
     # onboarding → temporary exclude (Zabbix do_not_monitor assigned on this Tag in step 9).
     # SAP uses role-based CG SAP Agent+SNMP (SAP HANA / SAP ME) — no snmp-sap tag.
     for name, desc in [
         ('critical', 'Priority/Critical hostgroup membership (24/7 escalation)'),
-        ('snmp', 'Zero-touch Linux SNMP: selects SNMP Monitoring (Linux) CG + Linux/Windows by SNMP TemplateRules'),
+        (
+            'snmp',
+            'Zero-touch Linux SNMP: selects SNMP Monitoring (Linux) CG + Linux/Windows by SNMP TemplateRules',
+        ),
         (
             'onboarding',
             'Temporary Zabbix sync hold: inherits do_not_monitor from Tag assignment; remove tag to enable monitoring',
@@ -765,19 +779,73 @@ def step0_cleanup(*, mutate_netbox: bool):
     # ESXi hosts keep role=Server (other automations depend on it).
     # The ESXi OOB iDRAC CG is assigned on the ESXi platform (step 5b),
     # not on a separate role. This avoids creating a new DeviceRole.
+    if mutate_netbox:
+        for slug, label in [('messpc', 'Messpc'), ('vdi', 'VDI')]:
+            qs = Device.objects.filter(role__slug=slug)
+            tagged = 0
+            for device in qs:
+                if not device.tags.filter(pk=tag.pk).exists():
+                    device.tags.add(tag)
+                    tagged += 1
+            logger.info(
+                '  Tagged %s %s(s) with do_not_monitor (%s total)',
+                tagged,
+                label,
+                qs.count(),
+            )
 
-    if not mutate_netbox:
-        logger.info('  NetBox inventory mutations off (pass --mutate-netbox to tag Cato/Messpc)')
-        return
+        if enable_cato:
+            onboarding_added, legacy_removed = migrate_cato_to_onboarding_hold()
+            logger.info(
+                '  Cato Socket onboarding hold: added=%s removed_legacy_do_not_monitor=%s',
+                onboarding_added,
+                legacy_removed,
+            )
+    elif enable_cato:
+        raise ValueError('enable_cato requires mutate_netbox')
 
-    for slug, label in [('sd-wan-socket', 'Cato socket'), ('messpc', 'Messpc')]:
-        qs = Device.objects.filter(role__slug=slug)
-        tagged = 0
-        for d in qs:
-            if 'do_not_monitor' not in d.tags.names():
-                d.tags.add('do_not_monitor')
-                tagged += 1
-        logger.info('  Tagged %s %s(s) with do_not_monitor (%s total)', tagged, label, qs.count())
+
+def migrate_cato_to_onboarding_hold() -> tuple[int, int]:
+    """Move every Socket from its legacy inventory hold to the onboarding hold.
+
+    The role-level Zabbix exclusion remains in place until ``step9_tags()`` has
+    confirmed the per-device onboarding assignment. This preserves exclusion
+    through m2m-triggered synchronizations during the migration.
+    """
+    onboarding_tag = (
+        Tag.objects.filter(slug='onboarding').first()
+        or Tag.objects.filter(name='onboarding').first()
+    )
+    legacy_tag = (
+        Tag.objects.filter(slug='do_not_monitor').first()
+        or Tag.objects.filter(name='do_not_monitor').first()
+    )
+    if onboarding_tag is None or legacy_tag is None:
+        missing = [
+            name
+            for name, found_tag in (
+                ('onboarding', onboarding_tag),
+                ('do_not_monitor', legacy_tag),
+            )
+            if found_tag is None
+        ]
+        raise RuntimeError(
+            f"Cannot migrate Cato Socket hold; NetBox tag(s) missing: {', '.join(missing)}"
+        )
+
+    onboarding_added = 0
+    legacy_removed = 0
+    with transaction.atomic():
+        sockets = Device.objects.filter(role__slug='sd-wan-socket')
+        for device in sockets:
+            tag_ids = set(device.tags.values_list('pk', flat=True))
+            if onboarding_tag.pk not in tag_ids:
+                device.tags.add(onboarding_tag)
+                onboarding_added += 1
+            if legacy_tag.pk in tag_ids:
+                device.tags.remove(legacy_tag)
+                legacy_removed += 1
+    return onboarding_added, legacy_removed
 
 
 def step1_zabbix_server(*, url: str | None = None, token: str | None = None, lab_http: bool = False):
@@ -2069,7 +2137,7 @@ def step8_hostgroups(server, country_slugs=None):
         )
 
 
-def step9_tags(country_slugs=None):
+def step9_tags(country_slugs=None, *, enable_cato: bool = False):
     logger.info('=' * 60)
     logger.info('Step 9: ZabbixTags')
     logger.info('=' * 60)
@@ -2119,7 +2187,7 @@ def step9_tags(country_slugs=None):
         value='',
         defaults={'name': 'do_not_monitor'},
     )
-    for role_name in ['Messpc', 'Sd Wan Socket', 'VDI']:
+    for role_name in ['Messpc', 'VDI']:
         try:
             role = get_role(role_name)
         except DeviceRole.DoesNotExist:
@@ -2136,6 +2204,62 @@ def step9_tags(country_slugs=None):
     else:
         assign_tag(exclusion_tag, ct(Tag), onboarding_nb_tag.id)
         logger.info("  Zabbix do_not_monitor → NetBox Tag 'onboarding' (id=%s)", onboarding_nb_tag.id)
+    legacy_inventory_tag = (
+        Tag.objects.filter(slug='do_not_monitor').first()
+        or Tag.objects.filter(name='do_not_monitor').first()
+    )
+    try:
+        cato_role = get_role('Sd Wan Socket')
+    except DeviceRole.DoesNotExist:
+        if enable_cato:
+            raise RuntimeError('Cannot enable Cato: DeviceRole "Sd Wan Socket" is missing')
+        logger.warning('  Role not found: Sd Wan Socket (Cato host tags)')
+    else:
+        cato_component_tag, _ = get_or_create(
+            M.ZabbixTag,
+            tag='component',
+            value='cato',
+            defaults={'name': 'component=cato'},
+        )
+        cato_domain_tag, _ = get_or_create(
+            M.ZabbixTag,
+            tag='monitoring_domain',
+            value='cato_socket',
+            defaults={'name': 'monitoring_domain=cato_socket'},
+        )
+        assign_tag(cato_component_tag, ct(DeviceRole), cato_role.id)
+        assign_tag(cato_domain_tag, ct(DeviceRole), cato_role.id)
+
+        if enable_cato:
+            if onboarding_nb_tag is None:
+                raise RuntimeError('Cannot enable Cato: NetBox tag "onboarding" is missing')
+            sockets = list(
+                Device.objects.filter(role__slug='sd-wan-socket').prefetch_related('tags')
+            )
+            missing_onboarding = [
+                device.name
+                for device in sockets
+                if not device.tags.filter(pk=onboarding_nb_tag.pk).exists()
+            ]
+            legacy_held = [
+                device.name
+                for device in sockets
+                if legacy_inventory_tag is not None
+                and device.tags.filter(pk=legacy_inventory_tag.pk).exists()
+            ]
+            if missing_onboarding or legacy_held:
+                raise RuntimeError(
+                    'Cato role hold cannot be removed: '
+                    f'missing onboarding={missing_onboarding}, legacy do_not_monitor={legacy_held}'
+                )
+            deleted, _ = M.ZabbixTagAssignment.objects.filter(
+                zabbixtag=exclusion_tag,
+                assigned_object_type=ct(DeviceRole),
+                assigned_object_id=cato_role.id,
+            ).delete()
+            logger.info(
+                '  Removed %s Cato role-level do_not_monitor assignment(s)', deleted
+            )
 
 
 # Single inventory Jinja payload — applied identically to every country SiteGroup.
@@ -2446,8 +2570,17 @@ def ensure_storage_generic_template(server) -> None:
         logger.info('  CREATED: %r in Zabbix (%d items, id=%s)', name, copied, tpl_id)
 
 
-def run_production(*, mutate_netbox: bool = False, url: str | None = None, token: str | None = None, lab_http: bool = False):
+def run_production(
+    *,
+    mutate_netbox: bool = False,
+    enable_cato: bool = False,
+    url: str | None = None,
+    token: str | None = None,
+    lab_http: bool = False,
+):
     global TPL
+    if enable_cato and not mutate_netbox:
+        raise ValueError('enable_cato requires mutate_netbox')
     logger.info('=' * 60)
     logger.info('nbxSync Zero-Touch Configuration')
     logger.info('Successor to previous checklist configure_nbxsync.py')
@@ -2470,7 +2603,7 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
 
     # Network script reminder.
     logger.info('NOTE: Run scripts/configure_nbxsync_network.py after this for Extreme YAML import, Health patches, and Switch* IFALIAS. This script does not mass-sync hosts and does not delete Zabbix hosts.')
-    step0_cleanup(mutate_netbox=mutate_netbox)
+    step0_cleanup(mutate_netbox=mutate_netbox, enable_cato=enable_cato)
     server = step1_zabbix_server(url=url, token=token, lab_http=lab_http)
     ensure_storage_generic_template(server)
     required_names = {k: v for k, v in TPL_NAMES.items() if k not in OPTIONAL_TPL_KEYS}
@@ -2485,7 +2618,7 @@ def run_production(*, mutate_netbox: bool = False, url: str | None = None, token
     step6_template_rules(server)
     step7_template_assignments(server)
     step8_hostgroups(server)
-    step9_tags()
+    step9_tags(enable_cato=enable_cato)
     step10_host_inventory()
     step11_macros(server)
 
@@ -2543,6 +2676,35 @@ def run_verify(*, limit: int | None = None) -> int:
     snmp_role_on_agent_cg = 0
     snmp_tag_ifs = M.ZabbixHostInterface.objects.filter(assigned_object_type=ct(Tag)).count()
     os_family_tags_remaining = M.ZabbixTag.objects.filter(tag='os_family').count()
+    cato_sockets = Device.objects.filter(role__slug='sd-wan-socket')
+    onboarding_tag = (
+        Tag.objects.filter(slug='onboarding').first()
+        or Tag.objects.filter(name='onboarding').first()
+    )
+    legacy_inventory_tag = (
+        Tag.objects.filter(slug='do_not_monitor').first()
+        or Tag.objects.filter(name='do_not_monitor').first()
+    )
+    cato_role = DeviceRole.objects.filter(slug='sd-wan-socket').first()
+    exclusion_tag = M.ZabbixTag.objects.filter(tag='do_not_monitor', value='').first()
+    cato_role_exclusion_present = bool(
+        cato_role
+        and exclusion_tag
+        and M.ZabbixTagAssignment.objects.filter(
+            zabbixtag=exclusion_tag,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=cato_role.id,
+        ).exists()
+    )
+    cato_socket_total = cato_sockets.count()
+    cato_socket_onboarding = (
+        cato_sockets.filter(tags=onboarding_tag).count() if onboarding_tag else 0
+    )
+    cato_socket_legacy_hold = (
+        cato_sockets.filter(tags=legacy_inventory_tag).count()
+        if legacy_inventory_tag
+        else 0
+    )
     agent_cg_name = 'Agent Monitoring'
     switch_roles = {'Switch Core', 'Switch Dist', 'Switch Access', 'Switch Mgmt'}
     hiveos_without_iq_rule = 0
@@ -2595,6 +2757,10 @@ def run_verify(*, limit: int | None = None) -> int:
                 'active_without_primary_or_oob_ip': active_no_primary,
                 'os_family_tags_remaining': os_family_tags_remaining,
                 'tag_targeted_host_interfaces_remaining': snmp_tag_ifs,
+                'cato_socket_total': cato_socket_total,
+                'cato_socket_onboarding': cato_socket_onboarding,
+                'cato_socket_legacy_do_not_monitor': cato_socket_legacy_hold,
+                'cato_role_do_not_monitor_assignment_present': cato_role_exclusion_present,
                 'hiveos_platform_without_iq_engine_token': hiveos_without_iq_rule,
                 'switch_role_without_exos_or_voss_template': switch_without_extreme_template,
                 'access_point_without_iq_template': ap_without_iq_template,
@@ -2735,6 +2901,7 @@ def run_simulate() -> int:
         Tag.objects.get_or_create(slug='do_not_monitor', defaults={'name': 'do_not_monitor'})
         Tag.objects.get_or_create(slug='critical', defaults={'name': f'{PREFIX}critical'})
         snmp_tag, _ = Tag.objects.get_or_create(slug='snmp', defaults={'name': 'snmp'})
+        step0_cleanup(mutate_netbox=False)
         # Hostgroup-first lab: no production_db / Teams overlays
 
         # Create / refresh lab server only (never rename a foreign server onto lab URL)
@@ -3027,6 +3194,97 @@ def run_simulate() -> int:
         attach_vm(win_snmp, next_ip())
         win_snmp.tags.add(snmp_tag)
         objects['win_snmp'] = win_snmp
+        # Cato starts with both legacy holds. Exercise the production migration's
+        # exact role-slug query without touching any real Socket records that may
+        # share the development database behind this simulation.
+        cato = Device.objects.create(
+            name=f'{PREFIX}cato-socket-01',
+            device_type=dtype,
+            role=roles['Sd Wan Socket'],
+            site=site,
+            serial='CATO-SIM-001',
+            status='active',
+        )
+        attach_dev(cato, next_ip())
+        legacy_inventory_tag = Tag.objects.get(slug='do_not_monitor')
+        onboarding_tag = Tag.objects.get(slug='onboarding')
+        cato.tags.add(legacy_inventory_tag)
+        objects['cato_socket'] = cato
+
+        exclusion_tag = M.ZabbixTag.objects.get(tag='do_not_monitor', value='')
+        M.ZabbixTagAssignment.objects.get_or_create(
+            zabbixtag=exclusion_tag,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=cato.role_id,
+        )
+        for permanent_role_name in ('Messpc', 'VDI'):
+            permanent_role = roles[permanent_role_name]
+            record(
+                f'{permanent_role_name.lower()}_role_excluded',
+                M.ZabbixTagAssignment.objects.filter(
+                    zabbixtag=exclusion_tag,
+                    assigned_object_type=ct(DeviceRole),
+                    assigned_object_id=permanent_role.id,
+                ).exists(),
+                permanent_role.name,
+                group='cato',
+            )
+
+        from unittest.mock import patch
+
+        real_device_filter = Device.objects.filter
+        synthetic_cato_queryset = real_device_filter(pk=cato.pk)
+
+        def lab_socket_filter(*args, **kwargs):
+            if not args and kwargs == {'role__slug': 'sd-wan-socket'}:
+                return synthetic_cato_queryset
+            return real_device_filter(*args, **kwargs)
+
+        with patch.object(Device.objects, 'filter', side_effect=lab_socket_filter):
+            onboarding_added, legacy_removed = migrate_cato_to_onboarding_hold()
+            cato.refresh_from_db()
+            record(
+                'cato_inventory_hold_migrated',
+                onboarding_added == 1
+                and legacy_removed == 1
+                and cato.tags.filter(pk=onboarding_tag.pk).exists()
+                and not cato.tags.filter(pk=legacy_inventory_tag.pk).exists(),
+                f'added={onboarding_added} removed={legacy_removed}',
+                group='cato',
+            )
+            record(
+                'cato_legacy_role_hold_persists',
+                M.ZabbixTagAssignment.objects.filter(
+                    zabbixtag=exclusion_tag,
+                    assigned_object_type=ct(DeviceRole),
+                    assigned_object_id=cato.role_id,
+                ).exists(),
+                cato.role.name,
+                group='cato',
+            )
+            step9_tags(country_slugs=country_slugs, enable_cato=True)
+
+        cato.refresh_from_db()
+        record(
+            'cato_role_hold_removed_after_onboarding_assignment',
+            not M.ZabbixTagAssignment.objects.filter(
+                zabbixtag=exclusion_tag,
+                assigned_object_type=ct(DeviceRole),
+                assigned_object_id=cato.role_id,
+            ).exists(),
+            cato.role.name,
+            group='cato',
+        )
+        record(
+            'cato_onboarding_hold_resolves',
+            cato.tags.filter(pk=onboarding_tag.pk).exists()
+            and any(
+                assignment.zabbixtag.tag == 'do_not_monitor'
+                for assignment in get_assigned_zabbixobjects(cato)['tags']
+            ),
+            cato.name,
+            group='cato',
+        )
 
         def cg_name(obj):
             a = get_assigned_zabbixobjects(obj)
@@ -3097,8 +3355,112 @@ def run_simulate() -> int:
                     record(f'sync_{key}', False, f'{exc}\n{traceback.format_exc()[-300:]}', group='sync')
 
             def host(name):
-                found = api.host.get(filter={'host': name}, selectInterfaces='extend', selectParentTemplates=['name'], selectGroups=['name'])
+                found = api.host.get(
+                    filter={'host': name},
+                    selectInterfaces='extend',
+                    selectParentTemplates=['name'],
+                    selectGroups=['name'],
+                    selectTags='extend',
+                )
                 return found[0] if found else None
+
+            try:
+                SyncHostJob(instance=cato).run()
+                record(
+                    'cato_held_socket_not_synced',
+                    host(cato.name) is None,
+                    cato.name,
+                    group='cato',
+                )
+            except Exception as exc:
+                record('cato_held_socket_not_synced', False, str(exc), group='cato')
+
+            cato.tags.remove(onboarding_tag)
+            try:
+                SyncHostJob(instance=cato).run()
+                record('cato_released_socket_synced', True, cato.name, group='cato')
+            except Exception as exc:
+                record('cato_released_socket_synced', False, str(exc), group='cato')
+
+            # A normal configuration re-run must not recreate the retired Cato
+            # role exclusion after a Socket has been released.
+            step0_cleanup(mutate_netbox=False)
+            step9_tags(country_slugs=country_slugs)
+            record(
+                'cato_role_hold_not_recreated',
+                not M.ZabbixTagAssignment.objects.filter(
+                    zabbixtag=exclusion_tag,
+                    assigned_object_type=ct(DeviceRole),
+                    assigned_object_id=cato.role_id,
+                ).exists(),
+                cato.role.name,
+                group='cato',
+            )
+
+            h_cato = host(cato.name)
+            if h_cato:
+                cato_interfaces = h_cato.get('interfaces', [])
+                cato_agent_interfaces = [
+                    interface
+                    for interface in cato_interfaces
+                    if interface.get('type') == '1'
+                ]
+                cato_primary = str(
+                    IPAddress.objects.get(pk=cato.primary_ip4_id).address.ip
+                )
+                cato_templates = [
+                    template.get('name')
+                    for template in h_cato.get('parentTemplates', [])
+                ]
+                cato_host_tags = {
+                    (tag.get('tag'), tag.get('value', ''))
+                    for tag in h_cato.get('tags', [])
+                }
+                cato_ping_items = api.item.get(
+                    hostids=[h_cato['hostid']],
+                    filter={'key_': ['icmpping']},
+                    output=['itemid', 'key_'],
+                )
+                record(
+                    'cato_one_primary_agent_interface',
+                    len(cato_interfaces) == 1
+                    and len(cato_agent_interfaces) == 1
+                    and cato_agent_interfaces[0].get('ip') == cato_primary,
+                    str(
+                        [
+                            (interface.get('type'), interface.get('ip'))
+                            for interface in cato_interfaces
+                        ]
+                    ),
+                    group='cato',
+                )
+                record(
+                    'cato_stock_icmp_ping_only',
+                    cato_templates == [TPL['icmp_ping'][1]],
+                    str(cato_templates),
+                    group='cato',
+                )
+                record(
+                    'cato_single_icmpping_item',
+                    len(cato_ping_items) == 1,
+                    str([item.get('key_') for item in cato_ping_items]),
+                    group='cato',
+                )
+                record(
+                    'cato_host_tags',
+                    {('component', 'cato'), ('monitoring_domain', 'cato_socket')}
+                    <= cato_host_tags,
+                    str(sorted(cato_host_tags)),
+                    group='cato',
+                )
+            else:
+                for name in (
+                    'cato_one_primary_agent_interface',
+                    'cato_stock_icmp_ping_only',
+                    'cato_single_icmpping_item',
+                    'cato_host_tags',
+                ):
+                    record(name, False, 'Cato host missing after release', group='cato')
 
             h = host(objects['server'].name)
             if h:
@@ -3333,14 +3695,26 @@ def main() -> int:
     parser.add_argument('--verify', action='store_true', help='Read-only census; non-zero Extreme coverage gaps fail')
     parser.add_argument('--verify-limit', type=int, default=None, help='Optional cap on objects scanned by --verify')
     parser.add_argument('--mutate-netbox', action='store_true', help='Enable previous step0 inventory mutations')
+    parser.add_argument(
+        '--enable-cato',
+        action='store_true',
+        help='Migrate Sd Wan Socket from permanent exclusion to the onboarding rollout hold (requires --mutate-netbox)',
+    )
     parser.add_argument('--zabbix-url', default=None, help='Override Zabbix URL')
     parser.add_argument('--lab-http', action='store_true', help='Allow validate_certs=False (HTTP lab)')
     args = parser.parse_args()
+    if args.enable_cato and not args.mutate_netbox:
+        parser.error('--enable-cato requires --mutate-netbox')
     if args.simulate:
         return run_simulate()
     if args.verify:
         return run_verify(limit=args.verify_limit)
-    run_production(mutate_netbox=args.mutate_netbox, url=args.zabbix_url, lab_http=args.lab_http)
+    run_production(
+        mutate_netbox=args.mutate_netbox,
+        enable_cato=args.enable_cato,
+        url=args.zabbix_url,
+        lab_http=args.lab_http,
+    )
     return 0
 
 
