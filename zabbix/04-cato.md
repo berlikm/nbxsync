@@ -173,6 +173,10 @@ Socket migration merely to refresh this template.
    are ready. The exact hold/release command is in
    `docs/netbox-zabbix/runbooks/onboarding.md`.
 
+## Circuit / last-mile vs overlay
+
+Socket-only sites have no Forti SD-WAN health-check. Last-mile loss/latency on this collector is the underlay probe (ICMP outside the tunnel). Overlay loss stays overlay. CMA **Degraded** is `degradedStatus`, not `connectivityStatus` — an unplugged WAN does not disconnect the site or the account collector. Physical unplug is `interfacesLinkState.mediaIn`, not `interfaces.connected` (that is tunnel-to-PoP). Plan and next snapshot fields: [05](05-internet-circuits.md).
+
 ## API references
 
 - Cato API endpoint and GraphQL guidance:
@@ -181,3 +185,7 @@ Socket migration merely to refresh this template.
   <https://knowledge.catonetworks.com/docs/en/understanding-cato-api-rate-limiting>
 - `accountMetrics` field reference:
   <https://knowledge.catonetworks.com/docs/cato-api-accountmetrics.md>
+- Site connectivity statuses (CMA Degraded vs API `degradedStatus`):
+  <https://knowledge.catonetworks.com/docs/connectivity-statuses-for-cato-sites>
+- `accountSnapshot` interface fields (`physicalPort`, `tunnelRemoteIPInfo`, `interfacesLinkState`):
+  <https://knowledge.catonetworks.com/docs/cato-api-accountsnapshot-sites-devices-interfaces>
