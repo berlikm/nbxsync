@@ -89,6 +89,7 @@ SNAPSHOT_FIXTURE = {
                             },
                             'interfacesLinkState': [
                                 {'id': 'WAN1', 'mediaIn': True, 'up': True, 'hasTunnel': True, 'hasInternet': True},
+                                {'id': 'WAN2', 'mediaIn': True, 'up': True, 'hasTunnel': False, 'hasInternet': True},
                                 {'id': 'LAN1', 'mediaIn': True, 'up': True, 'hasTunnel': False, 'hasInternet': False},
                                 {'id': 'USB', 'mediaIn': False, 'up': False, 'hasTunnel': False, 'hasInternet': False},
                             ],
@@ -454,6 +455,14 @@ class CatoTemplateContractTests(unittest.TestCase):
             'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile packet loss',
             sla_names,
         )
+        self.assertNotIn(
+            'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay packet loss',
+            sla_names,
+        )
+        self.assertNotIn(
+            'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT',
+            sla_names,
+        )
 
     def test_collector_trigger_names(self):
         names = {
@@ -466,10 +475,11 @@ class CatoTemplateContractTests(unittest.TestCase):
     def test_census_uses_exists_foreach_and_availability(self):
         by_key = {item['key']: item for item in self.tpl['items']}
         site = by_key['cato.site.discovery.count']
-        self.assertIn('count(exists_foreach(//cato.site.connected[*]))-1', site['params'])
+        self.assertIn('count(exists_foreach(//cato.site.connected[*]))-count(exists_foreach(//cato.site.connected[__seed]))', site['params'])
         expr = site['triggers'][0]['expression']
         self.assertIn('cato.api.snapshot.available', expr)
         self.assertIn('{$CATO.SITES.EXPECTED}>0', expr)
+        self.assertIn('max(/Cato Networks by HTTP/cato.site.discovery.count,30m)', expr)
         sla = by_key['cato.wan.metrics.discovery.count']
         self.assertIn('cato.api.metrics.available', sla['triggers'][0]['expression'])
 
@@ -591,6 +601,21 @@ class CatoTemplateContractTests(unittest.TestCase):
         ):
             self.assertIn(key, keys)
 
+    def test_standby_wan_tunnel_trigger_requires_active_port(self):
+        ports = next(
+            rule for rule in self.tpl['discovery_rules'] if rule['key'] == 'cato.port.discovery'
+        )
+        tunnel = next(
+            item for item in ports['item_prototypes'] if 'has_tunnel[' in item['key']
+        )
+        names = {trigger['name'] for trigger in tunnel.get('trigger_prototypes') or []}
+        self.assertIn(
+            'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: No tunnel while media is up',
+            names,
+        )
+        expr = tunnel['trigger_prototypes'][0]['expression']
+        self.assertIn('{#TUNNEL.ALERT}=1', expr)
+
     def test_optional_identity_char_does_not_throw(self):
         optional = char_from_path_js('var found = {};\n', 'found.provider', 'provider', optional=True)
         required = char_from_path_js('var found = {};\n', 'found.provider', 'provider')
@@ -648,8 +673,17 @@ class CatoLldJsTests(unittest.TestCase):
         labels = {(row['{#SERIAL}'], row['{#PORT.ID}'], row['{#PORT.KIND}']) for row in rows}
         self.assertEqual(
             labels,
-            {('SOCK-A', 'WAN1', 'wan'), ('SOCK-A', 'LAN1', 'lan'), ('SOCK-B', 'WAN1', 'wan')},
+            {
+                ('SOCK-A', 'WAN1', 'wan'),
+                ('SOCK-A', 'WAN2', 'wan'),
+                ('SOCK-A', 'LAN1', 'lan'),
+                ('SOCK-B', 'WAN1', 'wan'),
+            },
         )
+        by_port = {(row['{#SERIAL}'], row['{#PORT.ID}']): row['{#TUNNEL.ALERT}'] for row in rows}
+        self.assertEqual(by_port[('SOCK-A', 'WAN1')], '1')
+        self.assertEqual(by_port[('SOCK-A', 'WAN2')], '0')
+        self.assertEqual(by_port[('SOCK-A', 'LAN1')], '0')
         self.assertTrue(all(row['{#SITE.NAME}'] == 'Zurich' for row in rows))
         self.assertEqual({row['{#HA.ROLE}'] for row in rows}, {'MASTER', 'BACKUP'})
 
@@ -749,7 +783,8 @@ class CatoApplyWiringTests(unittest.TestCase):
         self.assertIn('--apply-cato', src)
         self.assertIn('--check-cato', src)
         self.assertIn('run_apply_cato', src)
-        self.assertIn('preflight_cato_graphql', src)
+        self.assertIn('collect_cato_preflight', src)
+        self.assertIn('skip_preflight', src)
 
     def test_zerotouch_is_not_the_collector_refresh(self):
         src = (ROOT / 'scripts/configure_nbxsync_zerotouch.py').read_text(encoding='utf-8')

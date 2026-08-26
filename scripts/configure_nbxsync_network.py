@@ -4442,7 +4442,7 @@ def _cato_rpc(server):
     return ZabbixAPI(server.url, token=server.token)
 
 
-def _print_cato_plan(*, errors: list[str], apply: bool) -> None:
+def _print_cato_plan(*, errors: list[str], apply: bool, census: dict[str, int] | None = None) -> None:
     from cato_http import (
         CATO_API_KEY_ENV,
         CATO_API_URL,
@@ -4459,6 +4459,14 @@ def _print_cato_plan(*, errors: list[str], apply: bool) -> None:
     logger.info('Zabbix host: %s (%s)', collector_host(), collector_visible_name())
     logger.info('Import template from %s', CATO_HTTP_YAML)
     logger.info('No HostSync, no Extreme import, no Socket role mutation, no zerotouch')
+    if census:
+        logger.info(
+            'Live census (USB excluded): sites=%s sockets=%s wan=%s sla=%s',
+            census.get('sites'),
+            census.get('sockets'),
+            census.get('wan_rows'),
+            census.get('sla_rows'),
+        )
     if errors:
         logger.info('Preflight errors (%s) — abort, no writes:', len(errors))
         for err in errors:
@@ -4467,19 +4475,19 @@ def _print_cato_plan(*, errors: list[str], apply: bool) -> None:
 
 def _require_cato_preflight(*, server=None, apply: bool = True):
     """Fail-closed GraphQL gate. Does not import YAML or touch Socket hosts."""
-    from cato_http import preflight_cato_graphql
+    from cato_http import collect_cato_preflight
 
     if server is None:
         server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
         if server is None:
             raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
-    errors = preflight_cato_graphql()
-    _print_cato_plan(errors=errors, apply=apply)
+    errors, census = collect_cato_preflight()
+    _print_cato_plan(errors=errors, apply=apply, census=census)
     if errors:
         for error in errors:
             logger.error('  preflight: %s', error)
         raise SystemExit('Cato GraphQL preflight failed — no writes:\n  ' + '\n  '.join(errors))
-    return server
+    return server, census
 
 
 def run_check_cato() -> int:
@@ -4518,13 +4526,15 @@ def run_apply_cato() -> int:
     api_token = (os.environ.get(CATO_API_KEY_ENV) or '').strip()
     if not api_token:
         raise SystemExit(f'Set {CATO_API_KEY_ENV} for --apply-cato')
-    server = _require_cato_preflight(server=server)
+    server, census = _require_cato_preflight(server=server)
     logger.info('Preflight OK — importing Cato template and converging the account host')
     api = _cato_rpc(server)
     records = apply_cato_pack(
         api,
         api_token,
         proxy_group=os.environ.get(CATO_PROXY_GROUP_ENV) or None,
+        census=census,
+        skip_preflight=True,
     )
     if not _all_pass(records):
         raise SystemExit('Cato collector apply verification failed')

@@ -557,7 +557,7 @@ zabbix_export:
       delay: 1m
       history: 7d
       value_type: FLOAT
-      params: 'count(exists_foreach(//cato.site.connected[*]))-1'
+      params: 'count(exists_foreach(//cato.site.connected[*]))-count(exists_foreach(//cato.site.connected[__seed]))'
       tags:
       - tag: component
         value: cato
@@ -567,7 +567,7 @@ zabbix_export:
         value: collector
       triggers:
       - uuid: dfaf1d1a59084c4890937348e9cf9057
-        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.SITES.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.site.discovery.count)<{$CATO.SITES.EXPECTED}'
+        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.SITES.EXPECTED}>0 and max(/Cato Networks by HTTP/cato.site.discovery.count,30m)<{$CATO.SITES.EXPECTED}'
         name: 'Cato census: fewer Socket sites than expected'
         priority: AVERAGE
         tags:
@@ -584,7 +584,7 @@ zabbix_export:
       delay: 1m
       history: 7d
       value_type: FLOAT
-      params: 'count(exists_foreach(//cato.socket.connected[*]))-1'
+      params: 'count(exists_foreach(//cato.socket.connected[*]))-count(exists_foreach(//cato.socket.connected[__seed]))'
       tags:
       - tag: component
         value: cato
@@ -594,7 +594,7 @@ zabbix_export:
         value: collector
       triggers:
       - uuid: 2368fc63a1044c6faea5cc866edd862d
-        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.SOCKETS.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.socket.discovery.count)<{$CATO.SOCKETS.EXPECTED}'
+        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.SOCKETS.EXPECTED}>0 and max(/Cato Networks by HTTP/cato.socket.discovery.count,30m)<{$CATO.SOCKETS.EXPECTED}'
         name: 'Cato census: fewer Sockets than expected'
         priority: AVERAGE
         tags:
@@ -611,7 +611,7 @@ zabbix_export:
       delay: 1m
       history: 7d
       value_type: FLOAT
-      params: 'count(exists_foreach(//cato.wan.connected[*]))-1'
+      params: 'count(exists_foreach(//cato.wan.connected[*]))-count(exists_foreach(//cato.wan.connected[__seed]))'
       tags:
       - tag: component
         value: cato
@@ -621,7 +621,7 @@ zabbix_export:
         value: collector
       triggers:
       - uuid: ab34b51755e24d4ba12ca9d85ce1350d
-        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.WAN.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.wan.discovery.count)<{$CATO.WAN.EXPECTED}'
+        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.WAN.EXPECTED}>0 and max(/Cato Networks by HTTP/cato.wan.discovery.count,30m)<{$CATO.WAN.EXPECTED}'
         name: 'Cato census: fewer WAN links than expected'
         priority: AVERAGE
         tags:
@@ -638,7 +638,7 @@ zabbix_export:
       delay: 1m
       history: 7d
       value_type: FLOAT
-      params: 'count(exists_foreach(//cato.wan.rx.bps[*]))-1'
+      params: 'count(exists_foreach(//cato.wan.rx.bps[*]))-count(exists_foreach(//cato.wan.rx.bps[__seed]))'
       tags:
       - tag: component
         value: cato
@@ -648,7 +648,7 @@ zabbix_export:
         value: collector
       triggers:
       - uuid: 3206c1c8f62d4e47a44896ebbd824f97
-        expression: 'last(/Cato Networks by HTTP/cato.api.metrics.available)=1 and {$CATO.SLA.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.wan.metrics.discovery.count)<{$CATO.SLA.EXPECTED}'
+        expression: 'last(/Cato Networks by HTTP/cato.api.metrics.available)=1 and {$CATO.SLA.EXPECTED}>0 and max(/Cato Networks by HTTP/cato.wan.metrics.discovery.count,30m)<{$CATO.SLA.EXPECTED}'
         name: 'Cato census: fewer WAN SLA rows than expected'
         priority: AVERAGE
         tags:
@@ -2522,6 +2522,7 @@ zabbix_export:
                   continue;
                 }
                 var kind = portKind(port.id);
+                var tunnelAlert = new RegExp('{$CATO.PORT.TUNNEL.MATCHES}').test(String(port.id)) ? '1' : '0';
                 out.push({
                   '{#SITE.ID}': String(site.id),
                   '{#SITE.NAME}': String(info.name || ''),
@@ -2531,7 +2532,8 @@ zabbix_export:
                   '{#SERIAL}': String(socket.serial),
                   '{#HA.ROLE}': normalizeHaRole(device, socket, isHA),
                   '{#PORT.ID}': String(port.id),
-                  '{#PORT.KIND}': kind
+                  '{#PORT.KIND}': kind,
+                  '{#TUNNEL.ALERT}': tunnelAlert
                 });
               }
             }
@@ -2795,7 +2797,7 @@ zabbix_export:
           value: '{#PORT.KIND}'
         trigger_prototypes:
         - uuid: 23b1779cb3304ea38b80b6d89250301b
-          expression: 'last(/Cato Networks by HTTP/cato.port.media_in[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}])=1 and max(/Cato Networks by HTTP/cato.port.has_tunnel[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}],#3)=0 and last(/Cato Networks by HTTP/cato.port.kind.code[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}])=1'
+          expression: 'last(/Cato Networks by HTTP/cato.port.media_in[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}])=1 and max(/Cato Networks by HTTP/cato.port.has_tunnel[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}],#3)=0 and last(/Cato Networks by HTTP/cato.port.kind.code[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}])=1 and {#TUNNEL.ALERT}=1'
           name: 'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: No tunnel while media is up'
           priority: AVERAGE
           tags:
@@ -3217,24 +3219,6 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-        trigger_prototypes:
-        - uuid: 8cfe7d4269354acbbdb2a1d20c38fbeb
-          expression: 'min(/Cato Networks by HTTP/cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}],15m)>{$CATO.LOSS.WARN}'
-          name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay packet loss'
-          priority: WARNING
-          tags:
-          - tag: component
-            value: cato
-          - tag: monitoring_domain
-            value: cato_overlay
-          - tag: scope
-            value: wan_sla
-          - tag: site
-            value: '{#SITE.NAME}'
-          - tag: connection_type
-            value: '{#CONN.TYPE}'
-          - tag: dest_type
-            value: '{#DEST.TYPE}'
       - uuid: cbc353c2d2974df3aa2028fc45c3a14e
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX jitter'
         type: DEPENDENT
@@ -3420,24 +3404,6 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-        trigger_prototypes:
-        - uuid: 1d08833efc5040e1aad490bf4b0d042f
-          expression: 'min(/Cato Networks by HTTP/cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}],15m)>{$CATO.RTT.WARN}'
-          name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT'
-          priority: WARNING
-          tags:
-          - tag: component
-            value: cato
-          - tag: monitoring_domain
-            value: cato_overlay
-          - tag: scope
-            value: wan_sla
-          - tag: site
-            value: '{#SITE.NAME}'
-          - tag: connection_type
-            value: '{#CONN.TYPE}'
-          - tag: dest_type
-            value: '{#DEST.TYPE}'
       - uuid: 13f991e7042f46659f31a85962e1118a
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile loss'
         type: DEPENDENT
@@ -3879,6 +3845,8 @@ zabbix_export:
       value: '33'
     - macro: '{$CATO.SLA.EXPECTED}'
       value: '17'
+    - macro: '{$CATO.PORT.TUNNEL.MATCHES}'
+      value: '^WAN1$'
     - macro: '{$CATO.LOSS.WARN}'
       value: '2'
     - macro: '{$CATO.LASTMILE.LOSS.WARN}'

@@ -182,8 +182,6 @@ EXPECTED_STATE_TRIGGER_PROTOTYPE_NAMES = {
     'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Disconnected while site is up',
     'Cato site {#SITE.NAME}: HA not ready',
     'Cato site {#SITE.NAME}: HA socket version not ok',
-    'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay packet loss',
-    'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT',
     'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down',
     'Cato lan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down',
     'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: No tunnel while media is up',
@@ -259,12 +257,20 @@ TEMPLATE_MACROS = {
     '{$CATO.SOCKETS.EXPECTED}': '21',
     '{$CATO.WAN.EXPECTED}': '33',
     '{$CATO.SLA.EXPECTED}': '17',
+    '{$CATO.PORT.TUNNEL.MATCHES}': '^WAN1$',
     '{$CATO.LOSS.WARN}': '2',
     '{$CATO.LASTMILE.LOSS.WARN}': '2',
     '{$CATO.RTT.WARN}': '101',
     '{$CATO.HA.READINESS.OK}': 'ready',
     '{$CATO.HA.VERSION.OK}': 'ok',
 }
+
+CENSUS_EXPECTED_MACROS = (
+    ('{$CATO.SITES.EXPECTED}', 'sites'),
+    ('{$CATO.SOCKETS.EXPECTED}', 'sockets'),
+    ('{$CATO.WAN.EXPECTED}', 'wan_rows'),
+    ('{$CATO.SLA.EXPECTED}', 'sla_rows'),
+)
 
 
 def default_account_id() -> str:
@@ -306,7 +312,22 @@ def load_lld_js(key: str) -> str:
 
 
 def substitute_conn_type(js: str, pattern: str = DEFAULT_CONN_TYPE) -> str:
-    return js.replace('{$CATO.SITE.CONN_TYPE.MATCHES}', pattern)
+    return substitute_lld_macros(js, conn_type=pattern)
+
+
+def substitute_lld_macros(
+    js: str,
+    *,
+    conn_type: str = DEFAULT_CONN_TYPE,
+    tunnel_matches: str | None = None,
+) -> str:
+    source = js.replace('{$CATO.SITE.CONN_TYPE.MATCHES}', conn_type)
+    tunnel = (
+        tunnel_matches
+        if tunnel_matches is not None
+        else TEMPLATE_MACROS['{$CATO.PORT.TUNNEL.MATCHES}']
+    )
+    return source.replace('{$CATO.PORT.TUNNEL.MATCHES}', tunnel)
 
 
 def run_lld_js(js: str, payload: str, *, conn_type: str = DEFAULT_CONN_TYPE) -> Any:
@@ -316,7 +337,7 @@ def run_lld_js(js: str, payload: str, *, conn_type: str = DEFAULT_CONN_TYPE) -> 
     import tempfile
 
     node = shutil.which('node') or '/exec-daemon/node'
-    source = substitute_conn_type(js, conn_type)
+    source = substitute_lld_macros(js, conn_type=conn_type)
     wrapper = (
         'const fs = require("fs");\n'
         'const value = fs.readFileSync(0, "utf8");\n'
@@ -399,22 +420,23 @@ def graphql_request(
     return body, None
 
 
-def preflight_cato_graphql(
+def collect_cato_preflight(
     *,
     api_key: str | None = None,
     account_id: str | None = None,
     url: str = CATO_API_URL,
-) -> list[str]:
-    """Fail-closed GraphQL gate used by --apply-cato / configure_cato_zabbix --apply."""
+) -> tuple[list[str], dict[str, int]]:
+    """One snapshot POST and one metrics POST. Returns (errors, census)."""
     errors: list[str] = []
+    census = {'sites': 0, 'sockets': 0, 'wan_rows': 0, 'sla_rows': 0}
     key = (api_key if api_key is not None else os.environ.get(CATO_API_KEY_ENV) or '').strip()
     if not key:
         errors.append(f'{CATO_API_KEY_ENV} is missing; Cato GraphQL preflight cannot authenticate')
-        return errors
+        return errors, census
     acct = (account_id or default_account_id()).strip()
     if not acct:
         errors.append(f'{CATO_ACCOUNT_ID_ENV} is empty')
-        return errors
+        return errors, census
 
     snapshot, snap_err = graphql_request(url, key, SNAPSHOT_QUERY, acct)
     if snap_err:
@@ -435,7 +457,8 @@ def preflight_cato_graphql(
         if not data:
             errors.append('accountSnapshot returned no data.accountSnapshot')
         else:
-            census = snapshot_census(snapshot)
+            live = snapshot_census(snapshot)
+            census.update(live)
             if census['sites'] <= 0:
                 errors.append('accountSnapshot has no SOCKET_ sites')
 
@@ -458,9 +481,22 @@ def preflight_cato_graphql(
         if not data:
             errors.append('accountMetrics returned no data.accountMetrics')
         else:
-            sla_rows = metrics_sla_census(metrics)
-            if sla_rows <= 0:
+            census['sla_rows'] = metrics_sla_census(metrics)
+            if census['sla_rows'] <= 0:
                 errors.append('accountMetrics has no SOCKET_ SLA rows')
+    return errors, census
+
+
+def preflight_cato_graphql(
+    *,
+    api_key: str | None = None,
+    account_id: str | None = None,
+    url: str = CATO_API_URL,
+) -> list[str]:
+    """Fail-closed GraphQL gate used by --apply-cato / configure_cato_zabbix --apply."""
+    errors, _census = collect_cato_preflight(
+        api_key=api_key, account_id=account_id, url=url
+    )
     return errors
 
 

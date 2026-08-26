@@ -135,7 +135,8 @@ connectivity state — `connectivityStatus` stays connected|disconnected.
 
 Numeric SLA prototypes keep 30 days of history and 365 days of trends. Overlay
 loss for Path is `max(RX, TX)` so one honeycomb can go yellow at CMA's 2%
-threshold without 51 line graphs.
+threshold without 51 line graphs. Overlay loss/RTT are **dashboard-only** —
+not triggers. Path quality is a honeycomb, not a ticket.
 
 ## Alert model
 
@@ -145,13 +146,11 @@ threshold without 51 line graphs.
 | Average | `Cato site {#SITE.NAME}: Degraded` while the site is connected | CMA yellow. Depends on site Disconnected. Reasons are a CHAR item (`WAN_DISCONNECTED`, `LAN_*`, `HA_NOT_READY_*`, …). |
 | Average | Socket or WAN disconnected while the site is up | Socket- or link-specific overlay failure. |
 | Average | WAN `mediaIn=0` while the site is connected | Physical WAN unplug / SFP out. Circuit class for Socket-only sites. |
-| Average | WAN `mediaIn=1` and `hasTunnel=0` | Port has Ethernet but no DTLS to a PoP. |
+| Average | WAN1 `mediaIn=1` and `hasTunnel=0` (`{$CATO.PORT.TUNNEL.MATCHES}=^WAN1$`) | Active WAN has Ethernet but no DTLS. **WAN2 standby with link and no tunnel does not page.** CMA Degraded still covers unexpected `WAN_TUNNEL_DISCONNECTED`. |
 | Warning | LAN `mediaIn=0` while the site is connected | Building LAN, not an ISP circuit. |
 | Average | Site connected, `isHA`, `haStatus.readiness` not `{$CATO.HA.READINESS.OK}` | HA not ready. May coexist with site Degraded when the reason is `HA_NOT_READY_*`. |
 | Warning | HA `socketVersion` not `{$CATO.HA.VERSION.OK}` | Socket software skew. |
-| Warning | Overlay loss > `{$CATO.LOSS.WARN}` (default **2**, CMA yellow) | Path quality. Not a circuit ticket. |
-| Warning | Overlay RTT > `{$CATO.RTT.WARN}` (default **101**, off until baselined) | Path delay. |
-| Average | Census below `{$CATO.SITES.EXPECTED}` / `SOCKETS` / `WAN` / `SLA` while the matching master is available | Silent LLD loss. Macro `0` mutes that family. Defaults are 11 / 21 / 33 / 17. |
+| Average | Census below host `{$CATO.SITES.EXPECTED}` / `SOCKETS` / `WAN` / `SLA` for **30m** while the matching master is available | Silent LLD loss. `--apply-cato` writes those macros from live USB-filtered GraphQL census. Macro `0` mutes that family. |
 | Average | Snapshot/metrics GraphQL errors, no snapshot for 5m, no metrics for 15m, unsupported items | Collector/API health only. |
 | Warning | Snapshot or metrics schema violations | Schema drift / invalid optional-field observation. |
 

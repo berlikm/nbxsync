@@ -65,6 +65,7 @@ for (var i = 0; i < sites.length; i++) {
         continue;
       }
       var kind = portKind(port.id);
+      var tunnelAlert = new RegExp('{$CATO.PORT.TUNNEL.MATCHES}').test(String(port.id)) ? '1' : '0';
       out.push({
         '{#SITE.ID}': String(site.id),
         '{#SITE.NAME}': String(info.name || ''),
@@ -74,7 +75,8 @@ for (var i = 0; i < sites.length; i++) {
         '{#SERIAL}': String(socket.serial),
         '{#HA.ROLE}': normalizeHaRole(device, socket, isHA),
         '{#PORT.ID}': String(port.id),
-        '{#PORT.KIND}': kind
+        '{#PORT.KIND}': kind,
+        '{#TUNNEL.ALERT}': tunnelAlert
       });
     }
   }

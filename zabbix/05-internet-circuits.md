@@ -100,7 +100,8 @@ Do **not** page Cato overlay loss as an ISP cut at Forti sites. At Socket-only s
 | Thing | Alert | Sev |
 |---|---|---|
 | One redundant `UW` / Forti WAN / SD-WAN member down | yes | **Average** — tagged as circuit, not fabric. Forti SD-WAN health-check is the authoritative underlay symptom; Extreme `UW` is the cause signal |
-| Cato-only: one WAN unplugged or tunnel down while the site stays connected | yes | **Average** circuit — site Degraded + WAN `mediaIn=false` / `hasTunnel=false`. Not site High. Not LAN. |
+| Cato-only: active WAN unplugged (`mediaIn=false`) while the site stays connected | yes | **Average** circuit — site Degraded + WAN1 media down. Not site High. Not LAN. Not standby WAN2. |
+| Cato overlay loss / RTT | **no** | Path honeycomb only |
 | Last usable site underlay path lost | yes | **High** on the path; **Disaster** on the site (later parent) |
 | Flapping | yes | Warning |
 | Errors | yes | Warning |

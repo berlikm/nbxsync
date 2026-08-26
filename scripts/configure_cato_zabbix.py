@@ -46,6 +46,7 @@ from cato_http import (  # noqa: E402
     CATO_API_URL,
     CATO_PROXY_GROUP_ENV,
     COLLECTOR_COUNTER_KEYS,
+    CENSUS_EXPECTED_MACROS,
     EXPECTED_COLLECTOR_TRIGGER_NAMES,
     EXPECTED_DASHBOARD_NAMES,
     EXPECTED_DASHBOARD_ITEM_REFERENCES,
@@ -73,12 +74,12 @@ from cato_http import (  # noqa: E402
     TEMPLATE_NAME,
     TEMPLATE_PATH,
     TEXT,
+    collect_cato_preflight,
     collector_host,
     collector_visible_name,
     default_account_id,
     host_macros,
     metrics_sla_census,
-    preflight_cato_graphql,
     normalize_socket_serial,
     sim_host,
     snapshot_census,
@@ -292,6 +293,12 @@ def _set_host_macro(
             "usermacro.create",
             {"hostid": hostid, "macro": macro, "value": value, "type": macro_type},
         )
+
+
+def _set_census_macros(api: ZabbixAPI, hostid: str, census: dict[str, int]) -> None:
+    """Host-level expected counts from live USB-filtered GraphQL census."""
+    for macro, field in CENSUS_EXPECTED_MACROS:
+        _set_host_macro(api, hostid, macro, str(int(census[field])), TEXT)
 
 
 def _set_cato_macros(api: ZabbixAPI, hostid: str, api_token: str) -> None:
@@ -1491,13 +1498,20 @@ def apply_cato_pack(
     host: str | None = None,
     visible_name: str | None = None,
     proxy_group: str | None = None,
+    census: dict[str, int] | None = None,
+    skip_preflight: bool = False,
 ) -> list[dict[str, Any]]:
     """Fail-closed GraphQL preflight, then import YAML and converge the collector."""
     if not api_token:
         raise RuntimeError(f"{CATO_API_KEY_ENV} is required")
-    errors = preflight_cato_graphql(api_key=api_token, account_id=default_account_id())
-    if errors:
-        raise RuntimeError("Cato GraphQL preflight failed:\n  " + "\n  ".join(errors))
+    live = census
+    if not skip_preflight or live is None:
+        errors, collected = collect_cato_preflight(
+            api_key=api_token, account_id=default_account_id()
+        )
+        if errors:
+            raise RuntimeError("Cato GraphQL preflight failed:\n  " + "\n  ".join(errors))
+        live = collected
     if proxy_group:
         _get_proxy_group_id(api, proxy_group)
     templateid = import_template(api)
@@ -1509,6 +1523,7 @@ def apply_cato_pack(
         visible_name=visible_name or collector_visible_name(),
         proxy_group=proxy_group,
     )
+    _set_census_macros(api, hostid, live)
     retired = retire_legacy_usb_port_items(api, hostid)
     records = [
         _record("Cato legacy USB port items retired", True, f"count={retired}")
@@ -1548,7 +1563,9 @@ def run_simulate() -> int:
     api_token = os.environ.get(CATO_API_KEY_ENV, "")
     if not api_token:
         raise RuntimeError(f"{CATO_API_KEY_ENV} is required for --simulate")
-    errors = preflight_cato_graphql(api_key=api_token, account_id=default_account_id())
+    errors, census = collect_cato_preflight(
+        api_key=api_token, account_id=default_account_id()
+    )
     if errors:
         raise RuntimeError("Cato GraphQL preflight failed:\n  " + "\n  ".join(errors))
     api = ZabbixAPI.from_lab()
@@ -1569,6 +1586,7 @@ def run_simulate() -> int:
         host=SIM_HOST,
         visible_name=f"{VISIBLE_NAME} (simulation)",
     )
+    _set_census_macros(api, hostid, census)
     second_hostid = ensure_account_host(
         api,
         second_templateid,

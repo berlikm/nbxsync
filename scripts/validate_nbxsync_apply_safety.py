@@ -389,7 +389,10 @@ def main() -> int:
     record(
         'network_cato_fail_closed_preflight',
         '_require_cato_preflight' in cato
-        and 'preflight_cato_graphql' in cato_preflight
+        and (
+            'preflight_cato_graphql' in cato_preflight
+            or 'collect_cato_preflight' in cato_preflight
+        )
         and '_print_cato_plan' in cato_preflight
         and 'raise SystemExit' in cato_preflight,
         'Cato GraphQL preflight aborts before YAML/host writes',

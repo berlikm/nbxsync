@@ -277,7 +277,7 @@ def census_item(
 ) -> list[str]:
     expr = (
         f'last(/{TPL}/{available_key})=1 and {expected_macro}>0 and '
-        f'last(/{TPL}/{key})<{expected_macro}'
+        f'max(/{TPL}/{key},30m)<{expected_macro}'
     )
     return [
         f'    - uuid: {uid(uid_key)}',
@@ -287,7 +287,7 @@ def census_item(
         '      delay: 1m',
         '      history: 7d',
         '      value_type: FLOAT',
-        f'      params: {q(f"count(exists_foreach(//{foreach_key}[*]))-1")}',
+        f'      params: {q(f"count(exists_foreach(//{foreach_key}[*]))-count(exists_foreach(//{foreach_key}[__seed]))")}',
         *collector_tags(),
         '      triggers:',
         f'      - uuid: {uid(trigger_uid)}',
@@ -2017,7 +2017,8 @@ def render_template() -> str:
                 'expression': (
                     f'last(/{TPL}/cato.port.media_in[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}])=1 and '
                     f'max(/{TPL}/cato.port.has_tunnel[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}],#3)=0 and '
-                    f'last(/{TPL}/cato.port.kind.code[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}])=1'
+                    f'last(/{TPL}/cato.port.kind.code[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}])=1 and '
+                    '{#TUNNEL.ALERT}=1'
                 ),
                 'name': 'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: No tunnel while media is up',
                 'priority': 'AVERAGE',
@@ -2067,12 +2068,6 @@ def render_template() -> str:
             params=f'max(last(//cato.wan.loss.rx.pct[{{#SITE.ID}},{{#LINK.ID}}]),last(//cato.wan.loss.tx.pct[{{#SITE.ID}},{{#LINK.ID}}]))',
             scope='wan_sla', extra_tags=SLA_TAGS,
             units='%',
-            triggers=[{
-                'uid': 'sla_loss_tr',
-                'expression': f'min(/{TPL}/cato.wan.loss.max.pct[{{#SITE.ID}},{{#LINK.ID}}],15m)>{{$CATO.LOSS.WARN}}',
-                'name': 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay packet loss',
-                'priority': 'WARNING',
-            }],
         ),
         *proto_item(uid_key='sla_jit_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX jitter', key='cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('jitterDownstream', 'RX jitter'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
         *proto_item(uid_key='sla_jit_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX jitter', key='cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('jitterUpstream', 'TX jitter'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
@@ -2095,12 +2090,6 @@ def render_template() -> str:
             valuemap=None,
             units='ms',
             trends='365d',
-            triggers=[{
-                'uid': 'sla_rtt_tr',
-                'expression': f'min(/{TPL}/cato.wan.rtt.ms[{{#SITE.ID}},{{#LINK.ID}}],15m)>{{$CATO.RTT.WARN}}',
-                'name': 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT',
-                'priority': 'WARNING',
-            }],
         ),
         *proto_item(
             uid_key='sla_lm_loss',
