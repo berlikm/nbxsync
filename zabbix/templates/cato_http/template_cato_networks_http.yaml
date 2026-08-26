@@ -4310,7 +4310,7 @@ zabbix_export:
             value: '1'
           - type: STRING
             name: tag_priority
-            value: 'site, connection_type, ha_role, port_kind, dest_type'
+            value: 'site, serial, ha_role, port_kind, dest_type'
         - type: honeycomb
           name: Sites
           'y': '7'
@@ -4334,7 +4334,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -5274,7 +5274,7 @@ zabbix_export:
             value: '1'
           - type: STRING
             name: tag_priority
-            value: 'site, connection_type, ha_role, port_kind, dest_type'
+            value: 'site, serial, ha_role, port_kind, dest_type'
         - type: honeycomb
           name: Degraded
           'y': '7'
@@ -5298,7 +5298,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -5329,12 +5329,6 @@ zabbix_export:
           - type: STRING
             name: group_by.0.tag_name
             value: 'site'
-          - type: INTEGER
-            name: group_by.1.attribute
-            value: '3'
-          - type: STRING
-            name: group_by.1.tag_name
-            value: 'connection_type'
           - type: STRING
             name: items.0
             value: 'Cato site *: Degraded'
@@ -5378,8 +5372,8 @@ zabbix_export:
         - type: itemnavigator
           name: Details
           'y': '18'
-          width: '28'
-          height: '5'
+          width: '24'
+          height: '7'
           fields:
           - type: INTEGER
             name: group_by.0.attribute
@@ -5387,12 +5381,6 @@ zabbix_export:
           - type: STRING
             name: group_by.0.tag_name
             value: 'site'
-          - type: INTEGER
-            name: group_by.1.attribute
-            value: '3'
-          - type: STRING
-            name: group_by.1.tag_name
-            value: 'connection_type'
           - type: STRING
             name: items.0
             value: 'Cato site *: Degraded reasons'
@@ -5407,11 +5395,23 @@ zabbix_export:
             value: 'DGDET'
         - type: item
           name: Latest
-          x: '28'
+          x: '24'
           'y': '18'
-          width: '44'
-          height: '5'
+          width: '48'
+          height: '7'
           fields:
+          - type: INTEGER
+            name: desc_bold
+            value: '0'
+          - type: INTEGER
+            name: desc_h_pos
+            value: '0'
+          - type: INTEGER
+            name: desc_size
+            value: '10'
+          - type: INTEGER
+            name: desc_v_pos
+            value: '0'
           - type: STRING
             name: itemid._reference
             value: 'DGDET._itemid'
@@ -5422,11 +5422,20 @@ zabbix_export:
             name: show.1
             value: '2'
           - type: INTEGER
+            name: units_show
+            value: '0'
+          - type: INTEGER
             name: value_bold
-            value: '1'
+            value: '0'
+          - type: INTEGER
+            name: value_h_pos
+            value: '0'
           - type: INTEGER
             name: value_size
-            value: '28'
+            value: '14'
+          - type: INTEGER
+            name: value_v_pos
+            value: '1'
           - type: STRING
             name: reference
             value: 'DGVAL'
@@ -5819,13 +5828,13 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: secondary_label_size_type
             value: '1'
           - type: INTEGER
             name: secondary_label_size
-            value: '22'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -5876,13 +5885,13 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: secondary_label_size_type
             value: '1'
           - type: INTEGER
             name: secondary_label_size
-            value: '22'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -5934,13 +5943,13 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: secondary_label_size_type
             value: '1'
           - type: INTEGER
             name: secondary_label_size
-            value: '22'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -5992,13 +6001,13 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: secondary_label_size_type
             value: '1'
           - type: INTEGER
             name: secondary_label_size
-            value: '22'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -6049,13 +6058,13 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: secondary_label_size_type
             value: '1'
           - type: INTEGER
             name: secondary_label_size
-            value: '22'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -6107,13 +6116,13 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: secondary_label_size_type
             value: '1'
           - type: INTEGER
             name: secondary_label_size
-            value: '22'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -6164,13 +6173,13 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: secondary_label_size_type
             value: '1'
           - type: INTEGER
             name: secondary_label_size
-            value: '22'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -6216,12 +6225,6 @@ zabbix_export:
             value: '3'
           - type: STRING
             name: group_by.1.tag_name
-            value: 'connection_type'
-          - type: INTEGER
-            name: group_by.2.attribute
-            value: '3'
-          - type: STRING
-            name: group_by.2.tag_name
             value: 'dest_type'
           - type: STRING
             name: items.0
@@ -6298,7 +6301,7 @@ zabbix_export:
             value: 'Cato WAN *: Connectivity'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato WAN (.*): Connectivity$","\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato WAN (.+?) / [^/]+ / (.+): Connectivity$","\1 \2")}'
           - type: INTEGER
             name: interpolation
             value: '0'
@@ -6310,7 +6313,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '16'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -6358,7 +6361,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -6401,18 +6404,12 @@ zabbix_export:
             value: '3'
           - type: STRING
             name: group_by.1.tag_name
-            value: 'connection_type'
+            value: 'serial'
           - type: INTEGER
             name: group_by.2.attribute
             value: '3'
           - type: STRING
             name: group_by.2.tag_name
-            value: 'ha_role'
-          - type: INTEGER
-            name: group_by.3.attribute
-            value: '3'
-          - type: STRING
-            name: group_by.3.tag_name
             value: 'dest_type'
           - type: STRING
             name: items.0
@@ -6450,8 +6447,8 @@ zabbix_export:
         - type: itemnavigator
           name: Details
           'y': '6'
-          width: '28'
-          height: '5'
+          width: '24'
+          height: '7'
           fields:
           - type: INTEGER
             name: group_by.0.attribute
@@ -6464,18 +6461,12 @@ zabbix_export:
             value: '3'
           - type: STRING
             name: group_by.1.tag_name
-            value: 'connection_type'
+            value: 'serial'
           - type: INTEGER
             name: group_by.2.attribute
             value: '3'
           - type: STRING
             name: group_by.2.tag_name
-            value: 'ha_role'
-          - type: INTEGER
-            name: group_by.3.attribute
-            value: '3'
-          - type: STRING
-            name: group_by.3.tag_name
             value: 'dest_type'
           - type: STRING
             name: items.0
@@ -6500,11 +6491,23 @@ zabbix_export:
             value: 'CNDET'
         - type: item
           name: Latest
-          x: '28'
+          x: '24'
           'y': '6'
-          width: '44'
-          height: '5'
+          width: '48'
+          height: '7'
           fields:
+          - type: INTEGER
+            name: desc_bold
+            value: '0'
+          - type: INTEGER
+            name: desc_h_pos
+            value: '0'
+          - type: INTEGER
+            name: desc_size
+            value: '10'
+          - type: INTEGER
+            name: desc_v_pos
+            value: '0'
           - type: STRING
             name: itemid._reference
             value: 'CNDET._itemid'
@@ -6515,11 +6518,20 @@ zabbix_export:
             name: show.1
             value: '2'
           - type: INTEGER
+            name: units_show
+            value: '0'
+          - type: INTEGER
             name: value_bold
-            value: '1'
+            value: '0'
+          - type: INTEGER
+            name: value_h_pos
+            value: '0'
           - type: INTEGER
             name: value_size
-            value: '28'
+            value: '14'
+          - type: INTEGER
+            name: value_v_pos
+            value: '1'
           - type: STRING
             name: reference
             value: 'CNVAL'
@@ -6535,7 +6547,7 @@ zabbix_export:
             value: 'Cato wan port *: Media in'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato wan port (.*): Media in$","\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato wan port (.+?) / [^/]+ / (.+): Media in$","\1 \2")}'
           - type: INTEGER
             name: interpolation
             value: '0'
@@ -6547,7 +6559,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '16'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -6583,7 +6595,7 @@ zabbix_export:
             value: 'Cato lan port *: Media in'
           - type: STRING
             name: primary_label
-            value: '{{ITEM.NAME}.regsub("^Cato lan port (.*): Media in$","\1")}'
+            value: '{{ITEM.NAME}.regsub("^Cato lan port (.+?) / [^/]+ / (.+): Media in$","\1 \2")}'
           - type: INTEGER
             name: interpolation
             value: '0'
@@ -6595,7 +6607,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '16'
+            value: '14'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -6660,11 +6672,12 @@ zabbix_export:
           - type: INTEGER
             name: rows
             value: '2'
+      - name: Port
+        widgets:
         - type: itemnavigator
           name: Ports
-          'y': '34'
           width: '28'
-          height: '8'
+          height: '11'
           fields:
           - type: INTEGER
             name: group_by.0.attribute
@@ -6677,19 +6690,13 @@ zabbix_export:
             value: '3'
           - type: STRING
             name: group_by.1.tag_name
-            value: 'port_kind'
+            value: 'serial'
           - type: INTEGER
             name: group_by.2.attribute
             value: '3'
           - type: STRING
             name: group_by.2.tag_name
-            value: 'ha_role'
-          - type: INTEGER
-            name: group_by.3.attribute
-            value: '3'
-          - type: STRING
-            name: group_by.3.tag_name
-            value: 'connection_type'
+            value: 'port_kind'
           - type: STRING
             name: items.0
             value: 'Cato wan port *: Media in'
@@ -6714,9 +6721,8 @@ zabbix_export:
         - type: svggraph
           name: History
           x: '28'
-          'y': '34'
           width: '44'
-          height: '8'
+          height: '11'
           fields:
           - type: STRING
             name: ds.0.color.0
@@ -6760,7 +6766,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -6797,12 +6803,6 @@ zabbix_export:
           - type: STRING
             name: group_by.0.tag_name
             value: 'site'
-          - type: INTEGER
-            name: group_by.1.attribute
-            value: '3'
-          - type: STRING
-            name: group_by.1.tag_name
-            value: 'connection_type'
           - type: STRING
             name: items.0
             value: 'Cato site *: HA ready'
@@ -6843,8 +6843,8 @@ zabbix_export:
         - type: itemnavigator
           name: Details
           'y': '11'
-          width: '28'
-          height: '5'
+          width: '24'
+          height: '7'
           fields:
           - type: INTEGER
             name: group_by.0.attribute
@@ -6852,12 +6852,6 @@ zabbix_export:
           - type: STRING
             name: group_by.0.tag_name
             value: 'site'
-          - type: INTEGER
-            name: group_by.1.attribute
-            value: '3'
-          - type: STRING
-            name: group_by.1.tag_name
-            value: 'connection_type'
           - type: STRING
             name: items.0
             value: 'Cato site *: HA readiness'
@@ -6872,11 +6866,23 @@ zabbix_export:
             value: 'NHDET'
         - type: item
           name: Latest
-          x: '28'
+          x: '24'
           'y': '11'
-          width: '44'
-          height: '5'
+          width: '48'
+          height: '7'
           fields:
+          - type: INTEGER
+            name: desc_bold
+            value: '0'
+          - type: INTEGER
+            name: desc_h_pos
+            value: '0'
+          - type: INTEGER
+            name: desc_size
+            value: '10'
+          - type: INTEGER
+            name: desc_v_pos
+            value: '0'
           - type: STRING
             name: itemid._reference
             value: 'NHDET._itemid'
@@ -6887,11 +6893,20 @@ zabbix_export:
             name: show.1
             value: '2'
           - type: INTEGER
+            name: units_show
+            value: '0'
+          - type: INTEGER
             name: value_bold
-            value: '1'
+            value: '0'
+          - type: INTEGER
+            name: value_h_pos
+            value: '0'
           - type: INTEGER
             name: value_size
-            value: '28'
+            value: '14'
+          - type: INTEGER
+            name: value_v_pos
+            value: '1'
           - type: STRING
             name: reference
             value: 'NHVAL'
