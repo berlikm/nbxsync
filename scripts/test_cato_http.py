@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import unittest
+import uuid
 from pathlib import Path
 
 import yaml
@@ -30,6 +31,7 @@ from cato_http import (
     graphql_posts,
     load_lld_js,
     metrics_sla_census,
+    normalize_socket_serial,
     run_lld_js,
     snapshot_census,
     snapshot_socket_serials,
@@ -165,11 +167,35 @@ METRICS_FIXTURE = {
                             'name': 'WAN1',
                             'interfaceInfo': {'id': 'l1', 'name': 'WAN1', 'destType': 'CATO'},
                             'metrics': {'bytesDownstream': 1},
+                            'timeseries': [
+                                {
+                                    'label': 'lastMilePacketLoss',
+                                    'data': [[100, 1], [200, 2]],
+                                },
+                                {
+                                    'label': 'lastMilePacketLoss',
+                                    'data': [[100, 3], [200, 4]],
+                                },
+                                {
+                                    'label': 'lastMileLatency',
+                                    'data': [[100, 10], [200, 20]],
+                                },
+                            ],
                         },
                         {
                             'name': 'WAN2',
                             'interfaceInfo': {'id': 'l2', 'name': 'WAN2', 'destType': 'CATO'},
                             'metrics': {'bytesDownstream': 1},
+                            'timeseries': [
+                                {
+                                    'label': 'lastMilePacketLoss',
+                                    'data': [[100, 5], [200, 6]],
+                                },
+                                {
+                                    'label': 'lastMileLatency',
+                                    'data': [[100, 30], [200, 40]],
+                                },
+                            ],
                         },
                     ],
                 },
@@ -214,12 +240,30 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertIn('physicalPort', items['cato.account.snapshot']['posts'])
         self.assertIn('tunnelRemoteIP', items['cato.account.snapshot']['posts'])
         self.assertIn('deviceUptime', items['cato.account.snapshot']['posts'])
-        self.assertIn('lastmilePacketLoss', items['cato.account.metrics']['posts'])
+        self.assertIn('lastMilePacketLoss', items['cato.account.metrics']['posts'])
+        self.assertIn('lastMileLatency', items['cato.account.metrics']['posts'])
+        self.assertIn('timeseries(', items['cato.account.metrics']['posts'])
         self.assertIn('packetsDiscardedDownstream', items['cato.account.metrics']['posts'])
         self.assertIn('destType', items['cato.account.metrics']['posts'])
         self.assertNotIn('wanRole', items['cato.account.snapshot']['posts'])
+        self.assertNotIn('altWanStatus', items['cato.account.snapshot']['posts'])
         self.assertNotIn('socketPortMetrics', items['cato.account.metrics']['posts'])
         self.assertIn('groupDevices: true', items['cato.account.metrics']['posts'])
+
+    def test_all_template_uuids_are_v4(self):
+        def walk(value):
+            if isinstance(value, dict):
+                if 'uuid' in value:
+                    yield value['uuid']
+                for child in value.values():
+                    yield from walk(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from walk(child)
+
+        values = list(walk(self.tpl))
+        self.assertTrue(values)
+        self.assertTrue(all(uuid.UUID(value).version == 4 for value in values))
 
     def test_template_item_keys_and_macros(self):
         keys = {item['key'] for item in self.tpl['items']}
@@ -357,10 +401,31 @@ class CatoTemplateContractTests(unittest.TestCase):
 
     def test_estate_rollup_items_use_foreach(self):
         by_key = {item['key']: item for item in self.tpl['items']}
-        self.assertEqual(by_key['cato.site.up.count']['params'], 'count(last_foreach(//cato.site.connected[*]),eq,1)')
+        self.assertEqual(by_key['cato.site.up.count']['params'], 'sum(last_foreach(//cato.site.connected[*]))')
         self.assertEqual(by_key['cato.wan.loss.worst.pct']['params'], 'max(last_foreach(//cato.wan.loss.max.pct[*]))')
-        self.assertEqual(by_key['cato.site.ha.not_ready.count']['params'], 'count(last_foreach(//cato.site.ha.readiness.code[*]),eq,0)')
-        self.assertEqual(by_key['cato.site.degraded.count']['params'], 'count(last_foreach(//cato.site.degraded[*]),eq,1)')
+        self.assertEqual(
+            by_key['cato.site.ha.not_ready.count']['params'],
+            'count(exists_foreach(//cato.site.ha.readiness.code[*]))-sum(last_foreach(//cato.site.ha.readiness.code[*]))',
+        )
+        self.assertEqual(by_key['cato.site.degraded.count']['params'], 'sum(last_foreach(//cato.site.degraded[*]))')
+
+
+    def test_last_mile_prototypes_use_timeseries_values(self):
+        sla = next(
+            rule
+            for rule in self.tpl['discovery_rules']
+            if rule['key'] == 'cato.wan.metrics.discovery'
+        )
+        prototypes = {item['key']: item for item in sla['item_prototypes']}
+        loss_js = _js(
+            prototypes['cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}]']
+        ).replace('{#SITE.ID}', '10').replace('{#LINK.ID}', 'l1')
+        latency_js = _js(
+            prototypes['cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]']
+        ).replace('{#SITE.ID}', '10').replace('{#LINK.ID}', 'l1')
+        payload = json.dumps(METRICS_FIXTURE)
+        self.assertEqual(run_lld_js(loss_js, payload), 4)
+        self.assertEqual(run_lld_js(latency_js, payload), 20)
 
     def test_collector_trigger_names(self):
         names = {
@@ -506,6 +571,10 @@ class CatoLldJsTests(unittest.TestCase):
         self.assertEqual(census, {'sites': 1, 'sockets': 2, 'wan_rows': 3})
         self.assertEqual(metrics_sla_census(METRICS_FIXTURE), 2)
         self.assertEqual(snapshot_socket_serials(SNAPSHOT_FIXTURE), {'SOCK-A', 'SOCK-B'})
+        self.assertEqual(
+            normalize_socket_serial('08:35:71:ff:94:6d'),
+            '08:35:71:FF:94:6D',
+        )
 
 
 class CatoApplyWiringTests(unittest.TestCase):

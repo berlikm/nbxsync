@@ -60,7 +60,7 @@ SNAPSHOT_QUERY = (
     'degradedStatus { isDegraded degradedDetails { reason } } '
     'info { name type connType isHA sockets { id serial isPrimary platform version } } '
     'haStatus { readiness wanConnectivity keepalive socketVersion } '
-    'devices { id name connected connectedSince haRole version altWanStatus deviceUptime '
+    'devices { id name connected connectedSince haRole version deviceUptime '
     'socketInfo { id serial isPrimary platform version } '
     'interfacesLinkState { id mediaIn up hasAddress hasInternet hasTunnel duplex linkSpeed } '
     'interfaces { id name connected popName tunnelUptime type physicalPort '
@@ -75,8 +75,9 @@ METRICS_QUERY = (
     'interfaceInfo { id name upstreamBandwidth downstreamBandwidth destType } '
     'metrics(toRate: true) { bytesDownstream bytesUpstream '
     'lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt '
-    'lastmilePacketLoss lastmileLatency '
-    'packetsDiscardedDownstream packetsDiscardedUpstream } } } } }'
+    'packetsDiscardedDownstream packetsDiscardedUpstream } '
+    'timeseries(labels: [lastMilePacketLoss, lastMileLatency], buckets: 1) { label data } '
+    '} } } }'
 )
 
 MASTER_KEYS = ('cato.account.snapshot', 'cato.account.metrics')
@@ -93,6 +94,7 @@ EXPECTED_TEMPLATE_ITEM_KEYS = {
     'cato.site.degraded[__seed]',
     'cato.socket.connected[__seed]',
     'cato.wan.connected[__seed]',
+    'cato.site.ha.readiness.code[__seed]',
     'cato.wan.rx.bps[__seed]',
     'cato.site.discovery.count',
     'cato.socket.discovery.count',
@@ -470,6 +472,11 @@ def metrics_sla_census(root: dict[str, Any] | str) -> int:
     return len(pairs)
 
 
+def normalize_socket_serial(value: object) -> str:
+    """Use a canonical case because Cato serial casing is not stable."""
+    return str(value or '').strip().upper()
+
+
 def snapshot_socket_serials(root: dict[str, Any] | str) -> set[str]:
     if isinstance(root, str):
         root = json.loads(root)
@@ -480,7 +487,9 @@ def snapshot_socket_serials(root: dict[str, Any] | str) -> set[str]:
         if not _socket_conn_type(info):
             continue
         for device in site.get('devices') or []:
-            serial = str((device.get('socketInfo') or {}).get('serial') or '').strip()
+            serial = normalize_socket_serial(
+                (device.get('socketInfo') or {}).get('serial')
+            )
             if serial:
                 serials.add(serial)
     return serials

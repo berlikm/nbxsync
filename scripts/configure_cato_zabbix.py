@@ -77,6 +77,7 @@ from cato_http import (  # noqa: E402
     host_macros,
     metrics_sla_census,
     preflight_cato_graphql,
+    normalize_socket_serial,
     sim_host,
     snapshot_census,
     snapshot_socket_serials,
@@ -739,10 +740,9 @@ def verify_socket_hosts(
         <= _tag_map(host)
     ]
     host_serials = {
-        str((host.get("inventory") or {}).get("serialno_a") or "").strip()
+        normalize_socket_serial((host.get("inventory") or {}).get("serialno_a"))
         for host in sockets
     }
-    host_serials.discard("")
     missing_serials = sorted(snapshot_serials - host_serials)
     unexpected_serials = sorted(host_serials - snapshot_serials)
     identity_ok = len(host_serials) == len(sockets) and not unexpected_serials

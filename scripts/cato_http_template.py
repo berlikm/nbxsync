@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from pathlib import Path
 
@@ -18,10 +19,11 @@ from cato_http import (
     load_lld_js,
 )
 
-NS = uuid.UUID('8eaf4d5d-cc47-4db9-9c4e-84b02a47b5be')
+NAMESPACE_BYTES = uuid.UUID('8eaf4d5d-cc47-4db9-9c4e-84b02a47b5be').bytes
 TPL = TEMPLATE_NAME
 
-# Stable IDs from the original collector YAML. New objects use uuid5.
+# Stable UUIDv4 values from the original collector YAML. Derived values keep
+# deterministic identities while satisfying Zabbix's UUIDv4 import contract.
 UUID = {
     'group': '36bff6c29af64692839d077febfc7079',
     'template': '8eaf4d5dcc474db99c4e84b02a47b5be',
@@ -69,8 +71,6 @@ UUID = {
     'valuemap': '4c65ce16533446d78da1b96a2e1aad9a',
     'valuemap_ha': 'c3d8e1f04a6b4e1e9f2a7c5d8b1e4a90',
     'dash_health': '8806cd45dc714c0a9840b518f4472bb1',
-    'dash_path': '2489297dba645f46ac922129ae119b29',
-    'dash_net': 'eb24b530cc1c5902860c361c03842d00',
 }
 
 LOSS_THRESHOLDS = [('0EC9AC', '0'), ('FFD54F', '2'), ('FF465C', '5')]
@@ -108,7 +108,13 @@ SITE_DISCONNECTED = {
 
 
 def uid(name: str) -> str:
-    return UUID.get(name) or uuid.uuid5(NS, name).hex
+    stable = UUID.get(name)
+    if stable:
+        return stable
+    value = bytearray(hashlib.sha256(NAMESPACE_BYTES + name.encode()).digest()[:16])
+    value[6] = (value[6] & 0x0F) | 0x40
+    value[8] = (value[8] & 0x3F) | 0x80
+    return uuid.UUID(bytes=bytes(value)).hex
 
 
 def q(text: str) -> str:
@@ -236,7 +242,14 @@ def availability_item(uid_key: str, name: str, key: str, master: str, field: str
     ]
 
 
-def seed_item(uid_key: str, name: str, key: str, value_type: str) -> list[str]:
+def seed_item(
+    uid_key: str,
+    name: str,
+    key: str,
+    value_type: str,
+    *,
+    value: str = '0',
+) -> list[str]:
     return [
         f'    - uuid: {uid(uid_key)}',
         f'      name: {name}',
@@ -246,8 +259,8 @@ def seed_item(uid_key: str, name: str, key: str, value_type: str) -> list[str]:
         '      history: 1d',
         "      trends: '0'",
         f'      value_type: {value_type}',
-        "      params: '0'",
-        '      description: Always-present seed so count(exists_foreach) stays supported at 0.',
+        f'      params: {q(value)}',
+        '      description: Always-present seed so aggregate foreach stays supported at 0.',
         *collector_tags(),
     ]
 
@@ -595,6 +608,35 @@ def metric_js(field: str, label: str, scale: str = '') -> str:
         + f"  throw '{label} missing';\n"
         + '}\n'
         + f'return numeric{multiply};\n'
+    )
+
+def timeseries_metric_js(label: str, description: str) -> str:
+    """Return the worst latest Cato last-mile reading for one discovered link."""
+    return (
+        METRICS_IFACE_PREAMBLE
+        + f"""var series = iface && Array.isArray(iface.timeseries) ? iface.timeseries : [];
+var values = [];
+for (var i = 0; i < series.length; i++) {{
+  var entry = series[i];
+  if (!entry || String(entry.label) !== '{label}') {{
+    continue;
+  }}
+  var data = Array.isArray(entry.data) ? entry.data : [];
+  if (!data.length) {{
+    continue;
+  }}
+  var point = data[data.length - 1];
+  var raw = Array.isArray(point) ? point[1] : null;
+  var numeric = Number(raw);
+  if (raw !== null && raw !== '' && isFinite(numeric)) {{
+    values.push(numeric);
+  }}
+}}
+if (!values.length) {{
+  throw '{description} missing';
+}}
+return Math.max.apply(null, values);
+"""
     )
 
 
@@ -1497,16 +1539,23 @@ def render_template() -> str:
         *seed_item('site_deg_seed', 'Cato site degraded seed', 'cato.site.degraded[__seed]', 'UNSIGNED'),
         *seed_item('socket_seed', 'Cato Socket discovery seed', 'cato.socket.connected[__seed]', 'UNSIGNED'),
         *seed_item('wan_seed', 'Cato WAN discovery seed', 'cato.wan.connected[__seed]', 'UNSIGNED'),
+        *seed_item(
+            'site_ha_seed',
+            'Cato site HA readiness seed',
+            'cato.site.ha.readiness.code[__seed]',
+            'UNSIGNED',
+            value='1',
+        ),
         *seed_item('sla_seed', 'Cato WAN SLA discovery seed', 'cato.wan.rx.bps[__seed]', 'FLOAT'),
         *census_item('site_count', 'Cato discovered Socket site count', 'cato.site.discovery.count', 'cato.site.connected', 'site_count_tr', 'Cato census: fewer Socket sites than expected', '{$CATO.SITES.EXPECTED}', 'cato.api.snapshot.available'),
         *census_item('socket_count', 'Cato discovered Socket count', 'cato.socket.discovery.count', 'cato.socket.connected', 'socket_count_tr', 'Cato census: fewer Sockets than expected', '{$CATO.SOCKETS.EXPECTED}', 'cato.api.snapshot.available'),
         *census_item('wan_count', 'Cato discovered WAN link count', 'cato.wan.discovery.count', 'cato.wan.connected', 'wan_count_tr', 'Cato census: fewer WAN links than expected', '{$CATO.WAN.EXPECTED}', 'cato.api.snapshot.available'),
         *census_item('sla_count', 'Cato discovered WAN SLA row count', 'cato.wan.metrics.discovery.count', 'cato.wan.rx.bps', 'sla_count_tr', 'Cato census: fewer WAN SLA rows than expected', '{$CATO.SLA.EXPECTED}', 'cato.api.metrics.available'),
-        *calc_item('site_up', 'Cato connected Socket site count', 'cato.site.up.count', 'count(last_foreach(//cato.site.connected[*]),eq,1)'),
-        *calc_item('socket_up', 'Cato connected Socket count', 'cato.socket.up.count', 'count(last_foreach(//cato.socket.connected[*]),eq,1)'),
-        *calc_item('wan_up', 'Cato connected WAN link count', 'cato.wan.up.count', 'count(last_foreach(//cato.wan.connected[*]),eq,1)'),
-        *calc_item('site_degraded', 'Cato degraded Socket site count', 'cato.site.degraded.count', 'count(last_foreach(//cato.site.degraded[*]),eq,1)'),
-        *calc_item('ha_not_ready', 'Cato HA not-ready site count', 'cato.site.ha.not_ready.count', 'count(last_foreach(//cato.site.ha.readiness.code[*]),eq,0)'),
+        *calc_item('site_up', 'Cato connected Socket site count', 'cato.site.up.count', 'sum(last_foreach(//cato.site.connected[*]))'),
+        *calc_item('socket_up', 'Cato connected Socket count', 'cato.socket.up.count', 'sum(last_foreach(//cato.socket.connected[*]))'),
+        *calc_item('wan_up', 'Cato connected WAN link count', 'cato.wan.up.count', 'sum(last_foreach(//cato.wan.connected[*]))'),
+        *calc_item('site_degraded', 'Cato degraded Socket site count', 'cato.site.degraded.count', 'sum(last_foreach(//cato.site.degraded[*]))'),
+        *calc_item('ha_not_ready', 'Cato HA not-ready site count', 'cato.site.ha.not_ready.count', 'count(exists_foreach(//cato.site.ha.readiness.code[*]))-sum(last_foreach(//cato.site.ha.readiness.code[*]))'),
         *calc_item('wan_loss_worst', 'Cato worst overlay loss', 'cato.wan.loss.worst.pct', 'max(last_foreach(//cato.wan.loss.max.pct[*]))', units='%'),
         *calc_item('wan_rtt_worst', 'Cato worst overlay RTT', 'cato.wan.rtt.worst.ms', 'max(last_foreach(//cato.wan.rtt.ms[*]))', units='ms'),
         *calc_item('wan_jit_worst', 'Cato worst overlay jitter', 'cato.wan.jitter.worst.ms', 'max(last_foreach(//cato.wan.jitter.max.ms[*]))', units='ms'),
@@ -1931,7 +1980,7 @@ def render_template() -> str:
             name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile loss',
             key='cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}]',
             master='cato.account.metrics',
-            js=metric_js('lastmilePacketLoss', 'last-mile loss'),
+            js=timeseries_metric_js('lastMilePacketLoss', 'last-mile loss'),
             scope='wan_sla', extra_tags=SLA_TAGS,
             value_type='FLOAT',
             valuemap=None,
@@ -1944,7 +1993,7 @@ def render_template() -> str:
                 'priority': 'WARNING',
             }],
         ),
-        *proto_item(uid_key='sla_lm_lat', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency', key='cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('lastmileLatency', 'last-mile latency'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
+        *proto_item(uid_key='sla_lm_lat', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency', key='cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=timeseries_metric_js('lastMileLatency', 'last-mile latency'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
         *proto_item(uid_key='sla_disc_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX discarded', key='cato.wan.discard.rx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedDownstream', 'RX discarded'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='pps', trends='365d'),
         *proto_item(uid_key='sla_disc_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX discarded', key='cato.wan.discard.tx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedUpstream', 'TX discarded'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='pps', trends='365d'),
         *proto_item(uid_key='sla_util_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX utilization', key='cato.wan.rx.util.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=util_js('RX', 'downstreamBandwidth', 'bytesDownstream'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='%', trends='365d'),

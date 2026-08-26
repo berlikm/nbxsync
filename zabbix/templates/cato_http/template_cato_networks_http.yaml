@@ -28,7 +28,7 @@ zabbix_export:
       url: '{$CATO.API.URL}'
       request_method: POST
       post_type: JSON
-      posts: '{"query":"query AccountSnapshot($accountID: ID!) { accountSnapshot(accountID: $accountID) { sites { id connectivityStatus operationalStatus lastConnected connectedSince popName hostCount degradedStatus { isDegraded degradedDetails { reason } } info { name type connType isHA sockets { id serial isPrimary platform version } } haStatus { readiness wanConnectivity keepalive socketVersion } devices { id name connected connectedSince haRole version altWanStatus deviceUptime socketInfo { id serial isPrimary platform version } interfacesLinkState { id mediaIn up hasAddress hasInternet hasTunnel duplex linkSpeed } interfaces { id name connected popName tunnelUptime type physicalPort tunnelRemoteIP tunnelConnectionReason tunnelRemoteIPInfo { provider } info { id name upstreamBandwidth downstreamBandwidth destType } } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
+      posts: '{"query":"query AccountSnapshot($accountID: ID!) { accountSnapshot(accountID: $accountID) { sites { id connectivityStatus operationalStatus lastConnected connectedSince popName hostCount degradedStatus { isDegraded degradedDetails { reason } } info { name type connType isHA sockets { id serial isPrimary platform version } } haStatus { readiness wanConnectivity keepalive socketVersion } devices { id name connected connectedSince haRole version deviceUptime socketInfo { id serial isPrimary platform version } interfacesLinkState { id mediaIn up hasAddress hasInternet hasTunnel duplex linkSpeed } interfaces { id name connected popName tunnelUptime type physicalPort tunnelRemoteIP tunnelConnectionReason tunnelRemoteIPInfo { provider } info { id name upstreamBandwidth downstreamBandwidth destType } } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
       headers:
       - name: Content-Type
         value: application/json
@@ -58,7 +58,7 @@ zabbix_export:
       url: '{$CATO.API.URL}'
       request_method: POST
       post_type: JSON
-      posts: '{"query":"query AccountMetrics($accountID: ID!) { accountMetrics(accountID: $accountID, timeFrame: \"last.PT5M\", groupDevices: true, groupInterfaces: false) { sites { id name info { connType } interfaces { name interfaceInfo { id name upstreamBandwidth downstreamBandwidth destType } metrics(toRate: true) { bytesDownstream bytesUpstream lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt lastmilePacketLoss lastmileLatency packetsDiscardedDownstream packetsDiscardedUpstream } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
+      posts: '{"query":"query AccountMetrics($accountID: ID!) { accountMetrics(accountID: $accountID, timeFrame: \"last.PT5M\", groupDevices: true, groupInterfaces: false) { sites { id name info { connType } interfaces { name interfaceInfo { id name upstreamBandwidth downstreamBandwidth destType } metrics(toRate: true) { bytesDownstream bytesUpstream lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt packetsDiscardedDownstream packetsDiscardedUpstream } timeseries(labels: [lastMilePacketLoss, lastMileLatency], buckets: 1) { label data } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
       headers:
       - name: Content-Type
         value: application/json
@@ -329,7 +329,7 @@ zabbix_export:
           value: cato_overlay
         - tag: scope
           value: collector
-    - uuid: 6a7fbae432dd5e4988db9581010849d3
+    - uuid: 044bec17c0b3442eb57d066e092a3087
       name: Cato site discovery seed
       type: CALCULATED
       key: 'cato.site.connected[__seed]'
@@ -338,7 +338,7 @@ zabbix_export:
       trends: '0'
       value_type: UNSIGNED
       params: '0'
-      description: Always-present seed so count(exists_foreach) stays supported at 0.
+      description: Always-present seed so aggregate foreach stays supported at 0.
       tags:
       - tag: component
         value: cato
@@ -346,7 +346,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: 6bbd678d0c1f5343b830d0a00d007fbe
+    - uuid: db7d1377167a494aaee8ca439821729d
       name: Cato site degraded seed
       type: CALCULATED
       key: 'cato.site.degraded[__seed]'
@@ -355,7 +355,7 @@ zabbix_export:
       trends: '0'
       value_type: UNSIGNED
       params: '0'
-      description: Always-present seed so count(exists_foreach) stays supported at 0.
+      description: Always-present seed so aggregate foreach stays supported at 0.
       tags:
       - tag: component
         value: cato
@@ -363,7 +363,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: a709a2c130b95c5d8936f39e2068a136
+    - uuid: 1f8750be26684bd9a986634a72c392da
       name: Cato Socket discovery seed
       type: CALCULATED
       key: 'cato.socket.connected[__seed]'
@@ -372,7 +372,7 @@ zabbix_export:
       trends: '0'
       value_type: UNSIGNED
       params: '0'
-      description: Always-present seed so count(exists_foreach) stays supported at 0.
+      description: Always-present seed so aggregate foreach stays supported at 0.
       tags:
       - tag: component
         value: cato
@@ -380,7 +380,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: fa4fb8323426519eaa31eee395402bbd
+    - uuid: 75ee61d381664445a3992601d65ee01e
       name: Cato WAN discovery seed
       type: CALCULATED
       key: 'cato.wan.connected[__seed]'
@@ -389,7 +389,7 @@ zabbix_export:
       trends: '0'
       value_type: UNSIGNED
       params: '0'
-      description: Always-present seed so count(exists_foreach) stays supported at 0.
+      description: Always-present seed so aggregate foreach stays supported at 0.
       tags:
       - tag: component
         value: cato
@@ -397,7 +397,24 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: d04f4197773e5ebcb1911a95f3346385
+    - uuid: 5e84cd3fd8af42cb88a80d7dd0bc1501
+      name: Cato site HA readiness seed
+      type: CALCULATED
+      key: 'cato.site.ha.readiness.code[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: UNSIGNED
+      params: '1'
+      description: Always-present seed so aggregate foreach stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: f1b0a85023d44d54bd759917ebf6ddd4
       name: Cato WAN SLA discovery seed
       type: CALCULATED
       key: 'cato.wan.rx.bps[__seed]'
@@ -406,7 +423,7 @@ zabbix_export:
       trends: '0'
       value_type: FLOAT
       params: '0'
-      description: Always-present seed so count(exists_foreach) stays supported at 0.
+      description: Always-present seed so aggregate foreach stays supported at 0.
       tags:
       - tag: component
         value: cato
@@ -414,7 +431,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: f2c4c1add0de57bf85c2ce4139ff7fb4
+    - uuid: e509879eedf147c0813019715b64c607
       name: Cato discovered Socket site count
       type: CALCULATED
       key: cato.site.discovery.count
@@ -430,7 +447,7 @@ zabbix_export:
       - tag: scope
         value: collector
       triggers:
-      - uuid: 5a65c4f017da54dabc367d1a5a21c1fc
+      - uuid: dfaf1d1a59084c4890937348e9cf9057
         expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.SITES.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.site.discovery.count)<{$CATO.SITES.EXPECTED}'
         name: 'Cato census: fewer Socket sites than expected'
         priority: AVERAGE
@@ -441,7 +458,7 @@ zabbix_export:
           value: cato_overlay
         - tag: scope
           value: collector
-    - uuid: 65fcecc6e2f455ee9b7539d745192f9b
+    - uuid: 39e9c1c0a6ad4f448f68caf623fa149b
       name: Cato discovered Socket count
       type: CALCULATED
       key: cato.socket.discovery.count
@@ -457,7 +474,7 @@ zabbix_export:
       - tag: scope
         value: collector
       triggers:
-      - uuid: baeee4213b8952e4912a557ad9c92700
+      - uuid: 2368fc63a1044c6faea5cc866edd862d
         expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.SOCKETS.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.socket.discovery.count)<{$CATO.SOCKETS.EXPECTED}'
         name: 'Cato census: fewer Sockets than expected'
         priority: AVERAGE
@@ -468,7 +485,7 @@ zabbix_export:
           value: cato_overlay
         - tag: scope
           value: collector
-    - uuid: 3028d259991b5306ac8f8931e7266699
+    - uuid: 8b7dff4314cc4db8af8b2b0046afbbb5
       name: Cato discovered WAN link count
       type: CALCULATED
       key: cato.wan.discovery.count
@@ -484,7 +501,7 @@ zabbix_export:
       - tag: scope
         value: collector
       triggers:
-      - uuid: 9089fdcc970d5316b8f8968d30cc9a8b
+      - uuid: ab34b51755e24d4ba12ca9d85ce1350d
         expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.WAN.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.wan.discovery.count)<{$CATO.WAN.EXPECTED}'
         name: 'Cato census: fewer WAN links than expected'
         priority: AVERAGE
@@ -495,7 +512,7 @@ zabbix_export:
           value: cato_overlay
         - tag: scope
           value: collector
-    - uuid: 066926d5552f5267adf0888d0453b648
+    - uuid: 3fd14b6bcdbf4d6097b63b31af7a3ff6
       name: Cato discovered WAN SLA row count
       type: CALCULATED
       key: cato.wan.metrics.discovery.count
@@ -511,7 +528,7 @@ zabbix_export:
       - tag: scope
         value: collector
       triggers:
-      - uuid: 8d536e059a905736a966042f2f784c05
+      - uuid: 3206c1c8f62d4e47a44896ebbd824f97
         expression: 'last(/Cato Networks by HTTP/cato.api.metrics.available)=1 and {$CATO.SLA.EXPECTED}>0 and last(/Cato Networks by HTTP/cato.wan.metrics.discovery.count)<{$CATO.SLA.EXPECTED}'
         name: 'Cato census: fewer WAN SLA rows than expected'
         priority: AVERAGE
@@ -522,7 +539,7 @@ zabbix_export:
           value: cato_overlay
         - tag: scope
           value: collector
-    - uuid: 0de8f4d226195cf1bcfb3db7b932886b
+    - uuid: a164108ba8f741fcb55cb19ac4aef426
       name: Cato connected Socket site count
       type: CALCULATED
       key: cato.site.up.count
@@ -530,7 +547,7 @@ zabbix_export:
       history: 7d
       trends: 365d
       value_type: FLOAT
-      params: 'count(last_foreach(//cato.site.connected[*]),eq,1)'
+      params: 'sum(last_foreach(//cato.site.connected[*]))'
       tags:
       - tag: component
         value: cato
@@ -538,7 +555,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: 0ff299302a055819b17cbfe403486324
+    - uuid: 5d59b3ef135043dcb11a88d0d6f8e243
       name: Cato connected Socket count
       type: CALCULATED
       key: cato.socket.up.count
@@ -546,7 +563,7 @@ zabbix_export:
       history: 7d
       trends: 365d
       value_type: FLOAT
-      params: 'count(last_foreach(//cato.socket.connected[*]),eq,1)'
+      params: 'sum(last_foreach(//cato.socket.connected[*]))'
       tags:
       - tag: component
         value: cato
@@ -554,7 +571,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: 8cc9e886ee8154a196c67e65a263dc7f
+    - uuid: 4935821061b84c84be25198b7879f898
       name: Cato connected WAN link count
       type: CALCULATED
       key: cato.wan.up.count
@@ -562,7 +579,7 @@ zabbix_export:
       history: 7d
       trends: 365d
       value_type: FLOAT
-      params: 'count(last_foreach(//cato.wan.connected[*]),eq,1)'
+      params: 'sum(last_foreach(//cato.wan.connected[*]))'
       tags:
       - tag: component
         value: cato
@@ -570,7 +587,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: a3475e7c58bb5200bf1a8f8317c30731
+    - uuid: fa10b08424ef488e8133314d719c0547
       name: Cato degraded Socket site count
       type: CALCULATED
       key: cato.site.degraded.count
@@ -578,7 +595,7 @@ zabbix_export:
       history: 7d
       trends: 365d
       value_type: FLOAT
-      params: 'count(last_foreach(//cato.site.degraded[*]),eq,1)'
+      params: 'sum(last_foreach(//cato.site.degraded[*]))'
       tags:
       - tag: component
         value: cato
@@ -586,7 +603,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: f9eab25e7649545ba5a29b830bdc959d
+    - uuid: f3bb773e9c1e490c9202ec715364d2ab
       name: Cato HA not-ready site count
       type: CALCULATED
       key: cato.site.ha.not_ready.count
@@ -594,7 +611,7 @@ zabbix_export:
       history: 7d
       trends: 365d
       value_type: FLOAT
-      params: 'count(last_foreach(//cato.site.ha.readiness.code[*]),eq,0)'
+      params: 'count(exists_foreach(//cato.site.ha.readiness.code[*]))-sum(last_foreach(//cato.site.ha.readiness.code[*]))'
       tags:
       - tag: component
         value: cato
@@ -602,7 +619,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: c61503654d2557e5adb30e47e921e940
+    - uuid: 9bf0c9e20c964824afa28adedc0d08d0
       name: Cato worst overlay loss
       type: CALCULATED
       key: cato.wan.loss.worst.pct
@@ -619,7 +636,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: 42f9990a256c543e9c673bd4f8ea9292
+    - uuid: 652b5588bffb4ff68b11dd7593757a5b
       name: Cato worst overlay RTT
       type: CALCULATED
       key: cato.wan.rtt.worst.ms
@@ -636,7 +653,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: d5a597c0fa7e583cb0c91cafa2521fd1
+    - uuid: a75dac60becd4c2a83d9f476a77c3c51
       name: Cato worst overlay jitter
       type: CALCULATED
       key: cato.wan.jitter.worst.ms
@@ -653,7 +670,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: 86efb5fa4d5f51caa2afb432f10ef86b
+    - uuid: fefd8dd7bf38474aa5491f2c9be04442
       name: Cato worst last-mile loss
       type: CALCULATED
       key: cato.wan.lastmile.loss.worst.pct
@@ -670,7 +687,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: 81a899dd0a48505790082366354a5a20
+    - uuid: 4b0f6ea491a54fda859e94d700776fb3
       name: Cato worst last-mile latency
       type: CALCULATED
       key: cato.wan.lastmile.latency.worst.ms
@@ -687,7 +704,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: f9ea184d014058928f56aa9b596bb642
+    - uuid: 5e04b572570e4eb4bb03e6fe99000475
       name: Cato worst RX utilization
       type: CALCULATED
       key: cato.wan.rx.util.worst.pct
@@ -704,7 +721,7 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
-    - uuid: 3edd636398cd52f7a897d0c520535a8d
+    - uuid: ef24bd654489410883cc79c610fb6e95
       name: Cato worst TX utilization
       type: CALCULATED
       key: cato.wan.tx.util.worst.pct
@@ -830,7 +847,7 @@ zabbix_export:
             value: '{#SITE.NAME}'
           - tag: connection_type
             value: '{#CONN.TYPE}'
-      - uuid: 17f454dfc83c57d090863bf998630a1f
+      - uuid: ab3a52ef754b4f9ea8409f7111d1ed64
         name: 'Cato site {#SITE.NAME}: Operational status'
         type: DEPENDENT
         key: 'cato.site.operational_status[{#SITE.ID}]'
@@ -876,7 +893,7 @@ zabbix_export:
           value: '{#SITE.NAME}'
         - tag: connection_type
           value: '{#CONN.TYPE}'
-      - uuid: 2ea9b44010db5ccbb021e9d039524680
+      - uuid: 42a8a124b8ba44cf8e2b7a669c112606
         name: 'Cato site {#SITE.NAME}: Degraded'
         type: DEPENDENT
         key: 'cato.site.degraded[{#SITE.ID}]'
@@ -925,7 +942,7 @@ zabbix_export:
         - tag: connection_type
           value: '{#CONN.TYPE}'
         trigger_prototypes:
-        - uuid: 4781b64f3a6e560e8caaddb1a379cc1f
+        - uuid: 91391c9a28ee464da9398e46fe29a67f
           expression: 'last(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}])=1 and last(/Cato Networks by HTTP/cato.site.degraded[{#SITE.ID}])=1'
           name: 'Cato site {#SITE.NAME}: Degraded'
           priority: AVERAGE
@@ -943,7 +960,7 @@ zabbix_export:
           dependencies:
           - name: 'Cato site {#SITE.NAME}: Disconnected'
             expression: 'max(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}],#3)=0'
-      - uuid: e56668adac3357b48ecdbc8f79dec609
+      - uuid: 91df0bc7b71c4de1a48ea254aaf531f3
         name: 'Cato site {#SITE.NAME}: Degraded reasons'
         type: DEPENDENT
         key: 'cato.site.degraded.reasons[{#SITE.ID}]'
@@ -993,7 +1010,7 @@ zabbix_export:
           value: '{#SITE.NAME}'
         - tag: connection_type
           value: '{#CONN.TYPE}'
-      - uuid: 9d0969611aa85200b87f68a9654c79cd
+      - uuid: 583786ef74d242b3a40c0ccda6f85e01
         name: 'Cato site {#SITE.NAME}: POP'
         type: DEPENDENT
         key: 'cato.site.pop[{#SITE.ID}]'
@@ -1039,7 +1056,7 @@ zabbix_export:
           value: '{#SITE.NAME}'
         - tag: connection_type
           value: '{#CONN.TYPE}'
-      - uuid: 997cb52890995326a95fcdecf391a2b3
+      - uuid: 3e99573da2b144f982e299412c3e55b2
         name: 'Cato site {#SITE.NAME}: Host count'
         type: DEPENDENT
         key: 'cato.site.host_count[{#SITE.ID}]'
@@ -1086,7 +1103,7 @@ zabbix_export:
           value: '{#SITE.NAME}'
         - tag: connection_type
           value: '{#CONN.TYPE}'
-      - uuid: 309db70e052f501aaeb39c986aaf17f5
+      - uuid: 37a7616d84f346fd9da1394134173c51
         name: 'Cato site {#SITE.NAME}: HA enabled'
         type: DEPENDENT
         key: 'cato.site.ha[{#SITE.ID}]'
@@ -1132,7 +1149,7 @@ zabbix_export:
           value: '{#SITE.NAME}'
         - tag: connection_type
           value: '{#CONN.TYPE}'
-      - uuid: b5e2bd1328795c9f8f692a0262ae30ec
+      - uuid: aad97b09210542f79f10968c8289f7ff
         name: 'Cato site {#SITE.NAME}: HA readiness'
         type: DEPENDENT
         key: 'cato.site.ha.readiness[{#SITE.ID}]'
@@ -1179,7 +1196,7 @@ zabbix_export:
         - tag: connection_type
           value: '{#CONN.TYPE}'
         trigger_prototypes:
-        - uuid: 5b2dda8cfe615558b7cc1be35056fc65
+        - uuid: 7e3eface99c043279736df67a5359bc9
           expression: 'last(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}])=1 and last(/Cato Networks by HTTP/cato.site.ha[{#SITE.ID}])=1 and last(/Cato Networks by HTTP/cato.site.ha.readiness[{#SITE.ID}])<>{$CATO.HA.READINESS.OK}'
           name: 'Cato site {#SITE.NAME}: HA not ready'
           priority: AVERAGE
@@ -1194,7 +1211,7 @@ zabbix_export:
             value: '{#SITE.NAME}'
           - tag: connection_type
             value: '{#CONN.TYPE}'
-      - uuid: 13a2ec8154255d0087c5d2bca777ed6f
+      - uuid: 247bc3b1c374494b88b739023103300a
         name: 'Cato site {#SITE.NAME}: HA ready'
         type: DEPENDENT
         key: 'cato.site.ha.readiness.code[{#SITE.ID}]'
@@ -1243,7 +1260,7 @@ zabbix_export:
           value: '{#SITE.NAME}'
         - tag: connection_type
           value: '{#CONN.TYPE}'
-      - uuid: 5e72cd0c0b01500ca85c94eb8af9814f
+      - uuid: cf15ac72295745f1b971e1ccab9b4144
         name: 'Cato site {#SITE.NAME}: HA socket version'
         type: DEPENDENT
         key: 'cato.site.ha.socket_version[{#SITE.ID}]'
@@ -1290,7 +1307,7 @@ zabbix_export:
         - tag: connection_type
           value: '{#CONN.TYPE}'
         trigger_prototypes:
-        - uuid: f90bad8936e4539dac107b9494cc8583
+        - uuid: 6223516eee784754a6346e0c03293cac
           expression: 'last(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}])=1 and last(/Cato Networks by HTTP/cato.site.ha[{#SITE.ID}])=1 and last(/Cato Networks by HTTP/cato.site.ha.socket_version[{#SITE.ID}])<>{$CATO.HA.VERSION.OK}'
           name: 'Cato site {#SITE.NAME}: HA socket version not ok'
           priority: WARNING
@@ -1571,7 +1588,7 @@ zabbix_export:
           value: '{#HA.ROLE}'
         - tag: platform
           value: '{#PLATFORM}'
-      - uuid: 04db7a9a592e53a28bc8fc8c11dfe04f
+      - uuid: 3d6fa97d3bef43a587e3daae67163413
         name: 'Cato Socket {#SITE.NAME} / {#SERIAL}: Uptime'
         type: DEPENDENT
         key: 'cato.socket.uptime[{#SITE.ID},{#SOCKET.ID}]'
@@ -1981,7 +1998,7 @@ zabbix_export:
           value: '{#HA.ROLE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: 777d3908b5fe56568c024de456f4866c
+      - uuid: 50b7cb6ccf0540d9ba1e8d3a9644dc38
         name: 'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Dest type'
         type: DEPENDENT
         key: 'cato.wan.dest_type[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
@@ -2045,7 +2062,7 @@ zabbix_export:
           value: '{#HA.ROLE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: 97fa2a9cb14a5128ad610fa3d4644451
+      - uuid: 76a778c37cb74f7ebcdaf349f4bacee2
         name: 'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Physical port'
         type: DEPENDENT
         key: 'cato.wan.physical_port[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
@@ -2109,7 +2126,7 @@ zabbix_export:
           value: '{#HA.ROLE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: 33d8d69bdff75f1ba8bbe6642f7102cb
+      - uuid: f084e78b1ae7417aa8dd38f7636b75db
         name: 'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: ISP provider'
         type: DEPENDENT
         key: 'cato.wan.provider[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
@@ -2173,7 +2190,7 @@ zabbix_export:
           value: '{#HA.ROLE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: 4baebcc960c55cac92b758879381d29a
+      - uuid: 7ea41125479b4fea9670dea35e3ad075
         name: 'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Tunnel remote IP'
         type: DEPENDENT
         key: 'cato.wan.remote_ip[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
@@ -2237,7 +2254,7 @@ zabbix_export:
           value: '{#HA.ROLE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: ab10812266965cbbb31876be75c9e29b
+      - uuid: 17cdd26c28624ff88bda9f6b85b62b01
         name: 'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Connection reason'
         type: DEPENDENT
         key: 'cato.wan.connection_reason[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]'
@@ -2301,7 +2318,7 @@ zabbix_export:
           value: '{#HA.ROLE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-    - uuid: 155c3a9885cc5ad6b9af780e807908d7
+    - uuid: 664443b8d1a346748ba40e9a31a1aa5f
       name: Cato Socket port discovery
       type: DEPENDENT
       key: cato.port.discovery
@@ -2388,7 +2405,7 @@ zabbix_export:
       master_item:
         key: cato.account.snapshot
       item_prototypes:
-      - uuid: 44ccb9a1218855ecb665dbe993341559
+      - uuid: 603ab4ddcc174a7bbed2d16716bf77ec
         name: 'Cato {#PORT.KIND} port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media in'
         type: DEPENDENT
         key: 'cato.port.media_in[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]'
@@ -2457,7 +2474,7 @@ zabbix_export:
         - tag: port_kind
           value: '{#PORT.KIND}'
         trigger_prototypes:
-        - uuid: 53c955c6e36f58278ec026d15b105ba5
+        - uuid: 802798392f3b435d8c7e2e4d628ea03f
           expression: 'max(/Cato Networks by HTTP/cato.port.media_in[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}],#3)=0 and last(/Cato Networks by HTTP/cato.port.kind.code[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}])=1'
           name: 'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down'
           priority: AVERAGE
@@ -2481,7 +2498,7 @@ zabbix_export:
           dependencies:
           - name: 'Cato site {#SITE.NAME}: Disconnected'
             expression: 'max(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}],#3)=0'
-        - uuid: 61037b1fe1095923b744c0a1f73ec333
+        - uuid: faaa95c0e364474b841921e6bc2a722f
           expression: 'max(/Cato Networks by HTTP/cato.port.media_in[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}],#3)=0 and last(/Cato Networks by HTTP/cato.port.kind.code[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}])=2'
           name: 'Cato lan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down'
           priority: WARNING
@@ -2505,7 +2522,7 @@ zabbix_export:
           dependencies:
           - name: 'Cato site {#SITE.NAME}: Disconnected'
             expression: 'max(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}],#3)=0'
-      - uuid: 621c629ed205569ca6cf84c84af3af86
+      - uuid: b3b7c09e57e74dd7a86c42dc6c0d5960
         name: 'Cato {#PORT.KIND} port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Link up'
         type: DEPENDENT
         key: 'cato.port.up[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]'
@@ -2573,7 +2590,7 @@ zabbix_export:
           value: '{#HA.ROLE}'
         - tag: port_kind
           value: '{#PORT.KIND}'
-      - uuid: 47b41c0365c652198d01299bb99261e1
+      - uuid: 844f635a83ff41f895eecfb033b5e9fa
         name: 'Cato {#PORT.KIND} port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Has tunnel'
         type: DEPENDENT
         key: 'cato.port.has_tunnel[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]'
@@ -2642,7 +2659,7 @@ zabbix_export:
         - tag: port_kind
           value: '{#PORT.KIND}'
         trigger_prototypes:
-        - uuid: 61c38b40bf645a10a5a665e973c63dc7
+        - uuid: 23b1779cb3304ea38b80b6d89250301b
           expression: 'last(/Cato Networks by HTTP/cato.port.media_in[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}])=1 and max(/Cato Networks by HTTP/cato.port.has_tunnel[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}],#3)=0 and last(/Cato Networks by HTTP/cato.port.kind.code[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}])=1'
           name: 'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: No tunnel while media is up'
           priority: AVERAGE
@@ -2666,7 +2683,7 @@ zabbix_export:
           dependencies:
           - name: 'Cato site {#SITE.NAME}: Disconnected'
             expression: 'max(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}],#3)=0'
-      - uuid: 76a80cfb57b858e1b400bb598d4ad910
+      - uuid: b522c3a54a064a25978652ee1afd9bcd
         name: 'Cato {#PORT.KIND} port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Has internet'
         type: DEPENDENT
         key: 'cato.port.has_internet[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]'
@@ -2734,7 +2751,7 @@ zabbix_export:
           value: '{#HA.ROLE}'
         - tag: port_kind
           value: '{#PORT.KIND}'
-      - uuid: 39d4c597828b5fdc96a7eba6ff56c382
+      - uuid: 882ff6dcc7464e97adc5d993627c933b
         name: 'Cato {#PORT.KIND} port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Kind'
         type: DEPENDENT
         key: 'cato.port.kind.code[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]'
@@ -3033,7 +3050,7 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: f575e0bec6e75ad8a676531904d166bf
+      - uuid: 8c52fad0de9a4c7c982643a0ce610167
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Overlay loss'
         type: CALCULATED
         key: 'cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}]'
@@ -3057,7 +3074,7 @@ zabbix_export:
         - tag: dest_type
           value: '{#DEST.TYPE}'
         trigger_prototypes:
-        - uuid: c27fab1b02b750d3a3de4466d5e9c490
+        - uuid: 8cfe7d4269354acbbdb2a1d20c38fbeb
           expression: 'min(/Cato Networks by HTTP/cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}],15m)>{$CATO.LOSS.WARN}'
           name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay packet loss'
           priority: WARNING
@@ -3182,7 +3199,7 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: 856eba87c9a352c0abcd313d9009c5bc
+      - uuid: 51d10c4beb1346c8b1e83fc6e3418470
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Overlay jitter'
         type: CALCULATED
         key: 'cato.wan.jitter.max.ms[{#SITE.ID},{#LINK.ID}]'
@@ -3260,7 +3277,7 @@ zabbix_export:
         - tag: dest_type
           value: '{#DEST.TYPE}'
         trigger_prototypes:
-        - uuid: 9982aabadf8a5bfdb2b45344b4ee55e4
+        - uuid: 1d08833efc5040e1aad490bf4b0d042f
           expression: 'min(/Cato Networks by HTTP/cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}],15m)>{$CATO.RTT.WARN}'
           name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT'
           priority: WARNING
@@ -3277,7 +3294,7 @@ zabbix_export:
             value: '{#CONN.TYPE}'
           - tag: dest_type
             value: '{#DEST.TYPE}'
-      - uuid: 54d9037887395439ac32d6073be60953
+      - uuid: 13f991e7042f46659f31a85962e1118a
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile loss'
         type: DEPENDENT
         key: 'cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}]'
@@ -3309,12 +3326,28 @@ zabbix_export:
                 }
               }
             }
-            var raw = iface && iface.metrics ? iface.metrics.lastmilePacketLoss : null;
-            var numeric = Number(raw);
-            if (raw === null || raw === '' || !isFinite(numeric)) {
+            var series = iface && Array.isArray(iface.timeseries) ? iface.timeseries : [];
+            var values = [];
+            for (var i = 0; i < series.length; i++) {
+              var entry = series[i];
+              if (!entry || String(entry.label) !== 'lastMilePacketLoss') {
+                continue;
+              }
+              var data = Array.isArray(entry.data) ? entry.data : [];
+              if (!data.length) {
+                continue;
+              }
+              var point = data[data.length - 1];
+              var raw = Array.isArray(point) ? point[1] : null;
+              var numeric = Number(raw);
+              if (raw !== null && raw !== '' && isFinite(numeric)) {
+                values.push(numeric);
+              }
+            }
+            if (!values.length) {
               throw 'last-mile loss missing';
             }
-            return numeric;
+            return Math.max.apply(null, values);
           error_handler: DISCARD_VALUE
         master_item:
           key: cato.account.metrics
@@ -3332,7 +3365,7 @@ zabbix_export:
         - tag: dest_type
           value: '{#DEST.TYPE}'
         trigger_prototypes:
-        - uuid: a87e38724f7e5efe9013aafd2685407b
+        - uuid: c4f88e2bfb4543baaf689d6c891e7b7c
           expression: 'min(/Cato Networks by HTTP/cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}],15m)>{$CATO.LASTMILE.LOSS.WARN}'
           name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile packet loss'
           priority: WARNING
@@ -3349,7 +3382,7 @@ zabbix_export:
             value: '{#CONN.TYPE}'
           - tag: dest_type
             value: '{#DEST.TYPE}'
-      - uuid: 3a5e77b96eb85065b60882d1d313af42
+      - uuid: 1596b2c1f6ac4420807305d9fd31eb73
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency'
         type: DEPENDENT
         key: 'cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]'
@@ -3381,12 +3414,28 @@ zabbix_export:
                 }
               }
             }
-            var raw = iface && iface.metrics ? iface.metrics.lastmileLatency : null;
-            var numeric = Number(raw);
-            if (raw === null || raw === '' || !isFinite(numeric)) {
+            var series = iface && Array.isArray(iface.timeseries) ? iface.timeseries : [];
+            var values = [];
+            for (var i = 0; i < series.length; i++) {
+              var entry = series[i];
+              if (!entry || String(entry.label) !== 'lastMileLatency') {
+                continue;
+              }
+              var data = Array.isArray(entry.data) ? entry.data : [];
+              if (!data.length) {
+                continue;
+              }
+              var point = data[data.length - 1];
+              var raw = Array.isArray(point) ? point[1] : null;
+              var numeric = Number(raw);
+              if (raw !== null && raw !== '' && isFinite(numeric)) {
+                values.push(numeric);
+              }
+            }
+            if (!values.length) {
               throw 'last-mile latency missing';
             }
-            return numeric;
+            return Math.max.apply(null, values);
           error_handler: DISCARD_VALUE
         master_item:
           key: cato.account.metrics
@@ -3403,7 +3452,7 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: 00fc8863944651888f06ec45216cb5bc
+      - uuid: 579751b1fd6c4ded8e246606bfc3daa3
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX discarded'
         type: DEPENDENT
         key: 'cato.wan.discard.rx.pps[{#SITE.ID},{#LINK.ID}]'
@@ -3457,7 +3506,7 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: d4d7d04406c359e2a93ff236aa167615
+      - uuid: 1bd4d146ccbc497fa725736923b3cc30
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX discarded'
         type: DEPENDENT
         key: 'cato.wan.discard.tx.pps[{#SITE.ID},{#LINK.ID}]'
@@ -3511,7 +3560,7 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: 0647815918df5bc7a83ebb5f9d16df40
+      - uuid: 2ae568d20ab545baa5780ccfbf36242f
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX utilization'
         type: DEPENDENT
         key: 'cato.wan.rx.util.pct[{#SITE.ID},{#LINK.ID}]'
@@ -3569,7 +3618,7 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-      - uuid: 1414dd85342850b298df6f104ba817d6
+      - uuid: 660c77e7fb344f1b8d3421c526e120fe
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX utilization'
         type: DEPENDENT
         key: 'cato.wan.tx.util.pct[{#SITE.ID},{#LINK.ID}]'
@@ -3652,14 +3701,14 @@ zabbix_export:
           item:
             host: Cato Networks by HTTP
             key: 'cato.wan.loss.tx.pct[{#SITE.ID},{#LINK.ID}]'
-      - uuid: 5ccc5d365fb656e987dc76b248052948
+      - uuid: 259ff958c8a24cd88f036dd10fc898f3
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RTT'
         graph_items:
         - color: 2774A4
           item:
             host: Cato Networks by HTTP
             key: 'cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}]'
-      - uuid: 0831494508c45e7080f1da7f2f8aa3cd
+      - uuid: 4f17670602c34bc180d6b9cd6142032d
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Jitter'
         graph_items:
         - color: 199C0D
@@ -3709,14 +3758,14 @@ zabbix_export:
         newvalue: Not ready
       - value: '1'
         newvalue: Ready
-    - uuid: c1aad1037f1d52b6b80680050b6618e1
+    - uuid: e45df405c6f245f3a1a6ee8dd9820020
       name: Cato degraded
       mappings:
       - value: '0'
         newvalue: OK
       - value: '1'
         newvalue: Degraded
-    - uuid: 9c184ed8e62e56f699e12f4cd1c686d7
+    - uuid: a9b964f0608d40a1a7469f28c2e43098
       name: Cato port kind
       mappings:
       - value: '0'
@@ -5380,7 +5429,7 @@ zabbix_export:
           - type: INTEGER
             name: legend
             value: '1'
-    - uuid: 2489297dba645f46ac922129ae119b29
+    - uuid: 2cbfb0e2d1d04a7b94af45cba23cc1f8
       name: Path
       pages:
       - name: Overview
@@ -5871,7 +5920,7 @@ zabbix_export:
           - type: INTEGER
             name: righty
             value: '0'
-    - uuid: eb24b530cc1c5902860c361c03842d00
+    - uuid: e85970c1791c4b7ebe7ce5d8ed99b37c
       name: Network
       pages:
       - name: Overview
