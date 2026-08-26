@@ -13,6 +13,7 @@ import yaml
 from cato_http import (
     EXPECTED_COLLECTOR_TRIGGER_NAMES,
     EXPECTED_DASHBOARD_NAMES,
+    EXPECTED_DASHBOARD_NAVIGATOR_GROUPS,
     EXPECTED_DISCOVERY_KEYS,
     EXPECTED_GRAPH_PROTOTYPES,
     EXPECTED_HEALTH_PAGES,
@@ -470,13 +471,7 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertIn('Cato site {#SITE.NAME}: Disconnected', deps)
 
     def test_navigators_group_by_site_not_serial(self):
-        expected = {
-            ('Health', 'Degraded', 'Degraded'): ['site', 'connection_type'],
-            ('Path', 'Probe', 'Counters'): ['site', 'connection_type', 'dest_type'],
-            ('Network', 'Tunnels', 'Tunnels'): ['site', 'connection_type', 'ha_role', 'dest_type'],
-            ('Network', 'HA', 'HA'): ['site', 'connection_type'],
-            ('Network', 'Ports', 'Ports'): ['site', 'port_kind', 'ha_role', 'connection_type'],
-        }
+        expected = EXPECTED_DASHBOARD_NAVIGATOR_GROUPS
         found: dict[tuple[str, str, str], list[str]] = {}
         for dash in self.tpl['dashboards']:
             for page in dash['pages']:

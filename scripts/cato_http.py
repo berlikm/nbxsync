@@ -119,6 +119,23 @@ EXPECTED_DASHBOARD_NAMES = {'Health', 'Path', 'Network'}
 EXPECTED_HEALTH_PAGES = {'Overview', 'Census', 'Degraded', 'API'}
 EXPECTED_PATH_PAGES = {'Overview', 'Last mile', 'Probe'}
 EXPECTED_NETWORK_PAGES = {'Overview', 'Tunnels', 'HA', 'Ports'}
+EXPECTED_DASHBOARD_NAVIGATOR_GROUPS = {
+    ('Health', 'Degraded', 'Degraded'): ['site', 'connection_type'],
+    ('Path', 'Probe', 'Counters'): ['site', 'connection_type', 'dest_type'],
+    ('Network', 'Tunnels', 'Tunnels'): [
+        'site',
+        'connection_type',
+        'ha_role',
+        'dest_type',
+    ],
+    ('Network', 'HA', 'HA'): ['site', 'connection_type'],
+    ('Network', 'Ports', 'Ports'): [
+        'site',
+        'port_kind',
+        'ha_role',
+        'connection_type',
+    ],
+}
 EXPECTED_GRAPH_PROTOTYPES = {
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth',
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Packet loss',

@@ -48,6 +48,7 @@ from cato_http import (  # noqa: E402
     COLLECTOR_COUNTER_KEYS,
     EXPECTED_COLLECTOR_TRIGGER_NAMES,
     EXPECTED_DASHBOARD_NAMES,
+    EXPECTED_DASHBOARD_NAVIGATOR_GROUPS,
     EXPECTED_DISCOVERY_KEYS,
     EXPECTED_GRAPH_PROTOTYPES,
     EXPECTED_HEALTH_PAGES,
@@ -455,7 +456,7 @@ def _template_pack_checks(api: ZabbixAPI, templateid: str) -> list[dict[str, Any
         {
             "templateids": templateid,
             "output": ["dashboardid", "name"],
-            "selectPages": ["name"],
+            "selectPages": "extend",
         },
     )
     dash_by_name = {dashboard["name"]: dashboard for dashboard in dashboards}
@@ -492,6 +493,31 @@ def _template_pack_checks(api: ZabbixAPI, templateid: str) -> list[dict[str, Any
             "Cato Network dashboard pages",
             network_pages == EXPECTED_NETWORK_PAGES,
             f"pages={sorted(network_pages)}",
+        )
+    )
+    navigator_groups: dict[tuple[str, str, str], list[str]] = {}
+    for dashboard in dashboards:
+        for page in dashboard.get("pages", []):
+            for widget in page.get("widgets", []):
+                if widget.get("type") != "itemnavigator":
+                    continue
+                fields = {
+                    field["name"]: field["value"]
+                    for field in widget.get("fields", [])
+                }
+                groups: list[str] = []
+                index = 0
+                while f"group_by.{index}.tag_name" in fields:
+                    groups.append(fields[f"group_by.{index}.tag_name"])
+                    index += 1
+                navigator_groups[
+                    (dashboard["name"], page["name"], str(widget.get("name")))
+                ] = groups
+    checks.append(
+        _record(
+            "Cato dashboard nested navigator filters",
+            navigator_groups == EXPECTED_DASHBOARD_NAVIGATOR_GROUPS,
+            f"actual={navigator_groups}",
         )
     )
     prototypes = api.call(
