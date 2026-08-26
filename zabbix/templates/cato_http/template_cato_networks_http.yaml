@@ -58,7 +58,7 @@ zabbix_export:
       url: '{$CATO.API.URL}'
       request_method: POST
       post_type: JSON
-      posts: '{"query":"query AccountMetrics($accountID: ID!) { accountMetrics(accountID: $accountID, timeFrame: \"last.PT5M\", groupDevices: true, groupInterfaces: false) { sites { id name info { connType } interfaces { name interfaceInfo { id name upstreamBandwidth downstreamBandwidth destType } metrics(toRate: true) { bytesDownstream bytesUpstream lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt packetsDiscardedDownstream packetsDiscardedUpstream } timeseries(labels: [lastMilePacketLoss, lastMileLatency], buckets: 1) { label data } } } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
+      posts: '{"query":"query AccountMetrics($accountID: ID!) { accountMetrics(accountID: $accountID, timeFrame: \"last.PT5M\", groupDevices: true, groupInterfaces: false) { sites { id name info { connType } interfaces { name interfaceInfo { id name upstreamBandwidth downstreamBandwidth destType } metrics(toRate: true) { bytesDownstream bytesUpstream lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt packetsDiscardedDownstream packetsDiscardedUpstream } timeseries(labels: [lastMilePacketLoss, lastMileLatency], buckets: 1) { label data } } } } socketPortMetrics(accountID: $accountID, timeFrame: \"last.PT5M\", measures: [{ fieldName: throughput_upstream, aggType: max }, { fieldName: throughput_downstream, aggType: max }], dimensions: [{ fieldName: site_id }, { fieldName: site_name }, { fieldName: socket_interface }, { fieldName: transport_type }]) { records(limit: 500, from: 0) { fieldsMap } } }","variables":{"accountID":"{$CATO.ACCOUNT.ID}"}}'
       headers:
       - name: Content-Type
         value: application/json
@@ -3860,6 +3860,207 @@ zabbix_export:
           item:
             host: Cato Networks by HTTP
             key: 'cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]'
+    - uuid: 596f8d73f18346ca91406503394efb9a
+      name: Cato LAN bandwidth discovery
+      type: DEPENDENT
+      key: cato.lan.metrics.discovery
+      delay: '0'
+      lifetime: 7d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var root = JSON.parse(value);
+          var metrics = root && root.data && root.data.accountMetrics;
+          var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : [];
+          var pattern = new RegExp('{$CATO.SITE.CONN_TYPE.MATCHES}');
+          var allowed = {};
+          
+          function isUsb() {
+            var blob = Array.prototype.join.call(arguments, ' ').toUpperCase();
+            return blob.indexOf('USB') !== -1;
+          }
+          
+          function isLan(transport, iface) {
+            var kind = String(transport || '').trim().toUpperCase();
+            var name = String(iface || '').trim().toUpperCase();
+            if (isUsb(kind, name)) {
+              return false;
+            }
+            if (kind === 'LAN') {
+              return true;
+            }
+            if (kind === 'WAN' || kind === 'LTE' || kind === 'TUNNEL' || kind === 'BYPASS' || kind.indexOf('OFF') === 0) {
+              return false;
+            }
+            return name.indexOf('LAN') === 0;
+          }
+          
+          for (var i = 0; i < sites.length; i++) {
+            var site = sites[i];
+            var info = site && site.info;
+            if (!site || site.id === undefined || site.id === null || !pattern.test(String((info && info.connType) || ''))) {
+              continue;
+            }
+            allowed[String(site.id)] = {
+              name: String(site.name || (info && info.name) || ''),
+              connType: String((info && info.connType) || '')
+            };
+          }
+          
+          var portMetrics = root && root.data && root.data.socketPortMetrics;
+          var records = portMetrics && Array.isArray(portMetrics.records) ? portMetrics.records : [];
+          var out = [];
+          var seen = {};
+          for (var r = 0; r < records.length; r++) {
+            var map = records[r] && records[r].fieldsMap && typeof records[r].fieldsMap === 'object'
+              ? records[r].fieldsMap
+              : {};
+            var siteId = map.site_id !== undefined && map.site_id !== null ? String(map.site_id) : '';
+            var iface = map.socket_interface !== undefined && map.socket_interface !== null
+              ? String(map.socket_interface)
+              : '';
+            var transport = map.transport_type !== undefined && map.transport_type !== null
+              ? String(map.transport_type)
+              : '';
+            if (!siteId || !iface || !allowed[siteId] || !isLan(transport, iface)) {
+              continue;
+            }
+            var key = siteId + '\0' + iface;
+            if (seen[key]) {
+              continue;
+            }
+            seen[key] = true;
+            out.push({
+              '{#SITE.ID}': siteId,
+              '{#SITE.NAME}': String(map.site_name || allowed[siteId].name || ''),
+              '{#CONN.TYPE}': allowed[siteId].connType,
+              '{#PORT.ID}': iface,
+              '{#PORT.KIND}': 'lan',
+              '{#TRANSPORT}': transport || 'LAN'
+            });
+          }
+          return JSON.stringify(out);
+      master_item:
+        key: cato.account.metrics
+      item_prototypes:
+      - uuid: c5e207c6cad448f2a44f80715f9319da
+        name: 'Cato LAN {#SITE.NAME} / {#PORT.ID}: RX bandwidth'
+        type: DEPENDENT
+        key: 'cato.lan.rx.bps[{#SITE.ID},{#PORT.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: 'bps'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var portMetrics = root && root.data && root.data.socketPortMetrics;
+            var records = portMetrics && Array.isArray(portMetrics.records) ? portMetrics.records : [];
+            var map = null;
+            for (var i = 0; i < records.length; i++) {
+              var fields = records[i] && records[i].fieldsMap ? records[i].fieldsMap : {};
+              if (String(fields.site_id) === '{#SITE.ID}' && String(fields.socket_interface) === '{#PORT.ID}') {
+                map = fields;
+                break;
+              }
+            }
+            if (!map) {
+              throw 'LAN port missing';
+            }
+            var raw = map.throughput_downstream;
+            if (raw === undefined || raw === null || raw === '') {
+              raw = map['max(throughput_downstream)'];
+            }
+            var numeric = Number(raw);
+            if (raw === undefined || raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'RX rate missing';
+            }
+            return numeric * 8;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: lan
+        - tag: site
+          value: '{#SITE.NAME}'
+        - tag: connection_type
+          value: '{#CONN.TYPE}'
+        - tag: port_kind
+          value: '{#PORT.KIND}'
+      - uuid: 57f0eae8878a494898ee97321ee54269
+        name: 'Cato LAN {#SITE.NAME} / {#PORT.ID}: TX bandwidth'
+        type: DEPENDENT
+        key: 'cato.lan.tx.bps[{#SITE.ID},{#PORT.ID}]'
+        delay: '0'
+        history: 30d
+        trends: 365d
+        value_type: FLOAT
+        units: 'bps'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var portMetrics = root && root.data && root.data.socketPortMetrics;
+            var records = portMetrics && Array.isArray(portMetrics.records) ? portMetrics.records : [];
+            var map = null;
+            for (var i = 0; i < records.length; i++) {
+              var fields = records[i] && records[i].fieldsMap ? records[i].fieldsMap : {};
+              if (String(fields.site_id) === '{#SITE.ID}' && String(fields.socket_interface) === '{#PORT.ID}') {
+                map = fields;
+                break;
+              }
+            }
+            if (!map) {
+              throw 'LAN port missing';
+            }
+            var raw = map.throughput_upstream;
+            if (raw === undefined || raw === null || raw === '') {
+              raw = map['max(throughput_upstream)'];
+            }
+            var numeric = Number(raw);
+            if (raw === undefined || raw === null || raw === '' || !isFinite(numeric)) {
+              throw 'TX rate missing';
+            }
+            return numeric * 8;
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: lan
+        - tag: site
+          value: '{#SITE.NAME}'
+        - tag: connection_type
+          value: '{#CONN.TYPE}'
+        - tag: port_kind
+          value: '{#PORT.KIND}'
+      graph_prototypes:
+      - uuid: 0ebff1622012493fb2a4c43f2298c33c
+        name: 'Cato LAN {#SITE.NAME} / {#PORT.ID}: Bandwidth'
+        graph_items:
+        - color: 199C0D
+          item:
+            host: Cato Networks by HTTP
+            key: 'cato.lan.rx.bps[{#SITE.ID},{#PORT.ID}]'
+        - sortorder: '1'
+          color: 2774A4
+          item:
+            host: Cato Networks by HTTP
+            key: 'cato.lan.tx.bps[{#SITE.ID},{#PORT.ID}]'
     macros:
     - macro: '{$CATO.SITE.CONN_TYPE.MATCHES}'
       value: '^SOCKET_'
@@ -6358,7 +6559,7 @@ zabbix_export:
         widgets:
         - type: honeycomb
           name: 'WAN media'
-          width: '72'
+          width: '36'
           height: '6'
           fields:
           - type: STRING
@@ -6405,9 +6606,9 @@ zabbix_export:
             value: '2'
         - type: honeycomb
           name: 'LAN media'
-          'y': '6'
-          width: '72'
-          height: '5'
+          x: '36'
+          width: '36'
+          height: '6'
           fields:
           - type: STRING
             name: items.0
@@ -6426,7 +6627,7 @@ zabbix_export:
             value: '1'
           - type: INTEGER
             name: primary_label_size
-            value: '20'
+            value: '16'
           - type: INTEGER
             name: show.0
             value: '1'
@@ -6451,9 +6652,49 @@ zabbix_export:
           - type: STRING
             name: thresholds.2.threshold
             value: '2'
+        - type: graphprototype
+          name: 'WAN traffic'
+          'y': '6'
+          width: '72'
+          height: '14'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '3'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth'
+          - type: STRING
+            name: reference
+            value: 'NPWTG'
+          - type: INTEGER
+            name: rows
+            value: '2'
+        - type: graphprototype
+          name: 'LAN traffic'
+          'y': '20'
+          width: '72'
+          height: '14'
+          fields:
+          - type: INTEGER
+            name: columns
+            value: '3'
+          - type: GRAPH_PROTOTYPE
+            name: graphid.0
+            value:
+              host: 'Cato Networks by HTTP'
+              name: 'Cato LAN {#SITE.NAME} / {#PORT.ID}: Bandwidth'
+          - type: STRING
+            name: reference
+            value: 'NPLTG'
+          - type: INTEGER
+            name: rows
+            value: '2'
         - type: itemnavigator
           name: Ports
-          'y': '11'
+          'y': '34'
           width: '28'
           height: '8'
           fields:
@@ -6505,7 +6746,7 @@ zabbix_export:
         - type: svggraph
           name: History
           x: '28'
-          'y': '11'
+          'y': '34'
           width: '44'
           height: '8'
           fields:

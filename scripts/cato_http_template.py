@@ -95,6 +95,7 @@ WAN_TAGS = [
     ('dest_type', '{#DEST.TYPE}'),
 ]
 SLA_TAGS = [*SITE_TAGS, ('dest_type', '{#DEST.TYPE}')]
+LAN_TAGS = [*SITE_TAGS, ('port_kind', '{#PORT.KIND}')]
 PORT_TAGS = [
     *SITE_TAGS,
     ('serial', '{#SERIAL}'),
@@ -669,6 +670,35 @@ def util_js(direction: str, cap_field: str, byte_field: str) -> str:
     )
 
 
+def lan_port_js(field: str, label: str) -> str:
+    """Read socketPortMetrics fieldsMap throughput and convert byte/s to bit/s."""
+    return (
+        'var root = JSON.parse(value);\n'
+        'var portMetrics = root && root.data && root.data.socketPortMetrics;\n'
+        'var records = portMetrics && Array.isArray(portMetrics.records) ? portMetrics.records : [];\n'
+        'var map = null;\n'
+        'for (var i = 0; i < records.length; i++) {\n'
+        '  var fields = records[i] && records[i].fieldsMap ? records[i].fieldsMap : {};\n'
+        "  if (String(fields.site_id) === '{#SITE.ID}' && String(fields.socket_interface) === '{#PORT.ID}') {\n"
+        '    map = fields;\n'
+        '    break;\n'
+        '  }\n'
+        '}\n'
+        'if (!map) {\n'
+        "  throw 'LAN port missing';\n"
+        '}\n'
+        'var raw = map.' + field + ';\n'
+        "if (raw === undefined || raw === null || raw === '') {\n"
+        "  raw = map['max(" + field + ")'];\n"
+        '}\n'
+        'var numeric = Number(raw);\n'
+        "if (raw === undefined || raw === null || raw === '' || !isFinite(numeric)) {\n"
+        f"  throw '{label} missing';\n"
+        '}\n'
+        'return numeric * 8;\n'
+    )
+
+
 def gauge_fields(host: str, key: str) -> list[tuple[str, str, str]]:
     return [
         ('INTEGER', 'angle', '270'),
@@ -918,6 +948,36 @@ def svggraph(
     fields.append({'type': 'INTEGER', 'name': 'show_problems', 'value': show_problems})
     fields.append({'type': 'INTEGER', 'name': 'legend', 'value': legend})
     return widget('svggraph', name, width=pos.get('width', '36'), height=pos.get('height', '6'), x=pos.get('x'), y=pos.get('y'), fields=fields)
+
+
+def graphprototype_grid(
+    name: str,
+    graph_name: str,
+    *,
+    reference: str,
+    columns: str = '3',
+    rows: str = '2',
+    **pos,
+) -> list[str]:
+    """EXOS/VOSS 3x2 traffic grid of one graph prototype family."""
+    return widget(
+        'graphprototype',
+        name,
+        width=pos.get('width', '72'),
+        height=pos.get('height', '14'),
+        x=pos.get('x'),
+        y=pos.get('y'),
+        fields=[
+            {'type': 'INTEGER', 'name': 'columns', 'value': columns},
+            {
+                'type': 'GRAPH_PROTOTYPE',
+                'name': 'graphid.0',
+                'value': {'host': TPL, 'name': graph_name},
+            },
+            {'type': 'STRING', 'name': 'reference', 'value': reference},
+            {'type': 'INTEGER', 'name': 'rows', 'value': rows},
+        ],
+    )
 
 
 def problems_strip(*, y: str = '4', reference: str = 'CPROB') -> list[str]:
@@ -1437,6 +1497,7 @@ def network_ports_widgets() -> list[str]:
             honeycomb_label('Cato wan port', 'Media in'),
             reference='NPWAN',
             label_size='16',
+            width='36',
             height='6',
         ),
         *honeycomb_status(
@@ -1444,15 +1505,29 @@ def network_ports_widgets() -> list[str]:
             'Cato lan port *: Media in',
             honeycomb_label('Cato lan port', 'Media in'),
             reference='NPLAN',
+            label_size='16',
+            x='36',
+            width='36',
+            height='6',
+        ),
+        *graphprototype_grid(
+            'WAN traffic',
+            'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth',
+            reference='NPWTG',
             y='6',
-            height='5',
+        ),
+        *graphprototype_grid(
+            'LAN traffic',
+            'Cato LAN {#SITE.NAME} / {#PORT.ID}: Bandwidth',
+            reference='NPLTG',
+            y='20',
         ),
         *navigator_and_history(
             nav_name='Ports',
             group_tags=['site', 'port_kind', 'ha_role', 'connection_type'],
             nav_ref='NPNAV',
             graph_ref='NPGRA',
-            y='11',
+            y='34',
             height='8',
             items=[
                 'Cato wan port *: Media in',
@@ -2156,6 +2231,58 @@ def render_template() -> str:
         '          item:',
         f'            host: {TPL}',
         f"            key: {q('cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]')}",
+        f'    - uuid: {uid("lan_lld")}',
+        '      name: Cato LAN bandwidth discovery',
+        '      type: DEPENDENT',
+        '      key: cato.lan.metrics.discovery',
+        "      delay: '0'",
+        '      lifetime: 7d',
+        '      preprocessing:',
+        '      - type: JAVASCRIPT',
+        '        parameters:',
+        *js_block(load_lld_js('cato.lan.metrics.discovery'), 8),
+        '      master_item:',
+        '        key: cato.account.metrics',
+        '      item_prototypes:',
+        *proto_item(
+            uid_key='lan_rx',
+            name='Cato LAN {#SITE.NAME} / {#PORT.ID}: RX bandwidth',
+            key='cato.lan.rx.bps[{#SITE.ID},{#PORT.ID}]',
+            master='cato.account.metrics',
+            js=lan_port_js('throughput_downstream', 'RX rate'),
+            scope='lan',
+            extra_tags=LAN_TAGS,
+            value_type='FLOAT',
+            valuemap=None,
+            units='bps',
+            trends='365d',
+        ),
+        *proto_item(
+            uid_key='lan_tx',
+            name='Cato LAN {#SITE.NAME} / {#PORT.ID}: TX bandwidth',
+            key='cato.lan.tx.bps[{#SITE.ID},{#PORT.ID}]',
+            master='cato.account.metrics',
+            js=lan_port_js('throughput_upstream', 'TX rate'),
+            scope='lan',
+            extra_tags=LAN_TAGS,
+            value_type='FLOAT',
+            valuemap=None,
+            units='bps',
+            trends='365d',
+        ),
+        '      graph_prototypes:',
+        f'      - uuid: {uid("graph_lan_bw")}',
+        f"        name: {q('Cato LAN {#SITE.NAME} / {#PORT.ID}: Bandwidth')}",
+        '        graph_items:',
+        '        - color: 199C0D',
+        '          item:',
+        f'            host: {TPL}',
+        f"            key: {q('cato.lan.rx.bps[{#SITE.ID},{#PORT.ID}]')}",
+        "        - sortorder: '1'",
+        '          color: 2774A4',
+        '          item:',
+        f'            host: {TPL}',
+        f"            key: {q('cato.lan.tx.bps[{#SITE.ID},{#PORT.ID}]')}",
         '    macros:',
     ]
     for macro, value in TEMPLATE_MACROS.items():

@@ -31,8 +31,10 @@ from cato_http import (
     TEMPLATE_PATH,
     collector_host,
     graphql_posts,
+    is_lan_transport,
     is_usb_identity,
     load_lld_js,
+    metrics_lan_census,
     metrics_sla_census,
     normalize_socket_serial,
     run_lld_js,
@@ -231,7 +233,61 @@ METRICS_FIXTURE = {
                     ],
                 },
             ]
-        }
+        },
+        'socketPortMetrics': {
+            'records': [
+                {
+                    'fieldsMap': {
+                        'site_id': '10',
+                        'site_name': 'Zurich',
+                        'socket_interface': 'LAN1',
+                        'transport_type': 'LAN',
+                        'throughput_upstream': '10',
+                        'throughput_downstream': '20',
+                    }
+                },
+                {
+                    'fieldsMap': {
+                        'site_id': '10',
+                        'site_name': 'Zurich',
+                        'socket_interface': 'WAN1',
+                        'transport_type': 'WAN',
+                        'throughput_upstream': '30',
+                        'throughput_downstream': '40',
+                    }
+                },
+                {
+                    'fieldsMap': {
+                        'site_id': '10',
+                        'site_name': 'Zurich',
+                        'socket_interface': 'USB1',
+                        'transport_type': 'LAN',
+                        'throughput_upstream': '1',
+                        'throughput_downstream': '2',
+                    }
+                },
+                {
+                    'fieldsMap': {
+                        'site_id': '20',
+                        'site_name': 'Azure',
+                        'socket_interface': 'LAN1',
+                        'transport_type': 'LAN',
+                        'throughput_upstream': '5',
+                        'throughput_downstream': '6',
+                    }
+                },
+                {
+                    'fieldsMap': {
+                        'site_id': '10',
+                        'site_name': 'Zurich',
+                        'socket_interface': 'LAN2',
+                        'transport_type': 'wired',
+                        'throughput_upstream': '7',
+                        'throughput_downstream': '8',
+                    }
+                },
+            ]
+        },
     }
 }
 
@@ -267,7 +323,12 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertIn('destType', items['cato.account.metrics']['posts'])
         self.assertNotIn('wanRole', items['cato.account.snapshot']['posts'])
         self.assertNotIn('altWanStatus', items['cato.account.snapshot']['posts'])
-        self.assertNotIn('socketPortMetrics', items['cato.account.metrics']['posts'])
+        posts = items['cato.account.metrics']['posts']
+        self.assertIn('socketPortMetrics(', posts)
+        self.assertIn('throughput_upstream', posts)
+        self.assertIn('transport_type', posts)
+        self.assertIn('} socketPortMetrics(', posts)
+        self.assertGreater(posts.find('socketPortMetrics('), posts.find('accountMetrics('))
         self.assertIn('groupDevices: true', items['cato.account.metrics']['posts'])
 
     def test_all_template_uuids_are_v4(self):
@@ -341,14 +402,31 @@ class CatoTemplateContractTests(unittest.TestCase):
         )
 
     def test_graph_prototypes_split_rtt_and_jitter(self):
+        names = {
+            graph['name']
+            for rule in self.tpl['discovery_rules']
+            for graph in rule.get('graph_prototypes') or []
+        }
+        self.assertEqual(names, EXPECTED_GRAPH_PROTOTYPES)
+        self.assertNotIn('Latency and jitter', ' '.join(names))
         sla = next(
             rule
             for rule in self.tpl['discovery_rules']
             if rule['key'] == 'cato.wan.metrics.discovery'
         )
-        names = {graph['name'] for graph in sla.get('graph_prototypes') or []}
-        self.assertEqual(names, EXPECTED_GRAPH_PROTOTYPES)
-        self.assertNotIn('Latency and jitter', ' '.join(names))
+        lan = next(
+            rule
+            for rule in self.tpl['discovery_rules']
+            if rule['key'] == 'cato.lan.metrics.discovery'
+        )
+        self.assertIn(
+            'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth',
+            {graph['name'] for graph in sla.get('graph_prototypes') or []},
+        )
+        self.assertEqual(
+            {graph['name'] for graph in lan.get('graph_prototypes') or []},
+            {'Cato LAN {#SITE.NAME} / {#PORT.ID}: Bandwidth'},
+        )
 
     def test_dashboards_health_path_network(self):
         by_name = {dash['name']: dash for dash in self.tpl['dashboards']}
@@ -376,6 +454,17 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertIn('Tunnels', network_pages)
         self.assertIn('Ports', network_pages)
         self.assertIn('Degraded', {page['name'] for page in by_name['Health']['pages']})
+        ports = network_pages['Ports']
+        self.assertEqual(
+            [widget['name'] for widget in ports['widgets'] if widget['type'] == 'graphprototype'],
+            ['WAN traffic', 'LAN traffic'],
+        )
+        for widget in ports['widgets']:
+            if widget['type'] != 'graphprototype':
+                continue
+            fields = {field['name']: field['value'] for field in widget['fields']}
+            self.assertEqual(str(fields['columns']), '3')
+            self.assertEqual(str(fields['rows']), '2')
 
     def test_network_tunnel_latest_text_is_compact(self):
         network = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Network')
@@ -605,9 +694,22 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertIn('Degraded', [widget['name'] for widget in degraded['widgets']])
         network = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Network')
         ports = next(page for page in network['pages'] if page['name'] == 'Ports')
+        honey = [widget for widget in ports['widgets'] if widget['type'] == 'honeycomb']
+        self.assertEqual([widget['name'] for widget in honey], ['WAN media', 'LAN media'])
+        self.assertEqual(str(honey[0]['width']), '36')
+        self.assertEqual(str(honey[1]['width']), '36')
+        self.assertEqual(str(honey[1].get('x')), '36')
+        graphs = [widget for widget in ports['widgets'] if widget['type'] == 'graphprototype']
+        self.assertEqual([widget['name'] for widget in graphs], ['WAN traffic', 'LAN traffic'])
+        wan_fields = {field['name']: field['value'] for field in graphs[0]['fields']}
+        lan_fields = {field['name']: field['value'] for field in graphs[1]['fields']}
         self.assertEqual(
-            [widget['name'] for widget in ports['widgets'] if widget['type'] == 'honeycomb'],
-            ['WAN media', 'LAN media'],
+            wan_fields['graphid.0']['name'],
+            'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth',
+        )
+        self.assertEqual(
+            lan_fields['graphid.0']['name'],
+            'Cato LAN {#SITE.NAME} / {#PORT.ID}: Bandwidth',
         )
 
     def test_tunnels_char_identity_uses_latest_not_graph(self):
@@ -734,9 +836,11 @@ class CatoLldJsTests(unittest.TestCase):
         ports = run_lld_js(load_lld_js('cato.port.discovery'), json.dumps(SNAPSHOT_FIXTURE))
         wans = run_lld_js(load_lld_js('cato.wan.discovery'), json.dumps(SNAPSHOT_FIXTURE))
         sla = run_lld_js(load_lld_js('cato.wan.metrics.discovery'), json.dumps(METRICS_FIXTURE))
+        lan = run_lld_js(load_lld_js('cato.lan.metrics.discovery'), json.dumps(METRICS_FIXTURE))
         self.assertTrue(all('USB' not in row['{#PORT.ID}'].upper() for row in ports))
         self.assertTrue(all('USB' not in row['{#LINK.NAME}'].upper() for row in wans))
         self.assertTrue(all('USB' not in row['{#LINK.NAME}'].upper() for row in sla))
+        self.assertTrue(all('USB' not in row['{#PORT.ID}'].upper() for row in lan))
         self.assertEqual(len(wans), 3)
         self.assertEqual(len(sla), 2)
         self.assertTrue(is_usb_identity('USB', 'WAN USB'))
@@ -774,6 +878,37 @@ class CatoLldJsTests(unittest.TestCase):
         ):
             self.assertEqual(run_lld_js(load_lld_js(key), empty), [])
 
+    def test_lan_metrics_keeps_socket_lan_and_converts_bytes_to_bits(self):
+        rows = run_lld_js(load_lld_js('cato.lan.metrics.discovery'), json.dumps(METRICS_FIXTURE))
+        by_port = {row['{#PORT.ID}']: row for row in rows}
+        self.assertEqual(set(by_port), {'LAN1', 'LAN2'})
+        self.assertEqual(by_port['LAN1']['{#SITE.NAME}'], 'Zurich')
+        self.assertEqual(by_port['LAN1']['{#PORT.KIND}'], 'lan')
+        self.assertEqual(by_port['LAN1']['{#TRANSPORT}'], 'LAN')
+        self.assertEqual(by_port['LAN2']['{#TRANSPORT}'], 'wired')
+        self.assertTrue(all(row['{#CONN.TYPE}'].startswith('SOCKET_') for row in rows))
+        self.assertFalse(is_lan_transport('WAN', 'WAN1'))
+        self.assertTrue(is_lan_transport('LAN', 'LAN1'))
+        self.assertTrue(is_lan_transport('wired', 'LAN2'))
+        self.assertFalse(is_lan_transport('LAN', 'USB1'))
+        lan = next(
+            rule
+            for rule in _template()['discovery_rules']
+            if rule['key'] == 'cato.lan.metrics.discovery'
+        )
+        rx = next(item for item in lan['item_prototypes'] if item['key'].startswith('cato.lan.rx.bps['))
+        tx = next(item for item in lan['item_prototypes'] if item['key'].startswith('cato.lan.tx.bps['))
+        rx_js = _js(rx).replace('{#SITE.ID}', '10').replace('{#PORT.ID}', 'LAN1')
+        tx_js = _js(tx).replace('{#SITE.ID}', '10').replace('{#PORT.ID}', 'LAN1')
+        payload = json.dumps(METRICS_FIXTURE)
+        self.assertEqual(run_lld_js(rx_js, payload), 160)
+        self.assertEqual(run_lld_js(tx_js, payload), 80)
+
+    def test_missing_metrics_returns_empty_lan(self):
+        empty = json.dumps({'data': {}})
+        self.assertEqual(run_lld_js(load_lld_js('cato.wan.metrics.discovery'), empty), [])
+        self.assertEqual(run_lld_js(load_lld_js('cato.lan.metrics.discovery'), empty), [])
+
     def test_invalid_json_throws(self):
         with self.assertRaises(RuntimeError):
             run_lld_js(load_lld_js('cato.site.discovery'), 'not-json')
@@ -782,6 +917,7 @@ class CatoLldJsTests(unittest.TestCase):
         census = snapshot_census(SNAPSHOT_FIXTURE)
         self.assertEqual(census, {'sites': 1, 'sockets': 2, 'wan_rows': 3})
         self.assertEqual(metrics_sla_census(METRICS_FIXTURE), 2)
+        self.assertEqual(metrics_lan_census(METRICS_FIXTURE), 2)
         self.assertEqual(snapshot_socket_serials(SNAPSHOT_FIXTURE), {'SOCK-A', 'SOCK-B'})
         self.assertEqual(
             normalize_socket_serial('08:35:71:ff:94:6d'),

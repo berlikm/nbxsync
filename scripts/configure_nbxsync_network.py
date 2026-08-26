@@ -4461,11 +4461,12 @@ def _print_cato_plan(*, errors: list[str], apply: bool, census: dict[str, int] |
     logger.info('No HostSync, no Extreme import, no Socket role mutation, no zerotouch')
     if census:
         logger.info(
-            'Live census (USB excluded): sites=%s sockets=%s wan=%s sla=%s',
+            'Live census (USB excluded): sites=%s sockets=%s wan=%s sla=%s lan=%s',
             census.get('sites'),
             census.get('sockets'),
             census.get('wan_rows'),
             census.get('sla_rows'),
+            census.get('lan_rows'),
         )
     if errors:
         logger.info('Preflight errors (%s) — abort, no writes:', len(errors))

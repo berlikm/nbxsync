@@ -29,6 +29,7 @@ LLD_JS = {
     'cato.wan.discovery': TEMPLATE_DIR / 'lld_wan.js',
     'cato.wan.metrics.discovery': TEMPLATE_DIR / 'lld_wan_metrics.js',
     'cato.port.discovery': TEMPLATE_DIR / 'lld_ports.js',
+    'cato.lan.metrics.discovery': TEMPLATE_DIR / 'lld_lan_metrics.js',
 }
 
 TEMPLATE_NAME = 'Cato Networks by HTTP'
@@ -77,7 +78,13 @@ METRICS_QUERY = (
     'lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt '
     'packetsDiscardedDownstream packetsDiscardedUpstream } '
     'timeseries(labels: [lastMilePacketLoss, lastMileLatency], buckets: 1) { label data } '
-    '} } } }'
+    '} } } '
+    'socketPortMetrics(accountID: $accountID, timeFrame: "last.PT5M", '
+    'measures: [{ fieldName: throughput_upstream, aggType: max }, '
+    '{ fieldName: throughput_downstream, aggType: max }], '
+    'dimensions: [{ fieldName: site_id }, { fieldName: site_name }, '
+    '{ fieldName: socket_interface }, { fieldName: transport_type }]) { '
+    'records(limit: 500, from: 0) { fieldsMap } } }'
 )
 
 MASTER_KEYS = ('cato.account.snapshot', 'cato.account.metrics')
@@ -161,6 +168,7 @@ EXPECTED_GRAPH_PROTOTYPES = {
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Packet loss',
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RTT',
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Jitter',
+    'Cato LAN {#SITE.NAME} / {#PORT.ID}: Bandwidth',
 }
 EXPECTED_COLLECTOR_TRIGGER_NAMES = {
     'Cato API: Snapshot GraphQL errors',
@@ -229,6 +237,8 @@ EXPECTED_ITEM_PROTOTYPE_KEYS = {
     'cato.wan.discard.tx.pps[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.rx.util.pct[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.tx.util.pct[{#SITE.ID},{#LINK.ID}]',
+    'cato.lan.rx.bps[{#SITE.ID},{#PORT.ID}]',
+    'cato.lan.tx.bps[{#SITE.ID},{#PORT.ID}]',
 }
 SLA_PREFIXES = {
     'cato.wan.rx.bps[': 'RX bandwidth',
@@ -428,7 +438,7 @@ def collect_cato_preflight(
 ) -> tuple[list[str], dict[str, int]]:
     """One snapshot POST and one metrics POST. Returns (errors, census)."""
     errors: list[str] = []
-    census = {'sites': 0, 'sockets': 0, 'wan_rows': 0, 'sla_rows': 0}
+    census = {'sites': 0, 'sockets': 0, 'wan_rows': 0, 'sla_rows': 0, 'lan_rows': 0}
     key = (api_key if api_key is not None else os.environ.get(CATO_API_KEY_ENV) or '').strip()
     if not key:
         errors.append(f'{CATO_API_KEY_ENV} is missing; Cato GraphQL preflight cannot authenticate')
@@ -482,6 +492,7 @@ def collect_cato_preflight(
             errors.append('accountMetrics returned no data.accountMetrics')
         else:
             census['sla_rows'] = metrics_sla_census(metrics)
+            census['lan_rows'] = metrics_lan_census(metrics)
             if census['sla_rows'] <= 0:
                 errors.append('accountMetrics has no SOCKET_ SLA rows')
     return errors, census
@@ -507,6 +518,19 @@ def _socket_conn_type(info: dict[str, Any] | None) -> bool:
 def is_usb_identity(*parts: object) -> bool:
     """True when a Cato port/WAN identity is a USB modem we do not monitor."""
     return 'USB' in ' '.join(str(part or '') for part in parts).upper()
+
+
+def is_lan_transport(transport: object, interface: object) -> bool:
+    """True for LAN socketPortMetrics rows (transport_type LAN, with name fallback)."""
+    kind = str(transport or '').strip().upper()
+    name = str(interface or '').strip().upper()
+    if is_usb_identity(kind, name):
+        return False
+    if kind == 'LAN':
+        return True
+    if kind in {'WAN', 'LTE', 'TUNNEL', 'BYPASS'} or kind.startswith('OFF'):
+        return False
+    return name.startswith('LAN')
 
 
 def snapshot_census(root: dict[str, Any] | str) -> dict[str, int]:
@@ -562,6 +586,34 @@ def metrics_sla_census(root: dict[str, Any] | str) -> int:
             ):
                 continue
             pairs.add((str(site_id), str(link_id)))
+    return len(pairs)
+
+
+def metrics_lan_census(root: dict[str, Any] | str) -> int:
+    """Unique Socket-site LAN interfaces from sibling socketPortMetrics records."""
+    if isinstance(root, str):
+        root = json.loads(root)
+    metrics = ((root.get('data') or {}).get('accountMetrics') or {})
+    allowed: dict[str, str] = {}
+    for site in metrics.get('sites') or []:
+        info = site.get('info') or {}
+        site_id = site.get('id')
+        if site_id is None or not _socket_conn_type(info):
+            continue
+        allowed[str(site_id)] = str(site.get('name') or info.get('name') or '')
+    pairs: set[tuple[str, str]] = set()
+    records = (((root.get('data') or {}).get('socketPortMetrics') or {}).get('records') or [])
+    for record in records:
+        fields = record.get('fieldsMap') or {}
+        site_id = fields.get('site_id')
+        iface = fields.get('socket_interface')
+        if site_id is None or iface is None:
+            continue
+        site_key = str(site_id)
+        port_id = str(iface)
+        if site_key not in allowed or not is_lan_transport(fields.get('transport_type'), port_id):
+            continue
+        pairs.add((site_key, port_id))
     return len(pairs)
 
 
