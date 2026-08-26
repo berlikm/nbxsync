@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from cato_http import (
+    EXPECTED_CHAR_LATEST_VALUE_SIZE,
     EXPECTED_COLLECTOR_TRIGGER_NAMES,
     EXPECTED_DASHBOARD_NAMES,
     EXPECTED_DASHBOARD_ITEM_REFERENCES,
@@ -453,18 +454,21 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertIn('HA', network_pages)
         self.assertIn('Tunnels', network_pages)
         self.assertIn('Ports', network_pages)
+        self.assertIn('Port', network_pages)
         self.assertIn('Degraded', {page['name'] for page in by_name['Health']['pages']})
         ports = network_pages['Ports']
         self.assertEqual(
             [widget['name'] for widget in ports['widgets'] if widget['type'] == 'graphprototype'],
             ['WAN traffic', 'LAN traffic'],
         )
-        for widget in ports['widgets']:
-            if widget['type'] != 'graphprototype':
-                continue
-            fields = {field['name']: field['value'] for field in widget['fields']}
-            self.assertEqual(str(fields['columns']), '3')
-            self.assertEqual(str(fields['rows']), '2')
+        self.assertFalse(
+            any(widget['type'] == 'itemnavigator' for widget in ports['widgets'])
+        )
+        port = network_pages['Port']
+        self.assertEqual(
+            [widget['type'] for widget in port['widgets']],
+            ['itemnavigator', 'svggraph'],
+        )
 
     def test_network_tunnel_latest_text_is_compact(self):
         network = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Network')
@@ -475,10 +479,12 @@ class CatoTemplateContractTests(unittest.TestCase):
             if widget['type'] == 'item' and widget['name'] == 'Latest'
         )
         fields = {field['name']: field['value'] for field in latest['fields']}
-        self.assertEqual(str(latest['width']), '44')
+        self.assertEqual(str(latest['width']), '48')
         self.assertEqual(fields['itemid._reference'], 'CNDET._itemid')
-        self.assertEqual(str(fields['desc_size']), '11')
-        self.assertEqual(str(fields['value_size']), '20')
+        self.assertEqual(str(fields['desc_size']), '10')
+        self.assertEqual(str(fields['value_size']), EXPECTED_CHAR_LATEST_VALUE_SIZE)
+        self.assertEqual(str(fields['value_bold']), '0')
+        self.assertEqual(str(fields['units_show']), '0')
 
     def test_health_overview_matches_forti_chrome(self):
         health = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Health')
@@ -501,7 +507,7 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertEqual(wy(problems[0]), '4')
         pfields = {field['name']: field['value'] for field in problems[0]['fields']}
         self.assertEqual(str(pfields['show_tags']), '1')
-        self.assertEqual(pfields['tag_priority'], 'site, connection_type, ha_role, port_kind, dest_type')
+        self.assertEqual(pfields['tag_priority'], 'site, serial, ha_role, port_kind, dest_type')
         honey = next(widget for widget in overview['widgets'] if widget['type'] == 'honeycomb')
         self.assertEqual(honey['name'], 'Sites')
         self.assertEqual(str(honey['width']), '72')
@@ -668,9 +674,10 @@ class CatoTemplateContractTests(unittest.TestCase):
         deps = {row['name'] for row in trigger.get('dependencies') or []}
         self.assertIn('Cato site {#SITE.NAME}: Disconnected', deps)
 
-    def test_navigators_group_by_site_not_serial(self):
+    def test_navigators_start_with_site(self):
         expected = EXPECTED_DASHBOARD_NAVIGATOR_GROUPS
         found: dict[tuple[str, str, str], list[str]] = {}
+        serial_pages = {('Network', 'Tunnels'), ('Network', 'Port')}
         for dash in self.tpl['dashboards']:
             for page in dash['pages']:
                 for widget in page['widgets']:
@@ -685,7 +692,11 @@ class CatoTemplateContractTests(unittest.TestCase):
                     key = (dash['name'], page['name'], str(widget.get('name')))
                     found[key] = tags
                     self.assertEqual(tags[0], 'site', key)
-                    self.assertNotIn('serial', tags, key)
+                    if (dash['name'], page['name']) in serial_pages:
+                        self.assertIn('serial', tags, key)
+                    else:
+                        self.assertNotIn('serial', tags, key)
+                    self.assertNotIn('connection_type', tags, key)
         self.assertEqual(found, expected)
 
     def test_health_degraded_and_network_ports_pages(self):
@@ -711,6 +722,12 @@ class CatoTemplateContractTests(unittest.TestCase):
             lan_fields['graphid.0']['name'],
             'Cato LAN {#SITE.NAME} / {#PORT.ID}: Bandwidth',
         )
+        port = next(page for page in network['pages'] if page['name'] == 'Port')
+        port_nav = next(widget for widget in port['widgets'] if widget['type'] == 'itemnavigator')
+        port_fields = {field['name']: field['value'] for field in port_nav['fields']}
+        self.assertEqual(port_fields['group_by.0.tag_name'], 'site')
+        self.assertEqual(port_fields['group_by.1.tag_name'], 'serial')
+        self.assertEqual(port_fields['group_by.2.tag_name'], 'port_kind')
 
     def test_tunnels_char_identity_uses_latest_not_graph(self):
         network = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Network')
@@ -742,6 +759,10 @@ class CatoTemplateContractTests(unittest.TestCase):
         latest_fields = {field['name']: field['value'] for field in latest[0]['fields']}
         self.assertEqual(graph_fields['ds.0.itemids.0._reference'], 'CNNAV._itemid')
         self.assertEqual(latest_fields['itemid._reference'], 'CNDET._itemid')
+        self.assertEqual(str(latest_fields['value_size']), EXPECTED_CHAR_LATEST_VALUE_SIZE)
+        self.assertEqual(str(latest_fields['value_bold']), '0')
+        self.assertEqual(str(latest_fields['value_h_pos']), '0')
+        self.assertEqual(str(latest_fields['desc_size']), '10')
         self.assertNotIn('show.2', latest_fields)
 
     def test_dynamic_item_widgets_use_documented_item_reference_field(self):
@@ -763,6 +784,27 @@ class CatoTemplateContractTests(unittest.TestCase):
                         invalid.append(key)
         self.assertEqual(actual, expected)
         self.assertEqual(invalid, [])
+
+    def test_char_latest_panes_use_small_left_aligned_value(self):
+        found = []
+        for dashboard in self.tpl['dashboards']:
+            for page in dashboard['pages']:
+                for widget in page['widgets']:
+                    if widget['type'] != 'item' or widget['name'] != 'Latest':
+                        continue
+                    fields = {field['name']: field['value'] for field in widget['fields']}
+                    found.append((dashboard['name'], page['name']))
+                    self.assertEqual(str(fields['value_size']), EXPECTED_CHAR_LATEST_VALUE_SIZE)
+                    self.assertEqual(str(fields['value_bold']), '0')
+                    self.assertEqual(str(fields['value_h_pos']), '0')
+                    self.assertEqual(str(fields['desc_size']), '10')
+                    self.assertEqual(str(fields['desc_h_pos']), '0')
+                    self.assertEqual(str(fields['units_show']), '0')
+                    self.assertNotIn('show.2', fields)
+        self.assertEqual(
+            found,
+            [('Health', 'Degraded'), ('Network', 'Tunnels'), ('Network', 'HA')],
+        )
 
     def test_worst_rollup_seeds_exist(self):
         keys = {item['key'] for item in self.tpl['items']}

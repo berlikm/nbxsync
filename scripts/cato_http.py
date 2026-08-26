@@ -132,32 +132,18 @@ EXPECTED_DISCOVERY_KEYS = set(LLD_JS)
 EXPECTED_DASHBOARD_NAMES = {'Health', 'Path', 'Network'}
 EXPECTED_HEALTH_PAGES = {'Overview', 'Census', 'Degraded', 'API'}
 EXPECTED_PATH_PAGES = {'Overview', 'Last mile', 'Probe'}
-EXPECTED_NETWORK_PAGES = {'Overview', 'Tunnels', 'HA', 'Ports'}
+EXPECTED_NETWORK_PAGES = {'Overview', 'Tunnels', 'HA', 'Ports', 'Port'}
 EXPECTED_DASHBOARD_NAVIGATOR_GROUPS = {
-    ('Health', 'Degraded', 'Degraded'): ['site', 'connection_type'],
-    ('Health', 'Degraded', 'Details'): ['site', 'connection_type'],
-    ('Path', 'Probe', 'Counters'): ['site', 'connection_type', 'dest_type'],
-    ('Network', 'Tunnels', 'Tunnels'): [
-        'site',
-        'connection_type',
-        'ha_role',
-        'dest_type',
-    ],
-    ('Network', 'Tunnels', 'Details'): [
-        'site',
-        'connection_type',
-        'ha_role',
-        'dest_type',
-    ],
-    ('Network', 'HA', 'HA'): ['site', 'connection_type'],
-    ('Network', 'HA', 'Details'): ['site', 'connection_type'],
-    ('Network', 'Ports', 'Ports'): [
-        'site',
-        'port_kind',
-        'ha_role',
-        'connection_type',
-    ],
+    ('Health', 'Degraded', 'Degraded'): ['site'],
+    ('Health', 'Degraded', 'Details'): ['site'],
+    ('Path', 'Probe', 'Counters'): ['site', 'dest_type'],
+    ('Network', 'Tunnels', 'Tunnels'): ['site', 'serial', 'dest_type'],
+    ('Network', 'Tunnels', 'Details'): ['site', 'serial', 'dest_type'],
+    ('Network', 'HA', 'HA'): ['site'],
+    ('Network', 'HA', 'Details'): ['site'],
+    ('Network', 'Port', 'Ports'): ['site', 'serial', 'port_kind'],
 }
+EXPECTED_CHAR_LATEST_VALUE_SIZE = '14'
 EXPECTED_DASHBOARD_ITEM_REFERENCES = {
     ('Health', 'Degraded', 'Latest'): 'DGDET._itemid',
     ('Network', 'Tunnels', 'Latest'): 'CNDET._itemid',

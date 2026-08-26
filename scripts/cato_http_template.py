@@ -774,6 +774,17 @@ def honeycomb_label(kind: str, metric: str) -> str:
     return '{{ITEM.NAME}.regsub("^' + kind + ' (.*): ' + metric + '$","\\1")}'
 
 
+def honeycomb_site_port_label(kind: str, metric: str) -> str:
+    """Drop serial from honeycomb cells so 11-site WAN/LAN maps stay readable."""
+    return (
+        '{{ITEM.NAME}.regsub("^'
+        + kind
+        + ' (.+?) / [^/]+ / (.+): '
+        + metric
+        + '$","\\1 \\2")}'
+    )
+
+
 def _threshold_fields(thresholds: list[tuple[str, str]]) -> list[dict]:
     fields = []
     for idx, (color, threshold) in enumerate(thresholds):
@@ -788,7 +799,7 @@ def honeycomb_status(
     label: str,
     *,
     reference: str,
-    label_size: str = '20',
+    label_size: str = '16',
     thresholds: list[tuple[str, str]] | None = None,
     **pos,
 ) -> list[str]:
@@ -821,7 +832,7 @@ def honeycomb_metric(
     thresholds: list[tuple[str, str]],
     *,
     reference: str,
-    label_size: str = '20',
+    label_size: str = '16',
     **pos,
 ) -> list[str]:
     fields = [
@@ -832,7 +843,7 @@ def honeycomb_metric(
         {'type': 'INTEGER', 'name': 'primary_label_size_type', 'value': '1'},
         {'type': 'INTEGER', 'name': 'primary_label_size', 'value': label_size},
         {'type': 'INTEGER', 'name': 'secondary_label_size_type', 'value': '1'},
-        {'type': 'INTEGER', 'name': 'secondary_label_size', 'value': '22'},
+        {'type': 'INTEGER', 'name': 'secondary_label_size', 'value': '14'},
         {'type': 'INTEGER', 'name': 'show.0', 'value': '1'},
         {'type': 'INTEGER', 'name': 'show.1', 'value': '2'},
         {'type': 'STRING', 'name': 'reference', 'value': reference},
@@ -992,7 +1003,7 @@ def problems_strip(*, y: str = '4', reference: str = 'CPROB') -> list[str]:
             {'type': 'INTEGER', 'name': 'show', 'value': '3'},
             {'type': 'INTEGER', 'name': 'show_opdata', 'value': '2'},
             {'type': 'INTEGER', 'name': 'show_tags', 'value': '1'},
-            {'type': 'STRING', 'name': 'tag_priority', 'value': 'site, connection_type, ha_role, port_kind, dest_type'},
+            {'type': 'STRING', 'name': 'tag_priority', 'value': 'site, serial, ha_role, port_kind, dest_type'},
         ],
     )
 
@@ -1057,8 +1068,8 @@ def navigator_and_latest(
     y: str | None = None,
     height: str = '6',
     nav_width: str = '28',
-    desc_size: str = '11',
-    value_size: str = '20',
+    desc_size: str = '10',
+    value_size: str = '14',
 ) -> list[str]:
     """CHAR/identity navigator. Latest value is text, never a graph."""
     nav_fields: list[dict] = []
@@ -1086,12 +1097,18 @@ def navigator_and_latest(
             width=graph_width,
             height=height,
             fields=[
+                {'type': 'INTEGER', 'name': 'desc_bold', 'value': '0'},
+                {'type': 'INTEGER', 'name': 'desc_h_pos', 'value': '0'},
+                {'type': 'INTEGER', 'name': 'desc_size', 'value': desc_size},
+                {'type': 'INTEGER', 'name': 'desc_v_pos', 'value': '0'},
                 {'type': 'STRING', 'name': 'itemid._reference', 'value': f'{nav_ref}._itemid'},
                 {'type': 'INTEGER', 'name': 'show.0', 'value': '1'},
                 {'type': 'INTEGER', 'name': 'show.1', 'value': '2'},
-                {'type': 'INTEGER', 'name': 'desc_size', 'value': desc_size},
-                {'type': 'INTEGER', 'name': 'value_bold', 'value': '1'},
+                {'type': 'INTEGER', 'name': 'units_show', 'value': '0'},
+                {'type': 'INTEGER', 'name': 'value_bold', 'value': '0'},
+                {'type': 'INTEGER', 'name': 'value_h_pos', 'value': '0'},
                 {'type': 'INTEGER', 'name': 'value_size', 'value': value_size},
+                {'type': 'INTEGER', 'name': 'value_v_pos', 'value': '1'},
                 {'type': 'STRING', 'name': 'reference', 'value': item_ref},
             ],
         ),
@@ -1235,7 +1252,7 @@ def health_degraded_widgets() -> list[str]:
         ),
         *navigator_and_history(
             nav_name='Degraded',
-            group_tags=['site', 'connection_type'],
+            group_tags=['site'],
             nav_ref='CDEGN',
             graph_ref='CDEGG',
             y='13',
@@ -1255,9 +1272,10 @@ def health_degraded_widgets() -> list[str]:
             ],
             nav_ref='DGDET',
             item_ref='DGVAL',
-            group_tags=['site', 'connection_type'],
+            group_tags=['site'],
             y='18',
-            height='5',
+            height='7',
+            nav_width='24',
         ),
     ]
 
@@ -1380,7 +1398,7 @@ def path_lastmile_widgets() -> list[str]:
 
 def path_probe_widgets() -> list[str]:
     return navigator_and_history(
-        group_tags=['site', 'connection_type', 'dest_type'],
+        group_tags=['site', 'dest_type'],
         nav_ref='CNAVP',
         graph_ref='CGRFP',
         items=[
@@ -1404,9 +1422,9 @@ def network_overview_widgets() -> list[str]:
         *honeycomb_status(
             'WAN links',
             'Cato WAN *: Connectivity',
-            honeycomb_label('Cato WAN', 'Connectivity'),
+            honeycomb_site_port_label('Cato WAN', 'Connectivity'),
             reference='NWAN',
-            label_size='16',
+            label_size='14',
             height='6',
         ),
         *honeycomb_status(
@@ -1416,12 +1434,13 @@ def network_overview_widgets() -> list[str]:
             reference='NSOCK',
             y='6',
             height='5',
+            label_size='14',
         ),
     ]
 
 
 def network_tunnels_widgets() -> list[str]:
-    tunnel_groups = ['site', 'connection_type', 'ha_role', 'dest_type']
+    tunnel_groups = ['site', 'serial', 'dest_type']
     return [
         *navigator_and_history(
             nav_name='Tunnels',
@@ -1447,7 +1466,8 @@ def network_tunnels_widgets() -> list[str]:
             item_ref='CNVAL',
             group_tags=tunnel_groups,
             y='6',
-            height='5',
+            height='7',
+            nav_width='24',
         ),
     ]
 
@@ -1463,7 +1483,7 @@ def network_ha_widgets() -> list[str]:
         ),
         *navigator_and_history(
             nav_name='HA',
-            group_tags=['site', 'connection_type'],
+            group_tags=['site'],
             nav_ref='NHAV',
             graph_ref='NHAG',
             y='5',
@@ -1482,9 +1502,10 @@ def network_ha_widgets() -> list[str]:
             ],
             nav_ref='NHDET',
             item_ref='NHVAL',
-            group_tags=['site', 'connection_type'],
+            group_tags=['site'],
             y='11',
-            height='5',
+            height='7',
+            nav_width='24',
         ),
     ]
 
@@ -1494,18 +1515,18 @@ def network_ports_widgets() -> list[str]:
         *honeycomb_status(
             'WAN media',
             'Cato wan port *: Media in',
-            honeycomb_label('Cato wan port', 'Media in'),
+            honeycomb_site_port_label('Cato wan port', 'Media in'),
             reference='NPWAN',
-            label_size='16',
+            label_size='14',
             width='36',
             height='6',
         ),
         *honeycomb_status(
             'LAN media',
             'Cato lan port *: Media in',
-            honeycomb_label('Cato lan port', 'Media in'),
+            honeycomb_site_port_label('Cato lan port', 'Media in'),
             reference='NPLAN',
-            label_size='16',
+            label_size='14',
             x='36',
             width='36',
             height='6',
@@ -1522,23 +1543,26 @@ def network_ports_widgets() -> list[str]:
             reference='NPLTG',
             y='20',
         ),
-        *navigator_and_history(
-            nav_name='Ports',
-            group_tags=['site', 'port_kind', 'ha_role', 'connection_type'],
-            nav_ref='NPNAV',
-            graph_ref='NPGRA',
-            y='34',
-            height='8',
-            items=[
-                'Cato wan port *: Media in',
-                'Cato lan port *: Media in',
-                'Cato wan port *: Link up',
-                'Cato lan port *: Link up',
-                'Cato wan port *: Has tunnel',
-                'Cato wan port *: Has internet',
-            ],
-        ),
     ]
+
+
+def network_port_widgets() -> list[str]:
+    """One-socket picker: site → serial → WAN/LAN ports, then History."""
+    return navigator_and_history(
+        nav_name='Ports',
+        group_tags=['site', 'serial', 'port_kind'],
+        nav_ref='NPNAV',
+        graph_ref='NPGRA',
+        height='11',
+        items=[
+            'Cato wan port *: Media in',
+            'Cato lan port *: Media in',
+            'Cato wan port *: Link up',
+            'Cato lan port *: Link up',
+            'Cato wan port *: Has tunnel',
+            'Cato wan port *: Has internet',
+        ],
+    )
 
 
 def render_template() -> str:
@@ -2363,6 +2387,9 @@ def render_template() -> str:
             '      - name: Ports',
             '        widgets:',
             *network_ports_widgets(),
+            '      - name: Port',
+            '        widgets:',
+            *network_port_widgets(),
             '      - name: HA',
             '        widgets:',
             *network_ha_widgets(),

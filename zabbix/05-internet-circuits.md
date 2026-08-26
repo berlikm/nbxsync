@@ -150,3 +150,5 @@ ports/tunnels are not discovered; ISP provider and other CHAR identity live on
 Network → Tunnels **Details** / Latest, not History. LAN bandwidth is
 `socketPortMetrics` on that same metrics POST (`last.PT5M`, LAN only, ×8 to
 bps). Network → Ports shows EXOS-style WAN overlay and LAN traffic graphs.
+Network → Port is **site → serial → port_kind** so you can open one Socket's
+WAN and LAN ports.
