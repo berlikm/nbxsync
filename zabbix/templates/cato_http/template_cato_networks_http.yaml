@@ -5244,7 +5244,7 @@ zabbix_export:
           height: '5'
           fields:
           - type: STRING
-            name: itemid.0._reference
+            name: itemid._reference
             value: 'DGDET._itemid'
           - type: INTEGER
             name: show.0
@@ -6337,7 +6337,7 @@ zabbix_export:
           height: '5'
           fields:
           - type: STRING
-            name: itemid.0._reference
+            name: itemid._reference
             value: 'CNDET._itemid'
           - type: INTEGER
             name: show.0
@@ -6669,7 +6669,7 @@ zabbix_export:
           height: '5'
           fields:
           - type: STRING
-            name: itemid.0._reference
+            name: itemid._reference
             value: 'NHDET._itemid'
           - type: INTEGER
             name: show.0

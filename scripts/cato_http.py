@@ -151,6 +151,11 @@ EXPECTED_DASHBOARD_NAVIGATOR_GROUPS = {
         'connection_type',
     ],
 }
+EXPECTED_DASHBOARD_ITEM_REFERENCES = {
+    ('Health', 'Degraded', 'Latest'): 'DGDET._itemid',
+    ('Network', 'Tunnels', 'Latest'): 'CNDET._itemid',
+    ('Network', 'HA', 'Latest'): 'NHDET._itemid',
+}
 EXPECTED_GRAPH_PROTOTYPES = {
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth',
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Packet loss',

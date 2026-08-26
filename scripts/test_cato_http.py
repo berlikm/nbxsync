@@ -13,6 +13,7 @@ import yaml
 from cato_http import (
     EXPECTED_COLLECTOR_TRIGGER_NAMES,
     EXPECTED_DASHBOARD_NAMES,
+    EXPECTED_DASHBOARD_ITEM_REFERENCES,
     EXPECTED_DASHBOARD_NAVIGATOR_GROUPS,
     EXPECTED_DISCOVERY_KEYS,
     EXPECTED_GRAPH_PROTOTYPES,
@@ -556,8 +557,28 @@ class CatoTemplateContractTests(unittest.TestCase):
         graph_fields = {field['name']: field['value'] for field in graphs[0]['fields']}
         latest_fields = {field['name']: field['value'] for field in latest[0]['fields']}
         self.assertEqual(graph_fields['ds.0.itemids.0._reference'], 'CNNAV._itemid')
-        self.assertEqual(latest_fields['itemid.0._reference'], 'CNDET._itemid')
+        self.assertEqual(latest_fields['itemid._reference'], 'CNDET._itemid')
         self.assertNotIn('show.2', latest_fields)
+
+    def test_dynamic_item_widgets_use_documented_item_reference_field(self):
+        expected = EXPECTED_DASHBOARD_ITEM_REFERENCES
+        actual = {}
+        invalid = []
+        for dashboard in self.tpl['dashboards']:
+            for page in dashboard['pages']:
+                for widget in page['widgets']:
+                    if widget['type'] != 'item':
+                        continue
+                    fields = {
+                        field['name']: field['value'] for field in widget['fields']
+                    }
+                    key = (dashboard['name'], page['name'], widget['name'])
+                    if 'itemid._reference' in fields:
+                        actual[key] = fields['itemid._reference']
+                    if 'itemid.0._reference' in fields:
+                        invalid.append(key)
+        self.assertEqual(actual, expected)
+        self.assertEqual(invalid, [])
 
     def test_worst_rollup_seeds_exist(self):
         keys = {item['key'] for item in self.tpl['items']}

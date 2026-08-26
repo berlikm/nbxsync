@@ -1023,7 +1023,7 @@ def navigator_and_latest(
             width=graph_width,
             height=height,
             fields=[
-                {'type': 'STRING', 'name': 'itemid.0._reference', 'value': f'{nav_ref}._itemid'},
+                {'type': 'STRING', 'name': 'itemid._reference', 'value': f'{nav_ref}._itemid'},
                 {'type': 'INTEGER', 'name': 'show.0', 'value': '1'},
                 {'type': 'INTEGER', 'name': 'show.1', 'value': '2'},
                 {'type': 'INTEGER', 'name': 'value_bold', 'value': '1'},

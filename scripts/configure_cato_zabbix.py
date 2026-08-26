@@ -48,6 +48,7 @@ from cato_http import (  # noqa: E402
     COLLECTOR_COUNTER_KEYS,
     EXPECTED_COLLECTOR_TRIGGER_NAMES,
     EXPECTED_DASHBOARD_NAMES,
+    EXPECTED_DASHBOARD_ITEM_REFERENCES,
     EXPECTED_DASHBOARD_NAVIGATOR_GROUPS,
     EXPECTED_DISCOVERY_KEYS,
     EXPECTED_GRAPH_PROTOTYPES,
@@ -563,6 +564,41 @@ def _template_pack_checks(api: ZabbixAPI, templateid: str) -> list[dict[str, Any
             "Cato dashboard nested navigator filters",
             navigator_groups == EXPECTED_DASHBOARD_NAVIGATOR_GROUPS,
             f"actual={navigator_groups}",
+        )
+    )
+    item_references: dict[tuple[str, str, str], str] = {}
+    invalid_item_reference_fields: dict[tuple[str, str, str], list[str]] = {}
+    for dashboard in dashboards:
+        for page in dashboard.get("pages", []):
+            for widget in page.get("widgets", []):
+                if widget.get("type") != "item":
+                    continue
+                fields = {
+                    field["name"]: field["value"]
+                    for field in widget.get("fields", [])
+                }
+                widget_key = (
+                    dashboard["name"],
+                    page["name"],
+                    str(widget.get("name")),
+                )
+                if "itemid._reference" in fields:
+                    item_references[widget_key] = fields["itemid._reference"]
+                invalid = sorted(
+                    field
+                    for field in fields
+                    if field.startswith("itemid.")
+                    and field.endswith("._reference")
+                    and field != "itemid._reference"
+                )
+                if invalid:
+                    invalid_item_reference_fields[widget_key] = invalid
+    checks.append(
+        _record(
+            "Cato dashboard Item value references",
+            item_references == EXPECTED_DASHBOARD_ITEM_REFERENCES
+            and not invalid_item_reference_fields,
+            f"actual={item_references} invalid={invalid_item_reference_fields}",
         )
     )
     prototypes = api.call(
