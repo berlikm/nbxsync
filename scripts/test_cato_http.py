@@ -421,13 +421,54 @@ class CatoTemplateContractTests(unittest.TestCase):
 
     def test_estate_rollup_items_use_foreach(self):
         by_key = {item['key']: item for item in self.tpl['items']}
-        self.assertEqual(by_key['cato.site.up.count']['params'], 'sum(last_foreach(//cato.site.connected[*]))')
-        self.assertEqual(by_key['cato.wan.loss.worst.pct']['params'], 'max(last_foreach(//cato.wan.loss.max.pct[*]))')
+        self.assertEqual(
+            by_key['cato.site.up.count']['params'],
+            'sum(last_foreach(//cato.site.connected[*]))',
+        )
+        self.assertEqual(
+            by_key['cato.socket.up.count']['params'],
+            'sum(last_foreach(//cato.socket.connected[*,*]))',
+        )
+        self.assertEqual(
+            by_key['cato.wan.up.count']['params'],
+            'sum(last_foreach(//cato.wan.connected[*,*,*]))',
+        )
         self.assertEqual(
             by_key['cato.site.ha.not_ready.count']['params'],
-            'count(exists_foreach(//cato.site.ha.readiness.code[*]))-sum(last_foreach(//cato.site.ha.readiness.code[*]))',
+            'count(exists_foreach(//cato.site.ha.readiness.code[*]?[not (tag="cato_seed:seed")]))-sum(last_foreach(//cato.site.ha.readiness.code[*]?[not (tag="cato_seed:seed")]))',
         )
-        self.assertEqual(by_key['cato.site.degraded.count']['params'], 'sum(last_foreach(//cato.site.degraded[*]))')
+        self.assertEqual(
+            by_key['cato.wan.loss.worst.pct']['params'],
+            'max(last_foreach(//cato.wan.loss.max.pct[*,*]))',
+        )
+        self.assertEqual(
+            by_key['cato.wan.rtt.worst.ms']['params'],
+            'max(last_foreach(//cato.wan.rtt.ms[*,*]))',
+        )
+        self.assertEqual(
+            by_key['cato.wan.jitter.worst.ms']['params'],
+            'max(last_foreach(//cato.wan.jitter.max.ms[*,*]))',
+        )
+        self.assertEqual(
+            by_key['cato.wan.lastmile.loss.worst.pct']['params'],
+            'max(last_foreach(//cato.wan.lastmile.loss.pct[*,*]))',
+        )
+        self.assertEqual(
+            by_key['cato.wan.lastmile.latency.worst.ms']['params'],
+            'max(last_foreach(//cato.wan.lastmile.latency.ms[*,*]))',
+        )
+        self.assertEqual(
+            by_key['cato.wan.rx.util.worst.pct']['params'],
+            'max(last_foreach(//cato.wan.rx.util.pct[*,*]))',
+        )
+        self.assertEqual(
+            by_key['cato.wan.tx.util.worst.pct']['params'],
+            'max(last_foreach(//cato.wan.tx.util.pct[*,*]))',
+        )
+        self.assertEqual(
+            by_key['cato.site.degraded.count']['params'],
+            'sum(last_foreach(//cato.site.degraded[*]))',
+        )
 
 
     def test_last_mile_prototypes_use_timeseries_values(self):
@@ -472,10 +513,27 @@ class CatoTemplateContractTests(unittest.TestCase):
         }
         self.assertTrue(EXPECTED_COLLECTOR_TRIGGER_NAMES <= names)
 
-    def test_census_uses_exists_foreach_and_availability(self):
+    def test_census_uses_tag_filtered_exists_foreach_and_availability(self):
         by_key = {item['key']: item for item in self.tpl['items']}
+        for count_key, item_filter in {
+            'cato.site.discovery.count': 'cato.site.connected[*]',
+            'cato.socket.discovery.count': 'cato.socket.connected[*,*]',
+            'cato.wan.discovery.count': 'cato.wan.connected[*,*,*]',
+            'cato.wan.metrics.discovery.count': 'cato.wan.rx.bps[*,*]',
+        }.items():
+            self.assertEqual(
+                by_key[count_key]['params'],
+                f'count(exists_foreach(//{item_filter}?[not (tag="cato_seed:seed")]))',
+            )
+        seeds = [
+            item for item in self.tpl['items']
+            if item['key'].endswith('[__seed]')
+        ]
+        self.assertTrue(seeds)
+        for seed in seeds:
+            tags = {row['tag']: row['value'] for row in seed['tags']}
+            self.assertEqual(tags.get('cato_seed'), 'seed', seed['key'])
         site = by_key['cato.site.discovery.count']
-        self.assertIn('count(exists_foreach(//cato.site.connected[*]))-count(exists_foreach(//cato.site.connected[__seed]))', site['params'])
         expr = site['triggers'][0]['expression']
         self.assertIn('cato.api.snapshot.available', expr)
         self.assertIn('{$CATO.SITES.EXPECTED}>0', expr)

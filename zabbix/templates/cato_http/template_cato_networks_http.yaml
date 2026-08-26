@@ -338,7 +338,7 @@ zabbix_export:
       trends: '0'
       value_type: UNSIGNED
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -346,6 +346,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: db7d1377167a494aaee8ca439821729d
       name: Cato site degraded seed
       type: CALCULATED
@@ -355,7 +357,7 @@ zabbix_export:
       trends: '0'
       value_type: UNSIGNED
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -363,6 +365,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: 1f8750be26684bd9a986634a72c392da
       name: Cato Socket discovery seed
       type: CALCULATED
@@ -372,7 +376,7 @@ zabbix_export:
       trends: '0'
       value_type: UNSIGNED
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -380,6 +384,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: 75ee61d381664445a3992601d65ee01e
       name: Cato WAN discovery seed
       type: CALCULATED
@@ -389,7 +395,7 @@ zabbix_export:
       trends: '0'
       value_type: UNSIGNED
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -397,6 +403,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: 5e84cd3fd8af42cb88a80d7dd0bc1501
       name: Cato site HA readiness seed
       type: CALCULATED
@@ -406,7 +414,7 @@ zabbix_export:
       trends: '0'
       value_type: UNSIGNED
       params: '1'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -414,6 +422,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: f1b0a85023d44d54bd759917ebf6ddd4
       name: Cato WAN SLA discovery seed
       type: CALCULATED
@@ -423,7 +433,7 @@ zabbix_export:
       trends: '0'
       value_type: FLOAT
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -431,6 +441,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: b39de0113f25410ba2852a6def4d2792
       name: Cato overlay loss seed
       type: CALCULATED
@@ -440,7 +452,7 @@ zabbix_export:
       trends: '0'
       value_type: FLOAT
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -448,6 +460,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: c21c88c3723d4d109a3fe486c5a86bd7
       name: Cato overlay RTT seed
       type: CALCULATED
@@ -457,7 +471,7 @@ zabbix_export:
       trends: '0'
       value_type: FLOAT
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -465,6 +479,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: ca52ca19d436472f8d32db0d592a5383
       name: Cato overlay jitter seed
       type: CALCULATED
@@ -474,7 +490,7 @@ zabbix_export:
       trends: '0'
       value_type: FLOAT
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -482,6 +498,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: 50abf6f151c64d2e994b181419fd29f5
       name: Cato last-mile loss seed
       type: CALCULATED
@@ -491,7 +509,7 @@ zabbix_export:
       trends: '0'
       value_type: FLOAT
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -499,6 +517,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: b022a1cf66a040a88263e1f8799a75d5
       name: Cato last-mile latency seed
       type: CALCULATED
@@ -508,7 +528,7 @@ zabbix_export:
       trends: '0'
       value_type: FLOAT
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -516,6 +536,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: 584423df34684b1d8e6cc3117a770038
       name: Cato RX utilization seed
       type: CALCULATED
@@ -525,7 +547,7 @@ zabbix_export:
       trends: '0'
       value_type: FLOAT
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -533,6 +555,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: 502540886b4040d09344a7af3586e500
       name: Cato TX utilization seed
       type: CALCULATED
@@ -542,7 +566,7 @@ zabbix_export:
       trends: '0'
       value_type: FLOAT
       params: '0'
-      description: Always-present seed so aggregate foreach stays supported at 0.
+      description: Always-present seed for aggregate foreach formulas.
       tags:
       - tag: component
         value: cato
@@ -550,6 +574,8 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+      - tag: cato_seed
+        value: seed
     - uuid: e509879eedf147c0813019715b64c607
       name: Cato discovered Socket site count
       type: CALCULATED
@@ -557,7 +583,7 @@ zabbix_export:
       delay: 1m
       history: 7d
       value_type: FLOAT
-      params: 'count(exists_foreach(//cato.site.connected[*]))-count(exists_foreach(//cato.site.connected[__seed]))'
+      params: 'count(exists_foreach(//cato.site.connected[*]?[not (tag="cato_seed:seed")]))'
       tags:
       - tag: component
         value: cato
@@ -584,7 +610,7 @@ zabbix_export:
       delay: 1m
       history: 7d
       value_type: FLOAT
-      params: 'count(exists_foreach(//cato.socket.connected[*]))-count(exists_foreach(//cato.socket.connected[__seed]))'
+      params: 'count(exists_foreach(//cato.socket.connected[*,*]?[not (tag="cato_seed:seed")]))'
       tags:
       - tag: component
         value: cato
@@ -611,7 +637,7 @@ zabbix_export:
       delay: 1m
       history: 7d
       value_type: FLOAT
-      params: 'count(exists_foreach(//cato.wan.connected[*]))-count(exists_foreach(//cato.wan.connected[__seed]))'
+      params: 'count(exists_foreach(//cato.wan.connected[*,*,*]?[not (tag="cato_seed:seed")]))'
       tags:
       - tag: component
         value: cato
@@ -638,7 +664,7 @@ zabbix_export:
       delay: 1m
       history: 7d
       value_type: FLOAT
-      params: 'count(exists_foreach(//cato.wan.rx.bps[*]))-count(exists_foreach(//cato.wan.rx.bps[__seed]))'
+      params: 'count(exists_foreach(//cato.wan.rx.bps[*,*]?[not (tag="cato_seed:seed")]))'
       tags:
       - tag: component
         value: cato
@@ -682,7 +708,7 @@ zabbix_export:
       history: 7d
       trends: 365d
       value_type: FLOAT
-      params: 'sum(last_foreach(//cato.socket.connected[*]))'
+      params: 'sum(last_foreach(//cato.socket.connected[*,*]))'
       tags:
       - tag: component
         value: cato
@@ -698,7 +724,7 @@ zabbix_export:
       history: 7d
       trends: 365d
       value_type: FLOAT
-      params: 'sum(last_foreach(//cato.wan.connected[*]))'
+      params: 'sum(last_foreach(//cato.wan.connected[*,*,*]))'
       tags:
       - tag: component
         value: cato
@@ -730,7 +756,7 @@ zabbix_export:
       history: 7d
       trends: 365d
       value_type: FLOAT
-      params: 'count(exists_foreach(//cato.site.ha.readiness.code[*]))-sum(last_foreach(//cato.site.ha.readiness.code[*]))'
+      params: 'count(exists_foreach(//cato.site.ha.readiness.code[*]?[not (tag="cato_seed:seed")]))-sum(last_foreach(//cato.site.ha.readiness.code[*]?[not (tag="cato_seed:seed")]))'
       tags:
       - tag: component
         value: cato
@@ -747,7 +773,7 @@ zabbix_export:
       trends: 365d
       value_type: FLOAT
       units: '%'
-      params: 'max(last_foreach(//cato.wan.loss.max.pct[*]))'
+      params: 'max(last_foreach(//cato.wan.loss.max.pct[*,*]))'
       tags:
       - tag: component
         value: cato
@@ -764,7 +790,7 @@ zabbix_export:
       trends: 365d
       value_type: FLOAT
       units: 'ms'
-      params: 'max(last_foreach(//cato.wan.rtt.ms[*]))'
+      params: 'max(last_foreach(//cato.wan.rtt.ms[*,*]))'
       tags:
       - tag: component
         value: cato
@@ -781,7 +807,7 @@ zabbix_export:
       trends: 365d
       value_type: FLOAT
       units: 'ms'
-      params: 'max(last_foreach(//cato.wan.jitter.max.ms[*]))'
+      params: 'max(last_foreach(//cato.wan.jitter.max.ms[*,*]))'
       tags:
       - tag: component
         value: cato
@@ -798,7 +824,7 @@ zabbix_export:
       trends: 365d
       value_type: FLOAT
       units: '%'
-      params: 'max(last_foreach(//cato.wan.lastmile.loss.pct[*]))'
+      params: 'max(last_foreach(//cato.wan.lastmile.loss.pct[*,*]))'
       tags:
       - tag: component
         value: cato
@@ -815,7 +841,7 @@ zabbix_export:
       trends: 365d
       value_type: FLOAT
       units: 'ms'
-      params: 'max(last_foreach(//cato.wan.lastmile.latency.ms[*]))'
+      params: 'max(last_foreach(//cato.wan.lastmile.latency.ms[*,*]))'
       tags:
       - tag: component
         value: cato
@@ -832,7 +858,7 @@ zabbix_export:
       trends: 365d
       value_type: FLOAT
       units: '%'
-      params: 'max(last_foreach(//cato.wan.rx.util.pct[*]))'
+      params: 'max(last_foreach(//cato.wan.rx.util.pct[*,*]))'
       tags:
       - tag: component
         value: cato
@@ -849,7 +875,7 @@ zabbix_export:
       trends: 365d
       value_type: FLOAT
       units: '%'
-      params: 'max(last_foreach(//cato.wan.tx.util.pct[*]))'
+      params: 'max(last_foreach(//cato.wan.tx.util.pct[*,*]))'
       tags:
       - tag: component
         value: cato
