@@ -377,6 +377,20 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertIn('Ports', network_pages)
         self.assertIn('Degraded', {page['name'] for page in by_name['Health']['pages']})
 
+    def test_network_tunnel_latest_text_is_compact(self):
+        network = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Network')
+        tunnels = next(page for page in network['pages'] if page['name'] == 'Tunnels')
+        latest = next(
+            widget
+            for widget in tunnels['widgets']
+            if widget['type'] == 'item' and widget['name'] == 'Latest'
+        )
+        fields = {field['name']: field['value'] for field in latest['fields']}
+        self.assertEqual(str(latest['width']), '44')
+        self.assertEqual(fields['itemid._reference'], 'CNDET._itemid')
+        self.assertEqual(str(fields['desc_size']), '11')
+        self.assertEqual(str(fields['value_size']), '20')
+
     def test_health_overview_matches_forti_chrome(self):
         health = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Health')
         overview = next(page for page in health['pages'] if page['name'] == 'Overview')

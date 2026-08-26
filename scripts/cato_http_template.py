@@ -997,6 +997,8 @@ def navigator_and_latest(
     y: str | None = None,
     height: str = '6',
     nav_width: str = '28',
+    desc_size: str = '11',
+    value_size: str = '20',
 ) -> list[str]:
     """CHAR/identity navigator. Latest value is text, never a graph."""
     nav_fields: list[dict] = []
@@ -1027,8 +1029,9 @@ def navigator_and_latest(
                 {'type': 'STRING', 'name': 'itemid._reference', 'value': f'{nav_ref}._itemid'},
                 {'type': 'INTEGER', 'name': 'show.0', 'value': '1'},
                 {'type': 'INTEGER', 'name': 'show.1', 'value': '2'},
+                {'type': 'INTEGER', 'name': 'desc_size', 'value': desc_size},
                 {'type': 'INTEGER', 'name': 'value_bold', 'value': '1'},
-                {'type': 'INTEGER', 'name': 'value_size', 'value': '28'},
+                {'type': 'INTEGER', 'name': 'value_size', 'value': value_size},
                 {'type': 'STRING', 'name': 'reference', 'value': item_ref},
             ],
         ),

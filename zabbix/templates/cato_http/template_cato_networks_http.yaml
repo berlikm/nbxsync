@@ -5247,11 +5247,14 @@ zabbix_export:
             name: show.1
             value: '2'
           - type: INTEGER
+            name: desc_size
+            value: '11'
+          - type: INTEGER
             name: value_bold
             value: '1'
           - type: INTEGER
             name: value_size
-            value: '28'
+            value: '20'
           - type: STRING
             name: reference
             value: 'DGVAL'
@@ -6340,11 +6343,14 @@ zabbix_export:
             name: show.1
             value: '2'
           - type: INTEGER
+            name: desc_size
+            value: '11'
+          - type: INTEGER
             name: value_bold
             value: '1'
           - type: INTEGER
             name: value_size
-            value: '28'
+            value: '20'
           - type: STRING
             name: reference
             value: 'CNVAL'
@@ -6672,11 +6678,14 @@ zabbix_export:
             name: show.1
             value: '2'
           - type: INTEGER
+            name: desc_size
+            value: '11'
+          - type: INTEGER
             name: value_bold
             value: '1'
           - type: INTEGER
             name: value_size
-            value: '28'
+            value: '20'
           - type: STRING
             name: reference
             value: 'NHVAL'
