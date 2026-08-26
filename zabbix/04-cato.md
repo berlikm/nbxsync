@@ -33,8 +33,11 @@ Socket sites, 21 physical Sockets, 33 Socket WAN tunnels, and 17 unique
 Socket-site/interface SLA rows. Snapshot WAN is per-Socket; SLA rows are
 HA-merged (`groupDevices: true`). 33 vs 17 is expected, not a discovery bug.
 USB modem ports/tunnels are excluded from WAN, port, and SLA discovery (this
-estate does not use them). If Health → Census WAN drops below 33 after apply,
-the new count is the Ethernet/LTE/ALT census — update `{$CATO.WAN.EXPECTED}`.
+estate does not use them). `--apply-cato` immediately retires the legacy
+USB-generated physical-port items and their trigger instances; it does not wait
+for the normal seven-day LLD lost-resource lifetime. If Health → Census WAN
+drops below 33 after apply, the new count is the Ethernet/LTE/ALT census —
+update `{$CATO.WAN.EXPECTED}`.
 
 ## Data path
 

@@ -214,6 +214,51 @@ def _get_host(api: ZabbixAPI, host: str) -> dict[str, Any] | None:
         raise RuntimeError(f"multiple hosts named {host!r}")
     return found[0] if found else None
 
+def _legacy_usb_port_itemids(api: ZabbixAPI, hostid: str) -> list[str]:
+    """Return only obsolete, discovered Cato USB physical-port item IDs.
+
+    The current port LLD excludes USB.  Zabbix otherwise retains previously
+    discovered resources for its seven-day lost-resource lifetime, including
+    their noise-producing trigger instances.  Restrict deletion to an
+    LLD-generated ``cato.port.*`` item whose *port* label is USB; a site name
+    containing USB or a manually created item cannot match.
+    """
+    items = api.call(
+        "item.get",
+        {
+            "hostids": hostid,
+            "output": ["itemid", "name", "key_", "flags"],
+            "selectDiscoveryRule": ["key_"],
+        },
+    )
+    itemids: list[str] = []
+    for item in items:
+        discovery_rule = item.get("discoveryRule") or {}
+        port_label = str(item.get("name", "")).rsplit("/", 1)[-1].split(":", 1)[0]
+        if (
+            str(item.get("flags")) == "4"
+            and isinstance(discovery_rule, dict)
+            and discovery_rule.get("key_") == "cato.port.discovery"
+            and str(item.get("key_", "")).startswith("cato.port.")
+            and "USB" in port_label.upper()
+        ):
+            itemids.append(str(item["itemid"]))
+    return sorted(itemids, key=int)
+
+
+def retire_legacy_usb_port_items(api: ZabbixAPI, hostid: str) -> int:
+    """Delete obsolete USB port items and their generated trigger instances."""
+    itemids = _legacy_usb_port_itemids(api, hostid)
+    if not itemids:
+        return 0
+    deleted = {str(itemid) for itemid in api.call("item.delete", itemids)["itemids"]}
+    if deleted != set(itemids):
+        raise RuntimeError(
+            "Cato USB retirement did not delete exactly the selected items: "
+            f"selected={itemids} deleted={sorted(deleted, key=int)}"
+        )
+    return len(itemids)
+
 
 def _owned(host_data: dict[str, Any]) -> bool:
     return any(
@@ -672,6 +717,14 @@ def verify_account_host(api: ZabbixAPI, hostid: str) -> list[dict[str, Any]]:
         _template_pack_checks(api, str(template["templateid"]))
         if template is not None
         else [_record("Cato template", False, "missing")]
+    )
+    legacy_usb_itemids = _legacy_usb_port_itemids(api, hostid)
+    checks.append(
+        _record(
+            "Cato legacy USB port items",
+            not legacy_usb_itemids,
+            f"count={len(legacy_usb_itemids)}",
+        )
     )
     return checks
 
@@ -1420,7 +1473,12 @@ def apply_cato_pack(
         visible_name=visible_name or collector_visible_name(),
         proxy_group=proxy_group,
     )
-    return verify_account_host(api, hostid)
+    retired = retire_legacy_usb_port_items(api, hostid)
+    records = [
+        _record("Cato legacy USB port items retired", True, f"count={retired}")
+    ]
+    records.extend(verify_account_host(api, hostid))
+    return records
 
 
 def verify_cato_collector(

@@ -38,6 +38,10 @@ from cato_http import (
     snapshot_census,
     snapshot_socket_serials,
 )
+from configure_cato_zabbix import (
+    _legacy_usb_port_itemids,
+    retire_legacy_usb_port_items,
+)
 from cato_http_template import char_from_path_js, render_template
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -656,6 +660,66 @@ class CatoLldJsTests(unittest.TestCase):
             normalize_socket_serial('08:35:71:ff:94:6d'),
             '08:35:71:FF:94:6D',
         )
+
+
+class CatoUsbRetirementTests(unittest.TestCase):
+    class _Api:
+        def __init__(self):
+            self.deleted: list[list[str]] = []
+            self.items = [
+                {
+                    'itemid': '10',
+                    'name': 'Cato wan port Site / Serial / USB2: Link up',
+                    'key_': 'cato.port.up[10,serial,USB2]',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'cato.port.discovery'},
+                },
+                {
+                    'itemid': '2',
+                    'name': 'Cato lan port Site / Serial / USB1: Media in',
+                    'key_': 'cato.port.media_in[10,serial,USB1]',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'cato.port.discovery'},
+                },
+                {
+                    'itemid': '3',
+                    'name': 'Cato wan port USB Site / Serial / WAN1: Link up',
+                    'key_': 'cato.port.up[10,serial,WAN1]',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'cato.port.discovery'},
+                },
+                {
+                    'itemid': '4',
+                    'name': 'Cato wan port Site / Serial / USB1: Link up',
+                    'key_': 'cato.port.up[10,serial,USB1]',
+                    'flags': '0',
+                    'discoveryRule': {'key_': 'cato.port.discovery'},
+                },
+                {
+                    'itemid': '5',
+                    'name': 'Cato wan port Site / Serial / USB1: Link up',
+                    'key_': 'cato.port.up[10,serial,USB1]',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'other.discovery'},
+                },
+            ]
+
+        def call(self, method, params):
+            if method == 'item.get':
+                return self.items
+            self.assertEqual(method, 'item.delete')
+            self.deleted.append(params)
+            return {'itemids': params}
+
+        def assertEqual(self, left, right):
+            if left != right:
+                raise AssertionError(f'{left!r} != {right!r}')
+
+    def test_retires_only_discovered_usb_port_items(self):
+        api = self._Api()
+        self.assertEqual(_legacy_usb_port_itemids(api, '42'), ['2', '10'])
+        self.assertEqual(retire_legacy_usb_port_items(api, '42'), 2)
+        self.assertEqual(api.deleted, [['2', '10']])
 
 
 class CatoApplyWiringTests(unittest.TestCase):
