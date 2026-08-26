@@ -44,11 +44,9 @@ update `{$CATO.WAN.EXPECTED}`.
 | Master item | API query | Interval | Retention | Purpose |
 |---|---|---:|---:|---|
 | `cato.account.snapshot` | `accountSnapshot` including `degradedStatus` and `interfacesLinkState` | 1m | 1d | Site, Socket, WAN, HA, CMA Degraded, and physical port state. |
-| `cato.account.metrics` | `accountMetrics` with `timeFrame: "last.PT5M"`, `groupDevices: true`, `groupInterfaces: false`, `metrics(toRate: true)` | 5m | 1d | Overlay SLA, last-mile loss/latency, discards, bandwidth. |
+| `cato.account.metrics` | `accountMetrics` with `timeFrame: "last.PT5M"`, `groupDevices: true`, `groupInterfaces: false`, `metrics(toRate: true)`, plus sibling `socketPortMetrics` LAN throughput | 5m | 1d | Overlay SLA, last-mile loss/latency, discards, WAN bandwidth, LAN bits. |
 
-There is no third HTTP master. `socketPortMetrics` (Socket CPU) is a different
-shape and a later pass: CMA treats CPU >90% as a cause of overlay loss, not a
-Health tile on this collector.
+There is no third HTTP master. `socketPortMetrics` is a **root** GraphQL field (not nested under `accountMetrics`). It rides the existing 5-minute metrics POST as a sibling selection so LAN throughput does not need a third poller. Socket CPU is not on this collector.
 
 Both masters are HTTP-agent `POST` requests to
 `https://api.catonetworks.com/api/v1/graphql2`, with standard TLS peer and host
@@ -76,15 +74,19 @@ ceilings):
 |---|---|---|
 | `accountSnapshot` | 1/sec (30/min) | **1/min** HTTP master |
 | `accountMetrics` | 15/min | **1/5 min** HTTP master |
-| Other GraphQL | 120/min account-wide | none on this host |
+| `socketPortMetrics` | 120/min general | sibling field on the metrics POST (**12/hour**) |
+| Other GraphQL | 120/min account-wide | none else on this host |
 
 That is 1 snapshot POST per minute vs a 30/min floor, and 12 metrics POSTs per
 hour vs a 15/min floor. Last-mile is **not** a third poller: `timeseries(labels:
 [lastMilePacketLoss, lastMileLatency], buckets: 1)` rides on the existing
-metrics POST. `--check-cato` / `--apply-cato` GraphQL preflight is two extra
-calls (one of each query), not a loop. Do not add `socketPortMetrics` or a
-third HTTP master; that is a later pass and would compete with the metrics
-bucket if CMA or another tool already uses `accountMetrics`.
+metrics POST. LAN bits are also not a third poller: the same document selects
+`socketPortMetrics` (account 964, `last.PT5M`, max `throughput_upstream` /
+`throughput_downstream`, dimensions site/interface/transport). Cato rate limits
+are per **query name**; one HTTP POST may increment both `accountMetrics` and
+`socketPortMetrics`. `--check-cato` / `--apply-cato` GraphQL preflight is two
+extra calls (one of each HTTP master), not a loop. Do not add a third HTTP
+master or a 1-minute `socketPortMetrics` poller.
 
 Zabbix HTTP agent does not retry 429s. Stay on these intervals. If
 `Cato API: Metrics GraphQL errors` or snapshot/metrics `nodata` fires together
@@ -100,13 +102,17 @@ per-Socket `haRole` / `deviceUptime`, WAN `physicalPort`,
 `tunnelRemoteIP`, `tunnelRemoteIPInfo.provider`, `tunnelConnectionReason`,
 and `interfacesLinkState { id, mediaIn, up, hasAddress, hasInternet,
 hasTunnel, duplex, linkSpeed }`. Metrics collect overlay loss/RTT/jitter,
-discards, `interfaceInfo.destType`, and last-mile from **timeseries labels**
-`lastMilePacketLoss` / `lastMileLatency` (not scalar `metrics.lastmile*`). If
-the timeseries labels are rejected, the schema-violation Warning fires.
+discards, `interfaceInfo.destType`, last-mile from **timeseries labels**
+`lastMilePacketLoss` / `lastMileLatency` (not scalar `metrics.lastmile*`),
+and LAN throughput from sibling `socketPortMetrics`. If the timeseries labels
+are rejected, the schema-violation Warning fires.
 
-`toRate: true` byte counters are multiplied by eight for bps. Utilization %
-items exist when `upstreamBandwidth` / `downstreamBandwidth` caps are > 0
-(treated as Mbps).
+`toRate: true` overlay byte counters are multiplied by eight for bps.
+`socketPortMetrics` `throughput_*` values are the same byte/s rates: LLD keeps
+`transport_type == LAN` (USB skipped; Socket sites only) and dependent items
+multiply by eight so LAN RX/TX match WAN overlay units. Utilization % items
+exist when `upstreamBandwidth` / `downstreamBandwidth` caps are > 0
+(treated as Mbps). LAN has no circuit cap on this collector — bits only.
 
 ## Discovery and signals
 
@@ -123,6 +129,7 @@ cannot become a site outage.
 | `cato.wan.discovery` | snapshot | `{#SITE.ID}`, `{#SOCKET.ID}`, `{#LINK.ID}` | Per-Socket WAN state, tunnel uptime, POP, dest type, physical port, ISP provider, tunnel remote IP. Labels are `site / serial / link`. USB identities are skipped. |
 | `cato.port.discovery` | snapshot | `{#SITE.ID}`, `{#SOCKET.ID}`, `{#PORT.ID}` | Physical `mediaIn` / link / tunnel / internet from `interfacesLinkState`. `{#PORT.KIND}` is `wan` / `lan` / `other`. USB ports are skipped (unused on this estate). LTE/ALT stay WAN. |
 | `cato.wan.metrics.discovery` | metrics | `{#SITE.ID}`, `{#LINK.ID}` | HA-merged overlay SLA, last-mile loss/latency, discards, util %. Labels stay `site / link`. USB identities are skipped. |
+| `cato.lan.metrics.discovery` | metrics | `{#SITE.ID}`, `{#PORT.ID}` | HA-merged LAN bits from `socketPortMetrics` (`transport_type` LAN). Labels stay `site / LAN*`. USB identities are skipped. |
 
 Every item prototype (and its triggers) is tagged `site={#SITE.NAME}` and
 `connection_type={#CONN.TYPE}` so Monitoring → Latest data / Problems can
@@ -195,11 +202,11 @@ this template (same-template refs are valid) but are not dumped onto Health.
 | **Health → Degraded** | Degraded count, site Degraded honeycomb, numeric navigator (Degraded / connectivity / hosts / HA ready) plus History, CHAR **Details** (reasons, operational status, POP) plus Latest | CMA yellow, not site High. CHAR is not graphed. |
 | **Health → API** | GraphQL error and schema-violation tiles, unsupported items, Snapshot/Metrics gauges, error history | Collector failures, not overlay outages |
 | **Path → Overview** | Full-width overlay **loss** honeycomb (yellow at CMA 2%), then RTT and jitter | Overlay quality scan |
-| **Path → Last mile** | Last-mile loss, last-mile latency, RX/TX utilization honeycombs | Underlay toward the Socket, plus WAN fill. No last-mile trigger. |
+| **Path → Last mile** | Last-mile loss, last-mile latency, RX/TX utilization honeycombs | Underlay toward the Socket, plus WAN fill %. No last-mile trigger. WAN **bits** graphs live on Network → Ports. |
 | **Path → Probe** | Navigator grouped by **site → connection_type → dest_type** (loss / RTT / jitter / last-mile / bps / util / discards) plus selected-metric history | Drill-down / tag filter, not a 51-graph gallery |
 | **Network → Overview** | Full-width WAN connectivity (`site / serial / link`) then Socket honeycomb (`site / serial`) | Tunnel and Socket up/down. No USB. |
 | **Network → Tunnels** | Numeric navigator (connectivity, tunnel uptime) plus History; CHAR **Details** (PoP, dest type, physical port, ISP provider, remote IP, reason) plus Latest. Grouped by **site → connection_type → ha_role → dest_type** | Per-Socket WAN drill-down. CHAR is not graphed. |
-| **Network → Ports** | WAN vs LAN **mediaIn** honeycombs, navigator grouped by **site → port_kind → ha_role → connection_type** | Physical unplug vs tunnel-down. USB ports are not discovered. |
+| **Network → Ports** | WAN vs LAN **mediaIn** honeycombs side by side, then EXOS-style 3×2 **WAN traffic** and **LAN traffic** graph prototypes, then the media/link navigator | Physical unplug vs tunnel-down, plus LAN/WAN bits like EXOS/VOSS Network interfaces. USB ports are not discovered. |
 | **Network → HA** | Site HA-ready honeycomb plus numeric HA ready/enabled/Socket uptime History; CHAR **Details** (readiness, socket version, operational status) plus Latest | Pair health without dumping CHAR onto a graph |
 
 Template **Items** (the ~50 collector keys) only have `component` / `monitoring_domain` / `scope`. Site, `connection_type`, `ha_role`, `port_kind`, and `dest_type` are LLD tags. They show up in host Latest data / Graphs after `--apply-cato` and discovery, and as nested groups on the navigators above. Serial is identity, not a filter.

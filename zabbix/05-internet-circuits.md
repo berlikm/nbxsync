@@ -76,10 +76,11 @@ those labels from the existing `accountMetrics` master (`buckets: 1`) and
 averages the latest point across probe endpoints. Do not invent a third HTTP
 master. Last-mile is dashboard-only: Path → Last mile honeycomb, no trigger.
 
-`socketPortMetrics` (physical/LAN/WAN/LTE throughput, cellular RSRP) is a
-**different query** and a later pass: CMA treats Socket CPU / port fill as a
-*cause* of overlay loss, and a third HTTP POST is out of scope while we stay
-inside the `accountMetrics` 15/minute floor.
+`socketPortMetrics` (physical LAN throughput) rides the existing 5-minute
+`accountMetrics` HTTP master as a sibling root field. Filter
+`transport_type == LAN`, skip USB, convert byte/s ×8 to bit/s. WAN overlay
+RX/TX already come from `accountMetrics` `metrics(toRate: true)` ×8. Do **not**
+add a third HTTP master.
 
 ### Will monitoring still work?
 
@@ -135,7 +136,7 @@ No absolute speed-expect on `UW`. Commit rate lives on the NetBox Circuit, not i
 |---|---|
 | ISP WAN Ports by SNMP (thin, build) | Extreme `UW` — dependent items on stock interface items where possible |
 | FortiGate by HTTP (SD-WAN / WAN LLD) | [03](03-fortinet.md) **Path** Loss/Probe — not this SNMP template |
-| Cato Networks by HTTP | Socket-only sites: last-mile, `degradedStatus`, and `interfacesLinkState` on the **existing** snapshot master. No `socketPortMetrics`. Filter Latest data by the `site` tag. |
+| Cato Networks by HTTP | Socket-only sites: last-mile, `degradedStatus`, and `interfacesLinkState` on the **existing** snapshot master. LAN bits from `socketPortMetrics` on the **existing** metrics master. Filter Latest data by the `site` tag. |
 
 ---
 
@@ -146,5 +147,6 @@ NetBox Providers + Circuits populated; multi-homing modelled vs residual risk; c
 Cato collector (still two HTTP masters, still `--apply-cato`): last-mile is
 timeseries on the metrics master (average of probe endpoints, no alert); USB
 ports/tunnels are not discovered; ISP provider and other CHAR identity live on
-Network → Tunnels **Details** / Latest, not History. Do not add
-`socketPortMetrics` until the metrics budget is measured.
+Network → Tunnels **Details** / Latest, not History. LAN bandwidth is
+`socketPortMetrics` on that same metrics POST (`last.PT5M`, LAN only, ×8 to
+bps). Network → Ports shows EXOS-style WAN overlay and LAN traffic graphs.
