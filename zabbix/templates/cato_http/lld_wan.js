@@ -25,6 +25,11 @@ function normalizeHaRole(device, socket, isHA) {
   return primary ? 'MASTER' : 'BACKUP';
 }
 
+function isUsb() {
+  var blob = Array.prototype.join.call(arguments, ' ').toUpperCase();
+  return blob.indexOf('USB') !== -1;
+}
+
 for (var i = 0; i < sites.length; i++) {
   var site = sites[i];
   var siteInfo = site && site.info;
@@ -44,6 +49,9 @@ for (var i = 0; i < sites.length; i++) {
       var iface = interfaces[k];
       var info = iface && iface.info;
       if (!info || info.id === undefined || info.id === null) {
+        continue;
+      }
+      if (isUsb(info.id, info.name, iface.name, iface.physicalPort, info.physicalPort)) {
         continue;
       }
       out.push({

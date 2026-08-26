@@ -3,6 +3,12 @@ var metrics = root && root.data && root.data.accountMetrics;
 var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : [];
 var pattern = new RegExp('{$CATO.SITE.CONN_TYPE.MATCHES}');
 var out = [];
+
+function isUsb() {
+  var blob = Array.prototype.join.call(arguments, ' ').toUpperCase();
+  return blob.indexOf('USB') !== -1;
+}
+
 for (var i = 0; i < sites.length; i++) {
   var site = sites[i];
   var info = site && site.info;
@@ -14,6 +20,9 @@ for (var i = 0; i < sites.length; i++) {
     var iface = interfaces[j];
     var interfaceInfo = iface && iface.interfaceInfo;
     if (!interfaceInfo || interfaceInfo.id === undefined || interfaceInfo.id === null) {
+      continue;
+    }
+    if (isUsb(interfaceInfo.id, interfaceInfo.name, iface.name, interfaceInfo.physicalPort)) {
       continue;
     }
     out.push({

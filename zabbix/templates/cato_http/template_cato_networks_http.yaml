@@ -431,6 +431,125 @@ zabbix_export:
         value: cato_overlay
       - tag: scope
         value: collector
+    - uuid: b39de0113f25410ba2852a6def4d2792
+      name: Cato overlay loss seed
+      type: CALCULATED
+      key: 'cato.wan.loss.max.pct[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: FLOAT
+      params: '0'
+      description: Always-present seed so aggregate foreach stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: c21c88c3723d4d109a3fe486c5a86bd7
+      name: Cato overlay RTT seed
+      type: CALCULATED
+      key: 'cato.wan.rtt.ms[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: FLOAT
+      params: '0'
+      description: Always-present seed so aggregate foreach stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: ca52ca19d436472f8d32db0d592a5383
+      name: Cato overlay jitter seed
+      type: CALCULATED
+      key: 'cato.wan.jitter.max.ms[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: FLOAT
+      params: '0'
+      description: Always-present seed so aggregate foreach stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 50abf6f151c64d2e994b181419fd29f5
+      name: Cato last-mile loss seed
+      type: CALCULATED
+      key: 'cato.wan.lastmile.loss.pct[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: FLOAT
+      params: '0'
+      description: Always-present seed so aggregate foreach stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: b022a1cf66a040a88263e1f8799a75d5
+      name: Cato last-mile latency seed
+      type: CALCULATED
+      key: 'cato.wan.lastmile.latency.ms[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: FLOAT
+      params: '0'
+      description: Always-present seed so aggregate foreach stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 584423df34684b1d8e6cc3117a770038
+      name: Cato RX utilization seed
+      type: CALCULATED
+      key: 'cato.wan.rx.util.pct[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: FLOAT
+      params: '0'
+      description: Always-present seed so aggregate foreach stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+    - uuid: 502540886b4040d09344a7af3586e500
+      name: Cato TX utilization seed
+      type: CALCULATED
+      key: 'cato.wan.tx.util.pct[__seed]'
+      delay: 1m
+      history: 1d
+      trends: '0'
+      value_type: FLOAT
+      params: '0'
+      description: Always-present seed so aggregate foreach stays supported at 0.
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
     - uuid: e509879eedf147c0813019715b64c607
       name: Cato discovered Socket site count
       type: CALCULATED
@@ -876,7 +995,7 @@ zabbix_export:
             }
             var state = found.operationalStatus;
             if (state === undefined || state === null || state === '') {
-              throw 'operationalStatus missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -1039,7 +1158,7 @@ zabbix_export:
             }
             var state = found.popName;
             if (state === undefined || state === null || state === '') {
-              throw 'POP missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -1178,7 +1297,7 @@ zabbix_export:
             }
             var state = (found.haStatus || {}).readiness;
             if (state === undefined || state === null || state === '') {
-              throw 'HA readiness missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -1289,7 +1408,7 @@ zabbix_export:
             }
             var state = (found.haStatus || {}).socketVersion;
             if (state === undefined || state === null || state === '') {
-              throw 'HA socketVersion missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -1565,7 +1684,7 @@ zabbix_export:
             }
             var state = device.version || (device.socketInfo && device.socketInfo.version);
             if (state === undefined || state === null || state === '') {
-              throw 'socket version missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -1683,6 +1802,11 @@ zabbix_export:
             return primary ? 'MASTER' : 'BACKUP';
           }
           
+          function isUsb() {
+            var blob = Array.prototype.join.call(arguments, ' ').toUpperCase();
+            return blob.indexOf('USB') !== -1;
+          }
+          
           for (var i = 0; i < sites.length; i++) {
             var site = sites[i];
             var siteInfo = site && site.info;
@@ -1702,6 +1826,9 @@ zabbix_export:
                 var iface = interfaces[k];
                 var info = iface && iface.info;
                 if (!info || info.id === undefined || info.id === null) {
+                  continue;
+                }
+                if (isUsb(info.id, info.name, iface.name, iface.physicalPort, info.physicalPort)) {
                   continue;
                 }
                 out.push({
@@ -1975,7 +2102,7 @@ zabbix_export:
             }
             var state = iface.popName;
             if (state === undefined || state === null || state === '') {
-              throw 'POP missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -2039,7 +2166,7 @@ zabbix_export:
             }
             var state = (iface.info && iface.info.destType) || iface.destType;
             if (state === undefined || state === null || state === '') {
-              throw 'destType missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -2103,7 +2230,7 @@ zabbix_export:
             }
             var state = iface.physicalPort;
             if (state === undefined || state === null || state === '') {
-              throw 'physicalPort missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -2167,7 +2294,7 @@ zabbix_export:
             }
             var state = iface.tunnelRemoteIPInfo && iface.tunnelRemoteIPInfo.provider;
             if (state === undefined || state === null || state === '') {
-              throw 'provider missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -2231,7 +2358,7 @@ zabbix_export:
             }
             var state = iface.tunnelRemoteIP;
             if (state === undefined || state === null || state === '') {
-              throw 'tunnelRemoteIP missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -2295,7 +2422,7 @@ zabbix_export:
             }
             var state = iface.tunnelConnectionReason;
             if (state === undefined || state === null || state === '') {
-              throw 'tunnelConnectionReason missing';
+              return '';
             }
             return String(state);
           error_handler: DISCARD_VALUE
@@ -2355,12 +2482,17 @@ zabbix_export:
             return primary ? 'MASTER' : 'BACKUP';
           }
           
+          function isUsb() {
+            var blob = Array.prototype.join.call(arguments, ' ').toUpperCase();
+            return blob.indexOf('USB') !== -1;
+          }
+          
           function portKind(id) {
             var name = String(id || '').toUpperCase();
             if (name.indexOf('LAN') === 0) {
               return 'lan';
             }
-            if (name.indexOf('WAN') === 0 || name.indexOf('USB') === 0 || name === 'LTE' || name.indexOf('ALT') === 0) {
+            if (name.indexOf('WAN') === 0 || name === 'LTE' || name.indexOf('ALT') === 0) {
               return 'wan';
             }
             return 'other';
@@ -2384,6 +2516,9 @@ zabbix_export:
               for (var k = 0; k < states.length; k++) {
                 var port = states[k];
                 if (!port || port.id === undefined || port.id === null || !String(port.id).trim()) {
+                  continue;
+                }
+                if (isUsb(port.id, port.name, port.physicalPort)) {
                   continue;
                 }
                 var kind = portKind(port.id);
@@ -2807,6 +2942,12 @@ zabbix_export:
           var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : [];
           var pattern = new RegExp('{$CATO.SITE.CONN_TYPE.MATCHES}');
           var out = [];
+          
+          function isUsb() {
+            var blob = Array.prototype.join.call(arguments, ' ').toUpperCase();
+            return blob.indexOf('USB') !== -1;
+          }
+          
           for (var i = 0; i < sites.length; i++) {
             var site = sites[i];
             var info = site && site.info;
@@ -2818,6 +2959,9 @@ zabbix_export:
               var iface = interfaces[j];
               var interfaceInfo = iface && iface.interfaceInfo;
               if (!interfaceInfo || interfaceInfo.id === undefined || interfaceInfo.id === null) {
+                continue;
+              }
+              if (isUsb(interfaceInfo.id, interfaceInfo.name, iface.name, interfaceInfo.physicalPort)) {
                 continue;
               }
               out.push({
@@ -3338,7 +3482,14 @@ zabbix_export:
                 continue;
               }
               var point = data[data.length - 1];
-              var raw = Array.isArray(point) ? point[1] : null;
+              var raw = null;
+              if (Array.isArray(point)) {
+                raw = point.length > 1 ? point[1] : point[0];
+              } else if (point && typeof point === 'object') {
+                raw = point.value !== undefined ? point.value : point.y;
+              } else {
+                raw = point;
+              }
               var numeric = Number(raw);
               if (raw !== null && raw !== '' && isFinite(numeric)) {
                 values.push(numeric);
@@ -3347,7 +3498,11 @@ zabbix_export:
             if (!values.length) {
               throw 'last-mile loss missing';
             }
-            return Math.max.apply(null, values);
+            var sum = 0;
+            for (var v = 0; v < values.length; v++) {
+              sum += values[v];
+            }
+            return sum / values.length;
           error_handler: DISCARD_VALUE
         master_item:
           key: cato.account.metrics
@@ -3364,24 +3519,6 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
-        trigger_prototypes:
-        - uuid: c4f88e2bfb4543baaf689d6c891e7b7c
-          expression: 'min(/Cato Networks by HTTP/cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}],15m)>{$CATO.LASTMILE.LOSS.WARN}'
-          name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile packet loss'
-          priority: WARNING
-          tags:
-          - tag: component
-            value: cato
-          - tag: monitoring_domain
-            value: cato_overlay
-          - tag: scope
-            value: wan_sla
-          - tag: site
-            value: '{#SITE.NAME}'
-          - tag: connection_type
-            value: '{#CONN.TYPE}'
-          - tag: dest_type
-            value: '{#DEST.TYPE}'
       - uuid: 1596b2c1f6ac4420807305d9fd31eb73
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency'
         type: DEPENDENT
@@ -3426,7 +3563,14 @@ zabbix_export:
                 continue;
               }
               var point = data[data.length - 1];
-              var raw = Array.isArray(point) ? point[1] : null;
+              var raw = null;
+              if (Array.isArray(point)) {
+                raw = point.length > 1 ? point[1] : point[0];
+              } else if (point && typeof point === 'object') {
+                raw = point.value !== undefined ? point.value : point.y;
+              } else {
+                raw = point;
+              }
               var numeric = Number(raw);
               if (raw !== null && raw !== '' && isFinite(numeric)) {
                 values.push(numeric);
@@ -3435,7 +3579,11 @@ zabbix_export:
             if (!values.length) {
               throw 'last-mile latency missing';
             }
-            return Math.max.apply(null, values);
+            var sum = 0;
+            for (var v = 0; v < values.length; v++) {
+              sum += values[v];
+            }
+            return sum / values.length;
           error_handler: DISCARD_VALUE
         master_item:
           key: cato.account.metrics
@@ -5004,7 +5152,7 @@ zabbix_export:
           name: Degraded
           'y': '13'
           width: '28'
-          height: '6'
+          height: '5'
           fields:
           - type: INTEGER
             name: group_by.0.attribute
@@ -5023,21 +5171,12 @@ zabbix_export:
             value: 'Cato site *: Degraded'
           - type: STRING
             name: items.1
-            value: 'Cato site *: Degraded reasons'
-          - type: STRING
-            name: items.2
             value: 'Cato site *: Connectivity'
           - type: STRING
-            name: items.3
-            value: 'Cato site *: Operational status'
-          - type: STRING
-            name: items.4
-            value: 'Cato site *: POP'
-          - type: STRING
-            name: items.5
+            name: items.2
             value: 'Cato site *: Host count'
           - type: STRING
-            name: items.6
+            name: items.3
             value: 'Cato site *: HA ready'
           - type: STRING
             name: reference
@@ -5047,7 +5186,7 @@ zabbix_export:
           x: '28'
           'y': '13'
           width: '44'
-          height: '6'
+          height: '5'
           fields:
           - type: STRING
             name: ds.0.color.0
@@ -5067,6 +5206,61 @@ zabbix_export:
           - type: INTEGER
             name: righty
             value: '0'
+        - type: itemnavigator
+          name: Details
+          'y': '18'
+          width: '28'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: group_by.0.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.0.tag_name
+            value: 'site'
+          - type: INTEGER
+            name: group_by.1.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.1.tag_name
+            value: 'connection_type'
+          - type: STRING
+            name: items.0
+            value: 'Cato site *: Degraded reasons'
+          - type: STRING
+            name: items.1
+            value: 'Cato site *: Operational status'
+          - type: STRING
+            name: items.2
+            value: 'Cato site *: POP'
+          - type: STRING
+            name: reference
+            value: 'DGDET'
+        - type: item
+          name: Latest
+          x: '28'
+          'y': '18'
+          width: '44'
+          height: '5'
+          fields:
+          - type: STRING
+            name: itemid.0._reference
+            value: 'DGDET._itemid'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: STRING
+            name: reference
+            value: 'DGVAL'
       - name: API
         widgets:
         - type: item
@@ -6025,7 +6219,7 @@ zabbix_export:
         - type: itemnavigator
           name: Tunnels
           width: '28'
-          height: '11'
+          height: '6'
           fields:
           - type: INTEGER
             name: group_by.0.attribute
@@ -6058,31 +6252,13 @@ zabbix_export:
             name: items.1
             value: 'Cato WAN *: Tunnel uptime'
           - type: STRING
-            name: items.2
-            value: 'Cato WAN *: POP'
-          - type: STRING
-            name: items.3
-            value: 'Cato WAN *: Dest type'
-          - type: STRING
-            name: items.4
-            value: 'Cato WAN *: Physical port'
-          - type: STRING
-            name: items.5
-            value: 'Cato WAN *: ISP provider'
-          - type: STRING
-            name: items.6
-            value: 'Cato WAN *: Tunnel remote IP'
-          - type: STRING
-            name: items.7
-            value: 'Cato WAN *: Connection reason'
-          - type: STRING
             name: reference
             value: 'CNNAV'
         - type: svggraph
           name: History
           x: '28'
           width: '44'
-          height: '11'
+          height: '6'
           fields:
           - type: STRING
             name: ds.0.color.0
@@ -6102,6 +6278,82 @@ zabbix_export:
           - type: INTEGER
             name: righty
             value: '0'
+        - type: itemnavigator
+          name: Details
+          'y': '6'
+          width: '28'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: group_by.0.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.0.tag_name
+            value: 'site'
+          - type: INTEGER
+            name: group_by.1.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.1.tag_name
+            value: 'connection_type'
+          - type: INTEGER
+            name: group_by.2.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.2.tag_name
+            value: 'ha_role'
+          - type: INTEGER
+            name: group_by.3.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.3.tag_name
+            value: 'dest_type'
+          - type: STRING
+            name: items.0
+            value: 'Cato WAN *: POP'
+          - type: STRING
+            name: items.1
+            value: 'Cato WAN *: Dest type'
+          - type: STRING
+            name: items.2
+            value: 'Cato WAN *: Physical port'
+          - type: STRING
+            name: items.3
+            value: 'Cato WAN *: ISP provider'
+          - type: STRING
+            name: items.4
+            value: 'Cato WAN *: Tunnel remote IP'
+          - type: STRING
+            name: items.5
+            value: 'Cato WAN *: Connection reason'
+          - type: STRING
+            name: reference
+            value: 'CNDET'
+        - type: item
+          name: Latest
+          x: '28'
+          'y': '6'
+          width: '44'
+          height: '5'
+          fields:
+          - type: STRING
+            name: itemid.0._reference
+            value: 'CNDET._itemid'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: STRING
+            name: reference
+            value: 'CNVAL'
       - name: Ports
         widgets:
         - type: honeycomb
@@ -6328,7 +6580,7 @@ zabbix_export:
           name: HA
           'y': '5'
           width: '28'
-          height: '8'
+          height: '6'
           fields:
           - type: INTEGER
             name: group_by.0.attribute
@@ -6347,18 +6599,9 @@ zabbix_export:
             value: 'Cato site *: HA ready'
           - type: STRING
             name: items.1
-            value: 'Cato site *: HA readiness'
-          - type: STRING
-            name: items.2
-            value: 'Cato site *: HA socket version'
-          - type: STRING
-            name: items.3
-            value: 'Cato site *: Operational status'
-          - type: STRING
-            name: items.4
             value: 'Cato site *: HA enabled'
           - type: STRING
-            name: items.5
+            name: items.2
             value: 'Cato Socket *: Uptime'
           - type: STRING
             name: reference
@@ -6368,7 +6611,7 @@ zabbix_export:
           x: '28'
           'y': '5'
           width: '44'
-          height: '8'
+          height: '6'
           fields:
           - type: STRING
             name: ds.0.color.0
@@ -6388,3 +6631,58 @@ zabbix_export:
           - type: INTEGER
             name: righty
             value: '0'
+        - type: itemnavigator
+          name: Details
+          'y': '11'
+          width: '28'
+          height: '5'
+          fields:
+          - type: INTEGER
+            name: group_by.0.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.0.tag_name
+            value: 'site'
+          - type: INTEGER
+            name: group_by.1.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.1.tag_name
+            value: 'connection_type'
+          - type: STRING
+            name: items.0
+            value: 'Cato site *: HA readiness'
+          - type: STRING
+            name: items.1
+            value: 'Cato site *: HA socket version'
+          - type: STRING
+            name: items.2
+            value: 'Cato site *: Operational status'
+          - type: STRING
+            name: reference
+            value: 'NHDET'
+        - type: item
+          name: Latest
+          x: '28'
+          'y': '11'
+          width: '44'
+          height: '5'
+          fields:
+          - type: STRING
+            name: itemid.0._reference
+            value: 'NHDET._itemid'
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: INTEGER
+            name: value_bold
+            value: '1'
+          - type: INTEGER
+            name: value_size
+            value: '28'
+          - type: STRING
+            name: reference
+            value: 'NHVAL'

@@ -96,6 +96,13 @@ EXPECTED_TEMPLATE_ITEM_KEYS = {
     'cato.wan.connected[__seed]',
     'cato.site.ha.readiness.code[__seed]',
     'cato.wan.rx.bps[__seed]',
+    'cato.wan.loss.max.pct[__seed]',
+    'cato.wan.rtt.ms[__seed]',
+    'cato.wan.jitter.max.ms[__seed]',
+    'cato.wan.lastmile.loss.pct[__seed]',
+    'cato.wan.lastmile.latency.ms[__seed]',
+    'cato.wan.rx.util.pct[__seed]',
+    'cato.wan.tx.util.pct[__seed]',
     'cato.site.discovery.count',
     'cato.socket.discovery.count',
     'cato.wan.discovery.count',
@@ -121,6 +128,7 @@ EXPECTED_PATH_PAGES = {'Overview', 'Last mile', 'Probe'}
 EXPECTED_NETWORK_PAGES = {'Overview', 'Tunnels', 'HA', 'Ports'}
 EXPECTED_DASHBOARD_NAVIGATOR_GROUPS = {
     ('Health', 'Degraded', 'Degraded'): ['site', 'connection_type'],
+    ('Health', 'Degraded', 'Details'): ['site', 'connection_type'],
     ('Path', 'Probe', 'Counters'): ['site', 'connection_type', 'dest_type'],
     ('Network', 'Tunnels', 'Tunnels'): [
         'site',
@@ -128,7 +136,14 @@ EXPECTED_DASHBOARD_NAVIGATOR_GROUPS = {
         'ha_role',
         'dest_type',
     ],
+    ('Network', 'Tunnels', 'Details'): [
+        'site',
+        'connection_type',
+        'ha_role',
+        'dest_type',
+    ],
     ('Network', 'HA', 'HA'): ['site', 'connection_type'],
+    ('Network', 'HA', 'Details'): ['site', 'connection_type'],
     ('Network', 'Ports', 'Ports'): [
         'site',
         'port_kind',
@@ -163,7 +178,6 @@ EXPECTED_STATE_TRIGGER_PROTOTYPE_NAMES = {
     'Cato site {#SITE.NAME}: HA not ready',
     'Cato site {#SITE.NAME}: HA socket version not ok',
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay packet loss',
-    'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile packet loss',
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT',
     'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down',
     'Cato lan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down',
@@ -449,6 +463,11 @@ def _socket_conn_type(info: dict[str, Any] | None) -> bool:
     return str((info or {}).get('connType') or '').startswith('SOCKET_')
 
 
+def is_usb_identity(*parts: object) -> bool:
+    """True when a Cato port/WAN identity is a USB modem we do not monitor."""
+    return 'USB' in ' '.join(str(part or '') for part in parts).upper()
+
+
 def snapshot_census(root: dict[str, Any] | str) -> dict[str, int]:
     if isinstance(root, str):
         root = json.loads(root)
@@ -468,6 +487,13 @@ def snapshot_census(root: dict[str, Any] | str) -> dict[str, int]:
                 1
                 for interface in device.get('interfaces') or []
                 if (interface.get('info') or {}).get('id') is not None
+                and not is_usb_identity(
+                    (interface.get('info') or {}).get('id'),
+                    (interface.get('info') or {}).get('name'),
+                    interface.get('name'),
+                    interface.get('physicalPort'),
+                    (interface.get('info') or {}).get('physicalPort'),
+                )
             )
     return {'sites': sites, 'sockets': sockets, 'wan_rows': wan_rows}
 
@@ -484,8 +510,17 @@ def metrics_sla_census(root: dict[str, Any] | str) -> int:
             continue
         for interface in site.get('interfaces') or []:
             link_id = (interface.get('interfaceInfo') or {}).get('id')
-            if link_id is not None:
-                pairs.add((str(site_id), str(link_id)))
+            if link_id is None:
+                continue
+            info_row = interface.get('interfaceInfo') or {}
+            if is_usb_identity(
+                link_id,
+                info_row.get('name'),
+                interface.get('name'),
+                info_row.get('physicalPort'),
+            ):
+                continue
+            pairs.add((str(site_id), str(link_id)))
     return len(pairs)
 
 

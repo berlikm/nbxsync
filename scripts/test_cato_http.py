@@ -30,6 +30,7 @@ from cato_http import (
     TEMPLATE_PATH,
     collector_host,
     graphql_posts,
+    is_usb_identity,
     load_lld_js,
     metrics_sla_census,
     normalize_socket_serial,
@@ -37,7 +38,7 @@ from cato_http import (
     snapshot_census,
     snapshot_socket_serials,
 )
-from cato_http_template import render_template
+from cato_http_template import char_from_path_js, render_template
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -84,6 +85,7 @@ SNAPSHOT_FIXTURE = {
                             'interfacesLinkState': [
                                 {'id': 'WAN1', 'mediaIn': True, 'up': True, 'hasTunnel': True, 'hasInternet': True},
                                 {'id': 'LAN1', 'mediaIn': True, 'up': True, 'hasTunnel': False, 'hasInternet': False},
+                                {'id': 'USB', 'mediaIn': False, 'up': False, 'hasTunnel': False, 'hasInternet': False},
                             ],
                             'interfaces': [
                                 {
@@ -101,6 +103,12 @@ SNAPSHOT_FIXTURE = {
                                     'name': 'WAN2',
                                     'connected': True,
                                     'info': {'id': 'l2', 'name': 'WAN2', 'destType': 'CATO'},
+                                },
+                                {
+                                    'name': 'USB',
+                                    'connected': False,
+                                    'physicalPort': 'USB',
+                                    'info': {'id': 'usb1', 'name': 'USB', 'destType': 'CATO'},
                                 },
                             ],
                         },
@@ -197,6 +205,11 @@ METRICS_FIXTURE = {
                                     'data': [[100, 30], [200, 40]],
                                 },
                             ],
+                        },
+                        {
+                            'name': 'USB',
+                            'interfaceInfo': {'id': 'usb1', 'name': 'USB', 'destType': 'CATO'},
+                            'metrics': {'bytesDownstream': 1},
                         },
                     ],
                 },
@@ -425,8 +438,17 @@ class CatoTemplateContractTests(unittest.TestCase):
             prototypes['cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]']
         ).replace('{#SITE.ID}', '10').replace('{#LINK.ID}', 'l1')
         payload = json.dumps(METRICS_FIXTURE)
-        self.assertEqual(run_lld_js(loss_js, payload), 4)
+        self.assertEqual(run_lld_js(loss_js, payload), 3)
         self.assertEqual(run_lld_js(latency_js, payload), 20)
+        sla_names = {
+            trigger['name']
+            for item in sla.get('item_prototypes') or []
+            for trigger in item.get('trigger_prototypes') or []
+        }
+        self.assertNotIn(
+            'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile packet loss',
+            sla_names,
+        )
 
     def test_collector_trigger_names(self):
         names = {
@@ -501,6 +523,60 @@ class CatoTemplateContractTests(unittest.TestCase):
             ['WAN media', 'LAN media'],
         )
 
+    def test_tunnels_char_identity_uses_latest_not_graph(self):
+        network = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Network')
+        tunnels = next(page for page in network['pages'] if page['name'] == 'Tunnels')
+        navs = {
+            str(widget.get('name')): widget
+            for widget in tunnels['widgets']
+            if widget['type'] == 'itemnavigator'
+        }
+        self.assertEqual(set(navs), {'Tunnels', 'Details'})
+        tunnel_items = [
+            field['value']
+            for field in navs['Tunnels']['fields']
+            if str(field['name']).startswith('items.')
+        ]
+        detail_items = [
+            field['value']
+            for field in navs['Details']['fields']
+            if str(field['name']).startswith('items.')
+        ]
+        self.assertEqual(tunnel_items, ['Cato WAN *: Connectivity', 'Cato WAN *: Tunnel uptime'])
+        self.assertIn('Cato WAN *: ISP provider', detail_items)
+        self.assertNotIn('ISP provider', ' '.join(tunnel_items))
+        graphs = [widget for widget in tunnels['widgets'] if widget['type'] == 'svggraph']
+        latest = [widget for widget in tunnels['widgets'] if widget['type'] == 'item']
+        self.assertEqual(len(graphs), 1)
+        self.assertEqual(len(latest), 1)
+        graph_fields = {field['name']: field['value'] for field in graphs[0]['fields']}
+        latest_fields = {field['name']: field['value'] for field in latest[0]['fields']}
+        self.assertEqual(graph_fields['ds.0.itemids.0._reference'], 'CNNAV._itemid')
+        self.assertEqual(latest_fields['itemid.0._reference'], 'CNDET._itemid')
+        self.assertNotIn('show.2', latest_fields)
+
+    def test_worst_rollup_seeds_exist(self):
+        keys = {item['key'] for item in self.tpl['items']}
+        for key in (
+            'cato.wan.loss.max.pct[__seed]',
+            'cato.wan.lastmile.loss.pct[__seed]',
+            'cato.wan.lastmile.latency.ms[__seed]',
+            'cato.wan.rx.util.pct[__seed]',
+            'cato.wan.tx.util.pct[__seed]',
+        ):
+            self.assertIn(key, keys)
+
+    def test_optional_identity_char_does_not_throw(self):
+        optional = char_from_path_js('var found = {};\n', 'found.provider', 'provider', optional=True)
+        required = char_from_path_js('var found = {};\n', 'found.provider', 'provider')
+        self.assertIn("return '';", optional)
+        self.assertNotIn("throw 'provider missing'", optional)
+        self.assertIn("throw 'provider missing'", required)
+        wan = next(rule for rule in self.tpl['discovery_rules'] if rule['key'] == 'cato.wan.discovery')
+        prov = next(item for item in wan['item_prototypes'] if 'cato.wan.provider[' in item['key'])
+        self.assertIn("return '';", _js(prov))
+        self.assertNotIn("throw 'provider missing'", _js(prov))
+
 
 class CatoLldJsTests(unittest.TestCase):
     def test_sites_filter_socket_and_drop_ipsec(self):
@@ -532,7 +608,17 @@ class CatoLldJsTests(unittest.TestCase):
         self.assertTrue(all('{#SERIAL}' not in row for row in rows))
         self.assertEqual({row['{#DEST.TYPE}'] for row in rows}, {'CATO'})
 
-    def test_ports_include_wan_and_lan_and_site_macros(self):
+    def test_usb_ports_and_wans_are_excluded(self):
+        ports = run_lld_js(load_lld_js('cato.port.discovery'), json.dumps(SNAPSHOT_FIXTURE))
+        wans = run_lld_js(load_lld_js('cato.wan.discovery'), json.dumps(SNAPSHOT_FIXTURE))
+        sla = run_lld_js(load_lld_js('cato.wan.metrics.discovery'), json.dumps(METRICS_FIXTURE))
+        self.assertTrue(all('USB' not in row['{#PORT.ID}'].upper() for row in ports))
+        self.assertTrue(all('USB' not in row['{#LINK.NAME}'].upper() for row in wans))
+        self.assertTrue(all('USB' not in row['{#LINK.NAME}'].upper() for row in sla))
+        self.assertEqual(len(wans), 3)
+        self.assertEqual(len(sla), 2)
+        self.assertTrue(is_usb_identity('USB', 'WAN USB'))
+        self.assertFalse(is_usb_identity('WAN1', 'LTE'))
         rows = run_lld_js(load_lld_js('cato.port.discovery'), json.dumps(SNAPSHOT_FIXTURE))
         labels = {(row['{#SERIAL}'], row['{#PORT.ID}'], row['{#PORT.KIND}']) for row in rows}
         self.assertEqual(

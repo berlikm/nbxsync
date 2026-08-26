@@ -25,12 +25,17 @@ function normalizeHaRole(device, socket, isHA) {
   return primary ? 'MASTER' : 'BACKUP';
 }
 
+function isUsb() {
+  var blob = Array.prototype.join.call(arguments, ' ').toUpperCase();
+  return blob.indexOf('USB') !== -1;
+}
+
 function portKind(id) {
   var name = String(id || '').toUpperCase();
   if (name.indexOf('LAN') === 0) {
     return 'lan';
   }
-  if (name.indexOf('WAN') === 0 || name.indexOf('USB') === 0 || name === 'LTE' || name.indexOf('ALT') === 0) {
+  if (name.indexOf('WAN') === 0 || name === 'LTE' || name.indexOf('ALT') === 0) {
     return 'wan';
   }
   return 'other';
@@ -54,6 +59,9 @@ for (var i = 0; i < sites.length; i++) {
     for (var k = 0; k < states.length; k++) {
       var port = states[k];
       if (!port || port.id === undefined || port.id === null || !String(port.id).trim()) {
+        continue;
+      }
+      if (isUsb(port.id, port.name, port.physicalPort)) {
         continue;
       }
       var kind = portKind(port.id);

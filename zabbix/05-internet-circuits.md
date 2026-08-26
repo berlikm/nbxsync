@@ -70,9 +70,16 @@ Cato documents two different losses:
 | Last-mile `lastMilePacketLoss` / `lastMileLatency` | ICMP from the Socket to well-known sites **outside** the tunnel, per WAN | ISP last mile. [04](04-cato.md) Path Last mile. Circuit quality | SD-WAN health-check loss / latency |
 | `remoteIP` / `remoteIPInfo.provider` | Metrics interface | ISP-assigned WAN IP and provider string | Forti WAN address, not the probe |
 
-Public schema puts last-mile on **timeseries labels** `lastMilePacketLoss` / `lastMileLatency`, not on the scalar `metrics { }` object. The collector already asks for camelCase `lastmile*` on `metrics()`; if `Cato API: Metrics GraphQL schema violations` is ever non-zero, switch those two to a one-bucket timeseries instead of inventing a third master.
+Public schema puts last-mile on **timeseries labels** `lastMilePacketLoss` /
+`lastMileLatency`, not on the scalar `metrics { }` object. The collector reads
+those labels from the existing `accountMetrics` master (`buckets: 1`) and
+averages the latest point across probe endpoints. Do not invent a third HTTP
+master. Last-mile is dashboard-only: Path → Last mile honeycomb, no trigger.
 
-`socketPortMetrics` (physical/LAN/WAN/LTE throughput, cellular RSRP) is a **different query** and a later pass: CMA treats Socket CPU / port fill as a *cause* of overlay loss, and a third HTTP POST competes with the 15/minute metrics budget.
+`socketPortMetrics` (physical/LAN/WAN/LTE throughput, cellular RSRP) is a
+**different query** and a later pass: CMA treats Socket CPU / port fill as a
+*cause* of overlay loss, and a third HTTP POST is out of scope while we stay
+inside the `accountMetrics` 15/minute floor.
 
 ### Will monitoring still work?
 
@@ -101,7 +108,7 @@ Do **not** page Cato overlay loss as an ISP cut at Forti sites. At Socket-only s
 | Util vs commit bandwidth | later | graph; Average only after Circuit bandwidth exists |
 | Speed ≠ label | **no** | handoff speed rarely equals commit |
 
-Do **not** alert on: fabric `USW` uplinks (01), Cato **overlay** loss/RTT (04), Cato LAN/LAG/HA degraded reasons.
+Do **not** alert on: fabric `USW` uplinks (01), Cato **overlay** loss/RTT (04), Cato last-mile (04, dashboard only), Cato LAN/LAG/HA degraded reasons.
 
 ---
 
@@ -135,4 +142,8 @@ No absolute speed-expect on `UW`. Commit rate lives on the NetBox Circuit, not i
 
 NetBox Providers + Circuits populated; multi-homing modelled vs residual risk; compliance (termination without `UW`, and the reverse).
 
-Cato collector (still two HTTP masters, still `--apply-cato`): `degradedStatus` and `interfacesLinkState` are on the snapshot master; WAN `mediaIn` / `hasTunnel` / ISP `provider` are itemized; Average for WAN media/tunnel and site Degraded; LAN media is Warning. Verify live last-mile via timeseries labels if scalar `metrics.lastmile*` schema-violates. Do not add `socketPortMetrics` until the metrics budget is measured.
+Cato collector (still two HTTP masters, still `--apply-cato`): last-mile is
+timeseries on the metrics master (average of probe endpoints, no alert); USB
+ports/tunnels are not discovered; ISP provider and other CHAR identity live on
+Network → Tunnels **Details** / Latest, not History. Do not add
+`socketPortMetrics` until the metrics budget is measured.

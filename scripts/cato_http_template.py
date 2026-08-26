@@ -456,12 +456,13 @@ if (!port) {
     )
 
 
-def char_from_path_js(find_js: str, source: str, label: str) -> str:
+def char_from_path_js(find_js: str, source: str, label: str, *, optional: bool = False) -> str:
+    missing = "  return '';\n" if optional else f"  throw '{label} missing';\n"
     return (
         find_js
         + f'var state = {source};\n'
         + "if (state === undefined || state === null || state === '') {\n"
-        + f"  throw '{label} missing';\n"
+        + missing
         + '}\n'
         + 'return String(state);\n'
     )
@@ -611,7 +612,7 @@ def metric_js(field: str, label: str, scale: str = '') -> str:
     )
 
 def timeseries_metric_js(label: str, description: str) -> str:
-    """Return the worst latest Cato last-mile reading for one discovered link."""
+    """Average the latest Cato last-mile probe readings for one discovered link."""
     return (
         METRICS_IFACE_PREAMBLE
         + f"""var series = iface && Array.isArray(iface.timeseries) ? iface.timeseries : [];
@@ -626,7 +627,14 @@ for (var i = 0; i < series.length; i++) {{
     continue;
   }}
   var point = data[data.length - 1];
-  var raw = Array.isArray(point) ? point[1] : null;
+  var raw = null;
+  if (Array.isArray(point)) {{
+    raw = point.length > 1 ? point[1] : point[0];
+  }} else if (point && typeof point === 'object') {{
+    raw = point.value !== undefined ? point.value : point.y;
+  }} else {{
+    raw = point;
+  }}
   var numeric = Number(raw);
   if (raw !== null && raw !== '' && isFinite(numeric)) {{
     values.push(numeric);
@@ -635,7 +643,11 @@ for (var i = 0; i < series.length; i++) {{
 if (!values.length) {{
   throw '{description} missing';
 }}
-return Math.max.apply(null, values);
+var sum = 0;
+for (var v = 0; v < values.length; v++) {{
+  sum += values[v];
+}}
+return sum / values.length;
 """
     )
 
@@ -973,6 +985,55 @@ def navigator_and_history(
     ]
 
 
+def navigator_and_latest(
+    *,
+    items: list[str],
+    nav_ref: str,
+    item_ref: str,
+    group_tags: list[str],
+    nav_name: str = 'Details',
+    latest_name: str = 'Latest',
+    y: str | None = None,
+    height: str = '6',
+    nav_width: str = '28',
+) -> list[str]:
+    """CHAR/identity navigator. Latest value is text, never a graph."""
+    nav_fields: list[dict] = []
+    for idx, tag in enumerate(group_tags):
+        nav_fields.append({'type': 'INTEGER', 'name': f'group_by.{idx}.attribute', 'value': '3'})
+        nav_fields.append({'type': 'STRING', 'name': f'group_by.{idx}.tag_name', 'value': tag})
+    for idx, item in enumerate(items):
+        nav_fields.append({'type': 'STRING', 'name': f'items.{idx}', 'value': item})
+    nav_fields.append({'type': 'STRING', 'name': 'reference', 'value': nav_ref})
+    graph_width = str(72 - int(nav_width))
+    return [
+        *widget(
+            'itemnavigator',
+            nav_name,
+            width=nav_width,
+            height=height,
+            y=y,
+            fields=nav_fields,
+        ),
+        *widget(
+            'item',
+            latest_name,
+            x=nav_width,
+            y=y,
+            width=graph_width,
+            height=height,
+            fields=[
+                {'type': 'STRING', 'name': 'itemid.0._reference', 'value': f'{nav_ref}._itemid'},
+                {'type': 'INTEGER', 'name': 'show.0', 'value': '1'},
+                {'type': 'INTEGER', 'name': 'show.1', 'value': '2'},
+                {'type': 'INTEGER', 'name': 'value_bold', 'value': '1'},
+                {'type': 'INTEGER', 'name': 'value_size', 'value': '28'},
+                {'type': 'STRING', 'name': 'reference', 'value': item_ref},
+            ],
+        ),
+    ]
+
+
 def health_overview_widgets() -> list[str]:
     return [
         *gauge_tile('Snapshot', 'cato.api.snapshot.available'),
@@ -1114,16 +1175,25 @@ def health_degraded_widgets() -> list[str]:
             nav_ref='CDEGN',
             graph_ref='CDEGG',
             y='13',
-            height='6',
+            height='5',
             items=[
                 'Cato site *: Degraded',
-                'Cato site *: Degraded reasons',
                 'Cato site *: Connectivity',
-                'Cato site *: Operational status',
-                'Cato site *: POP',
                 'Cato site *: Host count',
                 'Cato site *: HA ready',
             ],
+        ),
+        *navigator_and_latest(
+            items=[
+                'Cato site *: Degraded reasons',
+                'Cato site *: Operational status',
+                'Cato site *: POP',
+            ],
+            nav_ref='DGDET',
+            item_ref='DGVAL',
+            group_tags=['site', 'connection_type'],
+            y='18',
+            height='5',
         ),
     ]
 
@@ -1287,22 +1357,35 @@ def network_overview_widgets() -> list[str]:
 
 
 def network_tunnels_widgets() -> list[str]:
-    return navigator_and_history(
-        nav_name='Tunnels',
-        group_tags=['site', 'connection_type', 'ha_role', 'dest_type'],
-        nav_ref='CNNAV',
-        graph_ref='CNGRA',
-        items=[
-            'Cato WAN *: Connectivity',
-            'Cato WAN *: Tunnel uptime',
-            'Cato WAN *: POP',
-            'Cato WAN *: Dest type',
-            'Cato WAN *: Physical port',
-            'Cato WAN *: ISP provider',
-            'Cato WAN *: Tunnel remote IP',
-            'Cato WAN *: Connection reason',
-        ],
-    )
+    tunnel_groups = ['site', 'connection_type', 'ha_role', 'dest_type']
+    return [
+        *navigator_and_history(
+            nav_name='Tunnels',
+            group_tags=tunnel_groups,
+            nav_ref='CNNAV',
+            graph_ref='CNGRA',
+            height='6',
+            items=[
+                'Cato WAN *: Connectivity',
+                'Cato WAN *: Tunnel uptime',
+            ],
+        ),
+        *navigator_and_latest(
+            items=[
+                'Cato WAN *: POP',
+                'Cato WAN *: Dest type',
+                'Cato WAN *: Physical port',
+                'Cato WAN *: ISP provider',
+                'Cato WAN *: Tunnel remote IP',
+                'Cato WAN *: Connection reason',
+            ],
+            nav_ref='CNDET',
+            item_ref='CNVAL',
+            group_tags=tunnel_groups,
+            y='6',
+            height='5',
+        ),
+    ]
 
 
 def network_ha_widgets() -> list[str]:
@@ -1320,15 +1403,24 @@ def network_ha_widgets() -> list[str]:
             nav_ref='NHAV',
             graph_ref='NHAG',
             y='5',
-            height='8',
+            height='6',
             items=[
                 'Cato site *: HA ready',
-                'Cato site *: HA readiness',
-                'Cato site *: HA socket version',
-                'Cato site *: Operational status',
                 'Cato site *: HA enabled',
                 'Cato Socket *: Uptime',
             ],
+        ),
+        *navigator_and_latest(
+            items=[
+                'Cato site *: HA readiness',
+                'Cato site *: HA socket version',
+                'Cato site *: Operational status',
+            ],
+            nav_ref='NHDET',
+            item_ref='NHVAL',
+            group_tags=['site', 'connection_type'],
+            y='11',
+            height='5',
         ),
     ]
 
@@ -1385,7 +1477,9 @@ def render_template() -> str:
         'return count;\n'
     )
     site_conn_js = find_site_js() + connectivity_from_status_js('found.connectivityStatus')
-    site_op_js = char_from_path_js(find_site_js(), 'found.operationalStatus', 'operationalStatus')
+    site_op_js = char_from_path_js(
+        find_site_js(), 'found.operationalStatus', 'operationalStatus', optional=True
+    )
     site_deg_js = (
         find_site_js()
         + 'var ds = found.degradedStatus || {};\n'
@@ -1406,7 +1500,7 @@ def render_template() -> str:
         + '}\n'
         + "return reasons.join(',');\n"
     )
-    site_pop_js = char_from_path_js(find_site_js(), 'found.popName', 'POP')
+    site_pop_js = char_from_path_js(find_site_js(), 'found.popName', 'POP', optional=True)
     site_hosts_js = (
         find_site_js()
         + 'var raw = found.hostCount;\n'
@@ -1424,8 +1518,12 @@ def render_template() -> str:
         + '}\n'
         + 'return 0;\n'
     )
-    site_ready_js = char_from_path_js(find_site_js(), '(found.haStatus || {}).readiness', 'HA readiness')
-    site_ver_js = char_from_path_js(find_site_js(), '(found.haStatus || {}).socketVersion', 'HA socketVersion')
+    site_ready_js = char_from_path_js(
+        find_site_js(), '(found.haStatus || {}).readiness', 'HA readiness', optional=True
+    )
+    site_ver_js = char_from_path_js(
+        find_site_js(), '(found.haStatus || {}).socketVersion', 'HA socketVersion', optional=True
+    )
     site_ready_code_js = (
         find_site_js()
         + 'var info = found.info || {};\n'
@@ -1441,6 +1539,7 @@ def render_template() -> str:
         find_device_js(),
         'device.version || (device.socketInfo && device.socketInfo.version)',
         'socket version',
+        optional=True,
     )
     sock_up_js = (
         find_device_js()
@@ -1458,20 +1557,31 @@ def render_template() -> str:
         + '}\n'
         + 'return iface.tunnelUptime;\n'
     )
-    wan_pop_js = char_from_path_js(find_iface_js(), 'iface.popName', 'POP')
+    wan_pop_js = char_from_path_js(find_iface_js(), 'iface.popName', 'POP', optional=True)
     wan_dest_js = char_from_path_js(
         find_iface_js(),
         '(iface.info && iface.info.destType) || iface.destType',
         'destType',
+        optional=True,
     )
-    wan_phys_js = char_from_path_js(find_iface_js(), 'iface.physicalPort', 'physicalPort')
+    wan_phys_js = char_from_path_js(
+        find_iface_js(), 'iface.physicalPort', 'physicalPort', optional=True
+    )
     wan_prov_js = char_from_path_js(
         find_iface_js(),
         'iface.tunnelRemoteIPInfo && iface.tunnelRemoteIPInfo.provider',
         'provider',
+        optional=True,
     )
-    wan_ip_js = char_from_path_js(find_iface_js(), 'iface.tunnelRemoteIP', 'tunnelRemoteIP')
-    wan_reason_js = char_from_path_js(find_iface_js(), 'iface.tunnelConnectionReason', 'tunnelConnectionReason')
+    wan_ip_js = char_from_path_js(
+        find_iface_js(), 'iface.tunnelRemoteIP', 'tunnelRemoteIP', optional=True
+    )
+    wan_reason_js = char_from_path_js(
+        find_iface_js(),
+        'iface.tunnelConnectionReason',
+        'tunnelConnectionReason',
+        optional=True,
+    )
     port_media_js = bool_item_js(find_port_js(), 'port.mediaIn')
     port_up_js = bool_item_js(find_port_js(), 'port.up')
     port_tunnel_js = bool_item_js(find_port_js(), 'port.hasTunnel')
@@ -1547,6 +1657,23 @@ def render_template() -> str:
             value='1',
         ),
         *seed_item('sla_seed', 'Cato WAN SLA discovery seed', 'cato.wan.rx.bps[__seed]', 'FLOAT'),
+        *seed_item('loss_seed', 'Cato overlay loss seed', 'cato.wan.loss.max.pct[__seed]', 'FLOAT'),
+        *seed_item('rtt_seed', 'Cato overlay RTT seed', 'cato.wan.rtt.ms[__seed]', 'FLOAT'),
+        *seed_item('jit_seed', 'Cato overlay jitter seed', 'cato.wan.jitter.max.ms[__seed]', 'FLOAT'),
+        *seed_item(
+            'lm_loss_seed',
+            'Cato last-mile loss seed',
+            'cato.wan.lastmile.loss.pct[__seed]',
+            'FLOAT',
+        ),
+        *seed_item(
+            'lm_lat_seed',
+            'Cato last-mile latency seed',
+            'cato.wan.lastmile.latency.ms[__seed]',
+            'FLOAT',
+        ),
+        *seed_item('rx_util_seed', 'Cato RX utilization seed', 'cato.wan.rx.util.pct[__seed]', 'FLOAT'),
+        *seed_item('tx_util_seed', 'Cato TX utilization seed', 'cato.wan.tx.util.pct[__seed]', 'FLOAT'),
         *census_item('site_count', 'Cato discovered Socket site count', 'cato.site.discovery.count', 'cato.site.connected', 'site_count_tr', 'Cato census: fewer Socket sites than expected', '{$CATO.SITES.EXPECTED}', 'cato.api.snapshot.available'),
         *census_item('socket_count', 'Cato discovered Socket count', 'cato.socket.discovery.count', 'cato.socket.connected', 'socket_count_tr', 'Cato census: fewer Sockets than expected', '{$CATO.SOCKETS.EXPECTED}', 'cato.api.snapshot.available'),
         *census_item('wan_count', 'Cato discovered WAN link count', 'cato.wan.discovery.count', 'cato.wan.connected', 'wan_count_tr', 'Cato census: fewer WAN links than expected', '{$CATO.WAN.EXPECTED}', 'cato.api.snapshot.available'),
@@ -1986,12 +2113,6 @@ def render_template() -> str:
             valuemap=None,
             units='%',
             trends='365d',
-            triggers=[{
-                'uid': 'sla_lm_loss_tr',
-                'expression': f'min(/{TPL}/cato.wan.lastmile.loss.pct[{{#SITE.ID}},{{#LINK.ID}}],15m)>{{$CATO.LASTMILE.LOSS.WARN}}',
-                'name': 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile packet loss',
-                'priority': 'WARNING',
-            }],
         ),
         *proto_item(uid_key='sla_lm_lat', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency', key='cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=timeseries_metric_js('lastMileLatency', 'last-mile latency'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
         *proto_item(uid_key='sla_disc_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX discarded', key='cato.wan.discard.rx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedDownstream', 'RX discarded'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='pps', trends='365d'),
