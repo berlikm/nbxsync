@@ -55,6 +55,12 @@ SNAPSHOT_FIXTURE = {
                 {
                     'id': '10',
                     'connectivityStatus': 'connected',
+                    'degradedStatus': {
+                        'isDegraded': True,
+                        'degradedDetails': [{'reason': 'WAN_DISCONNECTED'}],
+                    },
+                    'popName': 'ZRH',
+                    'hostCount': 4,
                     'info': {
                         'name': 'Zurich',
                         'connType': 'SOCKET_X1500',
@@ -64,41 +70,55 @@ SNAPSHOT_FIXTURE = {
                         {
                             'name': 'zh-pri',
                             'connected': True,
+                            'haRole': 'MASTER',
+                            'deviceUptime': 86400,
                             'socketInfo': {
                                 'id': 's1',
                                 'serial': 'SOCK-A',
                                 'isPrimary': True,
                                 'platform': 'X1500',
                             },
+                            'interfacesLinkState': [
+                                {'id': 'WAN1', 'mediaIn': True, 'up': True, 'hasTunnel': True, 'hasInternet': True},
+                                {'id': 'LAN1', 'mediaIn': True, 'up': True, 'hasTunnel': False, 'hasInternet': False},
+                            ],
                             'interfaces': [
                                 {
                                     'name': 'WAN1',
                                     'connected': True,
                                     'popName': 'ZRH',
                                     'tunnelUptime': 100,
-                                    'info': {'id': 'l1', 'name': 'WAN1'},
+                                    'physicalPort': 'WAN1',
+                                    'tunnelRemoteIP': '203.0.113.10',
+                                    'tunnelConnectionReason': 'Connected',
+                                    'tunnelRemoteIPInfo': {'provider': 'ExampleISP'},
+                                    'info': {'id': 'l1', 'name': 'WAN1', 'destType': 'CATO'},
                                 },
                                 {
                                     'name': 'WAN2',
                                     'connected': True,
-                                    'info': {'id': 'l2', 'name': 'WAN2'},
+                                    'info': {'id': 'l2', 'name': 'WAN2', 'destType': 'CATO'},
                                 },
                             ],
                         },
                         {
                             'name': 'zh-sec',
                             'connected': True,
+                            'haRole': 'BACKUP',
                             'socketInfo': {
                                 'id': 's2',
                                 'serial': 'SOCK-B',
                                 'isPrimary': False,
                                 'platform': 'X1500',
                             },
+                            'interfacesLinkState': [
+                                {'id': 'WAN1', 'mediaIn': False, 'up': False, 'hasTunnel': False, 'hasInternet': False},
+                            ],
                             'interfaces': [
                                 {
                                     'name': 'WAN1',
                                     'connected': True,
-                                    'info': {'id': 'l1', 'name': 'WAN1'},
+                                    'info': {'id': 'l1', 'name': 'WAN1', 'destType': 'CATO'},
                                 },
                             ],
                         },
@@ -143,12 +163,12 @@ METRICS_FIXTURE = {
                     'interfaces': [
                         {
                             'name': 'WAN1',
-                            'interfaceInfo': {'id': 'l1', 'name': 'WAN1'},
+                            'interfaceInfo': {'id': 'l1', 'name': 'WAN1', 'destType': 'CATO'},
                             'metrics': {'bytesDownstream': 1},
                         },
                         {
                             'name': 'WAN2',
-                            'interfaceInfo': {'id': 'l2', 'name': 'WAN2'},
+                            'interfaceInfo': {'id': 'l2', 'name': 'WAN2', 'destType': 'CATO'},
                             'metrics': {'bytesDownstream': 1},
                         },
                     ],
@@ -189,9 +209,16 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertEqual(items['cato.account.snapshot']['posts'], graphql_posts(SNAPSHOT_QUERY))
         self.assertEqual(items['cato.account.metrics']['posts'], graphql_posts(METRICS_QUERY))
         self.assertIn('haStatus', items['cato.account.snapshot']['posts'])
+        self.assertIn('degradedStatus', items['cato.account.snapshot']['posts'])
+        self.assertIn('interfacesLinkState', items['cato.account.snapshot']['posts'])
+        self.assertIn('physicalPort', items['cato.account.snapshot']['posts'])
+        self.assertIn('tunnelRemoteIP', items['cato.account.snapshot']['posts'])
+        self.assertIn('deviceUptime', items['cato.account.snapshot']['posts'])
         self.assertIn('lastmilePacketLoss', items['cato.account.metrics']['posts'])
         self.assertIn('packetsDiscardedDownstream', items['cato.account.metrics']['posts'])
+        self.assertIn('destType', items['cato.account.metrics']['posts'])
         self.assertNotIn('wanRole', items['cato.account.snapshot']['posts'])
+        self.assertNotIn('socketPortMetrics', items['cato.account.metrics']['posts'])
         self.assertIn('groupDevices: true', items['cato.account.metrics']['posts'])
 
     def test_template_item_keys_and_macros(self):
@@ -283,6 +310,8 @@ class CatoTemplateContractTests(unittest.TestCase):
         network_pages = {page['name']: page for page in by_name['Network']['pages']}
         self.assertIn('HA', network_pages)
         self.assertIn('Tunnels', network_pages)
+        self.assertIn('Ports', network_pages)
+        self.assertIn('Degraded', {page['name'] for page in by_name['Health']['pages']})
 
     def test_health_overview_matches_forti_chrome(self):
         health = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Health')
@@ -303,6 +332,9 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertEqual(len(problems), 1)
         self.assertEqual(str(problems[0]['width']), '72')
         self.assertEqual(wy(problems[0]), '4')
+        pfields = {field['name']: field['value'] for field in problems[0]['fields']}
+        self.assertEqual(str(pfields['show_tags']), '1')
+        self.assertEqual(pfields['tag_priority'], 'site')
         honey = next(widget for widget in overview['widgets'] if widget['type'] == 'honeycomb')
         self.assertEqual(honey['name'], 'Sites')
         self.assertEqual(str(honey['width']), '72')
@@ -328,6 +360,7 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertEqual(by_key['cato.site.up.count']['params'], 'count(last_foreach(//cato.site.connected[*]),eq,1)')
         self.assertEqual(by_key['cato.wan.loss.worst.pct']['params'], 'max(last_foreach(//cato.wan.loss.max.pct[*]))')
         self.assertEqual(by_key['cato.site.ha.not_ready.count']['params'], 'count(last_foreach(//cato.site.ha.readiness.code[*]),eq,0)')
+        self.assertEqual(by_key['cato.site.degraded.count']['params'], 'count(last_foreach(//cato.site.degraded[*]),eq,1)')
 
     def test_collector_trigger_names(self):
         names = {
@@ -354,6 +387,47 @@ class CatoTemplateContractTests(unittest.TestCase):
     def test_template_name_stable(self):
         self.assertEqual(self.tpl['name'], TEMPLATE_NAME)
 
+    def test_all_item_prototypes_have_site_tag(self):
+        for rule in self.tpl['discovery_rules']:
+            for item in rule.get('item_prototypes') or []:
+                tags = {row['tag']: row['value'] for row in item.get('tags') or []}
+                self.assertEqual(tags.get('site'), '{#SITE.NAME}', item['key'])
+                self.assertEqual(tags.get('connection_type'), '{#CONN.TYPE}', item['key'])
+
+    def test_site_degraded_depends_on_disconnected(self):
+        site = next(rule for rule in self.tpl['discovery_rules'] if rule['key'] == 'cato.site.discovery')
+        deg = next(item for item in site['item_prototypes'] if item['key'] == 'cato.site.degraded[{#SITE.ID}]')
+        trigger = deg['trigger_prototypes'][0]
+        self.assertEqual(trigger['name'], 'Cato site {#SITE.NAME}: Degraded')
+        self.assertEqual(trigger['priority'], 'AVERAGE')
+        self.assertIn('cato.site.connected', trigger['expression'])
+        deps = {row['name'] for row in trigger.get('dependencies') or []}
+        self.assertIn('Cato site {#SITE.NAME}: Disconnected', deps)
+
+    def test_navigators_group_by_site_not_serial(self):
+        for dash in self.tpl['dashboards']:
+            for page in dash['pages']:
+                for widget in page['widgets']:
+                    if widget['type'] != 'itemnavigator':
+                        continue
+                    fields = {field['name']: field['value'] for field in widget['fields']}
+                    self.assertEqual(
+                        fields.get('group_by.0.tag_name'),
+                        'site',
+                        f"{dash['name']}/{page['name']}/{widget.get('name')}",
+                    )
+
+    def test_health_degraded_and_network_ports_pages(self):
+        health = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Health')
+        degraded = next(page for page in health['pages'] if page['name'] == 'Degraded')
+        self.assertIn('Degraded', [widget['name'] for widget in degraded['widgets']])
+        network = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Network')
+        ports = next(page for page in network['pages'] if page['name'] == 'Ports')
+        self.assertEqual(
+            [widget['name'] for widget in ports['widgets'] if widget['type'] == 'honeycomb'],
+            ['WAN media', 'LAN media'],
+        )
+
 
 class CatoLldJsTests(unittest.TestCase):
     def test_sites_filter_socket_and_drop_ipsec(self):
@@ -367,8 +441,8 @@ class CatoLldJsTests(unittest.TestCase):
         rows = run_lld_js(load_lld_js('cato.socket.discovery'), json.dumps(SNAPSHOT_FIXTURE))
         by_serial = {row['{#SERIAL}']: row for row in rows}
         self.assertEqual(set(by_serial), {'SOCK-A', 'SOCK-B'})
-        self.assertEqual(by_serial['SOCK-A']['{#HA.ROLE}'], 'primary')
-        self.assertEqual(by_serial['SOCK-B']['{#HA.ROLE}'], 'secondary')
+        self.assertEqual(by_serial['SOCK-A']['{#HA.ROLE}'], 'MASTER')
+        self.assertEqual(by_serial['SOCK-B']['{#HA.ROLE}'], 'BACKUP')
         self.assertEqual(by_serial['SOCK-A']['{#SITE.NAME}'], 'Zurich')
         self.assertNotIn('IPSEC-1', by_serial)
 
@@ -383,6 +457,22 @@ class CatoLldJsTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual({row['{#LINK.NAME}'] for row in rows}, {'WAN1', 'WAN2'})
         self.assertTrue(all('{#SERIAL}' not in row for row in rows))
+        self.assertEqual({row['{#DEST.TYPE}'] for row in rows}, {'CATO'})
+
+    def test_ports_include_wan_and_lan_and_site_macros(self):
+        rows = run_lld_js(load_lld_js('cato.port.discovery'), json.dumps(SNAPSHOT_FIXTURE))
+        labels = {(row['{#SERIAL}'], row['{#PORT.ID}'], row['{#PORT.KIND}']) for row in rows}
+        self.assertEqual(
+            labels,
+            {('SOCK-A', 'WAN1', 'wan'), ('SOCK-A', 'LAN1', 'lan'), ('SOCK-B', 'WAN1', 'wan')},
+        )
+        self.assertTrue(all(row['{#SITE.NAME}'] == 'Zurich' for row in rows))
+        self.assertEqual({row['{#HA.ROLE}'] for row in rows}, {'MASTER', 'BACKUP'})
+
+    def test_wan_snapshot_carries_dest_type_and_cma_ha_role(self):
+        rows = run_lld_js(load_lld_js('cato.wan.discovery'), json.dumps(SNAPSHOT_FIXTURE))
+        self.assertTrue(all(row['{#DEST.TYPE}'] == 'CATO' for row in rows))
+        self.assertEqual({row['{#HA.ROLE}'] for row in rows}, {'MASTER', 'BACKUP'})
 
     def test_missing_snapshot_returns_empty(self):
         empty = json.dumps({'data': {}})
@@ -390,6 +480,7 @@ class CatoLldJsTests(unittest.TestCase):
             'cato.site.discovery',
             'cato.socket.discovery',
             'cato.wan.discovery',
+            'cato.port.discovery',
         ):
             self.assertEqual(run_lld_js(load_lld_js(key), empty), [])
 

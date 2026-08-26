@@ -20,7 +20,9 @@ for (var i = 0; i < sites.length; i++) {
       '{#SITE.ID}': String(site.id),
       '{#LINK.ID}': String(interfaceInfo.id),
       '{#SITE.NAME}': String(site.name || ''),
-      '{#LINK.NAME}': String(iface.name || interfaceInfo.name || '')
+      '{#CONN.TYPE}': String(info.connType || ''),
+      '{#LINK.NAME}': String(iface.name || interfaceInfo.name || ''),
+      '{#DEST.TYPE}': String(interfaceInfo.destType || '')
     });
   }
 }

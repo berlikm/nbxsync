@@ -79,6 +79,32 @@ JITTER_THRESHOLDS = [('0EC9AC', '0'), ('FFD54F', '10'), ('FF465C', '30')]
 UTIL_THRESHOLDS = [('0EC9AC', '0'), ('FFD54F', '70'), ('FF465C', '90')]
 UP_THRESHOLDS = [('FF465C', '0'), ('0EC9AC', '1')]
 ERROR_THRESHOLDS = [('0EC9AC', '0'), ('FF465C', '1')]
+DEGRADED_THRESHOLDS = [('0EC9AC', '0'), ('FFD54F', '1')]
+STATUS_THRESHOLDS = [('FF465C', '0'), ('0EC9AC', '1'), ('878787', '2')]
+SITE_TAGS = [('site', '{#SITE.NAME}'), ('connection_type', '{#CONN.TYPE}')]
+SOCKET_TAGS = [
+    *SITE_TAGS,
+    ('serial', '{#SERIAL}'),
+    ('ha_role', '{#HA.ROLE}'),
+    ('platform', '{#PLATFORM}'),
+]
+WAN_TAGS = [
+    *SITE_TAGS,
+    ('serial', '{#SERIAL}'),
+    ('ha_role', '{#HA.ROLE}'),
+    ('dest_type', '{#DEST.TYPE}'),
+]
+SLA_TAGS = [*SITE_TAGS, ('dest_type', '{#DEST.TYPE}')]
+PORT_TAGS = [
+    *SITE_TAGS,
+    ('serial', '{#SERIAL}'),
+    ('ha_role', '{#HA.ROLE}'),
+    ('port_kind', '{#PORT.KIND}'),
+]
+SITE_DISCONNECTED = {
+    'name': 'Cato site {#SITE.NAME}: Disconnected',
+    'expression': f'max(/{TPL}/cato.site.connected[{{#SITE.ID}}],#3)=0',
+}
 
 
 def uid(name: str) -> str:
@@ -388,6 +414,50 @@ if (!iface) {
     )
 
 
+def find_port_js() -> str:
+    return (
+        SNAPSHOT_SITE_PREAMBLE
+        + """var port = null;
+for (var i = 0; i < sites.length && !port; i++) {
+  if (String(sites[i].id) !== '{#SITE.ID}') {
+    continue;
+  }
+  var devices = Array.isArray(sites[i].devices) ? sites[i].devices : [];
+  for (var j = 0; j < devices.length && !port; j++) {
+    if (!devices[j].socketInfo || String(devices[j].socketInfo.id) !== '{#SOCKET.ID}') {
+      continue;
+    }
+    var states = Array.isArray(devices[j].interfacesLinkState) ? devices[j].interfacesLinkState : [];
+    for (var k = 0; k < states.length; k++) {
+      if (states[k] && String(states[k].id) === '{#PORT.ID}') {
+        port = states[k];
+        break;
+      }
+    }
+  }
+}
+if (!port) {
+  throw 'port missing';
+}
+"""
+    )
+
+
+def char_from_path_js(find_js: str, source: str, label: str) -> str:
+    return (
+        find_js
+        + f'var state = {source};\n'
+        + "if (state === undefined || state === null || state === '') {\n"
+        + f"  throw '{label} missing';\n"
+        + '}\n'
+        + 'return String(state);\n'
+    )
+
+
+def bool_item_js(find_js: str, source: str) -> str:
+    return find_js + connectivity_from_bool_js(source)
+
+
 def connectivity_from_status_js(source: str) -> str:
     return (
         f'var state = String({source} || \'\').toLowerCase();\n'
@@ -427,7 +497,7 @@ def proto_item(
     history: str = '30d',
     trends: str | None = None,
     extra_tags: list[tuple[str, str]] | None = None,
-    triggers: list[dict[str, str]] | None = None,
+    triggers: list[dict] | None = None,
 ) -> list[str]:
     quoted_key = q(key) if any(ch in key for ch in '[]{},') else key
     lines = [
@@ -459,13 +529,29 @@ def proto_item(
         ]
     )
     if triggers:
-        lines.append('        trigger_prototypes:')
-        for trigger in triggers:
-            lines.append(f'        - uuid: {uid(trigger["uid"])}')
-            lines.append(f'          expression: {q(trigger["expression"])}')
-            lines.append(f'          name: {q(trigger["name"])}')
-            lines.append(f'          priority: {trigger["priority"]}')
-            lines.extend(tags(10, scope=scope))
+        lines.extend(_trigger_prototypes(triggers, scope=scope, extra_tags=extra_tags))
+    return lines
+
+
+def _trigger_prototypes(
+    triggers: list[dict],
+    *,
+    scope: str,
+    extra_tags: list[tuple[str, str]] | None = None,
+) -> list[str]:
+    lines = ['        trigger_prototypes:']
+    for trigger in triggers:
+        lines.append(f'        - uuid: {uid(trigger["uid"])}')
+        lines.append(f'          expression: {q(trigger["expression"])}')
+        lines.append(f'          name: {q(trigger["name"])}')
+        lines.append(f'          priority: {trigger["priority"]}')
+        lines.extend(tags(10, scope=scope, extra=extra_tags))
+        deps = trigger.get('dependencies') or []
+        if deps:
+            lines.append('          dependencies:')
+            for dep in deps:
+                lines.append(f'          - name: {q(dep["name"])}')
+                lines.append(f'            expression: {q(dep["expression"])}')
     return lines
 
 
@@ -478,7 +564,7 @@ def calc_proto(
     scope: str,
     units: str | None = None,
     extra_tags: list[tuple[str, str]] | None = None,
-    triggers: list[dict[str, str]] | None = None,
+    triggers: list[dict] | None = None,
 ) -> list[str]:
     lines = [
         f'      - uuid: {uid(uid_key)}',
@@ -495,13 +581,7 @@ def calc_proto(
     lines.append(f'        params: {q(params)}')
     lines.extend(tags(8, scope=scope, extra=extra_tags))
     if triggers:
-        lines.append('        trigger_prototypes:')
-        for trigger in triggers:
-            lines.append(f'        - uuid: {uid(trigger["uid"])}')
-            lines.append(f'          expression: {q(trigger["expression"])}')
-            lines.append(f'          name: {q(trigger["name"])}')
-            lines.append(f'          priority: {trigger["priority"]}')
-            lines.extend(tags(10, scope=scope))
+        lines.extend(_trigger_prototypes(triggers, scope=scope, extra_tags=extra_tags))
     return lines
 
 
@@ -624,6 +704,7 @@ def honeycomb_status(
     *,
     reference: str,
     label_size: str = '20',
+    thresholds: list[tuple[str, str]] | None = None,
     **pos,
 ) -> list[str]:
     fields = [
@@ -635,7 +716,7 @@ def honeycomb_status(
         {'type': 'INTEGER', 'name': 'primary_label_size', 'value': label_size},
         {'type': 'INTEGER', 'name': 'show.0', 'value': '1'},
         {'type': 'STRING', 'name': 'reference', 'value': reference},
-        *_threshold_fields([('FF465C', '0'), ('0EC9AC', '1'), ('878787', '2')]),
+        *_threshold_fields(thresholds or STATUS_THRESHOLDS),
     ]
     return widget(
         'honeycomb',
@@ -795,6 +876,8 @@ def problems_strip(*, y: str = '4', reference: str = 'CPROB') -> list[str]:
             {'type': 'STRING', 'name': 'reference', 'value': reference},
             {'type': 'INTEGER', 'name': 'show', 'value': '3'},
             {'type': 'INTEGER', 'name': 'show_opdata', 'value': '2'},
+            {'type': 'INTEGER', 'name': 'show_tags', 'value': '1'},
+            {'type': 'STRING', 'name': 'tag_priority', 'value': 'site'},
         ],
     )
 
@@ -894,7 +977,7 @@ def health_census_widgets() -> list[str]:
         *item_tile('Sites up', 'cato.site.up.count', y='4', thresholds=UP_THRESHOLDS, decimal_places='0'),
         *item_tile('Sockets up', 'cato.socket.up.count', x='18', y='4', thresholds=UP_THRESHOLDS, decimal_places='0'),
         *item_tile('WAN up', 'cato.wan.up.count', x='36', y='4', thresholds=UP_THRESHOLDS, decimal_places='0'),
-        *item_tile('HA not ready', 'cato.site.ha.not_ready.count', x='54', y='4', thresholds=ERROR_THRESHOLDS, decimal_places='0'),
+        *item_tile('Degraded', 'cato.site.degraded.count', x='54', y='4', thresholds=DEGRADED_THRESHOLDS, decimal_places='0'),
         *gauge_tile(
             'Worst overlay loss',
             'cato.wan.loss.worst.pct',
@@ -961,6 +1044,42 @@ def health_census_widgets() -> list[str]:
             lefty_min='0',
             x='36',
             y='12',
+        ),
+    ]
+
+
+def health_degraded_widgets() -> list[str]:
+    return [
+        *gauge_tile('Snapshot', 'cato.api.snapshot.available'),
+        *gauge_tile('Metrics', 'cato.api.metrics.available', x='18'),
+        *item_tile('Sites up', 'cato.site.up.count', x='36', thresholds=UP_THRESHOLDS, decimal_places='0'),
+        *item_tile('Degraded', 'cato.site.degraded.count', x='54', thresholds=DEGRADED_THRESHOLDS, decimal_places='0'),
+        *problems_strip(),
+        *honeycomb_status(
+            'Degraded',
+            'Cato site *: Degraded',
+            honeycomb_label('Cato site', 'Degraded'),
+            reference='CHDEG',
+            y='7',
+            height='6',
+            thresholds=DEGRADED_THRESHOLDS,
+        ),
+        *navigator_and_history(
+            nav_name='Degraded',
+            group_tag='site',
+            nav_ref='CDEGN',
+            graph_ref='CDEGG',
+            y='13',
+            height='6',
+            items=[
+                'Cato site *: Degraded',
+                'Cato site *: Degraded reasons',
+                'Cato site *: Connectivity',
+                'Cato site *: Operational status',
+                'Cato site *: POP',
+                'Cato site *: Host count',
+                'Cato site *: HA ready',
+            ],
         ),
     ]
 
@@ -1083,7 +1202,7 @@ def path_lastmile_widgets() -> list[str]:
 
 def path_probe_widgets() -> list[str]:
     return navigator_and_history(
-        group_tag='scope',
+        group_tag='site',
         nav_ref='CNAVP',
         graph_ref='CGRFP',
         items=[
@@ -1126,13 +1245,18 @@ def network_overview_widgets() -> list[str]:
 def network_tunnels_widgets() -> list[str]:
     return navigator_and_history(
         nav_name='Tunnels',
-        group_tag='serial',
+        group_tag='site',
         nav_ref='CNNAV',
         graph_ref='CNGRA',
         items=[
             'Cato WAN *: Connectivity',
             'Cato WAN *: Tunnel uptime',
             'Cato WAN *: POP',
+            'Cato WAN *: Dest type',
+            'Cato WAN *: Physical port',
+            'Cato WAN *: ISP provider',
+            'Cato WAN *: Tunnel remote IP',
+            'Cato WAN *: Connection reason',
         ],
     )
 
@@ -1148,7 +1272,7 @@ def network_ha_widgets() -> list[str]:
         ),
         *navigator_and_history(
             nav_name='HA',
-            group_tag='scope',
+            group_tag='site',
             nav_ref='NHAV',
             graph_ref='NHAG',
             y='5',
@@ -1159,6 +1283,44 @@ def network_ha_widgets() -> list[str]:
                 'Cato site *: HA socket version',
                 'Cato site *: Operational status',
                 'Cato site *: HA enabled',
+                'Cato Socket *: Uptime',
+            ],
+        ),
+    ]
+
+
+def network_ports_widgets() -> list[str]:
+    return [
+        *honeycomb_status(
+            'WAN media',
+            'Cato wan port *: Media in',
+            honeycomb_label('Cato wan port', 'Media in'),
+            reference='NPWAN',
+            label_size='16',
+            height='6',
+        ),
+        *honeycomb_status(
+            'LAN media',
+            'Cato lan port *: Media in',
+            honeycomb_label('Cato lan port', 'Media in'),
+            reference='NPLAN',
+            y='6',
+            height='5',
+        ),
+        *navigator_and_history(
+            nav_name='Ports',
+            group_tag='site',
+            nav_ref='NPNAV',
+            graph_ref='NPGRA',
+            y='11',
+            height='8',
+            items=[
+                'Cato wan port *: Media in',
+                'Cato lan port *: Media in',
+                'Cato wan port *: Link up',
+                'Cato lan port *: Link up',
+                'Cato wan port *: Has tunnel',
+                'Cato wan port *: Has internet',
             ],
         ),
     ]
@@ -1178,23 +1340,37 @@ def render_template() -> str:
         '}\n'
         'return count;\n'
     )
-    sla_extra = [('scope_note', 'wan_sla')]
-    socket_tags = [
-        ('serial', '{#SERIAL}'),
-        ('ha_role', '{#HA.ROLE}'),
-        ('platform', '{#PLATFORM}'),
-    ]
-    wan_tags = [('serial', '{#SERIAL}')]
-    sla_tags = [('scope_metric', 'sla')]
-
     site_conn_js = find_site_js() + connectivity_from_status_js('found.connectivityStatus')
-    site_op_js = (
+    site_op_js = char_from_path_js(find_site_js(), 'found.operationalStatus', 'operationalStatus')
+    site_deg_js = (
         find_site_js()
-        + "var state = found.operationalStatus;\n"
-        + "if (state === undefined || state === null || state === '') {\n"
-        + "  throw 'operationalStatus missing';\n"
+        + 'var ds = found.degradedStatus || {};\n'
+        + "if (ds.isDegraded === true || String(ds.isDegraded).toLowerCase() === 'true') {\n"
+        + '  return 1;\n'
         + '}\n'
-        + 'return String(state);\n'
+        + 'return 0;\n'
+    )
+    site_deg_reasons_js = (
+        find_site_js()
+        + 'var ds = found.degradedStatus || {};\n'
+        + 'var details = Array.isArray(ds.degradedDetails) ? ds.degradedDetails : [];\n'
+        + 'var reasons = [];\n'
+        + 'for (var i = 0; i < details.length; i++) {\n'
+        + '  if (details[i] && details[i].reason) {\n'
+        + '    reasons.push(String(details[i].reason));\n'
+        + '  }\n'
+        + '}\n'
+        + "return reasons.join(',');\n"
+    )
+    site_pop_js = char_from_path_js(find_site_js(), 'found.popName', 'POP')
+    site_hosts_js = (
+        find_site_js()
+        + 'var raw = found.hostCount;\n'
+        + 'var numeric = Number(raw);\n'
+        + "if (raw === undefined || raw === null || raw === '' || !isFinite(numeric)) {\n"
+        + "  throw 'hostCount missing';\n"
+        + '}\n'
+        + 'return numeric;\n'
     )
     site_ha_js = (
         find_site_js()
@@ -1204,24 +1380,8 @@ def render_template() -> str:
         + '}\n'
         + 'return 0;\n'
     )
-    site_ready_js = (
-        find_site_js()
-        + 'var ha = found.haStatus || {};\n'
-        + "var state = ha.readiness;\n"
-        + "if (state === undefined || state === null || state === '') {\n"
-        + "  throw 'HA readiness missing';\n"
-        + '}\n'
-        + 'return String(state);\n'
-    )
-    site_ver_js = (
-        find_site_js()
-        + 'var ha = found.haStatus || {};\n'
-        + "var state = ha.socketVersion;\n"
-        + "if (state === undefined || state === null || state === '') {\n"
-        + "  throw 'HA socketVersion missing';\n"
-        + '}\n'
-        + 'return String(state);\n'
-    )
+    site_ready_js = char_from_path_js(find_site_js(), '(found.haStatus || {}).readiness', 'HA readiness')
+    site_ver_js = char_from_path_js(find_site_js(), '(found.haStatus || {}).socketVersion', 'HA socketVersion')
     site_ready_code_js = (
         find_site_js()
         + 'var info = found.info || {};\n'
@@ -1233,13 +1393,17 @@ def render_template() -> str:
     )
     sock_conn_js = find_device_js() + connectivity_from_bool_js('device.connected')
     sock_site_js = find_site_js() + connectivity_from_status_js('found.connectivityStatus')
-    sock_ver_js = (
+    sock_ver_js = char_from_path_js(
+        find_device_js(),
+        'device.version || (device.socketInfo && device.socketInfo.version)',
+        'socket version',
+    )
+    sock_up_js = (
         find_device_js()
-        + 'var version = device.version || (device.socketInfo && device.socketInfo.version);\n'
-        + "if (version === undefined || version === null || version === '') {\n"
-        + "  throw 'socket version missing';\n"
+        + "if (device.deviceUptime === undefined || device.deviceUptime === null || device.deviceUptime === '') {\n"
+        + "  throw 'deviceUptime missing';\n"
         + '}\n'
-        + 'return String(version);\n'
+        + 'return device.deviceUptime;\n'
     )
     wan_conn_js = find_iface_js() + connectivity_from_bool_js('iface.connected')
     wan_site_js = find_site_js() + connectivity_from_status_js('found.connectivityStatus')
@@ -1250,12 +1414,33 @@ def render_template() -> str:
         + '}\n'
         + 'return iface.tunnelUptime;\n'
     )
-    wan_pop_js = (
-        find_iface_js()
-        + "if (iface.popName === undefined || iface.popName === null || iface.popName === '') {\n"
-        + "  throw 'POP missing';\n"
-        + '}\n'
-        + 'return String(iface.popName);\n'
+    wan_pop_js = char_from_path_js(find_iface_js(), 'iface.popName', 'POP')
+    wan_dest_js = char_from_path_js(
+        find_iface_js(),
+        '(iface.info && iface.info.destType) || iface.destType',
+        'destType',
+    )
+    wan_phys_js = char_from_path_js(find_iface_js(), 'iface.physicalPort', 'physicalPort')
+    wan_prov_js = char_from_path_js(
+        find_iface_js(),
+        'iface.tunnelRemoteIPInfo && iface.tunnelRemoteIPInfo.provider',
+        'provider',
+    )
+    wan_ip_js = char_from_path_js(find_iface_js(), 'iface.tunnelRemoteIP', 'tunnelRemoteIP')
+    wan_reason_js = char_from_path_js(find_iface_js(), 'iface.tunnelConnectionReason', 'tunnelConnectionReason')
+    port_media_js = bool_item_js(find_port_js(), 'port.mediaIn')
+    port_up_js = bool_item_js(find_port_js(), 'port.up')
+    port_tunnel_js = bool_item_js(find_port_js(), 'port.hasTunnel')
+    port_inet_js = bool_item_js(find_port_js(), 'port.hasInternet')
+    port_kind_js = (
+        "var kind = '{#PORT.KIND}';\n"
+        "if (kind === 'wan') {\n"
+        '  return 1;\n'
+        '}\n'
+        "if (kind === 'lan') {\n"
+        '  return 2;\n'
+        '}\n'
+        'return 0;\n'
     )
 
     lines: list[str] = [
@@ -1307,6 +1492,7 @@ def render_template() -> str:
         *availability_item('snap_avail', 'Cato API snapshot availability', 'cato.api.snapshot.available', 'cato.account.snapshot', 'accountSnapshot', 'snap_nodata_tr', 'Cato API: No snapshot data for 5m', '5m'),
         *availability_item('met_avail', 'Cato API metrics availability', 'cato.api.metrics.available', 'cato.account.metrics', 'accountMetrics', 'met_nodata_tr', 'Cato API: No metrics data for 15m', '15m'),
         *seed_item('site_seed', 'Cato site discovery seed', 'cato.site.connected[__seed]', 'UNSIGNED'),
+        *seed_item('site_deg_seed', 'Cato site degraded seed', 'cato.site.degraded[__seed]', 'UNSIGNED'),
         *seed_item('socket_seed', 'Cato Socket discovery seed', 'cato.socket.connected[__seed]', 'UNSIGNED'),
         *seed_item('wan_seed', 'Cato WAN discovery seed', 'cato.wan.connected[__seed]', 'UNSIGNED'),
         *seed_item('sla_seed', 'Cato WAN SLA discovery seed', 'cato.wan.rx.bps[__seed]', 'FLOAT'),
@@ -1317,6 +1503,7 @@ def render_template() -> str:
         *calc_item('site_up', 'Cato connected Socket site count', 'cato.site.up.count', 'count(last_foreach(//cato.site.connected[*]),eq,1)'),
         *calc_item('socket_up', 'Cato connected Socket count', 'cato.socket.up.count', 'count(last_foreach(//cato.socket.connected[*]),eq,1)'),
         *calc_item('wan_up', 'Cato connected WAN link count', 'cato.wan.up.count', 'count(last_foreach(//cato.wan.connected[*]),eq,1)'),
+        *calc_item('site_degraded', 'Cato degraded Socket site count', 'cato.site.degraded.count', 'count(last_foreach(//cato.site.degraded[*]),eq,1)'),
         *calc_item('ha_not_ready', 'Cato HA not-ready site count', 'cato.site.ha.not_ready.count', 'count(last_foreach(//cato.site.ha.readiness.code[*]),eq,0)'),
         *calc_item('wan_loss_worst', 'Cato worst overlay loss', 'cato.wan.loss.worst.pct', 'max(last_foreach(//cato.wan.loss.max.pct[*]))', units='%'),
         *calc_item('wan_rtt_worst', 'Cato worst overlay RTT', 'cato.wan.rtt.worst.ms', 'max(last_foreach(//cato.wan.rtt.ms[*]))', units='ms'),
@@ -1352,7 +1539,7 @@ def render_template() -> str:
             master='cato.account.snapshot',
             js=site_conn_js,
             scope='site',
-            extra_tags=[('connection_type', '{#CONN.TYPE}')],
+            extra_tags=SITE_TAGS,
             triggers=[{
                 'uid': 'site_conn_tr',
                 'expression': f'max(/{TPL}/cato.site.connected[{{#SITE.ID}}],#3)=0',
@@ -1360,7 +1547,69 @@ def render_template() -> str:
                 'priority': 'HIGH',
             }],
         ),
-        *proto_item(uid_key='site_op', name='Cato site {#SITE.NAME}: Operational status', key='cato.site.operational_status[{#SITE.ID}]', master='cato.account.snapshot', js=site_op_js, scope='site', value_type='CHAR', valuemap=None),
+        *proto_item(
+            uid_key='site_op',
+            name='Cato site {#SITE.NAME}: Operational status',
+            key='cato.site.operational_status[{#SITE.ID}]',
+            master='cato.account.snapshot',
+            js=site_op_js,
+            scope='site',
+            value_type='CHAR',
+            valuemap=None,
+            extra_tags=SITE_TAGS,
+        ),
+        *proto_item(
+            uid_key='site_deg',
+            name='Cato site {#SITE.NAME}: Degraded',
+            key='cato.site.degraded[{#SITE.ID}]',
+            master='cato.account.snapshot',
+            js=site_deg_js,
+            scope='site',
+            valuemap='Cato degraded',
+            extra_tags=SITE_TAGS,
+            triggers=[{
+                'uid': 'site_deg_tr',
+                'expression': (
+                    f'last(/{TPL}/cato.site.connected[{{#SITE.ID}}])=1 and '
+                    f'last(/{TPL}/cato.site.degraded[{{#SITE.ID}}])=1'
+                ),
+                'name': 'Cato site {#SITE.NAME}: Degraded',
+                'priority': 'AVERAGE',
+                'dependencies': [SITE_DISCONNECTED],
+            }],
+        ),
+        *proto_item(
+            uid_key='site_deg_reasons',
+            name='Cato site {#SITE.NAME}: Degraded reasons',
+            key='cato.site.degraded.reasons[{#SITE.ID}]',
+            master='cato.account.snapshot',
+            js=site_deg_reasons_js,
+            scope='site',
+            value_type='CHAR',
+            valuemap=None,
+            extra_tags=SITE_TAGS,
+        ),
+        *proto_item(
+            uid_key='site_pop',
+            name='Cato site {#SITE.NAME}: POP',
+            key='cato.site.pop[{#SITE.ID}]',
+            master='cato.account.snapshot',
+            js=site_pop_js,
+            scope='site',
+            value_type='CHAR',
+            valuemap=None,
+            extra_tags=SITE_TAGS,
+        ),
+        *proto_item(
+            uid_key='site_hosts',
+            name='Cato site {#SITE.NAME}: Host count',
+            key='cato.site.host_count[{#SITE.ID}]',
+            master='cato.account.snapshot',
+            js=site_hosts_js,
+            scope='site',
+            valuemap=None,
+            extra_tags=SITE_TAGS,
+        ),
         *proto_item(
             uid_key='site_ha',
             name='Cato site {#SITE.NAME}: HA enabled',
@@ -1369,6 +1618,7 @@ def render_template() -> str:
             js=site_ha_js,
             scope='site',
             valuemap=None,
+            extra_tags=SITE_TAGS,
         ),
         *proto_item(
             uid_key='site_ready',
@@ -1379,6 +1629,7 @@ def render_template() -> str:
             scope='site',
             value_type='CHAR',
             valuemap=None,
+            extra_tags=SITE_TAGS,
             triggers=[{
                 'uid': 'site_ready_tr',
                 'expression': (
@@ -1398,6 +1649,7 @@ def render_template() -> str:
             js=site_ready_code_js,
             scope='site',
             valuemap='Cato HA readiness',
+            extra_tags=SITE_TAGS,
         ),
         *proto_item(
             uid_key='site_ha_ver',
@@ -1408,6 +1660,7 @@ def render_template() -> str:
             scope='site',
             value_type='CHAR',
             valuemap=None,
+            extra_tags=SITE_TAGS,
             triggers=[{
                 'uid': 'site_ha_ver_tr',
                 'expression': (
@@ -1439,7 +1692,7 @@ def render_template() -> str:
             master='cato.account.snapshot',
             js=sock_conn_js,
             scope='socket',
-            extra_tags=socket_tags,
+            extra_tags=SOCKET_TAGS,
             triggers=[{
                 'uid': 'socket_conn_tr',
                 'expression': (
@@ -1450,8 +1703,37 @@ def render_template() -> str:
                 'priority': 'AVERAGE',
             }],
         ),
-        *proto_item(uid_key='socket_site', name='Cato Socket {#SITE.NAME} / {#SERIAL}: Site connectivity', key='cato.socket.site_connected[{#SITE.ID},{#SOCKET.ID}]', master='cato.account.snapshot', js=sock_site_js, scope='socket', extra_tags=[('serial', '{#SERIAL}')]),
-        *proto_item(uid_key='socket_ver', name='Cato Socket {#SITE.NAME} / {#SERIAL}: Version', key='cato.socket.version[{#SITE.ID},{#SOCKET.ID}]', master='cato.account.snapshot', js=sock_ver_js, scope='socket', value_type='CHAR', valuemap=None, extra_tags=[('serial', '{#SERIAL}'), ('platform', '{#PLATFORM}')]),
+        *proto_item(
+            uid_key='socket_site',
+            name='Cato Socket {#SITE.NAME} / {#SERIAL}: Site connectivity',
+            key='cato.socket.site_connected[{#SITE.ID},{#SOCKET.ID}]',
+            master='cato.account.snapshot',
+            js=sock_site_js,
+            scope='socket',
+            extra_tags=SOCKET_TAGS,
+        ),
+        *proto_item(
+            uid_key='socket_ver',
+            name='Cato Socket {#SITE.NAME} / {#SERIAL}: Version',
+            key='cato.socket.version[{#SITE.ID},{#SOCKET.ID}]',
+            master='cato.account.snapshot',
+            js=sock_ver_js,
+            scope='socket',
+            value_type='CHAR',
+            valuemap=None,
+            extra_tags=SOCKET_TAGS,
+        ),
+        *proto_item(
+            uid_key='socket_uptime',
+            name='Cato Socket {#SITE.NAME} / {#SERIAL}: Uptime',
+            key='cato.socket.uptime[{#SITE.ID},{#SOCKET.ID}]',
+            master='cato.account.snapshot',
+            js=sock_up_js,
+            scope='socket',
+            valuemap=None,
+            units='uptime',
+            extra_tags=SOCKET_TAGS,
+        ),
         f'    - uuid: {uid("wan_lld")}',
         '      name: Cato Socket WAN discovery',
         '      type: DEPENDENT',
@@ -1472,7 +1754,7 @@ def render_template() -> str:
             master='cato.account.snapshot',
             js=wan_conn_js,
             scope='wan',
-            extra_tags=wan_tags,
+            extra_tags=WAN_TAGS,
             triggers=[{
                 'uid': 'wan_conn_tr',
                 'expression': (
@@ -1483,9 +1765,106 @@ def render_template() -> str:
                 'priority': 'AVERAGE',
             }],
         ),
-        *proto_item(uid_key='wan_site', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Site connectivity', key='cato.wan.site_connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_site_js, scope='wan', extra_tags=wan_tags),
-        *proto_item(uid_key='wan_uptime', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Tunnel uptime', key='cato.wan.tunnel_uptime[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_up_js, scope='wan', valuemap=None, units='uptime', extra_tags=wan_tags),
-        *proto_item(uid_key='wan_pop', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: POP', key='cato.wan.pop[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_pop_js, scope='wan', value_type='CHAR', valuemap=None, extra_tags=wan_tags),
+        *proto_item(uid_key='wan_site', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Site connectivity', key='cato.wan.site_connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_site_js, scope='wan', extra_tags=WAN_TAGS),
+        *proto_item(uid_key='wan_uptime', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Tunnel uptime', key='cato.wan.tunnel_uptime[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_up_js, scope='wan', valuemap=None, units='uptime', extra_tags=WAN_TAGS),
+        *proto_item(uid_key='wan_pop', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: POP', key='cato.wan.pop[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_pop_js, scope='wan', value_type='CHAR', valuemap=None, extra_tags=WAN_TAGS),
+        *proto_item(uid_key='wan_dest', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Dest type', key='cato.wan.dest_type[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_dest_js, scope='wan', value_type='CHAR', valuemap=None, extra_tags=WAN_TAGS),
+        *proto_item(uid_key='wan_phys', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Physical port', key='cato.wan.physical_port[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_phys_js, scope='wan', value_type='CHAR', valuemap=None, extra_tags=WAN_TAGS),
+        *proto_item(uid_key='wan_prov', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: ISP provider', key='cato.wan.provider[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_prov_js, scope='wan', value_type='CHAR', valuemap=None, extra_tags=WAN_TAGS),
+        *proto_item(uid_key='wan_ip', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Tunnel remote IP', key='cato.wan.remote_ip[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_ip_js, scope='wan', value_type='CHAR', valuemap=None, extra_tags=WAN_TAGS),
+        *proto_item(uid_key='wan_reason', name='Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Connection reason', key='cato.wan.connection_reason[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]', master='cato.account.snapshot', js=wan_reason_js, scope='wan', value_type='CHAR', valuemap=None, extra_tags=WAN_TAGS),
+        f'    - uuid: {uid("port_lld")}',
+        '      name: Cato Socket port discovery',
+        '      type: DEPENDENT',
+        '      key: cato.port.discovery',
+        "      delay: '0'",
+        '      lifetime: 7d',
+        '      preprocessing:',
+        '      - type: JAVASCRIPT',
+        '        parameters:',
+        *js_block(load_lld_js('cato.port.discovery'), 8),
+        '      master_item:',
+        '        key: cato.account.snapshot',
+        '      item_prototypes:',
+        *proto_item(
+            uid_key='port_media',
+            name='Cato {#PORT.KIND} port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media in',
+            key='cato.port.media_in[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]',
+            master='cato.account.snapshot',
+            js=port_media_js,
+            scope='port',
+            extra_tags=PORT_TAGS,
+            triggers=[
+                {
+                    'uid': 'port_wan_media_tr',
+                    'expression': (
+                        f'max(/{TPL}/cato.port.media_in[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}],#3)=0 and '
+                        f'last(/{TPL}/cato.port.kind.code[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}])=1'
+                    ),
+                    'name': 'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down',
+                    'priority': 'AVERAGE',
+                    'dependencies': [SITE_DISCONNECTED],
+                },
+                {
+                    'uid': 'port_lan_media_tr',
+                    'expression': (
+                        f'max(/{TPL}/cato.port.media_in[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}],#3)=0 and '
+                        f'last(/{TPL}/cato.port.kind.code[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}])=2'
+                    ),
+                    'name': 'Cato lan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down',
+                    'priority': 'WARNING',
+                    'dependencies': [SITE_DISCONNECTED],
+                },
+            ],
+        ),
+        *proto_item(
+            uid_key='port_up',
+            name='Cato {#PORT.KIND} port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Link up',
+            key='cato.port.up[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]',
+            master='cato.account.snapshot',
+            js=port_up_js,
+            scope='port',
+            extra_tags=PORT_TAGS,
+        ),
+        *proto_item(
+            uid_key='port_tunnel',
+            name='Cato {#PORT.KIND} port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Has tunnel',
+            key='cato.port.has_tunnel[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]',
+            master='cato.account.snapshot',
+            js=port_tunnel_js,
+            scope='port',
+            extra_tags=PORT_TAGS,
+            triggers=[{
+                'uid': 'port_wan_tunnel_tr',
+                'expression': (
+                    f'last(/{TPL}/cato.port.media_in[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}])=1 and '
+                    f'max(/{TPL}/cato.port.has_tunnel[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}],#3)=0 and '
+                    f'last(/{TPL}/cato.port.kind.code[{{#SITE.ID}},{{#SOCKET.ID}},{{#PORT.ID}}])=1'
+                ),
+                'name': 'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: No tunnel while media is up',
+                'priority': 'AVERAGE',
+                'dependencies': [SITE_DISCONNECTED],
+            }],
+        ),
+        *proto_item(
+            uid_key='port_inet',
+            name='Cato {#PORT.KIND} port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Has internet',
+            key='cato.port.has_internet[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]',
+            master='cato.account.snapshot',
+            js=port_inet_js,
+            scope='port',
+            extra_tags=PORT_TAGS,
+        ),
+        *proto_item(
+            uid_key='port_kind',
+            name='Cato {#PORT.KIND} port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Kind',
+            key='cato.port.kind.code[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]',
+            master='cato.account.snapshot',
+            js=port_kind_js,
+            scope='port',
+            valuemap='Cato port kind',
+            extra_tags=PORT_TAGS,
+        ),
         f'    - uuid: {uid("sla_lld")}',
         '      name: Cato WAN SLA discovery',
         '      type: DEPENDENT',
@@ -1499,16 +1878,16 @@ def render_template() -> str:
         '      master_item:',
         '        key: cato.account.metrics',
         '      item_prototypes:',
-        *proto_item(uid_key='sla_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX bandwidth', key='cato.wan.rx.bps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('bytesDownstream', 'RX rate', '8'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='bps', trends='365d'),
-        *proto_item(uid_key='sla_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX bandwidth', key='cato.wan.tx.bps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('bytesUpstream', 'TX rate', '8'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='bps', trends='365d'),
-        *proto_item(uid_key='sla_loss_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX packet loss', key='cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('lostDownstreamPcnt', 'RX loss'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='%', trends='365d'),
-        *proto_item(uid_key='sla_loss_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX packet loss', key='cato.wan.loss.tx.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('lostUpstreamPcnt', 'TX loss'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='%', trends='365d'),
+        *proto_item(uid_key='sla_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX bandwidth', key='cato.wan.rx.bps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('bytesDownstream', 'RX rate', '8'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='bps', trends='365d'),
+        *proto_item(uid_key='sla_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX bandwidth', key='cato.wan.tx.bps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('bytesUpstream', 'TX rate', '8'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='bps', trends='365d'),
+        *proto_item(uid_key='sla_loss_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX packet loss', key='cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('lostDownstreamPcnt', 'RX loss'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='%', trends='365d'),
+        *proto_item(uid_key='sla_loss_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX packet loss', key='cato.wan.loss.tx.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('lostUpstreamPcnt', 'TX loss'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='%', trends='365d'),
         *calc_proto(
             uid_key='sla_loss_max',
             name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Overlay loss',
             key='cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}]',
             params=f'max(last(//cato.wan.loss.rx.pct[{{#SITE.ID}},{{#LINK.ID}}]),last(//cato.wan.loss.tx.pct[{{#SITE.ID}},{{#LINK.ID}}]))',
-            scope='wan_sla',
+            scope='wan_sla', extra_tags=SLA_TAGS,
             units='%',
             triggers=[{
                 'uid': 'sla_loss_tr',
@@ -1517,14 +1896,14 @@ def render_template() -> str:
                 'priority': 'WARNING',
             }],
         ),
-        *proto_item(uid_key='sla_jit_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX jitter', key='cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('jitterDownstream', 'RX jitter'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
-        *proto_item(uid_key='sla_jit_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX jitter', key='cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('jitterUpstream', 'TX jitter'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
+        *proto_item(uid_key='sla_jit_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX jitter', key='cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('jitterDownstream', 'RX jitter'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
+        *proto_item(uid_key='sla_jit_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX jitter', key='cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('jitterUpstream', 'TX jitter'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
         *calc_proto(
             uid_key='sla_jit_max',
             name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Overlay jitter',
             key='cato.wan.jitter.max.ms[{#SITE.ID},{#LINK.ID}]',
             params='max(last(//cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]),last(//cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]))',
-            scope='wan_sla',
+            scope='wan_sla', extra_tags=SLA_TAGS,
             units='ms',
         ),
         *proto_item(
@@ -1533,7 +1912,7 @@ def render_template() -> str:
             key='cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}]',
             master='cato.account.metrics',
             js=metric_js('rtt', 'RTT'),
-            scope='wan_sla',
+            scope='wan_sla', extra_tags=SLA_TAGS,
             value_type='FLOAT',
             valuemap=None,
             units='ms',
@@ -1551,7 +1930,7 @@ def render_template() -> str:
             key='cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}]',
             master='cato.account.metrics',
             js=metric_js('lastmilePacketLoss', 'last-mile loss'),
-            scope='wan_sla',
+            scope='wan_sla', extra_tags=SLA_TAGS,
             value_type='FLOAT',
             valuemap=None,
             units='%',
@@ -1563,11 +1942,11 @@ def render_template() -> str:
                 'priority': 'WARNING',
             }],
         ),
-        *proto_item(uid_key='sla_lm_lat', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency', key='cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('lastmileLatency', 'last-mile latency'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
-        *proto_item(uid_key='sla_disc_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX discarded', key='cato.wan.discard.rx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedDownstream', 'RX discarded'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='pps', trends='365d'),
-        *proto_item(uid_key='sla_disc_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX discarded', key='cato.wan.discard.tx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedUpstream', 'TX discarded'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='pps', trends='365d'),
-        *proto_item(uid_key='sla_util_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX utilization', key='cato.wan.rx.util.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=util_js('RX', 'downstreamBandwidth', 'bytesDownstream'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='%', trends='365d'),
-        *proto_item(uid_key='sla_util_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX utilization', key='cato.wan.tx.util.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=util_js('TX', 'upstreamBandwidth', 'bytesUpstream'), scope='wan_sla', value_type='FLOAT', valuemap=None, units='%', trends='365d'),
+        *proto_item(uid_key='sla_lm_lat', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency', key='cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('lastmileLatency', 'last-mile latency'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
+        *proto_item(uid_key='sla_disc_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX discarded', key='cato.wan.discard.rx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedDownstream', 'RX discarded'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='pps', trends='365d'),
+        *proto_item(uid_key='sla_disc_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX discarded', key='cato.wan.discard.tx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedUpstream', 'TX discarded'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='pps', trends='365d'),
+        *proto_item(uid_key='sla_util_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX utilization', key='cato.wan.rx.util.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=util_js('RX', 'downstreamBandwidth', 'bytesDownstream'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='%', trends='365d'),
+        *proto_item(uid_key='sla_util_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX utilization', key='cato.wan.tx.util.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=util_js('TX', 'upstreamBandwidth', 'bytesUpstream'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='%', trends='365d'),
         '      graph_prototypes:',
         f'      - uuid: {uid("graph_bw")}',
         f"        name: {q('Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth')}",
@@ -1636,6 +2015,22 @@ def render_template() -> str:
             '        newvalue: Not ready',
             "      - value: '1'",
             '        newvalue: Ready',
+            f'    - uuid: {uid("valuemap_deg")}',
+            '      name: Cato degraded',
+            '      mappings:',
+            "      - value: '0'",
+            '        newvalue: OK',
+            "      - value: '1'",
+            '        newvalue: Degraded',
+            f'    - uuid: {uid("valuemap_port")}',
+            '      name: Cato port kind',
+            '      mappings:',
+            "      - value: '0'",
+            '        newvalue: Other',
+            "      - value: '1'",
+            '        newvalue: WAN',
+            "      - value: '2'",
+            '        newvalue: LAN',
             '    dashboards:',
             f'    - uuid: {uid("dash_health")}',
             '      name: Health',
@@ -1646,6 +2041,9 @@ def render_template() -> str:
             '      - name: Census',
             '        widgets:',
             *health_census_widgets(),
+            '      - name: Degraded',
+            '        widgets:',
+            *health_degraded_widgets(),
             '      - name: API',
             '        widgets:',
             *health_api_widgets(),
@@ -1670,6 +2068,9 @@ def render_template() -> str:
             '      - name: Tunnels',
             '        widgets:',
             *network_tunnels_widgets(),
+            '      - name: Ports',
+            '        widgets:',
+            *network_ports_widgets(),
             '      - name: HA',
             '        widgets:',
             *network_ha_widgets(),

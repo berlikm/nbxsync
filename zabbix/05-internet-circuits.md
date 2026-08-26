@@ -76,13 +76,13 @@ Public schema puts last-mile on **timeseries labels** `lastMilePacketLoss` / `la
 
 ### Will monitoring still work?
 
-| Failure | Collector | What you should see (once degraded + link-state are collected) |
+| Failure | Collector | What you should see |
 |---|---|---|
-| One WAN unplugged, another WAN still tunneled | Snapshot keeps working | Site `connected` + `isDegraded`; that port `mediaIn=false`; that WAN `connected=false`; reason `WAN_DISCONNECTED` |
+| One WAN unplugged, another WAN still tunneled | Snapshot keeps working | Site `connected` + `isDegraded`; that port `mediaIn=false`; that WAN `connected=false`; reason `WAN_DISCONNECTED`; Health → Degraded yellow; Network → Ports WAN media red |
 | WAN has Ethernet but ISP/path to PoP is dead | Snapshot keeps working | `mediaIn=true`, `hasTunnel=false`, reason `WAN_TUNNEL_DISCONNECTED`; last-mile sick or missing |
 | All Socket WANs down | Site High already; account collector still polls other sites | Site `disconnected`. Last-mile for that site goes empty, not a fake 0% |
-| LAN unplugged | Snapshot keeps working | Degraded with `LAN_*` — do not raise a circuit Average |
-| CMA Degraded disabled in System Settings | Snapshot still has the object | Treat `isDegraded` as optional; physical `mediaIn` / WAN `connected` remain the source of truth |
+| LAN unplugged | Snapshot keeps working | Degraded with `LAN_*`; LAN media Warning — do not raise a circuit Average |
+| CMA Degraded disabled in System Settings | Snapshot still has the object | Treat `isDegraded` as optional (`0` when absent); physical `mediaIn` / WAN `connected` remain the source of truth |
 
 Do **not** page Cato overlay loss as an ISP cut at Forti sites. At Socket-only sites, last-mile + `WAN_DISCONNECTED` / `WAN_TUNNEL_DISCONNECTED` + `mediaIn` are the circuit class.
 
@@ -93,7 +93,7 @@ Do **not** page Cato overlay loss as an ISP cut at Forti sites. At Socket-only s
 | Thing | Alert | Sev |
 |---|---|---|
 | One redundant `UW` / Forti WAN / SD-WAN member down | yes | **Average** — tagged as circuit, not fabric. Forti SD-WAN health-check is the authoritative underlay symptom; Extreme `UW` is the cause signal |
-| Cato-only: one WAN unplugged or tunnel down while the site stays connected | later | **Average** circuit — `WAN_DISCONNECTED` / `WAN_TUNNEL_DISCONNECTED` / `mediaIn=false`. Not site High. Not LAN. |
+| Cato-only: one WAN unplugged or tunnel down while the site stays connected | yes | **Average** circuit — site Degraded + WAN `mediaIn=false` / `hasTunnel=false`. Not site High. Not LAN. |
 | Last usable site underlay path lost | yes | **High** on the path; **Disaster** on the site (later parent) |
 | Flapping | yes | Warning |
 | Errors | yes | Warning |
@@ -127,7 +127,7 @@ No absolute speed-expect on `UW`. Commit rate lives on the NetBox Circuit, not i
 |---|---|
 | ISP WAN Ports by SNMP (thin, build) | Extreme `UW` — dependent items on stock interface items where possible |
 | FortiGate by HTTP (SD-WAN / WAN LLD) | [03](03-fortinet.md) **Path** Loss/Probe — not this SNMP template |
-| Cato Networks by HTTP | Socket-only sites: last-mile already collected; next collector pass adds `degradedStatus` + `interfacesLinkState` on the **existing** snapshot master. No `socketPortMetrics` yet |
+| Cato Networks by HTTP | Socket-only sites: last-mile, `degradedStatus`, and `interfacesLinkState` on the **existing** snapshot master. No `socketPortMetrics`. Filter Latest data by the `site` tag. |
 
 ---
 
@@ -135,4 +135,4 @@ No absolute speed-expect on `UW`. Commit rate lives on the NetBox Circuit, not i
 
 NetBox Providers + Circuits populated; multi-homing modelled vs residual risk; compliance (termination without `UW`, and the reverse).
 
-Cato collector (still two HTTP masters, still `--apply-cato`): add `degradedStatus` and `interfacesLinkState` to `accountSnapshot`; itemize WAN `mediaIn` / `hasTunnel` / ISP `provider`; Average only for `WAN_*` degraded reasons. Verify live last-mile via timeseries labels if scalar `metrics.lastmile*` schema-violates. Do not add `socketPortMetrics` until the metrics budget is measured.
+Cato collector (still two HTTP masters, still `--apply-cato`): `degradedStatus` and `interfacesLinkState` are on the snapshot master; WAN `mediaIn` / `hasTunnel` / ISP `provider` are itemized; Average for WAN media/tunnel and site Degraded; LAN media is Warning. Verify live last-mile via timeseries labels if scalar `metrics.lastmile*` schema-violates. Do not add `socketPortMetrics` until the metrics budget is measured.

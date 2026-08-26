@@ -28,6 +28,7 @@ LLD_JS = {
     'cato.socket.discovery': TEMPLATE_DIR / 'lld_sockets.js',
     'cato.wan.discovery': TEMPLATE_DIR / 'lld_wan.js',
     'cato.wan.metrics.discovery': TEMPLATE_DIR / 'lld_wan_metrics.js',
+    'cato.port.discovery': TEMPLATE_DIR / 'lld_ports.js',
 }
 
 TEMPLATE_NAME = 'Cato Networks by HTTP'
@@ -55,11 +56,15 @@ MANAGED_TAGS = [
 SNAPSHOT_QUERY = (
     'query AccountSnapshot($accountID: ID!) { accountSnapshot(accountID: $accountID) { '
     'sites { id connectivityStatus operationalStatus lastConnected connectedSince '
+    'popName hostCount '
+    'degradedStatus { isDegraded degradedDetails { reason } } '
     'info { name type connType isHA sockets { id serial isPrimary platform version } } '
     'haStatus { readiness wanConnectivity keepalive socketVersion } '
-    'devices { id name connected connectedSince haRole version '
+    'devices { id name connected connectedSince haRole version altWanStatus deviceUptime '
     'socketInfo { id serial isPrimary platform version } '
-    'interfaces { id name connected popName tunnelUptime type '
+    'interfacesLinkState { id mediaIn up hasAddress hasInternet hasTunnel duplex linkSpeed } '
+    'interfaces { id name connected popName tunnelUptime type physicalPort '
+    'tunnelRemoteIP tunnelConnectionReason tunnelRemoteIPInfo { provider } '
     'info { id name upstreamBandwidth downstreamBandwidth destType } } } } } }'
 )
 
@@ -67,7 +72,7 @@ METRICS_QUERY = (
     'query AccountMetrics($accountID: ID!) { accountMetrics(accountID: $accountID, '
     'timeFrame: "last.PT5M", groupDevices: true, groupInterfaces: false) { '
     'sites { id name info { connType } interfaces { name '
-    'interfaceInfo { id name upstreamBandwidth downstreamBandwidth } '
+    'interfaceInfo { id name upstreamBandwidth downstreamBandwidth destType } '
     'metrics(toRate: true) { bytesDownstream bytesUpstream '
     'lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt '
     'lastmilePacketLoss lastmileLatency '
@@ -85,6 +90,7 @@ EXPECTED_TEMPLATE_ITEM_KEYS = {
     'cato.api.snapshot.available',
     'cato.api.metrics.available',
     'cato.site.connected[__seed]',
+    'cato.site.degraded[__seed]',
     'cato.socket.connected[__seed]',
     'cato.wan.connected[__seed]',
     'cato.wan.rx.bps[__seed]',
@@ -95,6 +101,7 @@ EXPECTED_TEMPLATE_ITEM_KEYS = {
     'cato.site.up.count',
     'cato.socket.up.count',
     'cato.wan.up.count',
+    'cato.site.degraded.count',
     'cato.site.ha.not_ready.count',
     'cato.wan.loss.worst.pct',
     'cato.wan.rtt.worst.ms',
@@ -107,9 +114,9 @@ EXPECTED_TEMPLATE_ITEM_KEYS = {
 }
 EXPECTED_DISCOVERY_KEYS = set(LLD_JS)
 EXPECTED_DASHBOARD_NAMES = {'Health', 'Path', 'Network'}
-EXPECTED_HEALTH_PAGES = {'Overview', 'Census', 'API'}
+EXPECTED_HEALTH_PAGES = {'Overview', 'Census', 'Degraded', 'API'}
 EXPECTED_PATH_PAGES = {'Overview', 'Last mile', 'Probe'}
-EXPECTED_NETWORK_PAGES = {'Overview', 'Tunnels', 'HA'}
+EXPECTED_NETWORK_PAGES = {'Overview', 'Tunnels', 'HA', 'Ports'}
 EXPECTED_GRAPH_PROTOTYPES = {
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Bandwidth',
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Packet loss',
@@ -131,6 +138,7 @@ EXPECTED_COLLECTOR_TRIGGER_NAMES = {
 }
 EXPECTED_STATE_TRIGGER_PROTOTYPE_NAMES = {
     'Cato site {#SITE.NAME}: Disconnected',
+    'Cato site {#SITE.NAME}: Degraded',
     'Cato Socket {#SITE.NAME} / {#SERIAL}: Disconnected while site is up',
     'Cato WAN {#SITE.NAME} / {#SERIAL} / {#LINK.NAME}: Disconnected while site is up',
     'Cato site {#SITE.NAME}: HA not ready',
@@ -138,6 +146,9 @@ EXPECTED_STATE_TRIGGER_PROTOTYPE_NAMES = {
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay packet loss',
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile packet loss',
     'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT',
+    'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down',
+    'Cato lan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down',
+    'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: No tunnel while media is up',
 }
 EXPECTED_UNSUPPORTED_TRIGGER_DEPENDENCIES = {
     'Cato API: No snapshot data for 5m',
@@ -146,12 +157,27 @@ EXPECTED_UNSUPPORTED_TRIGGER_DEPENDENCIES = {
 EXPECTED_ITEM_PROTOTYPE_KEYS = {
     'cato.site.connected[{#SITE.ID}]',
     'cato.site.operational_status[{#SITE.ID}]',
+    'cato.site.degraded[{#SITE.ID}]',
+    'cato.site.degraded.reasons[{#SITE.ID}]',
+    'cato.site.pop[{#SITE.ID}]',
+    'cato.site.host_count[{#SITE.ID}]',
     'cato.site.ha[{#SITE.ID}]',
     'cato.site.ha.readiness[{#SITE.ID}]',
     'cato.site.ha.readiness.code[{#SITE.ID}]',
     'cato.site.ha.socket_version[{#SITE.ID}]',
     'cato.socket.connected[{#SITE.ID},{#SOCKET.ID}]',
+    'cato.socket.uptime[{#SITE.ID},{#SOCKET.ID}]',
     'cato.wan.connected[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]',
+    'cato.wan.dest_type[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]',
+    'cato.wan.physical_port[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]',
+    'cato.wan.provider[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]',
+    'cato.wan.remote_ip[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]',
+    'cato.wan.connection_reason[{#SITE.ID},{#SOCKET.ID},{#LINK.ID}]',
+    'cato.port.media_in[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]',
+    'cato.port.up[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]',
+    'cato.port.has_tunnel[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]',
+    'cato.port.has_internet[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]',
+    'cato.port.kind.code[{#SITE.ID},{#SOCKET.ID},{#PORT.ID}]',
     'cato.wan.rx.bps[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.tx.bps[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}]',

@@ -3,12 +3,35 @@ var snapshot = root && root.data && root.data.accountSnapshot;
 var sites = snapshot && Array.isArray(snapshot.sites) ? snapshot.sites : [];
 var pattern = new RegExp('{$CATO.SITE.CONN_TYPE.MATCHES}');
 var out = [];
+
+function normalizeHaRole(device, socket, isHA) {
+  var raw = String((device && device.haRole) || '').trim().toUpperCase();
+  if (raw === 'PRIMARY') {
+    raw = 'MASTER';
+  }
+  if (raw === 'SECONDARY') {
+    raw = 'BACKUP';
+  }
+  if (raw === 'STANDALONE') {
+    raw = 'NONE';
+  }
+  if (raw === 'MASTER' || raw === 'BACKUP' || raw === 'NONE') {
+    return raw;
+  }
+  if (!isHA) {
+    return 'NONE';
+  }
+  var primary = socket && (socket.isPrimary === true || String(socket.isPrimary).toLowerCase() === 'true');
+  return primary ? 'MASTER' : 'BACKUP';
+}
+
 for (var i = 0; i < sites.length; i++) {
   var site = sites[i];
   var siteInfo = site && site.info;
   if (!site || !siteInfo || site.id === undefined || site.id === null || !pattern.test(String(siteInfo.connType || ''))) {
     continue;
   }
+  var isHA = siteInfo.isHA === true || String(siteInfo.isHA).toLowerCase() === 'true';
   var devices = Array.isArray(site.devices) ? site.devices : [];
   for (var j = 0; j < devices.length; j++) {
     var device = devices[j];
@@ -26,10 +49,14 @@ for (var i = 0; i < sites.length; i++) {
       out.push({
         '{#SITE.ID}': String(site.id),
         '{#SITE.NAME}': String(siteInfo.name || ''),
+        '{#CONN.TYPE}': String(siteInfo.connType || ''),
         '{#SOCKET.ID}': String(socket.id),
+        '{#SOCKET.NAME}': String(device.name || ''),
         '{#LINK.ID}': String(info.id),
         '{#LINK.NAME}': String(info.name || iface.name || ''),
-        '{#SERIAL}': String(socket.serial)
+        '{#DEST.TYPE}': String(info.destType || ''),
+        '{#SERIAL}': String(socket.serial),
+        '{#HA.ROLE}': normalizeHaRole(device, socket, isHA)
       });
     }
   }

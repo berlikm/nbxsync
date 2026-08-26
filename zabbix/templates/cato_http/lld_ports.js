@@ -25,6 +25,17 @@ function normalizeHaRole(device, socket, isHA) {
   return primary ? 'MASTER' : 'BACKUP';
 }
 
+function portKind(id) {
+  var name = String(id || '').toUpperCase();
+  if (name.indexOf('LAN') === 0) {
+    return 'lan';
+  }
+  if (name.indexOf('WAN') === 0 || name.indexOf('USB') === 0 || name === 'LTE' || name.indexOf('ALT') === 0) {
+    return 'wan';
+  }
+  return 'other';
+}
+
 for (var i = 0; i < sites.length; i++) {
   var site = sites[i];
   var info = site && site.info;
@@ -39,16 +50,25 @@ for (var i = 0; i < sites.length; i++) {
     if (!socket || socket.id === undefined || socket.id === null || !String(socket.serial || '').trim()) {
       continue;
     }
-    out.push({
-      '{#SITE.ID}': String(site.id),
-      '{#SITE.NAME}': String(info.name || ''),
-      '{#CONN.TYPE}': String(info.connType || ''),
-      '{#SOCKET.ID}': String(socket.id),
-      '{#SOCKET.NAME}': String(device.name || ''),
-      '{#SERIAL}': String(socket.serial),
-      '{#HA.ROLE}': normalizeHaRole(device, socket, isHA),
-      '{#PLATFORM}': String(socket.platform || '')
-    });
+    var states = Array.isArray(device.interfacesLinkState) ? device.interfacesLinkState : [];
+    for (var k = 0; k < states.length; k++) {
+      var port = states[k];
+      if (!port || port.id === undefined || port.id === null || !String(port.id).trim()) {
+        continue;
+      }
+      var kind = portKind(port.id);
+      out.push({
+        '{#SITE.ID}': String(site.id),
+        '{#SITE.NAME}': String(info.name || ''),
+        '{#CONN.TYPE}': String(info.connType || ''),
+        '{#SOCKET.ID}': String(socket.id),
+        '{#SOCKET.NAME}': String(device.name || ''),
+        '{#SERIAL}': String(socket.serial),
+        '{#HA.ROLE}': normalizeHaRole(device, socket, isHA),
+        '{#PORT.ID}': String(port.id),
+        '{#PORT.KIND}': kind
+      });
+    }
   }
 }
 return JSON.stringify(out);
