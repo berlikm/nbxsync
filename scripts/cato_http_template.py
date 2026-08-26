@@ -877,7 +877,7 @@ def problems_strip(*, y: str = '4', reference: str = 'CPROB') -> list[str]:
             {'type': 'INTEGER', 'name': 'show', 'value': '3'},
             {'type': 'INTEGER', 'name': 'show_opdata', 'value': '2'},
             {'type': 'INTEGER', 'name': 'show_tags', 'value': '1'},
-            {'type': 'STRING', 'name': 'tag_priority', 'value': 'site'},
+            {'type': 'STRING', 'name': 'tag_priority', 'value': 'site, connection_type, ha_role, port_kind, dest_type'},
         ],
     )
 
@@ -885,18 +885,20 @@ def problems_strip(*, y: str = '4', reference: str = 'CPROB') -> list[str]:
 def navigator_and_history(
     *,
     items: list[str],
-    group_tag: str,
     nav_ref: str,
     graph_ref: str,
+    group_tag: str = 'site',
+    group_tags: list[str] | None = None,
     nav_name: str = 'Counters',
     y: str | None = None,
     height: str = '11',
     nav_width: str = '28',
 ) -> list[str]:
-    nav_fields: list[dict] = [
-        {'type': 'INTEGER', 'name': 'group_by.0.attribute', 'value': '3'},
-        {'type': 'STRING', 'name': 'group_by.0.tag_name', 'value': group_tag},
-    ]
+    tags = list(group_tags or [group_tag])
+    nav_fields: list[dict] = []
+    for idx, tag in enumerate(tags):
+        nav_fields.append({'type': 'INTEGER', 'name': f'group_by.{idx}.attribute', 'value': '3'})
+        nav_fields.append({'type': 'STRING', 'name': f'group_by.{idx}.tag_name', 'value': tag})
     for idx, item in enumerate(items):
         nav_fields.append({'type': 'STRING', 'name': f'items.{idx}', 'value': item})
     nav_fields.append({'type': 'STRING', 'name': 'reference', 'value': nav_ref})
@@ -1066,7 +1068,7 @@ def health_degraded_widgets() -> list[str]:
         ),
         *navigator_and_history(
             nav_name='Degraded',
-            group_tag='site',
+            group_tags=['site', 'connection_type'],
             nav_ref='CDEGN',
             graph_ref='CDEGG',
             y='13',
@@ -1202,7 +1204,7 @@ def path_lastmile_widgets() -> list[str]:
 
 def path_probe_widgets() -> list[str]:
     return navigator_and_history(
-        group_tag='site',
+        group_tags=['site', 'connection_type', 'dest_type'],
         nav_ref='CNAVP',
         graph_ref='CGRFP',
         items=[
@@ -1245,7 +1247,7 @@ def network_overview_widgets() -> list[str]:
 def network_tunnels_widgets() -> list[str]:
     return navigator_and_history(
         nav_name='Tunnels',
-        group_tag='site',
+        group_tags=['site', 'connection_type', 'ha_role', 'dest_type'],
         nav_ref='CNNAV',
         graph_ref='CNGRA',
         items=[
@@ -1272,7 +1274,7 @@ def network_ha_widgets() -> list[str]:
         ),
         *navigator_and_history(
             nav_name='HA',
-            group_tag='site',
+            group_tags=['site', 'connection_type'],
             nav_ref='NHAV',
             graph_ref='NHAG',
             y='5',
@@ -1309,7 +1311,7 @@ def network_ports_widgets() -> list[str]:
         ),
         *navigator_and_history(
             nav_name='Ports',
-            group_tag='site',
+            group_tags=['site', 'port_kind', 'ha_role', 'connection_type'],
             nav_ref='NPNAV',
             graph_ref='NPGRA',
             y='11',

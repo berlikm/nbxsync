@@ -334,7 +334,7 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertEqual(wy(problems[0]), '4')
         pfields = {field['name']: field['value'] for field in problems[0]['fields']}
         self.assertEqual(str(pfields['show_tags']), '1')
-        self.assertEqual(pfields['tag_priority'], 'site')
+        self.assertEqual(pfields['tag_priority'], 'site, connection_type, ha_role, port_kind, dest_type')
         honey = next(widget for widget in overview['widgets'] if widget['type'] == 'honeycomb')
         self.assertEqual(honey['name'], 'Sites')
         self.assertEqual(str(honey['width']), '72')
@@ -405,17 +405,30 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertIn('Cato site {#SITE.NAME}: Disconnected', deps)
 
     def test_navigators_group_by_site_not_serial(self):
+        expected = {
+            ('Health', 'Degraded', 'Degraded'): ['site', 'connection_type'],
+            ('Path', 'Probe', 'Counters'): ['site', 'connection_type', 'dest_type'],
+            ('Network', 'Tunnels', 'Tunnels'): ['site', 'connection_type', 'ha_role', 'dest_type'],
+            ('Network', 'HA', 'HA'): ['site', 'connection_type'],
+            ('Network', 'Ports', 'Ports'): ['site', 'port_kind', 'ha_role', 'connection_type'],
+        }
+        found: dict[tuple[str, str, str], list[str]] = {}
         for dash in self.tpl['dashboards']:
             for page in dash['pages']:
                 for widget in page['widgets']:
                     if widget['type'] != 'itemnavigator':
                         continue
                     fields = {field['name']: field['value'] for field in widget['fields']}
-                    self.assertEqual(
-                        fields.get('group_by.0.tag_name'),
-                        'site',
-                        f"{dash['name']}/{page['name']}/{widget.get('name')}",
-                    )
+                    tags = []
+                    idx = 0
+                    while f'group_by.{idx}.tag_name' in fields:
+                        tags.append(fields[f'group_by.{idx}.tag_name'])
+                        idx += 1
+                    key = (dash['name'], page['name'], str(widget.get('name')))
+                    found[key] = tags
+                    self.assertEqual(tags[0], 'site', key)
+                    self.assertNotIn('serial', tags, key)
+        self.assertEqual(found, expected)
 
     def test_health_degraded_and_network_ports_pages(self):
         health = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Health')

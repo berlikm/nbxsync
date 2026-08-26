@@ -3944,7 +3944,7 @@ zabbix_export:
             value: '1'
           - type: STRING
             name: tag_priority
-            value: 'site'
+            value: 'site, connection_type, ha_role, port_kind, dest_type'
         - type: honeycomb
           name: Sites
           'y': '7'
@@ -4908,7 +4908,7 @@ zabbix_export:
             value: '1'
           - type: STRING
             name: tag_priority
-            value: 'site'
+            value: 'site, connection_type, ha_role, port_kind, dest_type'
         - type: honeycomb
           name: Degraded
           'y': '7'
@@ -4963,6 +4963,12 @@ zabbix_export:
           - type: STRING
             name: group_by.0.tag_name
             value: 'site'
+          - type: INTEGER
+            name: group_by.1.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.1.tag_name
+            value: 'connection_type'
           - type: STRING
             name: items.0
             value: 'Cato site *: Degraded'
@@ -5793,6 +5799,18 @@ zabbix_export:
           - type: STRING
             name: group_by.0.tag_name
             value: 'site'
+          - type: INTEGER
+            name: group_by.1.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.1.tag_name
+            value: 'connection_type'
+          - type: INTEGER
+            name: group_by.2.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.2.tag_name
+            value: 'dest_type'
           - type: STRING
             name: items.0
             value: 'Cato WAN *: Overlay loss'
@@ -5966,6 +5984,24 @@ zabbix_export:
           - type: STRING
             name: group_by.0.tag_name
             value: 'site'
+          - type: INTEGER
+            name: group_by.1.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.1.tag_name
+            value: 'connection_type'
+          - type: INTEGER
+            name: group_by.2.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.2.tag_name
+            value: 'ha_role'
+          - type: INTEGER
+            name: group_by.3.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.3.tag_name
+            value: 'dest_type'
           - type: STRING
             name: items.0
             value: 'Cato WAN *: Connectivity'
@@ -6126,6 +6162,24 @@ zabbix_export:
           - type: STRING
             name: group_by.0.tag_name
             value: 'site'
+          - type: INTEGER
+            name: group_by.1.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.1.tag_name
+            value: 'port_kind'
+          - type: INTEGER
+            name: group_by.2.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.2.tag_name
+            value: 'ha_role'
+          - type: INTEGER
+            name: group_by.3.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.3.tag_name
+            value: 'connection_type'
           - type: STRING
             name: items.0
             value: 'Cato wan port *: Media in'
@@ -6233,6 +6287,12 @@ zabbix_export:
           - type: STRING
             name: group_by.0.tag_name
             value: 'site'
+          - type: INTEGER
+            name: group_by.1.attribute
+            value: '3'
+          - type: STRING
+            name: group_by.1.tag_name
+            value: 'connection_type'
           - type: STRING
             name: items.0
             value: 'Cato site *: HA ready'

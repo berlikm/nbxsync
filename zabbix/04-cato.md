@@ -148,15 +148,17 @@ this template (same-template refs are valid) but are not dumped onto Health.
 |---|---|---|
 | **Health → Overview** | Snapshot / Metrics gauges, **Sites up** / **Sockets up**, problems (tags, site first), full-width **site** honeycomb (names, not serials), census and worst-overlay-loss history | The collector box plus the estate map |
 | **Health → Census** | Discovered vs up counts (sites / Sockets / WAN / SLA), **Degraded** count, worst overlay loss / RTT / last-mile loss / RX util gauges, discovery and connected history | 11 / 21 / 33 / 17 expected; 33 vs 17 is `groupDevices: true` |
-| **Health → Degraded** | Degraded count, site Degraded honeycomb (green=OK / yellow=Degraded), navigator grouped by **site** (reasons, POP, host count, HA) | CMA yellow, not site High |
+| **Health → Degraded** | Degraded count, site Degraded honeycomb (green=OK / yellow=Degraded), navigator grouped by **site → connection_type** (reasons, POP, host count, HA) | CMA yellow, not site High |
 | **Health → API** | GraphQL error and schema-violation tiles, unsupported items, Snapshot/Metrics gauges, error history | Collector failures, not overlay outages |
 | **Path → Overview** | Full-width overlay **loss** honeycomb (yellow at CMA 2%), then RTT and jitter | Overlay quality scan |
 | **Path → Last mile** | Last-mile loss, last-mile latency, RX/TX utilization honeycombs | Underlay toward the Socket, plus WAN fill |
-| **Path → Probe** | Navigator grouped by **site** (loss / RTT / jitter / last-mile / bps / util / discards) plus selected-metric history | Drill-down, not a 51-graph gallery |
+| **Path → Probe** | Navigator grouped by **site → connection_type → dest_type** (loss / RTT / jitter / last-mile / bps / util / discards) plus selected-metric history | Drill-down / tag filter, not a 51-graph gallery |
 | **Network → Overview** | Full-width WAN connectivity (`site / serial / link`) then Socket honeycomb (`site / serial`) | Tunnel and Socket up/down |
-| **Network → Tunnels** | Navigator grouped by **site** for connectivity, tunnel uptime, PoP, dest type, physical port, ISP provider, remote IP | Per-Socket WAN drill-down |
-| **Network → Ports** | WAN vs LAN **mediaIn** honeycombs, navigator grouped by **site** | Physical unplug vs tunnel-down |
-| **Network → HA** | Site HA-ready honeycomb (standalone counts as ready) plus readiness / socket-version / operational-status / Socket uptime navigator grouped by **site** | Pair health without dumping CHAR items onto Overview |
+| **Network → Tunnels** | Navigator grouped by **site → connection_type → ha_role → dest_type** for connectivity, tunnel uptime, PoP, dest type, physical port, ISP provider, remote IP | Per-Socket WAN drill-down |
+| **Network → Ports** | WAN vs LAN **mediaIn** honeycombs, navigator grouped by **site → port_kind → ha_role → connection_type** | Physical unplug vs tunnel-down |
+| **Network → HA** | Site HA-ready honeycomb (standalone counts as ready) plus readiness / socket-version / operational-status / Socket uptime navigator grouped by **site → connection_type** | Pair health without dumping CHAR items onto Overview |
+
+Template **Items** (the ~50 collector keys) only have `component` / `monitoring_domain` / `scope`. Site, `connection_type`, `ha_role`, `port_kind`, and `dest_type` are LLD tags. They show up in host Latest data / Graphs after `--apply-cato` and discovery, and as nested groups on the navigators above. Serial is identity, not a filter.
 
 ## Deployment and rollout
 
