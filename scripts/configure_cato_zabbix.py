@@ -90,6 +90,11 @@ HOST = collector_host()
 VISIBLE_NAME = collector_visible_name()
 SIM_HOST = sim_host()
 CATO_MACROS = host_macros()
+LEGACY_LAN_DISCOVERY_KEY = "cato.lan.port.discovery"
+LEGACY_LAN_ITEM_PREFIXES = (
+    "cato.lan.port.rx.bps[",
+    "cato.lan.port.tx.bps[",
+)
 
 
 def import_rules() -> dict[str, dict[str, bool]]:
@@ -262,6 +267,106 @@ def retire_legacy_usb_port_items(api: ZabbixAPI, hostid: str) -> int:
     return len(itemids)
 
 
+def _legacy_lan_items(api: ZabbixAPI, hostid: str) -> list[dict[str, Any]]:
+    """Return only discovered LAN items emitted by the superseded LLD rule."""
+    items = api.call(
+        "item.get",
+        {
+            "hostids": hostid,
+            "output": ["itemid", "key_", "flags"],
+            "selectDiscoveryRule": ["key_"],
+        },
+    )
+    return sorted(
+        [
+            item
+            for item in items
+            if str(item.get("flags")) == "4"
+            and (item.get("discoveryRule") or {}).get("key_")
+            == LEGACY_LAN_DISCOVERY_KEY
+            and str(item.get("key_", "")).startswith(LEGACY_LAN_ITEM_PREFIXES)
+        ],
+        key=lambda item: int(item["itemid"]),
+    )
+
+
+def _legacy_lan_graphids(
+    api: ZabbixAPI, hostid: str, legacy_itemids: set[str]
+) -> list[str]:
+    """Return generated LAN graphs whose every item belongs to the old LLD."""
+    if not legacy_itemids:
+        return []
+    graphs = api.call(
+        "graph.get",
+        {
+            "hostids": hostid,
+            "output": ["graphid", "name"],
+            "selectGraphItems": "extend",
+            "search": {"name": "Cato LAN "},
+        },
+    )
+    graphids: list[str] = []
+    for graph in graphs:
+        itemids = {
+            str(item["itemid"]) for item in graph.get("gitems") or []
+        }
+        if (
+            str(graph.get("name", "")).startswith("Cato LAN ")
+            and itemids
+            and itemids <= legacy_itemids
+        ):
+            graphids.append(str(graph["graphid"]))
+    return sorted(graphids, key=int)
+
+
+def _legacy_lan_ruleids(api: ZabbixAPI, templateid: str) -> list[str]:
+    rules = api.call(
+        "discoveryrule.get",
+        {
+            "hostids": templateid,
+            "filter": {"key_": [LEGACY_LAN_DISCOVERY_KEY]},
+            "output": ["itemid", "key_"],
+        },
+    )
+    return sorted((str(rule["itemid"]) for rule in rules), key=int)
+
+
+def retire_legacy_lan_port_discovery(
+    api: ZabbixAPI, hostid: str, templateid: str
+) -> tuple[int, int, int]:
+    """Remove the superseded LAN LLD before its duplicate graphs can recur."""
+    ruleids = _legacy_lan_ruleids(api, templateid)
+    if len(ruleids) > 1:
+        raise RuntimeError(
+            "multiple legacy Cato LAN discovery rules found: "
+            f"{ruleids}"
+        )
+    legacy_items = _legacy_lan_items(api, hostid)
+    itemids = {str(item["itemid"]) for item in legacy_items}
+    graphids = _legacy_lan_graphids(api, hostid, itemids)
+
+    if graphids:
+        api.call("graph.delete", graphids)
+    if itemids:
+        api.call("item.delete", sorted(itemids, key=int))
+    if ruleids:
+        api.call("discoveryrule.delete", ruleids)
+
+    remaining_ruleids = _legacy_lan_ruleids(api, templateid)
+    remaining_items = _legacy_lan_items(api, hostid)
+    remaining_graphids = _legacy_lan_graphids(
+        api, hostid, {str(item["itemid"]) for item in remaining_items}
+    )
+    if remaining_ruleids or remaining_items or remaining_graphids:
+        raise RuntimeError(
+            "legacy Cato LAN retirement incomplete: "
+            f"rules={remaining_ruleids} "
+            f"items={[item['itemid'] for item in remaining_items]} "
+            f"graphs={remaining_graphids}"
+        )
+    return len(ruleids), len(graphids), len(itemids)
+
+
 def _owned(host_data: dict[str, Any]) -> bool:
     return any(
         tag.get("tag") == "managed_by" and tag.get("value") == "cato-pack"
@@ -419,6 +524,17 @@ def _template_pack_checks(api: ZabbixAPI, templateid: str) -> list[dict[str, Any
             "Cato template discovery rules", not missing_lld, f"missing={missing_lld}"
         )
     )
+    legacy_lld = sorted(
+        key for key in lld_keys if key == LEGACY_LAN_DISCOVERY_KEY
+    )
+    checks.append(
+        _record(
+            "Cato legacy LAN discovery rule",
+            not legacy_lld,
+            f"present={legacy_lld}",
+        )
+    )
+
 
     graphs = api.call(
         "graphprototype.get", {"hostids": templateid, "output": ["graphid", "name"]}
@@ -769,6 +885,18 @@ def verify_account_host(api: ZabbixAPI, hostid: str) -> list[dict[str, Any]]:
             f"count={len(legacy_usb_itemids)}",
         )
     )
+    legacy_lan_items = _legacy_lan_items(api, hostid)
+    legacy_lan_graphids = _legacy_lan_graphids(
+        api, hostid, {str(item["itemid"]) for item in legacy_lan_items}
+    )
+    checks.append(
+        _record(
+            "Cato legacy LAN graphs and items",
+            not legacy_lan_items and not legacy_lan_graphids,
+            f"items={len(legacy_lan_items)} graphs={len(legacy_lan_graphids)}",
+        )
+    )
+
     return checks
 
 
@@ -1524,9 +1652,17 @@ def apply_cato_pack(
         proxy_group=proxy_group,
     )
     _set_census_macros(api, hostid, live)
-    retired = retire_legacy_usb_port_items(api, hostid)
+    legacy_rules, legacy_graphs, legacy_items = retire_legacy_lan_port_discovery(
+        api, hostid, templateid
+    )
+    retired_usb = retire_legacy_usb_port_items(api, hostid)
     records = [
-        _record("Cato legacy USB port items retired", True, f"count={retired}")
+        _record(
+            "Cato legacy LAN discovery retired",
+            True,
+            f"rules={legacy_rules} graphs={legacy_graphs} items={legacy_items}",
+        ),
+        _record("Cato legacy USB port items retired", True, f"count={retired_usb}"),
     ]
     records.extend(verify_account_host(api, hostid))
     return records

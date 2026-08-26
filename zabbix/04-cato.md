@@ -114,6 +114,11 @@ multiply by eight so LAN RX/TX match WAN overlay units. Utilization % items
 exist when `upstreamBandwidth` / `downstreamBandwidth` caps are > 0
 (treated as Mbps). LAN has no circuit cap on this collector — bits only.
 
+When replacing the older `cato.lan.port.discovery` rule, `--apply-cato`
+removes only that rule's generated LAN items and graphs before the new
+`cato.lan.metrics.discovery` rule runs. The changed item keys intentionally
+start a new LAN history series; the cleanup prevents duplicate graph names.
+
 ## Discovery and signals
 
 All low-level discovery is dependent on one of the two master items and keeps

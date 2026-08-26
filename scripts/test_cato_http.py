@@ -44,6 +44,7 @@ from cato_http import (
 )
 from configure_cato_zabbix import (
     _legacy_usb_port_itemids,
+    retire_legacy_lan_port_discovery,
     retire_legacy_usb_port_items,
 )
 from cato_http_template import char_from_path_js, render_template
@@ -1025,6 +1026,81 @@ class CatoUsbRetirementTests(unittest.TestCase):
         self.assertEqual(_legacy_usb_port_itemids(api, '42'), ['2', '10'])
         self.assertEqual(retire_legacy_usb_port_items(api, '42'), 2)
         self.assertEqual(api.deleted, [['2', '10']])
+
+
+class CatoLegacyLanRetirementTests(unittest.TestCase):
+    class _Api:
+        def __init__(self):
+            self.rules = [{'itemid': '100', 'key_': 'cato.lan.port.discovery'}]
+            self.items = [
+                {
+                    'itemid': '1',
+                    'key_': 'cato.lan.port.rx.bps[10,LAN1]',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'cato.lan.port.discovery'},
+                },
+                {
+                    'itemid': '2',
+                    'key_': 'cato.lan.port.tx.bps[10,LAN1]',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'cato.lan.port.discovery'},
+                },
+                {
+                    'itemid': '3',
+                    'key_': 'cato.lan.rx.bps[10,LAN1]',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'cato.lan.metrics.discovery'},
+                },
+            ]
+            self.graphs = [
+                {
+                    'graphid': '200',
+                    'name': 'Cato LAN Site / LAN1: Bandwidth',
+                    'gitems': [{'itemid': '1'}, {'itemid': '2'}],
+                },
+                {
+                    'graphid': '201',
+                    'name': 'Cato LAN Site / LAN1: New bandwidth',
+                    'gitems': [{'itemid': '3'}],
+                },
+            ]
+
+        def call(self, method, params):
+            if method == 'discoveryrule.get':
+                return list(self.rules)
+            if method == 'item.get':
+                return list(self.items)
+            if method == 'graph.get':
+                return list(self.graphs)
+            if method == 'graph.delete':
+                self.graphs = [
+                    graph for graph in self.graphs if graph['graphid'] not in params
+                ]
+                return {'graphids': params}
+            if method == 'item.delete':
+                self.items = [
+                    item for item in self.items if item['itemid'] not in params
+                ]
+                return {'itemids': params}
+            if method == 'discoveryrule.delete':
+                self.rules = [
+                    rule for rule in self.rules if rule['itemid'] not in params
+                ]
+                return {'itemids': params}
+            raise AssertionError(f'unexpected call {method!r}')
+
+    def test_retires_only_superseded_lan_discovery_objects(self):
+        api = self._Api()
+        self.assertEqual(
+            retire_legacy_lan_port_discovery(api, '42', '99'),
+            (1, 1, 2),
+        )
+        self.assertEqual(api.rules, [])
+        self.assertEqual(
+            [item['key_'] for item in api.items],
+            ['cato.lan.rx.bps[10,LAN1]'],
+        )
+        self.assertEqual([graph['graphid'] for graph in api.graphs], ['201'])
 
 
 class CatoApplyWiringTests(unittest.TestCase):
