@@ -1022,9 +1022,9 @@ zabbix_export:
                   value: '{#IFNAME}'
               trigger_prototypes:
                 - uuid: c70068ca62074fc3896c4a24cca35099
-                  expression: '{$IFCONTROL}=1 and min(/Fortinet FMG-FAZ by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#3)<>1'
+                  expression: '{$IFCONTROL:"{#IFNAME}"}=1 and min(/Fortinet FMG-FAZ by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#3)<>1'
                   recovery_mode: RECOVERY_EXPRESSION
-                  recovery_expression: 'last(/Fortinet FMG-FAZ by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL}=0'
+                  recovery_expression: 'last(/Fortinet FMG-FAZ by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFNAME}"}=0'
                   name: 'Fortinet FMG-FAZ by SNMP: Interface {#IFNAME}: Link down'
                   priority: AVERAGE
                   description: 'Admin-up ethernet not up for 3×1m, including never-up and lowerLayerDown. Unused ports must be admin-down. Mute with {$IFCONTROL:"{#IFNAME}"}=0.'
@@ -1090,7 +1090,7 @@ zabbix_export:
                   value: '{#IFNAME}'
               trigger_prototypes:
                 - uuid: f478f33c19c34849a60881989bf8e550
-                  expression: '{$IFCONTROL}=1 and (min(/Fortinet FMG-FAZ by SNMP/net.if.in.errors[ifInErrors.{#SNMPINDEX}],5m)>{$IF.ERRORS.WARN} or min(/Fortinet FMG-FAZ by SNMP/net.if.out.errors[ifOutErrors.{#SNMPINDEX}],5m)>{$IF.ERRORS.WARN})'
+                  expression: '{$IFCONTROL:"{#IFNAME}"}=1 and (min(/Fortinet FMG-FAZ by SNMP/net.if.in.errors[ifInErrors.{#SNMPINDEX}],5m)>{$IF.ERRORS.WARN} or min(/Fortinet FMG-FAZ by SNMP/net.if.out.errors[ifOutErrors.{#SNMPINDEX}],5m)>{$IF.ERRORS.WARN})'
                   name: 'Fortinet FMG-FAZ by SNMP: Interface {#IFNAME}: High error rate'
                   priority: WARNING
                   description: 'In or out error rate above {$IF.ERRORS.WARN}. Next day.'
@@ -1857,7 +1857,7 @@ zabbix_export:
           description: Warning threshold of in-or-out error rate (errors/s).
         - macro: '{$IFCONTROL}'
           value: '1'
-          description: '1=alert discovered link-down. Context {#IFNAME} to mute.'
+          description: '1=alert discovered link-down. Per-port mute {$IFCONTROL:"{#IFNAME}"}=0 (trigger uses that context). FAZ Observability sets port2/3/4=0.'
         - macro: '{$NET.IF.IFNAME.MATCHES}'
           value: '.*'
           description: Physical mgmt/HA ports. Override per device if needed.

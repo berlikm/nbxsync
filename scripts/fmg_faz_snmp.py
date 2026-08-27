@@ -142,11 +142,20 @@ FORTIANALYZER_PLATFORM_MACROS = {
     '{$FM.ADOM.NAME.NOT_MATCHES}': FAZ_ADOM_FACTORY_NOT_MATCHES,
 }
 
+# Fortinet VMs ship extra NICs admin-up. Mute on the FAZ companion only —
+# FMG CH-STA-P-FWMG01 port2 carries traffic. Trigger uses {$IFCONTROL:"{#IFNAME}"}.
+FAZ_UNUSED_IFCONTROL = {
+    '{$IFCONTROL:"port2"}': '0',
+    '{$IFCONTROL:"port3"}': '0',
+    '{$IFCONTROL:"port4"}': '0',
+}
+
 FORTIANALYZER_TEMPLATE_MACROS = {
     '{$FAZ.LOG.LAG.WARN}': '60',
     '{$FAZ.LOG.LAG.CRIT}': '300',
     '{$FAZ.LIC.GBDAY.MAX}': '0',
     '{$DISK.UTIL.HIGH}': '95',
+    **FAZ_UNUSED_IFCONTROL,
 }
 
 

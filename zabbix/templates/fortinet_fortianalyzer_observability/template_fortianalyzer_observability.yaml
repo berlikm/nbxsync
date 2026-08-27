@@ -135,6 +135,15 @@ zabbix_export:
         - macro: '{$DISK.UTIL.HIGH}'
           value: '95'
           description: FAZ log-disk High. 95 is log-loss territory.
+        - macro: '{$IFCONTROL:"port2"}'
+          value: '0'
+          description: FAZ unused NIC. 0 mutes link-down. Set 1 on the host if this port is live.
+        - macro: '{$IFCONTROL:"port3"}'
+          value: '0'
+          description: FAZ unused NIC. 0 mutes link-down. Set 1 on the host if this port is live.
+        - macro: '{$IFCONTROL:"port4"}'
+          value: '0'
+          description: FAZ unused NIC. 0 mutes link-down. Set 1 on the host if this port is live.
       dashboards:
         - uuid: 8214a207551444d788494defc33f6d74
           name: Logs

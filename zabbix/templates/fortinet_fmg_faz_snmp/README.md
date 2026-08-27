@@ -54,6 +54,7 @@ Operator page: [`../../03-fortinet.md`](../../03-fortinet.md). OIDs: [OID_MAPPIN
 | `{$MEMORY.UTIL.MAX}` | `90` | Memory Average % |
 | `{$DISK.UTIL.WARN}` / `CRIT` | `80` / `90` | Parent disk. FAZ High is on the companion |
 | `{$IF.UTIL.MAX}` | `101` | Util trigger off |
+| `{$IFCONTROL}` | `1` | Link-down. Per-port mute is `{$IFCONTROL:"{#IFNAME}"}=0` (trigger uses context). FAZ Observability sets port2/3/4=0; FMG does not |
 | `{$FM.DEVICE.CONTROL}` | `1` | Ticket managed-device connect-down |
 | `{$FM.DEVICE.EXPECTED}` | `0` | `0` disables census |
 | `{$FM.CONFIG.CONTROL}` | `0` | cfgit owns config drift |

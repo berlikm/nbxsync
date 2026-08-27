@@ -484,7 +484,10 @@ MACRO_HELP = {
     '{$DISK.UTIL.CRIT}': 'Disk Average %. FAZ High lives on FortiAnalyzer Observability.',
     '{$IF.UTIL.MAX}': '101 silences interface util until a commit baseline exists.',
     '{$IF.ERRORS.WARN}': 'Warning threshold of in-or-out error rate (errors/s).',
-    '{$IFCONTROL}': '1=alert discovered link-down. Context {#IFNAME} to mute.',
+    '{$IFCONTROL}': (
+        '1=alert discovered link-down. Per-port mute {$IFCONTROL:"{#IFNAME}"}=0 '
+        '(trigger uses that context). FAZ Observability sets port2/3/4=0.'
+    ),
     '{$NET.IF.IFNAME.MATCHES}': 'Physical mgmt/HA ports. Override per device if needed.',
     '{$NET.IF.IFNAME.NOT_MATCHES}': 'Drop logical overlay ifaces.',
     '{$NET.IF.IFTYPE.MATCHES}': 'ethernetCsmacd only.',
@@ -842,8 +845,8 @@ def emit_if_discovery(doc: Doc) -> None:
         triggers=[
             dict(
                 name=f'{T}: Interface {{#IFNAME}}: Link down',
-                expression=f'{{$IFCONTROL}}=1 and min(/{T}/net.if.status[ifOperStatus.{{#SNMPINDEX}}],#3)<>1',
-                recovery=f'last(/{T}/net.if.status[ifOperStatus.{{#SNMPINDEX}}])=1 or {{$IFCONTROL}}=0',
+                expression=f'{{$IFCONTROL:"{{#IFNAME}}"}}=1 and min(/{T}/net.if.status[ifOperStatus.{{#SNMPINDEX}}],#3)<>1',
+                recovery=f'last(/{T}/net.if.status[ifOperStatus.{{#SNMPINDEX}}])=1 or {{$IFCONTROL:"{{#IFNAME}}"}}=0',
                 priority='AVERAGE',
                 description='Admin-up ethernet not up for 3×1m, including never-up and lowerLayerDown. Unused ports must be admin-down. Mute with {$IFCONTROL:"{#IFNAME}"}=0.',
                 dependencies=HEALTH_DEPS,
@@ -887,7 +890,7 @@ def emit_if_discovery(doc: Doc) -> None:
             dict(
                 name=f'{T}: Interface {{#IFNAME}}: High error rate',
                 expression=(
-                    f'{{$IFCONTROL}}=1 and '
+                    f'{{$IFCONTROL:"{{#IFNAME}}"}}=1 and '
                     f'(min(/{T}/net.if.in.errors[ifInErrors.{{#SNMPINDEX}}],5m)>{{$IF.ERRORS.WARN}} '
                     f'or min(/{T}/net.if.out.errors[ifOutErrors.{{#SNMPINDEX}}],5m)>{{$IF.ERRORS.WARN}})'
                 ),
@@ -1867,6 +1870,9 @@ Operator page: zabbix/03-fortinet.md.
             '{$FAZ.LOG.LAG.CRIT}': 'Log lag Average (seconds).',
             '{$FAZ.LIC.GBDAY.MAX}': '0 disables GB/day license Average. Set to the licensed cap.',
             '{$DISK.UTIL.HIGH}': 'FAZ log-disk High. 95 is log-loss territory.',
+            '{$IFCONTROL:"port2"}': 'FAZ unused NIC. 0 mutes link-down. Set 1 on the host if this port is live.',
+            '{$IFCONTROL:"port3"}': 'FAZ unused NIC. 0 mutes link-down. Set 1 on the host if this port is live.',
+            '{$IFCONTROL:"port4"}': 'FAZ unused NIC. 0 mutes link-down. Set 1 on the host if this port is live.',
         },
     )
     emit_faz_dashboard(doc)

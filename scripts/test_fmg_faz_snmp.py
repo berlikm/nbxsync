@@ -191,7 +191,25 @@ class FmgFazContractTests(unittest.TestCase):
         self.assertIn('fmg.observability.adom.enabled', keys)
         self.assertNotIn('fmg.observability.adom.count', keys)
 
-    def test_faz_logs_board_and_disk_high(self):
+    def test_link_down_uses_ifcontrol_port_context(self):
+        trig = next(t for t in self.parent_triggers if t['name'].endswith('Link down'))
+        self.assertIn('{$IFCONTROL:"{#IFNAME}"}=1', trig['expression'])
+        self.assertNotIn('{$IFCONTROL}=1', trig['expression'])
+        self.assertIn('{$IFCONTROL:"{#IFNAME}"}=0', trig['recovery_expression'])
+        errors = next(t for t in self.parent_triggers if t['name'].endswith('High error rate'))
+        self.assertIn('{$IFCONTROL:"{#IFNAME}"}=1', errors['expression'])
+
+    def test_faz_mutes_unused_nics_fmg_does_not(self):
+        from fmg_faz_snmp import FAZ_UNUSED_IFCONTROL
+
+        faz_macros = {row['macro']: row['value'] for row in self.faz.get('macros') or []}
+        for macro, value in FAZ_UNUSED_IFCONTROL.items():
+            self.assertEqual(faz_macros[macro], value)
+        fmg_macros = {row['macro']: row['value'] for row in self.fmg.get('macros') or []}
+        for macro in FAZ_UNUSED_IFCONTROL:
+            self.assertNotIn(macro, fmg_macros)
+        parent_macros = {row['macro']: row['value'] for row in self.parent.get('macros') or []}
+        self.assertEqual(parent_macros['{$IFCONTROL}'], '1')
         boards = [d['name'] for d in self.faz['dashboards']]
         self.assertEqual(boards, ['Logs'])
         high = [t for t in self.faz_triggers if t['name'].endswith('Log disk is critically full')]

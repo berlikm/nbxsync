@@ -11,7 +11,9 @@ Companion-only gaps: host board **Logs**; log-indexing lag Warning/Average;
 log-disk **High** at `{$DISK.UTIL.HIGH}=95` (log loss — documented exception
 to “High is site only”); licensed GB/day Average once
 `{$FAZ.LIC.GBDAY.MAX}` is set. Factory product ADOMs (FortiMail, FortiWeb, …)
-are excluded on the shared parent (`{$FM.ADOM.NAME.NOT_MATCHES}`). Device
+are excluded on the shared parent (`{$FM.ADOM.NAME.NOT_MATCHES}`). Unused
+factory NICs **port2/3/4** are muted (`{$IFCONTROL:"portN"}=0`); set `1` on
+the host if a FAZ actually uses that port. Device
 connect-down stays on the parent (mute FAZ-native duplicates). Health /
 Hardware / Cluster / Network interfaces come from the nested parent.
 

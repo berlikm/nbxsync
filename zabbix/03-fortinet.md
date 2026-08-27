@@ -406,7 +406,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | HA peer count | **no** until expected is set | Average when `{$FM.HA.EXPECTED}>0` | Pair typically expects 1 |
 | Managed device offline | yes | Average | FGFM down on FMG; log device stopped sending on FAZ. Mute FAZ-native duplicates |
 | Config out-of-sync | **no** | — | Trigger **DISABLED**. cfgit owns drift |
-| Link down (admin-up ethernet) | yes | Average | Unused ports must be **admin-down** (FAZ `S-FortiAnalyzer02`: port2/3/4). FMG `CH-STA-P-FWMG01` port1 **and** port2 carry traffic — do **not** mute port2. Mute `{$IFCONTROL:"portN"}=0` only as a short exception |
+| Link down (admin-up ethernet) | yes | Average | Trigger uses `{$IFCONTROL:"{#IFNAME}"}`. FAZ Observability mutes **port2/3/4** (unused NICs on `S-FortiAnalyzer02`). FMG `CH-STA-P-FWMG01` port1 **and** port2 stay armed. A FAZ that uses port2 sets host `{$IFCONTROL:"port2"}=1`. Prefer admin-down unused ports. |
 | Interface errors | yes | Warning | In **or** out |
 | Sustained util | **no** | dashboard | `{$IF.UTIL.MAX}=101` |
 | Serial / name / firmware changed | yes | Info | Manual close |
@@ -462,7 +462,7 @@ Widget type follows the EXOS rule: gauge = one headline number; item tile = iden
 
 **Devices board (this dump):** Devices **6**, ADOM **disabled**, HA peers **0**, Connect six teal cells, Config six in-sync. Health Overview ICMP/SNMP up, CPU 0 %, uptime ~154 d. Cluster RAID unavailable is a VM. Network map is two live 10 Gbps ports.
 
-**`S-FortiAnalyzer02`** (same factory ADOM list). After the parent exclude, Logs **ADOM archive %** keeps `root` (archive **94.3 %** is a **real** Average — do not mute) plus `others` / `Syslog` / `Unmanaged_Devices`. Serial Warning with a stable `fnSysSerial` was false (`DISCARD_UNCHANGED_HEARTBEAT` 6h vs `nodata(2h)` — discard removed). Unused admin-up NICs are port2/3/4 on **that** FAZ only.
+**`S-FortiAnalyzer02`** (same factory ADOM list). After the parent exclude, Logs **ADOM archive %** keeps `root` (archive **94.3 %** is a **real** Average — do not mute) plus `others` / `Syslog` / `Unmanaged_Devices`. Serial Warning with a stable `fnSysSerial` was false (`DISCARD_UNCHANGED_HEARTBEAT` 6h vs `nodata(2h)` — discard removed). Unused admin-up NICs **port2/3/4** are muted on FortiAnalyzer Observability (`{$IFCONTROL:"portN"}=0`). The parent trigger now reads that context (plain `{$IFCONTROL}` did not). Re-import **Fortinet FMG-FAZ by SNMP** then **FortiAnalyzer Observability**; the three link-down Averages recover. Archive quota critical stays until retention/archive policy frees space.
 
 After Cloud import: ADOM LLD **check-now** on both hosts. Leftover companion item `fmg.observability.adom.count` (`ADOMs`) may remain until deleted in the GUI (`deleteMissing: false`).
 
@@ -503,6 +503,10 @@ Then HostSync the FMG/FAZ hosts (not the FortiGate fleet). Inheritance does not 
 {$DISK.UTIL.CRIT}           = 90
 {$DISK.UTIL.HIGH}           = 95      # FAZ Observability only
 {$IF.UTIL.MAX}              = 101
+{$IFCONTROL}                = 1       # per-port mute {$IFCONTROL:"{#IFNAME}"}
+{$IFCONTROL:"port2"}        = 0       # FAZ Observability only (unused NIC)
+{$IFCONTROL:"port3"}        = 0       # FAZ Observability only
+{$IFCONTROL:"port4"}        = 0       # FAZ Observability only
 {$FM.DEVICE.CONTROL}        = 1
 {$FM.DEVICE.EXPECTED}       = 0       # set after a quiet census
 {$FM.CONFIG.CONTROL}        = 0       # cfgit
