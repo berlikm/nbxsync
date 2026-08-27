@@ -500,7 +500,10 @@ MACRO_HELP = {
     '{$FM.HA.CONTROL}': '1=ticket HA peer down. Standalone default 0.',
     '{$FM.HA.EXPECTED}': '0 disables peer-count census. Pair = 1 peer.',
     '{$FM.ADOM.NAME.MATCHES}': 'ADOM LLD include.',
-    '{$FM.ADOM.NAME.NOT_MATCHES}': 'ADOM LLD exclude.',
+    '{$FM.ADOM.NAME.NOT_MATCHES}': (
+        'Drop factory product ADOMs (FortiMail, FortiWeb, …) on FMG and FAZ. '
+        'Keeps root / others / Syslog / Unmanaged_Devices.'
+    ),
     '{$FM.ADOM.ARCHIVE.WARN}': 'ADOM archive used-% Warning (FAZ).',
     '{$FM.ADOM.ARCHIVE.CRIT}': 'ADOM archive used-% Average (FAZ).',
 }
@@ -1677,7 +1680,15 @@ Operator page: zabbix/03-fortinet.md.
         nested=[T],
     )
     calc(doc, 'Managed devices', 'fmg.observability.device.count', 'last(//fm.device.number)', description='Headline managed-device count for the Devices board.')
-    calc(doc, 'ADOMs', 'fmg.observability.adom.count', 'last(//fm.adom.number)', description='Headline ADOM count.')
+    calc(
+        doc,
+        'ADOM',
+        'fmg.observability.adom.enabled',
+        'last(//fm.adom.enabled)',
+        value_type='UNSIGNED',
+        valuemap='Fortinet FnBoolState',
+        description='Headline ADOM mode (disabled/enabled). MIB slot count stays on the parent.',
+    )
     calc(doc, 'HA peers', 'fmg.observability.ha.peers', 'last(//fm.ha.peer.number)', description='Headline HA peer count.')
     doc.add(3, 'tags:')
     doc.add(4, '- tag: class')
@@ -1694,6 +1705,7 @@ Operator page: zabbix/03-fortinet.md.
     emit_fmg_dashboard(doc)
     doc.add(3, 'valuemaps:')
     vmap(doc, 'Service state', [('0', 'Down'), ('1', 'Up')])
+    vmap(doc, 'Fortinet FnBoolState', [('1', 'disabled'), ('2', 'enabled')])
     return doc
 
 
@@ -1710,9 +1722,9 @@ def emit_fmg_dashboard(doc: Doc) -> None:
     field(doc, 10, 'INTEGER', 'show.0', '2')
     field(doc, 10, 'INTEGER', 'value_bold', '1')
     field(doc, 10, 'INTEGER', 'value_size', '28')
-    widget_xy(doc, 8, 'item', 'ADOMs', x='18', width='18', height='4')
+    widget_xy(doc, 8, 'item', 'ADOM', x='18', width='18', height='4')
     doc.add(9, 'fields:')
-    field(doc, 10, 'ITEM', 'itemid.0', None, item_host=FMG, item_key='fmg.observability.adom.count')
+    field(doc, 10, 'ITEM', 'itemid.0', None, item_host=FMG, item_key='fmg.observability.adom.enabled')
     field(doc, 10, 'INTEGER', 'show.0', '2')
     field(doc, 10, 'INTEGER', 'value_bold', '1')
     field(doc, 10, 'INTEGER', 'value_size', '28')
@@ -1855,10 +1867,6 @@ Operator page: zabbix/03-fortinet.md.
             '{$FAZ.LOG.LAG.CRIT}': 'Log lag Average (seconds).',
             '{$FAZ.LIC.GBDAY.MAX}': '0 disables GB/day license Average. Set to the licensed cap.',
             '{$DISK.UTIL.HIGH}': 'FAZ log-disk High. 95 is log-loss territory.',
-            '{$FM.ADOM.NAME.NOT_MATCHES}': (
-                'Drop FAZ factory product ADOMs (FortiMail, FortiWeb, …). '
-                'Keeps root / others / Syslog / Unmanaged_Devices. FMG parent stays CHANGE_IF_NEEDED.'
-            ),
         },
     )
     emit_faz_dashboard(doc)

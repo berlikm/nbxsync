@@ -135,9 +135,6 @@ zabbix_export:
         - macro: '{$DISK.UTIL.HIGH}'
           value: '95'
           description: FAZ log-disk High. 95 is log-loss territory.
-        - macro: '{$FM.ADOM.NAME.NOT_MATCHES}'
-          value: '^Forti(Analyzer|Authenticator|Cache|Carrier|Client|DDoS|Deceptor|Firewall(Carrier)?|Mail|Manager|NAC|Proxy|Sandbox|Web)$'
-          description: 'Drop FAZ factory product ADOMs (FortiMail, FortiWeb, …). Keeps root / others / Syslog / Unmanaged_Devices. FMG parent stays CHANGE_IF_NEEDED.'
       dashboards:
         - uuid: 8214a207551444d788494defc33f6d74
           name: Logs

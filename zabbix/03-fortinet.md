@@ -406,7 +406,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | HA peer count | **no** until expected is set | Average when `{$FM.HA.EXPECTED}>0` | Pair typically expects 1 |
 | Managed device offline | yes | Average | FGFM down on FMG; log device stopped sending on FAZ. Mute FAZ-native duplicates |
 | Config out-of-sync | **no** | — | Trigger **DISABLED**. cfgit owns drift |
-| Link down (admin-up ethernet) | yes | Average | Unused ports must be **admin-down** (this FAZ: port2/3/4). Mute `{$IFCONTROL:"port2"}=0` only as a short exception |
+| Link down (admin-up ethernet) | yes | Average | Unused ports must be **admin-down** (FAZ `S-FortiAnalyzer02`: port2/3/4). FMG `CH-STA-P-FWMG01` port1 **and** port2 carry traffic — do **not** mute port2. Mute `{$IFCONTROL:"portN"}=0` only as a short exception |
 | Interface errors | yes | Warning | In **or** out |
 | Sustained util | **no** | dashboard | `{$IF.UTIL.MAX}=101` |
 | Serial / name / firmware changed | yes | Info | Manual close |
@@ -437,10 +437,34 @@ After the Observability companion is linked: **Monitoring → Hosts → host →
 |---|---|---|
 | **Health** (parent) | Overview / Hardware / Cluster | ICMP / SNMP / CPU / **Uptime** (same four-tile chrome as EXOS). Fans/PSU/Temp honeycombs. HA mode, RAID, device count |
 | **Network interfaces** (parent) | Overview / Port | Admin-up ethernet map + traffic navigator |
-| **Devices** (FMG companion) | Overview | Managed-device count + FGFM connect honeycomb. Config honeycomb is inventory — cfgit owns tickets |
+| **Devices** (FMG companion) | Overview | Managed-device count + **ADOM** enabled/disabled + FGFM connect honeycomb. Config honeycomb is inventory — cfgit owns tickets. Headline tiles clone parent items (Cloud 7.0 dashboard bind). MIB ADOM *number* stays Latest data (includes factory slots) |
 | **Logs** (FAZ companion) | Overview | Disk gauge, log lag, log rate, GB/day, ADOM archive % (real ADOMs), log-device connect. Headline tiles clone parent items because Cloud 7.0 dashboards can only bind objects owned by this template — Latest data shows both names; that is not extra SNMP |
 
 Widget type follows the EXOS rule: gauge = one headline number; item tile = identity or duration; honeycomb = many similar status cells; graph = trend.
+
+### Production Latest data
+
+**`CH-STA-P-FWMG01`** (FortiManager VM, firmware `v7.6.6-build3654`, serial `FMG-VM0A12000925`). Same factory-ADOM dump as FAZ.
+
+| Signal | Last value | Verdict |
+|---|---|---|
+| ADOM enabled | disabled (1) | **Real.** This manager is not in ADOM mode. All six FortiGates live in `root`. |
+| ADOM number / LLD ADOMs | 19 | MIB slot count: 15 empty factory Forti* product ADOMs + `root` / `others` / `Syslog` / `Unmanaged_Devices`. Parent `{$FM.ADOM.NAME.NOT_MATCHES}` drops the Forti* rows from LLD. The Devices **ADOM** tile is enabled/disabled, not this 19. |
+| ADOM root FortiGate count 15 vs managed devices 6 | 15 vs 6 | `fmAdomDevNumber` tracks VDOMs (`VDOM number` is 15), not chassis. Census on `{$FM.DEVICE.EXPECTED}` after a quiet count of **6**. Do not alert on the ADOM FGT figure. |
+| Factory ADOMs (FortiMail, FortiWeb, …) | 0 FGT / 0 % / 0 logs/s | Empty product slots. Exclude. Keep `root` / `others` / `Syslog` / `Unmanaged_Devices`. |
+| Archive / analytics / ADOM log rate / license GB/day | 0 | FAZ objects on a manager. Expected. Do not alert. |
+| Six devices (CH-STA-FWZone, CH-ZRH-FWCL01, CN-SHA-JIU-L03-FWGW01, HU-DEB-FWGW02, KR-SEL-HAN-L14-FWCL01, NL-ENS-FWGW01) | in-sync, connect up | FGFM healthy. **Devices → Connect** honeycomb is the product page. Config honeycomb is inventory (cfgit). |
+| port1 and port2 | both up, both with traffic | **Do not** admin-down or `{$IFCONTROL:"port2"}=0`. Opposite of FAZ unused NICs. |
+| CPU 0 % / memory 39.6 % / disk 54.8 % | under WARN | No ticket. |
+| RAID unavailable / HA standalone / 0 peers | VM | Silent (`unavailable(0)` is not an alert). |
+| ICMP / SNMP / unsupported item count | Up / Up / 0 | Collection is clean. |
+| Log receive / index / lag | 0 | Same FAZ MIB on FMG. Expected. |
+
+**Devices board (this dump):** Devices **6**, ADOM **disabled**, HA peers **0**, Connect six teal cells, Config six in-sync. Health Overview ICMP/SNMP up, CPU 0 %, uptime ~154 d. Cluster RAID unavailable is a VM. Network map is two live 10 Gbps ports.
+
+**`S-FortiAnalyzer02`** (same factory ADOM list). After the parent exclude, Logs **ADOM archive %** keeps `root` (archive **94.3 %** is a **real** Average — do not mute) plus `others` / `Syslog` / `Unmanaged_Devices`. Serial Warning with a stable `fnSysSerial` was false (`DISCARD_UNCHANGED_HEARTBEAT` 6h vs `nodata(2h)` — discard removed). Unused admin-up NICs are port2/3/4 on **that** FAZ only.
+
+After Cloud import: ADOM LLD **check-now** on both hosts. Leftover companion item `fmg.observability.adom.count` (`ADOMs`) may remain until deleted in the GUI (`deleteMissing: false`).
 
 ### Zero-touch / cutover
 
@@ -488,7 +512,7 @@ Then HostSync the FMG/FAZ hosts (not the FortiGate fleet). Inheritance does not 
 {$FAZ.LOG.LAG.CRIT}         = 300
 {$FAZ.LIC.GBDAY.MAX}        = 0
 {$FM.ADOM.NAME.NOT_MATCHES} = ^Forti(Analyzer|Authenticator|Cache|Carrier|Client|DDoS|Deceptor|Firewall(Carrier)?|Mail|Manager|NAC|Proxy|Sandbox|Web)$
-                              # FAZ companion only — factory empty product ADOMs. FMG parent stays CHANGE_IF_NEEDED.
+                              # Shared parent — factory empty product ADOMs on FMG and FAZ.
 {$NET.IF.IFNAME.NOT_MATCHES}= ^(vlan|ssl|hamgmt|npu|disk)
 ```
 

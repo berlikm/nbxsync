@@ -182,6 +182,14 @@ class FmgFazContractTests(unittest.TestCase):
     def test_fmg_devices_board(self):
         boards = [d['name'] for d in self.fmg['dashboards']]
         self.assertEqual(boards, ['Devices'])
+        devices = next(d for d in self.fmg['dashboards'] if d['name'] == 'Devices')
+        self.assertEqual(
+            _widget_names(devices, 'Overview')[:4],
+            ['Devices', 'ADOM', 'HA peers', 'Problems'],
+        )
+        keys = _collect_keys(self.fmg)
+        self.assertIn('fmg.observability.adom.enabled', keys)
+        self.assertNotIn('fmg.observability.adom.count', keys)
 
     def test_faz_logs_board_and_disk_high(self):
         boards = [d['name'] for d in self.faz['dashboards']]
@@ -192,14 +200,28 @@ class FmgFazContractTests(unittest.TestCase):
         self.assertIn('{$DISK.UTIL.HIGH}', high[0]['expression'])
         self.assertEqual(FORTIANALYZER_TEMPLATE_MACROS['{$DISK.UTIL.HIGH}'], '95')
 
-    def test_faz_excludes_factory_product_adoms(self):
-        from fmg_faz_snmp import FAZ_ADOM_FACTORY_NOT_MATCHES
+    def test_parent_excludes_factory_product_adoms(self):
+        from fmg_faz_snmp import (
+            FM_ADOM_FACTORY_NOT_MATCHES,
+            FORTIANALYZER_PLATFORM_MACROS,
+            FORTIMANAGER_PLATFORM_MACROS,
+        )
 
-        macros = {row['macro']: row['value'] for row in self.faz.get('macros') or []}
-        self.assertEqual(macros['{$FM.ADOM.NAME.NOT_MATCHES}'], FAZ_ADOM_FACTORY_NOT_MATCHES)
         parent_macros = {row['macro']: row['value'] for row in self.parent.get('macros') or []}
-        self.assertEqual(parent_macros['{$FM.ADOM.NAME.NOT_MATCHES}'], 'CHANGE_IF_NEEDED')
-        rx = re.compile(FAZ_ADOM_FACTORY_NOT_MATCHES)
+        self.assertEqual(parent_macros['{$FM.ADOM.NAME.NOT_MATCHES}'], FM_ADOM_FACTORY_NOT_MATCHES)
+        faz_macros = {row['macro']: row['value'] for row in self.faz.get('macros') or []}
+        self.assertNotIn('{$FM.ADOM.NAME.NOT_MATCHES}', faz_macros)
+        fmg_macros = {row['macro']: row['value'] for row in self.fmg.get('macros') or []}
+        self.assertNotIn('{$FM.ADOM.NAME.NOT_MATCHES}', fmg_macros)
+        self.assertEqual(
+            FORTIMANAGER_PLATFORM_MACROS['{$FM.ADOM.NAME.NOT_MATCHES}'],
+            FM_ADOM_FACTORY_NOT_MATCHES,
+        )
+        self.assertEqual(
+            FORTIANALYZER_PLATFORM_MACROS['{$FM.ADOM.NAME.NOT_MATCHES}'],
+            FM_ADOM_FACTORY_NOT_MATCHES,
+        )
+        rx = re.compile(FM_ADOM_FACTORY_NOT_MATCHES)
         for name in (
             'FortiAnalyzer',
             'FortiAuthenticator',

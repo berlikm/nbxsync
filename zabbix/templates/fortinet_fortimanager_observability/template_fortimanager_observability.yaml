@@ -34,13 +34,15 @@ zabbix_export:
           - tag: component
             value: health
       - uuid: 128bebc2a2274948a9fb2e3aaeb052c1
-        name: ADOMs
+        name: ADOM
         type: CALCULATED
-        key: fmg.observability.adom.count
+        key: fmg.observability.adom.enabled
         delay: 1m
-        value_type: FLOAT
-        params: last(//fm.adom.number)
-        description: Headline ADOM count.
+        value_type: UNSIGNED
+        params: last(//fm.adom.enabled)
+        description: Headline ADOM mode (disabled/enabled). MIB slot count stays on the parent.
+        valuemap:
+          name: Fortinet FnBoolState
         tags:
           - tag: component
             value: health
@@ -93,7 +95,7 @@ zabbix_export:
                       name: value_size
                       value: '28'
                 - type: item
-                  name: ADOMs
+                  name: ADOM
                   x: '18'
                   width: '18'
                   height: '4'
@@ -102,7 +104,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: FortiManager Observability
-                        key: fmg.observability.adom.count
+                        key: fmg.observability.adom.enabled
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -248,3 +250,10 @@ zabbix_export:
               newvalue: Down
             - value: '1'
               newvalue: Up
+        - uuid: d9f6a0429256410a8bb121be4e5d6a42
+          name: Fortinet FnBoolState
+          mappings:
+            - value: '1'
+              newvalue: disabled
+            - value: '2'
+              newvalue: enabled

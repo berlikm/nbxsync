@@ -33,7 +33,6 @@ template).
 - Own `icmpping` — ICMP High, SNMP Warning, loss/RTT collected and **DISABLED**
 - Chassis: CPU / memory / disk, firmware, serial (`fnSysSerial`; no discard heartbeat — `nodata(2h)` is real silence)
 - HA / RAID / hardware sensors (native empty LLD tables stay empty on VMs; optional scalar values map not-supported → zero)
-- HA / RAID / hardware sensors (native empty LLD tables stay empty on VMs; optional scalar values map not-supported → zero)
 - IF-MIB admin-up ethernet
 - ADOM + managed-device LLD (connect-down Average; config-sync **DISABLED**, cfgit owns it)
 - Host dashboards **Health** (Overview / Hardware / Cluster) and **Network interfaces**
@@ -61,6 +60,7 @@ Operator page: [`../../03-fortinet.md`](../../03-fortinet.md). OIDs: [OID_MAPPIN
 | `{$FM.HA.CONTROL}` / `EXPECTED` | `0` / `0` | Standalone silent; pair expects `1` peer |
 | `{$UNSUPPORTED.MAX}` | `5` | Average if unsupported items stay above this |
 | `{$NET.IF.IFNAME.NOT_MATCHES}` | `^(vlan\|ssl\|hamgmt\|npu\|disk)` | Drop logical overlay ifaces |
+| `{$FM.ADOM.NAME.NOT_MATCHES}` | factory Forti* product ADOMs | Empty FortiMail/FortiWeb/… rows. Keeps `root` / `others` / `Syslog` / `Unmanaged_Devices` |
 
 ## Coverage
 

@@ -1904,8 +1904,8 @@ zabbix_export:
           value: '.*'
           description: ADOM LLD include.
         - macro: '{$FM.ADOM.NAME.NOT_MATCHES}'
-          value: CHANGE_IF_NEEDED
-          description: ADOM LLD exclude.
+          value: '^Forti(Analyzer|Authenticator|Cache|Carrier|Client|DDoS|Deceptor|Firewall(Carrier)?|Mail|Manager|NAC|Proxy|Sandbox|Web)$'
+          description: 'Drop factory product ADOMs (FortiMail, FortiWeb, …) on FMG and FAZ. Keeps root / others / Syslog / Unmanaged_Devices.'
         - macro: '{$FM.ADOM.ARCHIVE.WARN}'
           value: '80'
           description: 'ADOM archive used-% Warning (FAZ).'

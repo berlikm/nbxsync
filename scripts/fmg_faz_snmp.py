@@ -80,6 +80,14 @@ PARENT_SNMP_EXPR = (
 )
 
 # Template-level defaults. FAZ Observability overrides disk High + log lag.
+# FMG and FAZ both ship empty factory product ADOMs (FortiMail, FortiWeb, …).
+# LLD exclude on the shared parent. Keep root, others, Syslog, Unmanaged_Devices.
+FM_ADOM_FACTORY_NOT_MATCHES = (
+    '^Forti(Analyzer|Authenticator|Cache|Carrier|Client|DDoS|Deceptor|'
+    'Firewall(Carrier)?|Mail|Manager|NAC|Proxy|Sandbox|Web)$'
+)
+FAZ_ADOM_FACTORY_NOT_MATCHES = FM_ADOM_FACTORY_NOT_MATCHES
+
 FMG_FAZ_PARENT_MACROS = {
     '{$ICMP_LOSS_WARN}': '10',
     '{$ICMP_RESPONSE_TIME_WARN}': '0.15',
@@ -107,7 +115,7 @@ FMG_FAZ_PARENT_MACROS = {
     '{$FM.HA.CONTROL}': '0',
     '{$FM.HA.EXPECTED}': '0',
     '{$FM.ADOM.NAME.MATCHES}': '.*',
-    '{$FM.ADOM.NAME.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
+    '{$FM.ADOM.NAME.NOT_MATCHES}': FM_ADOM_FACTORY_NOT_MATCHES,
     '{$FM.ADOM.ARCHIVE.WARN}': '80',
     '{$FM.ADOM.ARCHIVE.CRIT}': '90',
 }
@@ -118,16 +126,8 @@ FORTIMANAGER_PLATFORM_MACROS = {
     '{$FM.HA.CONTROL}': '0',
     '{$FM.HA.EXPECTED}': '0',
     '{$FM.DEVICE.EXPECTED}': '0',
+    '{$FM.ADOM.NAME.NOT_MATCHES}': FM_ADOM_FACTORY_NOT_MATCHES,
 }
-
-# FAZ ships a default ADOM per product type (FortiMail, FortiWeb, …) even when
-# unused. Shared parent keeps CHANGE_IF_NEEDED so FMG is untouched. Override
-# only on the FAZ companion / platform. Keep root, others, Syslog,
-# Unmanaged_Devices.
-FAZ_ADOM_FACTORY_NOT_MATCHES = (
-    '^Forti(Analyzer|Authenticator|Cache|Carrier|Client|DDoS|Deceptor|'
-    'Firewall(Carrier)?|Mail|Manager|NAC|Proxy|Sandbox|Web)$'
-)
 
 FORTIANALYZER_PLATFORM_MACROS = {
     '{$FM.DEVICE.CONTROL}': '1',
@@ -147,7 +147,6 @@ FORTIANALYZER_TEMPLATE_MACROS = {
     '{$FAZ.LOG.LAG.CRIT}': '300',
     '{$FAZ.LIC.GBDAY.MAX}': '0',
     '{$DISK.UTIL.HIGH}': '95',
-    '{$FM.ADOM.NAME.NOT_MATCHES}': FAZ_ADOM_FACTORY_NOT_MATCHES,
 }
 
 
