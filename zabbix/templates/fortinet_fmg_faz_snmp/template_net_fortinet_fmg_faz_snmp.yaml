@@ -112,7 +112,7 @@ zabbix_export:
         type: INTERNAL
         key: 'zabbix[host,,items_unsupported]'
         delay: 15m
-        description: Watch the watcher — missing FMG-FAZ MIB objects look like green health. RAID/sensor LLD maps not-supported to empty so VM appliances stay quiet.
+        description: Watch the watcher — a required FMG-FAZ MIB object must not quietly become green. Optional scalar items map not-supported to zero; optional tables use native empty LLD.
         tags:
           - tag: component
             value: health
@@ -1165,11 +1165,6 @@ zabbix_export:
           enabled_lifetime_type: DISABLE_IMMEDIATELY
           description: 'MIB: fmSensorTable. Empty on VMs (maps to []). State is the alert; value is DisplayString inventory.'
           preprocessing:
-            - type: CHECK_NOT_SUPPORTED
-              parameters:
-                - '-1'
-              error_handler: CUSTOM_VALUE
-              error_handler_params: '[]'
             - type: JAVASCRIPT
               parameters:
                 - |
@@ -1279,11 +1274,6 @@ zabbix_export:
           enabled_lifetime_type: DISABLE_IMMEDIATELY
           description: 'MIB: fmRaidDiskTable. Empty/unavailable on VMs. unused/spare/unavailable are not alerts.'
           preprocessing:
-            - type: CHECK_NOT_SUPPORTED
-              parameters:
-                - '-1'
-              error_handler: CUSTOM_VALUE
-              error_handler_params: '[]'
             - type: JAVASCRIPT
               parameters:
                 - |
@@ -1355,11 +1345,6 @@ zabbix_export:
           enabled_lifetime_type: DISABLE_IMMEDIATELY
           description: 'MIB: fmHaPeerTable. Standalone is empty. {$FM.HA.CONTROL}=0 keeps peer-down silent.'
           preprocessing:
-            - type: CHECK_NOT_SUPPORTED
-              parameters:
-                - '-1'
-              error_handler: CUSTOM_VALUE
-              error_handler_params: '[]'
             - type: JAVASCRIPT
               parameters:
                 - |
@@ -1433,11 +1418,6 @@ zabbix_export:
           enabled_lifetime_type: DISABLE_IMMEDIATELY
           description: 'MIB: fmSysDiskTable (per-volume usage/capacity/IO). Headline disk % remains the scalar.'
           preprocessing:
-            - type: CHECK_NOT_SUPPORTED
-              parameters:
-                - '-1'
-              error_handler: CUSTOM_VALUE
-              error_handler_params: '[]'
             - type: JAVASCRIPT
               parameters:
                 - |
@@ -1803,11 +1783,6 @@ zabbix_export:
           enabled_lifetime_type: DISABLE_IMMEDIATELY
           description: 'MIB: fmSysLogForwardTable. Empty when no log-forward is configured.'
           preprocessing:
-            - type: CHECK_NOT_SUPPORTED
-              parameters:
-                - '-1'
-              error_handler: CUSTOM_VALUE
-              error_handler_params: '[]'
             - type: JAVASCRIPT
               parameters:
                 - |

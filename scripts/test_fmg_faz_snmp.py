@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import unittest
 import uuid
@@ -36,6 +37,7 @@ from fmg_faz_snmp import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+BUILD_TEMPLATE = ROOT / 'zabbix/templates/fortinet_fmg_faz_snmp/build_template.py'
 
 
 def _load(path: Path) -> dict:
@@ -94,6 +96,11 @@ class FmgFazContractTests(unittest.TestCase):
         cls.parent_triggers = _collect_triggers(cls.parent)
         cls.fmg_triggers = _collect_triggers(cls.fmg)
         cls.faz_triggers = _collect_triggers(cls.faz)
+        spec = importlib.util.spec_from_file_location('fmg_faz_build_template', BUILD_TEMPLATE)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        cls.render_scalar = staticmethod(module.q)
 
     def test_names_have_no_slash(self):
         self.assertEqual(FMG_FAZ_SNMP_TEMPLATE, 'Fortinet FMG-FAZ by SNMP')
@@ -201,11 +208,16 @@ class FmgFazContractTests(unittest.TestCase):
             parsed = uuid.UUID(hex=value)
             self.assertEqual(parsed.version, 4, value)
 
-    def test_optional_oids_map_not_supported(self):
+    def test_optional_scalar_oids_map_not_supported(self):
         text = FMG_FAZ_SNMP_YAML.read_text(encoding='utf-8')
         self.assertIn('CHECK_NOT_SUPPORTED', text)
         self.assertIn('fm.raid.state', text)
-        self.assertIn('fm.sensor.discovery', text)
+        self.assertIn('fm.sensor.state[{#SNMPINDEX}]', text)
+
+    def test_discovery_rules_use_lld_supported_preprocessing(self):
+        for rule in self.parent.get('discovery_rules') or []:
+            kinds = [step['type'] for step in rule.get('preprocessing') or []]
+            self.assertEqual(kinds, ['JAVASCRIPT'], rule['name'])
 
     def test_managed_device_offline_is_average(self):
         matches = [
@@ -300,6 +312,11 @@ class FmgFazContractTests(unittest.TestCase):
             for field_name, value in fields:
                 with self.subTest(template=template['name'], field=field_name):
                     self.assertIsInstance(value, str)
+
+    def test_generator_quotes_numeric_textual_scalars(self):
+        for value in ('0', '0.15', '85'):
+            with self.subTest(value=value):
+                self.assertEqual(self.render_scalar(value), f"'{value}'")
 
 if __name__ == '__main__':
     unittest.main()

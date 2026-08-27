@@ -574,7 +574,7 @@ def build_parent() -> Doc:
         'Unsupported item count',
         'zabbix[host,,items_unsupported]',
         delay='15m',
-        description='Watch the watcher — missing FMG-FAZ MIB objects look like green health. RAID/sensor LLD maps not-supported to empty so VM appliances stay quiet.',
+        description='Watch the watcher — a required FMG-FAZ MIB object must not quietly become green. Optional scalar items map not-supported to zero; optional tables use native empty LLD.',
         triggers=[
             dict(
                 name=f'{T}: Too many unsupported items',
@@ -765,7 +765,7 @@ def emit_discovery(doc: Doc) -> None:
     emit_logfwd_discovery(doc)
 
 
-def discovery_head(doc: Doc, name: str, oid: str, key: str, delay: str, description: str, js: str, ns_empty: bool = True) -> None:
+def discovery_head(doc: Doc, name: str, oid: str, key: str, delay: str, description: str, js: str) -> None:
     doc.add(4, '- uuid: ' + uid())
     doc.add(5, f'name: {q(name)}')
     doc.add(5, 'type: SNMP_AGENT')
@@ -778,12 +778,6 @@ def discovery_head(doc: Doc, name: str, oid: str, key: str, delay: str, descript
     doc.add(5, 'enabled_lifetime_type: DISABLE_IMMEDIATELY')
     doc.add(5, f'description: {q(description)}')
     doc.add(5, 'preprocessing:')
-    if ns_empty:
-        doc.add(6, '- type: CHECK_NOT_SUPPORTED')
-        doc.add(7, 'parameters:')
-        doc.add(8, "- '-1'")
-        doc.add(7, 'error_handler: CUSTOM_VALUE')
-        doc.add(7, "error_handler_params: '[]'")
     doc.add(6, '- type: JAVASCRIPT')
     doc.add(7, 'parameters:')
     doc.add(8, '- |')
@@ -805,7 +799,6 @@ def emit_if_discovery(doc: Doc) -> None:
         '1h',
         'Admin-up ethernet only. Unused ports must be admin-down. Mute with {$IFCONTROL:"{#IFNAME}"}=0.',
         lld_fill_js(['{#IFNAME}', '{#IFTYPE}', '{#IFADMINSTATUS}', '{#IFOPERSTATUS}', '{#IFALIAS}']),
-        ns_empty=False,
     )
     doc.add(5, 'filter:')
     doc.add(6, 'evaltype: AND')
@@ -1155,7 +1148,6 @@ def emit_adom_discovery(doc: Doc) -> None:
         '1h',
         'MIB: fmAdomTable. Inventory + FAZ archive/analytics used %. Config drift is cfgit, not these items.',
         lld_fill_js(['{#FM.ADOM.NAME}', '{#FM.ADOM.STATE}', '{#FM.ADOM.FGT}']),
-        ns_empty=False,
     )
     doc.add(5, 'filter:')
     doc.add(6, 'evaltype: AND')
@@ -1269,7 +1261,6 @@ def emit_device_discovery(doc: Doc) -> None:
                 '{#FM.DEVICE.CONFIG}',
             ]
         ),
-        ns_empty=False,
     )
     doc.add(5, 'filter:')
     doc.add(6, 'evaltype: AND')

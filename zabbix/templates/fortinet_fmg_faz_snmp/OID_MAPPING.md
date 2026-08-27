@@ -6,8 +6,10 @@ MIB: `zabbix/mibs/FORTINET-FORTIMANAGER-FORTIANALYZER-MIB-build3737.mib`
 MIB.
 
 There is no official Zabbix template to remap against ([ZBXNEXT-10433](https://support.zabbix.com/browse/ZBXNEXT-10433)).
-Optional objects (RAID, sensors, log rate, HA on standalone/VMs) use
-`CHECK_NOT_SUPPORTED` → `0` or `[]` so appliances stay quiet.
+Optional scalar objects (RAID, sensors, log rate, HA on standalone/VMs) use
+`CHECK_NOT_SUPPORTED` → `0`. Discovery rules use only Zabbix 7-supported LLD
+preprocessing: native empty table walks return `[]`; an unsupported OID remains
+an explicit discovery error rather than fabricated empty data.
 
 Base: `FM = 1.3.6.1.4.1.12356.103`.
 
@@ -75,5 +77,6 @@ Base: `FM = 1.3.6.1.4.1.12356.103`.
 ## Test matrix
 
 Every SNMP OID must pass `snmpget`/`snmpwalk` against a live FMG and FAZ
-before the item is considered verified. VMs commonly omit RAID and sensors —
-those walks must return not-supported (template maps that) not a red trigger.
+before the item is considered verified. VMs commonly have empty RAID and sensor
+tables; an empty walk must return `[]`. An unsupported OID is a discovery error
+to investigate, not synthetic inventory.

@@ -32,7 +32,7 @@ template).
 
 - Own `icmpping` — ICMP High, SNMP Warning, loss/RTT collected and **DISABLED**
 - Chassis: CPU / memory / disk, firmware, serial (`fnSysSerial`), uptime
-- HA / RAID / hardware sensors (optional OIDs map not-supported → empty so VMs stay quiet)
+- HA / RAID / hardware sensors (native empty LLD tables stay empty on VMs; optional scalar values map not-supported → zero)
 - IF-MIB admin-up ethernet
 - ADOM + managed-device LLD (connect-down Average; config-sync **DISABLED**, cfgit owns it)
 - Host dashboards **Health** (Overview / Hardware / Cluster) and **Network interfaces**
