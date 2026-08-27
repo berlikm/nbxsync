@@ -361,7 +361,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 |---|---|---|
 | MSSQL by Zabbix agent 2 | Device Role MSSQL | |
 | MSSQL by Zabbix agent 2 | Device Role MSSQL Query Server | |
-| MSSQL Observability | Device Role MSSQL, MSSQL Query Server | Companion named-instance LLD plus per-instance database/backup inventories. Zerotouch assigns **only after** YAML import; the inventory feature requires no nbxsync change |
+| MSSQL Observability | Device Role MSSQL, MSSQL Query Server | Companion named-instance LLD plus flattened per-database / AG local-DB items. `--apply-mssql` imports the YAML; zerotouch then soft-assigns if the template exists. Do not nest stock, do not put instance names in NetBox |
 | VMware FQDN | Device Role vCenter | **Only** on vCenter — not on ESXi platforms. Secrets via §11.3 |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if no platform rule matches |
@@ -636,7 +636,7 @@ Username format: `<SSO_DOMAIN>\LogicMonitor` (e.g. `VCENTER-SSO.SENSIRION\LogicM
 
 #### MSSQL (Agent 2; URI + per-host login)
 
-Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}`, not ODBC DSN. Set URI once on the role. Put the password (and user if the login name is not fleet-wide) on the **Device or VM**. Do **not** create `{$MSSQL.DSN:"PITDV02"}` context rows — Agent 2 does not read DSN, and named instances are LLD on the host ([notes/mssql-agent2-instances.md](../../zabbix/notes/mssql-agent2-instances.md)). Import companion **MSSQL Observability** for `MSSQL$*` instances; it retains and exposes each named instance’s database/recovery-model and backup-age inventories in Latest data, with no nbxsync code or scheduled collector.
+Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}`, not ODBC DSN. Set URI once on the role. Put the password (and user if the login name is not fleet-wide) on the **Device or VM**. Do **not** create `{$MSSQL.DSN:"PITDV02"}` context rows — Agent 2 does not read DSN, and named instances (and their databases / Always On local DBs) are LLD on the host ([notes/mssql-agent2-instances.md](../../zabbix/notes/mssql-agent2-instances.md)). Import companion **MSSQL Observability** (`--apply-mssql` or the YAML) and link it **next to** stock. Backup `{$MSSQL.BACKUP_*.USED}` stays **1** on every environment — do not mute Test/Dev on the role.
 
 | Macro | Target | Type | Value |
 |---|---|---|---|
@@ -645,7 +645,7 @@ Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSS
 | `{$MSSQL.PASSWORD}` | Device (per MSSQL host) | Secret | that host’s password |
 | `{$MSSQL.INSTANCE.DISCOVERY.MIN}` | Device, optional | Text | e.g. `5` on a named-instance box; template default `0` |
 
-Leftover role `{$MSSQL.DSN}` is ODBC-era; ignore for Agent 2. Companion filters `{$MSSQL.INSTANCE.MATCHES}` / `NOT_MATCHES` stay on the **template**, not in NetBox.
+Leftover role `{$MSSQL.DSN}` is ODBC-era; ignore for Agent 2. Companion filters `{$MSSQL.INSTANCE.MATCHES}` / `NOT_MATCHES` stay on the **template**, not in NetBox. Do not mute Test/Dev with `{$MSSQL.BACKUP_*.USED}=0` on the role.
 
 #### Huawei SAN01 (CG Host Interface — not a macro)
 

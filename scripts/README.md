@@ -9,12 +9,12 @@ If a script and that document disagree, **fix the script or the document so they
 | Order | Script | Applies |
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
-| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-fmg-faz` / `--check-fmg-faz` import **Fortinet FMG-FAZ by SNMP** plus Observability companions, split FortiManager / FortiAnalyzer platform rules, and disable leftover Network Generic — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. None of those flags HostSync. |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-fmg-faz` / `--check-fmg-faz` import **Fortinet FMG-FAZ by SNMP** plus Observability companions, split FortiManager / FortiAnalyzer platform rules, and disable leftover Network Generic — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. `--apply-mssql` / `--check-mssql` import **MSSQL Observability** and assign it on roles MSSQL / MSSQL Query Server next to stock Agent 2 — **do not re-run zerotouch** for that. None of those flags HostSync. |
 | — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** and **Network interfaces** ship from platform templates/runtime patch |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
 | — | `validate_extreme_templates.py` | YAML contract + optional `--zabbix` double-import |
-| — | `test_mssql_observability.py` | MSSQL Observability named-instance and database/backup-inventory fixtures + YAML contract (no live SQL) |
+| — | `test_mssql_observability.py` | MSSQL Observability WMI fixtures, flattened DB/AG LLD contract, YAML rebuild (no live SQL) |
 | — | `zabbix_api.py` | Shared JSON-RPC helper |
 | — | `configure_cato_zabbix.py` | Zabbix-API implementation for the Cato collector (lab `--simulate`, used by `--apply-cato`). Never manages NetBox Socket hosts |
 
@@ -72,6 +72,27 @@ platform Template Rules **FortiManager** / **FortiAnalyzer**, and disables
 leftover **FortiAnalyzer/Manager** → Network Generic. No HostSync, no Extreme
 import, no FortiOS retarget. Then HostSync the FMG/FAZ hosts. If zerotouch is
 re-run by mistake, run `--apply-fmg-faz` again.
+
+## MSSQL Observability (named instances)
+
+Stock **MSSQL by Zabbix agent 2** stays on roles **MSSQL** / **MSSQL Query
+Server** (zerotouch). Import the companion with the network script:
+
+```bash
+python3 scripts/configure_nbxsync_network.py --check-mssql
+python3 scripts/configure_nbxsync_network.py --apply-mssql
+```
+
+That fail-closes if stock Agent 2 is missing in Zabbix, imports **MSSQL
+Observability**, and assigns it on those roles **alongside** stock. No
+HostSync, no Extreme import. Zerotouch may soft-assign the companion later
+if the YAML is already in Cloud — it does not import the YAML. Then HostSync
+a default-only canary and a named-instance canary. Flattened database / AG
+local-DB LLD is in this YAML.
+
+For a first UI test, import
+`zabbix/templates/mssql_observability/template_mssql_observability.yaml`
+and link it next to stock on one host.
 
 ```bash
 python3 scripts/validate_extreme_templates.py --zabbix   # lab: YAML contract + double import
