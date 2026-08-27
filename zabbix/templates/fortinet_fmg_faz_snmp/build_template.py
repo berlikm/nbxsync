@@ -1855,6 +1855,10 @@ Operator page: zabbix/03-fortinet.md.
             '{$FAZ.LOG.LAG.CRIT}': 'Log lag Average (seconds).',
             '{$FAZ.LIC.GBDAY.MAX}': '0 disables GB/day license Average. Set to the licensed cap.',
             '{$DISK.UTIL.HIGH}': 'FAZ log-disk High. 95 is log-loss territory.',
+            '{$FM.ADOM.NAME.NOT_MATCHES}': (
+                'Drop FAZ factory product ADOMs (FortiMail, FortiWeb, …). '
+                'Keeps root / others / Syslog / Unmanaged_Devices. FMG parent stays CHANGE_IF_NEEDED.'
+            ),
         },
     )
     emit_faz_dashboard(doc)

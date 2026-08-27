@@ -10,8 +10,9 @@ Generic role **Firewall** does not get this template.
 Companion-only gaps: host board **Logs**; log-indexing lag Warning/Average;
 log-disk **High** at `{$DISK.UTIL.HIGH}=95` (log loss — documented exception
 to “High is site only”); licensed GB/day Average once
-`{$FAZ.LIC.GBDAY.MAX}` is set. Device connect-down stays on the parent (mute
-FAZ-native duplicates). Health / Hardware / Cluster / Network interfaces come
-from the nested parent.
+`{$FAZ.LIC.GBDAY.MAX}` is set. Factory product ADOMs (FortiMail, FortiWeb, …)
+are excluded (`{$FM.ADOM.NAME.NOT_MATCHES}` on this companion only). Device
+connect-down stays on the parent (mute FAZ-native duplicates). Health /
+Hardware / Cluster / Network interfaces come from the nested parent.
 
 Operator page: [`../../03-fortinet.md`](../../03-fortinet.md).

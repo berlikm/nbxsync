@@ -438,7 +438,7 @@ After the Observability companion is linked: **Monitoring → Hosts → host →
 | **Health** (parent) | Overview / Hardware / Cluster | ICMP / SNMP / CPU / **Uptime** (same four-tile chrome as EXOS). Fans/PSU/Temp honeycombs. HA mode, RAID, device count |
 | **Network interfaces** (parent) | Overview / Port | Admin-up ethernet map + traffic navigator |
 | **Devices** (FMG companion) | Overview | Managed-device count + FGFM connect honeycomb. Config honeycomb is inventory — cfgit owns tickets |
-| **Logs** (FAZ companion) | Overview | Disk gauge, log lag, log rate, GB/day, ADOM archive %, log-device connect |
+| **Logs** (FAZ companion) | Overview | Disk gauge, log lag, log rate, GB/day, ADOM archive % (real ADOMs), log-device connect. Headline tiles clone parent items because Cloud 7.0 dashboards can only bind objects owned by this template — Latest data shows both names; that is not extra SNMP |
 
 Widget type follows the EXOS rule: gauge = one headline number; item tile = identity or duration; honeycomb = many similar status cells; graph = trend.
 
@@ -487,6 +487,8 @@ Then HostSync the FMG/FAZ hosts (not the FortiGate fleet). Inheritance does not 
 {$FAZ.LOG.LAG.WARN}         = 60
 {$FAZ.LOG.LAG.CRIT}         = 300
 {$FAZ.LIC.GBDAY.MAX}        = 0
+{$FM.ADOM.NAME.NOT_MATCHES} = ^Forti(Analyzer|Authenticator|Cache|Carrier|Client|DDoS|Deceptor|Firewall(Carrier)?|Mail|Manager|NAC|Proxy|Sandbox|Web)$
+                              # FAZ companion only — factory empty product ADOMs. FMG parent stays CHANGE_IF_NEEDED.
 {$NET.IF.IFNAME.NOT_MATCHES}= ^(vlan|ssl|hamgmt|npu|disk)
 ```
 

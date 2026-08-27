@@ -120,6 +120,15 @@ FORTIMANAGER_PLATFORM_MACROS = {
     '{$FM.DEVICE.EXPECTED}': '0',
 }
 
+# FAZ ships a default ADOM per product type (FortiMail, FortiWeb, …) even when
+# unused. Shared parent keeps CHANGE_IF_NEEDED so FMG is untouched. Override
+# only on the FAZ companion / platform. Keep root, others, Syslog,
+# Unmanaged_Devices.
+FAZ_ADOM_FACTORY_NOT_MATCHES = (
+    '^Forti(Analyzer|Authenticator|Cache|Carrier|Client|DDoS|Deceptor|'
+    'Firewall(Carrier)?|Mail|Manager|NAC|Proxy|Sandbox|Web)$'
+)
+
 FORTIANALYZER_PLATFORM_MACROS = {
     '{$FM.DEVICE.CONTROL}': '1',
     '{$FM.CONFIG.CONTROL}': '0',
@@ -130,6 +139,7 @@ FORTIANALYZER_PLATFORM_MACROS = {
     '{$FAZ.LOG.LAG.CRIT}': '300',
     '{$FAZ.LIC.GBDAY.MAX}': '0',
     '{$DISK.UTIL.HIGH}': '95',
+    '{$FM.ADOM.NAME.NOT_MATCHES}': FAZ_ADOM_FACTORY_NOT_MATCHES,
 }
 
 FORTIANALYZER_TEMPLATE_MACROS = {
@@ -137,6 +147,7 @@ FORTIANALYZER_TEMPLATE_MACROS = {
     '{$FAZ.LOG.LAG.CRIT}': '300',
     '{$FAZ.LIC.GBDAY.MAX}': '0',
     '{$DISK.UTIL.HIGH}': '95',
+    '{$FM.ADOM.NAME.NOT_MATCHES}': FAZ_ADOM_FACTORY_NOT_MATCHES,
 }
 
 

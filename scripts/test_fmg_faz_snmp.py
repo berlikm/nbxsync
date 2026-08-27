@@ -192,6 +192,35 @@ class FmgFazContractTests(unittest.TestCase):
         self.assertIn('{$DISK.UTIL.HIGH}', high[0]['expression'])
         self.assertEqual(FORTIANALYZER_TEMPLATE_MACROS['{$DISK.UTIL.HIGH}'], '95')
 
+    def test_faz_excludes_factory_product_adoms(self):
+        from fmg_faz_snmp import FAZ_ADOM_FACTORY_NOT_MATCHES
+
+        macros = {row['macro']: row['value'] for row in self.faz.get('macros') or []}
+        self.assertEqual(macros['{$FM.ADOM.NAME.NOT_MATCHES}'], FAZ_ADOM_FACTORY_NOT_MATCHES)
+        parent_macros = {row['macro']: row['value'] for row in self.parent.get('macros') or []}
+        self.assertEqual(parent_macros['{$FM.ADOM.NAME.NOT_MATCHES}'], 'CHANGE_IF_NEEDED')
+        rx = re.compile(FAZ_ADOM_FACTORY_NOT_MATCHES)
+        for name in (
+            'FortiAnalyzer',
+            'FortiAuthenticator',
+            'FortiCache',
+            'FortiCarrier',
+            'FortiClient',
+            'FortiDDoS',
+            'FortiDeceptor',
+            'FortiFirewall',
+            'FortiFirewallCarrier',
+            'FortiMail',
+            'FortiManager',
+            'FortiNAC',
+            'FortiProxy',
+            'FortiSandbox',
+            'FortiWeb',
+        ):
+            self.assertTrue(rx.fullmatch(name), name)
+        for name in ('root', 'others', 'Syslog', 'Unmanaged_Devices', 'CH-STA'):
+            self.assertIsNone(rx.fullmatch(name), name)
+
     def test_faz_triggers_gate_on_inherited_parent_health(self):
         icmp_gate = f'max(/{FORTIANALYZER_OBSERVABILITY_TEMPLATE}/icmpping,#3)=1'
         snmp_gate = (
