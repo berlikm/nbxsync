@@ -322,12 +322,8 @@ zabbix_export:
         value_type: CHAR
         history: 7d
         trends: '0'
-        description: 'MIB: FORTINET-CORE-MIB fnSysSerial.'
+        description: 'MIB: FORTINET-CORE-MIB fnSysSerial. Do not DISCARD_UNCHANGED longer than nodata(2h) — a stable serial looked missing.'
         inventory_link: SERIALNO_A
-        preprocessing:
-          - type: DISCARD_UNCHANGED_HEARTBEAT
-            parameters:
-              - 6h
         tags:
           - tag: component
             value: system

@@ -311,6 +311,16 @@ class FmgFazContractTests(unittest.TestCase):
             self.assertIsInstance(value, str, name)
             self.assertRegex(str(value), r'^now')
 
+    def test_serial_nodata_is_not_on_a_discard_heartbeat(self):
+        serial = next(i for i in self.parent['items'] if i['key'] == 'system.hw.serialnumber')
+        dumped = str(serial.get('preprocessing') or [])
+        self.assertNotIn('DISCARD_UNCHANGED_HEARTBEAT', dumped)
+        names = {t['name'] for t in serial.get('triggers') or []}
+        self.assertTrue(any('Serial number is missing' in n for n in names))
+        missing = next(t for t in serial['triggers'] if 'Serial number is missing' in t['name'])
+        self.assertIn('nodata(', missing['expression'])
+        self.assertIn('2h', missing['expression'])
+
     def test_rule_specs_and_platforms(self):
         specs = fmg_faz_rule_specs()
         self.assertEqual(specs[0][0], FMG_TEMPLATE_RULE)

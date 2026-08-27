@@ -406,7 +406,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | HA peer count | **no** until expected is set | Average when `{$FM.HA.EXPECTED}>0` | Pair typically expects 1 |
 | Managed device offline | yes | Average | FGFM down on FMG; log device stopped sending on FAZ. Mute FAZ-native duplicates |
 | Config out-of-sync | **no** | — | Trigger **DISABLED**. cfgit owns drift |
-| Link down (admin-up ethernet) | yes | Average | Unused ports must be admin-down. Mute `{$IFCONTROL:"{#IFNAME}"}=0` |
+| Link down (admin-up ethernet) | yes | Average | Unused ports must be **admin-down** (this FAZ: port2/3/4). Mute `{$IFCONTROL:"port2"}=0` only as a short exception |
 | Interface errors | yes | Warning | In **or** out |
 | Sustained util | **no** | dashboard | `{$IF.UTIL.MAX}=101` |
 | Serial / name / firmware changed | yes | Info | Manual close |

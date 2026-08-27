@@ -31,7 +31,8 @@ template).
 ## What this parent owns
 
 - Own `icmpping` — ICMP High, SNMP Warning, loss/RTT collected and **DISABLED**
-- Chassis: CPU / memory / disk, firmware, serial (`fnSysSerial`), uptime
+- Chassis: CPU / memory / disk, firmware, serial (`fnSysSerial`; no discard heartbeat — `nodata(2h)` is real silence)
+- HA / RAID / hardware sensors (native empty LLD tables stay empty on VMs; optional scalar values map not-supported → zero)
 - HA / RAID / hardware sensors (native empty LLD tables stay empty on VMs; optional scalar values map not-supported → zero)
 - IF-MIB admin-up ethernet
 - ADOM + managed-device LLD (connect-down Average; config-sync **DISABLED**, cfgit owns it)
