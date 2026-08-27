@@ -1,0 +1,556 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 748ad4d098d447d492bb935c907f652f
+      name: Templates/Databases
+  templates:
+    - uuid: a8c4e91b2d7f4063b15a9e0c4d6f82a1
+      template: MSSQL Observability
+      name: MSSQL Observability
+      description: |
+        Estate companion for stock MSSQL by Zabbix agent 2. Link **alongside** stock on
+        roles MSSQL / MSSQL Query Server — do not nest stock (that would still be one
+        {$MSSQL.URI}). Stock keeps the default instance
+        (sqlserver://localhost:1433). This template LLD-discovers named Windows
+        instances (MSSQL$%) via WMI and calls the Agent 2 MSSQL plugin with
+        sqlserver://localhost/{#MSSQL.INSTANCE} (no port; plugin ≥ 7.0.6, template requires plugin ≥ 7.0.10).
+        
+        v1 is instance-level: ping, version, sparse perfcounters, job/backup/db
+        masters, database count. Per-database LLD on named instances is v2 (Zabbix
+        cannot nest discovery-under-discovery on the same host).
+        
+        Do not reuse the Windows-by-agent service LLD key. Do not nest ICMP or
+        invent host prototypes. Do not put instance names in NetBox.
+        
+        Operator spec: zabbix/notes/mssql-agent2-instances.md.
+      groups:
+        - name: Templates/Databases
+      items:
+      - uuid: c80fe2af9ac250d39bf68d5a90fd8372
+        name: Named instance WMI
+        key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL$%''"]'
+        delay: 15m
+        value_type: TEXT
+        history: '0'
+        trends: '0'
+        timeout: 30s
+        description: 'Win32_Service rows matching MSSQL$% (named instances only). MSSQLSERVER has no dollar and stays on stock. Not-supported becomes empty LLD.'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '[]'
+          - type: JAVASCRIPT
+            parameters:
+              - |
+                try {
+                	var data = JSON.parse(value);
+                } catch (error) {
+                	return '[]';
+                }
+                if (data == null || data === '') {
+                	return '[]';
+                }
+                if (!Array.isArray(data)) {
+                	data = [data];
+                }
+                var out = [];
+                for (var i = 0; i < data.length; i++) {
+                	var row = data[i] || {};
+                	var name = String(row.Name || row.name || '');
+                	if (name.indexOf('MSSQL$') !== 0) {
+                		continue;
+                	}
+                	var instance = name.substring(6);
+                	if (!instance) {
+                		continue;
+                	}
+                	out.push({
+                		'{#MSSQL.SERVICE}': name,
+                		'{#MSSQL.INSTANCE}': instance,
+                		'{#MSSQL.URI}': 'sqlserver://localhost/' + instance,
+                		'{#MSSQL.DISPLAY}': String(row.DisplayName || row.displayname || name)
+                	});
+                }
+                return JSON.stringify(out);
+          - type: DISCARD_UNCHANGED_HEARTBEAT
+            parameters:
+              - 1h
+        tags:
+          - tag: component
+            value: raw
+      - uuid: b0dddcb0579452359f0685b4d295c817
+        name: Named instances
+        type: DEPENDENT
+        key: mssql.observability.instance.count
+        delay: '0'
+        value_type: FLOAT
+        description: 'Count of MSSQL$% services from WMI (before LLD filters).'
+        master_item:
+          key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL$%''"]'
+        preprocessing:
+          - type: JSONPATH
+            parameters:
+              - $.length()
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: health
+        triggers:
+          - uuid: abb0f37f3fcc59dfb92acd7be42c0111
+            expression: 'last(/MSSQL Observability/mssql.observability.instance.count)<{$MSSQL.INSTANCE.DISCOVERY.MIN} and {$MSSQL.INSTANCE.DISCOVERY.MIN}>0'
+            name: 'MSSQL Observability: Named instance count unexpected'
+            priority: AVERAGE
+            description: 'Named-instance census. Default MIN=0 so default-only hosts stay quiet. Set {$MSSQL.INSTANCE.DISCOVERY.MIN} on the Device when you expect N instances.'
+            tags:
+              - tag: scope
+                value: availability
+      discovery_rules:
+        - uuid: 1a245c2bf3c15f198b58bb618b0848a8
+          name: Named instance discovery
+          type: DEPENDENT
+          key: mssql.observability.instance.discovery
+          delay: '0'
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#MSSQL.INSTANCE}'
+                value: '{$MSSQL.INSTANCE.MATCHES}'
+                formulaid: A
+              - macro: '{#MSSQL.INSTANCE}'
+                value: '{$MSSQL.INSTANCE.NOT_MATCHES}'
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+          description: Named SQL Server instances (MSSQL$%). Default instance is stock.
+          master_item:
+            key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL$%''"]'
+          item_prototypes:
+            - uuid: 3d227da20a865f1cbe798e93d18c47aa
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Ping'
+              key: 'mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 1m
+              timeout: 30s
+              description: Plugin TDS ping for this named instance (1=alive). Not TCP 1433.
+              valuemap:
+                name: Service state
+              tags:
+                - tag: component
+                  value: availability
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+              trigger_prototypes:
+                - uuid: 646e062bbe9153399b92ffd52cdfae16
+                  expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                  priority: AVERAGE
+                  description: Named instance is not answering TDS. Windows already tickets a stopped MSSQL$ service. This is login/URI/Browser/plugin — not Disaster.
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: 9f8d12eba7ca5021b0b4cfc62cef055f
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Version'
+              key: 'mssql.version["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 1m
+              value_type: CHAR
+              trends: '0'
+              timeout: 30s
+              description: SQL Server version string for this named instance.
+              preprocessing:
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                - tag: component
+                  value: application
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+              trigger_prototypes:
+                - uuid: a2f2bce819d85034a8296565160a8cfb
+                  expression: 'nodata(/MSSQL Observability/mssql.version["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],15m)=1'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: no version data for 15m'
+                  priority: AVERAGE
+                  description: No version for 15m — login missing on this instance, plugin, or Browser/port. Depends on TDS unavailable so a down instance is one ticket.
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: b4e3bebf44185623bf236f460dc5cd23
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Get performance counters'
+              key: 'mssql.perfcounter.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: '0;m0-59'
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              timeout: 30s
+              description: Sparse perfcounter master for this named instance (not the full stock pack).
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: 5b3d5559754e52f1a9cdbea7ca823651
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Buffer Manager counters'
+              type: DEPENDENT
+              key: 'mssql.observability.buffer_manager.raw[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              master_item:
+                key: 'mssql.perfcounter.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.object_name=~''.*Buffer Manager'')]'
+                  error_handler: DISCARD_VALUE
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: 50cbba5791ee5116aa65c6cbe0798b61
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: SQL Statistics counters'
+              type: DEPENDENT
+              key: 'mssql.observability.sql_statistics.raw[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              master_item:
+                key: 'mssql.perfcounter.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.object_name=~''.*SQL Statistics'')]'
+                  error_handler: DISCARD_VALUE
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: e504cd51b0ee5f779bf7556158b321e7
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Locks counters'
+              type: DEPENDENT
+              key: 'mssql.observability.locks.raw[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              master_item:
+                key: 'mssql.perfcounter.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.object_name=~''.*Locks'' && @.instance_name==''_Total'')]'
+                  error_handler: DISCARD_VALUE
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: e1fa7e11bdec522fafee53b8b6722c84
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Buffer cache hit ratio'
+              type: DEPENDENT
+              key: 'mssql.observability.buffer_cache_hit_ratio[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: FLOAT
+              units: '%'
+              description: Pages found in buffer cache without a disk read.
+              master_item:
+                key: 'mssql.observability.buffer_manager.raw[{#MSSQL.INSTANCE}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''BufferCacheHitRatio'')].cntr_value.first()'
+              tags:
+                - tag: component
+                  value: cache
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+              trigger_prototypes:
+                - uuid: 8246ecdbe7e75bc9adc00bcef964bc9b
+                  expression: 'max(/MSSQL Observability/mssql.observability.buffer_cache_hit_ratio[{#MSSQL.INSTANCE}],5m)<{$MSSQL.BUFFER_CACHE.MIN}'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: Buffer cache hit ratio is low'
+                  event_name: 'MSSQL [{#MSSQL.INSTANCE}]: Buffer cache hit ratio is low (below {$MSSQL.BUFFER_CACHE.MIN}% for 5m)'
+                  priority: WARNING
+                  description: Estate Warning only — stock High on the default instance is too hot here.
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: performance
+            - uuid: 8a884aa2447358d6a053088f7b0c55de
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Page life expectancy'
+              type: DEPENDENT
+              key: 'mssql.observability.page_life_expectancy[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: FLOAT
+              units: s
+              description: Seconds a page stays in the buffer pool without references.
+              master_item:
+                key: 'mssql.observability.buffer_manager.raw[{#MSSQL.INSTANCE}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Page life expectancy'')].cntr_value.first()'
+              tags:
+                - tag: component
+                  value: page
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+              trigger_prototypes:
+                - uuid: 3a22dc61c42759a999c293147a132ce9
+                  expression: 'max(/MSSQL Observability/mssql.observability.page_life_expectancy[{#MSSQL.INSTANCE}],15m)<{$MSSQL.PAGE_LIFE.MIN}'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: Page life expectancy is low'
+                  event_name: 'MSSQL [{#MSSQL.INSTANCE}]: Page life expectancy is low (less {$MSSQL.PAGE_LIFE.MIN}s for 15m)'
+                  priority: WARNING
+                  description: Estate Warning only — stock High on the default instance is too hot here.
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: performance
+            - uuid: 9eeb5f4c529f56cbbcdf86402a740a3b
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Batch requests per second'
+              type: DEPENDENT
+              key: 'mssql.observability.batch_requests_rate[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: FLOAT
+              units: rps
+              description: Transact-SQL batches received per second.
+              master_item:
+                key: 'mssql.observability.sql_statistics.raw[{#MSSQL.INSTANCE}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Batch Requests/sec'')].cntr_value.first()'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+              tags:
+                - tag: component
+                  value: performance
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: b0f8fcbd5a4e56778f82841235a75907
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Lock timeouts per second'
+              type: DEPENDENT
+              key: 'mssql.observability.lock_timeouts_rate[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: FLOAT
+              units: rps
+              description: Timed-out lock requests per second, including NOWAIT.
+              master_item:
+                key: 'mssql.observability.locks.raw[{#MSSQL.INSTANCE}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Lock Timeouts/sec'')].cntr_value.first()'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+              tags:
+                - tag: component
+                  value: lock
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: 3a003b5cf4205af1ba5c84f89377927b
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Get job status'
+              key: 'mssql.job.status.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 10m
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              timeout: 30s
+              description: SQL Agent job status JSON for this named instance. Per-job LLD is v2.
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: ed474ec8eb9554bf92aca7b41edc75f6
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Failed jobs'
+              type: DEPENDENT
+              key: 'mssql.observability.failed_jobs[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: FLOAT
+              description: Jobs whose last run_status is Failed (0). Collect-only in v1.
+              master_item:
+                key: 'mssql.job.status.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.run_status==0)].length()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              tags:
+                - tag: component
+                  value: mssql-job
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: 5f568424290555fabdc68544ecaf953e
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Get last backup'
+              key: 'mssql.last.backup.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 10m
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              timeout: 30s
+              description: Last-backup JSON for this named instance. Per-database backup age is v2.
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: 6b4b1c09ad685ccb8f3d0a0e23f5b51c
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Get database'
+              key: 'mssql.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 1h
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              timeout: 30s
+              description: Database JSON for this named instance. No DB LLD in v1.
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: 4bee84ea3dc359c0a325bee546176fe7
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Database count'
+              type: DEPENDENT
+              key: 'mssql.observability.db.count[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: FLOAT
+              description: What SQL returned (includes system DBs). Not the stock MATCHES filter.
+              master_item:
+                key: 'mssql.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - $.length()
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              tags:
+                - tag: component
+                  value: application
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+      tags:
+        - tag: class
+          value: database
+        - tag: target
+          value: mssql
+      macros:
+        - macro: '{$MSSQL.INSTANCE.MATCHES}'
+          value: '.*'
+          description: 'Allowlist for named-instance LLD ({#MSSQL.INSTANCE}).'
+        - macro: '{$MSSQL.INSTANCE.NOT_MATCHES}'
+          value: CHANGE_IF_NEEDED
+          description: 'Denylist for named-instance LLD. Example: SQLEXPRESS.'
+        - macro: '{$MSSQL.INSTANCE.DISCOVERY.MIN}'
+          value: '0'
+          description: Census floor. 0 is valid (default-only hosts). Set per Device if you expect N named instances.
+        - macro: '{$MSSQL.BUFFER_CACHE.MIN}'
+          value: '50'
+          description: Buffer cache hit ratio Warning floor (percent). Estate uses Warning only.
+        - macro: '{$MSSQL.PAGE_LIFE.MIN}'
+          value: '300'
+          description: Page life expectancy Warning floor (seconds). Estate uses Warning only.
+      dashboards:
+        - uuid: b91d7e04c3a8456f8e12f6a0b4c8d931
+          name: Health
+          pages:
+            - name: Overview
+              widgets:
+                - type: item
+                  name: Named instances
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: MSSQL Observability
+                        key: mssql.observability.instance.count
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                - type: problems
+                  name: Problems
+                  x: '18'
+                  width: '54'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: 'MSSQLPRB'
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                - type: honeycomb
+                  name: Ping
+                  y: '4'
+                  width: '72'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'MSSQL [*]: Ping'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^MSSQL \[(.*)\]: Ping$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'MSSQLPNG'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+      valuemaps:
+        - uuid: 48cb2583e84851678a8115e8634f6b85
+          name: Service state
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up

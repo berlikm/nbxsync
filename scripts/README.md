@@ -9,7 +9,7 @@ If a script and that document disagree, **fix the script or the document so they
 | Order | Script | Applies |
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
-| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-fmg-faz` / `--check-fmg-faz` import **Fortinet FMG-FAZ by SNMP** plus Observability companions, split FortiManager / FortiAnalyzer platform rules, and disable leftover Network Generic — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. None of those flags HostSync. |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-fmg-faz` / `--check-fmg-faz` import **Fortinet FMG-FAZ by SNMP** plus Observability companions, split FortiManager / FortiAnalyzer platform rules, and disable leftover Network Generic — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. `--apply-mssql` / `--check-mssql` import **MSSQL Observability** and assign it on roles MSSQL / MSSQL Query Server next to stock Agent 2 — **do not re-run zerotouch** for that. None of those flags HostSync. |
 | — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** and **Network interfaces** ship from platform templates/runtime patch |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
@@ -71,6 +71,26 @@ platform Template Rules **FortiManager** / **FortiAnalyzer**, and disables
 leftover **FortiAnalyzer/Manager** → Network Generic. No HostSync, no Extreme
 import, no FortiOS retarget. Then HostSync the FMG/FAZ hosts. If zerotouch is
 re-run by mistake, run `--apply-fmg-faz` again.
+
+## MSSQL Observability (named instances)
+
+Stock **MSSQL by Zabbix agent 2** stays on roles **MSSQL** / **MSSQL Query
+Server** (zerotouch). The companion is the network script: **do not re-run
+zerotouch**.
+
+```bash
+python3 scripts/configure_nbxsync_network.py --check-mssql
+python3 scripts/configure_nbxsync_network.py --apply-mssql
+```
+
+That fail-closes if stock Agent 2 is missing in Zabbix, imports **MSSQL
+Observability**, and assigns it on those roles **alongside** stock. No
+HostSync, no Extreme import. Then HostSync a default-only canary and a
+named-instance canary. Per-database LLD on named instances is not in v1.
+
+For a first UI test, import
+`zabbix/templates/mssql_observability/template_mssql_observability.yaml`
+and link it next to stock on one host.
 
 ```bash
 python3 scripts/validate_extreme_templates.py --zabbix   # lab: YAML contract + double import

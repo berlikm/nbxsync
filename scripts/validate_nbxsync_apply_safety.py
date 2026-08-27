@@ -455,6 +455,46 @@ def main() -> int:
         'FMG/FAZ SNMP pack is network --apply-fmg-faz, not zerotouch',
     )
 
+    mssql = _function_source(net_src, net_tree, 'run_apply_mssql') or ''
+    record(
+        'network_mssql_apply_exists',
+        bool(mssql),
+        'run_apply_mssql',
+    )
+    record(
+        'network_mssql_apply_skips_extreme_and_hostsync',
+        bool(mssql)
+        and 'import_extreme_templates' not in mssql
+        and 'SyncHostJob' not in mssql
+        and 'configure_nbxsync_zerotouch' not in mssql,
+        'no Extreme import / HostSync / zerotouch in --apply-mssql',
+    )
+    mssql_preflight = _function_source(net_src, net_tree, '_require_mssql_preflight') or ''
+    record(
+        'network_mssql_fail_closed_preflight',
+        '_require_mssql_preflight' in mssql
+        and '_preflight_mssql' in mssql_preflight
+        and '_print_mssql_plan' in mssql_preflight
+        and 'raise SystemExit' in mssql_preflight,
+        'MSSQL preflight prints the plan and aborts before YAML/NetBox writes',
+    )
+    nbx_mssql = _function_source(net_src, net_tree, '_step_mssql_nbxsync') or ''
+    record(
+        'network_mssql_assigns_roles_keeps_stock',
+        'ZabbixTemplateAssignment' in nbx_mssql
+        and '_MSSQL_STOCK_TEMPLATE' in nbx_mssql
+        and 'delete' not in nbx_mssql
+        and 'HostInterfaceRequirementChoices.AGENT' in nbx_mssql,
+        'role assignment alongside stock Agent 2; never unlink stock',
+    )
+    record(
+        'zerotouch_no_mssql_observability_cutover',
+        'apply-mssql' not in ztc_src
+        and 'mssql_observability' not in ztc_src
+        and 'MSSQL Observability' not in ztc_src,
+        'MSSQL Observability is network --apply-mssql, not zerotouch',
+    )
+
     failed = sum(1 for _, ok, _ in RESULTS if not ok)
     print(f'\n{len(RESULTS) - failed}/{len(RESULTS)} apply-safety checks passed')
     return 1 if failed else 0

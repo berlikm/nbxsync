@@ -32,7 +32,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/fortinet_fmg_faz_snmp/` | Fortinet FMG-FAZ by SNMP | **built**; Health + Network interfaces; own `icmpping`; no official stock template (ZBXNEXT-10433) — [03](03-fortinet.md) |
 | `templates/fortinet_fortimanager_observability/` | FortiManager Observability | companion; nests FMG-FAZ SNMP; **Devices** board; FGFM connect-down; config drift collect-only — [03](03-fortinet.md) |
 | `templates/fortinet_fortianalyzer_observability/` | FortiAnalyzer Observability | companion; nests FMG-FAZ SNMP; **Logs** board; log lag Average; log-disk High at 95% — [03](03-fortinet.md) |
-| `templates/mssql_observability/` | MSSQL Observability | **spec only** — named-instance Agent 2 companion; YAML not imported — [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md) |
+| `templates/mssql_observability/` | MSSQL Observability | **built** — named-instance Agent 2 companion; link next to stock; YAML importable — [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md) |
 | `templates/cato_http/` | Cato Networks by HTTP | imported; account collector with **Health** (Census/API) + **Path** (Last mile/Probe) + **Network** (Tunnels/HA/Port); 21/21 Socket ICMP hosts live — [04](04-cato.md) |
 
 ## Related

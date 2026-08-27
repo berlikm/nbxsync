@@ -643,7 +643,7 @@ Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSS
 | `{$MSSQL.USER}` | DeviceRole: MSSQL **or** Device if the name differs | Secret | SQL login |
 | `{$MSSQL.PASSWORD}` | Device (per MSSQL host) | Secret | that host’s password |
 
-Same template assignment on **MSSQL Query Server**. Leftover role `{$MSSQL.DSN}` is ODBC-era; ignore for Agent 2.
+Same template assignment on **MSSQL Query Server**. Leftover role `{$MSSQL.DSN}` is ODBC-era; ignore for Agent 2. Named instances are LLD on **MSSQL Observability** (import `zabbix/templates/mssql_observability/template_mssql_observability.yaml`, or `--apply-mssql`). Link that companion **next to** stock Agent 2 — do not nest stock, do not put instance names in NetBox.
 
 #### Huawei SAN01 (CG Host Interface — not a macro)
 

@@ -2,7 +2,7 @@
 
 Operator macros live in [`docs/netbox-zabbix/configuration.md`](../../docs/netbox-zabbix/configuration.md) §11.3. This note is the build spec for **SQL metrics on every named instance** without putting instance names in NetBox.
 
-YAML is **not** in this repo yet. Do not invent host prototypes. Do not return to **MSSQL by ODBC**.
+YAML is the companion in [`../templates/mssql_observability/`](../templates/mssql_observability/). Spec below is still the operator contract.
 
 Verified against official Zabbix **7.0**:
 
@@ -16,7 +16,7 @@ Verified against official Zabbix **7.0**:
 
 Keep linking stock **MSSQL by Zabbix agent 2** on roles **MSSQL** and **MSSQL Query Server** (zerotouch already does). That template has **one** `{$MSSQL.URI}` and then LLD of databases / jobs / Always On **on that one connection**.
 
-Add a thin companion **MSSQL Observability** (name TBD, same pattern as FortiGate Observability):
+Add a thin companion **MSSQL Observability** (same pattern as FortiGate Observability, but **linked alongside** stock rather than nested):
 
 - Discovers **named** Windows SQL instances (`MSSQL$PITDV02`, …)
 - Calls the **same plugin keys** as stock, with a URI that includes `{#MSSQL.INSTANCE}`
@@ -72,7 +72,7 @@ Example: `CH-STA-T-MSQL01` (default only) vs `CH-STA-P-MSSQL10` (Protocols for P
 | Signal | Who | `MSQL01` | `MSSQL10` |
 |---|---|---|---|
 | Service running | **Windows by Zabbix agent** `service.discovery` | `MSSQLSERVER`, `SQLBrowser` | those plus `MSSQL$PITDV02`, … |
-| SQL metrics, default instance | **MSSQL by Zabbix agent 2** | `{$MSSQL.URI}=sqlserver://localhost:1433` | 1433 often **unused** → stock items unsupported; that is expected until v1 companion is live |
+| SQL metrics, default instance | **MSSQL by Zabbix agent 2** | `{$MSSQL.URI}=sqlserver://localhost:1433` | 1433 often **unused** → stock items unsupported; that is expected |
 | SQL metrics, named instances | **MSSQL Observability** | LLD empty (OK) | one prototype row per `MSSQL$*` |
 
 Do **not** put `{#MSSQL.INSTANCE}` in a NetBox macro. HostSync runs before Zabbix has discovered PITDV02.
@@ -211,7 +211,7 @@ Same password as `{$MSSQL.PASSWORD}` on that NetBox object. Repeat on PITDV02, P
 
 | Object | Assignment |
 |---|---|
-| Role **MSSQL** / **MSSQL Query Server** | stock **MSSQL by Zabbix agent 2** (already) + companion **MSSQL Observability** (when YAML exists) |
+| Role **MSSQL** / **MSSQL Query Server** | stock **MSSQL by Zabbix agent 2** (already) + companion **MSSQL Observability** (`--apply-mssql`) |
 | Role | `{$MSSQL.URI}` = `sqlserver://localhost:1433` |
 | Role | `{$MSSQL.USER}` only if the login **name** is global |
 | **Device / VM** | `{$MSSQL.PASSWORD}` (and USER if not global) — like vCenter, not like a shared Forti token |
@@ -274,7 +274,7 @@ Reporting Service QUEUE (LogicMonitor leftover) is still a **custom query**, not
 
 ---
 
-## Implementation sketch (when building YAML)
+## Implementation (v1 YAML shipped)
 
 New folder: `zabbix/templates/mssql_observability/` (YAML + README). Template name **MSSQL Observability**.
 
@@ -282,6 +282,6 @@ New folder: `zabbix/templates/mssql_observability/` (YAML + README). Template na
 - Do **not** nest stock MSSQL (nesting would still be one URI). **Link alongside** stock on the role (two templates, different keys).  
 - One LLD rule, filters, five prototype masters above, census item, valuemap none required.  
 - Dashboard optional and later: honeycomb of instance version/unsupported is enough; do not bind stock graph prototypes (same nested-graph lesson as Forti).  
-- Import from `configure_nbxsync_zerotouch.py` or a small `--apply-mssql` later; **do not** HostSync the fleet from a template import alone.
+- Import from `configure_nbxsync_network.py --apply-mssql` (or the UI). **do not** HostSync the fleet from a template import alone. **Do not** add this to zerotouch.
 
 Assign on Device Role **MSSQL** and **MSSQL Query Server** the same way as stock (zerotouch `ZabbixTemplateAssignment`).
