@@ -65,7 +65,7 @@ Stock macros that stay on the role / template (do not duplicate in the companion
 
 `{$MSSQL.DSN}` is **MSSQL by ODBC** only. Zerotouch already unlinked ODBC.
 
-Stock trigger **MSSQL: Service is unavailable** is **Disaster** on `net.tcp.service[tcp,{$MSSQL.HOST},{$MSSQL.PORT}]`. That SIMPLE check runs on the **proxy**, so inherited `HOST=localhost` is the proxy, not SQL. Named instances are often **not** on 1433. Do **not** clone that trigger onto the companion. Availability on the child is stock `mssql.ping`. If TCP Disaster fires on a named-instance-only child, disable **Service's TCP port state** on that child (canary).
+Stock trigger **MSSQL: Service is unavailable** is **Disaster** on `net.tcp.service[tcp,{$MSSQL.HOST},{$MSSQL.PORT}]`. That SIMPLE check runs on the **proxy**, not through Agent 2. `{$MSSQL.HOST}=localhost` is the proxy. Pointing it at the Windows IP still fails when SQL 1433 is not reachable from the proxy (normal: monitoring uses agent :10050; plugin talks to SQL on-box). Plugin items can be green while this Disaster is red. YAML cannot disable an inherited stock trigger (export/import drops host-level inherited overrides). On Cloud: disable **Service's TCP port state** / **MSSQL: Service is unavailable** on named-instance **children**, and on Windows parents if the same false Disaster is open. Availability is stock `mssql.ping` and the companion version probe. Do **not** clone that trigger onto the companion. Do **not** fork stock to delete it.
 
 Stock per-database **performance** items are dependents of `mssql.db.perf_raw["{#DBNAME}"]`, which JSONPaths `object_name=~'.*Databases'` and `instance_name=='{#DBNAME}'`, then one JSONPath per counter (`Transactions/sec`, `Active Transactions`, log-file sizes, …). Named-instance object names (`MSSQL$ASP:Databases`) already match `.*Databases`. If that object exists but **omits** those `counter_name` rows, the ~13 rate/size derivatives stay **unsupported** while `State` and backup items (different masters) still work. That is SQL Server / perfmon payload, not a missing URI. Do **not** fork the vendor template or invent a second counter map in the companion.
 
@@ -311,7 +311,19 @@ Planned boxes: **one default-only** (`CH-STA-T-MSQL01`) and **one named** (`CH-S
 | Parent default instance | **HADB** still supported, state `0` |
 | Child DB perf derivatives | 13 stock items unsupported: `MSSQL$ASP:Databases` payload lacks the expected `counter_name` rows. Not a companion/URI bug; do not fork stock |
 
-Import path: GUI/YAML into Cloud (`deleteMissing: false`), then HostSync / check-now of the **Windows** host only.
+**Problems opened after the child appeared (do not “fix” the wrong layer):**
+
+| Problem | Host | Verdict |
+|---|---|---|
+| **MSSQL: Service is unavailable** Disaster | Child *and* parent (parent since 2026-08-26) | **False.** Stock SIMPLE `net.tcp.service[tcp,localhost,1433]` from the **proxy**. Plugin/HADB/ASP data still flow via Agent 2. Disable **Service's TCP port state** on the child (and on the parent if that Disaster is still open). YAML cannot disable inherited stock triggers. |
+| **MSSQL [ASP]: no version data for 15m** Average | Parent | **Companion false nodata.** Version prototype used `DISCARD_UNCHANGED_HEARTBEAT` **1d** with `nodata(15m)`. A stable version looked silent. Removed the discard; re-import Observability. |
+| Ad hoc compilations > 10% / scans vs searches / recompiles > 10% Warning | Parent **and** child | **Two instances, same stock OLTP hygiene — and proof instance-level Agent 2 on ASP is collecting.** Parent = default instance (`localhost:1433`). Child = ASP. Instance-level SQL Statistics, not per-DB. Test workload; not a prototype duplicate of one item. Do not fork stock to raise `{$MSSQL.PERCENT_COMPILATIONS.MAX}` unless operators want that estate-wide. |
+| Work tables from cache < 90% High | Parent **and** child | Same split: stock `{$MSSQL.WORKTABLES_FROM_CACHE_RATIO.MIN.CRIT}=90`. High is a page in the Extreme bar; here it is vendor MSSQL on Test. Leave stock; do not mute Test backups to “fix” this. |
+| Full backup older than 10d HADB / SensirionAuthDB High | Parent | **Real default-instance backup age.** `{$MSSQL.BACKUP_FULL.USED}` stays **1**. |
+| SensirionAuthDB log usage > 80% Warning | Parent | **Real** stock per-DB log counter on the default instance. |
+| Windows InventorySvc Disaster / TempDB T: > 80% High | Parent | **OS template**, not MSSQL Observability. |
+
+Import path: GUI/YAML into Cloud (`deleteMissing: false`), then HostSync / check-now of the **Windows** host only. After the version-item change, re-import Observability so the parent ASP version prototype drops the 1d discard.
 
 Remaining checklist:
 
@@ -323,7 +335,7 @@ Remaining checklist:
 6. Login missing on **one** instance → one Average on that child/parent version item, not five, not a Windows service down.
 7. Stop `MSSQL$PITDV02` → Windows service item fires; companion version goes nodata.
 8. Stock 1433 items on `MSSQL10` parent may be unsupported — record it; do not “fix” with a fake DSN.
-9. Stock TCP Disaster on a child: if it fires (proxy→localhost:1433 or named instance not on 1433), disable **Service's TCP port state** on that child. Leave `mssql.ping` as availability.
+9. Stock TCP Disaster on parent or child: **false** when plugin items have data. Disable **Service's TCP port state** on that host. Leave `mssql.ping` as availability. Do not retarget `{$MSSQL.HOST}` hoping the proxy can reach 1433.
 10. HostSync **does not** create hosts named `PITDV02` or `ASP`. It **may** create `CH-STA-T-MSQL25-mssql-ASP` only via LLD, not NetBox. Re-sync of the Windows host must not delete children.
 11. Second apply / re-import companion: LLD rows and children stable (same `{#MSSQL.INSTANCE}` / `{#MSSQL.PARENT}`). Host prototype still has **no** `description`.
 12. After Cloud nested LLD exists: remove the host prototype; keep named-instance item prototypes on the parent.

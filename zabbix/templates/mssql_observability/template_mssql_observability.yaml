@@ -217,10 +217,6 @@ zabbix_export:
               trends: '0'
               description: 'Plugin version probe for this named instance. URI is LLD, not {$MSSQL.URI}.'
               timeout: 30s
-              preprocessing:
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1d
               tags:
                 - tag: component
                   value: application
@@ -237,6 +233,8 @@ zabbix_export:
                     instance-in-URI, SQL Browser/port, or the Windows service
                     is stopped (Windows by agent already tickets the service).
                     Not a site Disaster and not a TCP-1433 simple check.
+                    Do not DISCARD_UNCHANGED with a heartbeat longer than this
+                    nodata window (1d discard made a stable version look silent).
                   tags:
                     - tag: scope
                       value: availability

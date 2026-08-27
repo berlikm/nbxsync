@@ -430,6 +430,11 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn('nodata(', trig['expression'])
         self.assertIn('{#MSSQL.URI}', trig['expression'])
         self.assertNotIn('net.tcp.service', trig['expression'])
+        self.assertNotIn('DISCARD_UNCHANGED_HEARTBEAT', json.dumps(version.get('preprocessing') or []))
+        steps = version.get('preprocessing') or []
+        for step in steps:
+            if str(step.get('type') or '').upper() == 'DISCARD_UNCHANGED_HEARTBEAT':
+                self.fail('version nodata(15m) cannot sit on a discard heartbeat')
         census = next(i for i in self.tpl['items'] if i['key'] == 'mssql.observability.instance.count')
         ctrig = census['triggers'][0]
         self.assertEqual(ctrig['priority'], 'AVERAGE')
