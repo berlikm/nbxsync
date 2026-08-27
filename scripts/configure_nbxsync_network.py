@@ -68,11 +68,6 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     **Cato Networks by HTTP**, fail-close on GraphQL preflight, and converge
     the one owned interface-free host. No HostSync, no Extreme import, no
     Socket role mutation. Do **not** re-run zerotouch to refresh the collector.
-  * MSSQL named instances: ``--apply-mssql`` / ``--check-mssql`` import
-    **MSSQL Observability** and assign it on roles MSSQL / MSSQL Query Server
-    **alongside** stock **MSSQL by Zabbix agent 2**. Fail-closed if stock is
-    missing in Zabbix. Does not nest stock, does not unlink stock, no HostSync,
-    no zerotouch.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -90,7 +85,6 @@ Stage matrix (what each flag enables):
   ``--apply-fortigate-http``      = FortiGate HTTP cutover without zerotouch: lookup Cloud **Zabbix, 7.0-2**, patch ZBX-27082 / WAN state, import Observability companion, FortiOS rule only (not role Firewall). Fail-closed preflight. No HostSync.
   ``--check-fmg-faz`` / ``--apply-fmg-faz`` = FortiManager/FortiAnalyzer SNMP pack without zerotouch: import parent + Observability companions, split platform rules, disable leftover Network Generic rule. No HostSync.
   ``--apply-cato`` / ``--check-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
-  ``--check-mssql`` / ``--apply-mssql`` = MSSQL Observability without zerotouch: import named-instance companion, assign on roles MSSQL / MSSQL Query Server next to stock Agent 2. No HostSync.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -146,10 +140,6 @@ Usage::
   python scripts/configure_nbxsync_network.py --check-cato   # GraphQL preflight + collector shape
   python scripts/configure_nbxsync_network.py --apply-cato
 
-  # MSSQL Observability named-instance companion (no zerotouch, no Extreme YAML, no HostSync)
-  python scripts/configure_nbxsync_network.py --check-mssql
-  python scripts/configure_nbxsync_network.py --apply-mssql
-
   # Temporary LM cutover silence only (not the long-term target)
   python scripts/configure_nbxsync_network.py --apply --cutover-silence
 
@@ -201,14 +191,6 @@ from nbxsync.jobs.synchost import SyncHostJob
 from nbxsync.utils import get_assigned_zabbixobjects
 from nbxsync.utils.zabbixconnection import ZabbixConnection
 
-from mssql_observability import (
-    KEEP_TEMPLATES_ON_ROLE as _MSSQL_KEEP_TEMPLATES_ON_ROLE,
-    ROLE_NAMES as _MSSQL_ROLE_NAMES,
-    STOCK_TEMPLATE_NAME as _MSSQL_STOCK_TEMPLATE,
-    TEMPLATE_FILES as _MSSQL_TEMPLATE_FILES,
-    TEMPLATE_NAME as _MSSQL_OBSERVABILITY_TEMPLATE,
-    ZABBIX_TEMPLATE_PATH as _MSSQL_OBSERVABILITY_YAML,
-)
 from fmg_faz_snmp import (
     FMG_FAZ_COLLIDING_TEMPLATES as _FMG_FAZ_COLLIDING_TEMPLATES,
     FMG_FAZ_SNMP_TEMPLATE as _FMG_FAZ_SNMP_TEMPLATE,
@@ -4879,152 +4861,6 @@ def run_apply_cato() -> int:
     return 0
 
 
-def _mssql_roles() -> list:
-    found = []
-    for name in _MSSQL_ROLE_NAMES:
-        try:
-            found.append(get_role(name))
-        except DeviceRole.DoesNotExist:
-            logger.warning('  Role not found: %s', name)
-    return found
-
-
-def _preflight_mssql(server) -> list[str]:
-    """Read-only YAML / role / stock-template gate. Does not import or assign."""
-    errors: list[str] = []
-    if not _MSSQL_OBSERVABILITY_YAML.exists():
-        errors.append(f'missing YAML for {_MSSQL_OBSERVABILITY_TEMPLATE}: {_MSSQL_OBSERVABILITY_YAML}')
-    if not _mssql_roles():
-        errors.append(
-            'No DeviceRole named MSSQL or MSSQL Query Server in NetBox — '
-            'refusing to import a companion with nothing to assign'
-        )
-    with ZabbixConnection(server) as api:
-        if _lookup_zabbix_template(api, _MSSQL_STOCK_TEMPLATE) is None:
-            errors.append(
-                f'{_MSSQL_STOCK_TEMPLATE} missing in Zabbix — import stock Agent 2 before this companion'
-            )
-    return errors
-
-
-def _print_mssql_plan(server, *, errors: list[str], apply: bool, zbx_names: list[str] | None = None) -> None:
-    logger.info('=' * 60)
-    logger.info(
-        'MSSQL Observability proposed writes (nothing written yet)' if apply else 'MSSQL Observability check (read-only)'
-    )
-    logger.info('=' * 60)
-    logger.info('Import %s (do not nest %s)', _MSSQL_OBSERVABILITY_TEMPLATE, _MSSQL_STOCK_TEMPLATE)
-    for name, path in _MSSQL_TEMPLATE_FILES.items():
-        logger.info('  %s ← %s', name, path)
-    if zbx_names:
-        logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
-    logger.info('  keep on roles: %s', ', '.join(_MSSQL_KEEP_TEMPLATES_ON_ROLE))
-    roles = _mssql_roles()
-    logger.info(
-        '  ZabbixTemplateAssignment on roles %s → %s (AGENT; alongside stock)',
-        ', '.join(r.name for r in roles) or '(none)',
-        _MSSQL_OBSERVABILITY_TEMPLATE,
-    )
-    logger.info('  Do not unlink %s. No HostSync, no Extreme import, no zerotouch', _MSSQL_STOCK_TEMPLATE)
-    if errors:
-        logger.info('Preflight errors (%s) — abort, no writes:', len(errors))
-        for err in errors:
-            logger.info('  %s', err)
-
-
-def _require_mssql_preflight(*, server=None, apply: bool = True):
-    """Fail-closed YAML/NetBox/Zabbix gate. Does not import YAML or assign roles."""
-    if server is None:
-        server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
-        if server is None:
-            raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
-    zbx_names: list[str] = []
-    with ZabbixConnection(server) as api:
-        for name in _MSSQL_TEMPLATE_FILES:
-            row = _lookup_zabbix_template(api, name)
-            if row is not None:
-                zbx_names.append(name)
-    errors = _preflight_mssql(server)
-    _print_mssql_plan(server, errors=errors, apply=apply, zbx_names=zbx_names)
-    if errors:
-        for error in errors:
-            logger.error('  preflight: %s', error)
-        raise SystemExit('MSSQL Observability preflight failed — no writes:\n  ' + '\n  '.join(errors))
-    return server
-
-
-def import_mssql_observability_template(api) -> dict[str, tuple[int, str]]:
-    """Import MSSQL Observability. Fail closed."""
-    logger.info('Network: import %s', _MSSQL_OBSERVABILITY_TEMPLATE)
-    out = import_yaml_templates(api, dict(_MSSQL_TEMPLATE_FILES), strict=True)
-    missing = [name for name in _MSSQL_TEMPLATE_FILES if name not in out]
-    if missing:
-        raise SystemExit('MSSQL templates missing after import: ' + ', '.join(missing))
-    return out
-
-
-def _step_mssql_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
-    """Assign MSSQL Observability on MSSQL roles next to stock. Never unlink stock."""
-    logger.info('=' * 60)
-    logger.info('Network: MSSQL Observability nbxSync levers (no HostSync)')
-    logger.info('=' * 60)
-    tid, name = imported[_MSSQL_OBSERVABILITY_TEMPLATE]
-    tpl = ensure_nbx_template(
-        server,
-        tid,
-        name,
-        req=[HostInterfaceRequirementChoices.AGENT],
-    )
-    assigned = 0
-    for role in _mssql_roles():
-        ensure(
-            M.ZabbixTemplateAssignment,
-            zabbixtemplate=tpl,
-            assigned_object_type=ct(DeviceRole),
-            assigned_object_id=role.id,
-            defaults={},
-        )
-        assigned += 1
-        logger.info(
-            '  Role %s → %s (keep %s)',
-            role.name,
-            tpl.name,
-            _MSSQL_STOCK_TEMPLATE,
-        )
-    if not assigned:
-        raise SystemExit('MSSQL Observability: no MSSQL / MSSQL Query Server role to assign')
-    logger.info('  Kept stock+companion on role: %s', ', '.join(_MSSQL_KEEP_TEMPLATES_ON_ROLE))
-
-
-def run_check_mssql() -> int:
-    """Read-only MSSQL YAML + NetBox role + stock Agent 2 presence check."""
-    _require_mssql_preflight(apply=False)
-    logger.info('MSSQL Observability preflight OK — check-only mode wrote nothing')
-    return 0
-
-
-def run_apply_mssql() -> int:
-    """MSSQL Observability companion without zerotouch or Extreme YAML.
-
-    Imports MSSQL Observability, assigns it on roles MSSQL / MSSQL Query Server
-    next to stock MSSQL by Zabbix agent 2. Does not nest stock, does not unlink
-    stock. No HostSync.
-    """
-    server = _require_mssql_preflight(apply=True)
-    logger.info('Preflight OK — importing MSSQL Observability and writing role assignments')
-    with ZabbixConnection(server) as api:
-        imported = import_mssql_observability_template(api)
-    _step_mssql_nbxsync(server, imported)
-    logger.info(
-        'MSSQL Observability written in NetBox. No HostSync. '
-        'Roles MSSQL / MSSQL Query Server link %s alongside %s. '
-        'Do not re-run zerotouch for this companion — re-run --apply-mssql after that.',
-        _MSSQL_OBSERVABILITY_TEMPLATE,
-        _MSSQL_STOCK_TEMPLATE,
-    )
-    return 0
-
-
 def run_zabbix_only(*, link_speed_expect: bool = False) -> int:
     """Fallback smoke without NetBox object graph — delegates to run_network_zabbix_sim."""
     from run_network_zabbix_sim import main as sim_main
@@ -5077,16 +4913,6 @@ def main() -> int:
         action='store_true',
         help='Read-only Cato GraphQL preflight and collector host/template shape; no writes',
     )
-    mode.add_argument(
-        '--apply-mssql',
-        action='store_true',
-        help='MSSQL Observability: import named-instance companion, assign on roles MSSQL / MSSQL Query Server next to stock Agent 2; no HostSync, no zerotouch',
-    )
-    mode.add_argument(
-        '--check-mssql',
-        action='store_true',
-        help='Read-only MSSQL Observability YAML + NetBox role + stock Agent 2 presence check; no writes',
-    )
     parser.add_argument('--link-speed-expect', action='store_true', help='Also assign Port Speed Expect on Switch roles (avoid if already nested on VOSS/Observability)')
     parser.add_argument(
         '--cutover-silence',
@@ -5126,14 +4952,6 @@ def main() -> int:
         if args.link_speed_expect or args.cutover_silence:
             raise SystemExit('--apply-cato does not take --link-speed-expect or --cutover-silence')
         return run_apply_cato()
-    if args.check_mssql:
-        if args.link_speed_expect or args.cutover_silence:
-            raise SystemExit('--check-mssql does not take --link-speed-expect or --cutover-silence')
-        return run_check_mssql()
-    if args.apply_mssql:
-        if args.link_speed_expect or args.cutover_silence:
-            raise SystemExit('--apply-mssql does not take --link-speed-expect or --cutover-silence')
-        return run_apply_mssql()
     return run_apply(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
 
 

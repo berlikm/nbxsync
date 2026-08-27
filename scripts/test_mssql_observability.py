@@ -1,78 +1,41 @@
 #!/usr/bin/env python3
-"""YAML + helper contract for MSSQL Observability (no Django, no Zabbix)."""
+"""Contract tests for MSSQL Observability (fixtures + YAML, no live SQL)."""
 
 from __future__ import annotations
 
 import json
 import re
-import subprocess
-import sys
 import unittest
-import uuid
-from pathlib import Path
-
-import yaml
 
 from mssql_observability import (
-    BACKUP_FULL_KEY,
-    BACKUP_KEY,
-    BUFFER_CACHE_KEY,
-    CENSUS_KEY,
-    CENSUS_TRIGGER_EXPR,
-    CENSUS_TRIGGER_NAME,
-    DB_CATALOG_KEY,
-    DB_KEY,
-    DB_LLD_KEY,
-    DB_LLDJSON_KEY,
-    DB_STATE_KEY,
-    DISCOVERY_KEY,
-    flatten_lld_catalogs,
-    LOCAL_LLD_KEY,
-    LOCAL_STATE_KEY,
-    LOCAL_SYNC_KEY,
-    MACRO_BACKUP_FULL_USED,
-    MACRO_BACKUP_LOG_USED,
-    MACRO_DBNAME_NOT_MATCHES,
-    MACRO_INSTANCE_DISCOVERY_MIN,
-    NAMED_URI,
-    PAGE_LIFE_KEY,
-    PING_KEY,
-    PING_TRIGGER_EXPR,
-    PING_TRIGGER_NAME,
-    ROLE_NAMES,
-    STOCK_TEMPLATE_NAME,
-    TEMPLATE_FILES,
-    TEMPLATE_GROUP,
-    TEMPLATE_GROUP_UUID,
-    TEMPLATE_MACROS,
+    BACKUP_INVENTORY_JS,
+    DB_INVENTORY_JS,
+    FIXTURES,
+    LLD_JS,
+    PLUGIN_PROTOTYPE_PREFIXES,
+    STOCK_MSSQL_TEMPLATE,
     TEMPLATE_NAME,
-    TEMPLATE_UUID,
+    TEMPLATE_YAML,
     URI_PREFIX,
-    VERSION_KEY,
-    VERSION_NODATA_EXPR,
-    VERSION_NODATA_NAME,
-    WMI_ITEM_KEY,
-    WMI_LLD_JS,
-    ZABBIX_TEMPLATE_PATH,
-    db_catalog_js_source,
-    flatten_lld_js_source,
-    local_db_catalog_js_source,
+    WMI_KEY,
+    backup_inventory_js_source,
+    db_inventory_js_source,
+    javascript_steps,
+    lld_js_source,
+    load_template,
     named_instances_from_wmi,
     run_javascript,
     run_lld_js,
+    template_block,
     zerotouch_source,
 )
-from mssql_observability import FIXTURES as TEMPLATE_FIXTURES
 
 MSSQL10_INSTANCES = ('PAPDB01', 'PCONF02', 'PITDV02', 'PJIRA01', 'PWARE01')
 URI_RE = re.compile(r'^sqlserver://localhost/[^:/]+$')
 
-ROOT = Path(__file__).resolve().parents[1]
-BUILDER = ROOT / 'zabbix' / 'templates' / 'mssql_observability' / 'build_template.py'
-
 
 def _fixture(name: str) -> str:
-    return (TEMPLATE_FIXTURES / name).read_text(encoding='utf-8')
+    return (FIXTURES / name).read_text(encoding='utf-8')
 
 
 def _lld_rows(name: str) -> list[dict]:
@@ -84,302 +47,61 @@ def _lld_rows(name: str) -> list[dict]:
     return js_out
 
 
-def _load(path: Path) -> dict:
-    return yaml.safe_load(path.read_text(encoding='utf-8'))
-
-
-def _template() -> dict:
-    return _load(ZABBIX_TEMPLATE_PATH)['zabbix_export']['templates'][0]
-
-
-def _walk(node, visitor) -> None:
-    if isinstance(node, dict):
-        visitor(node)
-        for value in node.values():
-            _walk(value, visitor)
-    elif isinstance(node, list):
-        for item in node:
-            _walk(item, visitor)
-
-
-def _collect_triggers(doc: dict) -> list[dict]:
-    found: list[dict] = []
-
-    def visit(node: dict) -> None:
-        if 'expression' in node and 'priority' in node and 'name' in node:
-            found.append(node)
-
-    _walk(doc, visit)
-    return found
-
-
-def _collect_keys(doc: dict) -> list[str]:
-    keys: list[str] = []
-
-    def visit(node: dict) -> None:
-        if 'key' in node and 'name' in node:
-            keys.append(str(node['key']))
-
-    _walk(doc, visit)
-    return keys
-
-
-class MssqlObservabilityContractTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.doc = _load(ZABBIX_TEMPLATE_PATH)
-        cls.tpl = _template()
-        cls.text = ZABBIX_TEMPLATE_PATH.read_text(encoding='utf-8')
-        cls.triggers = _collect_triggers(cls.tpl)
-        cls.keys = _collect_keys(cls.tpl)
-
-    def test_export_version_and_official_group(self):
-        self.assertEqual(self.doc['zabbix_export']['version'], '7.0')
-        groups = self.doc['zabbix_export']['template_groups']
-        self.assertEqual(groups[0]['uuid'], TEMPLATE_GROUP_UUID)
-        self.assertEqual(groups[0]['name'], TEMPLATE_GROUP)
-        self.assertEqual(self.tpl['groups'][0]['name'], TEMPLATE_GROUP)
-
-    def test_name_has_no_slash(self):
-        self.assertEqual(TEMPLATE_NAME, 'MSSQL Observability')
-        self.assertNotIn('/', TEMPLATE_NAME)
-        self.assertEqual(self.tpl['name'], TEMPLATE_NAME)
-        self.assertEqual(self.tpl['uuid'], TEMPLATE_UUID)
-
-    def test_preserves_deployed_template_and_instance_lld_identities(self):
-        self.assertEqual(TEMPLATE_UUID, '52bd809ec8a54feb8364f3d13a9c8074')
-        self.assertEqual(DISCOVERY_KEY, 'mssql.named.instance.discovery')
-
-    def test_does_not_nest_stock_or_icmp(self):
-        self.assertFalse(self.tpl.get('templates'))
-        nested = [row.get('name') for row in (self.tpl.get('templates') or [])]
-        self.assertNotIn(STOCK_TEMPLATE_NAME, nested)
-        self.assertNotIn('ICMP Ping', nested)
-
-    def test_no_service_discovery_or_icmpping(self):
-        self.assertNotIn('service.discovery', self.keys)
-        self.assertNotIn('icmpping', self.keys)
-        self.assertTrue(all('net.tcp.service' not in key for key in self.keys))
-        self.assertNotIn('Plugins.MSSQL.Sessions', self.text)
-        self.assertNotIn('service.discovery', self.text)
-
-    def test_wmi_key_is_unique_named_instances_only(self):
-        self.assertIn(WMI_ITEM_KEY, self.keys)
-        self.assertIn("Name LIKE 'MSSQL%'", WMI_ITEM_KEY)
-        self.assertNotIn("Name LIKE 'MSSQL$%'", WMI_ITEM_KEY)
-        self.assertNotIn('MSSQLSERVER', WMI_ITEM_KEY)
-        self.assertEqual(self.tpl['discovery_rules'][0]['key'], DISCOVERY_KEY)
-        self.assertEqual(self.tpl['discovery_rules'][0]['type'], 'DEPENDENT')
-        self.assertEqual(self.tpl['discovery_rules'][0]['master_item']['key'], WMI_ITEM_KEY)
-
-    def test_lld_js_builds_named_uri_without_port(self):
-        self.assertIn('sqlserver://localhost/', WMI_LLD_JS)
-        self.assertIn('+ instance', WMI_LLD_JS)
-        self.assertNotIn(':1433', WMI_LLD_JS)
-        self.assertIn(NAMED_URI, self.text)
-        self.assertNotRegex(self.text, r'sqlserver://localhost:\d+/')
-
-    def test_plugin_prototypes_use_lld_uri_not_stock_macro(self):
-        for key in (PING_KEY, VERSION_KEY):
-            self.assertIn(key, self.keys)
-            self.assertIn('{#MSSQL.URI}', key)
-            self.assertNotIn('{$MSSQL.URI}', key)
-
-    def test_dependent_keys_include_instance(self):
-        for key in (BUFFER_CACHE_KEY, PAGE_LIFE_KEY):
-            self.assertIn('{#MSSQL.INSTANCE}', key)
-            self.assertIn(key, self.keys)
-        self.assertNotIn('mssql.buffer_cache_hit_ratio\n', self.text)
-        self.assertNotIn('key: mssql.page_life_expectancy\n', self.text)
-
-    def test_no_stock_secret_macros_on_companion(self):
-        macros = {row['macro'] for row in self.tpl['macros']}
-        self.assertEqual(set(TEMPLATE_MACROS), macros)
-        self.assertNotIn('{$MSSQL.URI}', macros)
-        self.assertNotIn('{$MSSQL.USER}', macros)
-        self.assertNotIn('{$MSSQL.PASSWORD}', macros)
-        self.assertEqual(TEMPLATE_MACROS[MACRO_INSTANCE_DISCOVERY_MIN], '0')
-
-    def test_no_disaster_and_no_tcp_1433_clone(self):
-        for trigger in self.triggers:
-            self.assertNotEqual(trigger['priority'], 'DISASTER', trigger.get('name'))
-            self.assertNotIn('net.tcp.service', trigger['expression'])
-
-    def test_ping_average_version_nodata_depends(self):
-        ping = next(t for t in self.triggers if t['name'] == PING_TRIGGER_NAME)
-        version = next(t for t in self.triggers if t['name'] == VERSION_NODATA_NAME)
-        self.assertEqual(ping['priority'], 'AVERAGE')
-        self.assertEqual(ping['expression'], PING_TRIGGER_EXPR)
-        self.assertEqual(version['priority'], 'AVERAGE')
-        self.assertEqual(version['expression'], VERSION_NODATA_EXPR)
-        deps = version.get('dependencies') or []
-        self.assertEqual(deps[0]['name'], PING_TRIGGER_NAME)
-        self.assertEqual(deps[0]['expression'], PING_TRIGGER_EXPR)
-
-    def test_buffer_and_page_life_are_warning_only(self):
-        buffer = next(t for t in self.triggers if 'Buffer cache' in t['name'])
-        page = next(t for t in self.triggers if 'Page life' in t['name'])
-        self.assertEqual(buffer['priority'], 'WARNING')
-        self.assertEqual(page['priority'], 'WARNING')
-        self.assertNotEqual(buffer['priority'], 'HIGH')
-        self.assertNotEqual(page['priority'], 'HIGH')
-
-    def test_census_gated_on_min(self):
-        census = next(t for t in self.triggers if t['name'] == CENSUS_TRIGGER_NAME)
-        self.assertEqual(census['priority'], 'AVERAGE')
-        self.assertEqual(census['expression'], CENSUS_TRIGGER_EXPR)
-        self.assertIn(f'{MACRO_INSTANCE_DISCOVERY_MIN}>0', census['expression'])
-        self.assertIn(CENSUS_KEY, self.keys)
-
-    def test_wmi_maps_not_supported_to_empty_lld(self):
-        self.assertIn('CHECK_NOT_SUPPORTED', self.text)
-        self.assertIn("error_handler_params: '[]'", self.text)
-        self.assertIn('{#MSSQL.SERVICE}', WMI_LLD_JS)
-        self.assertIn('{#MSSQL.INSTANCE}', WMI_LLD_JS)
-        self.assertIn('{#MSSQL.URI}', WMI_LLD_JS)
-        self.assertIn('{#MSSQL.DISPLAY}', WMI_LLD_JS)
-
-    def test_health_honeycomb(self):
-        boards = [d['name'] for d in self.tpl['dashboards']]
-        self.assertEqual(boards, ['Health'])
-        pages = self.tpl['dashboards'][0]['pages']
-        self.assertEqual([p['name'] for p in pages], ['Overview', 'Databases'])
-        overview = pages[0]
-        names = [w['name'] for w in overview['widgets']]
-        self.assertEqual(names, ['Named instances', 'Problems', 'Ping'])
-        ping = overview['widgets'][2]
-        self.assertEqual(ping['type'], 'honeycomb')
-        db_page = pages[1]
-        self.assertEqual([w['name'] for w in db_page['widgets']], ['Database state', 'AG local DB sync'])
-
-    def test_no_graph_prototypes(self):
-        self.assertNotIn('graph_prototypes', self.text)
-        self.assertNotIn('type: GRAPH_PROTOTYPE', self.text)
-
-    def test_uuids_unique_and_valid(self):
-        found: list[str] = []
-
-        def visit(node: dict) -> None:
-            if 'uuid' in node:
-                found.append(str(node['uuid']))
-
-        _walk(self.doc, visit)
-        self.assertGreater(len(found), 15)
-        self.assertEqual(len(found), len(set(found)))
-        for value in found:
-            parsed = uuid.UUID(hex=value)
-            self.assertEqual(parsed.version, 4, value)
-            self.assertEqual(parsed.variant, uuid.RFC_4122, value)
-
-    def test_roles_keep_stock(self):
-        self.assertEqual(ROLE_NAMES, ('MSSQL', 'MSSQL Query Server'))
-        from mssql_observability import KEEP_TEMPLATES_ON_ROLE
-
-        self.assertEqual(KEEP_TEMPLATES_ON_ROLE, (STOCK_TEMPLATE_NAME, TEMPLATE_NAME))
-
-    def test_template_files_exist(self):
-        self.assertEqual(list(TEMPLATE_FILES), [TEMPLATE_NAME])
-        self.assertTrue(ZABBIX_TEMPLATE_PATH.is_file())
-
-    def test_builder_is_deterministic(self):
-        first = ZABBIX_TEMPLATE_PATH.read_text(encoding='utf-8')
-        subprocess.check_call([sys.executable, str(BUILDER)], cwd=str(ROOT))
-        second = ZABBIX_TEMPLATE_PATH.read_text(encoding='utf-8')
-        self.assertEqual(first, second)
-
-    def test_flattened_database_discovery_does_not_nest(self):
-        rules = self.tpl['discovery_rules']
-        self.assertEqual(
-            [row['key'] for row in rules],
-            [DISCOVERY_KEY, DB_LLD_KEY, LOCAL_LLD_KEY],
+class DatabaseInventoryTests(unittest.TestCase):
+    def test_database_inventory_normalizes_every_database(self):
+        actual = json.loads(
+            run_javascript(
+                _fixture('db_get_sample.json'),
+                script=db_inventory_js_source(),
+            )
         )
-        self.assertTrue(all(row['type'] == 'DEPENDENT' for row in rules))
-        self.assertNotIn('discovery_prototypes', self.text)
-        self.assertIn('last_foreach(//mssql.observability.db.catalog[*])', self.text)
-        self.assertIn(DB_LLDJSON_KEY, self.keys)
-        self.assertIn(DB_CATALOG_KEY, self.keys)
-        self.assertIn('{#MSSQL.INSTANCE}', DB_CATALOG_KEY)
-        self.assertIn('{#DBNAME}', DB_STATE_KEY)
-        self.assertIn('{#MSSQL.INSTANCE}', DB_STATE_KEY)
-        self.assertIn(DB_STATE_KEY, self.keys)
-        self.assertNotIn('key: mssql.db.state["{#DBNAME}"]', self.text)
-        self.assertIn("'{#' + 'MSSQL.INSTANCE}'", self.text)
-        self.assertIn("'{#' + 'DBNAME}'", self.text)
-
-    def test_named_instance_db_and_ag_tags(self):
-        self.assertIn('tag: database', self.text)
-        self.assertIn("value: '{#DBNAME}'", self.text)
-        self.assertIn('tag: local-db', self.text)
-        self.assertIn('tag: availability-group', self.text)
-        self.assertIn(LOCAL_STATE_KEY, self.keys)
-        self.assertIn(LOCAL_SYNC_KEY, self.keys)
-        self.assertIn(BACKUP_FULL_KEY, self.keys)
-
-    def test_backup_used_defaults_on_for_every_environment(self):
-        self.assertEqual(TEMPLATE_MACROS[MACRO_BACKUP_FULL_USED], '1')
-        self.assertEqual(TEMPLATE_MACROS[MACRO_BACKUP_LOG_USED], '1')
-        self.assertEqual(TEMPLATE_MACROS[MACRO_DBNAME_NOT_MATCHES], 'master|tempdb|model|msdb')
-        self.assertNotIn('{% ', self.text)
-        self.assertNotIn('-t-', self.text)
-        self.assertNotIn('-d-', self.text)
-        self.assertNotIn('HYGIENE', self.text)
-        self.assertNotIn('PRODUCTION_ONE', self.text)
-        self.assertIn('{$MSSQL.BACKUP_FULL.USED:"{#DBNAME}"}=1', self.text)
-
-    def test_flatten_merges_same_dbname_on_two_instances(self):
-        import json
-
-        catalogs = json.dumps(
+        self.assertEqual(
+            actual,
             [
-                json.dumps(
-                    [
-                        {
-                            '{#MSSQL.INSTANCE}': 'PITDV02',
-                            '{#DBNAME}': 'HADB',
-                            '{#MSSQL.URI}': 'sqlserver://localhost/PITDV02',
-                        }
-                    ]
-                ),
-                json.dumps(
-                    [
-                        {
-                            '{#MSSQL.INSTANCE}': 'PCONF02',
-                            '{#DBNAME}': 'HADB',
-                            '{#MSSQL.URI}': 'sqlserver://localhost/PCONF02',
-                        }
-                    ]
-                ),
-                '[]',
-            ]
+                {'name': 'ASP', 'recovery_model': 'FULL'},
+                {'name': 'master', 'recovery_model': 'SIMPLE'},
+                {'name': 'model', 'recovery_model': 'SIMPLE'},
+                {'name': 'msdb', 'recovery_model': 'SIMPLE'},
+                {'name': 'tempdb', 'recovery_model': 'SIMPLE'},
+            ],
         )
-        rows = json.loads(flatten_lld_catalogs(catalogs))
+
+    def test_backup_inventory_keeps_every_known_backup_kind(self):
+        actual = json.loads(
+            run_javascript(
+                _fixture('last_backup_sample.json'),
+                script=backup_inventory_js_source(),
+            )
+        )
         self.assertEqual(
-            [(row['{#MSSQL.INSTANCE}'], row['{#DBNAME}']) for row in rows],
-            [('PITDV02', 'HADB'), ('PCONF02', 'HADB')],
+            actual,
+            [
+                {
+                    'name': 'ASP',
+                    'recovery_model': 'FULL',
+                    'full_age_seconds': 120,
+                    'diff_age_seconds': 60,
+                    'log_age_seconds': 15,
+                },
+                {
+                    'name': 'master',
+                    'recovery_model': 'SIMPLE',
+                    'full_age_seconds': 3600,
+                },
+                {
+                    'name': 'SensirionAuthDB',
+                    'recovery_model': 'BULK_LOGGED',
+                },
+            ],
         )
 
-    def test_version_delay_fits_nodata_window(self):
-        version = next(
-            item for item in self.tpl['discovery_rules'][0]['item_prototypes'] if item['key'] == VERSION_KEY
-        )
-        self.assertEqual(version['delay'], '5m')
-        ping = next(item for item in self.tpl['discovery_rules'][0]['item_prototypes'] if item['key'] == PING_KEY)
-        steps = ping.get('preprocessing') or []
-        self.assertEqual(steps[0]['type'], 'CHECK_NOT_SUPPORTED')
-        self.assertEqual(steps[0]['error_handler_params'], '0')
-        db_raw = next(
-            item for item in self.tpl['discovery_rules'][0]['item_prototypes'] if item['key'] == DB_KEY
-        )
-        backup_raw = next(
-            item
-            for item in self.tpl['discovery_rules'][0]['item_prototypes']
-            if item['key'] == BACKUP_KEY
-        )
-        self.assertEqual(db_raw['history'], '7d')
-        self.assertEqual(backup_raw['history'], '7d')
+    def test_inventory_preprocessors_reject_invalid_json(self):
+        for source in (db_inventory_js_source(), backup_inventory_js_source()):
+            with self.assertRaises(RuntimeError):
+                run_javascript('not-json', script=source)
 
 
-class LldNamedInstanceFixtureTests(unittest.TestCase):
+class LldNamedInstanceTests(unittest.TestCase):
     def test_default_only_host_is_empty(self):
         rows = _lld_rows('wmi_msql01.json')
         self.assertEqual(rows, [])
@@ -438,79 +160,183 @@ class LldNamedInstanceFixtureTests(unittest.TestCase):
         self.assertNotIn('1433', dumped)
         self.assertNotIn('localhost:', dumped)
 
+
+class YamlContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.doc = load_template()
+        cls.tpl = template_block(cls.doc)
+        cls.text = TEMPLATE_YAML.read_text(encoding='utf-8')
+
+    def test_export_is_zabbix_70_databases_group(self):
+        export = self.doc['zabbix_export']
+        self.assertEqual(str(export['version']), '7.0')
+        groups = export['template_groups']
+        self.assertEqual(groups[0]['uuid'], '748ad4d098d447d492bb935c907f652f')
+        self.assertEqual(groups[0]['name'], 'Templates/Databases')
+        self.assertEqual(self.tpl['template'], TEMPLATE_NAME)
+        self.assertEqual(self.tpl['name'], TEMPLATE_NAME)
+        self.assertEqual(self.tpl['groups'], [{'name': 'Templates/Databases'}])
+
+    def test_does_not_nest_stock_or_ship_dashboards_or_hosts(self):
+        self.assertNotIn('templates', self.tpl)
+        self.assertNotIn('dashboards', self.tpl)
+        self.assertNotIn('graphs', self.tpl)
+        self.assertNotIn('graph_prototypes', self.tpl)
+        self.assertNotIn('httptests', self.tpl)
+        self.assertNotIn('host_prototypes', self.tpl)
+        self.assertNotIn('graphprototype', self.text)
+        self.assertNotIn(STOCK_MSSQL_TEMPLATE, json.dumps(self.tpl.get('templates')))
+
+    def test_does_not_reuse_windows_service_discovery_or_tcp_disaster(self):
+        keys = [item['key'] for item in self.tpl['items']]
+        keys.append(self.tpl['discovery_rules'][0]['key'])
+        keys.extend(p['key'] for p in self.tpl['discovery_rules'][0]['item_prototypes'])
+        self.assertNotIn('service.discovery', keys)
+        self.assertFalse(any('service.discovery' in k for k in keys))
+        self.assertFalse(any('net.tcp.service' in k for k in keys))
+        dumped = json.dumps(self.tpl)
+        self.assertNotIn('"priority": "DISASTER"', dumped.replace("'", '"'))
+        priorities = []
+        for item in self.tpl['items']:
+            for trig in item.get('triggers') or []:
+                priorities.append(trig.get('priority'))
+        for proto in self.tpl['discovery_rules'][0]['item_prototypes']:
+            for trig in proto.get('trigger_prototypes') or []:
+                priorities.append(trig.get('priority'))
+                self.assertNotIn('net.tcp.service', trig.get('expression', ''))
+        self.assertTrue(priorities)
+        self.assertNotIn('DISASTER', priorities)
+        self.assertNotIn('host_prototypes', self.tpl)
+
+    def test_wmi_master_key_has_no_dollar_and_is_shared(self):
+        items = {item['key']: item for item in self.tpl['items']}
+        self.assertIn(WMI_KEY, items)
+        self.assertNotIn('$', WMI_KEY)
+        self.assertIn("LIKE 'MSSQL%'", WMI_KEY)
+        census = items['mssql.observability.instance.count']
+        self.assertEqual(census['type'], 'DEPENDENT')
+        self.assertEqual(census['master_item']['key'], WMI_KEY)
+        rule = self.tpl['discovery_rules'][0]
+        self.assertEqual(rule['type'], 'DEPENDENT')
+        self.assertEqual(rule['master_item']['key'], WMI_KEY)
+        self.assertEqual(rule['key'], 'mssql.named.instance.discovery')
+
     def test_yaml_js_matches_source_file(self):
-        from mssql_observability import javascript_steps, load_template, template_block
+        want = lld_js_source()
+        self.assertTrue(LLD_JS.is_file())
+        census = next(i for i in self.tpl['items'] if i['key'] == 'mssql.observability.instance.count')
+        rule = self.tpl['discovery_rules'][0]
+        scripts = javascript_steps(census) + javascript_steps(rule)
+        self.assertEqual(scripts, [want, want])
+        yaml_js = run_lld_js(_fixture('wmi_mssql10.json'), script=scripts[0])
+        file_js = run_lld_js(_fixture('wmi_mssql10.json'))
+        self.assertEqual(json.loads(yaml_js), json.loads(file_js))
 
-        tpl = template_block(load_template())
-        wmi = next(i for i in tpl['items'] if i['key'] == WMI_ITEM_KEY)
-        scripts = javascript_steps(wmi)
-        self.assertEqual(scripts, [WMI_LLD_JS])
+    def test_inventory_preprocessors_match_source_files(self):
+        self.assertTrue(DB_INVENTORY_JS.is_file())
+        self.assertTrue(BACKUP_INVENTORY_JS.is_file())
+        protos = self.tpl['discovery_rules'][0]['item_prototypes']
+        database = next(p for p in protos if p['key'].startswith('mssql.observability.db.inventory'))
+        backup = next(p for p in protos if p['key'].startswith('mssql.observability.backup.inventory'))
+        self.assertEqual(javascript_steps(database), [db_inventory_js_source()])
+        self.assertEqual(javascript_steps(backup), [backup_inventory_js_source()])
         self.assertEqual(
-            json.loads(run_lld_js(_fixture('wmi_mssql10.json'), script=scripts[0])),
-            json.loads(run_lld_js(_fixture('wmi_mssql10.json'))),
+            json.loads(
+                run_javascript(
+                    _fixture('db_get_sample.json'),
+                    script=javascript_steps(database)[0],
+                )
+            ),
+            json.loads(run_javascript(_fixture('db_get_sample.json'), script=db_inventory_js_source())),
+        )
+        self.assertEqual(
+            json.loads(
+                run_javascript(
+                    _fixture('last_backup_sample.json'),
+                    script=javascript_steps(backup)[0],
+                )
+            ),
+            json.loads(
+                run_javascript(
+                    _fixture('last_backup_sample.json'),
+                    script=backup_inventory_js_source(),
+                )
+            ),
         )
 
+    def test_lld_filters_and_min_default_zero(self):
+        macros = {m['macro']: m for m in self.tpl['macros']}
+        self.assertEqual(macros['{$MSSQL.INSTANCE.MATCHES}']['value'], '.*')
+        self.assertEqual(macros['{$MSSQL.INSTANCE.NOT_MATCHES}']['value'], 'CHANGE_IF_NEEDED')
+        self.assertEqual(str(macros['{$MSSQL.INSTANCE.DISCOVERY.MIN}']['value']), '0')
+        self.assertNotIn('{$MSSQL.URI}', macros)
+        self.assertNotIn('{$MSSQL.USER}', macros)
+        self.assertNotIn('{$MSSQL.PASSWORD}', macros)
+        self.assertNotIn('{$MSSQL.DSN}', macros)
+        filt = self.tpl['discovery_rules'][0]['filter']
+        self.assertEqual(str(filt['evaltype']).upper(), 'AND')
+        self.assertEqual({c['macro'] for c in filt['conditions']}, {'{#MSSQL.INSTANCE}'})
+        macros_used = [c['value'] for c in filt['conditions']]
+        self.assertEqual(
+            set(macros_used),
+            {'{$MSSQL.INSTANCE.MATCHES}', '{$MSSQL.INSTANCE.NOT_MATCHES}'},
+        )
+        operators = {c.get('operator') for c in filt['conditions']}
+        self.assertIn('NOT_MATCHES_REGEX', operators)
 
-class DatabaseCatalogFixtureTests(unittest.TestCase):
-    def test_db_get_sample_stamps_instance_and_dbname(self):
-        actual = json.loads(
-            run_javascript(
-                _fixture('db_get_sample.json'),
-                script=db_catalog_js_source(instance='PITDV02', uri='sqlserver://localhost/PITDV02'),
-            )
-        )
-        names = [row['{#DBNAME}'] for row in actual]
-        self.assertEqual(names, ['master', 'tempdb', 'model', 'msdb', 'ASP'])
-        self.assertTrue(all(row['{#MSSQL.INSTANCE}'] == 'PITDV02' for row in actual))
-        asp = next(row for row in actual if row['{#DBNAME}'] == 'ASP')
-        self.assertEqual(asp['{#RECOVERY_MODEL}'], '1')
-        self.assertEqual(asp['{#MSSQL.URI}'], 'sqlserver://localhost/PITDV02')
+    def test_plugin_prototypes_use_lld_uri_not_stock_macro(self):
+        protos = self.tpl['discovery_rules'][0]['item_prototypes']
+        keys = [p['key'] for p in protos]
+        for prefix in PLUGIN_PROTOTYPE_PREFIXES:
+            match = [k for k in keys if k.startswith(prefix)]
+            self.assertEqual(len(match), 1, prefix)
+            key = match[0]
+            self.assertIn('{#MSSQL.URI}', key)
+            self.assertNotIn('{$MSSQL.URI}', key)
+            self.assertIn('{$MSSQL.USER}', key)
+            self.assertIn('{$MSSQL.PASSWORD}', key)
+        db_count = next(p for p in protos if p['key'].startswith('mssql.observability.db.count'))
+        self.assertEqual(db_count['type'], 'DEPENDENT')
+        self.assertIn('{#MSSQL.URI}', db_count['master_item']['key'])
+        self.assertEqual(db_count['preprocessing'][0]['parameters'][0], '$.length()')
+        db_raw = next(p for p in protos if p['key'].startswith('mssql.db.get['))
+        backup_raw = next(p for p in protos if p['key'].startswith('mssql.last.backup.get['))
+        self.assertEqual(db_raw['history'], '7d')
+        self.assertEqual(backup_raw['history'], '7d')
+        database = next(p for p in protos if p['key'].startswith('mssql.observability.db.inventory'))
+        backup = next(p for p in protos if p['key'].startswith('mssql.observability.backup.inventory'))
+        self.assertEqual(database['type'], 'DEPENDENT')
+        self.assertEqual(backup['type'], 'DEPENDENT')
+        self.assertEqual(database['history'], '30d')
+        self.assertEqual(backup['history'], '7d')
+        self.assertEqual(database['master_item']['key'], db_raw['key'])
+        self.assertEqual(backup['master_item']['key'], backup_raw['key'])
+        for proto in protos:
+            tags = {t['tag']: t['value'] for t in proto.get('tags') or []}
+            self.assertEqual(tags.get('sql_instance'), '{#MSSQL.INSTANCE}')
 
-    def test_local_db_catalog_requires_group_and_dbname(self):
-        raw = json.dumps(
-            [
-                {'dbname': 'HADB', 'group_name': 'CH-STA-T-AOHA25'},
-                {'dbname': 'orphan'},
-                {'group_name': 'missing-db'},
-            ]
+    def test_version_nodata_is_average_and_census_requires_min(self):
+        version = next(
+            p
+            for p in self.tpl['discovery_rules'][0]['item_prototypes']
+            if p['key'].startswith('mssql.version[')
         )
-        actual = json.loads(
-            run_javascript(
-                raw,
-                script=local_db_catalog_js_source(
-                    instance='PITDV02', uri='sqlserver://localhost/PITDV02'
-                ),
-            )
-        )
-        self.assertEqual(len(actual), 1)
-        self.assertEqual(actual[0]['{#DBNAME}'], 'HADB')
-        self.assertEqual(actual[0]['{#GROUP_NAME}'], 'CH-STA-T-AOHA25')
+        trig = version['trigger_prototypes'][0]
+        self.assertEqual(trig['priority'], 'AVERAGE')
+        self.assertIn('nodata(', trig['expression'])
+        self.assertIn('{#MSSQL.URI}', trig['expression'])
+        self.assertNotIn('net.tcp.service', trig['expression'])
+        census = next(i for i in self.tpl['items'] if i['key'] == 'mssql.observability.instance.count')
+        ctrig = census['triggers'][0]
+        self.assertEqual(ctrig['priority'], 'AVERAGE')
+        self.assertIn('{$MSSQL.INSTANCE.DISCOVERY.MIN}>0', ctrig['expression'])
+        self.assertIn('mssql.observability.instance.count', ctrig['expression'])
 
-    def test_flatten_js_matches_python_helper(self):
-        catalogs = json.dumps(
-            [
-                json.dumps(
-                    [
-                        {
-                            '{#MSSQL.INSTANCE}': 'PITDV02',
-                            '{#DBNAME}': 'HADB',
-                        }
-                    ]
-                ),
-                json.dumps(
-                    [
-                        {
-                            '{#MSSQL.INSTANCE}': 'PCONF02',
-                            '{#DBNAME}': 'HADB',
-                        }
-                    ]
-                ),
-                '[]',
-            ]
-        )
-        js_rows = json.loads(run_javascript(catalogs, script=flatten_lld_js_source()))
-        py_rows = json.loads(flatten_lld_catalogs(catalogs))
-        self.assertEqual(js_rows, py_rows)
+    def test_db_get_sample_length_matches_jsonpath_contract(self):
+        rows = json.loads(_fixture('db_get_sample.json'))
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(rows[-1]['dbname'], 'ASP')
 
 
 class ZerotouchSoftAssignTests(unittest.TestCase):
@@ -523,7 +349,7 @@ class ZerotouchSoftAssignTests(unittest.TestCase):
         self.assertIn("('mssql_observability', 'MSSQL')", src)
         self.assertIn("('mssql_observability', 'MSSQL Query Server')", src)
         self.assertNotIn('template_mssql_observability.yaml', src)
-        self.assertNotIn('apply-mssql', src)
+        self.assertNotIn('import_yaml_templates', src)
         self.assertIn("'{$MSSQL.URI}', 'sqlserver://localhost:1433', 'MSSQL'", src)
         self.assertIn("'{$MSSQL.URI}', 'sqlserver://localhost:1433', 'MSSQL Query Server'", src)
 
