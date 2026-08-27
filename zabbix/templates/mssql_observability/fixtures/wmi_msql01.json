@@ -3,24 +3,28 @@
     "Name": "MSSQLSERVER",
     "DisplayName": "SQL Server (MSSQLSERVER)",
     "State": "Running",
-    "StartMode": "Auto"
+    "StartMode": "Auto",
+    "SystemName": "CH-STA-T-MSQL01"
   },
   {
     "Name": "SQLBrowser",
     "DisplayName": "SQL Server Browser",
     "State": "Running",
-    "StartMode": "Auto"
+    "StartMode": "Auto",
+    "SystemName": "CH-STA-T-MSQL01"
   },
   {
     "Name": "SQLSERVERAGENT",
     "DisplayName": "SQL Server Agent (MSSQLSERVER)",
     "State": "Running",
-    "StartMode": "Auto"
+    "StartMode": "Auto",
+    "SystemName": "CH-STA-T-MSQL01"
   },
   {
     "Name": "MSSQLFDLauncher",
     "DisplayName": "SQL Full-text Filter Daemon Launcher (MSSQLSERVER)",
     "State": "Running",
-    "StartMode": "Manual"
+    "StartMode": "Manual",
+    "SystemName": "CH-STA-T-MSQL01"
   }
 ]

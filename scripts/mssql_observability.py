@@ -19,7 +19,17 @@ FIXTURES = TEMPLATE_DIR / 'fixtures'
 
 TEMPLATE_NAME = 'MSSQL Observability'
 STOCK_MSSQL_TEMPLATE = 'MSSQL by Zabbix agent 2'
-WMI_KEY = 'wmi.getall[root\\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE \'MSSQL%\'"]'
+INSTANCE_HOST_GROUP = 'MSSQL instances'
+INSTANCE_HOST_GROUP_UUID = '6f2c8a91d4b047e3b8c15a7e9d04f3c2'
+HOST_PROTO_UUID = 'c8e4b17a9d5f4c2e8a6b3d0f1e7c5948'
+HOST_PROTO_HOST = '{#MSSQL.PARENT}-mssql-{#MSSQL.INSTANCE}'
+HOST_PROTO_VISIBLE = '{#MSSQL.PARENT} / {#MSSQL.INSTANCE}'
+HOST_PROTO_GROUP_BOX = '{#MSSQL.PARENT}'
+HOST_PROTO_GROUP_INSTANCE = '{#MSSQL.PARENT}/{#MSSQL.INSTANCE}'
+HOST_PROTO_GROUP_ROLE = 'Roles/MSSQL/{#MSSQL.PARENT}'
+NAMED_URI = 'sqlserver://localhost/{#MSSQL.INSTANCE}'
+PARENT_MACRO = '{$MSSQL.PARENT.HOST}'
+WMI_KEY = 'wmi.getall[root\\cimv2,"SELECT Name,DisplayName,State,StartMode,SystemName FROM Win32_Service WHERE Name LIKE \'MSSQL%\'"]'
 PLUGIN_PROTOTYPE_PREFIXES = (
     'mssql.version[',
     'mssql.perfcounter.get[',
@@ -62,8 +72,6 @@ def backup_inventory_js_source() -> str:
 
 
 def javascript_steps(obj: dict) -> list[str]:
-
-
     scripts: list[str] = []
     for step in obj.get('preprocessing') or []:
         if str(step.get('type') or '').upper() == 'JAVASCRIPT':
@@ -72,7 +80,23 @@ def javascript_steps(obj: dict) -> list[str]:
     return scripts
 
 
-def named_instances_from_wmi(value: str) -> list[dict]:
+def sanitize_parent_host(name: str) -> str:
+    """Keep Zabbix host-name charset (letters, digits, _, ., space, -)."""
+    cleaned = ''.join(ch if ch.isalnum() or ch in '_. -' else '_' for ch in name)
+    return cleaned.strip()
+
+
+def resolve_parent_host(row: dict, parent_macro: str = PARENT_MACRO) -> str:
+    macro = (parent_macro or '').strip()
+    if macro and not macro.startswith('{$') and macro != 'CHANGE_IF_NEEDED':
+        raw = macro
+    else:
+        sysname = row.get('SystemName')
+        raw = sysname if isinstance(sysname, str) else ''
+    return sanitize_parent_host(raw)
+
+
+def named_instances_from_wmi(value: str, *, parent_macro: str = PARENT_MACRO) -> list[dict]:
     """Python mirror of lld_named_instances.js (Duktape-safe behaviour)."""
     try:
         parsed = json.loads(value)
@@ -100,6 +124,9 @@ def named_instances_from_wmi(value: str) -> list[dict]:
         instance = name[len(NAMED_INSTANCE_PREFIX) :]
         if not instance:
             continue
+        parent = resolve_parent_host(row, parent_macro)
+        if not parent:
+            raise ValueError('MSSQL named-instance LLD: missing parent host name')
         display = row.get('DisplayName') or name
         out.append(
             {
@@ -107,6 +134,7 @@ def named_instances_from_wmi(value: str) -> list[dict]:
                 '{#MSSQL.INSTANCE}': instance,
                 '{#MSSQL.URI}': URI_PREFIX + instance,
                 '{#MSSQL.DISPLAY}': display,
+                '{#MSSQL.PARENT}': parent,
             }
         )
     return out

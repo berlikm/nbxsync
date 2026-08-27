@@ -11,7 +11,17 @@ from mssql_observability import (
     BACKUP_INVENTORY_JS,
     DB_INVENTORY_JS,
     FIXTURES,
+    HOST_PROTO_GROUP_BOX,
+    HOST_PROTO_GROUP_INSTANCE,
+    HOST_PROTO_GROUP_ROLE,
+    HOST_PROTO_HOST,
+    HOST_PROTO_UUID,
+    HOST_PROTO_VISIBLE,
+    INSTANCE_HOST_GROUP,
+    INSTANCE_HOST_GROUP_UUID,
     LLD_JS,
+    NAMED_URI,
+    PARENT_MACRO,
     PLUGIN_PROTOTYPE_PREFIXES,
     STOCK_MSSQL_TEMPLATE,
     TEMPLATE_NAME,
@@ -120,6 +130,13 @@ class LldNamedInstanceTests(unittest.TestCase):
                 row['{#MSSQL.URI}'],
                 'sqlserver://localhost/' + row['{#MSSQL.INSTANCE}'],
             )
+            self.assertEqual(row['{#MSSQL.PARENT}'], 'CH-STA-P-MSSQL10')
+            self.assertEqual(
+                HOST_PROTO_HOST.replace('{#MSSQL.PARENT}', row['{#MSSQL.PARENT}']).replace(
+                    '{#MSSQL.INSTANCE}', row['{#MSSQL.INSTANCE}']
+                ),
+                f"CH-STA-P-MSSQL10-mssql-{row['{#MSSQL.INSTANCE}']}",
+            )
 
     def test_rejects_fdlauncher_sqlagent_and_browser(self):
         rows = _lld_rows('wmi_mssql10.json')
@@ -139,6 +156,36 @@ class LldNamedInstanceTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['{#MSSQL.INSTANCE}'], 'SQLEXPRESS')
         self.assertEqual(rows[0]['{#MSSQL.URI}'], 'sqlserver://localhost/SQLEXPRESS')
+        self.assertEqual(rows[0]['{#MSSQL.PARENT}'], 'WIN-SQLEXPRESS')
+
+    def test_parent_macro_wins_over_systemname(self):
+        raw = json.dumps(
+            {
+                'Name': 'MSSQL$PITDV02',
+                'DisplayName': 'SQL Server (PITDV02)',
+                'SystemName': 'NETBIOS',
+            }
+        )
+        rows = named_instances_from_wmi(raw, parent_macro='CH-STA-P-MSSQL10')
+        self.assertEqual(rows[0]['{#MSSQL.PARENT}'], 'CH-STA-P-MSSQL10')
+
+    def test_parent_is_sanitized_and_missing_parent_is_unsupported(self):
+        raw = json.dumps(
+            {
+                'Name': 'MSSQL$PITDV02',
+                'DisplayName': 'SQL Server (PITDV02)',
+                'SystemName': 'DOMAIN\\MSSQL10',
+            }
+        )
+        rows = named_instances_from_wmi(raw)
+        self.assertEqual(rows[0]['{#MSSQL.PARENT}'], 'DOMAIN_MSSQL10')
+        self.assertEqual(json.loads(run_lld_js(raw))[0]['{#MSSQL.PARENT}'], 'DOMAIN_MSSQL10')
+        with self.assertRaises(ValueError):
+            named_instances_from_wmi(
+                json.dumps({'Name': 'MSSQL$PITDV02', 'DisplayName': 'SQL Server (PITDV02)'})
+            )
+        with self.assertRaises(RuntimeError):
+            run_lld_js(json.dumps({'Name': 'MSSQL$PITDV02', 'DisplayName': 'SQL Server (PITDV02)'}))
 
     def test_empty_array_and_null_are_empty(self):
         self.assertEqual(json.loads(run_lld_js('[]')), [])
@@ -178,15 +225,67 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(self.tpl['name'], TEMPLATE_NAME)
         self.assertEqual(self.tpl['groups'], [{'name': 'Templates/Databases'}])
 
-    def test_does_not_nest_stock_or_ship_dashboards_or_hosts(self):
+    def test_does_not_nest_stock_or_ship_dashboards(self):
         self.assertNotIn('templates', self.tpl)
         self.assertNotIn('dashboards', self.tpl)
         self.assertNotIn('graphs', self.tpl)
         self.assertNotIn('graph_prototypes', self.tpl)
         self.assertNotIn('httptests', self.tpl)
-        self.assertNotIn('host_prototypes', self.tpl)
         self.assertNotIn('graphprototype', self.text)
         self.assertNotIn(STOCK_MSSQL_TEMPLATE, json.dumps(self.tpl.get('templates')))
+        self.assertNotIn('discovery_prototypes', self.text)
+        self.assertNotIn('last_foreach', self.text)
+
+    def test_named_instance_host_prototype_links_stock(self):
+        groups = self.doc['zabbix_export']['host_groups']
+        self.assertEqual(groups[0]['uuid'], INSTANCE_HOST_GROUP_UUID)
+        self.assertEqual(groups[0]['name'], INSTANCE_HOST_GROUP)
+        rule = self.tpl['discovery_rules'][0]
+        protos = rule.get('host_prototypes') or []
+        self.assertEqual(len(protos), 1)
+        proto = protos[0]
+        self.assertEqual(proto['uuid'], HOST_PROTO_UUID)
+        self.assertEqual(proto['host'], HOST_PROTO_HOST)
+        self.assertEqual(proto['name'], HOST_PROTO_VISIBLE)
+        self.assertIn('{#MSSQL.INSTANCE}', proto['host'])
+        self.assertIn('{#MSSQL.PARENT}', proto['host'])
+        self.assertTrue(proto['host'].startswith('{#MSSQL.PARENT}'))
+        self.assertNotIn('/', proto['host'])
+        self.assertEqual(proto['custom_interfaces'], 'NO')
+        self.assertEqual(proto['inventory_mode'], 'DISABLED')
+        dumped_proto = json.dumps(proto)
+        self.assertNotIn('{HOST.HOST}', dumped_proto)
+        self.assertNotIn('{HOST.NAME}', dumped_proto)
+        self.assertNotIn('{HOST.CONN}', dumped_proto)
+        self.assertEqual(
+            [row['group']['name'] for row in proto['group_links']],
+            [INSTANCE_HOST_GROUP],
+        )
+        self.assertEqual(
+            [row['name'] for row in proto['group_prototypes']],
+            [HOST_PROTO_GROUP_BOX, HOST_PROTO_GROUP_INSTANCE, HOST_PROTO_GROUP_ROLE],
+        )
+        for group_name in (HOST_PROTO_GROUP_BOX, HOST_PROTO_GROUP_INSTANCE, HOST_PROTO_GROUP_ROLE):
+            self.assertIn('{#MSSQL.PARENT}', group_name)
+        self.assertEqual(
+            [row['name'] for row in proto['templates']],
+            [STOCK_MSSQL_TEMPLATE],
+        )
+        self.assertNotIn('ICMP Ping', json.dumps(proto['templates']))
+        self.assertNotIn('Windows by Zabbix agent', json.dumps(proto))
+        macros = {row['macro']: row['value'] for row in proto['macros']}
+        self.assertEqual(macros['{$MSSQL.URI}'], NAMED_URI)
+        self.assertNotIn('{$MSSQL.HOST}', macros)
+        self.assertNotIn(':', macros['{$MSSQL.URI}'].split('localhost', 1)[1])
+        tags = {row['tag']: row['value'] for row in proto['tags']}
+        self.assertEqual(tags['sql_instance'], '{#MSSQL.INSTANCE}')
+        self.assertEqual(tags['parent_host'], '{#MSSQL.PARENT}')
+        self.assertNotRegex(self.text, r'sqlserver://localhost:\d+/')
+        self.assertNotIn('Roles/MSSQL Query Server', dumped_proto)
+        import uuid
+
+        self.assertEqual(uuid.UUID(hex=HOST_PROTO_UUID).version, 4)
+        self.assertEqual(uuid.UUID(hex=INSTANCE_HOST_GROUP_UUID).version, 4)
 
     def test_does_not_reuse_windows_service_discovery_or_tcp_disaster(self):
         keys = [item['key'] for item in self.tpl['items']]
@@ -207,7 +306,6 @@ class YamlContractTests(unittest.TestCase):
                 self.assertNotIn('net.tcp.service', trig.get('expression', ''))
         self.assertTrue(priorities)
         self.assertNotIn('DISASTER', priorities)
-        self.assertNotIn('host_prototypes', self.tpl)
 
     def test_wmi_master_key_has_no_dollar_and_is_shared(self):
         items = {item['key']: item for item in self.tpl['items']}
@@ -232,6 +330,8 @@ class YamlContractTests(unittest.TestCase):
         yaml_js = run_lld_js(_fixture('wmi_mssql10.json'), script=scripts[0])
         file_js = run_lld_js(_fixture('wmi_mssql10.json'))
         self.assertEqual(json.loads(yaml_js), json.loads(file_js))
+        self.assertIn(PARENT_MACRO, want)
+        self.assertIn('{#MSSQL.PARENT}', want)
 
     def test_inventory_preprocessors_match_source_files(self):
         self.assertTrue(DB_INVENTORY_JS.is_file())
@@ -270,6 +370,8 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(macros['{$MSSQL.INSTANCE.MATCHES}']['value'], '.*')
         self.assertEqual(macros['{$MSSQL.INSTANCE.NOT_MATCHES}']['value'], 'CHANGE_IF_NEEDED')
         self.assertEqual(str(macros['{$MSSQL.INSTANCE.DISCOVERY.MIN}']['value']), '0')
+        self.assertIn(PARENT_MACRO, macros)
+        self.assertFalse(macros[PARENT_MACRO].get('value'))
         self.assertNotIn('{$MSSQL.URI}', macros)
         self.assertNotIn('{$MSSQL.USER}', macros)
         self.assertNotIn('{$MSSQL.PASSWORD}', macros)

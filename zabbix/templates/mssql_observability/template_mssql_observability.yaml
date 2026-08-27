@@ -3,6 +3,9 @@ zabbix_export:
   template_groups:
     - uuid: 748ad4d098d447d492bb935c907f652f
       name: Templates/Databases
+  host_groups:
+    - uuid: 6f2c8a91d4b047e3b8c15a7e9d04f3c2
+      name: 'MSSQL instances'
   templates:
     - uuid: 52bd809ec8a54feb8364f3d13a9c8074
       template: 'MSSQL Observability'
@@ -21,8 +24,20 @@ zabbix_export:
         server/proxy >= 7.0.6. Uses wmi.getall, not service.discovery
         (Windows by Zabbix agent already owns that key). Named-instance
         db.get and last.backup.get results are retained and normalized into
-        per-instance database/backup inventories. No host prototypes, stock
-        graph prototypes, or TCP-1433 Disaster clone.
+        per-instance database/backup inventories on the Windows host.
+
+        Named-instance databases/graphs use a 7.0 host prototype (Zabbix
+        cannot nest LLD-under-LLD on Cloud 7.0). Each MSSQL$* becomes
+        {#MSSQL.PARENT}-mssql-{#MSSQL.INSTANCE} with stock Agent 2 and
+        {$MSSQL.URI}=sqlserver://localhost/{#MSSQL.INSTANCE}. Parent name
+        is {$MSSQL.PARENT.HOST} when set, else Win32_Service.SystemName
+        ({HOST.HOST} is not expanded in host/group prototypes). Children
+        land in {#MSSQL.PARENT} (hostname group; databases are stock LLD
+        on those hosts), {#MSSQL.PARENT}/{#MSSQL.INSTANCE},
+        Roles/MSSQL/{#MSSQL.PARENT}, and MSSQL instances. Drop the
+        prototype after Cloud nested LLD exists. Do not nest stock on
+        this template, clone TCP-1433 Disaster here, or put instance
+        names in NetBox.
 
         See zabbix/notes/mssql-agent2-instances.md.
       groups:
@@ -30,16 +45,18 @@ zabbix_export:
       items:
         - uuid: 3f55ba471ea249e6a93c97cc8e67baee
           name: 'MSSQL: Named instance WMI'
-          key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL%''"]'
+          key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode,SystemName FROM Win32_Service WHERE Name LIKE ''MSSQL%''"]'
           delay: 1h
           history: 1h
           value_type: TEXT
           trends: '0'
           description: |
             Win32_Service rows whose Name starts with MSSQL. LIKE 'MSSQL%'
-            (no $ in the item key). JS keeps only MSSQL$<instance>;
-            MSSQLSERVER and MSSQLFDLauncher* are dropped. Default-only
-            hosts correctly yield an empty LLD array.
+            (no $ in the item key). SELECT includes SystemName so LLD can
+            name child hosts without {HOST.HOST} (not expanded on
+            prototypes). JS keeps only MSSQL$<instance>; MSSQLSERVER and
+            MSSQLFDLauncher* are dropped. Default-only hosts correctly
+            yield an empty LLD array.
           timeout: 30s
           tags:
             - tag: component
@@ -76,7 +93,42 @@ zabbix_export:
                     return '[]';
                   }
                   var PREFIX = 'MSSQL$';
+                  var parentMacro = '{$MSSQL.PARENT.HOST}';
                   var out = [];
+                  function trimCopy(text) {
+                    return String(text).replace(/^[ \t]+|[ \t]+$/g, '');
+                  }
+                  function sanitizeParent(name) {
+                    var cleaned = '';
+                    var i;
+                    for (i = 0; i < name.length; i++) {
+                      var ch = name.charAt(i);
+                      if (
+                        (ch >= '0' && ch <= '9') ||
+                        (ch >= 'A' && ch <= 'Z') ||
+                        (ch >= 'a' && ch <= 'z') ||
+                        ch === '_' ||
+                        ch === '.' ||
+                        ch === ' ' ||
+                        ch === '-'
+                      ) {
+                        cleaned += ch;
+                      } else {
+                        cleaned += '_';
+                      }
+                    }
+                    return trimCopy(cleaned);
+                  }
+                  function resolveParent(row) {
+                    var macro = trimCopy(parentMacro);
+                    var raw = '';
+                    if (macro && macro.indexOf('{$') !== 0 && macro !== 'CHANGE_IF_NEEDED') {
+                      raw = macro;
+                    } else if (row && typeof row.SystemName === 'string') {
+                      raw = row.SystemName;
+                    }
+                    return sanitizeParent(raw);
+                  }
                   for (var i = 0; i < rows.length; i++) {
                     var row = rows[i];
                     var name = row && row.Name;
@@ -93,11 +145,16 @@ zabbix_export:
                     if (!instance) {
                       continue;
                     }
+                    var parent = resolveParent(row);
+                    if (!parent) {
+                      throw 'MSSQL named-instance LLD: missing parent host name';
+                    }
                     out.push({
                       '{#MSSQL.SERVICE}': name,
                       '{#MSSQL.INSTANCE}': instance,
                       '{#MSSQL.URI}': 'sqlserver://localhost/' + instance,
-                      '{#MSSQL.DISPLAY}': row.DisplayName || name
+                      '{#MSSQL.DISPLAY}': row.DisplayName || name,
+                      '{#MSSQL.PARENT}': parent
                     });
                   }
                   return JSON.stringify(out);
@@ -108,7 +165,7 @@ zabbix_export:
               parameters:
                 - 1h
           master_item:
-            key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL%''"]'
+            key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode,SystemName FROM Win32_Service WHERE Name LIKE ''MSSQL%''"]'
           tags:
             - tag: component
               value: census
@@ -137,8 +194,9 @@ zabbix_export:
           enabled_lifetime_type: DISABLE_IMMEDIATELY
           description: |
             Named SQL Server instances (MSSQL$PITDV02, …). Stock Agent 2 owns
-            the default instance. Filter on {#MSSQL.INSTANCE}; do not put
-            instance names in NetBox.
+            the default instance. Host prototypes create one child host per
+            named instance so stock can run first-level database LLD.
+            Filter on {#MSSQL.INSTANCE}; do not put instance names in NetBox.
           filter:
             evaltype: AND
             conditions:
@@ -431,6 +489,42 @@ zabbix_export:
                   value: backup
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
+          host_prototypes:
+            - uuid: c8e4b17a9d5f4c2e8a6b3d0f1e7c5948
+              host: '{#MSSQL.PARENT}-mssql-{#MSSQL.INSTANCE}'
+              name: '{#MSSQL.PARENT} / {#MSSQL.INSTANCE}'
+              group_links:
+                - group:
+                    name: 'MSSQL instances'
+              group_prototypes:
+                - name: '{#MSSQL.PARENT}'
+                - name: '{#MSSQL.PARENT}/{#MSSQL.INSTANCE}'
+                - name: 'Roles/MSSQL/{#MSSQL.PARENT}'
+              templates:
+                - name: 'MSSQL by Zabbix agent 2'
+              inventory_mode: DISABLED
+              custom_interfaces: 'NO'
+              description: |
+                7.0 stand-in for nested LLD. Child reuses the parent's agent
+                interface (passive poll of the Windows IP; plugin URI is
+                localhost). Stock on the child owns per-database items,
+                graphs, and honeycomb. Parent Windows host stays the NetBox
+                object. HostSync must not collide with technical name
+                {#MSSQL.PARENT}-mssql-{#MSSQL.INSTANCE}. Stock TCP Disaster
+                (proxy simple check to localhost:1433) may fire on
+                named-instance-only boxes; disable Service's TCP port state
+                on the child. Availability is stock mssql.ping.
+              macros:
+                - macro: '{$MSSQL.URI}'
+                  value: 'sqlserver://localhost/{#MSSQL.INSTANCE}'
+                  description: 'Named instance URI (no port). Overrides the parent default-instance URI inherited from the Windows host.'
+              tags:
+                - tag: component
+                  value: mssql-instance
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: parent_host
+                  value: '{#MSSQL.PARENT}'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
@@ -453,7 +547,42 @@ zabbix_export:
                     return '[]';
                   }
                   var PREFIX = 'MSSQL$';
+                  var parentMacro = '{$MSSQL.PARENT.HOST}';
                   var out = [];
+                  function trimCopy(text) {
+                    return String(text).replace(/^[ \t]+|[ \t]+$/g, '');
+                  }
+                  function sanitizeParent(name) {
+                    var cleaned = '';
+                    var i;
+                    for (i = 0; i < name.length; i++) {
+                      var ch = name.charAt(i);
+                      if (
+                        (ch >= '0' && ch <= '9') ||
+                        (ch >= 'A' && ch <= 'Z') ||
+                        (ch >= 'a' && ch <= 'z') ||
+                        ch === '_' ||
+                        ch === '.' ||
+                        ch === ' ' ||
+                        ch === '-'
+                      ) {
+                        cleaned += ch;
+                      } else {
+                        cleaned += '_';
+                      }
+                    }
+                    return trimCopy(cleaned);
+                  }
+                  function resolveParent(row) {
+                    var macro = trimCopy(parentMacro);
+                    var raw = '';
+                    if (macro && macro.indexOf('{$') !== 0 && macro !== 'CHANGE_IF_NEEDED') {
+                      raw = macro;
+                    } else if (row && typeof row.SystemName === 'string') {
+                      raw = row.SystemName;
+                    }
+                    return sanitizeParent(raw);
+                  }
                   for (var i = 0; i < rows.length; i++) {
                     var row = rows[i];
                     var name = row && row.Name;
@@ -470,11 +599,16 @@ zabbix_export:
                     if (!instance) {
                       continue;
                     }
+                    var parent = resolveParent(row);
+                    if (!parent) {
+                      throw 'MSSQL named-instance LLD: missing parent host name';
+                    }
                     out.push({
                       '{#MSSQL.SERVICE}': name,
                       '{#MSSQL.INSTANCE}': instance,
                       '{#MSSQL.URI}': 'sqlserver://localhost/' + instance,
-                      '{#MSSQL.DISPLAY}': row.DisplayName || name
+                      '{#MSSQL.DISPLAY}': row.DisplayName || name,
+                      '{#MSSQL.PARENT}': parent
                     });
                   }
                   return JSON.stringify(out);
@@ -482,7 +616,7 @@ zabbix_export:
               parameters:
                 - 1h
           master_item:
-            key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL%''"]'
+            key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode,SystemName FROM Win32_Service WHERE Name LIKE ''MSSQL%''"]'
       macros:
         - macro: '{$MSSQL.INSTANCE.DISCOVERY.MIN}'
           value: '0'
@@ -493,3 +627,12 @@ zabbix_export:
         - macro: '{$MSSQL.INSTANCE.NOT_MATCHES}'
           value: CHANGE_IF_NEEDED
           description: 'Exclude discovered named instances (e.g. SQLEXPRESS).'
+        - macro: '{$MSSQL.PARENT.HOST}'
+          value: ''
+          description: |
+            Optional Zabbix technical name of this Windows host. User macros
+            expand in JS preprocessing; {HOST.HOST} does not. When set, LLD
+            uses it for {#MSSQL.PARENT} (child host names and hostname
+            groups). Empty falls back to Win32_Service.SystemName. Set from
+            NetBox to the device name when the Windows computer name differs
+            from the Zabbix host.

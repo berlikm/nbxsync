@@ -2,5 +2,6 @@
   "Name": "MSSQL$SQLEXPRESS",
   "DisplayName": "SQL Server (SQLEXPRESS)",
   "State": "Running",
-  "StartMode": "Auto"
+  "StartMode": "Auto",
+  "SystemName": "WIN-SQLEXPRESS"
 }

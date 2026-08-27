@@ -361,7 +361,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 |---|---|---|
 | MSSQL by Zabbix agent 2 | Device Role MSSQL | |
 | MSSQL by Zabbix agent 2 | Device Role MSSQL Query Server | |
-| MSSQL Observability | Device Role MSSQL, MSSQL Query Server | Companion named-instance LLD plus per-instance database/backup inventories. Zerotouch assigns **only after** YAML import; the inventory feature requires no nbxsync change |
+| MSSQL Observability | Device Role MSSQL, MSSQL Query Server | Companion named-instance LLD, inventories, and 7.0 host prototypes (stock Agent 2 on each child). Zerotouch assigns **only after** YAML import; no nbxsync change |
 | VMware FQDN | Device Role vCenter | **Only** on vCenter — not on ESXi platforms. Secrets via §11.3 |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if no platform rule matches |
@@ -636,7 +636,7 @@ Username format: `<SSO_DOMAIN>\LogicMonitor` (e.g. `VCENTER-SSO.SENSIRION\LogicM
 
 #### MSSQL (Agent 2; URI + per-host login)
 
-Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}`, not ODBC DSN. Set URI once on the role. Put the password (and user if the login name is not fleet-wide) on the **Device or VM**. Do **not** create `{$MSSQL.DSN:"PITDV02"}` context rows — Agent 2 does not read DSN, and named instances are LLD on the host ([notes/mssql-agent2-instances.md](../../zabbix/notes/mssql-agent2-instances.md)). Import companion **MSSQL Observability** for `MSSQL$*` instances; it retains and exposes each named instance’s database/recovery-model and backup-age inventories in Latest data, with no nbxsync code or scheduled collector.
+Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}`, not ODBC DSN. Set URI once on the role. Put the password (and user if the login name is not fleet-wide) on the **Device or VM**. Do **not** create `{$MSSQL.DSN:"PITDV02"}` context rows — Agent 2 does not read DSN, and named instances are LLD ([notes/mssql-agent2-instances.md](../../zabbix/notes/mssql-agent2-instances.md)). Import companion **MSSQL Observability** for `MSSQL$*` instances. On Cloud 7.0 the companion creates child hosts (`{#MSSQL.PARENT}-mssql-{#MSSQL.INSTANCE}`) with stock Agent 2 so per-database graphs work; children land in a host group named after the Windows hostname and under `Roles/MSSQL/{#MSSQL.PARENT}`. Optional `{$MSSQL.PARENT.HOST}` = `{{ object.name }}` on the role when WMI `SystemName` differs from the Zabbix host. Parent inventories stay in Latest data. No nbxsync code or scheduled collector. HostSync the canary Windows host only — do not HostSync the fleet from the template import, and do not sync hosts named like `PITDV02`.
 
 | Macro | Target | Type | Value |
 |---|---|---|---|
@@ -644,6 +644,7 @@ Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSS
 | `{$MSSQL.USER}` | DeviceRole: MSSQL **or** Device if the name differs | Secret | SQL login |
 | `{$MSSQL.PASSWORD}` | Device (per MSSQL host) | Secret | that host’s password |
 | `{$MSSQL.INSTANCE.DISCOVERY.MIN}` | Device, optional | Text | e.g. `5` on a named-instance box; template default `0` |
+| `{$MSSQL.PARENT.HOST}` | DeviceRole: MSSQL **and** MSSQL Query Server, optional | Text | `{{ object.name }}` — child host names / hostname groups match the Zabbix host when WMI `SystemName` differs |
 
 Leftover role `{$MSSQL.DSN}` is ODBC-era; ignore for Agent 2. Companion filters `{$MSSQL.INSTANCE.MATCHES}` / `NOT_MATCHES` stay on the **template**, not in NetBox.
 
