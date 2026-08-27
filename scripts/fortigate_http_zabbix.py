@@ -14,6 +14,7 @@ from fortigate_http import (
     FORTIGATE_HTTP_TEMPLATE,
     FORTIGATE_OBSERVABILITY_TEMPLATE,
     FORTIOS_PLATFORM_MACROS,
+    FORTIOS_TEMPLATE_CONTEXT_MACROS,
     HA_ROLE_KEY,
     OVERLAY_INVENTORY_KEY,
     POLICY_DISCOVERY_KEY,
@@ -21,6 +22,8 @@ from fortigate_http import (
     RAW_MASTER_HISTORY,
     RAW_MASTER_HISTORY_KEYS,
     REQUIRED_HTTP_SCRIPT_KEYS,
+    SDWAN_HEALTH_VDOM_CONTROL,
+    SDWAN_HEALTH_VDOM_CONTROL_LLD,
     SLOW_ITEM_DELAYS,
     VDOM_STAR_SCRIPT_KEYS,
     format_vendor_label,
@@ -33,6 +36,8 @@ from fortigate_http import (
     patch_zbx27082_script,
     script_has_vdom_star,
     script_has_zbx27082,
+    sdwan_health_loss_problem_expr,
+    sdwan_health_loss_recovery_expr,
     with_ha_role_gate,
 )
 
@@ -669,6 +674,7 @@ def upsert_http_template_macros(api, templateid) -> str:
             '{$NET.IF.IFNAME.NOT_MATCHES}',
             '{$SDWAN.HEALTH.IFNAME.MATCHES}',
             '{$SDWAN.HEALTH.NAME.NOT_MATCHES}',
+            SDWAN_HEALTH_VDOM_CONTROL,
             '{$SDWAN.MEMBER.NAME.MATCHES}',
             '{$FGATE.PATH.CONTROL}',
             '{$NET.IF.DISCOVERY.MIN}',
@@ -679,6 +685,7 @@ def upsert_http_template_macros(api, templateid) -> str:
             '{$FGATE.MEMORY.EXTREME}',
         }
     }
+    wanted.update(FORTIOS_TEMPLATE_CONTEXT_MACROS)
     existing = list(tpls[0].get('macros') or [])
     by_name = {m['macro']: dict(m) for m in existing if isinstance(m, dict) and m.get('macro')}
     current = {k: by_name[k].get('value', '') for k in wanted if k in by_name}
@@ -728,7 +735,11 @@ def _license_problem_expr(name: str, current: str) -> str:
 
 
 def patch_wan_state_triggers(api, templateid) -> dict[str, int]:
-    """Replace .diff()+manual close with sustained down; gate on ha.role."""
+    """Replace .diff()+manual close with sustained down; gate on ha.role.
+
+    Health-check link/loss also require ``{$SDWAN.HEALTH.VDOM.CONTROL:"{#VDOM}"}=1``
+    so a FortiOS template SLA does not ticket every VDOM.
+    """
     changed = 0
     protos = api.triggerprototype.get(
         hostids=templateid,
@@ -765,7 +776,13 @@ def patch_wan_state_triggers(api, templateid) -> dict[str, int]:
             item = f'{FORTIGATE_HTTP_TEMPLATE}/fgate.sdwan_health.status["{{#HID}}.{{#MID}}"]'
             control = '{$SDWAN.HEALTH.IF.CONTROL:"{#NAME}"}'
             payload.update(
-                _linkdown_payload(proto, item, control, '1')
+                _linkdown_payload(
+                    proto,
+                    item,
+                    control,
+                    '1',
+                    extra_controls=(SDWAN_HEALTH_VDOM_CONTROL_LLD,),
+                )
             )
         elif 'Link down' in name and 'fgate.sdwan_member.link_status' in expr:
             item = f'{FORTIGATE_HTTP_TEMPLATE}/fgate.sdwan_member.link_status[{{#ID}}]'
@@ -777,8 +794,24 @@ def patch_wan_state_triggers(api, templateid) -> dict[str, int]:
             item = f'{FORTIGATE_HTTP_TEMPLATE}/fgate.sdwan_health.status["{{#HID}}.{{#MID}}"]'
             control = '{$SDWAN.HEALTH.IF.CONTROL:"{#IFNAME}"}'
             payload.update(
-                _linkdown_payload(proto, item, control, '2')
+                _linkdown_payload(
+                    proto,
+                    item,
+                    control,
+                    '2',
+                    extra_controls=(SDWAN_HEALTH_VDOM_CONTROL_LLD,),
+                )
             )
+        elif 'High packets loss' in name and 'fgate.sdwan_health.loss' in expr:
+            wanted = sdwan_health_loss_problem_expr()
+            recovery = sdwan_health_loss_recovery_expr()
+            if expr != wanted:
+                payload['expression'] = wanted
+            if str(proto.get('recovery_expression') or '') != recovery:
+                payload['recovery_expression'] = recovery
+                payload['recovery_mode'] = 1
+            if str(proto.get('manual_close')) not in {'0', str(_MANUAL_CLOSE_NO)}:
+                payload['manual_close'] = _MANUAL_CLOSE_NO
         elif 'License' in name:
             wanted = _license_problem_expr(name, expr)
             if expr != wanted:
@@ -793,9 +826,19 @@ def patch_wan_state_triggers(api, templateid) -> dict[str, int]:
     return {'patched': changed, 'seen': len(protos)}
 
 
-def _linkdown_payload(proto: dict, item_ref: str, control: str, down_value: str) -> dict:
-    wanted = forti_linkdown_problem_expr(item_ref, control, down_value)
-    recovery = forti_linkdown_recovery_expr(item_ref, control, down_value)
+def _linkdown_payload(
+    proto: dict,
+    item_ref: str,
+    control: str,
+    down_value: str,
+    extra_controls: tuple[str, ...] = (),
+) -> dict:
+    wanted = forti_linkdown_problem_expr(
+        item_ref, control, down_value, extra_controls=extra_controls
+    )
+    recovery = forti_linkdown_recovery_expr(
+        item_ref, control, down_value, extra_controls=extra_controls
+    )
     payload: dict = {}
     if str(proto.get('expression') or '') != wanted:
         payload['expression'] = wanted

@@ -230,6 +230,8 @@ from fortigate_http import (
     MEMORY_EXTREME_MACRO as _MEMORY_EXTREME_MACRO,
     MEMORY_GREEN_MACRO as _MEMORY_GREEN_MACRO,
     MEMORY_RED_MACRO as _MEMORY_RED_MACRO,
+    SDWAN_HEALTH_VDOM_CONTROL as _SDWAN_HEALTH_VDOM_CONTROL,
+    SDWAN_HEALTH_VDOM_TICKET as _SDWAN_HEALTH_VDOM_TICKET,
     format_vendor_label as _format_vendor_label,
     fetch_fortigate_api as _fetch_fortigate_api,
     flatten_forti_cmdb_list as _flatten_forti_cmdb_list,
@@ -2276,6 +2278,15 @@ def _step_fortios_platform_macros(server, *, required: bool = False) -> int:
             mtype=ZabbixMacroTypeChoices.TEXT,
             description='nwn:fortios:unused-forticloud-license',
             context='forticloud',
+        )
+        _upsert_object_macro_assignment(
+            server,
+            plat,
+            _SDWAN_HEALTH_VDOM_CONTROL,
+            '1',
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description='nwn:fortios:sdwan-health-vdom-root',
+            context=_SDWAN_HEALTH_VDOM_TICKET,
         )
         logger.info(
             '  Platform %s FortiGate HTTP macros (%s Jinja; no HostSync)',

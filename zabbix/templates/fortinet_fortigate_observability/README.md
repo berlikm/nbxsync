@@ -15,8 +15,8 @@ Companion-only gaps: Health (Overview / HA), **Network interfaces**
 honeycomb, Probe grouped by vdom with byte-rate navigation) in the same
 chrome as EXOS; unsupported-item census; interface / SD-WAN / HA member
 counts; configured memory-pressure alerting; estate macros (CPU/mem CRIT
-101, SD-WAN MATCHES, factory `Default_FortiGuard` SLA excluded from health
-LLD). Do not put graph prototypes in this YAML: template
+101, SD-WAN MATCHES, health-check tickets opted in per VDOM — ``root``
+by default). Do not put graph prototypes in this YAML: template
 dashboards can reference only graph prototypes owned by the companion,
 not the nested Cloud HTTP parent. HA role for path-ticket gating is a
 surgical item on the Cloud HTTP parent so stock trigger prototypes can

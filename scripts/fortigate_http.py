@@ -78,12 +78,14 @@ POLICY_DISCOVERY_KEY = 'fgate.fwp.discovery'
 MEMORY_GREEN_MACRO = '{$FGATE.MEMORY.GREEN}'
 MEMORY_RED_MACRO = '{$FGATE.MEMORY.RED}'
 MEMORY_EXTREME_MACRO = '{$FGATE.MEMORY.EXTREME}'
-# Factory FortiGuard SLA is not an underlay WAN probe. Overlay members
-# (v0665-trin*) flap FortiGuard reachability without meaning the circuit is
-# down. LLD NAME.NOT_MATCHES drops the whole health-check (link-down and
-# loss). CONTROL:"Default_FortiGuard"=0 would mute link-down only — loss
-# keys off member {#IFNAME}. Do not set this to ``.*``.
-SDWAN_HEALTH_NAME_NOT_MATCHES = '^Default_FortiGuard$'
+# FortiOS templates copy the same Performance SLA into every VDOM. Collect
+# all of them (Path dashboards / later internet monitoring). Ticket only
+# opted-in VDOMs — production ``root`` by default. Guest ``Untrust`` (or any
+# other VDOM) is host/template ``{$SDWAN.HEALTH.VDOM.CONTROL:"Untrust"}=1``.
+SDWAN_HEALTH_VDOM_CONTROL = '{$SDWAN.HEALTH.VDOM.CONTROL}'
+SDWAN_HEALTH_VDOM_CONTROL_LLD = '{$SDWAN.HEALTH.VDOM.CONTROL:"{#VDOM}"}'
+SDWAN_HEALTH_VDOM_TICKET = 'root'
+SDWAN_HEALTH_VDOM_CONTROL_ROOT = '{$SDWAN.HEALTH.VDOM.CONTROL:"root"}'
 
 # HostSync of a FortiOS device inherits platform defaults onto the companion.
 # Apply writes a per-device exact-match IFNAME regex from enabled+cabled NetBox
@@ -96,7 +98,8 @@ FORTIOS_PLATFORM_MACROS = {
     '{$NET.IF.IFNAME.MATCHES}': '^$',
     '{$NET.IF.IFNAME.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
     '{$SDWAN.HEALTH.IFNAME.MATCHES}': '.*',
-    '{$SDWAN.HEALTH.NAME.NOT_MATCHES}': SDWAN_HEALTH_NAME_NOT_MATCHES,
+    '{$SDWAN.HEALTH.NAME.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
+    SDWAN_HEALTH_VDOM_CONTROL: '0',
     '{$SDWAN.MEMBER.NAME.MATCHES}': '.*',
     '{$FWP.FWNAME.MATCHES}': '^$',
     '{$NET.IF.UTIL.MAX}': '101',
@@ -112,6 +115,11 @@ FORTIOS_PLATFORM_MACROS = {
     '{$FGATE.SDWAN.EXPECTED}': '1',
     '{$FGATE.HA.EXPECTED}': '2',
     FGATE_FQDN_MACRO: FGATE_FQDN_JINJA,
+}
+
+# Context macros are not HostSync dict keys (nbxSync stores context separately).
+FORTIOS_TEMPLATE_CONTEXT_MACROS = {
+    SDWAN_HEALTH_VDOM_CONTROL_ROOT: '1',
 }
 
 # Live Cloud HTTP scripts patched in place (not a YAML import).
@@ -1297,10 +1305,13 @@ def forti_linkdown_problem_expr(
     *,
     samples: int = LINKDOWN_SAMPLES,
     gate_ha_role: bool = True,
+    extra_controls: tuple[str, ...] = (),
 ) -> str:
     """Sustained down (all of N samples), not .diff(). Optional primary-only gate."""
+    controls = (control_macro,) + extra_controls
+    gated = ' and '.join(f'{macro}=1' for macro in controls)
     core = (
-        f'{control_macro}=1 and '
+        f'{gated} and '
         f'max(/{item_ref},#{samples})={down_value} and '
         f'min(/{item_ref},#{samples})={down_value}'
     )
@@ -1309,8 +1320,35 @@ def forti_linkdown_problem_expr(
     return core
 
 
-def forti_linkdown_recovery_expr(item_ref: str, control_macro: str, down_value: str) -> str:
-    return f'last(/{item_ref})<>{down_value} or {control_macro}=0'
+def forti_linkdown_recovery_expr(
+    item_ref: str,
+    control_macro: str,
+    down_value: str,
+    extra_controls: tuple[str, ...] = (),
+) -> str:
+    offs = ' or '.join(
+        f'{macro}=0' for macro in (control_macro,) + extra_controls
+    )
+    return f'last(/{item_ref})<>{down_value} or {offs}'
+
+
+def sdwan_health_loss_problem_expr() -> str:
+    """High packets loss — primary + opted-in VDOM only. Keep items on every VDOM."""
+    loss = (
+        f'min(/{FORTIGATE_HTTP_TEMPLATE}/fgate.sdwan_health.loss'
+        f'["{{#HID}}.{{#MID}}"],5m)'
+    )
+    warn = '{$SDWAN.HEALTH.IF.LOSS.WARN:"{#IFNAME}"}'
+    return with_ha_role_gate(f'{SDWAN_HEALTH_VDOM_CONTROL_LLD}=1 and {loss}>{warn}')
+
+
+def sdwan_health_loss_recovery_expr() -> str:
+    last = (
+        f'last(/{FORTIGATE_HTTP_TEMPLATE}/fgate.sdwan_health.loss'
+        f'["{{#HID}}.{{#MID}}"])'
+    )
+    warn = '{$SDWAN.HEALTH.IF.LOSS.WARN:"{#IFNAME}"}'
+    return f'{last}<={warn} or {SDWAN_HEALTH_VDOM_CONTROL_LLD}=0'
 
 
 def netif_error_problem_expr(ifkey: str = '{#IFKEY}') -> str:

@@ -33,6 +33,7 @@ from fortigate_http import (
     FORTIOS_NESTED_PARENT_TEMPLATES,
     FORTIOS_PLATFORM_MACROS,
     FORTIOS_PLATFORM_PATTERN,
+    FORTIOS_TEMPLATE_CONTEXT_MACROS,
     FORTIOS_TEMPLATE_RULE,
     ICMP_PING_TEMPLATE,
     MEMORY_EXTREME_MACRO,
@@ -42,7 +43,10 @@ from fortigate_http import (
     RAW_MASTER_HISTORY,
     RAW_MASTER_HISTORY_KEYS,
     REQUIRED_HTTP_SCRIPT_KEYS,
-    SDWAN_HEALTH_NAME_NOT_MATCHES,
+    SDWAN_HEALTH_VDOM_CONTROL,
+    SDWAN_HEALTH_VDOM_CONTROL_LLD,
+    SDWAN_HEALTH_VDOM_CONTROL_ROOT,
+    SDWAN_HEALTH_VDOM_TICKET,
     SLOW_ITEM_DELAYS,
     SNMP_MONITORING_CG,
     VDOM_STAR_SCRIPT_KEYS,
@@ -56,6 +60,7 @@ from fortigate_http import (
     fortigate_ifname_regex,
     fortigate_memory_thresholds,
     forti_linkdown_problem_expr,
+    forti_linkdown_recovery_expr,
     ha_role_gate_expr,
     is_cloud_fortigate_http_vendor,
     netif_error_problem_expr,
@@ -67,6 +72,8 @@ from fortigate_http import (
     probe_fortigate_api,
     script_has_vdom_star,
     script_has_zbx27082,
+    sdwan_health_loss_problem_expr,
+    sdwan_health_loss_recovery_expr,
     with_ha_role_gate,
 )
 
@@ -117,6 +124,7 @@ class FirewallRoleMacroTests(unittest.TestCase):
                 '{$NET.IF.IFNAME.NOT_MATCHES}',
                 '{$SDWAN.HEALTH.IFNAME.MATCHES}',
                 '{$SDWAN.HEALTH.NAME.NOT_MATCHES}',
+                '{$SDWAN.HEALTH.VDOM.CONTROL}',
                 '{$SDWAN.MEMBER.NAME.MATCHES}',
                 '{$FWP.FWNAME.MATCHES}',
                 '{$NET.IF.UTIL.MAX}',
@@ -156,12 +164,13 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.IFNAME.MATCHES}'], '.*')
         self.assertEqual(
             FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.NAME.NOT_MATCHES}'],
-            SDWAN_HEALTH_NAME_NOT_MATCHES,
+            'CHANGE_IF_NEEDED',
         )
-        self.assertEqual(SDWAN_HEALTH_NAME_NOT_MATCHES, '^Default_FortiGuard$')
-        self.assertNotEqual(
-            FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.NAME.NOT_MATCHES}'],
-            '.*',
+        self.assertEqual(FIREWALL_ROLE_MACROS[SDWAN_HEALTH_VDOM_CONTROL], '0')
+        self.assertEqual(SDWAN_HEALTH_VDOM_TICKET, 'root')
+        self.assertEqual(
+            FORTIOS_TEMPLATE_CONTEXT_MACROS[SDWAN_HEALTH_VDOM_CONTROL_ROOT],
+            '1',
         )
         self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'], '.*')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SDWAN.EXPECTED}'], '1')
@@ -380,6 +389,26 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertIn('fgate.ha.role', expr)
         self.assertEqual(with_ha_role_gate('x=1'), f'x=1 and {ha_role_gate_expr()}')
         self.assertEqual(with_ha_role_gate('last(/FortiGate by HTTP/fgate.ha.role)=1'), 'last(/FortiGate by HTTP/fgate.ha.role)=1')
+        health = forti_linkdown_problem_expr(
+            'FortiGate by HTTP/fgate.sdwan_health.status["{#HID}.{#MID}"]',
+            '{$SDWAN.HEALTH.IF.CONTROL:"{#NAME}"}',
+            '1',
+            extra_controls=(SDWAN_HEALTH_VDOM_CONTROL_LLD,),
+        )
+        self.assertIn(f'{SDWAN_HEALTH_VDOM_CONTROL_LLD}=1', health)
+        self.assertIn('{$SDWAN.HEALTH.IF.CONTROL:"{#NAME}"}=1', health)
+        rec = forti_linkdown_recovery_expr(
+            'FortiGate by HTTP/fgate.sdwan_health.status["{#HID}.{#MID}"]',
+            '{$SDWAN.HEALTH.IF.CONTROL:"{#NAME}"}',
+            '1',
+            extra_controls=(SDWAN_HEALTH_VDOM_CONTROL_LLD,),
+        )
+        self.assertIn(f'{SDWAN_HEALTH_VDOM_CONTROL_LLD}=0', rec)
+        loss = sdwan_health_loss_problem_expr()
+        self.assertIn(f'{SDWAN_HEALTH_VDOM_CONTROL_LLD}=1', loss)
+        self.assertIn('fgate.ha.role', loss)
+        self.assertIn('fgate.sdwan_health.loss', loss)
+        self.assertIn(f'{SDWAN_HEALTH_VDOM_CONTROL_LLD}=0', sdwan_health_loss_recovery_expr())
 
     def test_required_scripts_and_slow_delays(self):
         self.assertIn('fgate.netif.get_data', REQUIRED_HTTP_SCRIPT_KEYS)
@@ -437,8 +466,9 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertNotIn("value: '443'", companion)
         self.assertIn("macro: '{$SDWAN.MEMBER.NAME.MATCHES}'", companion)
         self.assertIn("value: '.*'", companion)
-        self.assertIn("macro: '{$SDWAN.HEALTH.NAME.NOT_MATCHES}'", companion)
-        self.assertIn("value: '^Default_FortiGuard$'", companion)
+        self.assertIn("macro: '{$SDWAN.HEALTH.VDOM.CONTROL}'", companion)
+        self.assertIn('{$SDWAN.HEALTH.VDOM.CONTROL:"root"}', companion)
+        self.assertNotIn("macro: '{$SDWAN.HEALTH.NAME.NOT_MATCHES}'", companion)
         self.assertIn("macro: '{$FGATE.SDWAN.EXPECTED}'", companion)
         self.assertIn("value: '0'", companion)
         self.assertIn("macro: '{$FGATE.HA.EXPECTED}'", companion)
@@ -808,6 +838,55 @@ class FirewallRoleMacroTests(unittest.TestCase):
             triggerprototype.updated[0]['expression'],
         )
         self.assertNotIn('1=1 and', triggerprototype.updated[0]['expression'])
+
+    def test_sdwan_health_patch_opts_in_root_vdom_only(self):
+        from types import SimpleNamespace
+        from fortigate_http_zabbix import patch_wan_state_triggers
+
+        class TriggerPrototypeAPI:
+            def __init__(self):
+                self.updated = []
+
+            def get(self, **kwargs):
+                return [
+                    {
+                        'triggerid': '8',
+                        'description': 'FortiGate: SD-WAN [{#VDOM}]:[{#NAME}]:[{#IFNAME}]: Link down',
+                        'expression': (
+                            '{$SDWAN.HEALTH.IF.CONTROL:"{#NAME}"}=1 and '
+                            'last(/FortiGate by HTTP/fgate.sdwan_health.status["{#HID}.{#MID}"])=1'
+                        ),
+                        'recovery_expression': '',
+                        'recovery_mode': '0',
+                        'manual_close': '1',
+                    },
+                    {
+                        'triggerid': '9',
+                        'description': 'FortiGate: SD-WAN [{#VDOM}]:[{#NAME}]:[{#IFNAME}]: High packets loss',
+                        'expression': (
+                            'min(/FortiGate by HTTP/fgate.sdwan_health.loss'
+                            '["{#HID}.{#MID}"],5m)>{$SDWAN.HEALTH.IF.LOSS.WARN:"{#IFNAME}"}'
+                        ),
+                        'recovery_expression': '',
+                        'recovery_mode': '0',
+                        'manual_close': '0',
+                    },
+                ]
+
+            def update(self, **kwargs):
+                self.updated.append(kwargs)
+
+        triggerprototype = TriggerPrototypeAPI()
+        api = SimpleNamespace(triggerprototype=triggerprototype)
+        self.assertEqual(
+            patch_wan_state_triggers(api, '123'),
+            {'patched': 2, 'seen': 2},
+        )
+        by_id = {row['triggerid']: row for row in triggerprototype.updated}
+        self.assertIn(f'{SDWAN_HEALTH_VDOM_CONTROL_LLD}=1', by_id['8']['expression'])
+        self.assertIn(f'{SDWAN_HEALTH_VDOM_CONTROL_LLD}=1', by_id['9']['expression'])
+        self.assertEqual(by_id['9']['expression'], sdwan_health_loss_problem_expr())
+        self.assertEqual(by_id['9']['recovery_expression'], sdwan_health_loss_recovery_expr())
 
     def test_vdom_labels_and_tags_are_unambiguous_and_idempotent(self):
         from fortigate_http_zabbix import _with_vdom_label, _with_vdom_tag
