@@ -77,7 +77,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 03 | FortiGate | stock **FortiGate by HTTP** (7.0) + ICMP Ping | yes — [03](03-fortinet.md) | no | no (live nbxSync still **SNMP** until `--apply-fortigate-http`) |
 | 03 | FortiManager | none official (Network Generic) | yes — short block in 03 | no | no |
 | 03 | FortiAnalyzer | none official (Network Generic) | yes — short block in 03 | no | no |
-| 04 | Cato | **built** — `Cato Networks by HTTP` | yes (`04`) | collector validated; Socket pilots deferred | partial (0/21 Socket ICMP hosts held) |
+| 04 | Cato | **built** — `Cato Networks by HTTP` | yes (`04`) | collector and 21/21 Socket ICMP hosts validated | yes (21/21 Socket ICMP hosts) |
 | 05 | Circuits | n/a | scaffold | no | Cato-only last-mile, Degraded, and WAN `mediaIn` live on 04; Forti Path is the Forti probe |
 | 06 | Network VMs | stock OS templates | scaffold | no | no |
 

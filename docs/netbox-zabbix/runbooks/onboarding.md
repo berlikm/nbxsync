@@ -14,7 +14,7 @@ Plugin setting `exclude_tag` = `do_not_monitor`.
 |---|---|
 | **Onboarding / not ready** | NetBox inventory tag **`onboarding`** on the Device/VM. Once: assign Zabbix tag `do_not_monitor` on the **NetBox Tag** object (Tag → Zabbix tab). Every host carrying `onboarding` inherits exclude. |
 | **Permanent never-monitor** | Zabbix tag `do_not_monitor` on the **Device Role** (Messpc, VDI) |
-| **Cato Socket controlled release (future only)** | Production currently retains the role-level `do_not_monitor` hold; do not run its migration or `CATO_ACTION` command without separate approval. |
+| **Cato Socket controlled release** | All 21 current Socket hosts are live. Add `onboarding` before a new or replacement Socket's first sync; release it only after its primary IP and proxy path are ready. |
 
 **Enable a host:** remove NetBox tag **`onboarding`** from that Device/VM → next sync creates/updates the Zabbix host.
 
@@ -87,17 +87,17 @@ When that object is ready to monitor:
 
 No new configuration group or Template Rule is required for a normal agent host — Site Group Agent default already covers it once exclusion is gone.
 
-## Cato Socket hold and release (future approved migration)
+## Cato Socket hold and release
 
-**Current production state (2026-08-25):** all 21 Cato Sockets retain the
-existing role-level exclusion, so no Socket ICMP host exists. This procedure is
-not active in the account-collector-only rollout.
+**Current production state (2026-08-25):** all 21 Cato Sockets are live with
+one stock `ICMP Ping` host each. None carries `onboarding` or the legacy
+inventory `do_not_monitor` tag, and the role-level exclusion is absent.
 
-Only after a separately approved migration, a new Socket becomes an
-operator-owned NetBox action. Do this immediately after the Socket appears in
-NetBox, before its first nbxSync run. The command is idempotent; `hold` adds
-`onboarding`, and `release` removes it only when the Socket has a primary IPv4
-address. It always runs one `SyncHostJob` for that Socket.
+For every new or replacement Socket, perform this operator-owned NetBox action
+immediately after it appears in NetBox, before its first nbxSync run. The
+command is idempotent: `hold` adds `onboarding`, and `release` removes it only
+when the Socket has a primary IPv4 address. It always runs one `SyncHostJob`
+for that Socket.
 
 Run from `/opt/netbox/netbox` after sourcing `/etc/netbox.env`:
 
@@ -123,11 +123,11 @@ SyncHostJob(instance=device).run()
 '
 ```
 
-After the approved migration, set `CATO_ACTION=release` only after the NetBox
-primary IP and regional proxy route are ready. Verify the resulting host has one
-primary-IP Agent interface, stock `ICMP Ping`, exactly one `icmpping`, and tags
-`component=cato`, `monitoring_domain=cato_socket`. Do not attach the Cato
-account template to a Socket host.
+For a new or replacement Socket, set `CATO_ACTION=release` only after the
+NetBox primary IP and regional proxy route are ready. Verify the resulting host
+has one primary-IP Agent interface, stock `ICMP Ping`, exactly one `icmpping`,
+and tags `component=cato`, `monitoring_domain=cato_socket`. Do not attach the
+Cato account template to a Socket host.
 
 ---
 
@@ -136,7 +136,7 @@ account template to a Socket host.
 | Approach | Why it is a poor fit here |
 |---|---|
 | Role-level `do_not_monitor` on Server / VM roles | Cannot enable a single host until the whole role is opened |
-| Role-level `do_not_monitor` on `Sd Wan Socket` | Current approved hold. After the future migration it prevents controlled per-Socket release and duplicates the onboarding hold. |
+| Role-level `do_not_monitor` on `Sd Wan Socket` | Must remain absent: it blocks controlled per-Socket release and duplicates the onboarding hold. |
 | Per-device Zabbix-tab `do_not_monitor` for waves | Works, but harder to bulk-edit than a NetBox inventory tag — prefer `onboarding` |
 | NetBox status `planned` / `staged` → Zabbix disabled | Host still created; meant for lifecycle status, not “agent not installed” |
 | Soft-state / `NO_ALERTING` | Host still polled; different problem |
@@ -147,10 +147,8 @@ account template to a Socket host.
 ## After go-live
 
 - New objects that are not ready yet: add NetBox tag `onboarding` at create time (or leave them until ready — if Agent default would sync them immediately, prefer tag-first).
-- New Cato Socket: in the current account-collector-only rollout, retain the
-  role hold. After the approved migration, set `CATO_ACTION=hold` before first
-  nbxSync and release only when its primary IP and proxy path are ready.
+- New Cato Socket: set `CATO_ACTION=hold` before its first nbxSync run, then
+  release only when its primary IP and proxy path are ready.
 - Permanent never-monitor classes: keep **role-level** Zabbix tag
-  `do_not_monitor` only on Messpc and VDI, except for the currently deferred
-  Cato Socket rollout.
+  `do_not_monitor` only on Messpc and VDI.
 - Day-2 policy changes: [`day2.md`](day2.md).

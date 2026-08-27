@@ -1,6 +1,6 @@
 # Cato — Zabbix monitoring
 
-**Status:** production account collector live; Socket ICMP rollout held at 0/21.<br>
+**Status:** production account collector and 21/21 NetBox-backed Socket ICMP hosts live.<br>
 **Owner:** Network monitoring
 **Depends on:** NetBox Socket inventory, nbxSync Agent Monitoring inheritance, and the Cato API token.
 
@@ -225,8 +225,9 @@ account host. It does **not** run zerotouch, HostSync Socket devices, or mutate
 NetBox Socket roles. `--check-cato` is the read-only preflight plus collector
 shape.
 
-Do **not** re-run `configure_nbxsync_zerotouch.py` to refresh this pack. Zerotouch
-`--enable-cato --mutate-netbox` is a future Socket-inventory migration only.
+Do **not** re-run `configure_nbxsync_zerotouch.py` to refresh this pack. The
+one-time Socket migration is complete; use the per-Socket onboarding runbook
+for a new or replacement device.
 
 ```bash
 export NBX_CATO_API_KEY=...
@@ -236,20 +237,16 @@ python3 scripts/configure_nbxsync_network.py --apply-cato
 ```
 
 `scripts/configure_cato_zabbix.py` remains the Zabbix-API implementation and
-lab `--simulate` path. `--verify` is collector-only during the 0/21 hold;
-`--verify --require-sockets` fails on missing Socket ICMP serials after the
-approved migration.
+lab `--simulate` path. `--verify --require-sockets` enforces the 21/21 Socket
+ICMP serial census.
 
-**Production state (2026-08-25):** collector live; all 21 Sockets retain the
-existing role-level `do_not_monitor` exclusion. Do not run the zerotouch
-Socket migration merely to refresh this template.
+**Production state (2026-08-25):** the account collector and all 21 Socket
+ICMP hosts are live. The Socket role has no `do_not_monitor` assignment, and
+no current Socket carries `onboarding` or the legacy inventory exclusion.
+Refreshing this template does not mutate Socket inventory.
 
 1. Refresh the account pack: `configure_nbxsync_network.py --apply-cato`.
-2. **Future approved migration only:** migrate Socket inventory to the gapless
-   `onboarding` hold with
-   `configure_nbxsync_zerotouch.py --enable-cato --mutate-netbox`.
-3. Release individual Socket hosts only after their primary IP and proxy route
-   are ready. The exact hold/release command is in
+2. For a new or replacement Socket, use the hold/release command in
    `docs/netbox-zabbix/runbooks/onboarding.md`.
 
 ## Circuit / last-mile vs overlay

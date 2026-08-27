@@ -4,7 +4,7 @@ Zabbix does not browse NetBox. The **nbxSync** plugin in NetBox pushes devices a
 
 | Layer | Where | What it does |
 |---|---|---|
-| **1 — Can this object sync?** | Device / VM in NetBox | Country **Site Group** (or cluster site) selects the Zabbix server + proxy. Role **Messpc / VDI** or tag **`onboarding`** → excluded (`do_not_monitor`). Production `Sd Wan Socket` intentionally retains a separate role-level `do_not_monitor` hold while its account collector is live; its controlled per-device `onboarding` model is a future approved migration. No site → not profiled. |
+| **1 — Can this object sync?** | Device / VM in NetBox | Country **Site Group** (or cluster site) selects the Zabbix server + proxy. Role **Messpc / VDI** or tag **`onboarding`** → excluded (`do_not_monitor`). `Sd Wan Socket` uses controlled per-device onboarding: the current 21 Socket hosts are released and live; a new or replacement Socket is held with `onboarding` until its primary IP and proxy path are ready. No site → not profiled. |
 | **2 — How does Zabbix talk to it?** | **Zabbix → Configuration groups** | One **winning** CG supplies **Host Interfaces** (Agent / SNMP). Default is **Agent Monitoring** on every country Site Group. Role / manufacturer / device / tag assignments override that default. SNMPv3 **auth/priv protocol is an integer on the interface** — a macro cannot switch SHA vs MD5. Different crypto = a different CG. |
 | **3 — Which Zabbix templates?** | **Template Rules** then role/object **Templates** | **Every matching enabled Template Rule applies** (they merge). Direct template links on a role fill gaps (MSSQL, vCenter, GitLab, …). |
 
@@ -490,32 +490,31 @@ Plugin `exclude_tag` = `do_not_monitor` (§12) — one setting. Same nbxSync **Z
 | do_not_monitor | *(empty)* | **Device Role** — Messpc, VDI | Permanent — leave on the role. |
 | do_not_monitor | *(empty)* | **NetBox Tag `onboarding`** (Organization → Tags → **onboarding** → Zabbix tab → Tags) | Temporary wave or controlled release hold. |
 
-**Current production state (2026-08-25):** `Sd Wan Socket` remains covered by
-the existing role-level `do_not_monitor` assignment. The live Cato account
-collector does not manage Socket hosts, and no Socket ICMP host exists. This
-deliberate hold avoids mutating GUI-managed NetBox and nbxSync configuration.
+**Current production state (2026-08-25):** all 21 `Sd Wan Socket` devices are
+released and their ICMP hosts are live. None carries `onboarding` or the legacy
+inventory `do_not_monitor` tag, and the role-level `do_not_monitor` assignment
+is absent.
 
-**Future approved migration only:** each Socket moves to NetBox inventory tag
-`onboarding` before its first nbxSync run and remains excluded until its primary
-IP and proxy path are ready. Removing `onboarding` from one Socket starts
-monitoring it. Once that migration is complete, the role has `component=cato`
-and `monitoring_domain=cato_socket` host tags, while inherited Agent Monitoring
-supplies the one stock `ICMP Ping` template.
+For a new or replacement Socket, add NetBox inventory tag `onboarding` before
+its first nbxSync run. It remains excluded until its primary IP and proxy path
+are ready; removing `onboarding` from that one Socket starts monitoring it.
+The role supplies `component=cato` and `monitoring_domain=cato_socket` host
+tags, while inherited Agent Monitoring supplies the one stock `ICMP Ping`
+template.
 
 nbxSync resolves assignments on a NetBox Tag onto every Device/VM that carries
 that tag. The generic onboarding sweep must not tag or untag controlled-release
 Socket devices; use the idempotent hold/release command in
-[`runbooks/onboarding.md`](runbooks/onboarding.md) only after the migration.
+[`runbooks/onboarding.md`](runbooks/onboarding.md) for a new or replacement
+Socket.
 
 Sync **skips** excluded objects (no host/interfaces/templates). An existing
 Zabbix host from a prior sync is **deleted**.
 
-The current legacy Cato inventory tag `do_not_monitor` and role-level Zabbix
-exclusion remain intentionally in place. Refresh the account collector with
-`configure_nbxsync_network.py --apply-cato` — **do not** re-run zerotouch for
-that. A future `--enable-cato --mutate-netbox` migration replaces the Socket
-hold with `onboarding` before removing the role exclusion, with no sync gap.
-Do **not** run that migration during the account-collector-only rollout.
+Refresh the separate account collector with
+`configure_nbxsync_network.py --apply-cato` — it does not mutate Socket roles
+or hosts. The one-time `--enable-cato --mutate-netbox` migration is complete;
+do **not** rerun it for a normal collector refresh.
 
 Do **not** put Zabbix `do_not_monitor` on role Server (or a Site Group) for
 waves — you cannot open a single child while the parent excludes.

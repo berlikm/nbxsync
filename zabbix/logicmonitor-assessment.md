@@ -31,7 +31,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 |---|---|---|---|
 | **Pure Storage** (per-array token) | 7 SAN arrays | `Pure Storage FlashArray v2 by HTTP` via manufacturer TemplateRule; per-array `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` macros (old `{$PURESTORAGE.TOKEN}` pruned) | ✅ Covered (per-array macros via §11.4) |
 | **SAP** (`C_PROMONITOR`) | 11 SAP hosts | Not yet — SAP scripts from DNUS, integrated by Robert | ❌ Gap (post-cutover) |
-| **CATO SD-WAN** (account 964) | Cato sockets | `Cato Networks by HTTP` account collector; Socket ICMP hosts remain under the existing role exclusion | ⚠ Partial — collector live, 0/21 Socket ICMP hosts |
+| **CATO SD-WAN** (account 964) | Cato sockets | `Cato Networks by HTTP` account collector plus 21 NetBox-backed Socket ICMP hosts | ✅ Live — collector and 21/21 Socket ICMP hosts |
 
 ## 4. Website monitoring (webcheck)
 
@@ -76,7 +76,7 @@ All 38 ConfigSources in LM are standard Exchange content. Zabbix doesn't have a 
 | Pure Storage | 7 arrays | ✅ 7 synced | 0 | `Pure Storage FlashArray v2 by HTTP`; `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` per array (§11.4) |
 | Dell/Huawei storage | 2 devices | ✅ 2 synced | 0 | HPE MSA HTTP (Dell); Huawei OceanStor SNMP (Huawei CG) |
 | SAP | 11 hosts | ❌ | 11 | DNUS scripts, post-cutover |
-| CATO SD-WAN | (API) | ⚠ collector live | 0/21 Socket ICMP | Cato by HTTP; existing Socket role exclusion intentionally retained |
+| CATO SD-WAN | (API) | ✅ collector live | 21/21 Socket ICMP | Cato by HTTP plus stock ICMP Ping on NetBox-backed Socket hosts |
 | Website checks | 11 | ❌ | 11 | Zabbix web scenarios |
 | Custom process/service checks | ~5 datasources | ❌ | 5 | Agent-based, post-cutover |
 | Oracle JDBC | (unknown count) | ❌ | ? | Oracle by ODBC |

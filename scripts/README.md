@@ -74,17 +74,19 @@ That fail-closes on GraphQL preflight, imports `Cato Networks by HTTP`, and
 converges `cato-account-964`. No HostSync, no Extreme import, no Socket role
 change.
 
-The Socket ICMP migration is separately approved and still deferred: all 21
-production `Sd Wan Socket` devices retain their existing role-level exclusion.
-Do **not** run the NetBox-mutating step below merely to refresh the collector.
+All 21 production `Sd Wan Socket` devices are live through the controlled
+per-device onboarding model. The one-time role-to-onboarding migration is
+complete; do **not** run it again merely to refresh the collector, because it
+would re-hold the released Socket fleet.
 
 ```bash
-# Future approved migration only — mutates Socket inventory tags / nbxSync.
+# One-time migration reference only — do not use for a normal collector refresh.
 python scripts/configure_nbxsync_zerotouch.py --enable-cato --mutate-netbox
 ```
 
 `configure_cato_zabbix.py --simulate` requires `NBX_CATO_API_KEY` and a local
-Zabbix lab. `--verify` is collector-only unless you pass `--require-sockets`.
+Zabbix lab. `--verify --require-sockets` validates the 21/21 Socket ICMP
+identity census.
 
 
 ## Re-syncing a single host (testing)
