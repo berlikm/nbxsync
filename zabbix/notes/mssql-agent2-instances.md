@@ -10,6 +10,7 @@ Verified against official Zabbix **7.0**:
 - Agent 2 MSSQL plugin (template requires plugin **≥ 7.0.10**)
 - Plugin URI instance form since **Zabbix 7.0.6**: `sqlserver://localhost/InstanceName` (no port; a port in the URI **ignores** the instance name)
 - Host prototypes: LLD expands `{#…}` only. `{HOST.HOST}` / `{HOST.NAME}` / `{HOST.CONN}` are **not** substituted in host names, visible names, group prototypes, tags, or prototype macro values (`src/zabbix_server/lld/lld_host.c` → `zbx_substitute_lld_macros`). Nested discovery-under-discovery on the same host is **7.4+** (ZBXNEXT-1527), not Cloud 7.0.
+- Cloud **7.0** import **rejects** a `description` field on host prototypes. Leave it off the YAML. The import-contract test asserts that.
 
 ---
 
@@ -65,6 +66,8 @@ Stock macros that stay on the role / template (do not duplicate in the companion
 `{$MSSQL.DSN}` is **MSSQL by ODBC** only. Zerotouch already unlinked ODBC.
 
 Stock trigger **MSSQL: Service is unavailable** is **Disaster** on `net.tcp.service[tcp,{$MSSQL.HOST},{$MSSQL.PORT}]`. That SIMPLE check runs on the **proxy**, so inherited `HOST=localhost` is the proxy, not SQL. Named instances are often **not** on 1433. Do **not** clone that trigger onto the companion. Availability on the child is stock `mssql.ping`. If TCP Disaster fires on a named-instance-only child, disable **Service's TCP port state** on that child (canary).
+
+Stock per-database **performance** items are dependents of `mssql.db.perf_raw["{#DBNAME}"]`, which JSONPaths `object_name=~'.*Databases'` and `instance_name=='{#DBNAME}'`, then one JSONPath per counter (`Transactions/sec`, `Active Transactions`, log-file sizes, …). Named-instance object names (`MSSQL$ASP:Databases`) already match `.*Databases`. If that object exists but **omits** those `counter_name` rows, the ~13 rate/size derivatives stay **unsupported** while `State` and backup items (different masters) still work. That is SQL Server / perfmon payload, not a missing URI. Do **not** fork the vendor template or invent a second counter map in the companion.
 
 ---
 
@@ -274,6 +277,8 @@ Import the companion YAML in Zabbix (GUI). Then HostSync the **canary Windows ho
 |---|---|
 | `{$MSSQL.DSN:"PITDV02"}` in NetBox | Agent 2 has no DSN; not in stock 7.0-6 |
 | `{HOST.HOST}` in host/group prototype fields | Server LLD does not expand built-in host macros there; children would collide as `{HOST.HOST}-mssql-PITDV02` |
+| `description` on the host prototype | Cloud 7.0 import rejects the field; keep it off the YAML |
+| Fork stock to “fix” named-instance DB perf counters | Stock already matches `.*Databases`. Missing `Transactions/sec` etc. means those counters are absent from `mssql.perfcounter.get` for that DB. Enable/repair SQL perf counters on the instance; do not vendor-fork |
 | Put children in HostSync group `Roles/MSSQL` via `group_links` | Prototype groups that match manually created groups are not linked |
 | Link stock template five times on the parent | Zabbix forbids duplicate template link |
 | Companion `service.discovery` | Key collision with Windows by agent |
@@ -289,7 +294,26 @@ Import the companion YAML in Zabbix (GUI). Then HostSync the **canary Windows ho
 
 ## Canary (before fleet)
 
-Use **one default-only** (`CH-STA-T-MSQL01`) and **one named** (`CH-STA-P-MSSQL10`).
+Planned boxes: **one default-only** (`CH-STA-T-MSQL01`) and **one named** (`CH-STA-P-MSSQL10`). First live proof used **`CH-STA-T-MSQL25`** (named instance `ASP`).
+
+**Live (Cloud, after YAML import + forced WMI on the parent):**
+
+| Object | Id / result |
+|---|---|
+| Template **MSSQL Observability** | 14024 |
+| Host group **MSSQL instances** | 265 |
+| Parent `ch-sta-t-msql25` | 14007 |
+| Child `CH-STA-T-MSQL25-mssql-ASP` | 14080; visible `CH-STA-T-MSQL25 / ASP` |
+| Child templates | stock **MSSQL by Zabbix agent 2** only |
+| Child URI | `sqlserver://localhost/ASP` (inherited user/password; inherited parent agent interface) |
+| Tags | `sql_instance=ASP`, `parent_host=CH-STA-T-MSQL25` |
+| Child DB LLD | `database=ServerInformationDb` materialized (23 discovered items). **State** and **full-backup** items enabled, supported, with values |
+| Parent default instance | **HADB** still supported, state `0` |
+| Child DB perf derivatives | 13 stock items unsupported: `MSSQL$ASP:Databases` payload lacks the expected `counter_name` rows. Not a companion/URI bug; do not fork stock |
+
+Import path: GUI/YAML into Cloud (`deleteMissing: false`), then HostSync / check-now of the **Windows** host only.
+
+Remaining checklist:
 
 1. Plugin version on the agent matches 7.0.10+.
 2. `MSQL01`: stock `mssql.version` works with role URI; companion LLD **empty**; no census alarm (MIN=0); **no** child hosts.
@@ -300,8 +324,8 @@ Use **one default-only** (`CH-STA-T-MSQL01`) and **one named** (`CH-STA-P-MSSQL1
 7. Stop `MSSQL$PITDV02` → Windows service item fires; companion version goes nodata.
 8. Stock 1433 items on `MSSQL10` parent may be unsupported — record it; do not “fix” with a fake DSN.
 9. Stock TCP Disaster on a child: if it fires (proxy→localhost:1433 or named instance not on 1433), disable **Service's TCP port state** on that child. Leave `mssql.ping` as availability.
-10. HostSync **does not** create hosts named `PITDV02`. It **may** create `CH-STA-P-MSSQL10-mssql-PITDV02` only via LLD, not NetBox. Re-sync of the Windows host must not delete children.
-11. Second apply / re-import companion: LLD rows and children stable (same `{#MSSQL.INSTANCE}` / `{#MSSQL.PARENT}`).
+10. HostSync **does not** create hosts named `PITDV02` or `ASP`. It **may** create `CH-STA-T-MSQL25-mssql-ASP` only via LLD, not NetBox. Re-sync of the Windows host must not delete children.
+11. Second apply / re-import companion: LLD rows and children stable (same `{#MSSQL.INSTANCE}` / `{#MSSQL.PARENT}`). Host prototype still has **no** `description`.
 12. After Cloud nested LLD exists: remove the host prototype; keep named-instance item prototypes on the parent.
 
 ---
@@ -335,7 +359,8 @@ Reporting Service QUEUE (LogicMonitor leftover) remains a **custom query**, not 
 - Database fixture → all five names and normalized recovery models; backup
   fixture → all valid `D`/`I`/`L` ages without zero-filled missing data
 - YAML: Zabbix 7.0, official `Templates/Databases` UUID, no nest of stock on
-  the companion, host prototype links stock, hostname + role group prototypes
+  the companion, host prototype links stock, **no host-prototype `description`**
+  (Cloud import rejects it), hostname + role group prototypes
   use `{#MSSQL.PARENT}` (not `{HOST.HOST}`), no `service.discovery`, no
   `graphprototype`, no `net.tcp.service`, no Disaster, no `last_foreach`
 - Zerotouch: optional template, no YAML import, URI on both MSSQL roles
@@ -344,6 +369,9 @@ Reporting Service QUEUE (LogicMonitor leftover) remains a **custom query**, not 
 `mssql.version` against a real named instance, WMI `SystemName` vs NetBox
 name, child host creation, stock database LLD/graphs on the child, TCP
 Disaster behaviour, HostSync of the parent leaving children alone.
+`CH-STA-T-MSQL25` / `ASP` already proved child creation, URI override,
+inherited credentials/interface, and stock DB **state** + **backup**.
+Named-instance **perf** derivatives remain a SQL counter-payload check.
 
 ## Implementation
 

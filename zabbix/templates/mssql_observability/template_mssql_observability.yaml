@@ -37,7 +37,8 @@ zabbix_export:
         Roles/MSSQL/{#MSSQL.PARENT}, and MSSQL instances. Drop the
         prototype after Cloud nested LLD exists. Do not nest stock on
         this template, clone TCP-1433 Disaster here, or put instance
-        names in NetBox.
+        names in NetBox. Host prototypes have no description field
+        (Cloud 7.0 import rejects it).
 
         See zabbix/notes/mssql-agent2-instances.md.
       groups:
