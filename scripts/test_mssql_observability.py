@@ -253,6 +253,7 @@ class YamlContractTests(unittest.TestCase):
         self.assertNotIn('/', proto['host'])
         self.assertEqual(proto['custom_interfaces'], 'NO')
         self.assertEqual(proto['inventory_mode'], 'DISABLED')
+        self.assertNotIn('description', proto)
         dumped_proto = json.dumps(proto)
         self.assertNotIn('{HOST.HOST}', dumped_proto)
         self.assertNotIn('{HOST.NAME}', dumped_proto)

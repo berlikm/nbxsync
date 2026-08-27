@@ -504,16 +504,6 @@ zabbix_export:
                 - name: 'MSSQL by Zabbix agent 2'
               inventory_mode: DISABLED
               custom_interfaces: 'NO'
-              description: |
-                7.0 stand-in for nested LLD. Child reuses the parent's agent
-                interface (passive poll of the Windows IP; plugin URI is
-                localhost). Stock on the child owns per-database items,
-                graphs, and honeycomb. Parent Windows host stays the NetBox
-                object. HostSync must not collide with technical name
-                {#MSSQL.PARENT}-mssql-{#MSSQL.INSTANCE}. Stock TCP Disaster
-                (proxy simple check to localhost:1433) may fire on
-                named-instance-only boxes; disable Service's TCP port state
-                on the child. Availability is stock mssql.ping.
               macros:
                 - macro: '{$MSSQL.URI}'
                   value: 'sqlserver://localhost/{#MSSQL.INSTANCE}'
