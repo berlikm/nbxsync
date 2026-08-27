@@ -12,11 +12,23 @@ from pathlib import Path
 import yaml
 
 from mssql_observability import (
+    BACKUP_FULL_KEY,
     BUFFER_CACHE_KEY,
     CENSUS_KEY,
     CENSUS_TRIGGER_EXPR,
     CENSUS_TRIGGER_NAME,
+    DB_CATALOG_KEY,
+    DB_LLD_KEY,
+    DB_LLDJSON_KEY,
+    DB_STATE_KEY,
     DISCOVERY_KEY,
+    flatten_lld_catalogs,
+    LOCAL_LLD_KEY,
+    LOCAL_STATE_KEY,
+    LOCAL_SYNC_KEY,
+    MACRO_BACKUP_FULL_USED,
+    MACRO_BACKUP_LOG_USED,
+    MACRO_DBNAME_NOT_MATCHES,
     MACRO_INSTANCE_DISCOVERY_MIN,
     NAMED_URI,
     PAGE_LIFE_KEY,
@@ -196,12 +208,15 @@ class MssqlObservabilityContractTests(unittest.TestCase):
     def test_health_honeycomb(self):
         boards = [d['name'] for d in self.tpl['dashboards']]
         self.assertEqual(boards, ['Health'])
-        overview = self.tpl['dashboards'][0]['pages'][0]
-        self.assertEqual(overview['name'], 'Overview')
+        pages = self.tpl['dashboards'][0]['pages']
+        self.assertEqual([p['name'] for p in pages], ['Overview', 'Databases'])
+        overview = pages[0]
         names = [w['name'] for w in overview['widgets']]
         self.assertEqual(names, ['Named instances', 'Problems', 'Ping'])
         ping = overview['widgets'][2]
         self.assertEqual(ping['type'], 'honeycomb')
+        db_page = pages[1]
+        self.assertEqual([w['name'] for w in db_page['widgets']], ['Database state', 'AG local DB sync'])
 
     def test_no_graph_prototypes(self):
         self.assertNotIn('graph_prototypes', self.text)
@@ -236,6 +251,85 @@ class MssqlObservabilityContractTests(unittest.TestCase):
         subprocess.check_call([sys.executable, str(BUILDER)], cwd=str(ROOT))
         second = ZABBIX_TEMPLATE_PATH.read_text(encoding='utf-8')
         self.assertEqual(first, second)
+
+    def test_flattened_database_discovery_does_not_nest(self):
+        rules = self.tpl['discovery_rules']
+        self.assertEqual(
+            [row['key'] for row in rules],
+            [DISCOVERY_KEY, DB_LLD_KEY, LOCAL_LLD_KEY],
+        )
+        self.assertTrue(all(row['type'] == 'DEPENDENT' for row in rules))
+        self.assertNotIn('discovery_prototypes', self.text)
+        self.assertIn('last_foreach(//mssql.observability.db.catalog[*])', self.text)
+        self.assertIn(DB_LLDJSON_KEY, self.keys)
+        self.assertIn(DB_CATALOG_KEY, self.keys)
+        self.assertIn('{#MSSQL.INSTANCE}', DB_CATALOG_KEY)
+        self.assertIn('{#DBNAME}', DB_STATE_KEY)
+        self.assertIn('{#MSSQL.INSTANCE}', DB_STATE_KEY)
+        self.assertIn(DB_STATE_KEY, self.keys)
+        self.assertNotIn('key: mssql.db.state["{#DBNAME}"]', self.text)
+
+    def test_named_instance_db_and_ag_tags(self):
+        self.assertIn('tag: database', self.text)
+        self.assertIn("value: '{#DBNAME}'", self.text)
+        self.assertIn('tag: local-db', self.text)
+        self.assertIn('tag: availability-group', self.text)
+        self.assertIn(LOCAL_STATE_KEY, self.keys)
+        self.assertIn(LOCAL_SYNC_KEY, self.keys)
+        self.assertIn(BACKUP_FULL_KEY, self.keys)
+
+    def test_backup_used_defaults_on_for_every_environment(self):
+        self.assertEqual(TEMPLATE_MACROS[MACRO_BACKUP_FULL_USED], '1')
+        self.assertEqual(TEMPLATE_MACROS[MACRO_BACKUP_LOG_USED], '1')
+        self.assertEqual(TEMPLATE_MACROS[MACRO_DBNAME_NOT_MATCHES], 'master|tempdb|model|msdb')
+        self.assertNotIn('{% ', self.text)
+        self.assertNotIn('-t-', self.text)
+        self.assertNotIn('-d-', self.text)
+        self.assertNotIn('HYGIENE', self.text)
+        self.assertNotIn('PRODUCTION_ONE', self.text)
+        self.assertIn('{$MSSQL.BACKUP_FULL.USED:"{#DBNAME}"}=1', self.text)
+
+    def test_flatten_merges_same_dbname_on_two_instances(self):
+        import json
+
+        catalogs = json.dumps(
+            [
+                json.dumps(
+                    [
+                        {
+                            '{#MSSQL.INSTANCE}': 'PITDV02',
+                            '{#DBNAME}': 'HADB',
+                            '{#MSSQL.URI}': 'sqlserver://localhost/PITDV02',
+                        }
+                    ]
+                ),
+                json.dumps(
+                    [
+                        {
+                            '{#MSSQL.INSTANCE}': 'PCONF02',
+                            '{#DBNAME}': 'HADB',
+                            '{#MSSQL.URI}': 'sqlserver://localhost/PCONF02',
+                        }
+                    ]
+                ),
+                '[]',
+            ]
+        )
+        rows = json.loads(flatten_lld_catalogs(catalogs))
+        self.assertEqual(
+            [(row['{#MSSQL.INSTANCE}'], row['{#DBNAME}']) for row in rows],
+            [('PITDV02', 'HADB'), ('PCONF02', 'HADB')],
+        )
+
+    def test_version_delay_fits_nodata_window(self):
+        version = next(
+            item for item in self.tpl['discovery_rules'][0]['item_prototypes'] if item['key'] == VERSION_KEY
+        )
+        self.assertEqual(version['delay'], '5m')
+        ping = next(item for item in self.tpl['discovery_rules'][0]['item_prototypes'] if item['key'] == PING_KEY)
+        steps = ping.get('preprocessing') or []
+        self.assertEqual(steps[0]['type'], 'CHECK_NOT_SUPPORTED')
+        self.assertEqual(steps[0]['error_handler_params'], '0')
 
 
 if __name__ == '__main__':

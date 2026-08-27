@@ -11,7 +11,19 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'scripts'))
 
 from mssql_observability import (  # noqa: E402
+    AG_GET_KEY,
+    BACKUP_DIFF_CRIT_EXPR,
+    BACKUP_DIFF_KEY,
+    BACKUP_DIFF_WARN_EXPR,
+    BACKUP_FULL_CRIT_EXPR,
+    BACKUP_FULL_KEY,
+    BACKUP_FULL_WARN_EXPR,
     BACKUP_KEY,
+    BACKUP_LOG_CRIT_EXPR,
+    BACKUP_LOG_KEY,
+    BACKUP_LOG_WARN_EXPR,
+    BACKUP_RAW_KEY,
+    BACKUP_RECOVERY_KEY,
     BATCH_RATE_KEY,
     BUFFER_CACHE_KEY,
     BUFFER_RAW_KEY,
@@ -19,14 +31,35 @@ from mssql_observability import (  # noqa: E402
     CENSUS_TRIGGER_EXPR,
     CENSUS_TRIGGER_NAME,
     DASHBOARD_UUID,
+    DB_CATALOG_JS,
+    DB_CATALOG_KEY,
+    DB_CATALOG_SEED_KEY,
     DB_COUNT_KEY,
+    DB_FOREACH_FORMULA,
     DB_KEY,
+    DB_LLD_KEY,
+    DB_LLDJSON_KEY,
+    DB_PERF_RAW_KEY,
+    DB_STATE_KEY,
     DISCOVERY_KEY,
     FAILED_JOBS_KEY,
+    FLATTEN_LLD_JS,
     JOB_KEY,
+    LOCAL_CATALOG_KEY,
+    LOCAL_CATALOG_SEED_KEY,
+    LOCAL_DB_CATALOG_JS,
+    LOCAL_DB_GET_KEY,
+    LOCAL_FOREACH_FORMULA,
+    LOCAL_LLD_KEY,
+    LOCAL_LLDJSON_KEY,
+    LOCAL_STATE_KEY,
+    LOCAL_SUSPENDED_KEY,
+    LOCAL_SYNC_KEY,
     LOCK_TIMEOUTS_KEY,
     LOCKS_RAW_KEY,
     MACRO_BUFFER_CACHE_MIN,
+    MACRO_DBNAME_MATCHES,
+    MACRO_DBNAME_NOT_MATCHES,
     MACRO_DESCRIPTIONS,
     MACRO_INSTANCE_DISCOVERY_MIN,
     MACRO_INSTANCE_MATCHES,
@@ -34,6 +67,7 @@ from mssql_observability import (  # noqa: E402
     MACRO_PAGE_LIFE_MIN,
     NAMED_URI,
     PAGE_LIFE_KEY,
+    PERCENT_LOG_KEY,
     PERF_KEY,
     PING_KEY,
     PING_TRIGGER_EXPR,
@@ -107,6 +141,8 @@ def trig(
     manual_close: bool = False,
     scope: str = 'availability',
     event_name: str | None = None,
+    opdata: str | None = None,
+    extra_tags: list[tuple[str, str]] | None = None,
 ) -> None:
     doc.add(indent, '- uuid: ' + uid(f'trigger:{name}:{expression}'))
     doc.add(indent + 1, f'expression: {q(expression)}')
@@ -116,6 +152,8 @@ def trig(
     doc.add(indent + 1, f'name: {q(name)}')
     if event_name:
         doc.add(indent + 1, f'event_name: {q(event_name)}')
+    if opdata:
+        doc.add(indent + 1, f'opdata: {q(opdata)}')
     if status:
         doc.add(indent + 1, f'status: {status}')
     doc.add(indent + 1, f'priority: {priority}')
@@ -130,6 +168,9 @@ def trig(
     doc.add(indent + 1, 'tags:')
     doc.add(indent + 2, '- tag: scope')
     doc.add(indent + 3, f'value: {scope}')
+    for tag, value in extra_tags or []:
+        doc.add(indent + 2, f'- tag: {tag}')
+        doc.add(indent + 3, f'value: {q(value)}')
 
 
 def preprocess(doc: Doc, indent: int, steps: list[tuple]) -> None:
@@ -153,6 +194,9 @@ def preprocess(doc: Doc, indent: int, steps: list[tuple]) -> None:
         elif kind == 'CHANGE_PER_SECOND':
             doc.add(indent + 2, 'parameters:')
             doc.add(indent + 3, "- ''")
+        elif kind == 'MULTIPLIER':
+            doc.add(indent + 2, 'parameters:')
+            doc.add(indent + 3, f"- '{step[1]}'")
         elif kind == 'JSONPATH':
             doc.add(indent + 2, 'parameters:')
             doc.add(indent + 3, f'- {q(str(step[1]))}')
@@ -184,7 +228,7 @@ def field(
         doc.add(indent + 2, f'host: {item_host}')
         doc.add(indent + 2, f'key: {q(item_key or "")}')
     else:
-        doc.add(indent + 1, f"value: '{value}'")
+        doc.add(indent + 1, f'value: {q(str(value))}')
 
 
 def widget_xy(doc: Doc, indent: int, typ: str, name: str, *, x=None, y=None, width='18', height='4') -> None:
@@ -199,7 +243,14 @@ def widget_xy(doc: Doc, indent: int, typ: str, name: str, *, x=None, y=None, wid
 
 
 INSTANCE_TAGS = [('sql_instance', '{#MSSQL.INSTANCE}')]
+DB_TAGS = [('sql_instance', '{#MSSQL.INSTANCE}'), ('database', '{#DBNAME}')]
+LOCAL_TAGS = [
+    ('sql_instance', '{#MSSQL.INSTANCE}'),
+    ('availability-group', '{#GROUP_NAME}'),
+    ('local-db', '{#DBNAME}'),
+]
 PING_DEP = (PING_TRIGGER_NAME, PING_TRIGGER_EXPR)
+BACKUP_OPDATA = 'Time since last backup: {ITEM.LASTVALUE1}'
 
 DESC = f"""
 Estate companion for stock {STOCK_TEMPLATE_NAME}. Link **alongside** stock on
@@ -209,9 +260,10 @@ roles MSSQL / MSSQL Query Server — do not nest stock (that would still be one
 instances (MSSQL$%) via WMI and calls the Agent 2 MSSQL plugin with
 {NAMED_URI} (no port; plugin ≥ 7.0.6, template requires plugin ≥ 7.0.10).
 
-v1 is instance-level: ping, version, sparse perfcounters, job/backup/db
-masters, database count. Per-database LLD on named instances is v2 (Zabbix
-cannot nest discovery-under-discovery on the same host).
+Named-instance databases and Always On local DBs are a second, flattened LLD
+({{#MSSQL.INSTANCE}}+{{#DBNAME}}). Zabbix 7.0 cannot nest discovery-under-discovery
+on the same host. Keys include the instance so they cannot collide with stock.
+Backup USED flags default to 1 on every environment — do not mute Test/Dev here.
 
 Do not reuse the Windows-by-agent service LLD key. Do not nest ICMP or
 invent host prototypes. Do not put instance names in NetBox.
@@ -236,6 +288,7 @@ def emit_item_head(
     timeout: str | None,
     valuemap: str | None,
     master_key: str | None,
+    params: str | None = None,
 ) -> None:
     doc.add(indent, '- uuid: ' + uid(f'item:{key}'))
     doc.add(indent + 1, f'name: {q(name)}')
@@ -254,6 +307,13 @@ def emit_item_head(
         doc.add(indent + 1, f'units: {q(units)}')
     if timeout:
         doc.add(indent + 1, f'timeout: {timeout}')
+    if params is not None:
+        if '\n' in params:
+            doc.add(indent + 1, 'params: |')
+            for line in params.splitlines():
+                doc.add(indent + 2, line)
+        else:
+            doc.add(indent + 1, f'params: {q(params)}')
     if description:
         doc.add(indent + 1, f'description: {q(description)}')
     if valuemap:
@@ -280,6 +340,7 @@ def emit_item(
     timeout: str | None = None,
     valuemap: str | None = None,
     master_key: str | None = None,
+    params: str | None = None,
     component: str = 'application',
     extra_tags: list[tuple[str, str]] | None = None,
     steps: list[tuple] | None = None,
@@ -301,6 +362,7 @@ def emit_item(
         timeout=timeout,
         valuemap=valuemap,
         master_key=master_key,
+        params=params,
     )
     if steps:
         preprocess(doc, indent + 1, steps)
@@ -309,6 +371,690 @@ def emit_item(
         doc.add(indent + 1, f'{trigger_section}:')
         for kwargs in triggers:
             trig(doc, indent + 2, **kwargs)
+
+
+def emit_filter_pair(doc: Doc, indent: int, macro: str, matches: str, not_matches: str) -> None:
+    doc.add(indent, 'filter:')
+    doc.add(indent + 1, 'evaltype: AND')
+    doc.add(indent + 1, 'conditions:')
+    doc.add(indent + 2, f'- macro: {q(macro)}')
+    doc.add(indent + 3, f'value: {q(matches)}')
+    doc.add(indent + 3, 'formulaid: A')
+    doc.add(indent + 2, f'- macro: {q(macro)}')
+    doc.add(indent + 3, f'value: {q(not_matches)}')
+    doc.add(indent + 3, 'operator: NOT_MATCHES_REGEX')
+    doc.add(indent + 3, 'formulaid: B')
+
+
+def emit_valuemap(doc: Doc, indent: int, name: str, mappings: list[tuple[str, str]]) -> None:
+    doc.add(indent, '- uuid: ' + uid(f'valuemap:{name}'))
+    doc.add(indent + 1, f'name: {q(name)}')
+    doc.add(indent + 1, 'mappings:')
+    for value, newvalue in mappings:
+        doc.add(indent + 2, f"- value: '{value}'")
+        doc.add(indent + 3, f'newvalue: {q(newvalue)}')
+
+
+def emit_discovery_header(
+    doc: Doc,
+    *,
+    uid_name: str,
+    name: str,
+    key: str,
+    description: str,
+    master_key: str,
+) -> None:
+    doc.add(4, '- uuid: ' + uid(uid_name))
+    doc.add(5, f'name: {q(name)}')
+    doc.add(5, 'type: DEPENDENT')
+    doc.add(5, f'key: {key}')
+    doc.add(5, "delay: '0'")
+    doc.add(5, 'lifetime: 7d')
+    doc.add(5, 'lifetime_type: DELETE_AFTER')
+    doc.add(5, "enabled_lifetime: '0'")
+    doc.add(5, 'enabled_lifetime_type: DISABLE_IMMEDIATELY')
+    doc.add(5, f'description: {q(description)}')
+    doc.add(5, 'master_item:')
+    doc.add(6, f'key: {q(master_key)}')
+
+
+def db_json(counter: str) -> str:
+    return f"$[?(@.counter_name=='{counter}')].cntr_value.first()"
+
+
+def emit_db_prototypes(doc: Doc) -> None:
+    backup_ctx = '"{#DBNAME}"'
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Get last backup",
+        BACKUP_RAW_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        value_type='TEXT',
+        history='0',
+        trends='0',
+        master_key=BACKUP_KEY,
+        description='Backup JSON for this named-instance database.',
+        component='raw',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', "$[?(@.dbname=='{#DBNAME}')]", 'DISCARD_VALUE')],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Get performance counters",
+        DB_PERF_RAW_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        value_type='TEXT',
+        history='0',
+        trends='0',
+        master_key=PERF_KEY,
+        description='Database perf counters for this named-instance database.',
+        component='raw',
+        extra_tags=DB_TAGS,
+        steps=[
+            (
+                'JSONPATH',
+                "$[?(@.object_name=~'.*Databases' && @.instance_name=='{#DBNAME}')]",
+                'DISCARD_VALUE',
+            )
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Last diff backup duration",
+        f'mssql.observability.backup.diff.duration[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        units='s',
+        master_key=BACKUP_RAW_KEY,
+        description='Duration of the last differential backup.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[
+            ('JSONPATH', "$[?(@.type=='I')].duration.first()", 'CUSTOM_VALUE', '0'),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '12h'),
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Last diff backup (time ago)",
+        BACKUP_DIFF_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        units='s',
+        master_key=BACKUP_RAW_KEY,
+        description='Time since the last differential backup.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', "$[?(@.type=='I')].time_since_last_backup.first()", 'CUSTOM_VALUE', '0')],
+        trigger_section='trigger_prototypes',
+        triggers=[
+            {
+                'name': "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Diff backup is old",
+                'event_name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Diff backup older than "
+                    f'{{$MSSQL.BACKUP_DIFF.CRIT:{backup_ctx}}}'
+                ),
+                'expression': BACKUP_DIFF_CRIT_EXPR,
+                'priority': 'HIGH',
+                'description': 'The differential backup has not been executed for a long time.',
+                'manual_close': True,
+                'opdata': BACKUP_OPDATA,
+                'dependencies': [PING_DEP],
+                'extra_tags': [('database', '{#DBNAME}'), ('sql_instance', '{#MSSQL.INSTANCE}')],
+            },
+            {
+                'name': "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Diff backup is old",
+                'event_name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Diff backup older than "
+                    f'{{$MSSQL.BACKUP_DIFF.WARN:{backup_ctx}}}'
+                ),
+                'expression': BACKUP_DIFF_WARN_EXPR,
+                'priority': 'WARNING',
+                'description': 'The differential backup has not been executed for a long time.',
+                'manual_close': True,
+                'opdata': BACKUP_OPDATA,
+                'dependencies': [
+                    PING_DEP,
+                    (
+                        "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Diff backup is old",
+                        BACKUP_DIFF_CRIT_EXPR,
+                    ),
+                ],
+                'extra_tags': [('database', '{#DBNAME}'), ('sql_instance', '{#MSSQL.INSTANCE}')],
+            },
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Last full backup duration",
+        f'mssql.observability.backup.full.duration[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        units='s',
+        master_key=BACKUP_RAW_KEY,
+        description='Duration of the last full backup.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[
+            ('JSONPATH', "$[?(@.type=='D')].duration.first()", 'CUSTOM_VALUE', '0'),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '12h'),
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Last full backup (time ago)",
+        BACKUP_FULL_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        units='s',
+        master_key=BACKUP_RAW_KEY,
+        description='Time since the last full backup.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', "$[?(@.type=='D')].time_since_last_backup.first()", 'CUSTOM_VALUE', '0')],
+        trigger_section='trigger_prototypes',
+        triggers=[
+            {
+                'name': "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Full backup is old",
+                'event_name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Full backup older than "
+                    f'{{$MSSQL.BACKUP_FULL.CRIT:{backup_ctx}}}'
+                ),
+                'expression': BACKUP_FULL_CRIT_EXPR,
+                'priority': 'HIGH',
+                'description': 'The full backup has not been executed for a long time.',
+                'manual_close': True,
+                'opdata': BACKUP_OPDATA,
+                'dependencies': [PING_DEP],
+                'extra_tags': [('database', '{#DBNAME}'), ('sql_instance', '{#MSSQL.INSTANCE}')],
+            },
+            {
+                'name': "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Full backup is old",
+                'event_name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Full backup older than "
+                    f'{{$MSSQL.BACKUP_FULL.WARN:{backup_ctx}}}'
+                ),
+                'expression': BACKUP_FULL_WARN_EXPR,
+                'priority': 'WARNING',
+                'description': 'The full backup has not been executed for a long time.',
+                'manual_close': True,
+                'opdata': BACKUP_OPDATA,
+                'dependencies': [
+                    PING_DEP,
+                    (
+                        "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Full backup is old",
+                        BACKUP_FULL_CRIT_EXPR,
+                    ),
+                ],
+                'extra_tags': [('database', '{#DBNAME}'), ('sql_instance', '{#MSSQL.INSTANCE}')],
+            },
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Last log backup duration",
+        f'mssql.observability.backup.log.duration[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        units='s',
+        master_key=BACKUP_RAW_KEY,
+        description='Duration of the last log backup.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[
+            ('JSONPATH', "$[?(@.type=='L')].duration.first()", 'CUSTOM_VALUE', '0'),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '12h'),
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Last log backup (time ago)",
+        BACKUP_LOG_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        units='s',
+        master_key=BACKUP_RAW_KEY,
+        description='Time since the last log backup.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', "$[?(@.type=='L')].time_since_last_backup.first()", 'CUSTOM_VALUE', '0')],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Recovery model",
+        BACKUP_RECOVERY_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        master_key=BACKUP_RAW_KEY,
+        valuemap='MSSQL Recovery model',
+        description='1 = Full, 2 = Bulk_logged, 3 = Simple.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[
+            ('JSONPATH', '$[0].db_recovery_model', 'CUSTOM_VALUE', '1'),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '1d'),
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Active transactions",
+        f'mssql.observability.db.active_transactions[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        master_key=DB_PERF_RAW_KEY,
+        description='Number of active transactions for the database.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Active Transactions'))],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Data file size",
+        f'mssql.observability.db.data_files_size[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        units='B',
+        master_key=DB_PERF_RAW_KEY,
+        description='Cumulative size of all data files including autogrowth.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Data File(s) Size (KB)')), ('MULTIPLIER', '1024')],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Log bytes flushed per second",
+        f'mssql.observability.db.log_bytes_flushed_sec.rate[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        value_type='FLOAT',
+        units='Bps',
+        master_key=DB_PERF_RAW_KEY,
+        description='Log bytes flushed per second.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Log Bytes Flushed/sec')), ('CHANGE_PER_SECOND',)],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Log file size",
+        f'mssql.observability.db.log_files_size[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        units='B',
+        master_key=DB_PERF_RAW_KEY,
+        description='Cumulative size of all transaction log files.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Log File(s) Size (KB)')), ('MULTIPLIER', '1024')],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Log file used size",
+        f'mssql.observability.db.log_files_used_size[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        units='B',
+        master_key=DB_PERF_RAW_KEY,
+        description='Used size of all transaction log files.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Log File(s) Used Size (KB)')), ('MULTIPLIER', '1024')],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Log flushes per second",
+        f'mssql.observability.db.log_flushes_sec.rate[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        value_type='FLOAT',
+        master_key=DB_PERF_RAW_KEY,
+        description='Log flushes per second.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Log Flushes/sec')), ('CHANGE_PER_SECOND',)],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Log flush waits per second",
+        f'mssql.observability.db.log_flush_waits_sec.rate[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        value_type='FLOAT',
+        master_key=DB_PERF_RAW_KEY,
+        description='Commits per second waiting for the log flush.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Log Flush Waits/sec')), ('CHANGE_PER_SECOND',)],
+        trigger_section='trigger_prototypes',
+        triggers=[
+            {
+                'name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': "
+                    'Number of commits waiting for the log flush is high'
+                ),
+                'event_name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': "
+                    'Number of commits waiting for the log flush is high '
+                    f'(over {{$MSSQL.LOG_FLUSH_WAITS.MAX:{backup_ctx}}}/sec for 5m)'
+                ),
+                'expression': (
+                    f'min(/{TEMPLATE_NAME}/'
+                    f'mssql.observability.db.log_flush_waits_sec.rate[{{#MSSQL.INSTANCE}},{{#DBNAME}}]'
+                    f',5m)>{{$MSSQL.LOG_FLUSH_WAITS.MAX:{backup_ctx}}}'
+                ),
+                'priority': 'WARNING',
+                'description': 'Too many commits are waiting for the log flush.',
+                'dependencies': [PING_DEP],
+                'scope': 'performance',
+                'extra_tags': [('database', '{#DBNAME}'), ('sql_instance', '{#MSSQL.INSTANCE}')],
+            }
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Log flush wait time",
+        f'mssql.observability.db.log_flush_wait_time[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        value_type='FLOAT',
+        units='ms',
+        master_key=DB_PERF_RAW_KEY,
+        description='Wait time to flush the log. On an AG secondary this is harden-to-disk wait.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Log Flush Wait Time')), ('CHANGE_PER_SECOND',)],
+        trigger_section='trigger_prototypes',
+        triggers=[
+            {
+                'name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': "
+                    'Total wait time to flush the log is high'
+                ),
+                'event_name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': "
+                    'Total wait time to flush the log is high '
+                    f'(over {{$MSSQL.LOG_FLUSH_WAIT_TIME.MAX:{backup_ctx}}}ms for 5m)'
+                ),
+                'expression': (
+                    f'min(/{TEMPLATE_NAME}/'
+                    f'mssql.observability.db.log_flush_wait_time[{{#MSSQL.INSTANCE}},{{#DBNAME}}]'
+                    f',5m)>{{$MSSQL.LOG_FLUSH_WAIT_TIME.MAX:{backup_ctx}}}'
+                ),
+                'priority': 'WARNING',
+                'description': 'The wait time to flush the log is too long.',
+                'dependencies': [PING_DEP],
+                'scope': 'performance',
+                'extra_tags': [('database', '{#DBNAME}'), ('sql_instance', '{#MSSQL.INSTANCE}')],
+            }
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Log growths",
+        f'mssql.observability.db.log_growths[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        master_key=DB_PERF_RAW_KEY,
+        description='Times the transaction log has grown.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Log Growths'))],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Log shrinks",
+        f'mssql.observability.db.log_shrinks[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        master_key=DB_PERF_RAW_KEY,
+        description='Times the transaction log has been shrunk.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Log Shrinks'))],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Log truncations",
+        f'mssql.observability.db.log_truncations[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        master_key=DB_PERF_RAW_KEY,
+        description='Times the transaction log has been truncated.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Log Truncations'))],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Percent log used",
+        PERCENT_LOG_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        value_type='FLOAT',
+        units='%',
+        master_key=DB_PERF_RAW_KEY,
+        description='Percentage of log space in use.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Percent Log Used'))],
+        trigger_section='trigger_prototypes',
+        triggers=[
+            {
+                'name': "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Percent of log usage is high",
+                'event_name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Percent of log usage is high "
+                    f'(over {{$MSSQL.PERCENT_LOG_USED.MAX:{backup_ctx}}}% for 5m)'
+                ),
+                'expression': (
+                    f'min(/{TEMPLATE_NAME}/{PERCENT_LOG_KEY},5m)>'
+                    f'{{$MSSQL.PERCENT_LOG_USED.MAX:{backup_ctx}}}'
+                ),
+                'priority': 'WARNING',
+                'description': "There's not enough space left in the log.",
+                'dependencies': [PING_DEP],
+                'scope': 'performance',
+                'extra_tags': [('database', '{#DBNAME}'), ('sql_instance', '{#MSSQL.INSTANCE}')],
+            }
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': State",
+        DB_STATE_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        master_key=DB_PERF_RAW_KEY,
+        valuemap='MSSQL DB state',
+        description='0 = Online. Values above 1 are non-working states.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('State')), ('DISCARD_UNCHANGED_HEARTBEAT', '15m')],
+        trigger_section='trigger_prototypes',
+        triggers=[
+            {
+                'name': "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': State is {ITEM.VALUE}",
+                'expression': f'last(/{TEMPLATE_NAME}/{DB_STATE_KEY})>1',
+                'priority': 'HIGH',
+                'description': 'The DB has a non-working state.',
+                'dependencies': [PING_DEP],
+                'extra_tags': [('database', '{#DBNAME}'), ('sql_instance', '{#MSSQL.INSTANCE}')],
+            }
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] DB '{#DBNAME}': Transactions per second",
+        f'mssql.observability.db.transactions_sec.rate[{{#MSSQL.INSTANCE}},{{#DBNAME}}]',
+        item_type='DEPENDENT',
+        delay='0',
+        value_type='FLOAT',
+        master_key=DB_PERF_RAW_KEY,
+        description='Transactions started for the database per second.',
+        component='database',
+        extra_tags=DB_TAGS,
+        steps=[('JSONPATH', db_json('Transactions/sec')), ('CHANGE_PER_SECOND',)],
+    )
+
+
+def emit_local_db_prototypes(doc: Doc) -> None:
+    local_path = (
+        "$[?(@.dbname=='{#DBNAME}' && @.group_name=='{#GROUP_NAME}')]"
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] AG '{#GROUP_NAME}' Local DB '{#DBNAME}': Suspended",
+        LOCAL_SUSPENDED_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        master_key=LOCAL_DB_GET_KEY,
+        description='0 = Resumed, 1 = Suspended.',
+        component='local-db',
+        extra_tags=LOCAL_TAGS,
+        steps=[
+            ('JSONPATH', f'{local_path}.is_suspended.first()'),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '1h'),
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] AG '{#GROUP_NAME}' Local DB '{#DBNAME}': State",
+        LOCAL_STATE_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        master_key=LOCAL_DB_GET_KEY,
+        valuemap='MSSQL DB state',
+        description='Local availability database state (0 = Online).',
+        component='local-db',
+        extra_tags=LOCAL_TAGS,
+        steps=[
+            ('JSONPATH', f'{local_path}.database_state.first()'),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '1h'),
+        ],
+        trigger_section='trigger_prototypes',
+        triggers=[
+            {
+                'name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: AG '{#GROUP_NAME}' Local DB '{#DBNAME}': "
+                    '"{#DBNAME}" is {ITEM.VALUE}'
+                ),
+                'expression': f'last(/{TEMPLATE_NAME}/{LOCAL_STATE_KEY})>0',
+                'priority': 'WARNING',
+                'description': 'The local availability database has a non-working state.',
+                'dependencies': [PING_DEP],
+                'extra_tags': [
+                    ('availability-group', '{#GROUP_NAME}'),
+                    ('local-db', '{#DBNAME}'),
+                    ('sql_instance', '{#MSSQL.INSTANCE}'),
+                ],
+            }
+        ],
+    )
+    emit_item(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}] AG '{#GROUP_NAME}' Local DB '{#DBNAME}': Synchronization health",
+        LOCAL_SYNC_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        master_key=LOCAL_DB_GET_KEY,
+        valuemap='MSSQL AG Synchronization health',
+        description='0 = Not healthy, 1 = Partially healthy, 2 = Healthy.',
+        component='local-db',
+        extra_tags=LOCAL_TAGS,
+        steps=[
+            ('JSONPATH', f'{local_path}.synchronization_health.first()'),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '1h'),
+        ],
+        trigger_section='trigger_prototypes',
+        triggers=[
+            {
+                'name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: AG '{#GROUP_NAME}' Local DB '{#DBNAME}': "
+                    '"{#DBNAME}" is Not healthy'
+                ),
+                'expression': f'last(/{TEMPLATE_NAME}/{LOCAL_SYNC_KEY})=0',
+                'priority': 'HIGH',
+                'description': 'The local availability database is not synchronizing.',
+                'dependencies': [PING_DEP],
+                'extra_tags': [
+                    ('availability-group', '{#GROUP_NAME}'),
+                    ('local-db', '{#DBNAME}'),
+                    ('sql_instance', '{#MSSQL.INSTANCE}'),
+                ],
+            },
+            {
+                'name': (
+                    "MSSQL [{#MSSQL.INSTANCE}]: AG '{#GROUP_NAME}' Local DB '{#DBNAME}': "
+                    '"{#DBNAME}" is Partially healthy'
+                ),
+                'expression': f'last(/{TEMPLATE_NAME}/{LOCAL_SYNC_KEY})=1',
+                'priority': 'AVERAGE',
+                'description': 'The local availability database is only partially healthy.',
+                'dependencies': [PING_DEP],
+                'extra_tags': [
+                    ('availability-group', '{#GROUP_NAME}'),
+                    ('local-db', '{#DBNAME}'),
+                    ('sql_instance', '{#MSSQL.INSTANCE}'),
+                ],
+            },
+        ],
+    )
+
+
+def emit_honeycomb(
+    doc: Doc,
+    name: str,
+    items: str,
+    label: str,
+    *,
+    y: str,
+    reference: str,
+    t0_color: str,
+    t0: str,
+    t1_color: str,
+    t1: str,
+) -> None:
+    widget_xy(doc, 8, 'honeycomb', name, y=y, width='72', height='6')
+    doc.add(9, 'fields:')
+    field(doc, 10, 'STRING', 'items.0', items)
+    field(doc, 10, 'STRING', 'primary_label', label)
+    field(doc, 10, 'INTEGER', 'interpolation', '0')
+    field(doc, 10, 'INTEGER', 'primary_label_bold', '1')
+    field(doc, 10, 'INTEGER', 'primary_label_size_type', '1')
+    field(doc, 10, 'INTEGER', 'primary_label_size', '20')
+    field(doc, 10, 'INTEGER', 'show.0', '1')
+    field(doc, 10, 'STRING', 'reference', reference)
+    field(doc, 10, 'STRING', 'thresholds.0.color', t0_color)
+    field(doc, 10, 'STRING', 'thresholds.0.threshold', t0)
+    field(doc, 10, 'STRING', 'thresholds.1.color', t1_color)
+    field(doc, 10, 'STRING', 'thresholds.1.threshold', t1)
 
 
 def build() -> Doc:
@@ -357,7 +1103,7 @@ def build() -> Doc:
         CENSUS_KEY,
         item_type='DEPENDENT',
         delay='0',
-        value_type='FLOAT',
+        value_type='UNSIGNED',
         description='Count of MSSQL$% services from WMI (before LLD filters).',
         master_key=WMI_ITEM_KEY,
         component='health',
@@ -375,30 +1121,92 @@ def build() -> Doc:
             }
         ],
     )
+    emit_item(
+        doc,
+        3,
+        'Named-instance database catalog seed',
+        DB_CATALOG_SEED_KEY,
+        item_type='CALCULATED',
+        delay='1h',
+        value_type='TEXT',
+        history='0',
+        trends='0',
+        params='"[]"',
+        description='Keeps last_foreach of database catalogs from going unsupported when LLD is empty.',
+        component='raw',
+        extra_tags=[('mssql_seed', 'seed')],
+    )
+    emit_item(
+        doc,
+        3,
+        'Named-instance database LLD JSON',
+        DB_LLDJSON_KEY,
+        item_type='CALCULATED',
+        delay='5m',
+        value_type='TEXT',
+        history='0',
+        trends='0',
+        params=DB_FOREACH_FORMULA,
+        description=(
+            'Flattened {#MSSQL.INSTANCE}+{#DBNAME} catalog from every named-instance db.get. '
+            'Zabbix 7.0 cannot nest database LLD under instance LLD.'
+        ),
+        component='raw',
+        steps=[
+            ('JAVASCRIPT', FLATTEN_LLD_JS),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '1h'),
+        ],
+    )
+    emit_item(
+        doc,
+        3,
+        'Named-instance AG local-DB catalog seed',
+        LOCAL_CATALOG_SEED_KEY,
+        item_type='CALCULATED',
+        delay='1h',
+        value_type='TEXT',
+        history='0',
+        trends='0',
+        params='"[]"',
+        description='Keeps last_foreach of AG local-DB catalogs from going unsupported when LLD is empty.',
+        component='raw',
+        extra_tags=[('mssql_seed', 'seed')],
+    )
+    emit_item(
+        doc,
+        3,
+        'Named-instance AG local-DB LLD JSON',
+        LOCAL_LLDJSON_KEY,
+        item_type='CALCULATED',
+        delay='5m',
+        value_type='TEXT',
+        history='0',
+        trends='0',
+        params=LOCAL_FOREACH_FORMULA,
+        description='Flattened {#MSSQL.INSTANCE}+{#GROUP_NAME}+{#DBNAME} catalog from local.db.get.',
+        component='raw',
+        steps=[
+            ('JAVASCRIPT', FLATTEN_LLD_JS),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '1h'),
+        ],
+    )
 
     doc.add(3, 'discovery_rules:')
-    doc.add(4, '- uuid: ' + uid('discovery:named-instance'))
-    doc.add(5, 'name: Named instance discovery')
-    doc.add(5, 'type: DEPENDENT')
-    doc.add(5, f'key: {DISCOVERY_KEY}')
-    doc.add(5, "delay: '0'")
-    doc.add(5, 'lifetime: 7d')
-    doc.add(5, 'lifetime_type: DELETE_AFTER')
-    doc.add(5, "enabled_lifetime: '0'")
-    doc.add(5, 'enabled_lifetime_type: DISABLE_IMMEDIATELY')
-    doc.add(5, 'filter:')
-    doc.add(6, 'evaltype: AND')
-    doc.add(6, 'conditions:')
-    doc.add(7, f'- macro: \'{{#MSSQL.INSTANCE}}\'')
-    doc.add(8, f'value: {q(MACRO_INSTANCE_MATCHES)}')
-    doc.add(8, 'formulaid: A')
-    doc.add(7, f'- macro: \'{{#MSSQL.INSTANCE}}\'')
-    doc.add(8, f'value: {q(MACRO_INSTANCE_NOT_MATCHES)}')
-    doc.add(8, 'operator: NOT_MATCHES_REGEX')
-    doc.add(8, 'formulaid: B')
-    doc.add(5, 'description: Named SQL Server instances (MSSQL$%). Default instance is stock.')
-    doc.add(5, 'master_item:')
-    doc.add(6, f'key: {q(WMI_ITEM_KEY)}')
+    emit_discovery_header(
+        doc,
+        uid_name='discovery:named-instance',
+        name='Named instance discovery',
+        key=DISCOVERY_KEY,
+        description='Named SQL Server instances (MSSQL$%). Default instance is stock.',
+        master_key=WMI_ITEM_KEY,
+    )
+    emit_filter_pair(
+        doc,
+        5,
+        '{#MSSQL.INSTANCE}',
+        MACRO_INSTANCE_MATCHES,
+        MACRO_INSTANCE_NOT_MATCHES,
+    )
     doc.add(5, 'item_prototypes:')
 
     emit_item(
@@ -412,6 +1220,7 @@ def build() -> Doc:
         description='Plugin TDS ping for this named instance (1=alive). Not TCP 1433.',
         component='availability',
         extra_tags=INSTANCE_TAGS,
+        steps=[('CHECK_NOT_SUPPORTED', '-1', '0')],
         trigger_section='trigger_prototypes',
         triggers=[
             {
@@ -431,11 +1240,11 @@ def build() -> Doc:
         6,
         'MSSQL [{#MSSQL.INSTANCE}]: Version',
         VERSION_KEY,
-        delay='1m',
+        delay='5m',
         value_type='CHAR',
         trends='0',
         timeout='30s',
-        description='SQL Server version string for this named instance.',
+        description='SQL Server version string for this named instance. Delay 5m so nodata 15m is three misses.',
         component='application',
         extra_tags=INSTANCE_TAGS,
         steps=[('DISCARD_UNCHANGED_HEARTBEAT', '1d')],
@@ -464,9 +1273,10 @@ def build() -> Doc:
         history='0',
         trends='0',
         timeout='30s',
-        description='Sparse perfcounter master for this named instance (not the full stock pack).',
+        description='Perfcounter master for this named instance (same interval as stock).',
         component='raw',
         extra_tags=INSTANCE_TAGS,
+        steps=[('CHECK_NOT_SUPPORTED', '-1', '[]')],
     )
     emit_item(
         doc,
@@ -629,9 +1439,10 @@ def build() -> Doc:
         history='0',
         trends='0',
         timeout='30s',
-        description='SQL Agent job status JSON for this named instance. Per-job LLD is v2.',
+        description='SQL Agent job status JSON for this named instance.',
         component='raw',
         extra_tags=INSTANCE_TAGS,
+        steps=[('CHECK_NOT_SUPPORTED', '-1', '[]')],
     )
     emit_item(
         doc,
@@ -640,9 +1451,9 @@ def build() -> Doc:
         FAILED_JOBS_KEY,
         item_type='DEPENDENT',
         delay='0',
-        value_type='FLOAT',
+        value_type='UNSIGNED',
         master_key=JOB_KEY,
-        description='Jobs whose last run_status is Failed (0). Collect-only in v1.',
+        description='Jobs whose last run_status is Failed (0).',
         component='mssql-job',
         extra_tags=INSTANCE_TAGS,
         steps=[('JSONPATH', '$[?(@.run_status==0)].length()', 'CUSTOM_VALUE', '0')],
@@ -657,23 +1468,44 @@ def build() -> Doc:
         history='0',
         trends='0',
         timeout='30s',
-        description='Last-backup JSON for this named instance. Per-database backup age is v2.',
+        description='Last-backup JSON for this named instance. Per-database age is flattened LLD.',
         component='raw',
         extra_tags=INSTANCE_TAGS,
+        steps=[('CHECK_NOT_SUPPORTED', '-1', '[]')],
     )
     emit_item(
         doc,
         6,
         'MSSQL [{#MSSQL.INSTANCE}]: Get database',
         DB_KEY,
-        delay='1h',
+        delay='10m',
         value_type='TEXT',
         history='0',
         trends='0',
         timeout='30s',
-        description='Database JSON for this named instance. No DB LLD in v1.',
+        description='Database JSON for this named instance. Feeds flattened database LLD.',
         component='raw',
         extra_tags=INSTANCE_TAGS,
+        steps=[('CHECK_NOT_SUPPORTED', '-1', '[]')],
+    )
+    emit_item(
+        doc,
+        6,
+        'MSSQL [{#MSSQL.INSTANCE}]: Database catalog',
+        DB_CATALOG_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        value_type='TEXT',
+        history='0',
+        trends='0',
+        master_key=DB_KEY,
+        description='LLD rows for this instance stamped with {#MSSQL.INSTANCE} and {#MSSQL.URI}.',
+        component='raw',
+        extra_tags=INSTANCE_TAGS,
+        steps=[
+            ('JAVASCRIPT', DB_CATALOG_JS),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '1h'),
+        ],
     )
     emit_item(
         doc,
@@ -682,13 +1514,142 @@ def build() -> Doc:
         DB_COUNT_KEY,
         item_type='DEPENDENT',
         delay='0',
-        value_type='FLOAT',
+        value_type='UNSIGNED',
         master_key=DB_KEY,
-        description='What SQL returned (includes system DBs). Not the stock MATCHES filter.',
+        description='What SQL returned (includes system DBs). User-DB visibility is flattened LLD.',
         component='application',
         extra_tags=INSTANCE_TAGS,
         steps=[('JSONPATH', '$.length()', 'CUSTOM_VALUE', '0')],
     )
+    emit_item(
+        doc,
+        6,
+        'MSSQL [{#MSSQL.INSTANCE}]: Get availability groups',
+        AG_GET_KEY,
+        delay='5m',
+        value_type='TEXT',
+        history='0',
+        trends='0',
+        timeout='30s',
+        description='Availability-group JSON for this named instance.',
+        component='raw',
+        extra_tags=INSTANCE_TAGS,
+        steps=[('CHECK_NOT_SUPPORTED', '-1', '[]')],
+    )
+    emit_item(
+        doc,
+        6,
+        'MSSQL [{#MSSQL.INSTANCE}]: Get local DB',
+        LOCAL_DB_GET_KEY,
+        delay='5m',
+        value_type='TEXT',
+        history='0',
+        trends='0',
+        timeout='30s',
+        description='Always On local-database JSON for this named instance. Feeds flattened AG LLD.',
+        component='raw',
+        extra_tags=INSTANCE_TAGS,
+        steps=[('CHECK_NOT_SUPPORTED', '-1', '[]')],
+    )
+    emit_item(
+        doc,
+        6,
+        'MSSQL [{#MSSQL.INSTANCE}]: AG local-DB catalog',
+        LOCAL_CATALOG_KEY,
+        item_type='DEPENDENT',
+        delay='0',
+        value_type='TEXT',
+        history='0',
+        trends='0',
+        master_key=LOCAL_DB_GET_KEY,
+        description='AG local-DB LLD rows stamped with instance, group, and database.',
+        component='raw',
+        extra_tags=INSTANCE_TAGS,
+        steps=[
+            ('JAVASCRIPT', LOCAL_DB_CATALOG_JS),
+            ('DISCARD_UNCHANGED_HEARTBEAT', '1h'),
+        ],
+    )
+
+    emit_discovery_header(
+        doc,
+        uid_name='discovery:named-database',
+        name='Named instance database discovery',
+        key=DB_LLD_KEY,
+        description=(
+            'User databases on every named instance. Flattened from mssql.db.get catalogs. '
+            'System DBs filtered by {$MSSQL.DBNAME.NOT_MATCHES} (not an environment mute).'
+        ),
+        master_key=DB_LLDJSON_KEY,
+    )
+    emit_filter_pair(doc, 5, '{#DBNAME}', MACRO_DBNAME_MATCHES, MACRO_DBNAME_NOT_MATCHES)
+    doc.add(5, 'item_prototypes:')
+    emit_db_prototypes(doc)
+    doc.add(5, 'trigger_prototypes:')
+    trig(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Log backup is old",
+        BACKUP_LOG_CRIT_EXPR,
+        'HIGH',
+        'The log backup has not been executed for a long time.',
+        event_name=(
+            "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Log backup older than "
+            '{$MSSQL.BACKUP_LOG.CRIT:"{#DBNAME}"}'
+        ),
+        opdata=BACKUP_OPDATA,
+        manual_close=True,
+        dependencies=[PING_DEP],
+        extra_tags=[('database', '{#DBNAME}'), ('sql_instance', '{#MSSQL.INSTANCE}')],
+    )
+    trig(
+        doc,
+        6,
+        "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Log backup is old",
+        BACKUP_LOG_WARN_EXPR,
+        'WARNING',
+        'The log backup has not been executed for a long time.',
+        event_name=(
+            "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Log backup older than "
+            '{$MSSQL.BACKUP_LOG.WARN:"{#DBNAME}"}'
+        ),
+        opdata=BACKUP_OPDATA,
+        manual_close=True,
+        dependencies=[
+            PING_DEP,
+            (
+                "MSSQL [{#MSSQL.INSTANCE}]: DB '{#DBNAME}': Log backup is old",
+                BACKUP_LOG_CRIT_EXPR,
+            ),
+        ],
+        extra_tags=[('database', '{#DBNAME}'), ('sql_instance', '{#MSSQL.INSTANCE}')],
+    )
+    doc.add(5, 'overrides:')
+    doc.add(6, '- name: Log backup')
+    doc.add(7, "step: '1'")
+    doc.add(7, 'filter:')
+    doc.add(8, 'conditions:')
+    doc.add(9, "- macro: '{#RECOVERY_MODEL}'")
+    doc.add(10, "value: '3'")
+    doc.add(10, 'formulaid: A')
+    doc.add(7, 'operations:')
+    doc.add(8, '- operationobject: TRIGGER_PROTOTYPE')
+    doc.add(9, 'operator: LIKE')
+    doc.add(9, 'value: Log backup is old')
+    doc.add(9, 'discover: NO_DISCOVER')
+
+    emit_discovery_header(
+        doc,
+        uid_name='discovery:named-local-db',
+        name='Named instance AG local database discovery',
+        key=LOCAL_LLD_KEY,
+        description=(
+            'Always On local databases on every named instance. Flattened from mssql.local.db.get.'
+        ),
+        master_key=LOCAL_LLDJSON_KEY,
+    )
+    doc.add(5, 'item_prototypes:')
+    emit_local_db_prototypes(doc)
 
     doc.add(3, 'tags:')
     doc.add(4, '- tag: class')
@@ -718,35 +1679,80 @@ def build() -> Doc:
     doc.add(9, 'fields:')
     field(doc, 10, 'STRING', 'reference', 'MSSQLPRB')
     field(doc, 10, 'INTEGER', 'show', '3')
-    widget_xy(doc, 8, 'honeycomb', 'Ping', y='4', width='72', height='6')
-    doc.add(9, 'fields:')
-    field(doc, 10, 'STRING', 'items.0', 'MSSQL [*]: Ping')
-    field(
+    emit_honeycomb(
         doc,
-        10,
-        'STRING',
-        'primary_label',
+        'Ping',
+        'MSSQL [*]: Ping',
         '{{ITEM.NAME}.regsub("^MSSQL \\[(.*)\\]: Ping$","\\1")}',
+        y='4',
+        reference='MSSQLPNG',
+        t0_color='FF465C',
+        t0='0',
+        t1_color='0EC9AC',
+        t1='1',
     )
-    field(doc, 10, 'INTEGER', 'interpolation', '0')
-    field(doc, 10, 'INTEGER', 'primary_label_bold', '1')
-    field(doc, 10, 'INTEGER', 'primary_label_size_type', '1')
-    field(doc, 10, 'INTEGER', 'primary_label_size', '20')
-    field(doc, 10, 'INTEGER', 'show.0', '1')
-    field(doc, 10, 'STRING', 'reference', 'MSSQLPNG')
-    field(doc, 10, 'STRING', 'thresholds.0.color', 'FF465C')
-    field(doc, 10, 'STRING', 'thresholds.0.threshold', '0')
-    field(doc, 10, 'STRING', 'thresholds.1.color', '0EC9AC')
-    field(doc, 10, 'STRING', 'thresholds.1.threshold', '1')
+    doc.add(6, '- name: Databases')
+    doc.add(7, 'widgets:')
+    emit_honeycomb(
+        doc,
+        'Database state',
+        "MSSQL [*] DB *: State",
+        '{{ITEM.NAME}.regsub("^MSSQL \\[(.*)\\] DB \'(.*)\': State$","\\1 / \\2")}',
+        y='0',
+        reference='MSSQLDBS',
+        t0_color='0EC9AC',
+        t0='0',
+        t1_color='FF465C',
+        t1='2',
+    )
+    emit_honeycomb(
+        doc,
+        'AG local DB sync',
+        'MSSQL [*] AG * Local DB *: Synchronization health',
+        '{{ITEM.NAME}.regsub("^MSSQL \\[(.*)\\] AG \'(.*)\' Local DB \'(.*)\': Synchronization health$","\\1 / \\3")}',
+        y='6',
+        reference='MSSQLAGD',
+        t0_color='FF465C',
+        t0='0',
+        t1_color='0EC9AC',
+        t1='2',
+    )
 
     doc.add(3, 'valuemaps:')
-    doc.add(4, '- uuid: ' + uid('valuemap:service-state'))
-    doc.add(5, 'name: Service state')
-    doc.add(5, 'mappings:')
-    doc.add(6, "- value: '0'")
-    doc.add(7, 'newvalue: Down')
-    doc.add(6, "- value: '1'")
-    doc.add(7, 'newvalue: Up')
+    emit_valuemap(
+        doc,
+        4,
+        'Service state',
+        [('0', 'Down'), ('1', 'Up')],
+    )
+    emit_valuemap(
+        doc,
+        4,
+        'MSSQL DB state',
+        [
+            ('0', 'ONLINE'),
+            ('1', 'RESTORING'),
+            ('2', 'RECOVERING'),
+            ('3', 'RECOVERY_PENDING'),
+            ('4', 'SUSPECT'),
+            ('5', 'EMERGENCY'),
+            ('6', 'OFFLINE'),
+            ('7', 'COPYING'),
+            ('10', 'OFFLINE_SECONDARY'),
+        ],
+    )
+    emit_valuemap(
+        doc,
+        4,
+        'MSSQL Recovery model',
+        [('1', 'FULL'), ('2', 'BULK_LOGGED'), ('3', 'SIMPLE')],
+    )
+    emit_valuemap(
+        doc,
+        4,
+        'MSSQL AG Synchronization health',
+        [('0', 'Not healthy'), ('1', 'Partially healthy'), ('2', 'Healthy')],
+    )
     return doc
 
 

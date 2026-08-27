@@ -86,7 +86,7 @@ python3 scripts/configure_nbxsync_network.py --apply-mssql
 That fail-closes if stock Agent 2 is missing in Zabbix, imports **MSSQL
 Observability**, and assigns it on those roles **alongside** stock. No
 HostSync, no Extreme import. Then HostSync a default-only canary and a
-named-instance canary. Per-database LLD on named instances is not in v1.
+named-instance canary. Flattened database / AG local-DB LLD is in this YAML.
 
 For a first UI test, import
 `zabbix/templates/mssql_observability/template_mssql_observability.yaml`

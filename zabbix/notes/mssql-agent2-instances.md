@@ -47,7 +47,7 @@ Masters (clone these as **item prototypes**, not the hundreds of JSONPath depend
 | Get availability groups | `mssql.availability.group.get[…]` |
 | Get local/non-local DB, replica, mirroring, quorum | same pattern |
 
-LLD rules on stock are **dependent** on those masters (`mssql.database.discovery` → `{#DBNAME}`, job discovery → `{#JOBNAME}`, …). Zabbix **cannot** attach a new discovery rule per discovered instance on the same host (discovery prototypes exist for **host** prototypes only). So v1 of the companion does **instance-level** masters only. Per-database LLD on named instances is v2 (flatten). See [Later](#later-v2-flattened-database-lld).
+LLD rules on stock are **dependent** on those masters (`mssql.database.discovery` → `{#DBNAME}`, job discovery → `{#JOBNAME}`, …). Zabbix **cannot** attach a new discovery rule per discovered instance on the same host (discovery prototypes exist for **host** prototypes only; nested LLD is 7.4). The companion therefore **flattens** named-instance databases: each instance stamps `{#MSSQL.INSTANCE}+{#DBNAME}` into a catalog item, `last_foreach` merges those catalogs, and a second LLD rule creates per-database items. Keys include instance **and** dbname.
 
 Stock macros that stay on the role / template (do not duplicate in the companion unless overriding):
 
@@ -56,8 +56,8 @@ Stock macros that stay on the role / template (do not duplicate in the companion
 | `{$MSSQL.URI}` | empty space in YAML — **set** `sqlserver://localhost:1433` on the role | unused by named-instance prototypes |
 | `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}` | empty | **same macros** in prototype keys |
 | `{$MSSQL.HOST}` / `{$MSSQL.PORT}` | `localhost` / `1433` | do not use for named instances (dynamic ports) |
-| `{$MSSQL.DBNAME.NOT_MATCHES}` | `master\|tempdb\|model\|msdb` | v2 only |
-| `{$MSSQL.BACKUP_*.USED:"dbname"}` | mute backup-age per **database** | official context use; **not** DSN |
+| `{$MSSQL.DBNAME.NOT_MATCHES}` | `master\|tempdb\|model\|msdb` | same default on companion DB LLD (system DBs, not an environment mute) |
+| `{$MSSQL.BACKUP_*.USED:"dbname"}` | mute backup-age per **database** (default **1** on every env) | companion copies the same defaults; do not set 0 on Test/Dev roles |
 
 `{$MSSQL.DSN}` is **MSSQL by ODBC** only (DSN lives in **proxy** `odbc.ini`). Zerotouch already unlinked ODBC. Role `{$MSSQL.DSN}=nbxsync` is dead for Agent 2.
 
@@ -134,35 +134,35 @@ Filter on `{#MSSQL.INSTANCE}`. Do not filter in NetBox.
 
 ---
 
-## Item prototypes (v1)
+## Item prototypes
 
 All use **plugin keys** so the loadable MSSQL plugin does the query. User/password are **host** macros (same for every instance on that box).
 
 Keys **include the URI string**, so they cannot collide with stock `…["{$MSSQL.URI}",…]` unless someone sets `{$MSSQL.URI}` to `sqlserver://localhost/PITDV02` **and** that instance is also discovered. Do not do that. Stock URI stays `sqlserver://localhost:1433`.
 
-Minimum set (each: agent, then a few JSONPath dependents if the master is JSON):
+Instance set:
 
-1. `mssql.version["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]`  
-   - Item name: `MSSQL [{#MSSQL.INSTANCE}]: Version`  
-   - Tags: `sql_instance={#MSSQL.INSTANCE}`
-2. `mssql.perfcounter.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]`  
-   - History `0`, dependent rates as needed (start with batch requests / page life / buffer cache — not the full stock pack)
-3. `mssql.job.status.get["{#MSSQL.URI}",…]`
-4. `mssql.last.backup.get["{#MSSQL.URI}",…]`
-5. `mssql.db.get["{#MSSQL.URI}",…]`  
-   - History `0`. Dependent: **database count** via JSONPath length (no DB LLD). System DBs still in the JSON; count is “what SQL returned”, not the stock MATCHES filter.
+1. `mssql.ping` / `mssql.version["{#MSSQL.URI}",…]` — names `MSSQL [{#MSSQL.INSTANCE}]: …`, tag `sql_instance`
+2. `mssql.perfcounter.get` — history `0`; dependents: buffer cache, page life, batch req/s, lock timeouts (not the full stock pack)
+3. `mssql.job.status.get` / `mssql.last.backup.get` / `mssql.db.get` / `mssql.availability.group.get` / `mssql.local.db.get`
+4. Catalog dependents stamp `{#MSSQL.INSTANCE}+{#DBNAME}` (and `{#GROUP_NAME}` for AG) for flattened LLD
+
+Flattened database items use keys like `mssql.observability.db.state[{#MSSQL.INSTANCE},{#DBNAME}]` and tags `database` / `sql_instance`. AG local DBs use `local-db` / `availability-group`. Do **not** reuse stock keys such as `mssql.db.state["{#DBNAME}"]`.
 
 Triggers (on the companion, **not** Disaster):
 
 | Event | Sev | Notes |
 |---|---|---|
-| `mssql.version` unsupported / nodata 15m | Average | login missing **on that instance**, plugin, Browser/port |
-| Version item empty while Windows `MSSQL$…` is running | Average | service up, TDS down |
-| Named instance count `< {$MSSQL.INSTANCE.DISCOVERY.MIN}` when MIN>0 | Average | census, same idea as Forti SD-WAN expected |
+| `mssql.ping` = 0 for 3 samples | Average | login/URI/Browser/plugin — Windows already tickets a stopped service |
+| `mssql.version` nodata 15m | Average | depends on ping so a down instance is one ticket |
+| Named instance count `< {$MSSQL.INSTANCE.DISCOVERY.MIN}` when MIN>0 | Average | census; default MIN=0 |
+| Named-instance DB state > 1 | High | same bar as stock, unique keys |
+| Full/diff/log backup age | High / Warning | `{$MSSQL.BACKUP_*.USED}=1` on every environment |
+| AG local-DB not healthy / not online | High / Warning | flattened from `mssql.local.db.get` |
 
 Do **not** clone stock “TCP 1433 Disaster” onto each instance.
 
-Dependent JSONPath metrics: copy **sparingly** from stock (buffer cache, batch req/s, lock timeouts). Full stock clone as prototypes is unmaintainable across 7.0-6 → 7.0-7.
+Instance perfcounters stay sparse. The per-database pack matches the stock DB LLD the operators already see on the default instance (state, size, log, backups, transactions).
 
 ---
 
@@ -220,7 +220,7 @@ Same password as `{$MSSQL.PASSWORD}` on that NetBox object. Repeat on PITDV02, P
 
 HostSync that one host. Companion LLD fills PITDV02. If NetBox is SOT for host macros, do not leave DSN contexts only in Zabbix.
 
-Query Server: same companion. If it is a true replica, stock AG items on the default URI may still apply; named-instance AG is v2.
+Query Server: same companion. Named-instance AG local DBs are flattened LLD on this template.
 
 ---
 
@@ -256,32 +256,31 @@ Use **one default-only** (`CH-STA-T-MSQL01`) and **one named** (`CH-STA-P-MSSQL1
 
 ---
 
-## Later (v2: flattened database LLD)
+## Flattened database LLD (shipped)
 
-Zabbix cannot nest `mssql.database.discovery` under each instance on the same host.
+Zabbix 7.0 cannot nest `mssql.database.discovery` under each instance on the same host.
 
-v2 master (single item, JS on the server/proxy **or** an agent script item with a unique key): for each `{#MSSQL.URI}` from v1, call `mssql.db.get`, merge:
+Companion path:
 
-```
-{#MSSQL.INSTANCE} + {#MSSQL.URI} + {#DBNAME}
-```
+1. Instance LLD collects `mssql.db.get["{#MSSQL.URI}",…]` and `mssql.local.db.get["{#MSSQL.URI}",…]`.
+2. Dependent catalog items stamp `{#MSSQL.INSTANCE}` + `{#MSSQL.URI}` + `{#DBNAME}` (and `{#GROUP_NAME}` for AG).
+3. Host-level `last_foreach(//mssql.observability.db.catalog[*])` merges catalogs (seed `[]` so empty hosts stay supported).
+4. Dependent LLD creates the stock DB pack and AG local-DB items with keys that include the instance.
 
-Then item prototypes for backup age / state using JSONPath filters, with `{$MSSQL.DBNAME.NOT_MATCHES}` applied in LLD filters. Keys must stay unique: include instance **and** dbname.
-
-Until v2, per-DB backup mutes (`{$MSSQL.BACKUP_FULL.USED:"dbname"}`) apply only to **stock** (default instance).
+`{$MSSQL.DBNAME.NOT_MATCHES}` filters system databases only. `{$MSSQL.BACKUP_*.USED}` defaults to **1** on every environment.
 
 Reporting Service QUEUE (LogicMonitor leftover) is still a **custom query**, not instance LLD.
 
 ---
 
-## Implementation (v1 YAML shipped)
+## Implementation
 
 New folder: `zabbix/templates/mssql_observability/` (YAML + README). Template name **MSSQL Observability**.
 
 - Group: Templates/Databases  
 - Do **not** nest stock MSSQL (nesting would still be one URI). **Link alongside** stock on the role (two templates, different keys).  
-- One LLD rule, filters, five prototype masters above, census item, valuemap none required.  
-- Dashboard optional and later: honeycomb of instance version/unsupported is enough; do not bind stock graph prototypes (same nested-graph lesson as Forti).  
+- Instance LLD + flattened database LLD + flattened AG local-DB LLD.  
+- Dashboard **Health**: Overview (census + ping) and Databases (state + AG sync). Do not bind stock graph prototypes (same nested-graph lesson as Forti).  
 - Import from `configure_nbxsync_network.py --apply-mssql` (or the UI). **do not** HostSync the fleet from a template import alone. **Do not** add this to zerotouch.
 
 Assign on Device Role **MSSQL** and **MSSQL Query Server** the same way as stock (zerotouch `ZabbixTemplateAssignment`).

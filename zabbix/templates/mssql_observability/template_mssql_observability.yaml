@@ -15,9 +15,10 @@ zabbix_export:
         instances (MSSQL$%) via WMI and calls the Agent 2 MSSQL plugin with
         sqlserver://localhost/{#MSSQL.INSTANCE} (no port; plugin ≥ 7.0.6, template requires plugin ≥ 7.0.10).
         
-        v1 is instance-level: ping, version, sparse perfcounters, job/backup/db
-        masters, database count. Per-database LLD on named instances is v2 (Zabbix
-        cannot nest discovery-under-discovery on the same host).
+        Named-instance databases and Always On local DBs are a second, flattened LLD
+        ({#MSSQL.INSTANCE}+{#DBNAME}). Zabbix 7.0 cannot nest discovery-under-discovery
+        on the same host. Keys include the instance so they cannot collide with stock.
+        Backup USED flags default to 1 on every environment — do not mute Test/Dev here.
         
         Do not reuse the Windows-by-agent service LLD key. Do not nest ICMP or
         invent host prototypes. Do not put instance names in NetBox.
@@ -85,7 +86,7 @@ zabbix_export:
         type: DEPENDENT
         key: mssql.observability.instance.count
         delay: '0'
-        value_type: FLOAT
+        value_type: UNSIGNED
         description: 'Count of MSSQL$% services from WMI (before LLD filters).'
         master_item:
           key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL$%''"]'
@@ -107,6 +108,146 @@ zabbix_export:
             tags:
               - tag: scope
                 value: availability
+      - uuid: f4e6a2ea5bd05027acc402ea797cb84d
+        name: Named-instance database catalog seed
+        type: CALCULATED
+        key: 'mssql.observability.db.catalog[_seed]'
+        delay: 1h
+        value_type: TEXT
+        history: '0'
+        trends: '0'
+        params: '"[]"'
+        description: Keeps last_foreach of database catalogs from going unsupported when LLD is empty.
+        tags:
+          - tag: component
+            value: raw
+          - tag: mssql_seed
+            value: seed
+      - uuid: e0e3b00e8f2d529cbdd9172996bc6a3e
+        name: Named-instance database LLD JSON
+        type: CALCULATED
+        key: mssql.observability.database.lldjson
+        delay: 5m
+        value_type: TEXT
+        history: '0'
+        trends: '0'
+        params: 'last_foreach(//mssql.observability.db.catalog[*])'
+        description: 'Flattened {#MSSQL.INSTANCE}+{#DBNAME} catalog from every named-instance db.get. Zabbix 7.0 cannot nest database LLD under instance LLD.'
+        preprocessing:
+          - type: JAVASCRIPT
+            parameters:
+              - |
+                try {
+                	var parsed = JSON.parse(value);
+                } catch (error) {
+                	return '[]';
+                }
+                if (parsed == null || parsed === '') {
+                	return '[]';
+                }
+                if (!Array.isArray(parsed)) {
+                	parsed = [parsed];
+                }
+                var out = [];
+                for (var i = 0; i < parsed.length; i++) {
+                	var chunk = parsed[i];
+                	if (chunk == null || chunk === '') {
+                		continue;
+                	}
+                	if (typeof chunk === 'string') {
+                		try {
+                			chunk = JSON.parse(chunk);
+                		} catch (error) {
+                			continue;
+                		}
+                	}
+                	if (!Array.isArray(chunk)) {
+                		chunk = [chunk];
+                	}
+                	for (var j = 0; j < chunk.length; j++) {
+                		var row = chunk[j];
+                		if (row && typeof row === 'object') {
+                			out.push(row);
+                		}
+                	}
+                }
+                return JSON.stringify(out);
+          - type: DISCARD_UNCHANGED_HEARTBEAT
+            parameters:
+              - 1h
+        tags:
+          - tag: component
+            value: raw
+      - uuid: b18738579f2850b2bb102b50e9a32829
+        name: Named-instance AG local-DB catalog seed
+        type: CALCULATED
+        key: 'mssql.observability.local_db.catalog[_seed]'
+        delay: 1h
+        value_type: TEXT
+        history: '0'
+        trends: '0'
+        params: '"[]"'
+        description: Keeps last_foreach of AG local-DB catalogs from going unsupported when LLD is empty.
+        tags:
+          - tag: component
+            value: raw
+          - tag: mssql_seed
+            value: seed
+      - uuid: a4633c72935c5c66b4a8adfb0225a13a
+        name: Named-instance AG local-DB LLD JSON
+        type: CALCULATED
+        key: mssql.observability.local_db.lldjson
+        delay: 5m
+        value_type: TEXT
+        history: '0'
+        trends: '0'
+        params: 'last_foreach(//mssql.observability.local_db.catalog[*])'
+        description: 'Flattened {#MSSQL.INSTANCE}+{#GROUP_NAME}+{#DBNAME} catalog from local.db.get.'
+        preprocessing:
+          - type: JAVASCRIPT
+            parameters:
+              - |
+                try {
+                	var parsed = JSON.parse(value);
+                } catch (error) {
+                	return '[]';
+                }
+                if (parsed == null || parsed === '') {
+                	return '[]';
+                }
+                if (!Array.isArray(parsed)) {
+                	parsed = [parsed];
+                }
+                var out = [];
+                for (var i = 0; i < parsed.length; i++) {
+                	var chunk = parsed[i];
+                	if (chunk == null || chunk === '') {
+                		continue;
+                	}
+                	if (typeof chunk === 'string') {
+                		try {
+                			chunk = JSON.parse(chunk);
+                		} catch (error) {
+                			continue;
+                		}
+                	}
+                	if (!Array.isArray(chunk)) {
+                		chunk = [chunk];
+                	}
+                	for (var j = 0; j < chunk.length; j++) {
+                		var row = chunk[j];
+                		if (row && typeof row === 'object') {
+                			out.push(row);
+                		}
+                	}
+                }
+                return JSON.stringify(out);
+          - type: DISCARD_UNCHANGED_HEARTBEAT
+            parameters:
+              - 1h
+        tags:
+          - tag: component
+            value: raw
       discovery_rules:
         - uuid: 1a245c2bf3c15f198b58bb618b0848a8
           name: Named instance discovery
@@ -117,6 +258,9 @@ zabbix_export:
           lifetime_type: DELETE_AFTER
           enabled_lifetime: '0'
           enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: 'Named SQL Server instances (MSSQL$%). Default instance is stock.'
+          master_item:
+            key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL$%''"]'
           filter:
             evaltype: AND
             conditions:
@@ -127,9 +271,6 @@ zabbix_export:
                 value: '{$MSSQL.INSTANCE.NOT_MATCHES}'
                 operator: NOT_MATCHES_REGEX
                 formulaid: B
-          description: Named SQL Server instances (MSSQL$%). Default instance is stock.
-          master_item:
-            key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL$%''"]'
           item_prototypes:
             - uuid: 3d227da20a865f1cbe798e93d18c47aa
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Ping'
@@ -139,6 +280,12 @@ zabbix_export:
               description: Plugin TDS ping for this named instance (1=alive). Not TCP 1433.
               valuemap:
                 name: Service state
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
               tags:
                 - tag: component
                   value: availability
@@ -156,11 +303,11 @@ zabbix_export:
             - uuid: 9f8d12eba7ca5021b0b4cfc62cef055f
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Version'
               key: 'mssql.version["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
-              delay: 1m
+              delay: 5m
               value_type: CHAR
               trends: '0'
               timeout: 30s
-              description: SQL Server version string for this named instance.
+              description: SQL Server version string for this named instance. Delay 5m so nodata 15m is three misses.
               preprocessing:
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
@@ -190,7 +337,13 @@ zabbix_export:
               history: '0'
               trends: '0'
               timeout: 30s
-              description: Sparse perfcounter master for this named instance (not the full stock pack).
+              description: Perfcounter master for this named instance (same interval as stock).
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '[]'
               tags:
                 - tag: component
                   value: raw
@@ -372,7 +525,13 @@ zabbix_export:
               history: '0'
               trends: '0'
               timeout: 30s
-              description: SQL Agent job status JSON for this named instance. Per-job LLD is v2.
+              description: SQL Agent job status JSON for this named instance.
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '[]'
               tags:
                 - tag: component
                   value: raw
@@ -383,8 +542,8 @@ zabbix_export:
               type: DEPENDENT
               key: 'mssql.observability.failed_jobs[{#MSSQL.INSTANCE}]'
               delay: '0'
-              value_type: FLOAT
-              description: Jobs whose last run_status is Failed (0). Collect-only in v1.
+              value_type: UNSIGNED
+              description: Jobs whose last run_status is Failed (0).
               master_item:
                 key: 'mssql.job.status.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               preprocessing:
@@ -406,7 +565,13 @@ zabbix_export:
               history: '0'
               trends: '0'
               timeout: 30s
-              description: Last-backup JSON for this named instance. Per-database backup age is v2.
+              description: Last-backup JSON for this named instance. Per-database age is flattened LLD.
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '[]'
               tags:
                 - tag: component
                   value: raw
@@ -415,12 +580,69 @@ zabbix_export:
             - uuid: 6b4b1c09ad685ccb8f3d0a0e23f5b51c
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Get database'
               key: 'mssql.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
-              delay: 1h
+              delay: 10m
               value_type: TEXT
               history: '0'
               trends: '0'
               timeout: 30s
-              description: Database JSON for this named instance. No DB LLD in v1.
+              description: Database JSON for this named instance. Feeds flattened database LLD.
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '[]'
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: f90b16b9555f5077b274a73d55d9460a
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Database catalog'
+              type: DEPENDENT
+              key: 'mssql.observability.db.catalog[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              description: 'LLD rows for this instance stamped with {#MSSQL.INSTANCE} and {#MSSQL.URI}.'
+              master_item:
+                key: 'mssql.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      try {
+                      	var data = JSON.parse(value);
+                      } catch (error) {
+                      	return '[]';
+                      }
+                      if (data == null || data === '') {
+                      	return '[]';
+                      }
+                      if (!Array.isArray(data)) {
+                      	data = [data];
+                      }
+                      var instance = '{#MSSQL.INSTANCE}';
+                      var uri = '{#MSSQL.URI}';
+                      var out = [];
+                      for (var i = 0; i < data.length; i++) {
+                      	var row = data[i] || {};
+                      	var dbname = String(row.dbname || row.DBName || '');
+                      	if (!dbname) {
+                      		continue;
+                      	}
+                      	out.push({
+                      		'{#MSSQL.INSTANCE}': instance,
+                      		'{#MSSQL.URI}': uri,
+                      		'{#DBNAME}': dbname,
+                      		'{#RECOVERY_MODEL}': String(row.recovery_model == null ? '' : row.recovery_model)
+                      	});
+                      }
+                      return JSON.stringify(out);
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
               tags:
                 - tag: component
                   value: raw
@@ -431,8 +653,8 @@ zabbix_export:
               type: DEPENDENT
               key: 'mssql.observability.db.count[{#MSSQL.INSTANCE}]'
               delay: '0'
-              value_type: FLOAT
-              description: What SQL returned (includes system DBs). Not the stock MATCHES filter.
+              value_type: UNSIGNED
+              description: What SQL returned (includes system DBs). User-DB visibility is flattened LLD.
               master_item:
                 key: 'mssql.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               preprocessing:
@@ -446,6 +668,980 @@ zabbix_export:
                   value: application
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
+            - uuid: 6b885e825bee502b88e6f3a15d1d5eb8
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Get availability groups'
+              key: 'mssql.availability.group.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 5m
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              timeout: 30s
+              description: Availability-group JSON for this named instance.
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '[]'
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: ead25fc965ec5a18a04ad37c11db1f4e
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Get local DB'
+              key: 'mssql.local.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              delay: 5m
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              timeout: 30s
+              description: Always On local-database JSON for this named instance. Feeds flattened AG LLD.
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '[]'
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: 4255a05aa1fe5ac5a399dae72d2bed42
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: AG local-DB catalog'
+              type: DEPENDENT
+              key: 'mssql.observability.local_db.catalog[{#MSSQL.INSTANCE}]'
+              delay: '0'
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              description: AG local-DB LLD rows stamped with instance, group, and database.
+              master_item:
+                key: 'mssql.local.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      try {
+                      	var data = JSON.parse(value);
+                      } catch (error) {
+                      	return '[]';
+                      }
+                      if (data == null || data === '') {
+                      	return '[]';
+                      }
+                      if (!Array.isArray(data)) {
+                      	data = [data];
+                      }
+                      var instance = '{#MSSQL.INSTANCE}';
+                      var uri = '{#MSSQL.URI}';
+                      var out = [];
+                      for (var i = 0; i < data.length; i++) {
+                      	var row = data[i] || {};
+                      	var dbname = String(row.dbname || row.DBName || '');
+                      	var group = String(row.group_name || row.groupName || '');
+                      	if (!dbname || !group) {
+                      		continue;
+                      	}
+                      	out.push({
+                      		'{#MSSQL.INSTANCE}': instance,
+                      		'{#MSSQL.URI}': uri,
+                      		'{#DBNAME}': dbname,
+                      		'{#GROUP_NAME}': group
+                      	});
+                      }
+                      return JSON.stringify(out);
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+        - uuid: 32b1aa39edeb5a4d88dfe4f7a138989b
+          name: Named instance database discovery
+          type: DEPENDENT
+          key: mssql.observability.database.discovery
+          delay: '0'
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: 'User databases on every named instance. Flattened from mssql.db.get catalogs. System DBs filtered by {$MSSQL.DBNAME.NOT_MATCHES} (not an environment mute).'
+          master_item:
+            key: mssql.observability.database.lldjson
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#DBNAME}'
+                value: '{$MSSQL.DBNAME.MATCHES}'
+                formulaid: A
+              - macro: '{#DBNAME}'
+                value: '{$MSSQL.DBNAME.NOT_MATCHES}'
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+          item_prototypes:
+            - uuid: 0be45518f2615c1189fc85390ace8d0f
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Get last backup'
+              type: DEPENDENT
+              key: 'mssql.observability.backup.raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              description: Backup JSON for this named-instance database.
+              master_item:
+                key: 'mssql.last.backup.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.dbname==''{#DBNAME}'')]'
+                  error_handler: DISCARD_VALUE
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 6826909a99d85eaca81739accac30df0
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Get performance counters'
+              type: DEPENDENT
+              key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              value_type: TEXT
+              history: '0'
+              trends: '0'
+              description: Database perf counters for this named-instance database.
+              master_item:
+                key: 'mssql.perfcounter.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.object_name=~''.*Databases'' && @.instance_name==''{#DBNAME}'')]'
+                  error_handler: DISCARD_VALUE
+              tags:
+                - tag: component
+                  value: raw
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: f81acdf9bcbc57d5912842cdc7bb5ef5
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last diff backup duration'
+              type: DEPENDENT
+              key: 'mssql.observability.backup.diff.duration[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              units: s
+              description: Duration of the last differential backup.
+              master_item:
+                key: 'mssql.observability.backup.raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.type==''I'')].duration.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 1d8d611558115b47b76dad8a8886a398
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last diff backup (time ago)'
+              type: DEPENDENT
+              key: 'mssql.observability.backup.diff[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              units: s
+              description: Time since the last differential backup.
+              master_item:
+                key: 'mssql.observability.backup.raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.type==''I'')].time_since_last_backup.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+              trigger_prototypes:
+                - uuid: 1cd4192cda3e5806a2e3f162ffbfbfcb
+                  expression: 'last(/MSSQL Observability/mssql.observability.backup.diff[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_DIFF.CRIT:"{#DBNAME}"} and {$MSSQL.BACKUP_DIFF.USED:"{#DBNAME}"}=1'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Diff backup is old'
+                  event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Diff backup older than {$MSSQL.BACKUP_DIFF.CRIT:"{#DBNAME}"}'
+                  opdata: 'Time since last backup: {ITEM.LASTVALUE1}'
+                  priority: HIGH
+                  description: The differential backup has not been executed for a long time.
+                  manual_close: 'YES'
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: database
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+                - uuid: e18d6cfadcab5caba3f5e3f7f92e98f6
+                  expression: 'last(/MSSQL Observability/mssql.observability.backup.diff[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_DIFF.WARN:"{#DBNAME}"} and {$MSSQL.BACKUP_DIFF.USED:"{#DBNAME}"}=1'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Diff backup is old'
+                  event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Diff backup older than {$MSSQL.BACKUP_DIFF.WARN:"{#DBNAME}"}'
+                  opdata: 'Time since last backup: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: The differential backup has not been executed for a long time.
+                  manual_close: 'YES'
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Diff backup is old'
+                      expression: 'last(/MSSQL Observability/mssql.observability.backup.diff[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_DIFF.CRIT:"{#DBNAME}"} and {$MSSQL.BACKUP_DIFF.USED:"{#DBNAME}"}=1'
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: database
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+            - uuid: 9c4430487d62576d882fd902a7a0567a
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last full backup duration'
+              type: DEPENDENT
+              key: 'mssql.observability.backup.full.duration[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              units: s
+              description: Duration of the last full backup.
+              master_item:
+                key: 'mssql.observability.backup.raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.type==''D'')].duration.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 58e5621ba2755766ac0b6d0d7039d0dd
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last full backup (time ago)'
+              type: DEPENDENT
+              key: 'mssql.observability.backup.full[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              units: s
+              description: Time since the last full backup.
+              master_item:
+                key: 'mssql.observability.backup.raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.type==''D'')].time_since_last_backup.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+              trigger_prototypes:
+                - uuid: 8e5c9c3a380e5e39800cd2e872617d35
+                  expression: 'last(/MSSQL Observability/mssql.observability.backup.full[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_FULL.CRIT:"{#DBNAME}"} and {$MSSQL.BACKUP_FULL.USED:"{#DBNAME}"}=1'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Full backup is old'
+                  event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Full backup older than {$MSSQL.BACKUP_FULL.CRIT:"{#DBNAME}"}'
+                  opdata: 'Time since last backup: {ITEM.LASTVALUE1}'
+                  priority: HIGH
+                  description: The full backup has not been executed for a long time.
+                  manual_close: 'YES'
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: database
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+                - uuid: 78348871b7e155db8e22cf68e681ff12
+                  expression: 'last(/MSSQL Observability/mssql.observability.backup.full[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_FULL.WARN:"{#DBNAME}"} and {$MSSQL.BACKUP_FULL.USED:"{#DBNAME}"}=1'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Full backup is old'
+                  event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Full backup older than {$MSSQL.BACKUP_FULL.WARN:"{#DBNAME}"}'
+                  opdata: 'Time since last backup: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  description: The full backup has not been executed for a long time.
+                  manual_close: 'YES'
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Full backup is old'
+                      expression: 'last(/MSSQL Observability/mssql.observability.backup.full[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_FULL.CRIT:"{#DBNAME}"} and {$MSSQL.BACKUP_FULL.USED:"{#DBNAME}"}=1'
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: database
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+            - uuid: a86915f527f05b8687cde1cc675199b6
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last log backup duration'
+              type: DEPENDENT
+              key: 'mssql.observability.backup.log.duration[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              units: s
+              description: Duration of the last log backup.
+              master_item:
+                key: 'mssql.observability.backup.raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.type==''L'')].duration.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 12h
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: b85ab11644b457fe91f53557c2bf7f2e
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last log backup (time ago)'
+              type: DEPENDENT
+              key: 'mssql.observability.backup.log[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              units: s
+              description: Time since the last log backup.
+              master_item:
+                key: 'mssql.observability.backup.raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.type==''L'')].time_since_last_backup.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 931ff503bf3b57ff81327c6d43aa351b
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Recovery model'
+              type: DEPENDENT
+              key: 'mssql.observability.backup.recovery_model[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              description: 1 = Full, 2 = Bulk_logged, 3 = Simple.
+              valuemap:
+                name: MSSQL Recovery model
+              master_item:
+                key: 'mssql.observability.backup.raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[0].db_recovery_model'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '1'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 1123eb2d383b5879aad8bfe1eef4d5cf
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Active transactions'
+              type: DEPENDENT
+              key: 'mssql.observability.db.active_transactions[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              description: Number of active transactions for the database.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Active Transactions'')].cntr_value.first()'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 7cbd0bcdf40b565c83f13f669393890b
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Data file size'
+              type: DEPENDENT
+              key: 'mssql.observability.db.data_files_size[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              units: B
+              description: Cumulative size of all data files including autogrowth.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Data File(s) Size (KB)'')].cntr_value.first()'
+                - type: MULTIPLIER
+                  parameters:
+                    - '1024'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 8e59491d9c2750778089f9a310c3880b
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log bytes flushed per second'
+              type: DEPENDENT
+              key: 'mssql.observability.db.log_bytes_flushed_sec.rate[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              value_type: FLOAT
+              units: Bps
+              description: Log bytes flushed per second.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Log Bytes Flushed/sec'')].cntr_value.first()'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 7433cacd53295344bc9f2b61f8b060c1
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log file size'
+              type: DEPENDENT
+              key: 'mssql.observability.db.log_files_size[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              units: B
+              description: Cumulative size of all transaction log files.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Log File(s) Size (KB)'')].cntr_value.first()'
+                - type: MULTIPLIER
+                  parameters:
+                    - '1024'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: fdbc1069248f5086944aba9e36c54b64
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log file used size'
+              type: DEPENDENT
+              key: 'mssql.observability.db.log_files_used_size[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              units: B
+              description: Used size of all transaction log files.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Log File(s) Used Size (KB)'')].cntr_value.first()'
+                - type: MULTIPLIER
+                  parameters:
+                    - '1024'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 81d5b4f6eb735caead43c1377f9687db
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log flushes per second'
+              type: DEPENDENT
+              key: 'mssql.observability.db.log_flushes_sec.rate[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              value_type: FLOAT
+              description: Log flushes per second.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Log Flushes/sec'')].cntr_value.first()'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 6877354b011a58f5b8c6ba7269e04f7a
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log flush waits per second'
+              type: DEPENDENT
+              key: 'mssql.observability.db.log_flush_waits_sec.rate[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              value_type: FLOAT
+              description: Commits per second waiting for the log flush.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Log Flush Waits/sec'')].cntr_value.first()'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+              trigger_prototypes:
+                - uuid: caf3b8503d995edfb2785967769b517a
+                  expression: 'min(/MSSQL Observability/mssql.observability.db.log_flush_waits_sec.rate[{#MSSQL.INSTANCE},{#DBNAME}],5m)>{$MSSQL.LOG_FLUSH_WAITS.MAX:"{#DBNAME}"}'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Number of commits waiting for the log flush is high'
+                  event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Number of commits waiting for the log flush is high (over {$MSSQL.LOG_FLUSH_WAITS.MAX:"{#DBNAME}"}/sec for 5m)'
+                  priority: WARNING
+                  description: Too many commits are waiting for the log flush.
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: performance
+                    - tag: database
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+            - uuid: 87e96c15a1bd53a188263cdb0022eb34
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log flush wait time'
+              type: DEPENDENT
+              key: 'mssql.observability.db.log_flush_wait_time[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              value_type: FLOAT
+              units: ms
+              description: Wait time to flush the log. On an AG secondary this is harden-to-disk wait.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Log Flush Wait Time'')].cntr_value.first()'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+              trigger_prototypes:
+                - uuid: ef9d638074d05fdd89e7e6194c9295a3
+                  expression: 'min(/MSSQL Observability/mssql.observability.db.log_flush_wait_time[{#MSSQL.INSTANCE},{#DBNAME}],5m)>{$MSSQL.LOG_FLUSH_WAIT_TIME.MAX:"{#DBNAME}"}'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Total wait time to flush the log is high'
+                  event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Total wait time to flush the log is high (over {$MSSQL.LOG_FLUSH_WAIT_TIME.MAX:"{#DBNAME}"}ms for 5m)'
+                  priority: WARNING
+                  description: The wait time to flush the log is too long.
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: performance
+                    - tag: database
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+            - uuid: 1cde9d3eb58255809b1b15f41cc25dc8
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log growths'
+              type: DEPENDENT
+              key: 'mssql.observability.db.log_growths[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              description: Times the transaction log has grown.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Log Growths'')].cntr_value.first()'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: b499b3552b9b58109d4cdba987a35773
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log shrinks'
+              type: DEPENDENT
+              key: 'mssql.observability.db.log_shrinks[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              description: Times the transaction log has been shrunk.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Log Shrinks'')].cntr_value.first()'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: 60c08346b17d5e75955407b10f97bf48
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log truncations'
+              type: DEPENDENT
+              key: 'mssql.observability.db.log_truncations[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              description: Times the transaction log has been truncated.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Log Truncations'')].cntr_value.first()'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+            - uuid: d3f9182c59685ec7b3b0d00774e8bbdb
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Percent log used'
+              type: DEPENDENT
+              key: 'mssql.observability.db.percent_log_used[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              value_type: FLOAT
+              units: '%'
+              description: Percentage of log space in use.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Percent Log Used'')].cntr_value.first()'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+              trigger_prototypes:
+                - uuid: b97f3176789f5e438d3696e39b7266d9
+                  expression: 'min(/MSSQL Observability/mssql.observability.db.percent_log_used[{#MSSQL.INSTANCE},{#DBNAME}],5m)>{$MSSQL.PERCENT_LOG_USED.MAX:"{#DBNAME}"}'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Percent of log usage is high'
+                  event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Percent of log usage is high (over {$MSSQL.PERCENT_LOG_USED.MAX:"{#DBNAME}"}% for 5m)'
+                  priority: WARNING
+                  description: 'There''s not enough space left in the log.'
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: performance
+                    - tag: database
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+            - uuid: b31758eadfa7583b9935a09599bdd646
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': State'
+              type: DEPENDENT
+              key: 'mssql.observability.db.state[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              description: 0 = Online. Values above 1 are non-working states.
+              valuemap:
+                name: MSSQL DB state
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''State'')].cntr_value.first()'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 15m
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+              trigger_prototypes:
+                - uuid: d6f99c675d9b5b6d949948bf30b5069a
+                  expression: 'last(/MSSQL Observability/mssql.observability.db.state[{#MSSQL.INSTANCE},{#DBNAME}])>1'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': State is {ITEM.VALUE}'
+                  priority: HIGH
+                  description: The DB has a non-working state.
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: database
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+            - uuid: ceb3e888c2a35e6f8666d209362c9974
+              name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Transactions per second'
+              type: DEPENDENT
+              key: 'mssql.observability.db.transactions_sec.rate[{#MSSQL.INSTANCE},{#DBNAME}]'
+              delay: '0'
+              value_type: FLOAT
+              description: Transactions started for the database per second.
+              master_item:
+                key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.counter_name==''Transactions/sec'')].cntr_value.first()'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: database
+                  value: '{#DBNAME}'
+          trigger_prototypes:
+            - uuid: 2969d69492345b719616ea07fe2cebb2
+              expression: 'last(/MSSQL Observability/mssql.observability.backup.log[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_LOG.CRIT:"{#DBNAME}"} and {$MSSQL.BACKUP_LOG.USED:"{#DBNAME}"}=1 and last(/MSSQL Observability/mssql.observability.backup.recovery_model[{#MSSQL.INSTANCE},{#DBNAME}])<>3'
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Log backup is old'
+              event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Log backup older than {$MSSQL.BACKUP_LOG.CRIT:"{#DBNAME}"}'
+              opdata: 'Time since last backup: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: The log backup has not been executed for a long time.
+              manual_close: 'YES'
+              dependencies:
+                - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                  expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: database
+                  value: '{#DBNAME}'
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: cf141f23eb0c5118bb229be4700566b6
+              expression: 'last(/MSSQL Observability/mssql.observability.backup.log[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_LOG.WARN:"{#DBNAME}"} and {$MSSQL.BACKUP_LOG.USED:"{#DBNAME}"}=1 and last(/MSSQL Observability/mssql.observability.backup.recovery_model[{#MSSQL.INSTANCE},{#DBNAME}])<>3'
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Log backup is old'
+              event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Log backup older than {$MSSQL.BACKUP_LOG.WARN:"{#DBNAME}"}'
+              opdata: 'Time since last backup: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: The log backup has not been executed for a long time.
+              manual_close: 'YES'
+              dependencies:
+                - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                  expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                - name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Log backup is old'
+                  expression: 'last(/MSSQL Observability/mssql.observability.backup.log[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_LOG.CRIT:"{#DBNAME}"} and {$MSSQL.BACKUP_LOG.USED:"{#DBNAME}"}=1 and last(/MSSQL Observability/mssql.observability.backup.recovery_model[{#MSSQL.INSTANCE},{#DBNAME}])<>3'
+              tags:
+                - tag: scope
+                  value: availability
+                - tag: database
+                  value: '{#DBNAME}'
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+          overrides:
+            - name: Log backup
+              step: '1'
+              filter:
+                conditions:
+                  - macro: '{#RECOVERY_MODEL}'
+                    value: '3'
+                    formulaid: A
+              operations:
+                - operationobject: TRIGGER_PROTOTYPE
+                  operator: LIKE
+                  value: Log backup is old
+                  discover: NO_DISCOVER
+        - uuid: 51c49ca19b5c5f50a13cc94064909be2
+          name: Named instance AG local database discovery
+          type: DEPENDENT
+          key: mssql.observability.local_db.discovery
+          delay: '0'
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: Always On local databases on every named instance. Flattened from mssql.local.db.get.
+          master_item:
+            key: mssql.observability.local_db.lldjson
+          item_prototypes:
+            - uuid: b00178412c0554cf951c3bffd382f35d
+              name: 'MSSQL [{#MSSQL.INSTANCE}] AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': Suspended'
+              type: DEPENDENT
+              key: 'mssql.observability.local_db.is_suspended[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}]'
+              delay: '0'
+              description: 0 = Resumed, 1 = Suspended.
+              master_item:
+                key: 'mssql.local.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.dbname==''{#DBNAME}'' && @.group_name==''{#GROUP_NAME}'')].is_suspended.first()'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              tags:
+                - tag: component
+                  value: local-db
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: availability-group
+                  value: '{#GROUP_NAME}'
+                - tag: local-db
+                  value: '{#DBNAME}'
+            - uuid: 6728d1ec2a375b4d8091ac654eb0eaa7
+              name: 'MSSQL [{#MSSQL.INSTANCE}] AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': State'
+              type: DEPENDENT
+              key: 'mssql.observability.local_db.state[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}]'
+              delay: '0'
+              description: Local availability database state (0 = Online).
+              valuemap:
+                name: MSSQL DB state
+              master_item:
+                key: 'mssql.local.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.dbname==''{#DBNAME}'' && @.group_name==''{#GROUP_NAME}'')].database_state.first()'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              tags:
+                - tag: component
+                  value: local-db
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: availability-group
+                  value: '{#GROUP_NAME}'
+                - tag: local-db
+                  value: '{#DBNAME}'
+              trigger_prototypes:
+                - uuid: 6b6c787c7af35044bc3e976dc34bd3e7
+                  expression: 'last(/MSSQL Observability/mssql.observability.local_db.state[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}])>0'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': "{#DBNAME}" is {ITEM.VALUE}'
+                  priority: WARNING
+                  description: The local availability database has a non-working state.
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: availability-group
+                      value: '{#GROUP_NAME}'
+                    - tag: local-db
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+            - uuid: faa4c376eac05f6f8a7a9e860c4220f7
+              name: 'MSSQL [{#MSSQL.INSTANCE}] AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': Synchronization health'
+              type: DEPENDENT
+              key: 'mssql.observability.local_db.synchronization_health[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}]'
+              delay: '0'
+              description: 0 = Not healthy, 1 = Partially healthy, 2 = Healthy.
+              valuemap:
+                name: MSSQL AG Synchronization health
+              master_item:
+                key: 'mssql.local.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.dbname==''{#DBNAME}'' && @.group_name==''{#GROUP_NAME}'')].synchronization_health.first()'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              tags:
+                - tag: component
+                  value: local-db
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+                - tag: availability-group
+                  value: '{#GROUP_NAME}'
+                - tag: local-db
+                  value: '{#DBNAME}'
+              trigger_prototypes:
+                - uuid: 4bb0e74baeec53318bd6d3fbcb33f831
+                  expression: 'last(/MSSQL Observability/mssql.observability.local_db.synchronization_health[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}])=0'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': "{#DBNAME}" is Not healthy'
+                  priority: HIGH
+                  description: The local availability database is not synchronizing.
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: availability-group
+                      value: '{#GROUP_NAME}'
+                    - tag: local-db
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
+                - uuid: 4bd69a426e2c54db943d6ce78da1d34d
+                  expression: 'last(/MSSQL Observability/mssql.observability.local_db.synchronization_health[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}])=1'
+                  name: 'MSSQL [{#MSSQL.INSTANCE}]: AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': "{#DBNAME}" is Partially healthy'
+                  priority: AVERAGE
+                  description: The local availability database is only partially healthy.
+                  dependencies:
+                    - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
+                      expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+                    - tag: availability-group
+                      value: '{#GROUP_NAME}'
+                    - tag: local-db
+                      value: '{#DBNAME}'
+                    - tag: sql_instance
+                      value: '{#MSSQL.INSTANCE}'
       tags:
         - tag: class
           value: database
@@ -467,6 +1663,48 @@ zabbix_export:
         - macro: '{$MSSQL.PAGE_LIFE.MIN}'
           value: '300'
           description: Page life expectancy Warning floor (seconds). Estate uses Warning only.
+        - macro: '{$MSSQL.DBNAME.MATCHES}'
+          value: '.*'
+          description: 'Allowlist for named-instance database LLD ({#DBNAME}). Same default as stock.'
+        - macro: '{$MSSQL.DBNAME.NOT_MATCHES}'
+          value: 'master|tempdb|model|msdb'
+          description: Denylist for named-instance database LLD. System databases only — not an environment mute.
+        - macro: '{$MSSQL.BACKUP_FULL.USED}'
+          value: '1'
+          description: '1 = fire full-backup age triggers. Default 1 on every environment. Override per database with context, not per Test/Dev role.'
+        - macro: '{$MSSQL.BACKUP_FULL.WARN}'
+          value: 9d
+          description: Full backup age Warning (stock default).
+        - macro: '{$MSSQL.BACKUP_FULL.CRIT}'
+          value: 10d
+          description: Full backup age High (stock default).
+        - macro: '{$MSSQL.BACKUP_DIFF.USED}'
+          value: '1'
+          description: 1 = fire diff-backup age triggers. Default 1 on every environment.
+        - macro: '{$MSSQL.BACKUP_DIFF.WARN}'
+          value: 3d
+          description: Diff backup age Warning (stock default).
+        - macro: '{$MSSQL.BACKUP_DIFF.CRIT}'
+          value: 6d
+          description: Diff backup age High (stock default).
+        - macro: '{$MSSQL.BACKUP_LOG.USED}'
+          value: '1'
+          description: 1 = fire log-backup age triggers. Default 1 on every environment. Simple recovery is skipped.
+        - macro: '{$MSSQL.BACKUP_LOG.WARN}'
+          value: 4h
+          description: Log backup age Warning (stock default).
+        - macro: '{$MSSQL.BACKUP_LOG.CRIT}'
+          value: 8h
+          description: Log backup age High (stock default).
+        - macro: '{$MSSQL.PERCENT_LOG_USED.MAX}'
+          value: '80'
+          description: Percent log used Warning ceiling (stock default 80).
+        - macro: '{$MSSQL.LOG_FLUSH_WAITS.MAX}'
+          value: '1'
+          description: Log flush waits/sec Warning (stock default).
+        - macro: '{$MSSQL.LOG_FLUSH_WAIT_TIME.MAX}'
+          value: '1'
+          description: Log flush wait time ms Warning (stock default).
       dashboards:
         - uuid: b91d7e04c3a8456f8e12f6a0b4c8d931
           name: Health
@@ -500,7 +1738,7 @@ zabbix_export:
                   fields:
                     - type: STRING
                       name: reference
-                      value: 'MSSQLPRB'
+                      value: MSSQLPRB
                     - type: INTEGER
                       name: show
                       value: '3'
@@ -533,24 +1771,149 @@ zabbix_export:
                       value: '1'
                     - type: STRING
                       name: reference
-                      value: 'MSSQLPNG'
+                      value: MSSQLPNG
                     - type: STRING
                       name: thresholds.0.color
-                      value: 'FF465C'
+                      value: FF465C
                     - type: STRING
                       name: thresholds.0.threshold
                       value: '0'
                     - type: STRING
                       name: thresholds.1.color
-                      value: '0EC9AC'
+                      value: 0EC9AC
                     - type: STRING
                       name: thresholds.1.threshold
                       value: '1'
+            - name: Databases
+              widgets:
+                - type: honeycomb
+                  name: Database state
+                  y: '0'
+                  width: '72'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'MSSQL [*] DB *: State'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^MSSQL \[(.*)\] DB ''(.*)'': State$","\1 / \2")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: MSSQLDBS
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: FF465C
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '2'
+                - type: honeycomb
+                  name: AG local DB sync
+                  y: '6'
+                  width: '72'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'MSSQL [*] AG * Local DB *: Synchronization health'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^MSSQL \[(.*)\] AG ''(.*)'' Local DB ''(.*)'': Synchronization health$","\1 / \3")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: MSSQLAGD
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: FF465C
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '2'
       valuemaps:
-        - uuid: 48cb2583e84851678a8115e8634f6b85
+        - uuid: bd87b56614f657d3af2ebb2386f11d2d
           name: Service state
           mappings:
             - value: '0'
               newvalue: Down
             - value: '1'
               newvalue: Up
+        - uuid: 6cbb2cd5a386591b8bae55d9b23449fd
+          name: MSSQL DB state
+          mappings:
+            - value: '0'
+              newvalue: ONLINE
+            - value: '1'
+              newvalue: RESTORING
+            - value: '2'
+              newvalue: RECOVERING
+            - value: '3'
+              newvalue: RECOVERY_PENDING
+            - value: '4'
+              newvalue: SUSPECT
+            - value: '5'
+              newvalue: EMERGENCY
+            - value: '6'
+              newvalue: OFFLINE
+            - value: '7'
+              newvalue: COPYING
+            - value: '10'
+              newvalue: OFFLINE_SECONDARY
+        - uuid: 9c369f79696a5fc38f0e69855cee5b09
+          name: MSSQL Recovery model
+          mappings:
+            - value: '1'
+              newvalue: FULL
+            - value: '2'
+              newvalue: BULK_LOGGED
+            - value: '3'
+              newvalue: SIMPLE
+        - uuid: 958b8f2064dc5fefb9c69dc9165e7bc7
+          name: MSSQL AG Synchronization health
+          mappings:
+            - value: '0'
+              newvalue: Not healthy
+            - value: '1'
+              newvalue: Partially healthy
+            - value: '2'
+              newvalue: Healthy

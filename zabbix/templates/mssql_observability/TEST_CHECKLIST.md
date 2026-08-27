@@ -3,8 +3,8 @@
 Import `template_mssql_observability.yaml` on Zabbix **7.0**. Link it **next to**
 stock **MSSQL by Zabbix agent 2**. Agent 2 + MSSQL plugin ≥ **7.0.10**.
 
-v1 covers **named instances**. Per-database LLD on those instances is v2 — not
-in this YAML.
+Named instances are WMI LLD. Databases and Always On local DBs on those
+instances are a second, flattened LLD (`{#MSSQL.INSTANCE}+{#DBNAME}`).
 
 ## Before the canary
 
@@ -22,15 +22,21 @@ Use **one default-only** (`CH-STA-T-MSQL01`) and **one named** (`CH-STA-P-MSSQL1
 | Check | `MSQL01` | `MSSQL10` |
 |---|---|---|
 | Stock `mssql.version` with role URI | value | 1433 may be unused / unsupported — expected |
-| Companion LLD | **empty** | one row per `MSSQL$*` (`sqlserver://localhost/PITDV02`, …) |
+| Companion instance LLD | **empty** | one row per `MSSQL$*` (`sqlserver://localhost/PITDV02`, …) |
 | Census (`MIN=0`) | quiet | quiet unless you set MIN on the Device |
 | Each `mssql.ping` / `mssql.version` | n/a | has a value |
+| Flattened DB LLD | empty | one row per user DB per named instance (`database:` + `sql_instance:` tags) |
+| AG local-DB LLD | empty | `local-db:` / `availability-group:` tags when the instance hosts an AG |
 | Login missing on **one** instance | n/a | one Average, not five, not a Windows service down |
 | Stop `MSSQL$PITDV02` | n/a | Windows service item fires; companion ping/version go quiet (nodata depends on ping) |
 | HostSync | does **not** create hosts named PITDV02 | same |
-| Re-import companion | LLD rows stable (`{#MSSQL.INSTANCE}`) | same |
+| Re-import companion | LLD rows stable (`{#MSSQL.INSTANCE}`) | same, including `{#DBNAME}` |
 
-Health honeycomb should show one cell per named instance (green=ping 1).
+Default-instance DBs (HADB on `ch-sta-t-msql25`) stay on **stock**. Named-instance
+DBs show as `MSSQL [PITDV02] DB 'HADB': …` — not the stock `MSSQL DB 'HADB': …`
+name. Backup USED stays **1** on Test and Dev; do not mute by environment.
+
+Health → Overview honeycomb = ping. Health → Databases = state + AG sync.
 
 ## Do not
 
@@ -38,4 +44,4 @@ Health honeycomb should show one cell per named instance (green=ping 1).
 - Add `service.discovery` (collides with Windows by agent)
 - Use `sqlserver://localhost:1433/PITDV02` (port wins; instance ignored)
 - Clone stock TCP 1433 Disaster onto named instances
-- Expect per-DB backup/state on named instances (v2)
+- Set `{$MSSQL.BACKUP_*.USED}=0` on a Test/Dev role

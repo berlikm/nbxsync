@@ -35,23 +35,30 @@ No HostSync, no zerotouch. Then HostSync the canary hosts.
 
 Do **not** re-run zerotouch for this companion.
 
-## What v1 owns
+## What it owns
 
 - WMI master `Win32_Service WHERE Name LIKE 'MSSQL$%'` (not `service.discovery`)
-- LLD `{#MSSQL.SERVICE}` / `{#MSSQL.INSTANCE}` / `{#MSSQL.URI}` / `{#MSSQL.DISPLAY}`
-- Per named instance: `mssql.ping`, `mssql.version`, sparse perfcounters
-  (buffer cache, page life, batch req/s, lock timeouts), job/backup/db masters,
-  database **count**
+- Instance LLD `{#MSSQL.SERVICE}` / `{#MSSQL.INSTANCE}` / `{#MSSQL.URI}` / `{#MSSQL.DISPLAY}`
+- Per named instance: `mssql.ping`, `mssql.version`, sparse perfcounters,
+  job/backup/db/AG/local-db masters, database **count**
+- Flattened database LLD `{#MSSQL.INSTANCE}+{#DBNAME}` (stock DB pack: state,
+  size, log, backups, transactions) and AG local-DB LLD (state / suspended /
+  sync health). Keys include the instance so they cannot collide with stock.
 - Census `mssql.observability.instance.count` (MIN=0 so default-only hosts stay quiet)
-- Host dashboard **Health** (count + ping honeycomb)
+- Host dashboard **Health** — Overview (count + ping) and Databases (state + AG sync)
 
-v2 (not in this YAML): flattened `{#MSSQL.INSTANCE}+{#DBNAME}` LLD. Zabbix
-cannot nest discovery-under-discovery on the same host.
+Zabbix 7.0 cannot nest discovery-under-discovery on the same host. Catalogs from
+each `mssql.db.get` / `mssql.local.db.get` are merged with `last_foreach`.
+
+Backup `{$MSSQL.BACKUP_*.USED}` defaults to **1** on every environment. Do not
+mute Test/Dev here. System DBs stay filtered (`master|tempdb|model|msdb`).
 
 ## Alerting
 
 No Disaster. Ping-down and version nodata are **Average** (one ticket: nodata
-depends on ping). Buffer cache / page life are **Warning** only.
+depends on ping). Buffer cache / page life are **Warning** only. Named-instance
+DB state is **High**; backup age is High/Warning with USED=1 everywhere; AG
+local-DB not-healthy is **High**.
 
 ## Spec / canary
 
