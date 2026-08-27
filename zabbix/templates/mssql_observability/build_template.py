@@ -90,8 +90,31 @@ from mssql_observability import (  # noqa: E402
 NS = uuid.UUID(TEMPLATE_UUID)
 
 
+# Preserve the objects from the already-imported named-instance companion.
+# New objects use a deterministic RFC 4122 v4 UUID because Zabbix 7.0 rejects
+# v5 UUIDs during configuration import.
+LEGACY_UUIDS = {
+    f'item:{WMI_ITEM_KEY}': '3f55ba471ea249e6a93c97cc8e67baee',
+    f'item:{CENSUS_KEY}': '3ecd3acbb9b04143a837cbc412cc20c1',
+    f'trigger:{CENSUS_TRIGGER_NAME}:{CENSUS_TRIGGER_EXPR}': '33a0e2815f7245a9a40f8fffeec4c0c8',
+    'discovery:named-instance': 'cb908a0bf4d64704b69907e919467af3',
+    f'item:{VERSION_KEY}': '0625bb035bb240dbaac8b402852eeb93',
+    f'trigger:{VERSION_NODATA_NAME}:{VERSION_NODATA_EXPR}': '70b0db2ec48940d2912ad06244c7fe17',
+    f'item:{PERF_KEY}': '945c5894c04248aa9aafaf11d753df2f',
+    f'item:{JOB_KEY}': 'b6b8df024f6140728afe38346cd4980b',
+    f'item:{BACKUP_KEY}': '3e701a797e4e4c3a91227d823c504b00',
+    f'item:{DB_KEY}': '45b50c5a4ea6461e82186d0a3b265ac5',
+    f'item:{DB_COUNT_KEY}': 'cc5e55eea05e459ab565ebd64e119f82',
+}
+
+
 def uid(name: str) -> str:
-    return uuid.uuid5(NS, name).hex
+    if name in LEGACY_UUIDS:
+        return LEGACY_UUIDS[name]
+    value = bytearray(uuid.uuid5(NS, name).bytes)
+    value[6] = (value[6] & 0x0F) | 0x40
+    value[8] = (value[8] & 0x3F) | 0x80
+    return uuid.UUID(bytes=bytes(value)).hex
 
 
 def q(value: str) -> str:

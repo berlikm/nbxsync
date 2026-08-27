@@ -146,6 +146,10 @@ class MssqlObservabilityContractTests(unittest.TestCase):
         self.assertEqual(self.tpl['name'], TEMPLATE_NAME)
         self.assertEqual(self.tpl['uuid'], TEMPLATE_UUID)
 
+    def test_preserves_deployed_template_and_instance_lld_identities(self):
+        self.assertEqual(TEMPLATE_UUID, '52bd809ec8a54feb8364f3d13a9c8074')
+        self.assertEqual(DISCOVERY_KEY, 'mssql.named.instance.discovery')
+
     def test_does_not_nest_stock_or_icmp(self):
         self.assertFalse(self.tpl.get('templates'))
         nested = [row.get('name') for row in (self.tpl.get('templates') or [])]
@@ -264,7 +268,8 @@ class MssqlObservabilityContractTests(unittest.TestCase):
         self.assertEqual(len(found), len(set(found)))
         for value in found:
             parsed = uuid.UUID(hex=value)
-            self.assertIn(parsed.version, (4, 5), value)
+            self.assertEqual(parsed.version, 4, value)
+            self.assertEqual(parsed.variant, uuid.RFC_4122, value)
 
     def test_roles_keep_stock(self):
         self.assertEqual(ROLE_NAMES, ('MSSQL', 'MSSQL Query Server'))

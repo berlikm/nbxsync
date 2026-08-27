@@ -4,7 +4,7 @@ zabbix_export:
     - uuid: 748ad4d098d447d492bb935c907f652f
       name: Templates/Databases
   templates:
-    - uuid: a8c4e91b2d7f4063b15a9e0c4d6f82a1
+    - uuid: 52bd809ec8a54feb8364f3d13a9c8074
       template: MSSQL Observability
       name: MSSQL Observability
       description: |
@@ -27,7 +27,7 @@ zabbix_export:
       groups:
         - name: Templates/Databases
       items:
-      - uuid: 73c8df78fd1852f8a66f1d34b42a37b7
+      - uuid: 3f55ba471ea249e6a93c97cc8e67baee
         name: Named instance WMI
         key: 'wmi.getall[root\cimv2,"SELECT Name,DisplayName,State,StartMode FROM Win32_Service WHERE Name LIKE ''MSSQL%''"]'
         delay: 15m
@@ -94,7 +94,7 @@ zabbix_export:
         tags:
           - tag: component
             value: raw
-      - uuid: b0dddcb0579452359f0685b4d295c817
+      - uuid: 3ecd3acbb9b04143a837cbc412cc20c1
         name: Named instances
         type: DEPENDENT
         key: mssql.observability.instance.count
@@ -113,7 +113,7 @@ zabbix_export:
           - tag: component
             value: health
         triggers:
-          - uuid: abb0f37f3fcc59dfb92acd7be42c0111
+          - uuid: 33a0e2815f7245a9a40f8fffeec4c0c8
             expression: 'last(/MSSQL Observability/mssql.observability.instance.count)<{$MSSQL.INSTANCE.DISCOVERY.MIN} and {$MSSQL.INSTANCE.DISCOVERY.MIN}>0'
             name: 'MSSQL Observability: Named instance count unexpected'
             priority: AVERAGE
@@ -121,7 +121,7 @@ zabbix_export:
             tags:
               - tag: scope
                 value: availability
-      - uuid: f4e6a2ea5bd05027acc402ea797cb84d
+      - uuid: 33d27282beac4664824f7cc40b522e0a
         name: Named-instance database catalog seed
         type: CALCULATED
         key: 'mssql.observability.db.catalog[_seed]'
@@ -136,7 +136,7 @@ zabbix_export:
             value: raw
           - tag: mssql_seed
             value: seed
-      - uuid: e0e3b00e8f2d529cbdd9172996bc6a3e
+      - uuid: 7fa843d2401a43d68e8557acb30edc5a
         name: Named-instance database LLD JSON
         type: CALCULATED
         key: mssql.observability.database.lldjson
@@ -191,7 +191,7 @@ zabbix_export:
         tags:
           - tag: component
             value: raw
-      - uuid: b18738579f2850b2bb102b50e9a32829
+      - uuid: 3fa71d5d85034ff1b696d6804b7e685f
         name: Named-instance AG local-DB catalog seed
         type: CALCULATED
         key: 'mssql.observability.local_db.catalog[_seed]'
@@ -206,7 +206,7 @@ zabbix_export:
             value: raw
           - tag: mssql_seed
             value: seed
-      - uuid: a4633c72935c5c66b4a8adfb0225a13a
+      - uuid: f37ef09913864c05a595d32b55d00d8a
         name: Named-instance AG local-DB LLD JSON
         type: CALCULATED
         key: mssql.observability.local_db.lldjson
@@ -262,10 +262,10 @@ zabbix_export:
           - tag: component
             value: raw
       discovery_rules:
-        - uuid: 1a245c2bf3c15f198b58bb618b0848a8
+        - uuid: cb908a0bf4d64704b69907e919467af3
           name: Named instance discovery
           type: DEPENDENT
-          key: mssql.observability.instance.discovery
+          key: mssql.named.instance.discovery
           delay: '0'
           lifetime: 7d
           lifetime_type: DELETE_AFTER
@@ -285,7 +285,7 @@ zabbix_export:
                 operator: NOT_MATCHES_REGEX
                 formulaid: B
           item_prototypes:
-            - uuid: 3d227da20a865f1cbe798e93d18c47aa
+            - uuid: 675a7ebddc2246a98092d73fefd999ec
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Ping'
               key: 'mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               delay: 1m
@@ -305,7 +305,7 @@ zabbix_export:
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
               trigger_prototypes:
-                - uuid: 646e062bbe9153399b92ffd52cdfae16
+                - uuid: 5eb5a1d7fa704650afbae654fa3d323a
                   expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
                   priority: AVERAGE
@@ -313,7 +313,7 @@ zabbix_export:
                   tags:
                     - tag: scope
                       value: availability
-            - uuid: 9f8d12eba7ca5021b0b4cfc62cef055f
+            - uuid: 0625bb035bb240dbaac8b402852eeb93
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Version'
               key: 'mssql.version["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               delay: 5m
@@ -331,7 +331,7 @@ zabbix_export:
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
               trigger_prototypes:
-                - uuid: a2f2bce819d85034a8296565160a8cfb
+                - uuid: 70b0db2ec48940d2912ad06244c7fe17
                   expression: 'nodata(/MSSQL Observability/mssql.version["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],15m)=1'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: no version data for 15m'
                   priority: AVERAGE
@@ -342,7 +342,7 @@ zabbix_export:
                   tags:
                     - tag: scope
                       value: availability
-            - uuid: b4e3bebf44185623bf236f460dc5cd23
+            - uuid: 945c5894c04248aa9aafaf11d753df2f
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Get performance counters'
               key: 'mssql.perfcounter.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               delay: '0;m0-59'
@@ -362,7 +362,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: 5b3d5559754e52f1a9cdbea7ca823651
+            - uuid: e0d4914d47e743769a0429d961197139
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Buffer Manager counters'
               type: DEPENDENT
               key: 'mssql.observability.buffer_manager.raw[{#MSSQL.INSTANCE}]'
@@ -382,7 +382,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: 50cbba5791ee5116aa65c6cbe0798b61
+            - uuid: 255fe06d39934cfaa66857f68b3f7812
               name: 'MSSQL [{#MSSQL.INSTANCE}]: SQL Statistics counters'
               type: DEPENDENT
               key: 'mssql.observability.sql_statistics.raw[{#MSSQL.INSTANCE}]'
@@ -402,7 +402,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: e504cd51b0ee5f779bf7556158b321e7
+            - uuid: 19e71f97fbe24653b0ac7d756796307f
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Locks counters'
               type: DEPENDENT
               key: 'mssql.observability.locks.raw[{#MSSQL.INSTANCE}]'
@@ -422,7 +422,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: e1fa7e11bdec522fafee53b8b6722c84
+            - uuid: 6f0286e189aa420c85f81d2c0b35034a
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Buffer cache hit ratio'
               type: DEPENDENT
               key: 'mssql.observability.buffer_cache_hit_ratio[{#MSSQL.INSTANCE}]'
@@ -442,7 +442,7 @@ zabbix_export:
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
               trigger_prototypes:
-                - uuid: 8246ecdbe7e75bc9adc00bcef964bc9b
+                - uuid: 9d3a4e70371f4d14b2747563e5d2b038
                   expression: 'max(/MSSQL Observability/mssql.observability.buffer_cache_hit_ratio[{#MSSQL.INSTANCE}],5m)<{$MSSQL.BUFFER_CACHE.MIN}'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: Buffer cache hit ratio is low'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: Buffer cache hit ratio is low (below {$MSSQL.BUFFER_CACHE.MIN}% for 5m)'
@@ -454,7 +454,7 @@ zabbix_export:
                   tags:
                     - tag: scope
                       value: performance
-            - uuid: 8a884aa2447358d6a053088f7b0c55de
+            - uuid: e4b1d186c7294db88c7f20f1cc2f4b0b
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Page life expectancy'
               type: DEPENDENT
               key: 'mssql.observability.page_life_expectancy[{#MSSQL.INSTANCE}]'
@@ -474,7 +474,7 @@ zabbix_export:
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
               trigger_prototypes:
-                - uuid: 3a22dc61c42759a999c293147a132ce9
+                - uuid: b87215e231a147ac9d6d9bb294f9c82f
                   expression: 'max(/MSSQL Observability/mssql.observability.page_life_expectancy[{#MSSQL.INSTANCE}],15m)<{$MSSQL.PAGE_LIFE.MIN}'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: Page life expectancy is low'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: Page life expectancy is low (less {$MSSQL.PAGE_LIFE.MIN}s for 15m)'
@@ -486,7 +486,7 @@ zabbix_export:
                   tags:
                     - tag: scope
                       value: performance
-            - uuid: 9eeb5f4c529f56cbbcdf86402a740a3b
+            - uuid: d4b8950e7b26428eb193824485f0ee4e
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Batch requests per second'
               type: DEPENDENT
               key: 'mssql.observability.batch_requests_rate[{#MSSQL.INSTANCE}]'
@@ -508,7 +508,7 @@ zabbix_export:
                   value: performance
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: b0f8fcbd5a4e56778f82841235a75907
+            - uuid: b3e50b3edba14435ae162f1aa904431b
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Lock timeouts per second'
               type: DEPENDENT
               key: 'mssql.observability.lock_timeouts_rate[{#MSSQL.INSTANCE}]'
@@ -530,7 +530,7 @@ zabbix_export:
                   value: lock
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: 3a003b5cf4205af1ba5c84f89377927b
+            - uuid: b6b8df024f6140728afe38346cd4980b
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Get job status'
               key: 'mssql.job.status.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               delay: 10m
@@ -550,7 +550,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: ed474ec8eb9554bf92aca7b41edc75f6
+            - uuid: 5543b617c39b45279b68480bdbcd0ea2
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Failed jobs'
               type: DEPENDENT
               key: 'mssql.observability.failed_jobs[{#MSSQL.INSTANCE}]'
@@ -570,7 +570,7 @@ zabbix_export:
                   value: mssql-job
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: 5f568424290555fabdc68544ecaf953e
+            - uuid: 3e701a797e4e4c3a91227d823c504b00
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Get last backup'
               key: 'mssql.last.backup.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               delay: 10m
@@ -590,7 +590,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: 6b4b1c09ad685ccb8f3d0a0e23f5b51c
+            - uuid: 45b50c5a4ea6461e82186d0a3b265ac5
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Get database'
               key: 'mssql.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               delay: 10m
@@ -610,7 +610,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: f90b16b9555f5077b274a73d55d9460a
+            - uuid: 030b1464f93740dbb6f573b77ac7184f
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Database catalog'
               type: DEPENDENT
               key: 'mssql.observability.db.catalog[{#MSSQL.INSTANCE}]'
@@ -665,7 +665,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: 4bee84ea3dc359c0a325bee546176fe7
+            - uuid: cc5e55eea05e459ab565ebd64e119f82
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Database count'
               type: DEPENDENT
               key: 'mssql.observability.db.count[{#MSSQL.INSTANCE}]'
@@ -685,7 +685,7 @@ zabbix_export:
                   value: application
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: 6b885e825bee502b88e6f3a15d1d5eb8
+            - uuid: 31ea2f74fae84ed89223cbf00da624ce
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Get availability groups'
               key: 'mssql.availability.group.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               delay: 5m
@@ -705,7 +705,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: ead25fc965ec5a18a04ad37c11db1f4e
+            - uuid: 64562a8619d148caa613f24afadd9e9c
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Get local DB'
               key: 'mssql.local.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               delay: 5m
@@ -725,7 +725,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: 4255a05aa1fe5ac5a399dae72d2bed42
+            - uuid: 00150cf8c03e4d30bae5c40f14980007
               name: 'MSSQL [{#MSSQL.INSTANCE}]: AG local-DB catalog'
               type: DEPENDENT
               key: 'mssql.observability.local_db.catalog[{#MSSQL.INSTANCE}]'
@@ -781,7 +781,7 @@ zabbix_export:
                   value: raw
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-        - uuid: 32b1aa39edeb5a4d88dfe4f7a138989b
+        - uuid: 8eecad00a94b4dc994c50a6d478e6e63
           name: Named instance database discovery
           type: DEPENDENT
           key: mssql.observability.database.discovery
@@ -804,7 +804,7 @@ zabbix_export:
                 operator: NOT_MATCHES_REGEX
                 formulaid: B
           item_prototypes:
-            - uuid: 0be45518f2615c1189fc85390ace8d0f
+            - uuid: 321075bc7d614269b3201ff53983958e
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Get last backup'
               type: DEPENDENT
               key: 'mssql.observability.backup.raw[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -827,7 +827,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 6826909a99d85eaca81739accac30df0
+            - uuid: 0b5c3f8f73ab46d299650bfa20cc741e
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Get performance counters'
               type: DEPENDENT
               key: 'mssql.observability.db.perf_raw[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -850,7 +850,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: f81acdf9bcbc57d5912842cdc7bb5ef5
+            - uuid: fc91564249dd4833a892188365867e47
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last diff backup duration'
               type: DEPENDENT
               key: 'mssql.observability.backup.diff.duration[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -875,7 +875,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 1d8d611558115b47b76dad8a8886a398
+            - uuid: 3a94516f77234ca1ac7ff889ae481118
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last diff backup (time ago)'
               type: DEPENDENT
               key: 'mssql.observability.backup.diff[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -898,7 +898,7 @@ zabbix_export:
                 - tag: database
                   value: '{#DBNAME}'
               trigger_prototypes:
-                - uuid: 1cd4192cda3e5806a2e3f162ffbfbfcb
+                - uuid: 72a68a6a31b04587af153329c476427d
                   expression: 'last(/MSSQL Observability/mssql.observability.backup.diff[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_DIFF.CRIT:"{#DBNAME}"} and {$MSSQL.BACKUP_DIFF.USED:"{#DBNAME}"}=1'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Diff backup is old'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Diff backup older than {$MSSQL.BACKUP_DIFF.CRIT:"{#DBNAME}"}'
@@ -916,7 +916,7 @@ zabbix_export:
                       value: '{#DBNAME}'
                     - tag: sql_instance
                       value: '{#MSSQL.INSTANCE}'
-                - uuid: e18d6cfadcab5caba3f5e3f7f92e98f6
+                - uuid: fb82a5f95d104fdc98c6fafab625d923
                   expression: 'last(/MSSQL Observability/mssql.observability.backup.diff[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_DIFF.WARN:"{#DBNAME}"} and {$MSSQL.BACKUP_DIFF.USED:"{#DBNAME}"}=1'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Diff backup is old'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Diff backup older than {$MSSQL.BACKUP_DIFF.WARN:"{#DBNAME}"}'
@@ -936,7 +936,7 @@ zabbix_export:
                       value: '{#DBNAME}'
                     - tag: sql_instance
                       value: '{#MSSQL.INSTANCE}'
-            - uuid: 9c4430487d62576d882fd902a7a0567a
+            - uuid: eff6b6e46f454596a61dacb221512993
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last full backup duration'
               type: DEPENDENT
               key: 'mssql.observability.backup.full.duration[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -961,7 +961,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 58e5621ba2755766ac0b6d0d7039d0dd
+            - uuid: a8be79c5597d425da411452330709fcd
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last full backup (time ago)'
               type: DEPENDENT
               key: 'mssql.observability.backup.full[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -984,7 +984,7 @@ zabbix_export:
                 - tag: database
                   value: '{#DBNAME}'
               trigger_prototypes:
-                - uuid: 8e5c9c3a380e5e39800cd2e872617d35
+                - uuid: ff90cf150902477bb217411ef704006e
                   expression: 'last(/MSSQL Observability/mssql.observability.backup.full[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_FULL.CRIT:"{#DBNAME}"} and {$MSSQL.BACKUP_FULL.USED:"{#DBNAME}"}=1'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Full backup is old'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Full backup older than {$MSSQL.BACKUP_FULL.CRIT:"{#DBNAME}"}'
@@ -1002,7 +1002,7 @@ zabbix_export:
                       value: '{#DBNAME}'
                     - tag: sql_instance
                       value: '{#MSSQL.INSTANCE}'
-                - uuid: 78348871b7e155db8e22cf68e681ff12
+                - uuid: 3b56af3b94ff47d7869cd69e9fff05a2
                   expression: 'last(/MSSQL Observability/mssql.observability.backup.full[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_FULL.WARN:"{#DBNAME}"} and {$MSSQL.BACKUP_FULL.USED:"{#DBNAME}"}=1'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Full backup is old'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Full backup older than {$MSSQL.BACKUP_FULL.WARN:"{#DBNAME}"}'
@@ -1022,7 +1022,7 @@ zabbix_export:
                       value: '{#DBNAME}'
                     - tag: sql_instance
                       value: '{#MSSQL.INSTANCE}'
-            - uuid: a86915f527f05b8687cde1cc675199b6
+            - uuid: ac69995e36dc4246ad08be9dd169bdd5
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last log backup duration'
               type: DEPENDENT
               key: 'mssql.observability.backup.log.duration[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1047,7 +1047,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: b85ab11644b457fe91f53557c2bf7f2e
+            - uuid: 97f0bf822c2e411a9decbf8f0f30cfa3
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Last log backup (time ago)'
               type: DEPENDENT
               key: 'mssql.observability.backup.log[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1069,7 +1069,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 931ff503bf3b57ff81327c6d43aa351b
+            - uuid: 38887597bcb54bc79c33d5723cde8f02
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Recovery model'
               type: DEPENDENT
               key: 'mssql.observability.backup.recovery_model[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1095,7 +1095,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 1123eb2d383b5879aad8bfe1eef4d5cf
+            - uuid: 39adc79407494671acbf3f8347dd4fba
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Active transactions'
               type: DEPENDENT
               key: 'mssql.observability.db.active_transactions[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1114,7 +1114,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 7cbd0bcdf40b565c83f13f669393890b
+            - uuid: 3d0f135fe9b94a3193540447fcd15437
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Data file size'
               type: DEPENDENT
               key: 'mssql.observability.db.data_files_size[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1137,7 +1137,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 8e59491d9c2750778089f9a310c3880b
+            - uuid: 98e20b0faecb4c39a8d938385091871e
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log bytes flushed per second'
               type: DEPENDENT
               key: 'mssql.observability.db.log_bytes_flushed_sec.rate[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1161,7 +1161,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 7433cacd53295344bc9f2b61f8b060c1
+            - uuid: 6b0cb70c9b85410ba987efd17a0f42ef
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log file size'
               type: DEPENDENT
               key: 'mssql.observability.db.log_files_size[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1184,7 +1184,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: fdbc1069248f5086944aba9e36c54b64
+            - uuid: 0a2474f6c6674bec9b2e61aa1a3bebb8
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log file used size'
               type: DEPENDENT
               key: 'mssql.observability.db.log_files_used_size[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1207,7 +1207,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 81d5b4f6eb735caead43c1377f9687db
+            - uuid: 27b6e12d171e493e87365f128d1d52aa
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log flushes per second'
               type: DEPENDENT
               key: 'mssql.observability.db.log_flushes_sec.rate[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1230,7 +1230,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 6877354b011a58f5b8c6ba7269e04f7a
+            - uuid: da9d135e1f5c4cf8a3d70977af6437e1
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log flush waits per second'
               type: DEPENDENT
               key: 'mssql.observability.db.log_flush_waits_sec.rate[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1254,7 +1254,7 @@ zabbix_export:
                 - tag: database
                   value: '{#DBNAME}'
               trigger_prototypes:
-                - uuid: caf3b8503d995edfb2785967769b517a
+                - uuid: 2e5de92bff734164998a45f5a6484eda
                   expression: 'min(/MSSQL Observability/mssql.observability.db.log_flush_waits_sec.rate[{#MSSQL.INSTANCE},{#DBNAME}],5m)>{$MSSQL.LOG_FLUSH_WAITS.MAX:"{#DBNAME}"}'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Number of commits waiting for the log flush is high'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Number of commits waiting for the log flush is high (over {$MSSQL.LOG_FLUSH_WAITS.MAX:"{#DBNAME}"}/sec for 5m)'
@@ -1270,7 +1270,7 @@ zabbix_export:
                       value: '{#DBNAME}'
                     - tag: sql_instance
                       value: '{#MSSQL.INSTANCE}'
-            - uuid: 87e96c15a1bd53a188263cdb0022eb34
+            - uuid: 4ced791ff41544d1834d6e53185e7212
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log flush wait time'
               type: DEPENDENT
               key: 'mssql.observability.db.log_flush_wait_time[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1295,7 +1295,7 @@ zabbix_export:
                 - tag: database
                   value: '{#DBNAME}'
               trigger_prototypes:
-                - uuid: ef9d638074d05fdd89e7e6194c9295a3
+                - uuid: a2059b14811e49b0a53f58c18c965ca1
                   expression: 'min(/MSSQL Observability/mssql.observability.db.log_flush_wait_time[{#MSSQL.INSTANCE},{#DBNAME}],5m)>{$MSSQL.LOG_FLUSH_WAIT_TIME.MAX:"{#DBNAME}"}'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Total wait time to flush the log is high'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Total wait time to flush the log is high (over {$MSSQL.LOG_FLUSH_WAIT_TIME.MAX:"{#DBNAME}"}ms for 5m)'
@@ -1311,7 +1311,7 @@ zabbix_export:
                       value: '{#DBNAME}'
                     - tag: sql_instance
                       value: '{#MSSQL.INSTANCE}'
-            - uuid: 1cde9d3eb58255809b1b15f41cc25dc8
+            - uuid: e6c24d9aecaa4d3a924cbabd09f4a748
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log growths'
               type: DEPENDENT
               key: 'mssql.observability.db.log_growths[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1330,7 +1330,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: b499b3552b9b58109d4cdba987a35773
+            - uuid: c433cb7b372946c6b3766814d40baa10
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log shrinks'
               type: DEPENDENT
               key: 'mssql.observability.db.log_shrinks[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1349,7 +1349,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: 60c08346b17d5e75955407b10f97bf48
+            - uuid: 4c28221c8afa4f4aa84ecaa6005fbebd
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Log truncations'
               type: DEPENDENT
               key: 'mssql.observability.db.log_truncations[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1368,7 +1368,7 @@ zabbix_export:
                   value: '{#MSSQL.INSTANCE}'
                 - tag: database
                   value: '{#DBNAME}'
-            - uuid: d3f9182c59685ec7b3b0d00774e8bbdb
+            - uuid: c162ed88999547cdb6a46424239b5901
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Percent log used'
               type: DEPENDENT
               key: 'mssql.observability.db.percent_log_used[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1390,7 +1390,7 @@ zabbix_export:
                 - tag: database
                   value: '{#DBNAME}'
               trigger_prototypes:
-                - uuid: b97f3176789f5e438d3696e39b7266d9
+                - uuid: ac36964872c84d728febea4402e3e639
                   expression: 'min(/MSSQL Observability/mssql.observability.db.percent_log_used[{#MSSQL.INSTANCE},{#DBNAME}],5m)>{$MSSQL.PERCENT_LOG_USED.MAX:"{#DBNAME}"}'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Percent of log usage is high'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Percent of log usage is high (over {$MSSQL.PERCENT_LOG_USED.MAX:"{#DBNAME}"}% for 5m)'
@@ -1406,7 +1406,7 @@ zabbix_export:
                       value: '{#DBNAME}'
                     - tag: sql_instance
                       value: '{#MSSQL.INSTANCE}'
-            - uuid: b31758eadfa7583b9935a09599bdd646
+            - uuid: 55f3bf206a7e441186b58e4b0e8e3677
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': State'
               type: DEPENDENT
               key: 'mssql.observability.db.state[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1431,7 +1431,7 @@ zabbix_export:
                 - tag: database
                   value: '{#DBNAME}'
               trigger_prototypes:
-                - uuid: d6f99c675d9b5b6d949948bf30b5069a
+                - uuid: 7ba8204039414c14a8dadb2b1d20d2fc
                   expression: 'last(/MSSQL Observability/mssql.observability.db.state[{#MSSQL.INSTANCE},{#DBNAME}])>1'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': State is {ITEM.VALUE}'
                   priority: HIGH
@@ -1446,7 +1446,7 @@ zabbix_export:
                       value: '{#DBNAME}'
                     - tag: sql_instance
                       value: '{#MSSQL.INSTANCE}'
-            - uuid: ceb3e888c2a35e6f8666d209362c9974
+            - uuid: 6ab42945e88d4158b9c675f7deb66ff3
               name: 'MSSQL [{#MSSQL.INSTANCE}] DB ''{#DBNAME}'': Transactions per second'
               type: DEPENDENT
               key: 'mssql.observability.db.transactions_sec.rate[{#MSSQL.INSTANCE},{#DBNAME}]'
@@ -1470,7 +1470,7 @@ zabbix_export:
                 - tag: database
                   value: '{#DBNAME}'
           trigger_prototypes:
-            - uuid: 2969d69492345b719616ea07fe2cebb2
+            - uuid: 4c34473aca554b4291f6deb035064c7e
               expression: 'last(/MSSQL Observability/mssql.observability.backup.log[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_LOG.CRIT:"{#DBNAME}"} and {$MSSQL.BACKUP_LOG.USED:"{#DBNAME}"}=1 and last(/MSSQL Observability/mssql.observability.backup.recovery_model[{#MSSQL.INSTANCE},{#DBNAME}])<>3'
               name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Log backup is old'
               event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Log backup older than {$MSSQL.BACKUP_LOG.CRIT:"{#DBNAME}"}'
@@ -1488,7 +1488,7 @@ zabbix_export:
                   value: '{#DBNAME}'
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
-            - uuid: cf141f23eb0c5118bb229be4700566b6
+            - uuid: 7233a9699d54483f8634b32f977a01b5
               expression: 'last(/MSSQL Observability/mssql.observability.backup.log[{#MSSQL.INSTANCE},{#DBNAME}])>{$MSSQL.BACKUP_LOG.WARN:"{#DBNAME}"} and {$MSSQL.BACKUP_LOG.USED:"{#DBNAME}"}=1 and last(/MSSQL Observability/mssql.observability.backup.recovery_model[{#MSSQL.INSTANCE},{#DBNAME}])<>3'
               name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Log backup is old'
               event_name: 'MSSQL [{#MSSQL.INSTANCE}]: DB ''{#DBNAME}'': Log backup older than {$MSSQL.BACKUP_LOG.WARN:"{#DBNAME}"}'
@@ -1521,7 +1521,7 @@ zabbix_export:
                   operator: LIKE
                   value: Log backup is old
                   discover: NO_DISCOVER
-        - uuid: 51c49ca19b5c5f50a13cc94064909be2
+        - uuid: fa421adc43994bf1bf3ea1e9ac694406
           name: Named instance AG local database discovery
           type: DEPENDENT
           key: mssql.observability.local_db.discovery
@@ -1534,7 +1534,7 @@ zabbix_export:
           master_item:
             key: mssql.observability.local_db.lldjson
           item_prototypes:
-            - uuid: b00178412c0554cf951c3bffd382f35d
+            - uuid: b57ca719ea9f443483205386302585c2
               name: 'MSSQL [{#MSSQL.INSTANCE}] AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': Suspended'
               type: DEPENDENT
               key: 'mssql.observability.local_db.is_suspended[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}]'
@@ -1558,7 +1558,7 @@ zabbix_export:
                   value: '{#GROUP_NAME}'
                 - tag: local-db
                   value: '{#DBNAME}'
-            - uuid: 6728d1ec2a375b4d8091ac654eb0eaa7
+            - uuid: 6f848693adad4e1f9e81842f825ec899
               name: 'MSSQL [{#MSSQL.INSTANCE}] AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': State'
               type: DEPENDENT
               key: 'mssql.observability.local_db.state[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}]'
@@ -1585,7 +1585,7 @@ zabbix_export:
                 - tag: local-db
                   value: '{#DBNAME}'
               trigger_prototypes:
-                - uuid: 6b6c787c7af35044bc3e976dc34bd3e7
+                - uuid: f66dec1012784dafbc7eb60547b054bd
                   expression: 'last(/MSSQL Observability/mssql.observability.local_db.state[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}])>0'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': "{#DBNAME}" is {ITEM.VALUE}'
                   priority: WARNING
@@ -1602,7 +1602,7 @@ zabbix_export:
                       value: '{#DBNAME}'
                     - tag: sql_instance
                       value: '{#MSSQL.INSTANCE}'
-            - uuid: faa4c376eac05f6f8a7a9e860c4220f7
+            - uuid: e64b79b99df04ddbb5391a537bedc3d8
               name: 'MSSQL [{#MSSQL.INSTANCE}] AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': Synchronization health'
               type: DEPENDENT
               key: 'mssql.observability.local_db.synchronization_health[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}]'
@@ -1629,7 +1629,7 @@ zabbix_export:
                 - tag: local-db
                   value: '{#DBNAME}'
               trigger_prototypes:
-                - uuid: 4bb0e74baeec53318bd6d3fbcb33f831
+                - uuid: 2c4c1af2fdbd4df4a364d7c4122a2595
                   expression: 'last(/MSSQL Observability/mssql.observability.local_db.synchronization_health[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}])=0'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': "{#DBNAME}" is Not healthy'
                   priority: HIGH
@@ -1646,7 +1646,7 @@ zabbix_export:
                       value: '{#DBNAME}'
                     - tag: sql_instance
                       value: '{#MSSQL.INSTANCE}'
-                - uuid: 4bd69a426e2c54db943d6ce78da1d34d
+                - uuid: 934a20f6669844f6b6601fb7357ac224
                   expression: 'last(/MSSQL Observability/mssql.observability.local_db.synchronization_health[{#MSSQL.INSTANCE},{#GROUP_NAME},{#DBNAME}])=1'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: AG ''{#GROUP_NAME}'' Local DB ''{#DBNAME}'': "{#DBNAME}" is Partially healthy'
                   priority: AVERAGE
@@ -1892,14 +1892,14 @@ zabbix_export:
                       name: thresholds.1.threshold
                       value: '2'
       valuemaps:
-        - uuid: bd87b56614f657d3af2ebb2386f11d2d
+        - uuid: 483e81909a55457e88fa46ccc26f2ac8
           name: Service state
           mappings:
             - value: '0'
               newvalue: Down
             - value: '1'
               newvalue: Up
-        - uuid: 6cbb2cd5a386591b8bae55d9b23449fd
+        - uuid: 5601bdd141234d6e91cefa4dbb701f57
           name: MSSQL DB state
           mappings:
             - value: '0'
@@ -1920,7 +1920,7 @@ zabbix_export:
               newvalue: COPYING
             - value: '10'
               newvalue: OFFLINE_SECONDARY
-        - uuid: 9c369f79696a5fc38f0e69855cee5b09
+        - uuid: f7d1762912f54a4a8aa7ea67bd414a9a
           name: MSSQL Recovery model
           mappings:
             - value: '1'
@@ -1929,7 +1929,7 @@ zabbix_export:
               newvalue: BULK_LOGGED
             - value: '3'
               newvalue: SIMPLE
-        - uuid: 958b8f2064dc5fefb9c69dc9165e7bc7
+        - uuid: a36b1f61c78246668ed9b2f2376ca1d5
           name: MSSQL AG Synchronization health
           mappings:
             - value: '0'

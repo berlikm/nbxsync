@@ -33,7 +33,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_NAME = 'MSSQL Observability'
 TEMPLATE_GROUP = 'Templates/Databases'
 TEMPLATE_GROUP_UUID = '748ad4d098d447d492bb935c907f652f'
-TEMPLATE_UUID = 'a8c4e91b2d7f4063b15a9e0c4d6f82a1'
+# Preserve the identity already imported in Zabbix Cloud so imports update it.
+TEMPLATE_UUID = '52bd809ec8a54feb8364f3d13a9c8074'
 DASHBOARD_UUID = 'b91d7e04c3a8456f8e12f6a0b4c8d931'
 
 STOCK_TEMPLATE_NAME = 'MSSQL by Zabbix agent 2'
@@ -60,7 +61,8 @@ WMI_ITEM_KEY = (
 WMI_DISCOVERY_KEY = WMI_ITEM_KEY
 NAMED_INSTANCE_PREFIX = 'MSSQL$'
 URI_PREFIX = 'sqlserver://localhost/'
-DISCOVERY_KEY = 'mssql.observability.instance.discovery'
+# Preserve the deployed named-instance LLD rather than creating a second tree.
+DISCOVERY_KEY = 'mssql.named.instance.discovery'
 CENSUS_KEY = 'mssql.observability.instance.count'
 DB_LLD_KEY = 'mssql.observability.database.discovery'
 DB_LLDJSON_KEY = 'mssql.observability.database.lldjson'
