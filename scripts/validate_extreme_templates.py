@@ -879,6 +879,11 @@ def validate_iq(doc: dict) -> None:
         str((eth_ld or {}).get('priority')),
     )
     record(
+        'IQ eth link-down DISABLED',
+        bool(eth_ld) and (eth_ld or {}).get('status') == 'DISABLED',
+        str((eth_ld or {}).get('status')),
+    )
+    record(
         'IQ eth link-down 3-sample settle',
         'min(/ExtremeIQEnginebySNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#3)=2' in eth_expr,
         (eth_ld or {}).get('expression') or '',

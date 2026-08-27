@@ -12,9 +12,9 @@ zabbix_export:
       MIBs: AH-SYSTEM-MIB + AH-INTERFACE-MIB (enterprises.26928).
       Official pack: XIQ Auxiliary Files. Operator page: zabbix/02-extreme-access-points.md.
       Do not also link Network Generic (icmpping collision).
-      ICMP loss/RTT, CPU critical, and client-count triggers are present but DISABLED
-      (collect first). SNMP-dead is Warning; AP eth down is Warning after 3×1m
-      (plant ticket is switch UP-; one-shot ifOperStatus blips stay silent).
+      ICMP loss/RTT, CPU critical, client-count, and AP eth link-down triggers are
+      present but DISABLED (collect first). SNMP-dead is Warning. Plant ticket for
+      a cable/PoE cut is switch UP-; AP ICMP High if the box is gone.
     groups:
     - name: Templates/Network devices
     items:
@@ -718,11 +718,11 @@ zabbix_export:
           recovery_mode: RECOVERY_EXPRESSION
           recovery_expression: last(/Extreme IQ Engine by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL}=0
           name: 'Extreme IQ Engine: Interface {#IFNAME}: Link down'
+          status: DISABLED
           priority: WARNING
-          description: 'AP eth down(2) for 3×1m after a recent up. A single SNMP
-            sample of down (CH proxy → far AP) is not a cable. Unused never-up
-            eth1 stays silent (no up in last 15 polls). Plant ticket is switch
-            UP- Average; AP ICMP High if the box is gone.
+          description: 'Collect first. HiveOS ifOperStatus on eth0 flaps while ICMP/SNMP
+            stay up (CH proxy → far AP, e.g. HU-DEB). Plant ticket is switch UP-
+            Average; AP ICMP High if the box is gone. Honeycomb still shows oper-status.
             '
           dependencies:
           - name: 'Extreme IQ Engine: Unavailable by ICMP ping'
@@ -840,7 +840,7 @@ zabbix_export:
       description: Admin-up only
     - macro: '{$IFCONTROL}'
       value: '1'
-      description: 1=alert eth link-down
+      description: '1=alert eth link-down (trigger DISABLED; honeycomb stays).'
     - macro: '{$UNSUPPORTED.MAX}'
       value: '5'
       description: Average ticket when unsupported items stay above this for 30m.

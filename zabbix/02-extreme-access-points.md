@@ -15,7 +15,7 @@ The switch port toward the AP is `UP-…` (Access collects **only** `USW`+`UP` �
 | **Graph** causes | SNMP dead (**Warning** — same as EXOS/VOSS), CPU, clients, radio noise/Tx, retries/drops, eth traffic, ICMP loss/RTT (triggers **off**) |
 | One incident | Cable/PoE → switch `UP-` **Average**. AP ICMP stays **High**. A closet cut is two events. Do not drop AP ICMP to Average (that hides a hung AP). |
 | Never silent | Unsupported items (Average); SNMP=0 while `UP-` is up; SNMP=1 and **zero** radios or **zero** eth = Average after 1h |
-| Collect first | Radio retry alerts, client-count, ICMP loss/RTT, CPU-critical — **triggers off** in the YAML |
+| Collect first | Radio retry alerts, client-count, ICMP loss/RTT, CPU-critical, **AP eth link-down** — **triggers off** in the YAML |
 | Host dashboard | Template dashboard **Health** (host-level). RF is page 2 |
 | Severity | Same scale as [_template.md](_template.md). **No Disaster** on this template |
 
@@ -34,7 +34,7 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | Memory high | yes | Average |
 | Temperature (canary) | yes | Average — many APs stub `ahEnvirmentTemp`; **not** switch 95/100 |
 | CPU high (`{$CPU.UTIL.WARN}=90`) | yes | Warning — GTAC: high CPU alone is not a fault |
-| AP eth / mgt oper down | yes | Warning — **3×1m** `down(2)` after a recent up. One SNMP blip (CH proxy → CN/US AP) is not a cable. Never-up eth1 stays silent. Plant ticket is switch `UP-` (Average). |
+| AP eth / mgt oper down | **no** | honeycomb only — trigger **DISABLED**. HiveOS `eth0` flaps while ICMP/SNMP stay up (CH proxy → far AP). Plant ticket is switch `UP-` (Average). AP ICMP **High** if the box is gone. |
 | Unsupported item count | yes | Average — `{$UNSUPPORTED.MAX}` (default 5), 30m |
 | Zero eth / zero radios (SNMP=1 for 1h) | yes | Average — LLD/filter break, not a cable |
 | CPU critical | **no** | trigger **DISABLED** until a quiet pilot |

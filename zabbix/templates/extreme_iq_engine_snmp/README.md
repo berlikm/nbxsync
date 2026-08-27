@@ -12,6 +12,10 @@ Template Rule: platform matches `IQ ENGINE`, `IQEngine`, or `IQ-ENGINE` (case-in
 
 Host dashboard **Health** (pages Overview / RF) plus **Network interfaces** ships in this YAML.
 
+AP eth oper-status stays on the honeycomb. The link-down trigger is **DISABLED**
+(HiveOS `eth0` flaps while ICMP/SNMP stay up on far APs). Cable/PoE is switch
+`UP-`; box gone is AP ICMP High.
+
 | NetBox | Effect |
 |---|---|
 | Role Access Point | CG SNMP Monitoring (`MONITORING` MD5/DES) |
