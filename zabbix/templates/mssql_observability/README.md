@@ -51,7 +51,11 @@ cannot nest discovery-under-discovery on the same host.
 ## Alerting
 
 No Disaster. Ping-down and version nodata are **Average** (one ticket: nodata
-depends on ping). Buffer cache / page life are **Warning** only.
+depends on ping). Buffer cache / page life are **Warning** only and require
+`{$MSSQL.HYGIENE.CONTROL}=1`. `--apply-mssql` writes role Jinja so that is **1**
+on Production hostnames (`-p-`) and **0** on Dev/Test — same grammar as the
+`environment` host tag. Stock backup-age triggers use `{$MSSQL.BACKUP_*.USED}`
+the same way. Items still collect; they just do not PROBLEM.
 
 ## Spec / canary
 

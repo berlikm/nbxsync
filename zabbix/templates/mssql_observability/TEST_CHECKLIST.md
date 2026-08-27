@@ -24,6 +24,8 @@ Use **one default-only** (`CH-STA-T-MSQL01`) and **one named** (`CH-STA-P-MSSQL1
 | Stock `mssql.version` with role URI | value | 1433 may be unused / unsupported — expected |
 | Companion LLD | **empty** | one row per `MSSQL$*` (`sqlserver://localhost/PITDV02`, …) |
 | Census (`MIN=0`) | quiet | quiet unless you set MIN on the Device |
+| Stock backup-age PROBLEM | **off** (`USED=0`, Test) | **on** (`USED=1`, Production) after HostSync |
+| Buffer cache / page life PROBLEM | **off** (`HYGIENE.CONTROL=0`) | **on** (`=1`) |
 | Each `mssql.ping` / `mssql.version` | n/a | has a value |
 | Login missing on **one** instance | n/a | one Average, not five, not a Windows service down |
 | Stop `MSSQL$PITDV02` | n/a | Windows service item fires; companion ping/version go quiet (nodata depends on ping) |

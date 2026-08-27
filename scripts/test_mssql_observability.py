@@ -171,12 +171,32 @@ class MssqlObservabilityContractTests(unittest.TestCase):
         self.assertEqual(deps[0]['expression'], PING_TRIGGER_EXPR)
 
     def test_buffer_and_page_life_are_warning_only(self):
+        from mssql_observability import MACRO_HYGIENE_CONTROL
+
         buffer = next(t for t in self.triggers if 'Buffer cache' in t['name'])
         page = next(t for t in self.triggers if 'Page life' in t['name'])
         self.assertEqual(buffer['priority'], 'WARNING')
         self.assertEqual(page['priority'], 'WARNING')
-        self.assertNotEqual(buffer['priority'], 'HIGH')
-        self.assertNotEqual(page['priority'], 'HIGH')
+        self.assertIn(f'{MACRO_HYGIENE_CONTROL}=1', buffer['expression'])
+        self.assertIn(f'{MACRO_HYGIENE_CONTROL}=1', page['expression'])
+
+    def test_nonprod_backup_and_hygiene_are_jinja_gated(self):
+        from mssql_observability import (
+            BACKUP_USED_MACROS,
+            PRODUCTION_ONE_ELSE_ZERO_JINJA,
+            ROLE_ENV_MACROS,
+            MACRO_HYGIENE_CONTROL,
+        )
+
+        self.assertIn('-p-', PRODUCTION_ONE_ELSE_ZERO_JINJA)
+        self.assertIn('{%- else -%}0', PRODUCTION_ONE_ELSE_ZERO_JINJA)
+        for macro in BACKUP_USED_MACROS:
+            self.assertEqual(ROLE_ENV_MACROS[macro], PRODUCTION_ONE_ELSE_ZERO_JINJA)
+            self.assertNotIn(macro, {row['macro'] for row in self.tpl['macros']})
+        self.assertEqual(ROLE_ENV_MACROS[MACRO_HYGIENE_CONTROL], PRODUCTION_ONE_ELSE_ZERO_JINJA)
+        self.assertIn(MACRO_HYGIENE_CONTROL, {row['macro'] for row in self.tpl['macros']})
+        ping = next(t for t in self.triggers if t['name'] == PING_TRIGGER_NAME)
+        self.assertNotIn(MACRO_HYGIENE_CONTROL, ping['expression'])
 
     def test_census_gated_on_min(self):
         census = next(t for t in self.triggers if t['name'] == CENSUS_TRIGGER_NAME)
