@@ -8,6 +8,8 @@ import re
 import unittest
 
 from mssql_observability import (
+    BACKUP_INVENTORY_JS,
+    DB_INVENTORY_JS,
     FIXTURES,
     LLD_JS,
     PLUGIN_PROTOTYPE_PREFIXES,
@@ -16,10 +18,13 @@ from mssql_observability import (
     TEMPLATE_YAML,
     URI_PREFIX,
     WMI_KEY,
+    backup_inventory_js_source,
+    db_inventory_js_source,
     javascript_steps,
     lld_js_source,
     load_template,
     named_instances_from_wmi,
+    run_javascript,
     run_lld_js,
     template_block,
     zerotouch_source,
@@ -40,6 +45,60 @@ def _lld_rows(name: str) -> list[dict]:
     if js_out != py_out:
         raise AssertionError(f'JS/Python LLD mismatch for {name}: {js_out!r} vs {py_out!r}')
     return js_out
+
+
+class DatabaseInventoryTests(unittest.TestCase):
+    def test_database_inventory_normalizes_every_database(self):
+        actual = json.loads(
+            run_javascript(
+                _fixture('db_get_sample.json'),
+                script=db_inventory_js_source(),
+            )
+        )
+        self.assertEqual(
+            actual,
+            [
+                {'name': 'ASP', 'recovery_model': 'FULL'},
+                {'name': 'master', 'recovery_model': 'SIMPLE'},
+                {'name': 'model', 'recovery_model': 'SIMPLE'},
+                {'name': 'msdb', 'recovery_model': 'SIMPLE'},
+                {'name': 'tempdb', 'recovery_model': 'SIMPLE'},
+            ],
+        )
+
+    def test_backup_inventory_keeps_every_known_backup_kind(self):
+        actual = json.loads(
+            run_javascript(
+                _fixture('last_backup_sample.json'),
+                script=backup_inventory_js_source(),
+            )
+        )
+        self.assertEqual(
+            actual,
+            [
+                {
+                    'name': 'ASP',
+                    'recovery_model': 'FULL',
+                    'full_age_seconds': 120,
+                    'diff_age_seconds': 60,
+                    'log_age_seconds': 15,
+                },
+                {
+                    'name': 'master',
+                    'recovery_model': 'SIMPLE',
+                    'full_age_seconds': 3600,
+                },
+                {
+                    'name': 'SensirionAuthDB',
+                    'recovery_model': 'BULK_LOGGED',
+                },
+            ],
+        )
+
+    def test_inventory_preprocessors_reject_invalid_json(self):
+        for source in (db_inventory_js_source(), backup_inventory_js_source()):
+            with self.assertRaises(RuntimeError):
+                run_javascript('not-json', script=source)
 
 
 class LldNamedInstanceTests(unittest.TestCase):
@@ -174,6 +233,38 @@ class YamlContractTests(unittest.TestCase):
         file_js = run_lld_js(_fixture('wmi_mssql10.json'))
         self.assertEqual(json.loads(yaml_js), json.loads(file_js))
 
+    def test_inventory_preprocessors_match_source_files(self):
+        self.assertTrue(DB_INVENTORY_JS.is_file())
+        self.assertTrue(BACKUP_INVENTORY_JS.is_file())
+        protos = self.tpl['discovery_rules'][0]['item_prototypes']
+        database = next(p for p in protos if p['key'].startswith('mssql.observability.db.inventory'))
+        backup = next(p for p in protos if p['key'].startswith('mssql.observability.backup.inventory'))
+        self.assertEqual(javascript_steps(database), [db_inventory_js_source()])
+        self.assertEqual(javascript_steps(backup), [backup_inventory_js_source()])
+        self.assertEqual(
+            json.loads(
+                run_javascript(
+                    _fixture('db_get_sample.json'),
+                    script=javascript_steps(database)[0],
+                )
+            ),
+            json.loads(run_javascript(_fixture('db_get_sample.json'), script=db_inventory_js_source())),
+        )
+        self.assertEqual(
+            json.loads(
+                run_javascript(
+                    _fixture('last_backup_sample.json'),
+                    script=javascript_steps(backup)[0],
+                )
+            ),
+            json.loads(
+                run_javascript(
+                    _fixture('last_backup_sample.json'),
+                    script=backup_inventory_js_source(),
+                )
+            ),
+        )
+
     def test_lld_filters_and_min_default_zero(self):
         macros = {m['macro']: m for m in self.tpl['macros']}
         self.assertEqual(macros['{$MSSQL.INSTANCE.MATCHES}']['value'], '.*')
@@ -209,6 +300,18 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(db_count['type'], 'DEPENDENT')
         self.assertIn('{#MSSQL.URI}', db_count['master_item']['key'])
         self.assertEqual(db_count['preprocessing'][0]['parameters'][0], '$.length()')
+        db_raw = next(p for p in protos if p['key'].startswith('mssql.db.get['))
+        backup_raw = next(p for p in protos if p['key'].startswith('mssql.last.backup.get['))
+        self.assertEqual(db_raw['history'], '7d')
+        self.assertEqual(backup_raw['history'], '7d')
+        database = next(p for p in protos if p['key'].startswith('mssql.observability.db.inventory'))
+        backup = next(p for p in protos if p['key'].startswith('mssql.observability.backup.inventory'))
+        self.assertEqual(database['type'], 'DEPENDENT')
+        self.assertEqual(backup['type'], 'DEPENDENT')
+        self.assertEqual(database['history'], '30d')
+        self.assertEqual(backup['history'], '7d')
+        self.assertEqual(database['master_item']['key'], db_raw['key'])
+        self.assertEqual(backup['master_item']['key'], backup_raw['key'])
         for proto in protos:
             tags = {t['tag']: t['value'] for t in proto.get('tags') or []}
             self.assertEqual(tags.get('sql_instance'), '{#MSSQL.INSTANCE}')

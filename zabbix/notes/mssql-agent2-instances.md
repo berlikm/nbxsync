@@ -1,6 +1,6 @@
 # MSSQL named instances (Agent 2 companion)
 
-Operator macros live in [`docs/netbox-zabbix/configuration.md`](../../docs/netbox-zabbix/configuration.md) §11.3. This note is the build spec for **SQL metrics on every named instance** without putting instance names in NetBox.
+Operator macros live in [`docs/netbox-zabbix/configuration.md`](../../docs/netbox-zabbix/configuration.md) §11.3. This note is the build spec for **SQL metrics and database/backup inventories on every named instance** without putting instance names in NetBox.
 
 YAML: [`templates/mssql_observability/template_mssql_observability.yaml`](../templates/mssql_observability/template_mssql_observability.yaml). Tests: `python3 scripts/test_mssql_observability.py` (WMI fixtures + YAML contract; no live Windows/SQL here). Do not invent host prototypes. Do not return to **MSSQL by ODBC**. Do not bind stock graph prototypes (same nested-graph lesson as Forti).
 
@@ -25,6 +25,10 @@ Add a thin companion **MSSQL Observability** (same pattern as FortiGate Observab
 
 NetBox still has **one object per Windows box**. Secrets stay `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}` on that object (or USER on the role if the login name is fleet-wide). **No** `{$MSSQL.DSN:"PITDV02"}` rows.
 
+This remains **template-only**. It adds no nbxsync job, model, setting, or
+runtime collector. One Windows host remains one NetBox object and one Zabbix
+host.
+
 ---
 
 ## What stock already is (do not fork)
@@ -35,19 +39,17 @@ Every collect item on **MSSQL by Zabbix agent 2** is of the form:
 mssql.<master>.get["{$MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]
 ```
 
-Masters (clone these as **item prototypes**, not the hundreds of JSONPath dependents in v1):
+Masters are cloned as **item prototypes**, not as another stock template.
+The companion retains named-instance `mssql.db.get` and
+`mssql.last.backup.get` JSON long enough to render durable, normalized
+database and backup inventories in Latest data.
 
-| Stock item | Plugin key |
-|---|---|
-| Version | `mssql.version[uri,user,password]` |
-| Get performance counters | `mssql.perfcounter.get[…]` |
-| Get job status | `mssql.job.status.get[…]` |
-| Get last backup | `mssql.last.backup.get[…]` |
-| Get database | `mssql.db.get[…]` |
-| Get availability groups | `mssql.availability.group.get[…]` |
-| Get local/non-local DB, replica, mirroring, quorum | same pattern |
-
-LLD rules on stock are **dependent** on those masters (`mssql.database.discovery` → `{#DBNAME}`, job discovery → `{#JOBNAME}`, …). Zabbix **cannot** attach a new discovery rule per discovered instance on the same host (discovery prototypes exist for **host** prototypes only). So v1 of the companion does **instance-level** masters only. Per-database LLD on named instances is v2 (flatten). See [Later](#later-v2-flattened-database-lld).
+Stock's `mssql.database.discovery` is dependent on one connection and creates
+per-database item prototypes for that connection. Zabbix cannot attach a
+second discovery rule *under each discovered named instance* on the same host.
+The companion therefore has one inventory item per named instance instead of
+pretending nested LLD exists. Every returned database is visible in that
+inventory; per-database trigger prototypes remain stock/default-instance-only.
 
 Stock macros that stay on the role / template (do not duplicate in the companion unless overriding):
 
@@ -56,8 +58,8 @@ Stock macros that stay on the role / template (do not duplicate in the companion
 | `{$MSSQL.URI}` | empty space in YAML — **set** `sqlserver://localhost:1433` on the role | unused by named-instance prototypes |
 | `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}` | empty | **same macros** in prototype keys |
 | `{$MSSQL.HOST}` / `{$MSSQL.PORT}` | `localhost` / `1433` | do not use for named instances (dynamic ports) |
-| `{$MSSQL.DBNAME.NOT_MATCHES}` | `master\|tempdb\|model\|msdb` | v2 only |
-| `{$MSSQL.BACKUP_*.USED:"dbname"}` | mute backup-age per **database** | official context use; **not** DSN |
+| `{$MSSQL.DBNAME.NOT_MATCHES}` | `master\|tempdb\|model\|msdb` | applies to stock per-database LLD on the default instance; companion inventories show all returned databases |
+| `{$MSSQL.BACKUP_*.USED:"dbname"}` | mute backup-age per **database** | stock/default-instance triggers only; companion presents named-instance backup ages without per-DB threshold triggers |
 
 `{$MSSQL.DSN}` is **MSSQL by ODBC** only (DSN lives in **proxy** `odbc.ini`). Zerotouch already unlinked ODBC. Role `{$MSSQL.DSN}=nbxsync` is dead for Agent 2.
 
@@ -134,35 +136,36 @@ Filter on `{#MSSQL.INSTANCE}`. Do not filter in NetBox.
 
 ---
 
-## Item prototypes (v1)
+## Item prototypes and instance inventory
 
-All use **plugin keys** so the loadable MSSQL plugin does the query. User/password are **host** macros (same for every instance on that box).
+All SQL collection uses **plugin keys** so the loadable MSSQL plugin executes
+the query. User/password remain host macros (the same values for every
+instance on that Windows box).
 
-Keys **include the URI string**, so they cannot collide with stock `…["{$MSSQL.URI}",…]` unless someone sets `{$MSSQL.URI}` to `sqlserver://localhost/PITDV02` **and** that instance is also discovered. Do not do that. Stock URI stays `sqlserver://localhost:1433`.
+Keys include the URI string, so they cannot collide with stock
+`…["{$MSSQL.URI}",…]` unless someone sets `{$MSSQL.URI}` to a named URI and
+also discovers it. Do not do that. Stock URI stays
+`sqlserver://localhost:1433`.
 
-Minimum set (each: agent, then a few JSONPath dependents if the master is JSON):
+The companion creates these items for every discovered named instance:
 
-1. `mssql.version["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]`  
-   - Item name: `MSSQL [{#MSSQL.INSTANCE}]: Version`  
-   - Tags: `sql_instance={#MSSQL.INSTANCE}`
-2. `mssql.perfcounter.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]`  
-   - History `0`, dependent rates as needed (start with batch requests / page life / buffer cache — not the full stock pack)
-3. `mssql.job.status.get["{#MSSQL.URI}",…]`
-4. `mssql.last.backup.get["{#MSSQL.URI}",…]`
-5. `mssql.db.get["{#MSSQL.URI}",…]`  
-   - History `0`. Dependent: **database count** via JSONPath length (no DB LLD). System DBs still in the JSON; count is “what SQL returned”, not the stock MATCHES filter.
+1. `mssql.version[uri,user,password]` — a 5-minute version probe and one
+   Average `nodata(15m)` trigger.
+2. `mssql.perfcounter.get[…]` and `mssql.job.status.get[…]` — raw plugin
+   masters; per-counter/job LLD is deliberately not forked from stock.
+3. `mssql.db.get[…]` — raw JSON retained 7d, plus:
+   - `mssql.observability.db.count["instance"]` (90d);
+   - `mssql.observability.db.inventory["instance"]` (30d): every database
+     name and normalized recovery model.
+4. `mssql.last.backup.get[…]` — raw JSON retained 7d, plus
+   `mssql.observability.backup.inventory["instance"]` (7d): every database's
+   available full (`D`), differential (`I`), and log (`L`) backup age.
 
-Triggers (on the companion, **not** Disaster):
-
-| Event | Sev | Notes |
-|---|---|---|
-| `mssql.version` unsupported / nodata 15m | Average | login missing **on that instance**, plugin, Browser/port |
-| Version item empty while Windows `MSSQL$…` is running | Average | service up, TDS down |
-| Named instance count `< {$MSSQL.INSTANCE.DISCOVERY.MIN}` when MIN>0 | Average | census, same idea as Forti SD-WAN expected |
-
-Do **not** clone stock “TCP 1433 Disaster” onto each instance.
-
-Dependent JSONPath metrics: copy **sparingly** from stock (buffer cache, batch req/s, lock timeouts). Full stock clone as prototypes is unmaintainable across 7.0-6 → 7.0-7.
+The two inventory items are text JSON intentionally: they are searchable and
+auditable in **Monitoring → Latest data**, tagged
+`sql_instance=<instance>`, and require no per-instance host or NetBox row.
+They do not fabricate missing ages as zero and do not add threshold triggers
+without named-instance baseline policy.
 
 ---
 
@@ -218,9 +221,10 @@ Same password as `{$MSSQL.PASSWORD}` on that NetBox object. Repeat on PITDV02, P
 | Device | optional `{$MSSQL.INSTANCE.DISCOVERY.MIN}` = `5` on `MSSQL10` if you want census |
 | Device | **no** instance names, **no** DSN contexts |
 
-HostSync that one host. Companion LLD fills PITDV02. If NetBox is SOT for host macros, do not leave DSN contexts only in Zabbix.
-
-Query Server: same companion. If it is a true replica, stock AG items on the default URI may still apply; named-instance AG is v2.
+HostSync that one host after the companion template is imported. LLD fills
+PITDV02 and its instance-level database/backup inventories. No nbxsync code
+or scheduled NetBox collector is needed. If NetBox is SOT for host macros, do
+not leave DSN contexts only in Zabbix.
 
 ---
 
@@ -256,22 +260,29 @@ Use **one default-only** (`CH-STA-T-MSQL01`) and **one named** (`CH-STA-P-MSSQL1
 
 ---
 
-## Later (v2: flattened database LLD)
+## Template-only database inventory boundary
 
-Zabbix cannot nest `mssql.database.discovery` under each instance on the same host.
+The v1 LLD discovers named instances, but Zabbix has no nested database LLD
+for item prototypes on the same host. This rollout explicitly keeps nbxsync
+unchanged rather than adding a server-side flattener or creating unmanaged host
+prototypes.
 
-v2 master (single item, JS on the server/proxy **or** an agent script item with a unique key): for each `{#MSSQL.URI}` from v1, call `mssql.db.get`, merge:
+Use these Latest data items for a named instance:
 
-```
-{#MSSQL.INSTANCE} + {#MSSQL.URI} + {#DBNAME}
-```
+| Item key | Retention | Contents |
+|---|---:|---|
+| `mssql.observability.db.inventory["<instance>"]` | 30d | every `db.get` database name and recovery model |
+| `mssql.observability.backup.inventory["<instance>"]` | 7d | every valid full/diff/log age from `last.backup.get` |
+| `mssql.observability.db.count["<instance>"]` | 90d | count returned by `db.get`, including system databases |
 
-Then item prototypes for backup age / state using JSONPath filters, with `{$MSSQL.DBNAME.NOT_MATCHES}` applied in LLD filters. Keys must stay unique: include instance **and** dbname.
+This exposes every database from every dynamically discovered named instance
+without hard-coding names. It intentionally does **not** synthesize
+per-database item keys, per-database backup triggers, or
+`{$MSSQL.BACKUP_*:"instance/db"}` policy until there is an operator-approved
+data path that does not alter nbxsync or create unmanaged hosts.
 
-Until v2, per-DB backup mutes (`{$MSSQL.BACKUP_FULL.USED:"dbname"}`) apply only to **stock** (default instance).
-
-Reporting Service QUEUE (LogicMonitor leftover) is still a **custom query**, not instance LLD.
-
+Reporting Service QUEUE (LogicMonitor leftover) remains a **custom query**,
+not instance LLD.
 ---
 
 ## What the tests cover vs canary
@@ -283,19 +294,29 @@ Reporting Service QUEUE (LogicMonitor leftover) is still a **custom query**, not
 - JS drops `MSSQLFDLauncher$…`, `SQLAgent$…`, telemetry, writer
 - Single WMI object (not array) still becomes one LLD row
 - Invalid JSON throws (item unsupported) instead of a fake empty census
-- YAML: Zabbix 7.0, official `Templates/Databases` UUID, no nest of stock, no `service.discovery`, no `graphprototype`, no `net.tcp.service`, no Disaster, prototypes use `{#MSSQL.URI}` not `{$MSSQL.URI}`, MIN default 0
+- Database fixture → all five names and normalized recovery models; backup
+  fixture → all valid `D`/`I`/`L` ages without zero-filled missing data
+- YAML: Zabbix 7.0, official `Templates/Databases` UUID, no nest of stock,
+  no `service.discovery`, no `graphprototype`, no `net.tcp.service`, no
+  Disaster; raw database/backup history and inventory retention are explicit
 - Zerotouch: optional template, no YAML import, URI on both MSSQL roles
 
-**Still canary-only** (no Windows/SQL in this environment): plugin `mssql.version` against a real named instance, WMI on Agent 2, login created *inside each instance*, SQL Browser / dynamic port, HostSync not creating PITDV02 hosts.
+**Still canary-only** (no Windows/SQL in this environment): plugin
+`mssql.version` against a real named instance, WMI on Agent 2, login created
+inside each instance, SQL Browser / dynamic port, and every database shown in
+the two inventory items.
 
-## Implementation (v1 shipped)
+## Implementation
 
-Folder: `zabbix/templates/mssql_observability/` (YAML + `lld_named_instances.js` + fixtures). Template name **MSSQL Observability**.
+Folder: `zabbix/templates/mssql_observability/` (YAML, named-instance LLD,
+database/backup inventory JS, and fixtures). Template name **MSSQL
+Observability**.
 
-- Group: Templates/Databases (official UUID so import joins the existing group)
-- Do **not** nest stock MSSQL. **Link alongside** stock on the role (two templates, different keys).
-- One WMI master, dependent LLD + census, five plugin prototype masters, db count via `$.length()`, version nodata Average, census Average when MIN>0.
-- No dashboard (do not bind stock graph prototypes).
-- Import the YAML in Zabbix (GUI or a later `--apply-mssql`); **do not** HostSync the fleet from a template import alone.
-
-Zerotouch `ZabbixTemplateAssignment` on Device Role **MSSQL** and **MSSQL Query Server** is **soft**: if Cloud does not have the template yet, apply warns and continues. It also writes `{$MSSQL.URI}=sqlserver://localhost:1433` on those roles. `NBX_MSSQL_USER` / `NBX_MSSQL_PASS` still land on the **role** when set — move PASSWORD to the Device when hosts differ; this change does not migrate existing role secrets.
+- Do **not** nest stock MSSQL. Link alongside stock on the role: two templates,
+  different keys.
+- One WMI master, dependent instance LLD + census, five plugin prototype
+  masters, database count, durable database inventory, and backup inventory.
+- No dashboard and no stock graph prototypes.
+- No nbxsync source or configuration change is required for these inventories.
+- Import the YAML in Zabbix (GUI or later `--apply-mssql`), then HostSync the
+  canary; do not HostSync the fleet from a template import alone.

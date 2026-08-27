@@ -1,0 +1,8 @@
+[
+  {"dbname": "master", "type": "D", "time_since_last_backup": "3600", "db_recovery_model": "3"},
+  {"dbname": "ASP", "type": "D", "time_since_last_backup": "120", "db_recovery_model": "1"},
+  {"dbname": "ASP", "type": "I", "time_since_last_backup": "60", "db_recovery_model": "1"},
+  {"dbname": "ASP", "type": "L", "time_since_last_backup": 15, "db_recovery_model": "1"},
+  {"dbname": "SensirionAuthDB", "type": "D", "time_since_last_backup": null, "db_recovery_model": "2"},
+  {"dbname": "ignored", "type": "X", "time_since_last_backup": "1", "db_recovery_model": "1"}
+]

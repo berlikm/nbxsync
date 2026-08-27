@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Helpers for the MSSQL Observability companion (YAML contract + LLD JS)."""
+"""Helpers for the MSSQL Observability companion and its preprocessors."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = ROOT / 'zabbix/templates/mssql_observability'
 TEMPLATE_YAML = TEMPLATE_DIR / 'template_mssql_observability.yaml'
 LLD_JS = TEMPLATE_DIR / 'lld_named_instances.js'
+DB_INVENTORY_JS = TEMPLATE_DIR / 'db_inventory.js'
+BACKUP_INVENTORY_JS = TEMPLATE_DIR / 'backup_inventory.js'
 FIXTURES = TEMPLATE_DIR / 'fixtures'
 
 TEMPLATE_NAME = 'MSSQL Observability'
@@ -43,11 +45,25 @@ def template_block(doc: dict | None = None) -> dict:
     return templates[0]
 
 
+def _javascript_source(path: Path) -> str:
+    return path.read_text(encoding='utf-8').strip()
+
+
 def lld_js_source() -> str:
-    return LLD_JS.read_text(encoding='utf-8').strip()
+    return _javascript_source(LLD_JS)
+
+
+def db_inventory_js_source() -> str:
+    return _javascript_source(DB_INVENTORY_JS)
+
+
+def backup_inventory_js_source() -> str:
+    return _javascript_source(BACKUP_INVENTORY_JS)
 
 
 def javascript_steps(obj: dict) -> list[str]:
+
+
     scripts: list[str] = []
     for step in obj.get('preprocessing') or []:
         if str(step.get('type') or '').upper() == 'JAVASCRIPT':
@@ -96,8 +112,8 @@ def named_instances_from_wmi(value: str) -> list[dict]:
     return out
 
 
-def run_lld_js(value: str, *, script: str | None = None) -> str:
-    body = (script if script is not None else lld_js_source()).strip()
+def run_javascript(value: str, *, script: str) -> str:
+    body = script.strip()
     wrapped = (
         'function __run(value) {\n'
         f'{body}\n'
@@ -112,10 +128,14 @@ def run_lld_js(value: str, *, script: str | None = None) -> str:
         text=True,
         check=False,
     )
-    if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or 'node failed').strip()
+    if proc.returncode != 0 or not proc.stdout.strip():
+        err = (proc.stderr or proc.stdout or 'JavaScript preprocessor returned no JSON').strip()
         raise RuntimeError(err)
     return proc.stdout
+
+
+def run_lld_js(value: str, *, script: str | None = None) -> str:
+    return run_javascript(value, script=script if script is not None else lld_js_source())
 
 
 def zerotouch_source() -> str:

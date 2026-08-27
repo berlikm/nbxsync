@@ -361,7 +361,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 |---|---|---|
 | MSSQL by Zabbix agent 2 | Device Role MSSQL | |
 | MSSQL by Zabbix agent 2 | Device Role MSSQL Query Server | |
-| MSSQL Observability | Device Role MSSQL, MSSQL Query Server | Companion named-instance LLD. Zerotouch assigns **only after** the YAML is imported; missing template does not fail apply |
+| MSSQL Observability | Device Role MSSQL, MSSQL Query Server | Companion named-instance LLD plus per-instance database/backup inventories. Zerotouch assigns **only after** YAML import; the inventory feature requires no nbxsync change |
 | VMware FQDN | Device Role vCenter | **Only** on vCenter — not on ESXi platforms. Secrets via §11.3 |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if no platform rule matches |
@@ -636,7 +636,7 @@ Username format: `<SSO_DOMAIN>\LogicMonitor` (e.g. `VCENTER-SSO.SENSIRION\LogicM
 
 #### MSSQL (Agent 2; URI + per-host login)
 
-Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}`, not ODBC DSN. Set URI once on the role. Put the password (and user if the login name is not fleet-wide) on the **Device or VM**. Do **not** create `{$MSSQL.DSN:"PITDV02"}` context rows — Agent 2 does not read DSN, and named instances are LLD on the host ([notes/mssql-agent2-instances.md](../../zabbix/notes/mssql-agent2-instances.md)). Import companion **MSSQL Observability** for `MSSQL$*` instances; zerotouch will link it on the same roles once Zabbix has the template.
+Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}`, not ODBC DSN. Set URI once on the role. Put the password (and user if the login name is not fleet-wide) on the **Device or VM**. Do **not** create `{$MSSQL.DSN:"PITDV02"}` context rows — Agent 2 does not read DSN, and named instances are LLD on the host ([notes/mssql-agent2-instances.md](../../zabbix/notes/mssql-agent2-instances.md)). Import companion **MSSQL Observability** for `MSSQL$*` instances; it retains and exposes each named instance’s database/recovery-model and backup-age inventories in Latest data, with no nbxsync code or scheduled collector.
 
 | Macro | Target | Type | Value |
 |---|---|---|---|

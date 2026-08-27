@@ -19,8 +19,10 @@ zabbix_export:
 
         Requires Zabbix agent 2 with MSSQL loadable plugin >= 7.0.10 and
         server/proxy >= 7.0.6. Uses wmi.getall, not service.discovery
-        (Windows by Zabbix agent already owns that key). No host prototypes,
-        no stock graph prototypes, no TCP-1433 Disaster clone.
+        (Windows by Zabbix agent already owns that key). Named-instance
+        db.get and last.backup.get results are retained and normalized into
+        per-instance database/backup inventories. No host prototypes, stock
+        graph prototypes, or TCP-1433 Disaster clone.
 
         See zabbix/notes/mssql-agent2-instances.md.
       groups:
@@ -213,10 +215,10 @@ zabbix_export:
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Get last backup'
               key: 'mssql.last.backup.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               delay: 10m
-              history: '0'
+              history: 7d
               value_type: TEXT
               trends: '0'
-              description: 'Stock last-backup master for this named instance. Per-DB backup age is v2.'
+              description: 'Stock last-backup source for this named instance. Retained for 7d and normalized into the per-instance backup inventory below; this companion does not create nested per-database LLD.'
               timeout: 30s
               tags:
                 - tag: component
@@ -227,10 +229,10 @@ zabbix_export:
               name: 'MSSQL [{#MSSQL.INSTANCE}]: Get database'
               key: 'mssql.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
               delay: 1h
-              history: '0'
+              history: 7d
               value_type: TEXT
               trends: '0'
-              description: 'Stock db.get master. Count only in v1; no {#DBNAME} LLD (Zabbix cannot nest discovery under each instance on the same host).'
+              description: 'Stock db.get source for this named instance. Retained for 7d and normalized into the durable database inventory below; Zabbix cannot nest per-database LLD below this instance LLD on one host.'
               timeout: 30s
               tags:
                 - tag: component
@@ -254,6 +256,179 @@ zabbix_export:
               tags:
                 - tag: component
                   value: application
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: e6ad71399bd54a2d88fea9d94ed3ce40
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Database inventory'
+              type: DEPENDENT
+              key: 'mssql.observability.db.inventory["{#MSSQL.INSTANCE}"]'
+              delay: '0'
+              history: 30d
+              value_type: TEXT
+              trends: '0'
+              description: |
+                Normalized name/recovery-model inventory for every database
+                returned by db.get on this named instance. This remains one
+                text item per instance: Zabbix cannot nest database LLD under
+                this named-instance LLD while keeping one Windows host.
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var parsed;
+                      try {
+                        parsed = JSON.parse(value);
+                      } catch (e) {
+                        throw 'MSSQL named database inventory: invalid db.get JSON';
+                      }
+
+                      var rows = [];
+                      if (parsed === null) {
+                        return '[]';
+                      }
+                      if (Object.prototype.toString.call(parsed) === '[object Array]') {
+                        rows = parsed;
+                      } else if (typeof parsed === 'object') {
+                        rows = [parsed];
+                      } else {
+                        throw 'MSSQL named database inventory: db.get must return an array';
+                      }
+
+                      var recoveryModels = {
+                        '1': 'FULL',
+                        '2': 'BULK_LOGGED',
+                        '3': 'SIMPLE'
+                      };
+                      var seen = {};
+                      var out = [];
+
+                      for (var i = 0; i < rows.length; i++) {
+                        var row = rows[i];
+                        var name = row && row.dbname;
+                        if (typeof name !== 'string' || !name || seen[name]) {
+                          continue;
+                        }
+
+                        seen[name] = true;
+                        var model = row.recovery_model;
+                        if (model === null || typeof model === 'undefined' || model === '') {
+                          model = '';
+                        } else {
+                          model = recoveryModels[String(model)] || String(model);
+                        }
+
+                        out.push({
+                          name: name,
+                          recovery_model: model
+                        });
+                      }
+
+                      out.sort(function (a, b) {
+                        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+                      });
+                      return JSON.stringify(out);
+              master_item:
+                key: 'mssql.db.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              tags:
+                - tag: component
+                  value: database
+                - tag: sql_instance
+                  value: '{#MSSQL.INSTANCE}'
+            - uuid: 9fe1c57ed32a47e398ba141148f50d1c
+              name: 'MSSQL [{#MSSQL.INSTANCE}]: Backup inventory'
+              type: DEPENDENT
+              key: 'mssql.observability.backup.inventory["{#MSSQL.INSTANCE}"]'
+              delay: '0'
+              history: 7d
+              value_type: TEXT
+              trends: '0'
+              description: |
+                Normalized full, differential, and log backup ages for every
+                database returned by last.backup.get on this named instance.
+                This is visible per database in Latest data without inventing
+                unsupported nested LLD or per-database threshold triggers.
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var parsed;
+                      try {
+                        parsed = JSON.parse(value);
+                      } catch (e) {
+                        throw 'MSSQL named backup inventory: invalid last.backup.get JSON';
+                      }
+
+                      var rows = [];
+                      if (parsed === null) {
+                        return '[]';
+                      }
+                      if (Object.prototype.toString.call(parsed) === '[object Array]') {
+                        rows = parsed;
+                      } else if (typeof parsed === 'object') {
+                        rows = [parsed];
+                      } else {
+                        throw 'MSSQL named backup inventory: last.backup.get must return an array';
+                      }
+
+                      var recoveryModels = {
+                        '1': 'FULL',
+                        '2': 'BULK_LOGGED',
+                        '3': 'SIMPLE'
+                      };
+                      var backupKinds = {
+                        D: 'full',
+                        I: 'diff',
+                        L: 'log'
+                      };
+                      var byName = {};
+
+                      function seconds(value) {
+                        if (value === null || typeof value === 'undefined' || value === '') {
+                          return null;
+                        }
+                        var numeric = Number(value);
+                        return isFinite(numeric) && numeric >= 0 ? numeric : null;
+                      }
+
+                      for (var i = 0; i < rows.length; i++) {
+                        var row = rows[i];
+                        var name = row && row.dbname;
+                        var kind = row && backupKinds[row.type];
+                        if (typeof name !== 'string' || !name || !kind) {
+                          continue;
+                        }
+
+                        var record = byName[name];
+                        if (!record) {
+                          record = {name: name};
+                          var model = row.db_recovery_model;
+                          if (model !== null && typeof model !== 'undefined' && model !== '') {
+                            record.recovery_model = recoveryModels[String(model)] || String(model);
+                          }
+                          byName[name] = record;
+                        }
+
+                        var age = seconds(row.time_since_last_backup);
+                        if (age !== null) {
+                          record[kind + '_age_seconds'] = age;
+                        }
+                      }
+
+                      var out = [];
+                      for (var dbname in byName) {
+                        if (Object.prototype.hasOwnProperty.call(byName, dbname)) {
+                          out.push(byName[dbname]);
+                        }
+                      }
+                      out.sort(function (a, b) {
+                        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+                      });
+                      return JSON.stringify(out);
+              master_item:
+                key: 'mssql.last.backup.get["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"]'
+              tags:
+                - tag: component
+                  value: backup
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
           preprocessing:
