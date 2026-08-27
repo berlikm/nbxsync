@@ -1,0 +1,250 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 36bff6c29af64692839d077febfc7079
+      name: Templates/Network devices
+  templates:
+    - uuid: 514347e15fd648afa5900a3b9522622a
+      template: FortiManager Observability
+      name: FortiManager Observability
+      description: |
+        FortiManager companion for Fortinet FMG-FAZ by SNMP. Nests the shared SNMP parent (do not also
+        link Network Generic, ICMP Ping, or FortiGate templates).
+        
+        Platform Template Rule FortiManager points here. Devices board is the product
+        page (FGFM connect-state map). Config out-of-sync stays collect-only — cfgit
+        owns that ticket. Health / Hardware / Cluster / Network interfaces come from
+        the nested parent.
+        
+        Operator page: zabbix/03-fortinet.md.
+      groups:
+        - name: Templates/Network devices
+      templates:
+        - name: Fortinet FMG-FAZ by SNMP
+      items:
+      - uuid: 1edb28ca64e648779d2de1e685cca635
+        name: Managed devices
+        type: CALCULATED
+        key: fmg.observability.device.count
+        delay: 1m
+        value_type: FLOAT
+        params: last(//fm.device.number)
+        description: Headline managed-device count for the Devices board.
+        tags:
+          - tag: component
+            value: health
+      - uuid: 128bebc2a2274948a9fb2e3aaeb052c1
+        name: ADOMs
+        type: CALCULATED
+        key: fmg.observability.adom.count
+        delay: 1m
+        value_type: FLOAT
+        params: last(//fm.adom.number)
+        description: Headline ADOM count.
+        tags:
+          - tag: component
+            value: health
+      - uuid: cb83ac0764bf4db58e6e83344249f2db
+        name: HA peers
+        type: CALCULATED
+        key: fmg.observability.ha.peers
+        delay: 1m
+        value_type: FLOAT
+        params: last(//fm.ha.peer.number)
+        description: Headline HA peer count.
+        tags:
+          - tag: component
+            value: health
+      tags:
+        - tag: class
+          value: network
+        - tag: target
+          value: fortimanager
+      macros:
+        - macro: '{$FM.DEVICE.CONTROL}'
+          value: '1'
+          description: Ticket FGFM connect-down on this companion.
+        - macro: '{$FM.CONFIG.CONTROL}'
+          value: '0'
+          description: cfgit owns config drift. Do not enable.
+      dashboards:
+        - uuid: 19750890ecef4d25a1746c96e779587e
+          name: Devices
+          pages:
+            - name: Overview
+              widgets:
+                - type: item
+                  name: Devices
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: FortiManager Observability
+                        key: fmg.observability.device.count
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                - type: item
+                  name: ADOMs
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: FortiManager Observability
+                        key: fmg.observability.adom.count
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                - type: item
+                  name: HA peers
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: FortiManager Observability
+                        key: fmg.observability.ha.peers
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                - type: problems
+                  name: Problems
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: 'FDPRB'
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                - type: honeycomb
+                  name: Connect
+                  y: '4'
+                  width: '72'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Device *: Connect state'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^Device (.*): Connect state$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'FDCON'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '878787'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+                - type: honeycomb
+                  name: Config (cfgit owns tickets)
+                  y: '10'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Device *: Config state'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^Device (.*): Config state$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'FDCNF'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '878787'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+      valuemaps:
+        - uuid: aab722becf4a440083acf033de73b8ce
+          name: Service state
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up

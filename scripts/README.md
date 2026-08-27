@@ -9,7 +9,7 @@ If a script and that document disagree, **fix the script or the document so they
 | Order | Script | Applies |
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
-| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. None of those flags HostSync. |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-fmg-faz` / `--check-fmg-faz` import **Fortinet FMG-FAZ by SNMP** plus Observability companions, split FortiManager / FortiAnalyzer platform rules, and disable leftover Network Generic — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. None of those flags HostSync. |
 | — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** and **Network interfaces** ship from platform templates/runtime patch |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
@@ -54,6 +54,23 @@ python3 scripts/configure_nbxsync_network.py --apply-fortigate-http
 ```
 
 Then verify API 200 from the assigned Swiss proxies and HostSync **both members** of the first cluster. Confirm authoritative HA role/member count, zero VDOM checksum mismatches, NetBox-scoped interface discovery, populated SD-WAN LLD, and no unexpected unsupported items before expanding. Do not skip the backup, mass-HostSync the fleet, or rerun zerotouch.
+
+## FortiManager / FortiAnalyzer SNMP pack
+
+There is no official Zabbix template. Cutover is the network script, same
+isolation as FortiGate HTTP: **do not re-run zerotouch**.
+
+```bash
+python3 scripts/configure_nbxsync_network.py --check-fmg-faz
+python3 scripts/configure_nbxsync_network.py --apply-fmg-faz
+```
+
+That fail-closes on missing YAML / platforms / SNMP Monitoring, imports
+**Fortinet FMG-FAZ by SNMP** plus both Observability companions, splits
+platform Template Rules **FortiManager** / **FortiAnalyzer**, and disables
+leftover **FortiAnalyzer/Manager** → Network Generic. No HostSync, no Extreme
+import, no FortiOS retarget. Then HostSync the FMG/FAZ hosts. If zerotouch is
+re-run by mistake, run `--apply-fmg-faz` again.
 
 ```bash
 python3 scripts/validate_extreme_templates.py --zabbix   # lab: YAML contract + double import

@@ -59,6 +59,11 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     leftover ICMP/HTTP/SNMP from FortiOS devices/platforms/device types —
     not from agent CGs. Operator path is ``--apply-fortigate-http`` — do
     **not** re-run zerotouch. Do not dual-link HTTP+SNMP.
+  * FortiManager / FortiAnalyzer: ``--apply-fmg-faz`` / ``--check-fmg-faz``
+    import **Fortinet FMG-FAZ by SNMP** plus Observability companions, retarget
+    platform Template Rules FortiManager / FortiAnalyzer, disable leftover
+    FortiAnalyzer/Manager → Network Generic, keep SNMP Monitoring on those
+    platforms. No HostSync, no Extreme import, no zerotouch.
   * Cato account collector: ``--apply-cato`` / ``--check-cato`` import
     **Cato Networks by HTTP**, fail-close on GraphQL preflight, and converge
     the one owned interface-free host. No HostSync, no Extreme import, no
@@ -78,7 +83,8 @@ Stage matrix (what each flag enables):
                                     Also writes FortiOS platform FortiGate HTTP macros (no Forti HostSync, no FortiOS retarget).
   ``--apply-firewall-macros``     = NetBox-only FortiOS platform macros. No Extreme import, no Zabbix API, no HostSync, no FortiOS retarget.
   ``--apply-fortigate-http``      = FortiGate HTTP cutover without zerotouch: lookup Cloud **Zabbix, 7.0-2**, patch ZBX-27082 / WAN state, import Observability companion, FortiOS rule only (not role Firewall). Fail-closed preflight. No HostSync.
-  ``--check-cato`` / ``--apply-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
+  ``--check-fmg-faz`` / ``--apply-fmg-faz`` = FortiManager/FortiAnalyzer SNMP pack without zerotouch: import parent + Observability companions, split platform rules, disable leftover Network Generic rule. No HostSync.
+  ``--apply-cato`` / ``--check-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -125,6 +131,10 @@ Usage::
   # Never imports bundled 7.0-3 — that would overwrite Cloud.
   python scripts/configure_nbxsync_network.py --check-fortigate-http  # read-only
   python scripts/configure_nbxsync_network.py --apply-fortigate-http
+
+  # FortiManager / FortiAnalyzer SNMP pack (no zerotouch, no Extreme YAML, no HostSync)
+  python scripts/configure_nbxsync_network.py --check-fmg-faz
+  python scripts/configure_nbxsync_network.py --apply-fmg-faz
 
   # Cato account collector refresh (no zerotouch, no Extreme YAML, no HostSync)
   python scripts/configure_nbxsync_network.py --check-cato   # GraphQL preflight + collector shape
@@ -181,6 +191,20 @@ from nbxsync.jobs.synchost import SyncHostJob
 from nbxsync.utils import get_assigned_zabbixobjects
 from nbxsync.utils.zabbixconnection import ZabbixConnection
 
+from fmg_faz_snmp import (
+    FMG_FAZ_COLLIDING_TEMPLATES as _FMG_FAZ_COLLIDING_TEMPLATES,
+    FMG_FAZ_SNMP_TEMPLATE as _FMG_FAZ_SNMP_TEMPLATE,
+    FORTIANALYZER_OBSERVABILITY_TEMPLATE as _FORTIANALYZER_OBSERVABILITY_TEMPLATE,
+    FORTIANALYZER_PLATFORM_MACROS as _FORTIANALYZER_PLATFORM_MACROS,
+    FORTIMANAGER_OBSERVABILITY_TEMPLATE as _FORTIMANAGER_OBSERVABILITY_TEMPLATE,
+    FORTIMANAGER_PLATFORM_MACROS as _FORTIMANAGER_PLATFORM_MACROS,
+    LEGACY_FMG_FAZ_TEMPLATE_RULE as _LEGACY_FMG_FAZ_TEMPLATE_RULE,
+    NETWORK_GENERIC_TEMPLATE as _NETWORK_GENERIC_TEMPLATE,
+    TEMPLATE_FILES as _FMG_FAZ_TEMPLATE_FILES,
+    fmg_faz_rule_specs as _fmg_faz_rule_specs,
+    platform_is_fortianalyzer as _platform_is_fortianalyzer,
+    platform_is_fortimanager as _platform_is_fortimanager,
+)
 from fortigate_http import (
     AGENT_MONITORING_CG as _AGENT_MONITORING_CG,
     DEVICE_DUAL_LINK_TEMPLATES as _DEVICE_DUAL_LINK_TEMPLATES,
@@ -510,6 +534,10 @@ def ensure_template_rule(server, name: str, defaults: dict, update_fields=None):
 
 def get_template_rule(server, name: str):
     return ztc.get_template_rule(server, name, **_rule_kwargs())
+
+
+def delete_template_rule(server, name: str, reason: str):
+    return ztc.delete_template_rule(server, name, reason, **_rule_kwargs())
 
 
 def simulation_rule_name(server, name: str) -> str:
@@ -2191,6 +2219,23 @@ def _fortios_platforms() -> list:
 
 def _fmg_faz_platforms() -> list:
     return list(Platform.objects.filter(name__iregex=_FMG_FAZ_PLATFORM_PATTERN))
+
+
+def _fmg_faz_devices():
+    return (
+        Device.objects.filter(platform__name__iregex=_FMG_FAZ_PLATFORM_PATTERN)
+        .select_related('platform', 'role', 'site')
+        .order_by('name')
+    )
+
+
+def _fmg_faz_device_type_ids() -> list[int]:
+    return list(
+        _fmg_faz_devices()
+        .exclude(device_type_id__isnull=True)
+        .values_list('device_type_id', flat=True)
+        .distinct()
+    )
 
 
 def _fortios_devices():
@@ -4435,6 +4480,276 @@ def run_apply_fortigate_http() -> int:
     return 0
 
 
+def import_fmg_faz_templates(api) -> dict[str, tuple[int, str]]:
+    """Import parent first, then Observability companions. Fail closed."""
+    logger.info('Network: import FortiManager / FortiAnalyzer SNMP pack')
+    ordered = {
+        name: path
+        for name, path in _FMG_FAZ_TEMPLATE_FILES.items()
+    }
+    out = import_yaml_templates(api, ordered, strict=True)
+    missing = [name for name in _FMG_FAZ_TEMPLATE_FILES if name not in out]
+    if missing:
+        raise SystemExit('FMG/FAZ templates missing after import: ' + ', '.join(missing))
+    return out
+
+
+def _prune_fmg_faz_colliding_templates() -> int:
+    """Drop leftover icmpping siblings from FMG/FAZ-owned objects.
+
+    Observability nests Fortinet FMG-FAZ by SNMP (which owns icmpping). Linking
+    Network Generic, ICMP Ping, FortiGate templates, or the parent again makes
+    HostSync fail. Do not prune agent-plane CGs, manufacturers, or FortiOS.
+    """
+    names = set(_FMG_FAZ_COLLIDING_TEMPLATES)
+    total = 0
+    n = _prune_template_names_from_model(Device, list(_fmg_faz_devices().values_list('id', flat=True)), names)
+    if n:
+        logger.info('  PRUNED: %s colliding template assignment(s) from FMG/FAZ devices', n)
+    total += n
+    n = _prune_template_names_from_model(Platform, [p.id for p in _fmg_faz_platforms()], names)
+    if n:
+        logger.info('  PRUNED: %s colliding template assignment(s) from FMG/FAZ platforms', n)
+    total += n
+    n = _prune_template_names_from_model(DeviceType, _fmg_faz_device_type_ids(), names)
+    if n:
+        logger.info('  PRUNED: %s colliding template assignment(s) from FMG/FAZ device types', n)
+    total += n
+    return total
+
+
+def _step_fmg_faz_platform_macros(server) -> int:
+    """Device-connect / HA / FAZ log-disk macros on the matching platforms."""
+    platforms = _fmg_faz_platforms()
+    for plat in platforms:
+        if _platform_is_fortimanager(plat.name):
+            mapping = _FORTIMANAGER_PLATFORM_MACROS
+            kind = 'FortiManager'
+        elif _platform_is_fortianalyzer(plat.name):
+            mapping = _FORTIANALYZER_PLATFORM_MACROS
+            kind = 'FortiAnalyzer'
+        else:
+            continue
+        for macro_name, value in mapping.items():
+            _upsert_object_macro_assignment(
+                server,
+                plat,
+                macro_name,
+                value,
+                mtype=ZabbixMacroTypeChoices.TEXT,
+                description=f'nwn:fmg-faz:{kind}:{macro_name}',
+            )
+        logger.info('  Platform %s %s macros (no HostSync)', plat.name, kind)
+    return len(platforms)
+
+
+def _step_fmg_faz_snmp_cg() -> int:
+    """Keep SNMP Monitoring on FortiManager / FortiAnalyzer platforms."""
+    snmp = _snmp_monitoring_group()
+    if snmp is None:
+        raise SystemExit(f'{_SNMP_MONITORING_CG} CG missing — FMG/FAZ need SNMP transport')
+    assigned = 0
+    for plat in _fmg_faz_platforms():
+        ensure(
+            M.ZabbixConfigurationGroupAssignment,
+            zabbixconfigurationgroup=snmp,
+            assigned_object_type=ct(Platform),
+            assigned_object_id=plat.id,
+            defaults={},
+        )
+        assigned += 1
+        logger.info('  Platform %s → %s', plat.name, _SNMP_MONITORING_CG)
+    return assigned
+
+
+def _disable_legacy_fmg_faz_rule(server) -> None:
+    """Zerotouch still creates FortiAnalyzer/Manager → Network Generic. Keep it off."""
+    legacy = get_template_rule(server, _LEGACY_FMG_FAZ_TEMPLATE_RULE)
+    if legacy is None:
+        logger.info('  TemplateRule %s already absent', _LEGACY_FMG_FAZ_TEMPLATE_RULE)
+        return
+    if legacy.enabled:
+        legacy.enabled = False
+        legacy.save(update_fields=['enabled'])
+        logger.info(
+            '  DISABLED: TemplateRule %s (was %s) so it cannot dual-link icmpping',
+            simulation_rule_name(server, _LEGACY_FMG_FAZ_TEMPLATE_RULE),
+            getattr(getattr(legacy, 'zabbixtemplate', None), 'name', None) or 'unknown',
+        )
+        return
+    logger.info(
+        '  TemplateRule %s already disabled',
+        simulation_rule_name(server, _LEGACY_FMG_FAZ_TEMPLATE_RULE),
+    )
+
+
+def _step_fmg_faz_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
+    """Split FortiManager / FortiAnalyzer rules onto Observability companions."""
+    logger.info('=' * 60)
+    logger.info('Network: FMG/FAZ Observability nbxSync levers (no HostSync)')
+    logger.info('=' * 60)
+    nbx = {}
+    for name, (tid, _) in imported.items():
+        nbx[name] = ensure_nbx_template(
+            server,
+            tid,
+            name,
+            req=[HostInterfaceRequirementChoices.SNMP],
+        )
+
+    for rule_name, pattern, tpl_name in _fmg_faz_rule_specs():
+        existing = get_template_rule(server, rule_name)
+        hg = (
+            existing.zabbixhostgroup
+            if existing is not None and existing.zabbixhostgroup_id
+            else _os_network_hostgroup(server)
+        )
+        tpl = nbx[tpl_name]
+        rule_defaults = {
+            'pattern': pattern,
+            'zabbixtemplate': tpl,
+            'enabled': True,
+            'priority': 100,
+            'zabbixtag': None,
+            'zabbixhostgroup': hg,
+            'require_tags': '',
+            'role_pattern': '',
+            'manufacturer': None,
+        }
+        update_fields = (
+            ['zabbixtemplate', 'enabled', 'pattern', 'priority']
+            if existing is not None
+            else None
+        )
+        ensure_template_rule(server, rule_name, rule_defaults, update_fields=update_fields)
+        logger.info(
+            '  TemplateRule %s → %s (SNMP; nests %s)',
+            simulation_rule_name(server, rule_name),
+            tpl.name,
+            _FMG_FAZ_SNMP_TEMPLATE,
+        )
+    _disable_legacy_fmg_faz_rule(server)
+    _prune_fmg_faz_colliding_templates()
+    _step_fmg_faz_snmp_cg()
+    _step_fmg_faz_platform_macros(server)
+
+
+def _preflight_fmg_faz(server) -> list[str]:
+    """Read-only NetBox/YAML gate. Colliding leftovers are pruned on apply, not aborted."""
+    errors: list[str] = []
+    for name, path in _FMG_FAZ_TEMPLATE_FILES.items():
+        if not path.exists():
+            errors.append(f'missing YAML for {name}: {path}')
+    platforms = _fmg_faz_platforms()
+    if not platforms:
+        errors.append(
+            'No FortiManager/FortiAnalyzer platform in NetBox — '
+            'refusing to import templates with nothing to assign'
+        )
+    if _snmp_monitoring_group() is None:
+        errors.append(f'{_SNMP_MONITORING_CG} CG missing — FMG/FAZ need SNMP transport')
+    fmg = [p.name for p in platforms if _platform_is_fortimanager(p.name)]
+    faz = [p.name for p in platforms if _platform_is_fortianalyzer(p.name)]
+    if platforms and not fmg and not faz:
+        errors.append(
+            'FMG/FAZ platforms exist but none match FortiManager / FortiAnalyzer names: '
+            + ', '.join(p.name for p in platforms)
+        )
+    return errors
+
+
+def _print_fmg_faz_plan(server, *, errors: list[str], apply: bool, zbx_names: list[str] | None = None) -> None:
+    logger.info('=' * 60)
+    logger.info(
+        'FMG/FAZ SNMP proposed writes (nothing written yet)' if apply else 'FMG/FAZ SNMP check (read-only)'
+    )
+    logger.info('=' * 60)
+    logger.info('Import parent %s then companions %s / %s', _FMG_FAZ_SNMP_TEMPLATE, _FORTIMANAGER_OBSERVABILITY_TEMPLATE, _FORTIANALYZER_OBSERVABILITY_TEMPLATE)
+    for name, path in _FMG_FAZ_TEMPLATE_FILES.items():
+        logger.info('  %s ← %s', name, path)
+    if zbx_names:
+        logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
+    for rule_name, pattern, tpl_name in _fmg_faz_rule_specs():
+        existing = get_template_rule(server, rule_name)
+        current = getattr(getattr(existing, 'zabbixtemplate', None), 'name', None) or '(missing)'
+        enabled = 'enabled' if existing is not None and existing.enabled else ('disabled' if existing is not None else 'absent')
+        logger.info('  TemplateRule %s [%s] %s → %s (pattern %s)', rule_name, enabled, current, tpl_name, pattern)
+    legacy = get_template_rule(server, _LEGACY_FMG_FAZ_TEMPLATE_RULE)
+    if legacy is None:
+        logger.info('  Legacy %s: absent', _LEGACY_FMG_FAZ_TEMPLATE_RULE)
+    else:
+        logger.info(
+            '  Legacy %s: %s (%s) — will disable so Network Generic cannot dual-link icmpping',
+            _LEGACY_FMG_FAZ_TEMPLATE_RULE,
+            'enabled' if legacy.enabled else 'already disabled',
+            getattr(getattr(legacy, 'zabbixtemplate', None), 'name', None) or 'unknown',
+        )
+    logger.info('  prune %s from FMG/FAZ devices/platforms/device types', ', '.join(_FMG_FAZ_COLLIDING_TEMPLATES))
+    logger.info('  CG %s on FortiManager / FortiAnalyzer platforms', _SNMP_MONITORING_CG)
+    logger.info('  Platform macros: FGFM connect on, config-sync off (cfgit), FAZ log-disk High=95')
+    logger.info('  No HostSync, no Extreme import, no FortiOS retarget, no zerotouch')
+    logger.info('  Platforms: %s', ', '.join(p.name for p in _fmg_faz_platforms()) or '(none)')
+    if errors:
+        logger.info('Preflight errors (%s) — abort, no writes:', len(errors))
+        for err in errors:
+            logger.info('  %s', err)
+
+
+def _require_fmg_faz_preflight(*, server=None, apply: bool = True):
+    """Fail-closed YAML/NetBox gate. Does not import YAML or retarget rules."""
+    if server is None:
+        server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
+        if server is None:
+            raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
+    zbx_names: list[str] = []
+    with ZabbixConnection(server) as api:
+        for name in _FMG_FAZ_TEMPLATE_FILES:
+            row = _lookup_zabbix_template(api, name)
+            if row is not None:
+                zbx_names.append(name)
+    errors = _preflight_fmg_faz(server)
+    _print_fmg_faz_plan(server, errors=errors, apply=apply, zbx_names=zbx_names)
+    if errors:
+        for error in errors:
+            logger.error('  preflight: %s', error)
+        raise SystemExit('FMG/FAZ SNMP preflight failed — no writes:\n  ' + '\n  '.join(errors))
+    return server
+
+
+def run_check_fmg_faz() -> int:
+    """Read-only FMG/FAZ YAML + NetBox + Zabbix presence check."""
+    _require_fmg_faz_preflight(apply=False)
+    logger.info('FMG/FAZ SNMP preflight OK — check-only mode wrote nothing')
+    return 0
+
+
+def run_apply_fmg_faz() -> int:
+    """FortiManager / FortiAnalyzer SNMP pack without zerotouch or Extreme YAML.
+
+    Imports Fortinet FMG-FAZ by SNMP plus both Observability companions, splits
+    platform Template Rules, disables leftover FortiAnalyzer/Manager → Network
+    Generic, keeps SNMP Monitoring on those platforms. No HostSync.
+    """
+    server = _require_fmg_faz_preflight(apply=True)
+    logger.info('Preflight OK — importing FMG/FAZ templates and writing platform levers')
+    with ZabbixConnection(server) as api:
+        imported = import_fmg_faz_templates(api)
+    _step_fmg_faz_nbxsync(server, imported)
+    logger.info(
+        'FMG/FAZ SNMP pack written in NetBox. No HostSync. '
+        'FortiManager → %s, FortiAnalyzer → %s (both nest %s). '
+        'Legacy %s is disabled. Platforms keep %s. '
+        'Do not re-run zerotouch — it still floors FMG/FAZ on %s; re-run --apply-fmg-faz after that.',
+        _FORTIMANAGER_OBSERVABILITY_TEMPLATE,
+        _FORTIANALYZER_OBSERVABILITY_TEMPLATE,
+        _FMG_FAZ_SNMP_TEMPLATE,
+        _LEGACY_FMG_FAZ_TEMPLATE_RULE,
+        _SNMP_MONITORING_CG,
+        _NETWORK_GENERIC_TEMPLATE,
+    )
+    return 0
+
+
 def _cato_rpc(server):
     """JSON-RPC helper used by the Cato pack (not zabbix_utils object methods)."""
     from zabbix_api import ZabbixAPI
@@ -4579,6 +4894,16 @@ def main() -> int:
         help='Read-only FortiGate HTTP preflight: Zabbix parent + every FortiOS API endpoint/token',
     )
     mode.add_argument(
+        '--apply-fmg-faz',
+        action='store_true',
+        help='FortiManager/FortiAnalyzer SNMP pack: import parent + Observability companions, split platform rules, disable leftover Network Generic rule; no HostSync, no zerotouch',
+    )
+    mode.add_argument(
+        '--check-fmg-faz',
+        action='store_true',
+        help='Read-only FortiManager/FortiAnalyzer YAML + NetBox + Zabbix presence check; no writes',
+    )
+    mode.add_argument(
         '--apply-cato',
         action='store_true',
         help='Cato collector refresh: GraphQL preflight, import Cato Networks by HTTP, converge account host; no HostSync, no zerotouch',
@@ -4611,6 +4936,14 @@ def main() -> int:
         if args.link_speed_expect or args.cutover_silence:
             raise SystemExit('--apply-fortigate-http does not take --link-speed-expect or --cutover-silence')
         return run_apply_fortigate_http()
+    if args.check_fmg_faz:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--check-fmg-faz does not take --link-speed-expect or --cutover-silence')
+        return run_check_fmg_faz()
+    if args.apply_fmg_faz:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--apply-fmg-faz does not take --link-speed-expect or --cutover-silence')
+        return run_apply_fmg_faz()
     if args.check_cato:
         if args.link_speed_expect or args.cutover_silence:
             raise SystemExit('--check-cato does not take --link-speed-expect or --cutover-silence')

@@ -75,8 +75,8 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 01c | OSPF routing (core/dist, both platforms) | **built** — `templates/extreme_routing_snmp/` | yes | no | no |
 | 02 | HiveOS / IQ Engine AP | **built** — `templates/extreme_iq_engine_snmp/` | yes | ICMP/SNMP path in prod; RF canary open | partial |
 | 03 | FortiGate | stock **FortiGate by HTTP** (7.0) + ICMP Ping | yes — [03](03-fortinet.md) | no | no (live nbxSync still **SNMP** until `--apply-fortigate-http`) |
-| 03 | FortiManager | none official (Network Generic) | yes — short block in 03 | no | no |
-| 03 | FortiAnalyzer | none official (Network Generic) | yes — short block in 03 | no | no |
+| 03 | FortiManager | **built** — `templates/fortinet_fmg_faz_snmp/` + FortiManager Observability | yes — [03](03-fortinet.md) | no | no (Network Generic until `--apply-fmg-faz`) |
+| 03 | FortiAnalyzer | **built** — shared FMG-FAZ SNMP parent + FortiAnalyzer Observability | yes — [03](03-fortinet.md) | no | no (Network Generic until `--apply-fmg-faz`) |
 | 04 | Cato | **built** — `Cato Networks by HTTP` | yes (`04`) | collector and 21/21 Socket ICMP hosts validated | yes (21/21 Socket ICMP hosts) |
 | 05 | Circuits | n/a | scaffold | no | Cato-only last-mile, Degraded, and WAN `mediaIn` live on 04; Forti Path is the Forti probe |
 | 06 | Network VMs | stock OS templates | scaffold | no | no |

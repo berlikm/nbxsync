@@ -1,7 +1,7 @@
 # Zabbix network monitoring
 
 **In scope now:** [01 Extreme switching](01-extreme-switching.md), [02 access points](02-extreme-access-points.md).  
-**Prepared:** [03 Fortinet](03-fortinet.md) (FortiGate **API** spec written; not live), [06 network VMs](06-network-vms.md).  
+**Prepared:** [03 Fortinet](03-fortinet.md) (FortiGate **API** spec written; FMG/FAZ SNMP YAML built, not live), [06 network VMs](06-network-vms.md).  
 **Live collector:** [04 Cato](04-cato.md) account monitoring and all 21 NetBox-backed Socket ICMP hosts.
 Copy [_template.md](_template.md) for the next domain. Same observability bar everywhere.
 
@@ -15,7 +15,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | 00 | [00-monitoring-plan.md](00-monitoring-plan.md) | Order, cutover bar, principles | active |
 | 01 | [01-extreme-switching.md](01-extreme-switching.md) | EXOS + VOSS | **now** |
 | 02 | [02-extreme-access-points.md](02-extreme-access-points.md) | HiveOS / IQ Engine | **now** |
-| 03 | [03-fortinet.md](03-fortinet.md) | FortiGate by HTTP (API) + FMG/FAZ | spec written; not live |
+| 03 | [03-fortinet.md](03-fortinet.md) | FortiGate by HTTP (API) + FMG/FAZ SNMP | FortiGate spec written, not live; FMG/FAZ YAML built, not live |
 | 04 | [04-cato.md](04-cato.md) | Cato account HTTP collector + Socket ICMP | live; 21/21 Socket hosts |
 | 05 | [05-internet-circuits.md](05-internet-circuits.md) | ISP / WAN | later |
 | 06 | [06-network-vms.md](06-network-vms.md) | Infra VMs | prepared |
@@ -29,6 +29,9 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/extreme_routing_snmp/` | Extreme Routing by SNMP (OSPF) | imported; not linked (YAML High if linked) |
 | `templates/extreme_iq_engine_snmp/` | Extreme IQ Engine by SNMP | imported; **Health** dashboard; severities per [02](02-extreme-access-points.md) |
 | `templates/fortinet_fortigate_observability/` | FortiGate Observability | companion; nests Cloud **FortiGate by HTTP** 7.0-2 + ICMP Ping; **Health** + **Network interfaces** + **Path** (Loss/Probe) — [03](03-fortinet.md) |
+| `templates/fortinet_fmg_faz_snmp/` | Fortinet FMG-FAZ by SNMP | **built**; Health + Network interfaces; own `icmpping`; no official stock template (ZBXNEXT-10433) — [03](03-fortinet.md) |
+| `templates/fortinet_fortimanager_observability/` | FortiManager Observability | companion; nests FMG-FAZ SNMP; **Devices** board; FGFM connect-down; config drift collect-only — [03](03-fortinet.md) |
+| `templates/fortinet_fortianalyzer_observability/` | FortiAnalyzer Observability | companion; nests FMG-FAZ SNMP; **Logs** board; log lag Average; log-disk High at 95% — [03](03-fortinet.md) |
 | `templates/mssql_observability/` | MSSQL Observability | **spec only** — named-instance Agent 2 companion; YAML not imported — [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md) |
 | `templates/cato_http/` | Cato Networks by HTTP | imported; account collector with **Health** (Census/API) + **Path** (Last mile/Probe) + **Network** (Tunnels/HA/Port); 21/21 Socket ICMP hosts live — [04](04-cato.md) |
 

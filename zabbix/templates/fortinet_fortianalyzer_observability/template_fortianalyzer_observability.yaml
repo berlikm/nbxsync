@@ -1,0 +1,491 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 36bff6c29af64692839d077febfc7079
+      name: Templates/Network devices
+  templates:
+    - uuid: a7e7ff1e27cd48ff919a62cf0256af6c
+      template: FortiAnalyzer Observability
+      name: FortiAnalyzer Observability
+      description: |
+        FortiAnalyzer companion for Fortinet FMG-FAZ by SNMP. Nests the shared SNMP parent (do not also
+        link Network Generic, ICMP Ping, or FortiGate templates).
+        
+        Platform Template Rule FortiAnalyzer points here. Logs board is the product
+        page. Log disk High is justified here (log loss) — unlike FortiGate.
+        Device connect-down on the parent is the Zabbix choice for "device stopped
+        sending logs"; mute FAZ-native duplicates.
+        
+        Operator page: zabbix/03-fortinet.md.
+      groups:
+        - name: Templates/Network devices
+      templates:
+        - name: Fortinet FMG-FAZ by SNMP
+      items:
+      - uuid: ec580ac082124eaf9e4c3ce5777735e4
+        name: Log rate
+        type: CALCULATED
+        key: faz.observability.log.rate
+        delay: 1m
+        value_type: FLOAT
+        units: logs/s
+        params: last(//fm.sys.log.rate.hr)
+        description: Headline log receive rate.
+        tags:
+          - tag: component
+            value: log
+      - uuid: e6cb975878bb48de84d92a31edf213df
+        name: Log lag
+        type: CALCULATED
+        key: faz.observability.log.lag
+        delay: 1m
+        value_type: FLOAT
+        units: s
+        params: last(//fm.sys.log.lag)
+        description: Receive-to-index delay. This is the FAZ product failure mode.
+        tags:
+          - tag: component
+            value: log
+        triggers:
+          - uuid: 44bcc8c4bdb548c8aaf28da490dba868
+            expression: 'min(/FortiAnalyzer Observability/faz.observability.log.lag,10m)>{$FAZ.LOG.LAG.WARN} and min(/FortiAnalyzer Observability/faz.observability.log.lag,10m)<={$FAZ.LOG.LAG.CRIT}'
+            name: 'FortiAnalyzer Observability: Log indexing lag is high'
+            priority: WARNING
+            description: Indexing is falling behind receive. Reports/search will lag. Next day unless it climbs to Average.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+          - uuid: 5b26d0fa60b942198ae8a6363d16bf0a
+            expression: 'min(/FortiAnalyzer Observability/faz.observability.log.lag,5m)>{$FAZ.LOG.LAG.CRIT}'
+            name: 'FortiAnalyzer Observability: Log indexing lag is critical'
+            priority: AVERAGE
+            description: 'Log lag above {$FAZ.LOG.LAG.CRIT} seconds. Ticket — FAZ is not keeping up. Disk/CPU/ingest path.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+      - uuid: b22ce1db288747c4a518c7cbcdfe8f06
+        name: Disk utilization
+        type: CALCULATED
+        key: faz.observability.disk.util
+        delay: 1m
+        value_type: FLOAT
+        units: '%'
+        params: last(//fm.sys.disk.util)
+        description: FAZ log disk. High is justified — this is the product.
+        tags:
+          - tag: component
+            value: storage
+        triggers:
+          - uuid: 5684fe84696a466ca019b0243315edb8
+            expression: 'min(/FortiAnalyzer Observability/faz.observability.disk.util,5m)>{$DISK.UTIL.HIGH}'
+            name: 'FortiAnalyzer Observability: Log disk is critically full'
+            priority: HIGH
+            description: 'Log disk above {$DISK.UTIL.HIGH}. 03:00 page — FAZ will stop ingesting. Exception to site-only High: the product is about to drop data.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+      - uuid: d6965be93ae24cebb0405cc081807c4d
+        name: License GB/day today
+        type: CALCULATED
+        key: faz.observability.lic.gbday
+        delay: 1m
+        value_type: FLOAT
+        units: GB
+        params: last(//fm.sys.lic.gbday.today)
+        description: 'GiB received today. Trigger off while {$FAZ.LIC.GBDAY.MAX}=0.'
+        tags:
+          - tag: component
+            value: license
+        triggers:
+          - uuid: a6e574b3463f43d0a1d62b95dd484870
+            expression: '{$FAZ.LIC.GBDAY.MAX}>0 and min(/FortiAnalyzer Observability/faz.observability.lic.gbday,30m)>{$FAZ.LIC.GBDAY.MAX}'
+            name: 'FortiAnalyzer Observability: Licensed GB/day threshold exceeded'
+            priority: AVERAGE
+            description: 'Today''s ingest above {$FAZ.LIC.GBDAY.MAX}. Default 0 disables this until the licensed cap is known.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+      - uuid: dc2cc96e3d724a4ea0c33c752c3ac527
+        name: Managed log devices
+        type: CALCULATED
+        key: faz.observability.device.count
+        delay: 1m
+        value_type: FLOAT
+        params: last(//fm.device.number)
+        description: Registered log devices.
+        tags:
+          - tag: component
+            value: health
+      tags:
+        - tag: class
+          value: network
+        - tag: target
+          value: fortianalyzer
+      macros:
+        - macro: '{$FAZ.LOG.LAG.WARN}'
+          value: 60
+          description: Log lag Warning (seconds).
+        - macro: '{$FAZ.LOG.LAG.CRIT}'
+          value: 300
+          description: Log lag Average (seconds).
+        - macro: '{$FAZ.LIC.GBDAY.MAX}'
+          value: 0
+          description: '0 disables GB/day license Average. Set to the licensed cap.'
+        - macro: '{$DISK.UTIL.HIGH}'
+          value: 95
+          description: FAZ log-disk High. 95 is log-loss territory.
+      dashboards:
+        - uuid: 8214a207551444d788494defc33f6d74
+          name: Logs
+          pages:
+            - name: Overview
+              widgets:
+                - type: gauge
+                  name: Disk
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '5'
+                    - type: INTEGER
+                      name: th_arc_size
+                      value: '6'
+                    - type: INTEGER
+                      name: units_size
+                      value: '14'
+                    - type: INTEGER
+                      name: value_arc_size
+                      value: '16'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: FortiAnalyzer Observability
+                        key: faz.observability.disk.util
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '80'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '90'
+                    - type: STRING
+                      name: thresholds.3.color
+                      value: 'E53935'
+                    - type: STRING
+                      name: thresholds.3.threshold
+                      value: '95'
+                    - type: INTEGER
+                      name: th_show_arc
+                      value: '1'
+                    - type: INTEGER
+                      name: th_show_labels
+                      value: '0'
+                    - type: STRING
+                      name: units
+                      value: '%'
+                - type: item
+                  name: Log lag
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: FortiAnalyzer Observability
+                        key: faz.observability.log.lag
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                - type: item
+                  name: Log rate
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: FortiAnalyzer Observability
+                        key: faz.observability.log.rate
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '24'
+                - type: item
+                  name: GB/day
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: FortiAnalyzer Observability
+                        key: faz.observability.lic.gbday
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '24'
+                - type: problems
+                  name: Problems
+                  y: '4'
+                  width: '72'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: 'FLPRB'
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                    - type: INTEGER
+                      name: show_opdata
+                      value: '2'
+                - type: svggraph
+                  name: Log rate / lag
+                  y: '7'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: '199C0D'
+                    - type: STRING
+                      name: ds.0.color.1
+                      value: 'FF9800'
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: FortiAnalyzer Observability
+                        key: faz.observability.log.rate
+                    - type: ITEM
+                      name: ds.0.itemids.1
+                      value:
+                        host: FortiAnalyzer Observability
+                        key: faz.observability.log.lag
+                    - type: STRING
+                      name: reference
+                      value: 'FLRATE'
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                    - type: STRING
+                      name: time_period.from
+                      value: 'now-1d'
+                    - type: STRING
+                      name: time_period.to
+                      value: 'now'
+                - type: svggraph
+                  name: Disk
+                  x: '36'
+                  y: '7'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: '2774A4'
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: FortiAnalyzer Observability
+                        key: faz.observability.disk.util
+                    - type: STRING
+                      name: lefty_max
+                      value: '100'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: STRING
+                      name: reference
+                      value: 'FLDSK'
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '0'
+                    - type: STRING
+                      name: time_period.from
+                      value: 'now-1d'
+                    - type: STRING
+                      name: time_period.to
+                      value: 'now'
+                - type: honeycomb
+                  name: ADOM archive %
+                  y: '13'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'ADOM *: Archive used %'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^ADOM (.*): Archive used %$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'FLARC'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '80'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '90'
+                - type: honeycomb
+                  name: Log devices
+                  x: '36'
+                  y: '13'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Device *: Connect state'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^Device (.*): Connect state$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'FLDEV'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '878787'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+      valuemaps:
+        - uuid: 80190e86574740a18eb6ee72d24173e9
+          name: Service state
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up

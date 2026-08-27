@@ -6,7 +6,7 @@ World-class here means: **page what users feel (box down, path down), never fail
 
 Same bar as [01-extreme-switching.md](01-extreme-switching.md). Scale: [_template.md](_template.md). Analysis: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md). WAN class: [05-internet-circuits.md](05-internet-circuits.md). Overlay: [04-cato.md](04-cato.md). Extreme Health notes do **not** apply to Forti.
 
-This page is the **target contract**. Use only `configure_nbxsync_network.py --apply-fortigate-http` for this cutover; do **not** rerun zerotouch. Live nbxSync still links **FortiGate by SNMP** until the network flag runs and HostSync processes **both members** of a cluster (each unit’s unique `primary_ip4`). The Zabbix monitoring token lives in nbxSync on **Platform FortiOS**; NetBox inventory automation keeps its different `NBX_FORTIGATE_TOKEN`. `{$FGATE.API.FQDN}` is **Platform FortiOS Jinja** on `primary_ip4` (HostSync renders per device). Generic role **Firewall** is not the Forti lever (FMG/FAZ share it).
+This page is the **target contract**. FortiGates: `configure_nbxsync_network.py --apply-fortigate-http`. FortiManager / FortiAnalyzer: `--apply-fmg-faz`. Do **not** rerun zerotouch for either. Live nbxSync still links **FortiGate by SNMP** until the HTTP flag runs and HostSync processes **both members** of a cluster (each unit’s unique `primary_ip4`). The Zabbix monitoring token lives in nbxSync on **Platform FortiOS**; NetBox inventory automation keeps its different `NBX_FORTIGATE_TOKEN`. `{$FGATE.API.FQDN}` is **Platform FortiOS Jinja** on `primary_ip4` (HostSync renders per device). Generic role **Firewall** is not the Forti lever (FMG/FAZ share it — they get their own platform rules).
 
 ---
 
@@ -188,7 +188,7 @@ OOB / ha-mgmt is how you poll **both HA members at once**. It is **not** a reaso
 2. Role **Firewall** floor → FortiGate by SNMP
 3. Role Firewall → **SNMP Monitoring** CG (`MONITORING` MD5/DES)
 4. ICMP Ping is **not** on fleet SNMP Monitoring (Forti SNMP already has `icmpping`)
-5. FMG/FAZ rule → Network Generic
+5. FMG/FAZ rule → Network Generic (until `--apply-fmg-faz`)
 6. `--apply-firewall-macros` writes HTTP fleet macros on **Platform FortiOS** (not role Firewall), including `{$FGATE.API.FQDN}` Jinja on `primary_ip4`. The Zabbix monitoring token belongs in nbxSync on that platform; `NBX_FORTIGATE_TOKEN` remains inventory automation only.
 
 Locked GUI checklist still lists FortiGate by SNMP — that file is not updated here. The script never copies `NBX_FORTIGATE_TOKEN` into `{$FGATE.API.TOKEN}`.
@@ -321,7 +321,7 @@ Do **not** clone stock FortiGate by HTTP.
 | FortiGate by HTTP (stock) | nested parent | Cloud is **Zabbix, 7.0-2**. Never import 7.0-3. Apply adds version-pinned ZBX-27082 + multi-VDOM compatibility and patches WAN state / policy off / unsupported capacity items / CRIT 101 / `ha.role` |
 | ICMP Ping | nested on Observability | HTTP has no `icmpping`. Not on role Firewall. FortiOS winning CG **FortiGate HTTP** has no ICMP Ping template. Do not strip ICMP from agent CGs. |
 | FortiGate by SNMP (stock) | Platform FortiOS — **live until `--apply-fortigate-http`** | Do not dual-link with HTTP. Pruned from role Firewall |
-| Network Generic Device by SNMP | **not** on FortiGate | FMG/FAZ only (SNMP Monitoring on those **platforms**) |
+| Network Generic Device by SNMP | **not** on FortiGate | Leftover on FMG/FAZ until `--apply-fmg-faz` (then Observability companions nest **Fortinet FMG-FAZ by SNMP**) |
 
 Template-level macros (not globals, not Switch roles, **not role Firewall**). **`--apply-fortigate-http` writes these as ZabbixMacroAssignment on Platform FortiOS** (same as `--apply-firewall-macros` / Extreme `--apply`). The existing Zabbix monitoring TOKEN is preserved on that platform; the NetBox automation token is separate. FQDN is the same platform Jinja. None of these flags mass-HostSync Fortis.
 
@@ -353,32 +353,147 @@ Duplicate stock CPU/memory **High** triggers are silenced with CRIT 101. Compani
 
 ---
 
-## FortiManager
+## FortiManager / FortiAnalyzer
 
-No official Zabbix template ([ZBXNEXT-10433](https://support.zabbix.com/browse/ZBXNEXT-10433)).
+No official Zabbix template ([ZBXNEXT-10433](https://support.zabbix.com/browse/ZBXNEXT-10433) Won’t Do). Shared MIB `FORTINET-FORTIMANAGER-FORTIANALYZER-MIB` (`enterprises.12356.103`, build 3737). Do **not** assign FortiGate HTTP/SNMP or Network Generic onto these platforms (`icmpping` collision; wrong objects). Role Firewall is not the lever.
 
-| Thing | Alert | Sev |
+Three templates (VOSS/IQ parent + EXOS-style companions):
+
+| Template | Role |
+|---|---|
+| **Fortinet FMG-FAZ by SNMP** | Owns `icmpping` (do **not** also nest ICMP Ping or Network Generic). Chassis, HA, RAID, sensors, IF-MIB, ADOM/device LLD. Host dashboards **Health** (Overview / Hardware / Cluster) + **Network interfaces** |
+| **FortiManager Observability** | Nests the parent. **Devices** board. FGFM connect-down is the product ticket. Config out-of-sync stays collect-only (`{$FM.CONFIG.CONTROL}=0` — cfgit owns drift) |
+| **FortiAnalyzer Observability** | Nests the parent. **Logs** board. Log lag Average, log-disk **High** at 95% (log loss is the product). Device connect-down on the parent is the Zabbix choice for “device stopped sending logs” |
+
+Parent name has **no** `/` (Zabbix trigger paths are `/template/key`).
+
+### Observability
+
+| Rule | Here |
+|---|---|
+| Page **symptoms** | ICMP down (**High**). FAZ log disk **High** at 95% (documented exception — the product is about to drop data). Site Disaster is still not this template |
+| **Ticket** (Average) | Managed-device connect-down (`{$FM.DEVICE.CONTROL}=1`). RAID failed/degraded. Memory 90%. Disk 90%. HA peer-count if `{$FM.HA.EXPECTED}>0`. FAZ log lag 300s. FAZ licensed GB/day if cap is set. Watchers (unsupported items, nodata ICMP, zero interfaces, device census) |
+| **Graph** / next day | CPU 85, disk 80, RAID rebuild/init/verify, sensor out-of-range, iface errors, reboot, SNMP dead |
+| One incident | Watchers and chassis tickets hang off ICMP High then SNMP Warning. A dead box is one ICMP High, not a census fan-out |
+| Never silent | unsupported items; nodata ICMP 10m; zero interfaces after SNMP up 1h; device census if `{$FM.DEVICE.EXPECTED}>0` |
+| Collect first | Config out-of-sync **DISABLED**. ICMP loss/RTT **DISABLED** (Swiss proxy RTT is WAN). CPU High silenced (`{$CPU.UTIL.CRIT}=101`). RAID unavailable(0) silent (VMs). Util 101 |
+| Host dashboard | Parent **Health** + **Network interfaces**. FMG **Devices**. FAZ **Logs**. Same chrome as EXOS |
+| Severity | **Disaster** = site only. FAZ log-disk High is the documented product exception (same class as FortiOS memory extreme). Warning = next day |
+
+Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24/7; Average = ticket; Warning = next day; Info = log.
+
+### What we alert
+
+| Device | Alert | Sev | Notes |
+|---|---|---|---|
+| ICMP down | yes | **High** | Per chassis, not a cluster VIP. Own `icmpping` on the parent |
+| SNMP dead | yes | Warning | Mgmt blind; FMG/FAZ may still manage or ingest. Same as EXOS/VOSS/IQ |
+| ICMP loss / RTT | **no** | — | Items stay for Health; triggers **DISABLED** |
+| Unplanned reboot | yes | Warning | `fmSysUpTime < 10m`. Next day. Do not page |
+| CPU 85% | yes | Warning | `{$CPU.UTIL.WARN}`. Not a page |
+| CPU critical (95) | **no** | — | `{$CPU.UTIL.CRIT}=101` silences High |
+| Memory 90% | yes | Average | 5m |
+| Disk 80 / 90% | yes | Warning / Average | Parent. FAZ still has High at 95% on the companion |
+| FAZ log disk 95% | yes | **High** | FortiAnalyzer Observability. 03:00 page — ingest will stop |
+| FAZ log lag 60s / 300s | yes | Warning / Average | Receive-to-index delay. This is the FAZ product failure mode |
+| FAZ GB/day license | **no** until cap is known | Average when `{$FAZ.LIC.GBDAY.MAX}>0` | Default 0 disables |
+| RAID unavailable(0) | **no** | — | Normal on VMs |
+| RAID degraded / failed | yes | Average | Ticket, not a 03:00 page |
+| RAID init / verify / rebuild | yes | Warning | Background. Next day unless it stalls |
+| Temp vendor-state critical | yes | **High** | `out-of-range-critical` / `not-recoverable`. Same as switch chassis overtemp |
+| PSU / fan failed | yes | Average | `failed` / `input-lost`. `not-present` silent |
+| HA peer down | **no** until armed | Average when `{$FM.HA.CONTROL}=1` | Standalone default 0 |
+| HA peer count | **no** until expected is set | Average when `{$FM.HA.EXPECTED}>0` | Pair typically expects 1 |
+| Managed device offline | yes | Average | FGFM down on FMG; log device stopped sending on FAZ. Mute FAZ-native duplicates |
+| Config out-of-sync | **no** | — | Trigger **DISABLED**. cfgit owns drift |
+| Link down (admin-up ethernet) | yes | Average | Unused ports must be admin-down. Mute `{$IFCONTROL:"{#IFNAME}"}=0` |
+| Interface errors | yes | Warning | In **or** out |
+| Sustained util | **no** | dashboard | `{$IF.UTIL.MAX}=101` |
+| Serial / name / firmware changed | yes | Info | Manual close |
+
+Do **not** alert on: config drift (cfgit), every ADOM as a page, RAID unavailable on VMs, CPU as High, FortiGate objects, FAZ-native device-down **and** Zabbix connect-down together.
+
+### How it pages
+
+| What the operator sees | What actually fired | Do this |
 |---|---|---|
-| ICMP down | yes | **High** |
-| SNMP dead (if we keep Generic) | yes | Average |
-| Managed device sync / offline | later | page vs daily report — decide before enabling |
-| Config drift vs cfgit | **no** | cfgit’s job |
+| Box unreachable | Parent ICMP **High** (3 misses) | Console / OOB / RMA. Not a FortiGate WAN ticket |
+| SNMP blind, ping lives | Parent **No SNMP data** Warning | Community/user, ACL, proxy. Product may still run |
+| FortiGate disappeared from FMG | Parent **Managed device … is offline** Average | FGFM tunnel, routing, device down. Mute with `{$FM.DEVICE.CONTROL}=0` or name NOT_MATCHES |
+| Log device went quiet on FAZ | Same connect-down Average | Device stopped sending logs. Do **not** also ticket FAZ-native |
+| FAZ about to drop logs | Companion **Log disk is critically full** **High** | Free space / archive policy. This is the 03:00 page |
+| FAZ search lagging | Companion log lag Warning → Average | Disk/CPU/ingest path |
+| RAID unhappy | Parent RAID Average / rebuild Warning | Ticket. unavailable(0) is a VM, not a disk |
+| Chassis overtemp | Sensor **High** | Same as switch overtemp |
+| We went blind | Unsupported items / zero interfaces / device census Average | MIB/firmware, IFNAME filter, `{$FM.DEVICE.EXPECTED}` |
+| CPU 85% | Warning | Next day. Do not page |
+| Config drift | **Nothing here** | cfgit. Do not enable `{$FM.CONFIG.CONTROL}` |
 
-Live: platform FortiAnalyzer/Manager → **Network Generic** + `OS/Network`. Do **not** link FortiGate by HTTP.
+### Health / Devices / Logs dashboards
+
+After the Observability companion is linked: **Monitoring → Hosts → host → Dashboards**.
+
+| Board | Pages | What you see in 5 seconds |
+|---|---|---|
+| **Health** (parent) | Overview / Hardware / Cluster | ICMP / SNMP / CPU / **Uptime** (same four-tile chrome as EXOS). Fans/PSU/Temp honeycombs. HA mode, RAID, device count |
+| **Network interfaces** (parent) | Overview / Port | Admin-up ethernet map + traffic navigator |
+| **Devices** (FMG companion) | Overview | Managed-device count + FGFM connect honeycomb. Config honeycomb is inventory — cfgit owns tickets |
+| **Logs** (FAZ companion) | Overview | Disk gauge, log lag, log rate, GB/day, ADOM archive %, log-device connect |
+
+Widget type follows the EXOS rule: gauge = one headline number; item tile = identity or duration; honeycomb = many similar status cells; graph = trend.
+
+### Zero-touch / cutover
+
+**Do not re-run `configure_nbxsync_zerotouch.py` for this pack.** Zerotouch still floors FMG/FAZ on **Network Generic Device by SNMP** (`FortiAnalyzer/Manager`). Both that rule and the new Observability rules enabled would dual-link `icmpping`.
+
+**Live today** (until `--apply-fmg-faz`): platform FortiAnalyzer/Manager → Network Generic + `OS/Network`. SNMP Monitoring already belongs on those **platforms** (FortiGate HTTP apply moved it off role Firewall).
+
+**Operator path** (no zerotouch, no Extreme YAML, no HostSync, no FortiOS retarget):
+
+```bash
+python3 scripts/configure_nbxsync_network.py --check-fmg-faz
+python3 scripts/configure_nbxsync_network.py --apply-fmg-faz
+```
+
+That flag fail-closes if YAML is missing, no FMG/FAZ platform exists, or **SNMP Monitoring** is absent. It then:
+
+| Lever | What it writes |
+|---|---|
+| Import | **Fortinet FMG-FAZ by SNMP**, then **FortiManager Observability**, then **FortiAnalyzer Observability** |
+| Template Rule **FortiManager** | Observability companion + `OS/Network`. SNMP. Pattern `FortiManager` |
+| Template Rule **FortiAnalyzer** | Observability companion + `OS/Network`. SNMP. Pattern `FortiAnalyzer` |
+| Legacy **FortiAnalyzer/Manager** | **disabled** (Network Generic must not stay enabled) |
+| SNMP Monitoring | kept / assigned on FortiManager and FortiAnalyzer **platforms** |
+| Colliding templates | pruned from FMG/FAZ devices/platforms/device types: Network Generic, ICMP Ping, FortiGate HTTP/Observability/SNMP, and a direct parent link (companion nests it) |
+| Platform macros | FGFM connect on, config-sync off, HA control off, FAZ log-disk High=95 |
+
+Then HostSync the FMG/FAZ hosts (not the FortiGate fleet). Inheritance does not hit live Zabbix until that sync. If someone re-runs zerotouch, it will re-enable Network Generic — run `--apply-fmg-faz` again.
+
+### Macros (template defaults; apply writes platform overrides)
+
+```
+{$CPU.UTIL.WARN}            = 85
+{$CPU.UTIL.CRIT}            = 101
+{$MEMORY.UTIL.MAX}          = 90
+{$DISK.UTIL.WARN}           = 80
+{$DISK.UTIL.CRIT}           = 90
+{$DISK.UTIL.HIGH}           = 95      # FAZ Observability only
+{$IF.UTIL.MAX}              = 101
+{$FM.DEVICE.CONTROL}        = 1
+{$FM.DEVICE.EXPECTED}       = 0       # set after a quiet census
+{$FM.CONFIG.CONTROL}        = 0       # cfgit
+{$FM.HA.CONTROL}            = 0
+{$FM.HA.EXPECTED}           = 0       # pair = 1
+{$FAZ.LOG.LAG.WARN}         = 60
+{$FAZ.LOG.LAG.CRIT}         = 300
+{$FAZ.LIC.GBDAY.MAX}        = 0
+{$NET.IF.IFNAME.NOT_MATCHES}= ^(vlan|ssl|hamgmt|npu|disk)
+```
+
+OID map: [`templates/fortinet_fmg_faz_snmp/OID_MAPPING.md`](templates/fortinet_fmg_faz_snmp/OID_MAPPING.md).
 
 ---
 
-## FortiAnalyzer
-
-Same: no official template. Log disk **is** the product — disk High may be justified here later, unlike FortiGate.
-
-| Thing | Alert | Sev |
-|---|---|---|
-| ICMP down | yes | **High** |
-| Disk / log storage | later | Warning — log loss |
-| Device stopped sending logs | later | pick **one** of Zabbix vs FAZ-native (never silent, never both) |
-
----
 
 ## Canary acceptance (required before fleet HostSync)
 
@@ -403,6 +518,6 @@ Use **one standalone** and **one HA pair**. Do not mass-HostSync until this list
 
 ## Later
 
-Per-cluster REST tokens and Zabbix Vault secrets (fleet-wide token blast radius). Certificate verification + unique DNS/SANs per ha-mgmt. Logical HA cluster host if `ha.role` gating is not enough. Thin IPsec / session-table / sensor items (HTTP or a **minimal** SNMPv3 `authPriv` SHA/AES companion — never another `icmpping`, CPU family, or interface LLD). Named policy canaries. Site Disaster parent. Path Average → stock ICMP High parent (cannot be a template-level parent without a duplicate `icmpping` link). Memory extreme Disaster → High once the site parent exists. Circuit strategy / ISP commit graphs on [05](05-internet-circuits.md) reusing Path Loss/Probe. FMG device-sync. FAZ log ingest vs native.
+Per-cluster REST tokens and Zabbix Vault secrets (fleet-wide token blast radius). Certificate verification + unique DNS/SANs per ha-mgmt. Logical HA cluster host if `ha.role` gating is not enough. Thin IPsec / session-table / sensor items (HTTP or a **minimal** SNMPv3 `authPriv` SHA/AES companion — never another `icmpping`, CPU family, or interface LLD). Named policy canaries. Site Disaster parent. Path Average → stock ICMP High parent (cannot be a template-level parent without a duplicate `icmpping` link). Memory extreme Disaster → High once the site parent exists. Circuit strategy / ISP commit graphs on [05](05-internet-circuits.md) reusing Path Loss/Probe. FMG `{$FM.DEVICE.EXPECTED}` after a quiet census. FAZ `{$FAZ.LIC.GBDAY.MAX}` once the licensed cap is known.
 
 Do not block Extreme/AP cutover on this page.

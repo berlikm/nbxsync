@@ -1,0 +1,3100 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 36bff6c29af64692839d077febfc7079
+      name: Templates/Network devices
+  templates:
+    - uuid: bc3b3b54fd984bf588f6bb8e2bcafd0e
+      template: Fortinet FMG-FAZ by SNMP
+      name: Fortinet FMG-FAZ by SNMP
+      description: |
+        SNMP template for FortiManager and FortiAnalyzer (shared FORTINET-FORTIMANAGER-FORTIANALYZER-MIB,
+        enterprises.12356.103, build 3737). There is no official Zabbix template (ZBXNEXT-10433).
+        
+        Do not also link Network Generic or ICMP Ping (icmpping collision). Do not assign
+        FortiGate HTTP/SNMP. Platform Template Rules FortiManager / FortiAnalyzer point at
+        the Observability companions, which nest this parent.
+        
+        Health (Overview / Hardware / Cluster) and Network interfaces ship here — same chrome
+        as EXOS/VOSS/IQ. Device and log product boards live on the companions.
+        
+        Operator page: zabbix/03-fortinet.md. OIDs: templates/fortinet_fmg_faz_snmp/OID_MAPPING.md.
+      groups:
+        - name: Templates/Network devices
+      items:
+      - uuid: 6c81b20aa4924e6684851e88cc10a66f
+        name: ICMP ping
+        type: SIMPLE
+        key: icmpping
+        description: Host accessibility by ICMP ping. Do not also link Network Generic or ICMP Ping.
+        valuemap:
+          name: Service state
+        tags:
+          - tag: component
+            value: health
+        triggers:
+          - uuid: 1f11f5503a944378b21fdd54d646bf3d
+            expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+            name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+            priority: HIGH
+            description: Last three ICMP attempts failed. Per chassis, not a cluster VIP.
+            tags:
+              - tag: scope
+                value: availability
+      - uuid: d32c2dc9030241f694f48b538b4a60e7
+        name: ICMP loss
+        type: SIMPLE
+        key: icmppingloss
+        value_type: FLOAT
+        units: '%'
+        tags:
+          - tag: component
+            value: health
+        triggers:
+          - uuid: 5bef148a4c9e432799483f870f1f60d2
+            expression: 'min(/Fortinet FMG-FAZ by SNMP/icmppingloss,5m)>{$ICMP_LOSS_WARN} and min(/Fortinet FMG-FAZ by SNMP/icmppingloss,5m)<100'
+            name: 'Fortinet FMG-FAZ by SNMP: High ICMP ping loss'
+            status: DISABLED
+            priority: WARNING
+            description: CH proxy loss is WAN. Collect; do not page.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+            tags:
+              - tag: scope
+                value: availability
+      - uuid: c3fa6e54a90f4e08880c8f2858fb5e63
+        name: ICMP response time
+        type: SIMPLE
+        key: icmppingsec
+        value_type: FLOAT
+        units: s
+        tags:
+          - tag: component
+            value: health
+        triggers:
+          - uuid: 49f6df84e7c04749af51e00c20d1708d
+            expression: 'avg(/Fortinet FMG-FAZ by SNMP/icmppingsec,5m)>{$ICMP_RESPONSE_TIME_WARN}'
+            name: 'Fortinet FMG-FAZ by SNMP: High ICMP ping response time'
+            status: DISABLED
+            priority: WARNING
+            description: CH proxy RTT is WAN. Collect; do not page.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+            tags:
+              - tag: scope
+                value: performance
+      - uuid: f0f7afc2d004405cb1a8264c44330144
+        name: SNMP agent availability
+        type: INTERNAL
+        key: 'zabbix[host,snmp,available]'
+        description: 0 not available, 1 available, 2 unknown. Mgmt blind; the product may still run.
+        valuemap:
+          name: zabbix.host.available
+        tags:
+          - tag: component
+            value: health
+        triggers:
+          - uuid: 4fc46a5b2f2444d998ade7c571508503
+            expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+            priority: WARNING
+            description: Mgmt blind; FMG/FAZ may still manage devices or ingest logs. Next day, same as EXOS/VOSS/IQ.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+            tags:
+              - tag: scope
+                value: availability
+      - uuid: 27690d94b3ac49fb8680b95b272994ae
+        name: Unsupported item count
+        type: INTERNAL
+        key: 'zabbix[host,,items_unsupported]'
+        delay: 15m
+        description: Watch the watcher — missing FMG-FAZ MIB objects look like green health. RAID/sensor LLD maps not-supported to empty so VM appliances stay quiet.
+        tags:
+          - tag: component
+            value: health
+        triggers:
+          - uuid: 2e3a691ea350482cbbcce1c029fd6261
+            expression: 'min(/Fortinet FMG-FAZ by SNMP/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.MAX}'
+            name: 'Fortinet FMG-FAZ by SNMP: Too many unsupported items'
+            priority: AVERAGE
+            description: SNMP=1 but items unsupported — firmware/OID mismatch, not a cable.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+            tags:
+              - tag: scope
+                value: availability
+      - uuid: 371c94e005b94912b07c103fd485239e
+        name: ICMP
+        type: CALCULATED
+        key: fm.observability.icmp
+        delay: 1m
+        value_type: FLOAT
+        params: last(//icmpping)
+        description: Headline ICMP for the Overview gauge and nodata watcher.
+        valuemap:
+          name: Service state
+        tags:
+          - tag: component
+            value: health
+        triggers:
+          - uuid: 811f13fdf4ba494fa78d8825ede2a0e3
+            expression: nodata(/Fortinet FMG-FAZ by SNMP/fm.observability.icmp,10m)=1
+            name: 'Fortinet FMG-FAZ by SNMP: no ICMP data for 10m'
+            priority: AVERAGE
+            description: Watcher — proxy/host unknown, not ICMP down. Dead box is ICMP High.
+            tags:
+              - tag: scope
+                value: availability
+      - uuid: f598e8342ebe4c1a90b438b57e865aff
+        name: SNMP
+        type: CALCULATED
+        key: fm.observability.snmp
+        delay: 1m
+        value_type: FLOAT
+        params: 'last(//zabbix[host,snmp,available])'
+        description: Headline SNMP for the Overview gauge.
+        valuemap:
+          name: zabbix.host.available
+        tags:
+          - tag: component
+            value: health
+      - uuid: 053f22a3720d42f093ea2d3b59b2da85
+        name: Interface discovery seed (not a port)
+        type: CALCULATED
+        key: 'net.if.status[ifOperStatus.__seed]'
+        delay: 1m
+        value_type: FLOAT
+        history: 1d
+        trends: '0'
+        params: 0
+        description: Always-present net.if.status key so count(exists_foreach) never becomes unsupported. Subtracted in net.if.discovery.count. Do not graph.
+        tags:
+          - tag: component
+            value: health
+      - uuid: be76d3ca16df4d37835dd8c9aaf463ad
+        name: Discovered interface count
+        type: CALCULATED
+        key: net.if.discovery.count
+        delay: 1m
+        value_type: FLOAT
+        history: 7d
+        params: 'count(exists_foreach(//net.if.status[*]))-1'
+        description: Enabled IF-MIB oper-status items minus the seed. Zero with SNMP up is the IFNAME/IFTYPE LLD break.
+        tags:
+          - tag: component
+            value: health
+        triggers:
+          - uuid: 7a794ebb3ae241ef96ac567ec5f44a14
+            expression: 'min(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],1h)=1 and last(/Fortinet FMG-FAZ by SNMP/net.if.discovery.count)<{$NET.IF.DISCOVERY.MIN}'
+            name: 'Fortinet FMG-FAZ by SNMP: No discovered interfaces after SNMP is up'
+            priority: AVERAGE
+            description: SNMP has been up for 1h and LLD produced no enabled net.if.status items. Count stays 0 (supported) while empty.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+            tags:
+              - tag: scope
+                value: availability
+      - uuid: fa4b3596055c41408dfed119de2bc8f0
+        name: Managed device discovery seed (not a device)
+        type: CALCULATED
+        key: 'fm.device.connect[__seed]'
+        delay: 1m
+        value_type: FLOAT
+        history: 1d
+        trends: '0'
+        params: 0
+        description: Always-present fm.device.connect key so count(exists_foreach) never becomes unsupported. Subtracted in fm.device.discovery.count.
+        tags:
+          - tag: component
+            value: health
+      - uuid: b7d096dc27044f2f8094b926a3f08803
+        name: Discovered managed-device count
+        type: CALCULATED
+        key: fm.device.discovery.count
+        delay: 1m
+        value_type: FLOAT
+        history: 7d
+        params: 'count(exists_foreach(//fm.device.connect[*]))-1'
+        description: 'Enabled managed-device connect items minus the seed. Census uses fm.device.number against {$FM.DEVICE.EXPECTED}.'
+        tags:
+          - tag: component
+            value: health
+        triggers:
+          - uuid: 9791a05a5d0942c6843f48e6ee6792ed
+            expression: '{$FM.DEVICE.EXPECTED}>0 and min(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],1h)=1 and last(/Fortinet FMG-FAZ by SNMP/fm.device.number)<>{$FM.DEVICE.EXPECTED}'
+            name: 'Fortinet FMG-FAZ by SNMP: Managed device count unexpected'
+            priority: AVERAGE
+            description: 'SNMP up 1h and fmDeviceNumber differs from {$FM.DEVICE.EXPECTED}. Default 0 disables this. Set the known count after a quiet census.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: availability
+      - uuid: 3cde4c6110554c4abd437cd77fc1fc20
+        name: System name
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.2.1.1.5.0
+        key: system.name
+        delay: 1h
+        value_type: CHAR
+        history: 7d
+        trends: '0'
+        inventory_link: NAME
+        preprocessing:
+          - type: DISCARD_UNCHANGED_HEARTBEAT
+            parameters:
+              - 6h
+        tags:
+          - tag: component
+            value: system
+        triggers:
+          - uuid: e2b3c48c57294ec8bc49f79ad906620d
+            expression: 'last(/Fortinet FMG-FAZ by SNMP/system.name,#1)<>last(/Fortinet FMG-FAZ by SNMP/system.name,#2) and length(last(/Fortinet FMG-FAZ by SNMP/system.name))>0'
+            name: 'Fortinet FMG-FAZ by SNMP: System name has changed'
+            priority: INFO
+            description: Possible replacement or rename. Acknowledge to close.
+            manual_close: 'YES'
+            tags:
+              - tag: scope
+                value: notice
+      - uuid: 3a84e1df78e74c6fb7f2e3f2df45720d
+        name: System description
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.2.1.1.1.0
+        key: system.descr
+        delay: 1h
+        value_type: CHAR
+        history: 7d
+        trends: '0'
+        preprocessing:
+          - type: DISCARD_UNCHANGED_HEARTBEAT
+            parameters:
+              - 6h
+        tags:
+          - tag: component
+            value: system
+      - uuid: 0e881224ef2c4fa19717a916ab872b5d
+        name: Firmware version
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.7.0
+        key: fm.sys.version
+        delay: 1h
+        value_type: CHAR
+        history: 7d
+        trends: '0'
+        description: 'MIB: fmSysVersion.'
+        inventory_link: OS
+        preprocessing:
+          - type: DISCARD_UNCHANGED_HEARTBEAT
+            parameters:
+              - 6h
+        tags:
+          - tag: component
+            value: system
+        triggers:
+          - uuid: 3df730a09101417fbb5c4bde869a414d
+            expression: 'last(/Fortinet FMG-FAZ by SNMP/fm.sys.version,#1)<>last(/Fortinet FMG-FAZ by SNMP/fm.sys.version,#2) and length(last(/Fortinet FMG-FAZ by SNMP/fm.sys.version))>0'
+            name: 'Fortinet FMG-FAZ by SNMP: Firmware version has changed'
+            priority: INFO
+            description: Firmware updated or box replaced. Acknowledge to close.
+            manual_close: 'YES'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: System name has changed'
+                expression: 'last(/Fortinet FMG-FAZ by SNMP/system.name,#1)<>last(/Fortinet FMG-FAZ by SNMP/system.name,#2) and length(last(/Fortinet FMG-FAZ by SNMP/system.name))>0'
+            tags:
+              - tag: scope
+                value: notice
+      - uuid: d08127306ed6463b9f8ef32b9a04b5ee
+        name: Serial number
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.100.1.1.1.0
+        key: system.hw.serialnumber
+        delay: 1h
+        value_type: CHAR
+        history: 7d
+        trends: '0'
+        description: 'MIB: FORTINET-CORE-MIB fnSysSerial.'
+        inventory_link: SERIALNO_A
+        preprocessing:
+          - type: DISCARD_UNCHANGED_HEARTBEAT
+            parameters:
+              - 6h
+        tags:
+          - tag: component
+            value: system
+        triggers:
+          - uuid: cd209470eea345caa4c8603c479f7033
+            expression: 'last(/Fortinet FMG-FAZ by SNMP/system.hw.serialnumber,#1)<>last(/Fortinet FMG-FAZ by SNMP/system.hw.serialnumber,#2) and length(last(/Fortinet FMG-FAZ by SNMP/system.hw.serialnumber))>0'
+            name: 'Fortinet FMG-FAZ by SNMP: Device has been replaced'
+            priority: INFO
+            description: Serial changed. Acknowledge to close.
+            manual_close: 'YES'
+            tags:
+              - tag: scope
+                value: notice
+          - uuid: 7482951251914ecaac560ce6fe376723
+            expression: 'nodata(/Fortinet FMG-FAZ by SNMP/system.hw.serialnumber,2h)=1 and last(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available])=1'
+            name: 'Fortinet FMG-FAZ by SNMP: Serial number is missing while SNMP is up'
+            priority: WARNING
+            description: SNMP answers but fnSysSerial is silent.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: notice
+      - uuid: cedb886c8c28469a8f3c3f7f669fc94a
+        name: Uptime (network)
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.1.3.0]
+        key: 'system.net.uptime[sysUpTime.0]'
+        delay: 1m
+        trends: '0'
+        units: uptime
+        description: SNMPv2-MIB sysUpTime. Overview 4th tile (same as EXOS/VOSS/IQ).
+        preprocessing:
+          - type: MULTIPLIER
+            parameters:
+              - '0.01'
+        tags:
+          - tag: component
+            value: system
+      - uuid: baa10d157e17408b8e9cd42c3e7bb50f
+        name: Uptime (FMG/FAZ 64-bit)
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.8.0
+        key: fm.sys.uptime
+        delay: 1m
+        trends: '0'
+        units: uptime
+        description: 'MIB: fmSysUpTime. Counter64 hundredths. Reboot uses this (no wrap like sysUpTime).'
+        preprocessing:
+          - type: MULTIPLIER
+            parameters:
+              - '0.01'
+        tags:
+          - tag: component
+            value: system
+        triggers:
+          - uuid: 024d4ba83fc2474d95cacfb06b9ebcfc
+            expression: last(/Fortinet FMG-FAZ by SNMP/fm.sys.uptime)<10m
+            name: 'Fortinet FMG-FAZ by SNMP: Host has been restarted'
+            priority: WARNING
+            description: fmSysUpTime under 10 minutes. Next day, same as EXOS unplanned reboot. Do not page.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: notice
+      - uuid: 47ff8deb3cb048b8be203c80dcbc5c13
+        name: CPU utilization
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.1.0
+        key: fm.sys.cpu.util
+        delay: 1m
+        value_type: FLOAT
+        units: '%'
+        description: 'MIB: fmSysCpuUsage (0..100).'
+        tags:
+          - tag: component
+            value: cpu
+        triggers:
+          - uuid: 407c9b35bea7493d94196d9fd593c21e
+            expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.sys.cpu.util,5m)>{$CPU.UTIL.WARN}'
+            name: 'Fortinet FMG-FAZ by SNMP: High CPU utilization'
+            priority: WARNING
+            description: 'Ops threshold {$CPU.UTIL.WARN}. Not a page.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: performance
+          - uuid: 09b53e67caf541cab9d1fbd92f07d9be
+            expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.sys.cpu.util,5m)>{$CPU.UTIL.CRIT}'
+            name: 'Fortinet FMG-FAZ by SNMP: Critical CPU utilization'
+            status: DISABLED
+            priority: AVERAGE
+            description: '{$CPU.UTIL.CRIT}=101 silences this. Enable only after a quiet pilot.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: High CPU utilization'
+                expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.sys.cpu.util,5m)>{$CPU.UTIL.WARN}'
+            tags:
+              - tag: scope
+                value: performance
+      - uuid: a231356d11dc44db945eeba6071526da
+        name: CPU utilization (exclude nice)
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.6.0
+        key: fm.sys.cpu.util.excl.nice
+        delay: 1m
+        value_type: FLOAT
+        units: '%'
+        description: 'MIB: fmSysCpuUsageExcludedNice. Optional; not-supported maps to 0.'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: cpu
+      - uuid: a49aa7d643f94ad7ae1f9daae804304c
+        name: Memory used
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.2.0
+        key: fm.sys.mem.used
+        delay: 1m
+        units: B
+        description: 'MIB: fmSysMemUsed (KB).'
+        preprocessing:
+          - type: MULTIPLIER
+            parameters:
+              - '1024'
+        tags:
+          - tag: component
+            value: memory
+      - uuid: 0dfddc9dbf5542249be07173b2b7fd5d
+        name: Memory capacity
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.3.0
+        key: fm.sys.mem.capacity
+        delay: 1m
+        units: B
+        description: 'MIB: fmSysMemCapacity (KB), physical+swap.'
+        preprocessing:
+          - type: MULTIPLIER
+            parameters:
+              - '1024'
+        tags:
+          - tag: component
+            value: memory
+      - uuid: 2a21a1ee2c22451aab2868209241aa2b
+        name: Memory utilization
+        type: CALCULATED
+        key: fm.sys.mem.util
+        delay: 1m
+        value_type: FLOAT
+        units: '%'
+        params: '(last(//fm.sys.mem.capacity)>0)*((last(//fm.sys.mem.used)/last(//fm.sys.mem.capacity))*100)'
+        description: fmSysMemUsed / fmSysMemCapacity. Capacity 0 stays 0, not unsupported.
+        tags:
+          - tag: component
+            value: memory
+        triggers:
+          - uuid: 82af19de154d49098f3baf922df0f131
+            expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.sys.mem.util,5m)>{$MEMORY.UTIL.MAX}'
+            name: 'Fortinet FMG-FAZ by SNMP: High memory utilization'
+            priority: AVERAGE
+            description: 'Memory above {$MEMORY.UTIL.MAX} for 5m.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: performance
+      - uuid: bd6a2dcf8d794b17985d49b1bbb08a06
+        name: Disk used
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.4.0
+        key: fm.sys.disk.used
+        delay: 1m
+        units: B
+        description: 'MIB: fmSysDiskUsage (MB). FAZ log disk is the product.'
+        preprocessing:
+          - type: MULTIPLIER
+            parameters:
+              - '1048576'
+        tags:
+          - tag: component
+            value: storage
+      - uuid: d2cdfa6a4d904ca198b38a846a78de5e
+        name: Disk capacity
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.5.0
+        key: fm.sys.disk.capacity
+        delay: 1m
+        units: B
+        description: 'MIB: fmSysDiskCapacity (MB).'
+        preprocessing:
+          - type: MULTIPLIER
+            parameters:
+              - '1048576'
+        tags:
+          - tag: component
+            value: storage
+      - uuid: f4d7e2d9d43e46e195685437766c312e
+        name: Disk utilization
+        type: CALCULATED
+        key: fm.sys.disk.util
+        delay: 1m
+        value_type: FLOAT
+        units: '%'
+        params: '(last(//fm.sys.disk.capacity)>0)*((last(//fm.sys.disk.used)/last(//fm.sys.disk.capacity))*100)'
+        description: fmSysDiskUsage / fmSysDiskCapacity. FAZ High is on FortiAnalyzer Observability.
+        tags:
+          - tag: component
+            value: storage
+        triggers:
+          - uuid: fc4ab220db584e65b30e5aa2ea27fe2f
+            expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.sys.disk.util,15m)>{$DISK.UTIL.WARN} and min(/Fortinet FMG-FAZ by SNMP/fm.sys.disk.util,15m)<={$DISK.UTIL.CRIT}'
+            name: 'Fortinet FMG-FAZ by SNMP: High disk utilization'
+            priority: WARNING
+            description: 'Disk above {$DISK.UTIL.WARN}. Next day on FMG; FAZ still has Average/High above this.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+          - uuid: b3c294faca804cd98cc3a7afaae6d45f
+            expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.sys.disk.util,10m)>{$DISK.UTIL.CRIT}'
+            name: 'Fortinet FMG-FAZ by SNMP: Critically high disk utilization'
+            priority: AVERAGE
+            description: 'Disk above {$DISK.UTIL.CRIT}. Ticket. FAZ Observability adds High at {$DISK.UTIL.HIGH}.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+      - uuid: 7b34cbaed69e4edc90ce30d8c3b6b3f8
+        name: Log receive rate
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.10.0
+        key: fm.sys.log.rate.hr
+        delay: 1m
+        value_type: FLOAT
+        units: logs/s
+        description: 'MIB: fmSysLogRateHr (FmHundredths). FAZ product signal; FMG often 0.'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+          - type: MULTIPLIER
+            parameters:
+              - '0.01'
+        tags:
+          - tag: component
+            value: log
+      - uuid: ca2f013924ad4c3d9c412c15e8a3dccc
+        name: Log indexing rate
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.11.0
+        key: fm.sys.log.index.rate
+        delay: 1m
+        value_type: FLOAT
+        units: logs/s
+        description: 'MIB: fmSysLogIndexingRate (FmHundredths).'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+          - type: MULTIPLIER
+            parameters:
+              - '0.01'
+        tags:
+          - tag: component
+            value: log
+      - uuid: b0b2fc14806f4bdfb27466ece3bbbd86
+        name: Log lag
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.12.0
+        key: fm.sys.log.lag
+        delay: 1m
+        units: s
+        description: 'MIB: fmSysLogLagTime. Receive-to-index delay. Triggers live on FortiAnalyzer Observability.'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: log
+      - uuid: 840dc0d26ba142c5959dc62a21d5f69c
+        name: License GB/day today
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.13.0
+        key: fm.sys.lic.gbday.today
+        delay: 1m
+        value_type: FLOAT
+        units: GB
+        description: 'MIB: fmSysLicGbDayToday (FmHundredths GiB).'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+          - type: MULTIPLIER
+            parameters:
+              - '0.01'
+        tags:
+          - tag: component
+            value: license
+      - uuid: 6a1bf2e795074e38b2012a8bf3c1a72d
+        name: License GB/day yesterday
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.14.0
+        key: fm.sys.lic.gbday.yesterday
+        delay: 1m
+        value_type: FLOAT
+        units: GB
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+          - type: MULTIPLIER
+            parameters:
+              - '0.01'
+        tags:
+          - tag: component
+            value: license
+      - uuid: cc134095be254d8b91ef799298a984ed
+        name: License GB/day week average
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.2.1.15.0
+        key: fm.sys.lic.gbday.weekavg
+        delay: 1m
+        value_type: FLOAT
+        units: GB
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+          - type: MULTIPLIER
+            parameters:
+              - '0.01'
+        tags:
+          - tag: component
+            value: license
+      - uuid: a647d0b0829a4743a2d2c137071f9f49
+        name: Managed device number
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.6.1.1.0
+        key: fm.device.number
+        delay: 1m
+        description: 'MIB: fmDeviceNumber. FMG = managed FortiGates; FAZ = log devices.'
+        tags:
+          - tag: component
+            value: inventory
+      - uuid: 5c0d6c50c842455e9580b0074a48054c
+        name: VDOM number
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.6.1.2.0
+        key: fm.vdom.number
+        delay: 1m
+        description: 'MIB: fmVdomNumber.'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: inventory
+      - uuid: 4b6bcbe483694054973e844bd3b03068
+        name: ADOM enabled
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.5.1.1.0
+        key: fm.adom.enabled
+        delay: 1m
+        description: 'MIB: fmAdomEnabled.'
+        valuemap:
+          name: Fortinet FnBoolState
+        tags:
+          - tag: component
+            value: inventory
+      - uuid: f77a0d50e92c4e6abcbc5e7688d5f8a0
+        name: ADOM number
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.5.1.2.0
+        key: fm.adom.number
+        delay: 1m
+        description: 'MIB: fmAdomNumber.'
+        tags:
+          - tag: component
+            value: inventory
+      - uuid: cc99d33c72e14c31880bc7f30ed29507
+        name: ADOM maximum
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.5.1.3.0
+        key: fm.adom.max
+        delay: 1m
+        description: 'MIB: fmAdomMax (license/hardware cap).'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: inventory
+      - uuid: ee99b6c54eb04c808c55871187cd398a
+        name: HA mode
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.9.1.1.0
+        key: fm.ha.mode
+        delay: 1m
+        description: 'MIB: fmHaMode. standalone(0) is the estate default.'
+        valuemap:
+          name: Fortinet fmHaMode
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: ha
+      - uuid: 2c6391f8134d4dfea35d1d9db50a29a9
+        name: HA cluster id
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.9.1.2.0
+        key: fm.ha.cluster.id
+        delay: 1m
+        description: 'MIB: fmHaClusterId.'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: ha
+      - uuid: 97841cb0f0754349907cd82fccbcfbf9
+        name: HA peer number
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.9.1.3.0
+        key: fm.ha.peer.number
+        delay: 1m
+        description: 'MIB: fmHaPeerNumber. Standalone is 0.'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: ha
+        triggers:
+          - uuid: ecbc74c4b5bb4451b2f5e9d4355992f2
+            expression: '{$FM.HA.EXPECTED}>0 and last(/Fortinet FMG-FAZ by SNMP/fm.ha.peer.number)<>{$FM.HA.EXPECTED}'
+            name: 'Fortinet FMG-FAZ by SNMP: HA peer count unexpected'
+            priority: AVERAGE
+            description: 'Peer count differs from {$FM.HA.EXPECTED}. Default 0 disables this (standalone). Pair typically expects 1.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: availability
+      - uuid: 064478d1ad374c1a9728bc4948085a12
+        name: RAID level
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.7.1.1.0
+        key: fm.raid.level
+        delay: 1m
+        description: 'MIB: fmRaidLevel. unavailable(0) is normal on VMs.'
+        valuemap:
+          name: Fortinet fmRaidLevel
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: storage
+      - uuid: 18330d5d6cb14b7ea157fda31b8e50ce
+        name: RAID state
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.7.1.2.0
+        key: fm.raid.state
+        delay: 1m
+        description: 'MIB: fmRaidState. unavailable(0) is not an alert (no RAID).'
+        valuemap:
+          name: Fortinet fmRaidState
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: storage
+        triggers:
+          - uuid: 3e5591acbfdf4fac82c8caadbad4cc5b
+            expression: min(/Fortinet FMG-FAZ by SNMP/fm.raid.state,5m)=2
+            name: 'Fortinet FMG-FAZ by SNMP: RAID array is degraded'
+            priority: AVERAGE
+            description: 'RAID degraded. Ticket; not a 03:00 page. unavailable(0) stays silent.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+          - uuid: 57d3dc42721e4761892719d24f5582c9
+            expression: min(/Fortinet FMG-FAZ by SNMP/fm.raid.state,3m)=3
+            name: 'Fortinet FMG-FAZ by SNMP: RAID array has failed'
+            priority: AVERAGE
+            description: 'RAID failed. Ticket. FAZ log-disk High is a separate companion trigger when used% is extreme.'
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+          - uuid: 08559a3272a943fd9e5724ad6c732ea5
+            expression: min(/Fortinet FMG-FAZ by SNMP/fm.raid.state,5m)=4
+            name: 'Fortinet FMG-FAZ by SNMP: RAID array is initializing'
+            priority: WARNING
+            description: Background initialize. Next day unless it stalls in degraded/failed.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+          - uuid: 2e679ef311f8407ba19d5cace7ded759
+            expression: min(/Fortinet FMG-FAZ by SNMP/fm.raid.state,5m)=5
+            name: 'Fortinet FMG-FAZ by SNMP: RAID array is verifying'
+            priority: WARNING
+            description: Background verify. Next day unless it stalls in degraded/failed.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+          - uuid: 694a37c4a0ff4dffb63f8c43e7f88d7c
+            expression: min(/Fortinet FMG-FAZ by SNMP/fm.raid.state,5m)=6
+            name: 'Fortinet FMG-FAZ by SNMP: RAID array is rebuilding'
+            priority: WARNING
+            description: Background rebuild. Next day unless it stalls.
+            dependencies:
+              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+            tags:
+              - tag: scope
+                value: capacity
+      - uuid: cc949ac1da32460ab0684c0cb8cd8ed3
+        name: RAID size
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.7.1.3.0
+        key: fm.raid.size
+        delay: 1m
+        units: GB
+        description: 'MIB: fmRaidSize.'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: storage
+      - uuid: 758b9ec576bc40a2b940dec04593fdad
+        name: RAID disk number
+        type: SNMP_AGENT
+        snmp_oid: 1.3.6.1.4.1.12356.103.7.1.4.0
+        key: fm.raid.disk.number
+        delay: 1m
+        description: 'MIB: fmRaidDiskNumber.'
+        preprocessing:
+          - type: CHECK_NOT_SUPPORTED
+            parameters:
+              - '-1'
+            error_handler: CUSTOM_VALUE
+            error_handler_params: '0'
+        tags:
+          - tag: component
+            value: storage
+      discovery_rules:
+        - uuid: fd64ad2cc80e42ac9733f6d39c67161c
+          name: Network interface discovery
+          type: SNMP_AGENT
+          snmp_oid: discovery[{#IFNAME},1.3.6.1.2.1.31.1.1.1.1,{#IFTYPE},1.3.6.1.2.1.2.2.1.3,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8,{#IFALIAS},1.3.6.1.2.1.31.1.1.1.18]
+          key: net.if.discovery
+          delay: 1h
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: 'Admin-up ethernet only. Unused ports must be admin-down. Mute with {$IFCONTROL:"{#IFNAME}"}=0.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                  	var data = JSON.parse(value);
+                  } catch (error) {
+                  	throw 'Failed to parse JSON of FMG/FAZ discovery.';
+                  }
+                  var fields = ['{#IFNAME}','{#IFTYPE}','{#IFADMINSTATUS}','{#IFOPERSTATUS}','{#IFALIAS}'];
+                  data.forEach(function (element) {
+                  	fields.forEach(function (field) {
+                  		element[field] = element[field] || '';
+                  	});
+                  });
+                  return JSON.stringify(data);
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#IFNAME}'
+                value: '{$NET.IF.IFNAME.MATCHES}'
+                formulaid: A
+              - macro: '{#IFNAME}'
+                value: '{$NET.IF.IFNAME.NOT_MATCHES}'
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+              - macro: '{#IFTYPE}'
+                value: '{$NET.IF.IFTYPE.MATCHES}'
+                formulaid: C
+              - macro: '{#IFADMINSTATUS}'
+                value: '{$NET.IF.IFADMINSTATUS.MATCHES}'
+                formulaid: D
+          item_prototypes:
+            - uuid: 2446bcb489cc471388e9dbdba3a3db12
+              name: 'Interface {#IFNAME}: Operational status'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.2.2.1.8.{#SNMPINDEX}'
+              key: 'net.if.status[ifOperStatus.{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              trends: '0'
+              valuemap:
+                name: 'IF-MIB::ifStatus'
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFNAME}'
+              trigger_prototypes:
+                - uuid: c70068ca62074fc3896c4a24cca35099
+                  expression: '{$IFCONTROL}=1 and min(/Fortinet FMG-FAZ by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#3)<>1'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/Fortinet FMG-FAZ by SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL}=0'
+                  name: 'Fortinet FMG-FAZ by SNMP: Interface {#IFNAME}: Link down'
+                  priority: AVERAGE
+                  description: 'Admin-up ethernet not up for 3×1m, including never-up and lowerLayerDown. Unused ports must be admin-down. Mute with {$IFCONTROL:"{#IFNAME}"}=0.'
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: 4da4693ea83e4d799392dc0e6d7bbb4a
+              name: 'Interface {#IFNAME}: Bits received'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.31.1.1.1.6.{#SNMPINDEX}'
+              key: 'net.if.in[ifHCInOctets.{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              trends: 365d
+              units: bps
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+                - type: MULTIPLIER
+                  parameters:
+                    - '8'
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFNAME}'
+            - uuid: 29abe56fe9d549d682ddca3cbbbbbe67
+              name: 'Interface {#IFNAME}: Bits sent'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.31.1.1.1.10.{#SNMPINDEX}'
+              key: 'net.if.out[ifHCOutOctets.{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              trends: 365d
+              units: bps
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+                - type: MULTIPLIER
+                  parameters:
+                    - '8'
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFNAME}'
+            - uuid: bf6ac00c78ad4e45872a9c6bffecede0
+              name: 'Interface {#IFNAME}: Inbound packets with errors'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.2.2.1.14.{#SNMPINDEX}'
+              key: 'net.if.in.errors[ifInErrors.{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFNAME}'
+              trigger_prototypes:
+                - uuid: f478f33c19c34849a60881989bf8e550
+                  expression: '{$IFCONTROL}=1 and (min(/Fortinet FMG-FAZ by SNMP/net.if.in.errors[ifInErrors.{#SNMPINDEX}],5m)>{$IF.ERRORS.WARN} or min(/Fortinet FMG-FAZ by SNMP/net.if.out.errors[ifOutErrors.{#SNMPINDEX}],5m)>{$IF.ERRORS.WARN})'
+                  name: 'Fortinet FMG-FAZ by SNMP: Interface {#IFNAME}: High error rate'
+                  priority: WARNING
+                  description: 'In or out error rate above {$IF.ERRORS.WARN}. Next day.'
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: performance
+            - uuid: b856495ca9ae42008f31a098c944eb2b
+              name: 'Interface {#IFNAME}: Outbound packets with errors'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.2.2.1.20.{#SNMPINDEX}'
+              key: 'net.if.out.errors[ifOutErrors.{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFNAME}'
+            - uuid: 84e358c4fa1e4f01b76fc81fb58f7a20
+              name: 'Interface {#IFNAME}: Speed'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.31.1.1.1.15.{#SNMPINDEX}'
+              key: 'net.if.speed[ifHighSpeed.{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              trends: '0'
+              units: bps
+              preprocessing:
+                - type: MULTIPLIER
+                  parameters:
+                    - '1000000'
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFNAME}'
+          graph_prototypes:
+            - uuid: cdc5b30581ff461395b303b5142999b1
+              name: 'Interface {#IFNAME}: Network traffic'
+              graph_items:
+                - drawtype: GRADIENT_LINE
+                  color: 199C0D
+                  item:
+                    host: Fortinet FMG-FAZ by SNMP
+                    key: 'net.if.in[ifHCInOctets.{#SNMPINDEX}]'
+                - sortorder: '1'
+                  drawtype: BOLD_LINE
+                  color: F63100
+                  item:
+                    host: Fortinet FMG-FAZ by SNMP
+                    key: 'net.if.out[ifHCOutOctets.{#SNMPINDEX}]'
+        - uuid: 8f6c7049e67d4ae9a5874ab826402ccd
+          name: Hardware sensor discovery
+          type: SNMP_AGENT
+          snmp_oid: discovery[{#SENSOR_NAME},1.3.6.1.4.1.12356.103.8.2.1.2,{#SENSOR_TYPE},1.3.6.1.4.1.12356.103.8.2.1.4,{#SENSOR_STATE},1.3.6.1.4.1.12356.103.8.2.1.5]
+          key: fm.sensor.discovery
+          delay: 15m
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: 'MIB: fmSensorTable. Empty on VMs (maps to []). State is the alert; value is DisplayString inventory.'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '[]'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                  	var data = JSON.parse(value);
+                  } catch (error) {
+                  	throw 'Failed to parse JSON of FMG/FAZ discovery.';
+                  }
+                  var fields = ['{#SENSOR_NAME}','{#SENSOR_TYPE}','{#SENSOR_STATE}'];
+                  data.forEach(function (element) {
+                  	fields.forEach(function (field) {
+                  		element[field] = element[field] || '';
+                  	});
+                  	var kinds = {'0':'Power','1':'Fan','2':'Temp','3':'Voltage'};
+                  	element['{#SENSOR_KIND}'] = kinds[String(element['{#SENSOR_TYPE}'])] || 'Sensor';
+                  });
+                  return JSON.stringify(data);
+          item_prototypes:
+            - uuid: c9fbb641074c489e9171253e4f451415
+              name: '{#SENSOR_KIND} {#SENSOR_NAME}: Sensor status'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.8.2.1.5.{#SNMPINDEX}'
+              key: 'fm.sensor.state[{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              trends: '0'
+              valuemap:
+                name: Fortinet fmSensorEntState
+              tags:
+                - tag: component
+                  value: hardware
+                - tag: sensor
+                  value: '{#SENSOR_NAME}'
+                - tag: sensor_kind
+                  value: '{#SENSOR_KIND}'
+              trigger_prototypes:
+                - uuid: be66cfbf89c64b5089004912284c2fb3
+                  expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.sensor.state[{#SNMPINDEX}],#3)=1 or min(/Fortinet FMG-FAZ by SNMP/fm.sensor.state[{#SNMPINDEX}],#3)=5'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/Fortinet FMG-FAZ by SNMP/fm.sensor.state[{#SNMPINDEX}])=0'
+                  name: 'Fortinet FMG-FAZ by SNMP: {#SENSOR_KIND} {#SENSOR_NAME} is failed'
+                  priority: AVERAGE
+                  description: Sensor failed(1) or input-lost(5). not-present(6) is not this ticket. PSU/fan Average, same as EXOS.
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+                - uuid: af0061a6f1be4e90aad79b5acb53b48d
+                  expression: '(min(/Fortinet FMG-FAZ by SNMP/fm.sensor.state[{#SNMPINDEX}],#3)=3 or min(/Fortinet FMG-FAZ by SNMP/fm.sensor.state[{#SNMPINDEX}],#3)=4) and {#SENSOR_TYPE}=2'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/Fortinet FMG-FAZ by SNMP/fm.sensor.state[{#SNMPINDEX}])=0'
+                  name: 'Fortinet FMG-FAZ by SNMP: {#SENSOR_KIND} {#SENSOR_NAME} is critical'
+                  priority: HIGH
+                  description: 'Temperature out-of-range-critical or not-recoverable. 03:00 page, same as switch chassis overtemp. Vendor state, not a guessed °C.'
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: capacity
+                - uuid: 07dff33d87114488b31a277e54dc1bef
+                  expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.sensor.state[{#SNMPINDEX}],5m)=2'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/Fortinet FMG-FAZ by SNMP/fm.sensor.state[{#SNMPINDEX}])=0'
+                  name: 'Fortinet FMG-FAZ by SNMP: {#SENSOR_KIND} {#SENSOR_NAME} is out of range'
+                  priority: WARNING
+                  description: Out of range, not critical. Next day.
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: capacity
+            - uuid: d4b302de45af45338c748eb2badcae83
+              name: '{#SENSOR_KIND} {#SENSOR_NAME}: Sensor value'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.8.2.1.3.{#SNMPINDEX}'
+              key: 'fm.sensor.value[{#SNMPINDEX}]'
+              delay: 5m
+              value_type: CHAR
+              history: 7d
+              trends: '0'
+              tags:
+                - tag: component
+                  value: hardware
+                - tag: sensor
+                  value: '{#SENSOR_NAME}'
+                - tag: sensor_kind
+                  value: '{#SENSOR_KIND}'
+        - uuid: e26b03b3cc7941ef97ff8c95bc17b765
+          name: RAID disk discovery
+          type: SNMP_AGENT
+          snmp_oid: discovery[{#RAID.DISK.STATE},1.3.6.1.4.1.12356.103.7.2.1.2,{#RAID.DISK.SIZE},1.3.6.1.4.1.12356.103.7.2.1.3]
+          key: fm.raid.disk.discovery
+          delay: 15m
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: 'MIB: fmRaidDiskTable. Empty/unavailable on VMs. unused/spare/unavailable are not alerts.'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '[]'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                  	var data = JSON.parse(value);
+                  } catch (error) {
+                  	throw 'Failed to parse JSON of FMG/FAZ discovery.';
+                  }
+                  var fields = ['{#RAID.DISK.STATE}','{#RAID.DISK.SIZE}'];
+                  data.forEach(function (element) {
+                  	fields.forEach(function (field) {
+                  		element[field] = element[field] || '';
+                  	});
+                  });
+                  return JSON.stringify(data);
+          item_prototypes:
+            - uuid: 7c96899fa3004cffb11fc7936df4d5e9
+              name: 'RAID disk {#SNMPINDEX}: State'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.7.2.1.2.{#SNMPINDEX}'
+              key: 'fm.raid.disk.state[{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              trends: '0'
+              valuemap:
+                name: Fortinet fmRaidDiskEntState
+              tags:
+                - tag: component
+                  value: hardware
+                - tag: disk
+                  value: '{#SNMPINDEX}'
+              trigger_prototypes:
+                - uuid: 28774e19c3204aa584807816fbac86d7
+                  expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.raid.disk.state[{#SNMPINDEX}],#3)=1'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/Fortinet FMG-FAZ by SNMP/fm.raid.disk.state[{#SNMPINDEX}])=3 or last(/Fortinet FMG-FAZ by SNMP/fm.raid.disk.state[{#SNMPINDEX}])=5'
+                  name: 'Fortinet FMG-FAZ by SNMP: RAID disk {#SNMPINDEX} has failed'
+                  priority: AVERAGE
+                  description: Disk failed(1). unused/spare/unavailable stay silent.
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: capacity
+            - uuid: fa47c887e0724f718a69d7800529f914
+              name: 'RAID disk {#SNMPINDEX}: Size'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.7.2.1.3.{#SNMPINDEX}'
+              key: 'fm.raid.disk.size[{#SNMPINDEX}]'
+              delay: 1h
+              units: GB
+              tags:
+                - tag: component
+                  value: hardware
+                - tag: disk
+                  value: '{#SNMPINDEX}'
+        - uuid: 746549d58f1e40aaa9a76508352dcdbe
+          name: HA peer discovery
+          type: SNMP_AGENT
+          snmp_oid: discovery[{#HA.PEER.HOST},1.3.6.1.4.1.12356.103.9.2.1.5,{#HA.PEER.IP},1.3.6.1.4.1.12356.103.9.2.1.2,{#HA.PEER.SN},1.3.6.1.4.1.12356.103.9.2.1.3,{#HA.PEER.STATE},1.3.6.1.4.1.12356.103.9.2.1.6]
+          key: fm.ha.peer.discovery
+          delay: 5m
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: 'MIB: fmHaPeerTable. Standalone is empty. {$FM.HA.CONTROL}=0 keeps peer-down silent.'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '[]'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                  	var data = JSON.parse(value);
+                  } catch (error) {
+                  	throw 'Failed to parse JSON of FMG/FAZ discovery.';
+                  }
+                  var fields = ['{#HA.PEER.HOST}','{#HA.PEER.IP}','{#HA.PEER.SN}','{#HA.PEER.STATE}'];
+                  data.forEach(function (element) {
+                  	fields.forEach(function (field) {
+                  		element[field] = element[field] || '';
+                  	});
+                  });
+                  return JSON.stringify(data);
+          item_prototypes:
+            - uuid: 7bebd0f366a04de6a8b4bb44e02d387a
+              name: 'HA peer {#HA.PEER.HOST}: State'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.9.2.1.6.{#SNMPINDEX}'
+              key: 'fm.ha.peer.state[{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              trends: '0'
+              valuemap:
+                name: Fortinet fmHaPeerEntState
+              tags:
+                - tag: component
+                  value: ha
+                - tag: peer
+                  value: '{#HA.PEER.HOST}'
+              trigger_prototypes:
+                - uuid: 06b58cc391db409abeac3658a67aac07
+                  expression: '{$FM.HA.CONTROL}=1 and min(/Fortinet FMG-FAZ by SNMP/fm.ha.peer.state[{#SNMPINDEX}],#3)=0'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/Fortinet FMG-FAZ by SNMP/fm.ha.peer.state[{#SNMPINDEX}])=3 or {$FM.HA.CONTROL}=0'
+                  name: 'Fortinet FMG-FAZ by SNMP: HA peer {#HA.PEER.HOST} is down'
+                  priority: AVERAGE
+                  description: 'Peer down(0) while {$FM.HA.CONTROL}=1. Standalone default is 0 (silent). negotiating/synchronizing are not this ticket.'
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: b5e9d0867140434587971f3d119d10dc
+              name: 'HA peer {#HA.PEER.HOST}: Enabled'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.9.2.1.4.{#SNMPINDEX}'
+              key: 'fm.ha.peer.enabled[{#SNMPINDEX}]'
+              delay: 5m
+              trends: '0'
+              valuemap:
+                name: Fortinet FnBoolState
+              tags:
+                - tag: component
+                  value: ha
+                - tag: peer
+                  value: '{#HA.PEER.HOST}'
+        - uuid: c76474fc4bd94f09b547546ad07a7b5d
+          name: Logical disk discovery
+          type: SNMP_AGENT
+          snmp_oid: discovery[{#DISK.NAME},1.3.6.1.4.1.12356.103.2.1.17.1.2,{#DISK.USAGE},1.3.6.1.4.1.12356.103.2.1.17.1.3,{#DISK.CAPACITY},1.3.6.1.4.1.12356.103.2.1.17.1.4]
+          key: fm.disk.discovery
+          delay: 15m
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: 'MIB: fmSysDiskTable (per-volume usage/capacity/IO). Headline disk % remains the scalar.'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '[]'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                  	var data = JSON.parse(value);
+                  } catch (error) {
+                  	throw 'Failed to parse JSON of FMG/FAZ discovery.';
+                  }
+                  var fields = ['{#DISK.NAME}','{#DISK.USAGE}','{#DISK.CAPACITY}'];
+                  data.forEach(function (element) {
+                  	fields.forEach(function (field) {
+                  		element[field] = element[field] || '';
+                  	});
+                  });
+                  return JSON.stringify(data);
+          item_prototypes:
+            - uuid: f235df3bc6ab468583ffdeb847c09f5c
+              name: 'Disk {#DISK.NAME}: Used'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.2.1.17.1.3.{#SNMPINDEX}'
+              key: 'fm.disk.used[{#SNMPINDEX}]'
+              delay: 1m
+              units: B
+              preprocessing:
+                - type: MULTIPLIER
+                  parameters:
+                    - '1048576'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: disk
+                  value: '{#DISK.NAME}'
+            - uuid: 0689eea5d2bb4c13b224e9053f02f610
+              name: 'Disk {#DISK.NAME}: Capacity'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.2.1.17.1.4.{#SNMPINDEX}'
+              key: 'fm.disk.capacity[{#SNMPINDEX}]'
+              delay: 1h
+              units: B
+              preprocessing:
+                - type: MULTIPLIER
+                  parameters:
+                    - '1048576'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: disk
+                  value: '{#DISK.NAME}'
+            - uuid: 9eda63769e5943d08d0972879cce1f0c
+              name: 'Disk {#DISK.NAME}: IO utilization'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.2.1.17.1.5.{#SNMPINDEX}'
+              key: 'fm.disk.io.util[{#SNMPINDEX}]'
+              delay: 1m
+              value_type: FLOAT
+              units: '%'
+              preprocessing:
+                - type: MULTIPLIER
+                  parameters:
+                    - '0.1'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: disk
+                  value: '{#DISK.NAME}'
+        - uuid: 7d40eec3e4fc439f9213b1c5cbf3c091
+          name: ADOM discovery
+          type: SNMP_AGENT
+          snmp_oid: discovery[{#FM.ADOM.NAME},1.3.6.1.4.1.12356.103.5.2.1.2,{#FM.ADOM.STATE},1.3.6.1.4.1.12356.103.5.2.1.3,{#FM.ADOM.FGT},1.3.6.1.4.1.12356.103.5.2.1.5]
+          key: fm.adom.discovery
+          delay: 1h
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: 'MIB: fmAdomTable. Inventory + FAZ archive/analytics used %. Config drift is cfgit, not these items.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                  	var data = JSON.parse(value);
+                  } catch (error) {
+                  	throw 'Failed to parse JSON of FMG/FAZ discovery.';
+                  }
+                  var fields = ['{#FM.ADOM.NAME}','{#FM.ADOM.STATE}','{#FM.ADOM.FGT}'];
+                  data.forEach(function (element) {
+                  	fields.forEach(function (field) {
+                  		element[field] = element[field] || '';
+                  	});
+                  });
+                  return JSON.stringify(data);
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#FM.ADOM.NAME}'
+                value: "{$FM.ADOM.NAME.MATCHES}"
+                formulaid: A
+              - macro: '{#FM.ADOM.NAME}'
+                value: "{$FM.ADOM.NAME.NOT_MATCHES}"
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+          item_prototypes:
+            - uuid: 473d49370ffd481a914a46f5045e891e
+              name: 'ADOM {#FM.ADOM.NAME}: FortiGate count'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.5.2.1.5.{#SNMPINDEX}'
+              key: 'fm.adom.fgt.count[{#SNMPINDEX}]'
+              delay: 15m
+              tags:
+                - tag: component
+                  value: inventory
+                - tag: adom
+                  value: '{#FM.ADOM.NAME}'
+            - uuid: 84b6d52a578849bcbc8e940ef14fb7a2
+              name: 'ADOM {#FM.ADOM.NAME}: Archive used %'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.5.2.1.14.{#SNMPINDEX}'
+              key: 'fm.adom.archive.used.pct[{#SNMPINDEX}]'
+              delay: 15m
+              value_type: FLOAT
+              units: '%'
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: MULTIPLIER
+                  parameters:
+                    - '0.1'
+              tags:
+                - tag: component
+                  value: log
+                - tag: adom
+                  value: '{#FM.ADOM.NAME}'
+              trigger_prototypes:
+                - uuid: e9915c83902f44f39cab1bd723a9f012
+                  expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.adom.archive.used.pct[{#SNMPINDEX}],15m)>{$FM.ADOM.ARCHIVE.WARN} and min(/Fortinet FMG-FAZ by SNMP/fm.adom.archive.used.pct[{#SNMPINDEX}],15m)<={$FM.ADOM.ARCHIVE.CRIT}'
+                  name: 'Fortinet FMG-FAZ by SNMP: ADOM {#FM.ADOM.NAME} archive quota high'
+                  priority: WARNING
+                  description: 'Archive used % of quota. Meaningful on FAZ; FMG often 0.'
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: capacity
+                - uuid: d07c630fda594cc2a2317837ef31a83d
+                  expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.adom.archive.used.pct[{#SNMPINDEX}],10m)>{$FM.ADOM.ARCHIVE.CRIT}'
+                  name: 'Fortinet FMG-FAZ by SNMP: ADOM {#FM.ADOM.NAME} archive quota critical'
+                  priority: AVERAGE
+                  description: Archive quota exhausted — FAZ will drop or overwrite archive logs.
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: capacity
+            - uuid: 5430d028c40345cbbc2b8fb3f14b7f61
+              name: 'ADOM {#FM.ADOM.NAME}: Analytics used %'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.5.2.1.18.{#SNMPINDEX}'
+              key: 'fm.adom.analytics.used.pct[{#SNMPINDEX}]'
+              delay: 15m
+              value_type: FLOAT
+              units: '%'
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: MULTIPLIER
+                  parameters:
+                    - '0.1'
+              tags:
+                - tag: component
+                  value: log
+                - tag: adom
+                  value: '{#FM.ADOM.NAME}'
+              trigger_prototypes:
+                - uuid: a67edbccbdb74c1c95fc21c51536726e
+                  expression: 'min(/Fortinet FMG-FAZ by SNMP/fm.adom.analytics.used.pct[{#SNMPINDEX}],15m)>{$FM.ADOM.ARCHIVE.WARN}'
+                  name: 'Fortinet FMG-FAZ by SNMP: ADOM {#FM.ADOM.NAME} analytics quota high'
+                  priority: WARNING
+                  description: 'Analytics used % of quota. Reports/search suffer before archive does.'
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: capacity
+            - uuid: ed649373773e4683914dc5af934cd099
+              name: 'ADOM {#FM.ADOM.NAME}: Log rate'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.5.2.1.10.{#SNMPINDEX}'
+              key: 'fm.adom.log.rate[{#SNMPINDEX}]'
+              delay: 5m
+              value_type: FLOAT
+              units: logs/s
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: MULTIPLIER
+                  parameters:
+                    - '0.01'
+              tags:
+                - tag: component
+                  value: log
+                - tag: adom
+                  value: '{#FM.ADOM.NAME}'
+        - uuid: d610186df64d450d9b05351a42f41ef4
+          name: Managed device discovery
+          type: SNMP_AGENT
+          snmp_oid: discovery[{#FM.DEVICE.NAME},1.3.6.1.4.1.12356.103.6.2.1.2,{#FM.DEVICE.SN},1.3.6.1.4.1.12356.103.6.2.1.3,{#FM.DEVICE.MODE},1.3.6.1.4.1.12356.103.6.2.1.4,{#FM.DEVICE.ADOM},1.3.6.1.4.1.12356.103.6.2.1.5,{#FM.DEVICE.CONNECT},1.3.6.1.4.1.12356.103.6.2.1.12,{#FM.DEVICE.CONFIG},1.3.6.1.4.1.12356.103.6.2.1.14]
+          key: fm.device.discovery
+          delay: 5m
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: 'MIB: fmDeviceTable. FMG = FGFM management; FAZ = log device. Config out-of-sync is collected; cfgit owns that ticket ({$FM.CONFIG.CONTROL}=0).'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                  	var data = JSON.parse(value);
+                  } catch (error) {
+                  	throw 'Failed to parse JSON of FMG/FAZ discovery.';
+                  }
+                  var fields = ['{#FM.DEVICE.NAME}','{#FM.DEVICE.SN}','{#FM.DEVICE.MODE}','{#FM.DEVICE.ADOM}','{#FM.DEVICE.CONNECT}','{#FM.DEVICE.CONFIG}'];
+                  data.forEach(function (element) {
+                  	fields.forEach(function (field) {
+                  		element[field] = element[field] || '';
+                  	});
+                  });
+                  return JSON.stringify(data);
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#FM.DEVICE.NAME}'
+                value: "{$FM.DEVICE.NAME.MATCHES}"
+                formulaid: A
+              - macro: '{#FM.DEVICE.NAME}'
+                value: "{$FM.DEVICE.NAME.NOT_MATCHES}"
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+              - macro: '{#FM.DEVICE.MODE}'
+                value: "{$FM.DEVICE.MODE.MATCHES}"
+                formulaid: C
+          item_prototypes:
+            - uuid: 5a711be2de794d11b294527fe19a3fce
+              name: 'Device {#FM.DEVICE.NAME}: Connect state'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.6.2.1.12.{#SNMPINDEX}'
+              key: 'fm.device.connect[{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              trends: '0'
+              valuemap:
+                name: Fortinet fmDeviceEntConnectState
+              tags:
+                - tag: component
+                  value: inventory
+                - tag: device
+                  value: '{#FM.DEVICE.NAME}'
+                - tag: adom
+                  value: '{#FM.DEVICE.ADOM}'
+              trigger_prototypes:
+                - uuid: 8cf616a98fe4492384db5be4bfcb2fe8
+                  expression: '{$FM.DEVICE.CONTROL}=1 and min(/Fortinet FMG-FAZ by SNMP/fm.device.connect[{#SNMPINDEX}],#3)=2'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/Fortinet FMG-FAZ by SNMP/fm.device.connect[{#SNMPINDEX}])=1 or {$FM.DEVICE.CONTROL}=0'
+                  name: 'Fortinet FMG-FAZ by SNMP: Managed device {#FM.DEVICE.NAME} is offline'
+                  priority: AVERAGE
+                  description: Connect down(2) for 3×1m. FMG = FGFM tunnel; FAZ = log device stopped sending. Zabbix owns this ticket — mute FAZ-native device-down duplicates. unknown(0) is not this trigger.
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: 49bad424f8ca4d5ab0ab9d034bdd1670
+              name: 'Device {#FM.DEVICE.NAME}: Config state'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.6.2.1.14.{#SNMPINDEX}'
+              key: 'fm.device.config[{#SNMPINDEX}]'
+              delay: 15m
+              history: 7d
+              trends: '0'
+              valuemap:
+                name: Fortinet fmDeviceEntConfigState
+              tags:
+                - tag: component
+                  value: inventory
+                - tag: device
+                  value: '{#FM.DEVICE.NAME}'
+                - tag: adom
+                  value: '{#FM.DEVICE.ADOM}'
+              trigger_prototypes:
+                - uuid: 9fc9f952f92641bb80b81938c5a3e202
+                  expression: '{$FM.CONFIG.CONTROL}=1 and min(/Fortinet FMG-FAZ by SNMP/fm.device.config[{#SNMPINDEX}],15m)=2'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/Fortinet FMG-FAZ by SNMP/fm.device.config[{#SNMPINDEX}])=1 or {$FM.CONFIG.CONTROL}=0'
+                  name: 'Fortinet FMG-FAZ by SNMP: Managed device {#FM.DEVICE.NAME} config is out of sync'
+                  status: DISABLED
+                  priority: AVERAGE
+                  description: 'cfgit owns config drift. Default {$FM.CONFIG.CONTROL}=0. Do not enable both.'
+                  dependencies:
+                    - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
+                    - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
+                      expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: 8d0304b7533b4191a8e304627bacbbf4
+              name: 'Device {#FM.DEVICE.NAME}: Log rate (hour)'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.6.2.1.25.{#SNMPINDEX}'
+              key: 'fm.device.log.rate.hour[{#SNMPINDEX}]'
+              delay: 15m
+              value_type: FLOAT
+              units: logs/s
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: MULTIPLIER
+                  parameters:
+                    - '0.01'
+              tags:
+                - tag: component
+                  value: log
+                - tag: device
+                  value: '{#FM.DEVICE.NAME}'
+                - tag: adom
+                  value: '{#FM.DEVICE.ADOM}'
+        - uuid: 1b1e88cd817c4107b3b2a7eac4654c39
+          name: Log-forward target discovery
+          type: SNMP_AGENT
+          snmp_oid: discovery[{#FM.LOGFWD.NAME},1.3.6.1.4.1.12356.103.2.1.19.1.2,{#FM.LOGFWD.RATE},1.3.6.1.4.1.12356.103.2.1.19.1.3]
+          key: fm.logfwd.discovery
+          delay: 15m
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: 'MIB: fmSysLogForwardTable. Empty when no log-forward is configured.'
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '-1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '[]'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                  	var data = JSON.parse(value);
+                  } catch (error) {
+                  	throw 'Failed to parse JSON of FMG/FAZ discovery.';
+                  }
+                  var fields = ['{#FM.LOGFWD.NAME}','{#FM.LOGFWD.RATE}'];
+                  data.forEach(function (element) {
+                  	fields.forEach(function (field) {
+                  		element[field] = element[field] || '';
+                  	});
+                  });
+                  return JSON.stringify(data);
+          item_prototypes:
+            - uuid: 722e4658cb494d18b90d0de64cd09a30
+              name: 'Log forward {#FM.LOGFWD.NAME}: Rate'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.12356.103.2.1.19.1.3.{#SNMPINDEX}'
+              key: 'fm.logfwd.rate[{#SNMPINDEX}]'
+              delay: 1m
+              value_type: FLOAT
+              units: logs/s
+              preprocessing:
+                - type: CHECK_NOT_SUPPORTED
+                  parameters:
+                    - '-1'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: MULTIPLIER
+                  parameters:
+                    - '0.01'
+              tags:
+                - tag: component
+                  value: log
+                - tag: target
+                  value: '{#FM.LOGFWD.NAME}'
+      tags:
+        - tag: class
+          value: network
+        - tag: target
+          value: fmg-faz
+        - tag: target
+          value: fortinet
+      macros:
+        - macro: '{$ICMP_LOSS_WARN}'
+          value: 10
+          description: Disabled trigger threshold. CH proxy loss is WAN.
+        - macro: '{$ICMP_RESPONSE_TIME_WARN}'
+          value: 0.15
+          description: Disabled trigger threshold. CH proxy RTT is WAN.
+        - macro: '{$SNMP.TIMEOUT}'
+          value: 5m
+          description: Time interval for the SNMP availability trigger.
+        - macro: '{$CPU.UTIL.WARN}'
+          value: 85
+          description: CPU Warning. Not a page.
+        - macro: '{$CPU.UTIL.CRIT}'
+          value: 101
+          description: 101 silences CPU High (same bar as FortiGate HTTP).
+        - macro: '{$MEMORY.UTIL.MAX}'
+          value: 90
+          description: 'Memory Average % (5m).'
+        - macro: '{$DISK.UTIL.WARN}'
+          value: 80
+          description: 'Disk Warning %.'
+        - macro: '{$DISK.UTIL.CRIT}'
+          value: 90
+          description: 'Disk Average %. FAZ High lives on FortiAnalyzer Observability.'
+        - macro: '{$IF.UTIL.MAX}'
+          value: 101
+          description: 101 silences interface util until a commit baseline exists.
+        - macro: '{$IF.ERRORS.WARN}'
+          value: 2
+          description: Warning threshold of in-or-out error rate (errors/s).
+        - macro: '{$IFCONTROL}'
+          value: 1
+          description: '1=alert discovered link-down. Context {#IFNAME} to mute.'
+        - macro: '{$NET.IF.IFNAME.MATCHES}'
+          value: '.*'
+          description: Physical mgmt/HA ports. Override per device if needed.
+        - macro: '{$NET.IF.IFNAME.NOT_MATCHES}'
+          value: '^(vlan|ssl|hamgmt|npu|disk)'
+          description: Drop logical overlay ifaces.
+        - macro: '{$NET.IF.IFTYPE.MATCHES}'
+          value: ^6$
+          description: ethernetCsmacd only.
+        - macro: '{$NET.IF.IFADMINSTATUS.MATCHES}'
+          value: ^1$
+          description: Admin-up only.
+        - macro: '{$NET.IF.DISCOVERY.MIN}'
+          value: 1
+          description: Average when SNMP is up 1h and enabled IF items stay below this.
+        - macro: '{$UNSUPPORTED.MAX}'
+          value: 5
+          description: Average when unsupported items stay above this for 30m.
+        - macro: '{$FM.DEVICE.CONTROL}'
+          value: 1
+          description: 1=ticket managed-device connect down. Mute with 0.
+        - macro: '{$FM.DEVICE.EXPECTED}'
+          value: 0
+          description: 0 disables census. Set to the known managed-device count.
+        - macro: '{$FM.DEVICE.NAME.MATCHES}'
+          value: '.*'
+          description: Device LLD include.
+        - macro: '{$FM.DEVICE.NAME.NOT_MATCHES}'
+          value: CHANGE_IF_NEEDED
+          description: Device LLD exclude.
+        - macro: '{$FM.DEVICE.MODE.MATCHES}'
+          value: '^[1-3]$'
+          description: Drop unregistered(0). fmg(1) faz(2) fmg-faz(3).
+        - macro: '{$FM.CONFIG.CONTROL}'
+          value: 0
+          description: 0=cfgit owns config drift. Do not enable here.
+        - macro: '{$FM.HA.CONTROL}'
+          value: 0
+          description: 1=ticket HA peer down. Standalone default 0.
+        - macro: '{$FM.HA.EXPECTED}'
+          value: 0
+          description: 0 disables peer-count census. Pair = 1 peer.
+        - macro: '{$FM.ADOM.NAME.MATCHES}'
+          value: '.*'
+          description: ADOM LLD include.
+        - macro: '{$FM.ADOM.NAME.NOT_MATCHES}'
+          value: CHANGE_IF_NEEDED
+          description: ADOM LLD exclude.
+        - macro: '{$FM.ADOM.ARCHIVE.WARN}'
+          value: 80
+          description: 'ADOM archive used-% Warning (FAZ).'
+        - macro: '{$FM.ADOM.ARCHIVE.CRIT}'
+          value: 90
+          description: 'ADOM archive used-% Average (FAZ).'
+      dashboards:
+        - uuid: e1522b338b2541aa8f99b9f98edcd073
+          name: Health
+          pages:
+            - name: Overview
+              widgets:
+                - type: gauge
+                  name: ICMP
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '5'
+                    - type: INTEGER
+                      name: th_arc_size
+                      value: '6'
+                    - type: INTEGER
+                      name: units_size
+                      value: '14'
+                    - type: INTEGER
+                      name: value_arc_size
+                      value: '16'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.observability.icmp
+                    - type: STRING
+                      name: max
+                      value: '1'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: INTEGER
+                      name: th_show_arc
+                      value: '1'
+                    - type: INTEGER
+                      name: th_show_labels
+                      value: '0'
+                - type: gauge
+                  name: SNMP
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '5'
+                    - type: INTEGER
+                      name: th_arc_size
+                      value: '6'
+                    - type: INTEGER
+                      name: units_size
+                      value: '14'
+                    - type: INTEGER
+                      name: value_arc_size
+                      value: '16'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.observability.snmp
+                    - type: STRING
+                      name: max
+                      value: '1'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: INTEGER
+                      name: th_show_arc
+                      value: '1'
+                    - type: INTEGER
+                      name: th_show_labels
+                      value: '0'
+                - type: gauge
+                  name: CPU
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '5'
+                    - type: INTEGER
+                      name: th_arc_size
+                      value: '6'
+                    - type: INTEGER
+                      name: units_size
+                      value: '14'
+                    - type: INTEGER
+                      name: value_arc_size
+                      value: '16'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.sys.cpu.util
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '80'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '90'
+                    - type: INTEGER
+                      name: th_show_arc
+                      value: '1'
+                    - type: INTEGER
+                      name: th_show_labels
+                      value: '0'
+                    - type: STRING
+                      name: units
+                      value: '%'
+                - type: item
+                  name: Uptime
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: 'system.net.uptime[sysUpTime.0]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                - type: problems
+                  name: Problems
+                  y: '4'
+                  width: '72'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: 'FPROB'
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                    - type: INTEGER
+                      name: show_opdata
+                      value: '2'
+                - type: svggraph
+                  name: CPU / memory
+                  y: '7'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: '199C0D'
+                    - type: STRING
+                      name: ds.0.color.1
+                      value: '2774A4'
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.sys.cpu.util
+                    - type: ITEM
+                      name: ds.0.itemids.1
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.sys.mem.util
+                    - type: STRING
+                      name: lefty_max
+                      value: '100'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: STRING
+                      name: reference
+                      value: 'FCPUH'
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                    - type: STRING
+                      name: time_period.from
+                      value: 'now-1d'
+                    - type: STRING
+                      name: time_period.to
+                      value: 'now'
+                - type: svggraph
+                  name: Uptime
+                  x: '36'
+                  y: '7'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: '2774A4'
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: 'system.net.uptime[sysUpTime.0]'
+                    - type: STRING
+                      name: reference
+                      value: 'FUPTH'
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '0'
+                    - type: STRING
+                      name: time_period.from
+                      value: 'now-1d'
+                    - type: STRING
+                      name: time_period.to
+                      value: 'now'
+            - name: Hardware
+              widgets:
+                - type: honeycomb
+                  name: Fans
+                  width: '36'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Fan *: Sensor status'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^Fan (.*): Sensor status$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'FFANS'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '878787'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.3.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.3.threshold
+                      value: '3'
+                - type: honeycomb
+                  name: PSU
+                  x: '36'
+                  width: '36'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Power *: Sensor status'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^Power (.*): Sensor status$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'FPSUS'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '878787'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.3.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.3.threshold
+                      value: '3'
+                    - type: STRING
+                      name: thresholds.4.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.4.threshold
+                      value: '4'
+                    - type: STRING
+                      name: thresholds.5.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.5.threshold
+                      value: '5'
+                - type: gauge
+                  name: Memory
+                  y: '3'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '5'
+                    - type: INTEGER
+                      name: th_arc_size
+                      value: '6'
+                    - type: INTEGER
+                      name: units_size
+                      value: '14'
+                    - type: INTEGER
+                      name: value_arc_size
+                      value: '16'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.sys.mem.util
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '80'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '90'
+                    - type: INTEGER
+                      name: th_show_arc
+                      value: '1'
+                    - type: INTEGER
+                      name: th_show_labels
+                      value: '0'
+                    - type: STRING
+                      name: units
+                      value: '%'
+                - type: gauge
+                  name: Disk
+                  x: '18'
+                  y: '3'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: INTEGER
+                      name: angle
+                      value: '270'
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '5'
+                    - type: INTEGER
+                      name: th_arc_size
+                      value: '6'
+                    - type: INTEGER
+                      name: units_size
+                      value: '14'
+                    - type: INTEGER
+                      name: value_arc_size
+                      value: '16'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.sys.disk.util
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '80'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '90'
+                    - type: INTEGER
+                      name: th_show_arc
+                      value: '1'
+                    - type: INTEGER
+                      name: th_show_labels
+                      value: '0'
+                    - type: STRING
+                      name: units
+                      value: '%'
+                - type: honeycomb
+                  name: Temp
+                  x: '36'
+                  y: '3'
+                  width: '36'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Temp *: Sensor status'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^Temp (.*): Sensor status$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'FTEMP'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.3.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.3.threshold
+                      value: '3'
+                - type: svggraph
+                  name: Disk
+                  y: '7'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: '2774A4'
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.sys.disk.util
+                    - type: STRING
+                      name: lefty_max
+                      value: '100'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: STRING
+                      name: reference
+                      value: 'FDSKH'
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '0'
+                    - type: STRING
+                      name: time_period.from
+                      value: 'now-1d'
+                    - type: STRING
+                      name: time_period.to
+                      value: 'now'
+            - name: Cluster
+              widgets:
+                - type: item
+                  name: HA mode
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.ha.mode
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '24'
+                - type: item
+                  name: HA peers
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.ha.peer.number
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                - type: item
+                  name: RAID
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.raid.state
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '24'
+                - type: item
+                  name: Devices
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        key: fm.device.number
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                - type: honeycomb
+                  name: HA peers
+                  y: '4'
+                  width: '36'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'HA peer *: State'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^HA peer (.*): State$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'FHAPE'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.3.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.3.threshold
+                      value: '3'
+                - type: honeycomb
+                  name: RAID disks
+                  x: '36'
+                  y: '4'
+                  width: '36'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'RAID disk *: State'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^RAID disk (.*): State$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'FRDSK'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '878787'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: '878787'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+                    - type: STRING
+                      name: thresholds.3.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.3.threshold
+                      value: '3'
+                    - type: STRING
+                      name: thresholds.4.color
+                      value: 'FFD54F'
+                    - type: STRING
+                      name: thresholds.4.threshold
+                      value: '4'
+                    - type: STRING
+                      name: thresholds.5.color
+                      value: '2774A4'
+                    - type: STRING
+                      name: thresholds.5.threshold
+                      value: '5'
+        - uuid: c187fa5e60c3482aa7b2e4e3a1ca6f06
+          name: Network interfaces
+          pages:
+            - name: Overview
+              widgets:
+                - type: honeycomb
+                  name: Interfaces
+                  width: '24'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Interface *: Operational status'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^Interface (.*): Operational status$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'FIMAP'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: '878787'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+                - type: graphprototype
+                  name: Traffic
+                  y: '4'
+                  width: '72'
+                  height: '14'
+                  fields:
+                    - type: INTEGER
+                      name: columns
+                      value: '3'
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid.0
+                      value:
+                        host: Fortinet FMG-FAZ by SNMP
+                        name: 'Interface {#IFNAME}: Network traffic'
+                    - type: STRING
+                      name: reference
+                      value: 'FTGRD'
+                    - type: INTEGER
+                      name: rows
+                      value: '2'
+            - name: Port
+              widgets:
+                - type: itemnavigator
+                  name: Counters
+                  width: '28'
+                  height: '11'
+                  fields:
+                    - type: INTEGER
+                      name: group_by.0.attribute
+                      value: '3'
+                    - type: STRING
+                      name: group_by.0.tag_name
+                      value: 'interface'
+                    - type: STRING
+                      name: items.0
+                      value: 'Interface *: Operational status'
+                    - type: STRING
+                      name: items.1
+                      value: 'Interface *: Speed'
+                    - type: STRING
+                      name: items.2
+                      value: 'Interface *: Inbound packets with errors'
+                    - type: STRING
+                      name: items.3
+                      value: 'Interface *: Outbound packets with errors'
+                    - type: STRING
+                      name: items.4
+                      value: 'Interface *: Bits received'
+                    - type: STRING
+                      name: items.5
+                      value: 'Interface *: Bits sent'
+                    - type: STRING
+                      name: reference
+                      value: 'FINAV'
+                - type: graph
+                  name: History
+                  x: '28'
+                  width: '44'
+                  height: '11'
+                  fields:
+                    - type: INTEGER
+                      name: source
+                      value: '2'
+                    - type: STRING
+                      name: reference
+                      value: 'FIPTH'
+                    - type: INTEGER
+                      name: override_host
+                      value: '1'
+                    - type: STRING
+                      name: override_host_reference
+                      value: 'FINAV'
+                    - type: STRING
+                      name: time_period.from
+                      value: 'now-1d'
+                    - type: STRING
+                      name: time_period.to
+                      value: 'now'
+      valuemaps:
+        - uuid: 059ae5d1273a4b7e9f47aa14dc082055
+          name: Service state
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+        - uuid: c85a49e3cb724878b633e6c15b6f6d4e
+          name: zabbix.host.available
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+            - value: '2'
+              newvalue: Unknown
+        - uuid: e2675c58ad4f472682d6894c022538af
+          name: 'IF-MIB::ifStatus'
+          mappings:
+            - value: '1'
+              newvalue: up
+            - value: '2'
+              newvalue: down
+            - value: '3'
+              newvalue: testing
+            - value: '4'
+              newvalue: unknown
+            - value: '5'
+              newvalue: dormant
+            - value: '6'
+              newvalue: notPresent
+            - value: '7'
+              newvalue: lowerLayerDown
+        - uuid: 4768cbbc7d5d46f1a0e94d1d8147e609
+          name: Fortinet FnBoolState
+          mappings:
+            - value: '1'
+              newvalue: disabled
+            - value: '2'
+              newvalue: enabled
+        - uuid: 5994f0e69e074d81bb1f9bf564f48a54
+          name: Fortinet fmHaMode
+          mappings:
+            - value: '0'
+              newvalue: standalone
+            - value: '1'
+              newvalue: master
+            - value: '2'
+              newvalue: slave
+        - uuid: e04020abbab747bbbb03e807c45a79da
+          name: Fortinet fmRaidState
+          mappings:
+            - value: '0'
+              newvalue: unavailable
+            - value: '1'
+              newvalue: ok
+            - value: '2'
+              newvalue: degraded
+            - value: '3'
+              newvalue: failed
+            - value: '4'
+              newvalue: background-initializing
+            - value: '5'
+              newvalue: background-verifying
+            - value: '6'
+              newvalue: background-rebuilding
+        - uuid: 638cbf76eeb04b48a3d46b2c29b3b9ad
+          name: Fortinet fmRaidLevel
+          mappings:
+            - value: '0'
+              newvalue: unavailable
+            - value: '1'
+              newvalue: linear
+            - value: '2'
+              newvalue: raid-0
+            - value: '3'
+              newvalue: raid-1
+            - value: '4'
+              newvalue: raid-1s
+            - value: '5'
+              newvalue: raid-5
+            - value: '6'
+              newvalue: raid-5s
+            - value: '7'
+              newvalue: raid-6
+            - value: '8'
+              newvalue: raid-6s
+            - value: '9'
+              newvalue: raid-10
+            - value: '10'
+              newvalue: raid-10s
+            - value: '11'
+              newvalue: raid-50
+            - value: '12'
+              newvalue: raid-50s
+            - value: '13'
+              newvalue: raid-60
+            - value: '14'
+              newvalue: raid-60s
+        - uuid: a76e720aa16e4c8eb57bf3bebdefe424
+          name: Fortinet fmRaidDiskEntState
+          mappings:
+            - value: '0'
+              newvalue: unavailable
+            - value: '1'
+              newvalue: failed
+            - value: '2'
+              newvalue: unused
+            - value: '3'
+              newvalue: ok
+            - value: '4'
+              newvalue: rebuilding
+            - value: '5'
+              newvalue: spare
+        - uuid: bb2b1f98b4214476a32784f251bff2ef
+          name: Fortinet fmSensorEntState
+          mappings:
+            - value: '0'
+              newvalue: ok
+            - value: '1'
+              newvalue: failed
+            - value: '2'
+              newvalue: out-of-range-not-critical
+            - value: '3'
+              newvalue: out-of-range-critical
+            - value: '4'
+              newvalue: out-of-range-not-recoverable
+            - value: '5'
+              newvalue: input-lost
+            - value: '6'
+              newvalue: not-present
+        - uuid: ea8bf5ea714a4aabb98dc9ef69b6b440
+          name: Fortinet fmHaPeerEntState
+          mappings:
+            - value: '0'
+              newvalue: down
+            - value: '1'
+              newvalue: negotiating
+            - value: '2'
+              newvalue: synchronizing
+            - value: '3'
+              newvalue: up
+        - uuid: f729c54c68424160b225b242a8c05cae
+          name: Fortinet fmDeviceEntConnectState
+          mappings:
+            - value: '0'
+              newvalue: unknown
+            - value: '1'
+              newvalue: up
+            - value: '2'
+              newvalue: down
+        - uuid: bf3e2bdec7f8438baa635bfbb1136a01
+          name: Fortinet fmDeviceEntConfigState
+          mappings:
+            - value: '0'
+              newvalue: unknown
+            - value: '1'
+              newvalue: in-sync
+            - value: '2'
+              newvalue: out-of-sync
+        - uuid: c0af5fc6e5a345dfb29f366140c3ea02
+          name: Fortinet fmDeviceEntMode
+          mappings:
+            - value: '0'
+              newvalue: unregistered
+            - value: '1'
+              newvalue: fmg
+            - value: '2'
+              newvalue: faz
+            - value: '3'
+              newvalue: fmg-faz

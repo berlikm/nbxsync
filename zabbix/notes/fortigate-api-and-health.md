@@ -18,7 +18,7 @@ Live nbxSync today still points FortiOS at **FortiGate by SNMP**. Retarget with 
 ## What Zabbix actually ships
 
 Official Fortinet templates (Zabbix 7.0+): **FortiGate by HTTP**, **FortiGate by SNMP**.  
-No official FortiManager or FortiAnalyzer template ([ZBXNEXT-10433](https://support.zabbix.com/browse/ZBXNEXT-10433) Won’t Do). FMG/FAZ stay **Network Generic Device by SNMP** + ICMP.
+No official FortiManager or FortiAnalyzer template ([ZBXNEXT-10433](https://support.zabbix.com/browse/ZBXNEXT-10433) Won’t Do). FMG/FAZ use **Fortinet FMG-FAZ by SNMP** plus Observability companions (`--apply-fmg-faz`). Until that flag runs they stay **Network Generic Device by SNMP**.
 
 HTTP collection is HTTP agent + **JS Script** items on the **proxy/server**. No external scripts. No Agent/SNMP interface required for metrics. The poller is the Swiss proxy talking **HTTPS to the FortiGate GUI/API**, not a laptop curl.
 
@@ -234,7 +234,7 @@ Live today (`configure_nbxsync_zerotouch.py` + locked GUI checklist) until the n
 - Role **Firewall** floor → same SNMP template
 - Role Firewall → **SNMP Monitoring** CG (`MONITORING` MD5/DES)
 - ICMP Ping is **not** on fleet SNMP Monitoring (Forti SNMP already has `icmpping`)
-- FMG/FAZ → Network Generic (do **not** assign FortiGate HTTP by manufacturer)
+- FMG/FAZ → Network Generic until `--apply-fmg-faz` (do **not** assign FortiGate HTTP by manufacturer)
 
 **Do not re-run zerotouch for the HTTP cutover.** Zerotouch would put FortiOS back on SNMP.
 
@@ -260,4 +260,4 @@ Locked [`docs/netbox-zabbix/configuration.md`](../../docs/netbox-zabbix/configur
 
 ## FortiManager / FortiAnalyzer
 
-No official template. Keep ICMP High + (FAZ) disk/log later. Device-sync vs cfgit: cfgit owns config drift. Do not assign FortiGate HTTP onto FMG/FAZ (wrong API, wrong objects).
+No official template. Cutover is `configure_nbxsync_network.py --apply-fmg-faz` — **do not re-run zerotouch**. Parent **Fortinet FMG-FAZ by SNMP** owns chassis/HA/RAID/IF-MIB and Health. Companions add the **Devices** (FMG) and **Logs** (FAZ) boards. ICMP High; SNMP Warning; managed-device connect-down Average; config drift collect-only (cfgit). FAZ log-disk High at 95% is the product exception. Device stopped sending logs = parent connect-down (mute FAZ-native duplicates). Do not assign FortiGate HTTP onto FMG/FAZ (wrong API, wrong objects, `icmpping` collision with Network Generic).

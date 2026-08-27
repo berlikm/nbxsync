@@ -408,6 +408,53 @@ def main() -> int:
         'Cato collector refresh is network --apply-cato, not zerotouch',
     )
 
+    fmg = _function_source(net_src, net_tree, 'run_apply_fmg_faz') or ''
+    record(
+        'network_fmg_faz_apply_exists',
+        bool(fmg),
+        'run_apply_fmg_faz',
+    )
+    record(
+        'network_fmg_faz_apply_skips_extreme_and_hostsync',
+        bool(fmg)
+        and 'import_extreme_templates' not in fmg
+        and 'SyncHostJob' not in fmg
+        and 'configure_nbxsync_zerotouch' not in fmg,
+        'no Extreme import / HostSync / zerotouch in --apply-fmg-faz',
+    )
+    fmg_preflight = _function_source(net_src, net_tree, '_require_fmg_faz_preflight') or ''
+    record(
+        'network_fmg_faz_fail_closed_preflight',
+        '_require_fmg_faz_preflight' in fmg
+        and '_preflight_fmg_faz' in fmg_preflight
+        and '_print_fmg_faz_plan' in fmg_preflight
+        and 'raise SystemExit' in fmg_preflight,
+        'FMG/FAZ preflight prints the plan and aborts before YAML/NetBox writes',
+    )
+    nbx_fmg = _function_source(net_src, net_tree, '_step_fmg_faz_nbxsync') or ''
+    record(
+        'network_fmg_faz_splits_rules_and_disables_legacy',
+        '_fmg_faz_rule_specs' in nbx_fmg
+        and '_disable_legacy_fmg_faz_rule' in nbx_fmg
+        and '_prune_fmg_faz_colliding_templates' in nbx_fmg
+        and '_step_fmg_faz_snmp_cg' in nbx_fmg
+        and 'ZabbixTemplateAssignment' not in nbx_fmg,
+        'split FortiManager/FortiAnalyzer rules; no Firewall-role template floor',
+    )
+    snmp_cg = _function_source(net_src, net_tree, '_step_fmg_faz_snmp_cg') or ''
+    record(
+        'network_fmg_faz_keeps_snmp_monitoring_on_platforms',
+        bool(snmp_cg) and '_SNMP_MONITORING_CG' in snmp_cg and '_fmg_faz_platforms' in snmp_cg,
+        'SNMP Monitoring stays on FMG/FAZ platforms',
+    )
+    record(
+        'zerotouch_no_fmg_faz_cutover',
+        'apply-fmg-faz' not in ztc_src
+        and 'fmg_faz_snmp' not in ztc_src
+        and 'Fortinet FMG-FAZ by SNMP' not in ztc_src,
+        'FMG/FAZ SNMP pack is network --apply-fmg-faz, not zerotouch',
+    )
+
     failed = sum(1 for _, ok, _ in RESULTS if not ok)
     print(f'\n{len(RESULTS) - failed}/{len(RESULTS)} apply-safety checks passed')
     return 1 if failed else 0
