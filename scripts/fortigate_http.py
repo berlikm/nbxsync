@@ -78,6 +78,13 @@ POLICY_DISCOVERY_KEY = 'fgate.fwp.discovery'
 MEMORY_GREEN_MACRO = '{$FGATE.MEMORY.GREEN}'
 MEMORY_RED_MACRO = '{$FGATE.MEMORY.RED}'
 MEMORY_EXTREME_MACRO = '{$FGATE.MEMORY.EXTREME}'
+# Factory FortiGuard SLA is not an underlay WAN probe. Overlay members
+# (v0665-trin*) flap FortiGuard reachability without meaning the circuit is
+# down. LLD NAME.NOT_MATCHES drops the whole health-check (link-down and
+# loss). CONTROL:"Default_FortiGuard"=0 would mute link-down only — loss
+# keys off member {#IFNAME}. Do not set this to ``.*``.
+SDWAN_HEALTH_NAME_NOT_MATCHES = '^Default_FortiGuard$'
+
 # HostSync of a FortiOS device inherits platform defaults onto the companion.
 # Apply writes a per-device exact-match IFNAME regex from enabled+cabled NetBox
 # interfaces, and device-specific FortiOS memory thresholds when readable.
@@ -89,6 +96,7 @@ FORTIOS_PLATFORM_MACROS = {
     '{$NET.IF.IFNAME.MATCHES}': '^$',
     '{$NET.IF.IFNAME.NOT_MATCHES}': 'CHANGE_IF_NEEDED',
     '{$SDWAN.HEALTH.IFNAME.MATCHES}': '.*',
+    '{$SDWAN.HEALTH.NAME.NOT_MATCHES}': SDWAN_HEALTH_NAME_NOT_MATCHES,
     '{$SDWAN.MEMBER.NAME.MATCHES}': '.*',
     '{$FWP.FWNAME.MATCHES}': '^$',
     '{$NET.IF.UTIL.MAX}': '101',

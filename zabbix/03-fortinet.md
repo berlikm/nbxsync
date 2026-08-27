@@ -61,8 +61,8 @@ Scale: Info → Warning → Average → High → Disaster. Disaster+High page 24
 | Paths / ifaces in scope | Alert | Intended | Stock HTTP |
 |---|---|---|---|
 | SD-WAN member link down (WAN members only) | yes | Average — **primary/standalone only** (`fgate.ha.role=1`) | patched off `.diff()` + manual close → sustained `#3` + auto-recover |
-| SD-WAN health-check down / error | yes | Average — **primary/standalone only**. Prefer this as the WAN symptom | patched the same way |
-| SD-WAN health-check loss | yes | Warning | Warning at `{$SDWAN.HEALTH.IF.LOSS.WARN}`=20 |
+| SD-WAN health-check down / error | yes | Average — **primary/standalone only**. Prefer this as the WAN symptom. Factory `Default_FortiGuard` is LLD-excluded | patched the same way |
+| SD-WAN health-check loss | yes | Warning — same exclude for `Default_FortiGuard` | Warning at `{$SDWAN.HEALTH.IF.LOSS.WARN}`=20 |
 | SD-WAN latency / jitter | **no** | dashboard **Path → Loss / Probe** | items only; reuse later on [05](05-internet-circuits.md) |
 | WAN / HA physical iface link down | yes | Average — **primary/standalone only** | patched the same way |
 | Reserved `mgmt` | discovered, but link-down trigger off | none | FortiOS reports false physical-down on the live HA management path; device context `{$NET.IF.CONTROL:mgmt}=0`; ICMP/API own availability |
@@ -86,6 +86,7 @@ Template triggers are the contract. **Actions / media are estate-wide** (not thi
 | Member unreachable | Nested **ICMP Ping** **High** (3 misses). Per chassis, not the VIP | Is the **peer** still forwarding? Secondary High is still a dead box — RMA / console / OOB. Not a WAN ticket |
 | GUI/API blind, ping lives | Stock **Unexpected response from API** Average, and/or **port unavailable** Average. Companion **no API data 10m** if the item went silent | Token, trusted-hosts on **that** ha-mgmt, TLS name, scheme/port still `https`/`20443` |
 | One underlay member / health-check dead | Stock SD-WAN or WAN iface **Average**, sustained `#3`, **primary/standalone only** (`fgate.ha.role=1`) | Circuit / SFP / ISP. Mute with `{$SDWAN.*.CONTROL}=0` or maintenance — never ACK a `.diff()` hole (already patched) |
+| Factory `Default_FortiGuard` SLA flap | Would be stock SD-WAN **Link down** / **High packets loss** on `{#NAME}=Default_FortiGuard` (often overlay `v0665-trin*` / `v0666-trin*` in `root` and `Untrust`) | **Not a WAN ticket.** Companion `{$SDWAN.HEALTH.NAME.NOT_MATCHES}` drops that SLA from LLD. Optional on the box: disable the factory SLA or replace it with a real underlay probe. Do not mute overlay members themselves |
 | Last usable site path | **Not this template.** Later: High on the path, **Disaster** on the site | Do not also ticket Extreme `UW` and Cato for the same ISP cut |
 | HA peer missing | Companion **HA member count unexpected** Average (`system/ha-peer` ≠ `{$FGATE.HA.EXPECTED}`) | Backup down, never HostSynced, or standalone still at estate default 2 |
 | Cluster config drift | Companion **HA VDOM configuration is out of sync** **High**, primary only, 15m | Authoritative `system/ha-checksums` only — not `ha-nonsync-checksums` |
@@ -126,7 +127,7 @@ Stock HTTP has **no** host Health board (`FortiGate: General` / `Statistics` sta
 | FortiGate | **One Zabbix host per physical unit** (NetBox Device). Poll that unit’s **HA management IP** | A floating **WAN/data-plane VIP** as the API target. A single VIP host that hides the backup |
 | HA pair | **Both** members, always — one Zabbix host each, unique OOB / ha-mgmt. Health (ICMP/API/CPU/mem) on **each** | A VIP host, “primary only”, or skipping HostSync of the backup. Path/SD-WAN/license **tickets** doubling is later noise, not a reason to omit the second box |
 | Interfaces | WAN, SD-WAN members, HA, mgmt — admin-up. Reserved `mgmt` remains discovered, but its unreliable physical-link alert is context-disabled and ICMP/API monitor availability | VLAN, VPN, loopback, unused, `ssl.root`, every `npu`/`fortilink` unless it **is** the WAN |
-| SD-WAN | Members + health-checks that are real underlay paths. This estate uses SD-WAN for **internet failover** on at least **`root` (production)** and **`Untrust` (guest)** — maps and Probe are VDOM-split so those do not mix | Health-checks with “all members” if LLD is empty ([ZBX-26072](https://support.zabbix.com/browse/ZBX-26072)) — census, don’t assume WAN is fine |
+| SD-WAN | Members + health-checks that are real underlay paths. This estate uses SD-WAN for **internet failover** on at least **`root` (production)** and **`Untrust` (guest)** — maps and Probe are VDOM-split so those do not mix | Factory SLA **`Default_FortiGuard`** (FortiGuard via overlay members, not internet-failover). Health-checks with “all members” if LLD is empty ([ZBX-26072](https://support.zabbix.com/browse/ZBX-26072)) — census, don’t assume WAN is fine |
 | Licenses | Production FortiGuard SKUs | `no_support` / `no_license` (stock NOT_MATCHES already) |
 | Firewall policies | Collect **none** until a named canary list exists | Discover-all |
 | FortiAP / WTP | **no** | Extreme APs are [02](02-extreme-access-points.md) |
@@ -140,6 +141,7 @@ Mute an in-scope iface with context `{$NET.IF.CONTROL:"wan1"}=0` only as a short
 {$NET.IF.DISCOVERY.MIN}         = <same NetBox count>
 {$SDWAN.MEMBER.NAME.MATCHES}    = .*
 {$SDWAN.HEALTH.IFNAME.MATCHES}  = .*
+{$SDWAN.HEALTH.NAME.NOT_MATCHES}= ^Default_FortiGuard$
 {$FGATE.SDWAN.EXPECTED}         = 0|6|...  # exact configured member count per Device
 {$FGATE.HA.EXPECTED}            = 2
 {$FWP.FWNAME.MATCHES}           = ^$
@@ -147,6 +149,8 @@ Mute an in-scope iface with context `{$NET.IF.CONTROL:"wan1"}=0` only as a short
 ```
 
 `NOT_MATCHES=.*` is invalid here because Zabbix evaluates MATCHES **and** NOT_MATCHES. Aggregated WAN (`agg` / `x1`) is monitored only when NetBox marks the relevant physical member links enabled+cabled; logical overlay state remains the SD-WAN collector’s job.
+
+Factory **`Default_FortiGuard`** is a FortiOS Performance SLA that probes FortiGuard through whatever members are attached — on `CH-ZRH-ZH4-FWGW01` those are overlay `v0665-trin*` / `v0666-trin*`, so FortiGuard reachability looks like WAN down / high loss in both `root` and `Untrust`. Companion `{$SDWAN.HEALTH.NAME.NOT_MATCHES}` drops that health-check name from LLD (link-down **and** packet-loss). `{$SDWAN.HEALTH.IF.CONTROL:"Default_FortiGuard"}=0` would mute link-down only; loss keys off member `{#IFNAME}`. Do not denylist the overlay members — a real internet SLA can still use them. A host that uses a health-check literally named `Default_FortiGuard` as its underlay probe overrides the macro to `CHANGE_IF_NEEDED`. On the FortiGate, disable the factory SLA if unused, or add a probe to a public resolver on the underlay WAN; Zabbix still excludes the factory name so leftover checks do not page. Re-import **FortiGate Observability**, then **Check now** on `fgate.sdwan_health.discovery` (lost `Default_FortiGuard` rows can keep firing until LLD lifetime or they are deleted).
 
 ---
 
@@ -331,6 +335,7 @@ Template-level macros (not globals, not Switch roles, **not role Firewall**). **
 {$NET.IF.IFNAME.MATCHES}        = ^$       # safe platform default; exact Device regex from NetBox
 {$NET.IF.IFNAME.NOT_MATCHES}    = CHANGE_IF_NEEDED
 {$SDWAN.HEALTH.IFNAME.MATCHES}  = .*
+{$SDWAN.HEALTH.NAME.NOT_MATCHES}= ^Default_FortiGuard$
 {$SDWAN.MEMBER.NAME.MATCHES}    = .*
 {$FWP.FWNAME.MATCHES}           = ^$
 {$NET.IF.UTIL.MAX}              = 101

@@ -42,6 +42,7 @@ from fortigate_http import (
     RAW_MASTER_HISTORY,
     RAW_MASTER_HISTORY_KEYS,
     REQUIRED_HTTP_SCRIPT_KEYS,
+    SDWAN_HEALTH_NAME_NOT_MATCHES,
     SLOW_ITEM_DELAYS,
     SNMP_MONITORING_CG,
     VDOM_STAR_SCRIPT_KEYS,
@@ -115,6 +116,7 @@ class FirewallRoleMacroTests(unittest.TestCase):
                 '{$NET.IF.IFNAME.MATCHES}',
                 '{$NET.IF.IFNAME.NOT_MATCHES}',
                 '{$SDWAN.HEALTH.IFNAME.MATCHES}',
+                '{$SDWAN.HEALTH.NAME.NOT_MATCHES}',
                 '{$SDWAN.MEMBER.NAME.MATCHES}',
                 '{$FWP.FWNAME.MATCHES}',
                 '{$NET.IF.UTIL.MAX}',
@@ -152,6 +154,15 @@ class FirewallRoleMacroTests(unittest.TestCase):
 
     def test_sdwan_lld_is_open_and_ha_expected_is_two(self):
         self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.IFNAME.MATCHES}'], '.*')
+        self.assertEqual(
+            FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.NAME.NOT_MATCHES}'],
+            SDWAN_HEALTH_NAME_NOT_MATCHES,
+        )
+        self.assertEqual(SDWAN_HEALTH_NAME_NOT_MATCHES, '^Default_FortiGuard$')
+        self.assertNotEqual(
+            FIREWALL_ROLE_MACROS['{$SDWAN.HEALTH.NAME.NOT_MATCHES}'],
+            '.*',
+        )
         self.assertEqual(FIREWALL_ROLE_MACROS['{$SDWAN.MEMBER.NAME.MATCHES}'], '.*')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.SDWAN.EXPECTED}'], '1')
         self.assertEqual(FIREWALL_ROLE_MACROS['{$FGATE.HA.EXPECTED}'], '2')
@@ -426,6 +437,8 @@ class FirewallRoleMacroTests(unittest.TestCase):
         self.assertNotIn("value: '443'", companion)
         self.assertIn("macro: '{$SDWAN.MEMBER.NAME.MATCHES}'", companion)
         self.assertIn("value: '.*'", companion)
+        self.assertIn("macro: '{$SDWAN.HEALTH.NAME.NOT_MATCHES}'", companion)
+        self.assertIn("value: '^Default_FortiGuard$'", companion)
         self.assertIn("macro: '{$FGATE.SDWAN.EXPECTED}'", companion)
         self.assertIn("value: '0'", companion)
         self.assertIn("macro: '{$FGATE.HA.EXPECTED}'", companion)

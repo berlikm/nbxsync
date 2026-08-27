@@ -668,6 +668,7 @@ def upsert_http_template_macros(api, templateid) -> str:
             '{$NET.IF.IFNAME.MATCHES}',
             '{$NET.IF.IFNAME.NOT_MATCHES}',
             '{$SDWAN.HEALTH.IFNAME.MATCHES}',
+            '{$SDWAN.HEALTH.NAME.NOT_MATCHES}',
             '{$SDWAN.MEMBER.NAME.MATCHES}',
             '{$FGATE.PATH.CONTROL}',
             '{$NET.IF.DISCOVERY.MIN}',
