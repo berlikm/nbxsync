@@ -58,6 +58,13 @@ def _walk(node, visitor) -> None:
             _walk(item, visitor)
 
 
+def _without_uuids(value):
+    if isinstance(value, dict):
+        return {key: _without_uuids(item) for key, item in value.items() if key != 'uuid'}
+    if isinstance(value, list):
+        return [_without_uuids(item) for item in value]
+    return value
+
 def _collect_triggers(doc: dict) -> list[dict]:
     found: list[dict] = []
 
@@ -100,6 +107,7 @@ class FmgFazContractTests(unittest.TestCase):
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        cls.generator = module
         cls.render_scalar = staticmethod(module.q)
 
     def test_names_have_no_slash(self):
@@ -184,15 +192,26 @@ class FmgFazContractTests(unittest.TestCase):
         self.assertIn('{$DISK.UTIL.HIGH}', high[0]['expression'])
         self.assertEqual(FORTIANALYZER_TEMPLATE_MACROS['{$DISK.UTIL.HIGH}'], '95')
 
-    def test_faz_triggers_depend_on_parent_health(self):
+    def test_faz_triggers_gate_on_inherited_parent_health(self):
+        icmp_gate = f'max(/{FORTIANALYZER_OBSERVABILITY_TEMPLATE}/icmpping,#3)=1'
+        snmp_gate = (
+            f'max(/{FORTIANALYZER_OBSERVABILITY_TEMPLATE}/'
+            'zabbix[host,snmp,available],{$SNMP.TIMEOUT})=1'
+        )
         for trigger in self.faz_triggers:
-            deps = trigger.get('dependencies') or []
-            names = {d['name'] for d in deps}
-            exprs = {d['expression'] for d in deps}
-            self.assertIn(PARENT_ICMP_NAME, names, trigger['name'])
-            self.assertIn(PARENT_SNMP_NAME, names, trigger['name'])
-            self.assertIn(PARENT_ICMP_EXPR, exprs)
-            self.assertIn(PARENT_SNMP_EXPR, exprs)
+            self.assertNotIn('dependencies', trigger, trigger['name'])
+            self.assertIn(icmp_gate, trigger['expression'], trigger['name'])
+            self.assertIn(snmp_gate, trigger['expression'], trigger['name'])
+
+    def test_checked_in_templates_match_generator_except_uuids(self):
+        builders = (
+            (self.parent, self.generator.build_parent),
+            (self.fmg, self.generator.build_fmg),
+            (self.faz, self.generator.build_faz),
+        )
+        for checked_in, build in builders:
+            generated = yaml.safe_load('\n'.join(build().lines))['zabbix_export']['templates'][0]
+            self.assertEqual(_without_uuids(checked_in), _without_uuids(generated))
 
     def test_uuidv4(self):
         found: list[str] = []

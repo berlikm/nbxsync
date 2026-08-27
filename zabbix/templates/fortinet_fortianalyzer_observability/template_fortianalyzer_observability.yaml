@@ -14,7 +14,8 @@ zabbix_export:
         Platform Template Rule FortiAnalyzer points here. Logs board is the product
         page. Log disk High is justified here (log loss) — unlike FortiGate.
         Device connect-down on the parent is the Zabbix choice for "device stopped
-        sending logs"; mute FAZ-native duplicates.
+        sending logs". FAZ product alerts gate on inherited parent ICMP/SNMP health
+        because Zabbix rejects child-template dependencies on parent triggers.
         
         Operator page: zabbix/03-fortinet.md.
       groups:
@@ -48,28 +49,18 @@ zabbix_export:
             value: log
         triggers:
           - uuid: 44bcc8c4bdb548c8aaf28da490dba868
-            expression: 'min(/FortiAnalyzer Observability/faz.observability.log.lag,10m)>{$FAZ.LOG.LAG.WARN} and min(/FortiAnalyzer Observability/faz.observability.log.lag,10m)<={$FAZ.LOG.LAG.CRIT}'
+            expression: '(min(/FortiAnalyzer Observability/faz.observability.log.lag,10m)>{$FAZ.LOG.LAG.WARN} and min(/FortiAnalyzer Observability/faz.observability.log.lag,10m)<={$FAZ.LOG.LAG.CRIT}) and max(/FortiAnalyzer Observability/icmpping,#3)=1 and max(/FortiAnalyzer Observability/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=1'
             name: 'FortiAnalyzer Observability: Log indexing lag is high'
             priority: WARNING
             description: Indexing is falling behind receive. Reports/search will lag. Next day unless it climbs to Average.
-            dependencies:
-              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
-                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
-              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
-                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
             tags:
               - tag: scope
                 value: capacity
           - uuid: 5b26d0fa60b942198ae8a6363d16bf0a
-            expression: 'min(/FortiAnalyzer Observability/faz.observability.log.lag,5m)>{$FAZ.LOG.LAG.CRIT}'
+            expression: '(min(/FortiAnalyzer Observability/faz.observability.log.lag,5m)>{$FAZ.LOG.LAG.CRIT}) and max(/FortiAnalyzer Observability/icmpping,#3)=1 and max(/FortiAnalyzer Observability/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=1'
             name: 'FortiAnalyzer Observability: Log indexing lag is critical'
             priority: AVERAGE
             description: 'Log lag above {$FAZ.LOG.LAG.CRIT} seconds. Ticket — FAZ is not keeping up. Disk/CPU/ingest path.'
-            dependencies:
-              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
-                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
-              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
-                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
             tags:
               - tag: scope
                 value: capacity
@@ -87,15 +78,10 @@ zabbix_export:
             value: storage
         triggers:
           - uuid: 5684fe84696a466ca019b0243315edb8
-            expression: 'min(/FortiAnalyzer Observability/faz.observability.disk.util,5m)>{$DISK.UTIL.HIGH}'
+            expression: '(min(/FortiAnalyzer Observability/faz.observability.disk.util,5m)>{$DISK.UTIL.HIGH}) and max(/FortiAnalyzer Observability/icmpping,#3)=1 and max(/FortiAnalyzer Observability/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=1'
             name: 'FortiAnalyzer Observability: Log disk is critically full'
             priority: HIGH
             description: 'Log disk above {$DISK.UTIL.HIGH}. 03:00 page — FAZ will stop ingesting. Exception to site-only High: the product is about to drop data.'
-            dependencies:
-              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
-                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
-              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
-                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
             tags:
               - tag: scope
                 value: capacity
@@ -113,15 +99,10 @@ zabbix_export:
             value: license
         triggers:
           - uuid: a6e574b3463f43d0a1d62b95dd484870
-            expression: '{$FAZ.LIC.GBDAY.MAX}>0 and min(/FortiAnalyzer Observability/faz.observability.lic.gbday,30m)>{$FAZ.LIC.GBDAY.MAX}'
+            expression: '({$FAZ.LIC.GBDAY.MAX}>0 and min(/FortiAnalyzer Observability/faz.observability.lic.gbday,30m)>{$FAZ.LIC.GBDAY.MAX}) and max(/FortiAnalyzer Observability/icmpping,#3)=1 and max(/FortiAnalyzer Observability/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=1'
             name: 'FortiAnalyzer Observability: Licensed GB/day threshold exceeded'
             priority: AVERAGE
             description: 'Today''s ingest above {$FAZ.LIC.GBDAY.MAX}. Default 0 disables this until the licensed cap is known.'
-            dependencies:
-              - name: 'Fortinet FMG-FAZ by SNMP: Unavailable by ICMP ping'
-                expression: 'max(/Fortinet FMG-FAZ by SNMP/icmpping,#3)=0'
-              - name: 'Fortinet FMG-FAZ by SNMP: No SNMP data collection'
-                expression: 'max(/Fortinet FMG-FAZ by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0'
             tags:
               - tag: scope
                 value: capacity

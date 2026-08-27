@@ -34,6 +34,17 @@ GROUP_UUID = '36bff6c29af64692839d077febfc7079'
 ICMP_DEP = (PARENT_ICMP_NAME, PARENT_ICMP_EXPR)
 SNMP_DEP = (PARENT_SNMP_NAME, PARENT_SNMP_EXPR)
 HEALTH_DEPS = [ICMP_DEP, SNMP_DEP]
+FAZ_PARENT_HEALTH_GATE = (
+    f'max(/{FAZ}/icmpping,#3)=1 and '
+    f'max(/{FAZ}/zabbix[host,snmp,available],{{$SNMP.TIMEOUT}})=1'
+)
+
+
+def require_faz_parent_health(expression: str) -> str:
+    """Gate FAZ product alerts on the nested parent's reachability."""
+    return f'({expression}) and {FAZ_PARENT_HEALTH_GATE}'
+
+
 
 
 def uid() -> str:
@@ -1753,7 +1764,8 @@ link Network Generic, ICMP Ping, or FortiGate templates).
 Platform Template Rule FortiAnalyzer points here. Logs board is the product
 page. Log disk High is justified here (log loss) — unlike FortiGate.
 Device connect-down on the parent is the Zabbix choice for "device stopped
-sending logs"; mute FAZ-native duplicates.
+sending logs". FAZ product alerts gate on inherited parent ICMP/SNMP health
+because Zabbix rejects child-template dependencies on parent triggers.
 
 Operator page: zabbix/03-fortinet.md.
 """,
@@ -1771,18 +1783,20 @@ Operator page: zabbix/03-fortinet.md.
         triggers=[
             dict(
                 name=f'{FAZ}: Log indexing lag is high',
-                expression=f'min(/{FAZ}/faz.observability.log.lag,10m)>{{$FAZ.LOG.LAG.WARN}} and min(/{FAZ}/faz.observability.log.lag,10m)<={{$FAZ.LOG.LAG.CRIT}}',
+                expression=require_faz_parent_health(
+                    f'min(/{FAZ}/faz.observability.log.lag,10m)>{{$FAZ.LOG.LAG.WARN}} and min(/{FAZ}/faz.observability.log.lag,10m)<={{$FAZ.LOG.LAG.CRIT}}'
+                ),
                 priority='WARNING',
                 description='Indexing is falling behind receive. Reports/search will lag. Next day unless it climbs to Average.',
-                dependencies=HEALTH_DEPS,
                 scope='capacity',
             ),
             dict(
                 name=f'{FAZ}: Log indexing lag is critical',
-                expression=f'min(/{FAZ}/faz.observability.log.lag,5m)>{{$FAZ.LOG.LAG.CRIT}}',
+                expression=require_faz_parent_health(
+                    f'min(/{FAZ}/faz.observability.log.lag,5m)>{{$FAZ.LOG.LAG.CRIT}}'
+                ),
                 priority='AVERAGE',
                 description='Log lag above {$FAZ.LOG.LAG.CRIT} seconds. Ticket — FAZ is not keeping up. Disk/CPU/ingest path.',
-                dependencies=HEALTH_DEPS,
                 scope='capacity',
             ),
         ],
@@ -1798,10 +1812,11 @@ Operator page: zabbix/03-fortinet.md.
         triggers=[
             dict(
                 name=f'{FAZ}: Log disk is critically full',
-                expression=f'min(/{FAZ}/faz.observability.disk.util,5m)>{{$DISK.UTIL.HIGH}}',
+                expression=require_faz_parent_health(
+                    f'min(/{FAZ}/faz.observability.disk.util,5m)>{{$DISK.UTIL.HIGH}}'
+                ),
                 priority='HIGH',
                 description='Log disk above {$DISK.UTIL.HIGH}. 03:00 page — FAZ will stop ingesting. Exception to site-only High: the product is about to drop data.',
-                dependencies=HEALTH_DEPS,
                 scope='capacity',
             )
         ],
@@ -1817,10 +1832,11 @@ Operator page: zabbix/03-fortinet.md.
         triggers=[
             dict(
                 name=f'{FAZ}: Licensed GB/day threshold exceeded',
-                expression=f'{{$FAZ.LIC.GBDAY.MAX}}>0 and min(/{FAZ}/faz.observability.lic.gbday,30m)>{{$FAZ.LIC.GBDAY.MAX}}',
+                expression=require_faz_parent_health(
+                    f'{{$FAZ.LIC.GBDAY.MAX}}>0 and min(/{FAZ}/faz.observability.lic.gbday,30m)>{{$FAZ.LIC.GBDAY.MAX}}'
+                ),
                 priority='AVERAGE',
                 description="Today's ingest above {$FAZ.LIC.GBDAY.MAX}. Default 0 disables this until the licensed cap is known.",
-                dependencies=HEALTH_DEPS,
                 scope='capacity',
             )
         ],

@@ -39,6 +39,10 @@ template).
 
 Product boards live on the companions: FMG **Devices**, FAZ **Logs**.
 
+FAZ product triggers gate directly on inherited `icmpping` and
+`zabbix[host,snmp,available]` health. Do not model this as a trigger dependency:
+Zabbix rejects dependencies from a child template to its nested parent.
+
 Operator page: [`../../03-fortinet.md`](../../03-fortinet.md). OIDs: [OID_MAPPING.md](OID_MAPPING.md).
 
 ## Macros (destination defaults)
