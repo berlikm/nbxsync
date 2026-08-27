@@ -32,9 +32,10 @@ zabbix_export:
         {$MSSQL.URI}=sqlserver://localhost/{#MSSQL.INSTANCE}. Parent name
         is {$MSSQL.PARENT.HOST} when set, else Win32_Service.SystemName
         ({HOST.HOST} is not expanded in host/group prototypes). Children
-        land in {#MSSQL.PARENT} (hostname group; databases are stock LLD
-        on those hosts), {#MSSQL.PARENT}/{#MSSQL.INSTANCE},
-        Roles/MSSQL/{#MSSQL.PARENT}, and MSSQL instances. Drop the
+        join only the YAML host group MSSQL instances. Do not add
+        hostname or Roles/MSSQL/* group prototypes (they explode the
+        Sites/Roles/OS tree and put Query Server children under MSSQL).
+        Filter children with tags parent_host and sql_instance. Drop the
         prototype after Cloud nested LLD exists. Do not nest stock on
         this template, clone TCP-1433 Disaster here, or put instance
         names in NetBox. Host prototypes have no description field
@@ -495,10 +496,6 @@ zabbix_export:
               group_links:
                 - group:
                     name: 'MSSQL instances'
-              group_prototypes:
-                - name: '{#MSSQL.PARENT}'
-                - name: '{#MSSQL.PARENT}/{#MSSQL.INSTANCE}'
-                - name: 'Roles/MSSQL/{#MSSQL.PARENT}'
               templates:
                 - name: 'MSSQL by Zabbix agent 2'
               inventory_mode: DISABLED
@@ -621,7 +618,7 @@ zabbix_export:
           description: |
             Optional Zabbix technical name of this Windows host. User macros
             expand in JS preprocessing; {HOST.HOST} does not. When set, LLD
-            uses it for {#MSSQL.PARENT} (child host names and hostname
-            groups). Empty falls back to Win32_Service.SystemName. Set from
-            NetBox to the device name when the Windows computer name differs
-            from the Zabbix host.
+            uses it for {#MSSQL.PARENT} (child technical and visible names).
+            Empty falls back to Win32_Service.SystemName. Set from NetBox
+            to the device name when the Windows computer name differs from
+            the Zabbix host. Not used for host groups.

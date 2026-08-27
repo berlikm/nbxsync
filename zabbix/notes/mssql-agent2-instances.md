@@ -93,20 +93,38 @@ Do **not** put `{#MSSQL.INSTANCE}` in a NetBox macro. HostSync runs before Zabbi
 
 ## Host groups
 
-Parents stay in NetBox/HostSync groups (`Roles/MSSQL` or `Roles/MSSQL Query Server`, `Sites/…`, `OS/Windows`). Group prototypes that match **manually created** groups are **not** linked — do **not** put HostSync’s `Roles/MSSQL` UUID in YAML `host_groups` or `group_links`.
+Estate groups stay **Sites × Roles × OS × Priority** (§8 in the operator doc). Discovered children are **not** NetBox objects, so they cannot join `Sites/…`, `Roles/MSSQL`, or `OS/Windows` via HostSync.
 
-Discovered children join:
+Zabbix 7.0: **group prototypes that match a manually created group are not linked**. `Roles/MSSQL` and `Roles/MSSQL Query Server` are HostSync groups — never name them as group prototypes or `group_links` (the link is silently skipped).
+
+Children join **one** YAML group:
 
 | Group | Kind | Purpose |
 |---|---|---|
-| `MSSQL instances` | YAML `host_groups` + `group_links` (UUID `6f2c8a91d4b047e3b8c15a7e9d04f3c2`) | Fleet of discovered instance hosts. Grant this group to the same user groups that can see `Roles/MSSQL`. |
-| `{#MSSQL.PARENT}` | group prototype | Host group **named after the Windows hostname**, containing that box’s named-instance hosts. Databases are stock LLD **items** on those hosts, not extra hosts. |
-| `{#MSSQL.PARENT}/{#MSSQL.INSTANCE}` | group prototype | Nested instance group (has `{#…}` so import/runtime always unique). Open this group, then the child host, then Latest data / graphs for that instance’s databases. |
-| `Roles/MSSQL/{#MSSQL.PARENT}` | group prototype | Nested under the NetBox MSSQL role tree so permissions inherit from existing `Roles` / `Roles/MSSQL`. Not the HostSync group `Roles/MSSQL` itself. |
+| `MSSQL instances` | YAML `host_groups` + host-prototype `group_links` (UUID `6f2c8a91d4b047e3b8c15a7e9d04f3c2`) | Fleet of discovered instance hosts. Grant this group to the same user groups that can see `Roles/MSSQL` and `Roles/MSSQL Query Server`. |
 
-`{#MSSQL.PARENT}` comes from `{$MSSQL.PARENT.HOST}` when that user macro is set (user macros **do** expand in JS preprocessing), otherwise from WMI `Win32_Service.SystemName`. Built-in `{HOST.HOST}` cannot be used here.
+Do **not** add group prototypes. The canary used three and they do not belong in production:
 
-When Cloud has nested LLD, drop the host prototype. Named-instance databases then live on the **parent**, which is already in `Roles/MSSQL`.
+| Dropped prototype | Why it is wrong |
+|---|---|
+| `{#MSSQL.PARENT}` | New **root** group named like a hostname (`CH-STA-T-MSQL25` next to `Sites` / `Roles` / `OS`). N groups for N boxes. Parent Windows host is already in `Roles/MSSQL` |
+| `{#MSSQL.PARENT}/{#MSSQL.INSTANCE}` | One group per named instance, usually **one host**. Databases are stock LLD **items** on that host, not extra hosts. The child visible name is already `{#MSSQL.PARENT} / {#MSSQL.INSTANCE}` |
+| `Roles/MSSQL/{#MSSQL.PARENT}` | N more groups. Puts **MSSQL Query Server** children under `Roles/MSSQL`. Parent is already in the correct role group |
+
+Find a box’s instances with host tags `parent_host` / `sql_instance` (or search `…-mssql-…`). Do not recreate the Sites/Roles tree under LLD.
+
+Scale: N Windows boxes with named instances, M named instances total.
+
+| Design | Groups created |
+|---|---|
+| Three prototypes + fleet (old) | `1 + 2N + M` (MSSQL10 with five instances → 8 groups; ~30 boxes × 2 instances → ~121) |
+| Fleet only (production) | **1** (`MSSQL instances`) |
+
+`{#MSSQL.PARENT}` still names the **child host** (`{#MSSQL.PARENT}-mssql-{#MSSQL.INSTANCE}`). It comes from `{$MSSQL.PARENT.HOST}` when that user macro is set (user macros **do** expand in JS preprocessing), otherwise from WMI `Win32_Service.SystemName`. Built-in `{HOST.HOST}` cannot be used there.
+
+When Cloud has nested LLD, drop the host prototype. Named-instance databases then live on the **parent**, which is already in `Roles/MSSQL` / `Roles/MSSQL Query Server`. Delete leftover empty groups (`CH-STA-T-MSQL25`, `CH-STA-T-MSQL25/ASP`, `Roles/MSSQL/CH-STA-T-MSQL25`, …) after the prototype no longer creates them.
+
+Re-import uses `deleteMissing: false`, so Cloud **keeps** the three group prototypes until you delete them on the host prototype (Data collection → Templates → MSSQL Observability → Discovery → Host prototypes). Then check-now LLD on the parent; then delete the empty leftover groups. Do not HostSync-delete `MSSQL instances`.
 
 ---
 
@@ -211,6 +229,7 @@ Open the **child** host for per-database graphs. Parent inventories remain the s
 | Inventory | DISABLED |
 | Macro | `{$MSSQL.URI}=sqlserver://localhost/{#MSSQL.INSTANCE}` |
 | Tags | `component=mssql-instance`, `sql_instance={#MSSQL.INSTANCE}`, `parent_host={#MSSQL.PARENT}` |
+| Host groups | **`MSSQL instances` only** (`group_links`). No group prototypes |
 
 LLD lifetime 7d `DELETE_AFTER`; `enabled_lifetime` disable immediately. Lost instances disable the child at once and delete it after a week.
 
@@ -266,7 +285,7 @@ Same password as `{$MSSQL.PASSWORD}` on that NetBox object. Repeat on PITDV02, P
 | Role **MSSQL** / **MSSQL Query Server** | stock **MSSQL by Zabbix agent 2** (already) + companion **MSSQL Observability** (soft: only after YAML import) |
 | Role | `{$MSSQL.URI}` = `sqlserver://localhost:1433` |
 | Role | `{$MSSQL.USER}` only if the login **name** is global |
-| Role (optional) | `{$MSSQL.PARENT.HOST}` = `{{ object.name }}` so hostname groups match the Zabbix host when WMI `SystemName` differs |
+| Role (optional) | `{$MSSQL.PARENT.HOST}` = `{{ object.name }}` so child host names match the Zabbix host when WMI `SystemName` differs |
 | **Device / VM** | `{$MSSQL.PASSWORD}` (and USER if not global) — like vCenter, not like a shared Forti token |
 | Device | optional `{$MSSQL.INSTANCE.DISCOVERY.MIN}` = `5` on `MSSQL10` if you want census |
 | Device | **no** instance names, **no** DSN contexts |
@@ -284,6 +303,7 @@ Import the companion YAML in Zabbix (GUI). Then HostSync the **canary Windows ho
 | `description` on the host prototype | Cloud 7.0 import rejects the field; keep it off the YAML |
 | Fork stock to “fix” named-instance DB perf counters | Stock already matches `.*Databases`. Missing `Transactions/sec` etc. means those counters are absent from `mssql.perfcounter.get` for that DB. Enable/repair SQL perf counters on the instance; do not vendor-fork |
 | Put children in HostSync group `Roles/MSSQL` via `group_links` | Prototype groups that match manually created groups are not linked |
+| Hostname / `{parent}/{instance}` / `Roles/MSSQL/{parent}` group prototypes | Explodes the group tree (1+2N+M groups). Query Server children would sit under `Roles/MSSQL`. Tags `parent_host` / `sql_instance` already identify the box. Children join only `MSSQL instances` |
 | Link stock template five times on the parent | Zabbix forbids duplicate template link |
 | Companion `service.discovery` | Key collision with Windows by agent |
 | `{#INSTANCE}` in a NetBox Jinja macro | HostSync cannot see LLD |
@@ -359,14 +379,14 @@ Remaining checklist:
 1. Plugin version on the agent matches 7.0.10+.
 2. `MSQL01`: stock `mssql.version` works with role URI; companion LLD **empty**; no census alarm (MIN=0); **no** child hosts.
 3. `MSSQL10`: Windows shows five `MSSQL$*` services; companion LLD = five URIs `sqlserver://localhost/PITDV02` …; each parent `mssql.version` has a value.
-4. Five children `…-mssql-PITDV02` … with stock Agent 2. Host groups: hostname `{#MSSQL.PARENT}`, nested `{#MSSQL.PARENT}/PITDV02`, `Roles/MSSQL/{#MSSQL.PARENT}`, fleet `MSSQL instances`. Parent stays in NetBox `Roles/MSSQL`.
+4. Five children `…-mssql-PITDV02` … with stock Agent 2. Host group: **MSSQL instances** only. Parent stays in NetBox `Roles/MSSQL`. No hostname / `{parent}/{instance}` / `Roles/MSSQL/{parent}` groups.
 5. Open a **child** → Latest data → stock database LLD (graphs / honeycomb / `database:` tags). Hide `component: raw` (history 0). Count **Not supported**, not blank Get-items. Do not look for those graphs on the Observability filter of the Windows host.
 6. Login missing on **one** instance → one Average on that child/parent version item, not five, not a Windows service down.
 7. Stop `MSSQL$PITDV02` → Windows service item fires; companion version goes nodata.
 8. Stock 1433 items on `MSSQL10` parent may be unsupported — record it; do not “fix” with a fake DSN.
 9. Stock TCP Disaster on parent or child: **false** when plugin items have data. Disable **Service's TCP port state** on that host. Leave `mssql.ping` as availability. Do not retarget `{$MSSQL.HOST}` hoping the proxy can reach 1433.
 10. HostSync **does not** create hosts named `PITDV02` or `ASP`. It **may** create `CH-STA-T-MSQL25-mssql-ASP` only via LLD, not NetBox. Re-sync of the Windows host must not delete children.
-11. Second apply / re-import companion: LLD rows and children stable (same `{#MSSQL.INSTANCE}` / `{#MSSQL.PARENT}`). Host prototype still has **no** `description`.
+11. Second apply / re-import companion: LLD rows and children stable (same `{#MSSQL.INSTANCE}` / `{#MSSQL.PARENT}`). Host prototype still has **no** `description` and **no** group prototypes. `deleteMissing: false` will **not** drop the three canary group prototypes — delete them on the template host prototype, check-now the parent, then delete leftover empty groups `CH-STA-T-MSQL25`, `CH-STA-T-MSQL25/ASP`, `Roles/MSSQL/CH-STA-T-MSQL25`. Child stays in `MSSQL instances`.
 12. After Cloud nested LLD exists: remove the host prototype; keep named-instance item prototypes on the parent.
 
 ---
@@ -401,8 +421,9 @@ Reporting Service QUEUE (LogicMonitor leftover) remains a **custom query**, not 
   fixture → all valid `D`/`I`/`L` ages without zero-filled missing data
 - YAML: Zabbix 7.0, official `Templates/Databases` UUID, no nest of stock on
   the companion, host prototype links stock, **no host-prototype `description`**
-  (Cloud import rejects it), hostname + role group prototypes
-  use `{#MSSQL.PARENT}` (not `{HOST.HOST}`), no `service.discovery`, no
+  (Cloud import rejects it), **no group prototypes**, children `group_links`
+  only `MSSQL instances`, `{#MSSQL.PARENT}` in host/visible names and tags
+  (not `{HOST.HOST}`), no `service.discovery`, no
   `graphprototype`, no `net.tcp.service`, no Disaster, no `last_foreach`
 - Zerotouch: optional template, no YAML import, URI on both MSSQL roles
 

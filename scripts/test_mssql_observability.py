@@ -11,9 +11,6 @@ from mssql_observability import (
     BACKUP_INVENTORY_JS,
     DB_INVENTORY_JS,
     FIXTURES,
-    HOST_PROTO_GROUP_BOX,
-    HOST_PROTO_GROUP_INSTANCE,
-    HOST_PROTO_GROUP_ROLE,
     HOST_PROTO_HOST,
     HOST_PROTO_UUID,
     HOST_PROTO_VISIBLE,
@@ -262,12 +259,10 @@ class YamlContractTests(unittest.TestCase):
             [row['group']['name'] for row in proto['group_links']],
             [INSTANCE_HOST_GROUP],
         )
-        self.assertEqual(
-            [row['name'] for row in proto['group_prototypes']],
-            [HOST_PROTO_GROUP_BOX, HOST_PROTO_GROUP_INSTANCE, HOST_PROTO_GROUP_ROLE],
-        )
-        for group_name in (HOST_PROTO_GROUP_BOX, HOST_PROTO_GROUP_INSTANCE, HOST_PROTO_GROUP_ROLE):
-            self.assertIn('{#MSSQL.PARENT}', group_name)
+        self.assertFalse(proto.get('group_prototypes'))
+        self.assertNotIn('group_prototypes', proto)
+        self.assertNotIn('Roles/MSSQL', dumped_proto)
+        self.assertNotIn('{#MSSQL.PARENT}/{#MSSQL.INSTANCE}', dumped_proto)
         self.assertEqual(
             [row['name'] for row in proto['templates']],
             [STOCK_MSSQL_TEMPLATE],
@@ -282,7 +277,6 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(tags['sql_instance'], '{#MSSQL.INSTANCE}')
         self.assertEqual(tags['parent_host'], '{#MSSQL.PARENT}')
         self.assertNotRegex(self.text, r'sqlserver://localhost:\d+/')
-        self.assertNotIn('Roles/MSSQL Query Server', dumped_proto)
         import uuid
 
         self.assertEqual(uuid.UUID(hex=HOST_PROTO_UUID).version, 4)
