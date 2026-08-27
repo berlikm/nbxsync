@@ -286,6 +286,20 @@ class FmgFazContractTests(unittest.TestCase):
             doc = _load(path)
             self.assertEqual(doc['zabbix_export']['version'], '7.0')
 
+    def test_calculated_params_and_macro_values_are_strings(self):
+        for template in (self.parent, self.fmg, self.faz):
+            fields: list[tuple[str, object]] = []
+
+            def visit(node: dict) -> None:
+                if 'params' in node:
+                    fields.append(('params', node['params']))
+                if 'macro' in node and 'value' in node:
+                    fields.append((f"macro {node['macro']}", node['value']))
+
+            _walk(template, visit)
+            for field_name, value in fields:
+                with self.subTest(template=template['name'], field=field_name):
+                    self.assertIsInstance(value, str)
 
 if __name__ == '__main__':
     unittest.main()

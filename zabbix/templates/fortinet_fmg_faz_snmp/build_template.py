@@ -48,6 +48,12 @@ def q(value: str) -> str:
         return "'" + value.replace("'", "''") + "'"
     if value.lower() in {'y', 'n', 'yes', 'no', 'true', 'false', 'on', 'off', 'null'}:
         return "'" + value + "'"
+    try:
+        float(value)
+    except ValueError:
+        pass
+    else:
+        return "'" + value.replace("'", "''") + "'"
     if value[:1].isdigit() and '/' in value:
         return "'" + value + "'"
     return value

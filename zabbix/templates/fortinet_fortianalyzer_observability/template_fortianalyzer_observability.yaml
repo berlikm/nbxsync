@@ -143,16 +143,16 @@ zabbix_export:
           value: fortianalyzer
       macros:
         - macro: '{$FAZ.LOG.LAG.WARN}'
-          value: 60
+          value: '60'
           description: Log lag Warning (seconds).
         - macro: '{$FAZ.LOG.LAG.CRIT}'
-          value: 300
+          value: '300'
           description: Log lag Average (seconds).
         - macro: '{$FAZ.LIC.GBDAY.MAX}'
-          value: 0
+          value: '0'
           description: '0 disables GB/day license Average. Set to the licensed cap.'
         - macro: '{$DISK.UTIL.HIGH}'
-          value: 95
+          value: '95'
           description: FAZ log-disk High. 95 is log-loss territory.
       dashboards:
         - uuid: 8214a207551444d788494defc33f6d74
