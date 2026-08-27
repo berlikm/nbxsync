@@ -58,8 +58,6 @@ Stock macros that stay on the role / template (do not duplicate in the companion
 | `{$MSSQL.HOST}` / `{$MSSQL.PORT}` | `localhost` / `1433` | do not use for named instances (dynamic ports) |
 | `{$MSSQL.DBNAME.NOT_MATCHES}` | `master\|tempdb\|model\|msdb` | v2 only |
 | `{$MSSQL.BACKUP_*.USED:"dbname"}` | mute backup-age per **database** | official context use; **not** DSN |
-| `{$MSSQL.BACKUP_*.USED}` (no context) | **role Jinja**: `1` on `-p-` Production, `0` on Dev/Test | stock backup-age stays off on non-prod; v2 named-instance backup should reuse this |
-| `{$MSSQL.HYGIENE.CONTROL}` | companion default `1`; **role Jinja** same as USED | buffer-cache / page-life Warnings on Production only |
 
 `{$MSSQL.DSN}` is **MSSQL by ODBC** only (DSN lives in **proxy** `odbc.ini`). Zerotouch already unlinked ODBC. Role `{$MSSQL.DSN}=nbxsync` is dead for Agent 2.
 

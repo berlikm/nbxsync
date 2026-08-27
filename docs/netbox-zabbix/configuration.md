@@ -642,10 +642,6 @@ Stock **MSSQL by Zabbix agent 2** uses `{$MSSQL.URI}` / `{$MSSQL.USER}` / `{$MSS
 | `{$MSSQL.URI}` | DeviceRole: MSSQL | Text | `sqlserver://localhost:1433` |
 | `{$MSSQL.USER}` | DeviceRole: MSSQL **or** Device if the name differs | Secret | SQL login |
 | `{$MSSQL.PASSWORD}` | Device (per MSSQL host) | Secret | that host’s password |
-| `{$MSSQL.BACKUP_FULL.USED}` / `LOG` / `DIFF` | DeviceRole: MSSQL **and** MSSQL Query Server | Text (Jinja) | `1` on Production hostnames (`-p-`), else `0` — stock backup-age triggers stay off on Dev/Test |
-| `{$MSSQL.HYGIENE.CONTROL}` | same roles | Text (Jinja) | same grammar — companion buffer-cache / page-life Warnings |
-
-`--apply-mssql` writes those Jinja assignments. HostSync the host so they land. Override on a **Device** if one test box must ticket backups (`=1`) or one prod box must stay mute (`=0`). Items still collect; only PROBLEM is gated. Availability (TDS ping / version nodata) is **not** gated.
 
 Same template assignment on **MSSQL Query Server**. Leftover role `{$MSSQL.DSN}` is ODBC-era; ignore for Agent 2. Named instances are LLD on **MSSQL Observability** (import `zabbix/templates/mssql_observability/template_mssql_observability.yaml`, or `--apply-mssql`). Link that companion **next to** stock Agent 2 — do not nest stock, do not put instance names in NetBox.
 

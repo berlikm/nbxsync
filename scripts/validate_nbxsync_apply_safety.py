@@ -487,15 +487,6 @@ def main() -> int:
         and 'HostInterfaceRequirementChoices.AGENT' in nbx_mssql,
         'role assignment alongside stock Agent 2; never unlink stock',
     )
-    mssql_macros = _function_source(net_src, net_tree, '_step_mssql_role_macros') or ''
-    record(
-        'network_mssql_nonprod_backup_hygiene_jinja',
-        bool(mssql_macros)
-        and '_MSSQL_ROLE_ENV_MACROS' in mssql_macros
-        and '_step_mssql_role_macros' in nbx_mssql
-        and 'SyncHostJob' not in mssql_macros,
-        'role Jinja mutes stock backup USED and hygiene on non-Production hostnames',
-    )
     record(
         'zerotouch_no_mssql_observability_cutover',
         'apply-mssql' not in ztc_src

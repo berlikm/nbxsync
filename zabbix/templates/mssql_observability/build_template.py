@@ -28,7 +28,6 @@ from mssql_observability import (  # noqa: E402
     LOCKS_RAW_KEY,
     MACRO_BUFFER_CACHE_MIN,
     MACRO_DESCRIPTIONS,
-    MACRO_HYGIENE_CONTROL,
     MACRO_INSTANCE_DISCOVERY_MIN,
     MACRO_INSTANCE_MATCHES,
     MACRO_INSTANCE_NOT_MATCHES,
@@ -540,16 +539,13 @@ def build() -> Doc:
                 'name': 'MSSQL [{#MSSQL.INSTANCE}]: Buffer cache hit ratio is low',
                 'expression': (
                     f'max(/{TEMPLATE_NAME}/{BUFFER_CACHE_KEY},5m)<{MACRO_BUFFER_CACHE_MIN}'
-                    f' and {MACRO_HYGIENE_CONTROL}=1'
                 ),
                 'event_name': (
                     'MSSQL [{#MSSQL.INSTANCE}]: Buffer cache hit ratio is low '
                     f'(below {MACRO_BUFFER_CACHE_MIN}% for 5m)'
                 ),
                 'priority': 'WARNING',
-                'description': (
-                    'Estate Warning only. {$MSSQL.HYGIENE.CONTROL}=0 on Dev/Test so these do not PROBLEM; items still collect.'
-                ),
+                'description': 'Estate Warning only — stock High on the default instance is too hot here.',
                 'dependencies': [PING_DEP],
                 'scope': 'performance',
             }
@@ -575,16 +571,13 @@ def build() -> Doc:
                 'name': 'MSSQL [{#MSSQL.INSTANCE}]: Page life expectancy is low',
                 'expression': (
                     f'max(/{TEMPLATE_NAME}/{PAGE_LIFE_KEY},15m)<{MACRO_PAGE_LIFE_MIN}'
-                    f' and {MACRO_HYGIENE_CONTROL}=1'
                 ),
                 'event_name': (
                     'MSSQL [{#MSSQL.INSTANCE}]: Page life expectancy is low '
                     f'(less {MACRO_PAGE_LIFE_MIN}s for 15m)'
                 ),
                 'priority': 'WARNING',
-                'description': (
-                    'Estate Warning only. {$MSSQL.HYGIENE.CONTROL}=0 on Dev/Test so these do not PROBLEM; items still collect.'
-                ),
+                'description': 'Estate Warning only — stock High on the default instance is too hot here.',
                 'dependencies': [PING_DEP],
                 'scope': 'performance',
             }

@@ -276,12 +276,12 @@ zabbix_export:
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
               trigger_prototypes:
-                - uuid: e06550757cc35703a848486d868f2bd1
-                  expression: 'max(/MSSQL Observability/mssql.observability.buffer_cache_hit_ratio[{#MSSQL.INSTANCE}],5m)<{$MSSQL.BUFFER_CACHE.MIN} and {$MSSQL.HYGIENE.CONTROL}=1'
+                - uuid: 8246ecdbe7e75bc9adc00bcef964bc9b
+                  expression: 'max(/MSSQL Observability/mssql.observability.buffer_cache_hit_ratio[{#MSSQL.INSTANCE}],5m)<{$MSSQL.BUFFER_CACHE.MIN}'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: Buffer cache hit ratio is low'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: Buffer cache hit ratio is low (below {$MSSQL.BUFFER_CACHE.MIN}% for 5m)'
                   priority: WARNING
-                  description: 'Estate Warning only. {$MSSQL.HYGIENE.CONTROL}=0 on Dev/Test so these do not PROBLEM; items still collect.'
+                  description: Estate Warning only — stock High on the default instance is too hot here.
                   dependencies:
                     - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
                       expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
@@ -308,12 +308,12 @@ zabbix_export:
                 - tag: sql_instance
                   value: '{#MSSQL.INSTANCE}'
               trigger_prototypes:
-                - uuid: 177401dde95f51108b32a6cda2672867
-                  expression: 'max(/MSSQL Observability/mssql.observability.page_life_expectancy[{#MSSQL.INSTANCE}],15m)<{$MSSQL.PAGE_LIFE.MIN} and {$MSSQL.HYGIENE.CONTROL}=1'
+                - uuid: 3a22dc61c42759a999c293147a132ce9
+                  expression: 'max(/MSSQL Observability/mssql.observability.page_life_expectancy[{#MSSQL.INSTANCE}],15m)<{$MSSQL.PAGE_LIFE.MIN}'
                   name: 'MSSQL [{#MSSQL.INSTANCE}]: Page life expectancy is low'
                   event_name: 'MSSQL [{#MSSQL.INSTANCE}]: Page life expectancy is low (less {$MSSQL.PAGE_LIFE.MIN}s for 15m)'
                   priority: WARNING
-                  description: 'Estate Warning only. {$MSSQL.HYGIENE.CONTROL}=0 on Dev/Test so these do not PROBLEM; items still collect.'
+                  description: Estate Warning only — stock High on the default instance is too hot here.
                   dependencies:
                     - name: 'MSSQL [{#MSSQL.INSTANCE}]: TDS unavailable'
                       expression: 'max(/MSSQL Observability/mssql.ping["{#MSSQL.URI}","{$MSSQL.USER}","{$MSSQL.PASSWORD}"],#3)=0'
@@ -467,9 +467,6 @@ zabbix_export:
         - macro: '{$MSSQL.PAGE_LIFE.MIN}'
           value: '300'
           description: Page life expectancy Warning floor (seconds). Estate uses Warning only.
-        - macro: '{$MSSQL.HYGIENE.CONTROL}'
-          value: '1'
-          description: '1 = ticket buffer-cache / page-life Warnings. Role Jinja sets 1 on Production hostnames (-p-) and 0 on Dev/Test. Items still collect.'
       dashboards:
         - uuid: b91d7e04c3a8456f8e12f6a0b4c8d931
           name: Health

@@ -67,27 +67,6 @@ MACRO_INSTANCE_NOT_MATCHES = '{$MSSQL.INSTANCE.NOT_MATCHES}'
 MACRO_INSTANCE_DISCOVERY_MIN = '{$MSSQL.INSTANCE.DISCOVERY.MIN}'
 MACRO_BUFFER_CACHE_MIN = '{$MSSQL.BUFFER_CACHE.MIN}'
 MACRO_PAGE_LIFE_MIN = '{$MSSQL.PAGE_LIFE.MIN}'
-MACRO_HYGIENE_CONTROL = '{$MSSQL.HYGIENE.CONTROL}'
-
-# Stock Agent 2 backup-age triggers already gate on USED=1. Same Jinja as the
-# environment host tag: Production (-p-) tickets; Dev/Test/QA/Sandbox do not.
-BACKUP_USED_MACROS = (
-    '{$MSSQL.BACKUP_FULL.USED}',
-    '{$MSSQL.BACKUP_LOG.USED}',
-    '{$MSSQL.BACKUP_DIFF.USED}',
-)
-
-PRODUCTION_ONE_ELSE_ZERO_JINJA = (
-    '{% set n = (object.name or "") | lower -%}\n'
-    '{% if "-p-" in n or n.endswith("-p") or "-p0" in n or "-p1" in n -%}1\n'
-    '{%- else -%}0\n'
-    '{%- endif -%}'
-)
-
-ROLE_ENV_MACROS = {
-    **{macro: PRODUCTION_ONE_ELSE_ZERO_JINJA for macro in BACKUP_USED_MACROS},
-    MACRO_HYGIENE_CONTROL: PRODUCTION_ONE_ELSE_ZERO_JINJA,
-}
 
 TEMPLATE_MACROS = {
     MACRO_INSTANCE_MATCHES: '.*',
@@ -95,7 +74,6 @@ TEMPLATE_MACROS = {
     MACRO_INSTANCE_DISCOVERY_MIN: '0',
     MACRO_BUFFER_CACHE_MIN: '50',
     MACRO_PAGE_LIFE_MIN: '300',
-    MACRO_HYGIENE_CONTROL: '1',
 }
 
 MACRO_DESCRIPTIONS = {
@@ -106,10 +84,6 @@ MACRO_DESCRIPTIONS = {
     ),
     MACRO_BUFFER_CACHE_MIN: 'Buffer cache hit ratio Warning floor (percent). Estate uses Warning only.',
     MACRO_PAGE_LIFE_MIN: 'Page life expectancy Warning floor (seconds). Estate uses Warning only.',
-    MACRO_HYGIENE_CONTROL: (
-        '1 = ticket buffer-cache / page-life Warnings. Role Jinja sets 1 on Production '
-        'hostnames (-p-) and 0 on Dev/Test. Items still collect.'
-    ),
 }
 
 ROLE_NAMES = ('MSSQL', 'MSSQL Query Server')

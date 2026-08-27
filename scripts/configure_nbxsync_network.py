@@ -203,7 +203,6 @@ from nbxsync.utils.zabbixconnection import ZabbixConnection
 
 from mssql_observability import (
     KEEP_TEMPLATES_ON_ROLE as _MSSQL_KEEP_TEMPLATES_ON_ROLE,
-    ROLE_ENV_MACROS as _MSSQL_ROLE_ENV_MACROS,
     ROLE_NAMES as _MSSQL_ROLE_NAMES,
     STOCK_TEMPLATE_NAME as _MSSQL_STOCK_TEMPLATE,
     TEMPLATE_FILES as _MSSQL_TEMPLATE_FILES,
@@ -4920,9 +4919,6 @@ def _print_mssql_plan(server, *, errors: list[str], apply: bool, zbx_names: list
     if zbx_names:
         logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
     logger.info('  keep on roles: %s', ', '.join(_MSSQL_KEEP_TEMPLATES_ON_ROLE))
-    logger.info(
-        '  Role Jinja: {$MSSQL.BACKUP_*.USED} and {$MSSQL.HYGIENE.CONTROL} = 1 on Production hostnames (-p-), else 0'
-    )
     roles = _mssql_roles()
     logger.info(
         '  ZabbixTemplateAssignment on roles %s → %s (AGENT; alongside stock)',
@@ -4998,25 +4994,6 @@ def _step_mssql_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
     if not assigned:
         raise SystemExit('MSSQL Observability: no MSSQL / MSSQL Query Server role to assign')
     logger.info('  Kept stock+companion on role: %s', ', '.join(_MSSQL_KEEP_TEMPLATES_ON_ROLE))
-    _step_mssql_role_macros(server)
-
-
-def _step_mssql_role_macros(server) -> None:
-    """Production-only backup/hygiene gates. Items still collect on Dev/Test."""
-    for role in _mssql_roles():
-        for macro_name, value in _MSSQL_ROLE_ENV_MACROS.items():
-            _upsert_object_macro_assignment(
-                server,
-                role,
-                macro_name,
-                value,
-                mtype=ZabbixMacroTypeChoices.TEXT,
-                description=f'nwn:mssql:{macro_name}',
-            )
-        logger.info(
-            '  Role %s backup/hygiene Jinja (1 on -p- Production, else 0)',
-            role.name,
-        )
 
 
 def run_check_mssql() -> int:
