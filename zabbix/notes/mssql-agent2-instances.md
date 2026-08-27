@@ -67,7 +67,11 @@ Stock macros that stay on the role / template (do not duplicate in the companion
 
 Stock trigger **MSSQL: Service is unavailable** is **Disaster** on `net.tcp.service[tcp,{$MSSQL.HOST},{$MSSQL.PORT}]`. That SIMPLE check runs on the **proxy**, not through Agent 2. `{$MSSQL.HOST}=localhost` is the proxy. Pointing it at the Windows IP still fails when SQL 1433 is not reachable from the proxy (normal: monitoring uses agent :10050; plugin talks to SQL on-box). Plugin items can be green while this Disaster is red. YAML cannot disable an inherited stock trigger (export/import drops host-level inherited overrides). On Cloud: disable **Service's TCP port state** / **MSSQL: Service is unavailable** on named-instance **children**, and on Windows parents if the same false Disaster is open. Availability is stock `mssql.ping` and the companion version probe. Do **not** clone that trigger onto the companion. Do **not** fork stock to delete it.
 
-Stock per-database **performance** items are dependents of `mssql.db.perf_raw["{#DBNAME}"]`, which JSONPaths `object_name=~'.*Databases'` and `instance_name=='{#DBNAME}'`, then one JSONPath per counter (`Transactions/sec`, `Active Transactions`, log-file sizes, …). Named-instance object names (`MSSQL$ASP:Databases`) already match `.*Databases`. If that object exists but **omits** those `counter_name` rows, the ~13 rate/size derivatives stay **unsupported** while `State` and backup items (different masters) still work. That is SQL Server / perfmon payload, not a missing URI. Do **not** fork the vendor template or invent a second counter map in the companion.
+Stock per-database **performance** items are dependents of `mssql.db.perf_raw["{#DBNAME}"]` (`history: 0`), which JSONPaths `object_name=~'.*Databases'` and `instance_name=='{#DBNAME}'`, then one JSONPath per counter (`Transactions/sec`, `Active Transactions`, log-file sizes, …). **State** uses that **same** master (`counter_name=='State'`). Named-instance object names (`MSSQL$ASP:Databases`) already match `.*Databases`. If that slice contains `State` but omits the size/log/tx `counter_name` rows, those ~13 derivatives stay **unsupported** while State still works. Backups / recovery model use `last.backup.get`, not perf_raw. Instance-level `_Total` Databases counters (total data/log file size, total transactions) can still be green. That is SQL Server / perfmon payload, not a missing URI. Do **not** fork the vendor template or invent a second counter map in the companion.
+
+Stock **Cache hit ratio** (`mssql.cache_hit_ratio`) JSONPaths `counter_name=='CacheHitRatio'` on Plan Cache `_Total`. Sibling Plan Cache items (`Cache Object Counts`, `Cache Pages`, `Cache objects in use`) use spaced names and can be green while this one is unsupported — known vendor 7.0-6 mismatch vs `Cache Hit Ratio`. **Buffer cache hit ratio** is a different object and is the useful cache metric. Do **not** fork stock to insert a space.
+
+Latest data **empty last value** on every `component: raw` **Get …** item is **`history: 0`**, not a collection failure. Filter Latest data to hide `component: raw` before judging gaps. Count **Not supported**, not blank cells.
 
 ---
 
@@ -307,9 +311,34 @@ Planned boxes: **one default-only** (`CH-STA-T-MSQL01`) and **one named** (`CH-S
 | Child templates | stock **MSSQL by Zabbix agent 2** only |
 | Child URI | `sqlserver://localhost/ASP` (inherited user/password; inherited parent agent interface) |
 | Tags | `sql_instance=ASP`, `parent_host=CH-STA-T-MSQL25` |
-| Child DB LLD | `database=ServerInformationDb` materialized (23 discovered items). **State** and **full-backup** items enabled, supported, with values |
-| Parent default instance | **HADB** still supported, state `0` |
-| Child DB perf derivatives | 13 stock items unsupported: `MSSQL$ASP:Databases` payload lacks the expected `counter_name` rows. Not a companion/URI bug; do not fork stock |
+| Child DB LLD | `database=ServerInformationDb` materialized (23 discovered items). **State** `ONLINE (0)` and **full/diff/log backup** items supported, with values. `{$MSSQL.DBNAME.NOT_MATCHES}` hides master/tempdb/model/msdb — one user DB on ASP is expected |
+| Parent default instance | **HADB** still supported, state `0`. **SensirionAuthDB** per-DB **Percent log used** fires on the parent — default-instance Databases counters work on this box |
+| Child Latest data | **176** items: **162 Normal**, **14 Not supported**. SQL version `17.0.1125.2` (2025 Developer). Jobs: nine Agent jobs, all status/schedule items valued |
+| Child empty cells | **32** `component: raw` Get-masters (`history: 0`) look blank while Normal. Hide `component: raw` |
+| Child Not supported (14) | **Cache hit ratio** + **13** ServerInformationDb perf derivatives (list below). State on the same `perf_raw` is green |
+
+**Child Latest data accounting (`CH-STA-T-MSQL25 / ASP`, stock Agent 2):**
+
+| What you see | Count | Verdict |
+|---|---:|---|
+| Total items | 176 | Stock template + one DB LLD row + nine jobs |
+| Normal | 162 | Includes 32 raw masters that store nothing |
+| Not supported | 14 | Real gaps (below) |
+| `component: raw` | 32 | `history: 0` by design. Dependents have values (jobs, SQL Statistics, Buffer Manager, backups, State) |
+| Jobs (`mssql-job`) | 9 × 7 | Enabled, last/next run, duration, status, message — complete. Only **Get job status** is raw |
+| AG / replica / quorum / mirroring / local DB / non-local DB | masters only | No discovered AG/mirroring items. ASP is not in an AG (or LLD empty). Expected, not a URI miss |
+| **Service's TCP port state** | Down (0) | **False** SIMPLE from the proxy. Disable that item/trigger. Plugin Version and Uptime are green |
+| Instance-level perf (batch requests, PLE, memory, locks, latches, SQL compilations, worktables, …) | valued ~24s | Agent 2 + `sqlserver://localhost/ASP` is collecting |
+| Instance Databases `_Total` | Total data file size 282.52 GB, total log 5.05 GB, total tx/sec | `Get DB counters` payload is healthy at `_Total` |
+| ServerInformationDb State / recovery / backups | valued | `perf_raw` slice exists (State); backup master exists |
+| ServerInformationDb size/log/tx (13) | empty + Not supported | Those `counter_name` rows are missing from `instance_name=='ServerInformationDb'` even though State is present. Same stock JSONPaths work for SensirionAuthDB on the **default** instance. SQL/perfmon on ASP, not companion |
+| Cache hit ratio | empty + Not supported | Vendor JSONPath `CacheHitRatio` vs Plan Cache `Cache Hit Ratio`. Buffer cache hit ratio **100%** is the item to use |
+
+The 13 unsupported per-DB items (all dependents of `mssql.db.perf_raw["ServerInformationDb"]`):
+
+Active transactions; Data file size; Log bytes flushed per second; Log file size; Log file used size; Log flushes per second; Log flush waits per second; Log flush wait time; Log growths; Log shrinks; Log truncations; Percent log used; Transactions per second.
+
+Do **not** fork stock. To see the payload once: on the **child**, set history 1h on **MSSQL DB 'ServerInformationDb': Get performance counters**, check-now, read `counter_name` values, then set history back to 0. If you need those graphs, repair SQL per-db counters for `MSSQL$ASP` (not a second map in Observability).
 
 **Problems opened after the child appeared (do not “fix” the wrong layer):**
 
@@ -331,7 +360,7 @@ Remaining checklist:
 2. `MSQL01`: stock `mssql.version` works with role URI; companion LLD **empty**; no census alarm (MIN=0); **no** child hosts.
 3. `MSSQL10`: Windows shows five `MSSQL$*` services; companion LLD = five URIs `sqlserver://localhost/PITDV02` …; each parent `mssql.version` has a value.
 4. Five children `…-mssql-PITDV02` … with stock Agent 2. Host groups: hostname `{#MSSQL.PARENT}`, nested `{#MSSQL.PARENT}/PITDV02`, `Roles/MSSQL/{#MSSQL.PARENT}`, fleet `MSSQL instances`. Parent stays in NetBox `Roles/MSSQL`.
-5. Open a **child** → Latest data → stock database LLD (graphs / honeycomb / `database:` tags). Do not look for those graphs on the Observability filter of the Windows host.
+5. Open a **child** → Latest data → stock database LLD (graphs / honeycomb / `database:` tags). Hide `component: raw` (history 0). Count **Not supported**, not blank Get-items. Do not look for those graphs on the Observability filter of the Windows host.
 6. Login missing on **one** instance → one Average on that child/parent version item, not five, not a Windows service down.
 7. Stop `MSSQL$PITDV02` → Windows service item fires; companion version goes nodata.
 8. Stock 1433 items on `MSSQL10` parent may be unsupported — record it; do not “fix” with a fake DSN.
@@ -382,8 +411,10 @@ Reporting Service QUEUE (LogicMonitor leftover) remains a **custom query**, not 
 name, child host creation, stock database LLD/graphs on the child, TCP
 Disaster behaviour, HostSync of the parent leaving children alone.
 `CH-STA-T-MSQL25` / `ASP` already proved child creation, URI override,
-inherited credentials/interface, and stock DB **state** + **backup**.
-Named-instance **perf** derivatives remain a SQL counter-payload check.
+inherited credentials/interface, stock DB **state** + **backup**, jobs,
+and instance-level Agent 2 perf. Named-instance **per-DB size/log/tx**
+and stock **Cache hit ratio** remain SQL/vendor JSONPath gaps (14 Not
+supported). Filter out `component: raw` when reading Latest data.
 
 ## Implementation
 
