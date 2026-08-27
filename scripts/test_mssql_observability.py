@@ -431,6 +431,7 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn('{#MSSQL.URI}', trig['expression'])
         self.assertNotIn('net.tcp.service', trig['expression'])
         self.assertNotIn('DISCARD_UNCHANGED_HEARTBEAT', json.dumps(version.get('preprocessing') or []))
+        self.assertIn('Stable versions emit on every poll', version['description'])
         steps = version.get('preprocessing') or []
         for step in steps:
             if str(step.get('type') or '').upper() == 'DISCARD_UNCHANGED_HEARTBEAT':

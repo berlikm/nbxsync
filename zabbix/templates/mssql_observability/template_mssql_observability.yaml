@@ -215,7 +215,7 @@ zabbix_export:
               delay: 5m
               value_type: CHAR
               trends: '0'
-              description: 'Plugin version probe for this named instance. URI is LLD, not {$MSSQL.URI}.'
+              description: 'Plugin version probe for this named instance. URI is LLD, not {$MSSQL.URI}. Stable versions emit on every poll so nodata detects actual silence.'
               timeout: 30s
               tags:
                 - tag: component
