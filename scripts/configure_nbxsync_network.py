@@ -4906,6 +4906,7 @@ def _print_xiqse_plan(server, *, errors: list[str], apply: bool, zbx_names: list
         logger.info('  %s ← %s', name, path)
     if zbx_names:
         logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
+    platforms = _xiqse_platforms()
     logger.info(
         '  TemplateRule %s pattern %s → %s (NONE; agentless and soft if no platform matches yet)',
         _xiqse.SE_TEMPLATE_RULE,
