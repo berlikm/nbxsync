@@ -4906,9 +4906,8 @@ def _print_xiqse_plan(server, *, errors: list[str], apply: bool, zbx_names: list
         logger.info('  %s ← %s', name, path)
     if zbx_names:
         logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
-    platforms = _xiqse_platforms()
     logger.info(
-        '  TemplateRule %s pattern %s → %s (ANY; soft if no platform matches yet)',
+        '  TemplateRule %s pattern %s → %s (NONE; agentless and soft if no platform matches yet)',
         _xiqse.SE_TEMPLATE_RULE,
         _xiqse.SE_PLATFORM_PATTERN,
         _xiqse.SE_TEMPLATE_NAME,
@@ -4965,7 +4964,7 @@ def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
         server,
         imported[_xiqse.SE_TEMPLATE_NAME][0],
         imported[_xiqse.SE_TEMPLATE_NAME][1],
-        req=[HostInterfaceRequirementChoices.ANY],
+        req=[HostInterfaceRequirementChoices.NONE],
     )
     nac = ensure_nbx_template(
         server,
