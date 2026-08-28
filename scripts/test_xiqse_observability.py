@@ -246,8 +246,8 @@ class YamlContractTests(unittest.TestCase):
         for snippet in FORBIDDEN_SNIPPETS:
             self.assertNotIn(snippet, blob, snippet)
 
-    def test_site_engine_template_stays_agentless(self):
-        self.assertNotIn('web.certificate.get[{$XIQSE', self.se_text)
+    def test_templates_stay_agentless(self):
+        self.assertNotIn('web.certificate.get[', self.se_text + self.nac_text)
 
     def test_scripts_are_embedded_from_js_files(self):
         items = {item['key']: item for item in self.se['items']}

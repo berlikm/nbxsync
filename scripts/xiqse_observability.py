@@ -121,14 +121,10 @@ SE_TRIGGER_PROTOTYPE_NAMES = {
 }
 NAC_ITEM_KEYS = {
     'net.tcp.service[tcp,,{$NAC.PORTAL.PORT}]',
-    'web.certificate.get[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT}]',
-    'nac.tls.not_after',
 }
 NAC_TRIGGER_NAMES = {
     'ExtremeControl: portal TCP 8444 down',
-    'ExtremeControl: TLS certificate expires soon',
 }
-
 DASHBOARD_NAMES = {'Health', 'Engines'}
 
 
