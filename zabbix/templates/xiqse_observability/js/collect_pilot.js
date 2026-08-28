@@ -3,17 +3,41 @@ var PILOT_QUERIES = [
   '{ network { devices { ip deviceData { xiqLicenseState } } } }'
 ];
 
+function emptyPilotSnapshot(error) {
+  var counted = emptyDeviceLicenses();
+  return {
+    ok: 0,
+    error: error,
+    pilotUsed: counted.pilotUsed,
+    navigatorUsed: counted.navigatorUsed,
+    pending: counted.pending,
+    unmanaged: counted.unmanaged,
+    platformOne: counted.platformOne,
+    other: counted.other
+  };
+}
+
 function collectPilot(params) {
   var auth = fetchToken(params);
   if (!auth.ok) {
-    return { ok: 0, error: auth.error, pilotUsed: 0 };
+    return emptyPilotSnapshot(auth.error);
   }
   var result = graphqlTry(params, auth.token, PILOT_QUERIES);
   if (!result.ok) {
-    return { ok: 0, error: result.error, pilotUsed: 0 };
+    return emptyPilotSnapshot(result.error);
   }
   var devices = (((result.data || {}).network) || {}).devices;
-  return { ok: 1, error: '', pilotUsed: countPilot(devices) };
+  var counted = countDeviceLicenses(devices);
+  return {
+    ok: 1,
+    error: '',
+    pilotUsed: counted.pilotUsed,
+    navigatorUsed: counted.navigatorUsed,
+    pending: counted.pending,
+    unmanaged: counted.unmanaged,
+    platformOne: counted.platformOne,
+    other: counted.other
+  };
 }
 
 var params = JSON.parse(value);

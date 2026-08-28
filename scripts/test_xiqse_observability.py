@@ -175,6 +175,29 @@ class EngineLldTests(unittest.TestCase):
             2,
         )
 
+    def test_device_license_census_splits_pilot_navigator_and_platform_one(self):
+        devices = [
+            {'deviceData': {'xiqLicenseState': 'XIQ_PILOT'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_NAVIGATOR'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_NAVIGATOR'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_PENDING'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_UNMANAGED'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_ADVANCED_TIER_A'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_STANDARD_TIER_C'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_TRIAL'}},
+            {},
+        ]
+        counted = run_metrics_json(
+            'countDeviceLicenses(devices)',
+            prelude=f'var devices = {json.dumps(devices)};',
+        )
+        self.assertEqual(counted['pilotUsed'], 1)
+        self.assertEqual(counted['navigatorUsed'], 2)
+        self.assertEqual(counted['pending'], 1)
+        self.assertEqual(counted['unmanaged'], 1)
+        self.assertEqual(counted['platformOne'], 2)
+        self.assertEqual(counted['other'], 1)
+
 
 class YamlContractTests(unittest.TestCase):
     @classmethod
@@ -283,6 +306,28 @@ class YamlContractTests(unittest.TestCase):
         names = {tr['name']: tr for tr in used['triggers']}
         self.assertIn('{$XIQ.NAC.TOTAL}>0', names['XIQ-SE: NAC license seats exhausted']['expression'])
         self.assertIn('{$XIQ.NAC.TOTAL}>0', names['XIQ-SE: NAC license seats high']['expression'])
+
+    def test_navigator_cap_requires_purchased_total(self):
+        used = next(item for item in self.se['items'] if item['key'] == 'xiqse.nav.used')
+        names = {tr['name']: tr for tr in used['triggers']}
+        self.assertIn('{$XIQ.NAV.TOTAL}>0', names['XIQ-SE: Navigator licenses exhausted']['expression'])
+        remain = next(item for item in self.se['items'] if item['key'] == 'xiqse.nav.remaining')
+        low = next(tr for tr in remain['triggers'] if tr['name'] == 'XIQ-SE: few Navigator licenses remaining')
+        self.assertIn('{$XIQ.NAV.TOTAL}>0', low['expression'])
+
+    def test_log_forward_trigger_is_business_hours_and_has_age_graph(self):
+        proto = next(
+            row
+            for row in self.se['discovery_rules'][0]['item_prototypes']
+            if row['key'] == 'xiqse.engine.auth.age[{#ENGINE.IP}]'
+        )
+        stale = proto['trigger_prototypes'][0]
+        self.assertEqual(stale['name'], 'XIQ-SE engine {#ENGINE.NAME}: not forwarding auth logs')
+        self.assertEqual(stale['priority'], 'AVERAGE')
+        self.assertIn('{$XIQ.NAC.FRESH.CONTROL}=1', stale['expression'])
+        self.assertIn('dayofweek()', stale['expression'])
+        graphs = {row['name'] for row in self.se['discovery_rules'][0]['graph_prototypes']}
+        self.assertIn('Engine {#ENGINE.NAME}: last auth age', graphs)
 
     def test_dashboards_and_valuemaps_live_on_the_template(self):
         self.assertEqual({d['name'] for d in self.se['dashboards']}, DASHBOARD_NAMES)

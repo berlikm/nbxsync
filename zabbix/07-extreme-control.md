@@ -13,11 +13,11 @@ This page is the **target contract**. YAML lives in `templates/xiqse_observabili
 | Rule | Here |
 |---|---|
 | Page **symptoms** | Engine ICMP down. RADIUS 1812 dead while the box is up (users cannot 802.1X) |
-| **Ticket** (Average) | SE NBI/GUI dead while ICMP up (ops blind; RADIUS often still works). Engine disconnected from SE. **Auth events stale while RADIUS is up** (NAC worked, logs never reached SE). SE ingest jam. Engine `needsEnforce` stuck |
-| **Graph** / next day | Unique MACs that authenticated in **24h** (how Extreme counts the NAC license). Pilot seats used / remaining. Heap, uptime, version, engine load vs hardware capacity. Per-engine RADIUS request/success/fail rates (SNMP) |
+| **Ticket** (Average) | SE NBI/GUI dead while ICMP up (ops blind; RADIUS often still works). Engine disconnected from SE. **NAC not forwarding auth logs to SE** (`lastAuthEventTime` stale while RADIUS is up). SE ingest jam. Engine `needsEnforce` stuck |
+| **Graph** / next day | Unique MACs that authenticated in **24h** (XIQ-NAC-S). Pilot + Navigator seats used / remaining (live equivalent of Extreme's XIQ-SE licensing-calculation workflow). Heap, uptime, version, engine load vs hardware capacity. Per-engine RADIUS request/success/fail rates (SNMP) |
 | One incident | RADIUS / GraphQL → ICMP → **site**. Engine tickets do not also fire SE. SE ingest jam is **one** SE ticket, not N engines |
 | Never silent | GraphQL nodata; zero engines discovered; 24h census truncated (`count == maxResults`). SNMP-dead Warning on the engine if the MONITORING profile stops answering |
-| Collect first | Heap / CPU thresholds off until a quiet baseline. Event-freshness gated so a quiet night is not a ticket. SNMP fail-ratio and contact-lost gated (`101` / CONTROL=0) |
+| Collect first | Heap / CPU thresholds off until a quiet baseline. Log-forward gated so a quiet night is not a ticket. SNMP fail-ratio and contact-lost gated (`101` / CONTROL=0) |
 | One `icmpping` | Nested only if the host does not already ping. Do not also assign Network Generic |
 | Host dashboard | **Health** (SE: NBI / licenses; engine: SNMP auth rates) + **Engines** (SE LLD map) |
 
@@ -25,19 +25,25 @@ Disaster is campus-wide auth later, on a **service / site** host — not on this
 
 ---
 
-## How Extreme counts the “RADIUS license”
+## How Extreme counts licenses
 
-This is **XIQ-NAC-S** (Access Control end-systems), not Pilot.
+Three subscription pools. Same three the Extreme **XIQ-SE licensing calculation** workflow reports for an XMC → XIQ-SE move ([KB 000098925](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000098925), `.xwf` v116). That workflow is a **one-shot** report: it reads `appdata/license` and the SE database, and needs NMS-ADV / 27001. We do **not** run it from Zabbix. We graph the same pools continuously from NBI.
 
-GTAC: unique **end-systems that authenticated in a rolling 24 hours**, global across all engines. Same MAC on two engines counts **once**. RADIUS **accounting** packets do **not** count. Unique **usernames** are not the license (laptop + phone + printer = three seats).
+| Pool | SKU | Counted how | Live item |
+|---|---|---|---|
+| Access Control | `XIQ-NAC-S` | Unique **MACs** that **authenticated** in a **rolling 24h**, global. Same MAC on two engines = one seat. Accounting does not count. Usernames are not the license | `xiqse.nac.used24h` |
+| Pilot | `XIQ-PIL-S-C` | `network.devices` with `xiqLicenseState == XIQ_PILOT` (natively managed switches **and** Control engines that are in inventory) | `xiqse.pilot.used` |
+| Navigator | Navigator SKU | `xiqLicenseState == XIQ_NAVIGATOR` | `xiqse.nav.used` |
 
-Per-engine **Current Capacity** `1365/3000` is **hardware load** (24h unique on that engine vs engine rating). Changing it does not change the global license.
+Per-engine **Current Capacity** `1365/3000` is **hardware load** (24h unique on that engine vs engine rating). Changing it does not change the global NAC license.
 
 Exceeding NAC seats is a four-stage violation (GUI pop-up → events stop for overflow MACs → catch-all profile). Stage 3 is the “RADIUS green, SE has no events” failure mode.
 
-**Pilot** (`XIQ-PIL-S-C`) is a different pool: natively managed switches **and each Control engine** (1 Pilot each). At 0 you cannot onboard a switch or another engine. Existing RADIUS still works.
+At 0 Pilot you cannot onboard a switch or another engine. At 0 Navigator you cannot onboard another Navigator-tier device. Existing RADIUS still works.
 
-NBI has **no** entitlements field. Used seats we **count**. Purchased totals are macros from Administration → Licenses (`{$XIQ.NAC.TOTAL}`, `{$XIQ.PILOT.TOTAL}`). Refresh the macro when you buy more. Do not scrape the GUI. Do not add a Cloud XIQ tenant host.
+NBI has **no** entitlements field. Used seats we **count**. Purchased totals are macros from Administration → Licenses (`{$XIQ.NAC.TOTAL}`, `{$XIQ.PILOT.TOTAL}`, `{$XIQ.NAV.TOTAL}`). Refresh the macro when you buy more. Do not scrape the GUI. Do not add a Cloud XIQ tenant host. Do not JDBC the SE database. `{$…TOTAL}=0` means graph used only (no cap ticket).
+
+Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone` (graph). Tickets stay off until that SKU is in use. Pending onboard is `xiqse.lic.pending` (graph).
 
 ---
 
@@ -52,14 +58,16 @@ NBI has **no** entitlements field. Used seats we **count**. Purchased totals are
 | GraphQL nodata | yes | Average | Token, TLS, or SE down |
 | Zero Control engines discovered | yes | Average | Filter / rights / template wrong |
 | Engine disconnected from SE | yes | Average | LLD on SE. Auth may still work locally |
-| Auth-event pipeline stale | yes | Average | Per engine: no `lastAuthEventTime` in `{$XIQ.NAC.FRESH}` **and** RADIUS still OK. Quiet-hours gate |
-| SE ingest jam (E-to-Sav / drops) | yes | Average | One SE ticket if the field exists on canary |
+| NAC not forwarding auth logs to SE | yes | Average | Per engine: newest `lastAuthEventTime` older than `{$XIQ.NAC.FRESH}` (default 24h) **and** NBI up. Weekdays 07:00–19:00 only (`{$XIQ.NAC.FRESH.CONTROL}`). Quiet night is not a ticket. Not syslog to a SIEM |
+| SE ingest jam (E-to-Sav / drops) | **no** until the field exists | Average | One SE ticket if GraphQL exposes it on canary |
 | Engine `needsEnforce` stuck | yes | Average | Config never pushed |
 | 24h unique MACs ≥ `{$XIQ.NAC.TOTAL}` | yes | Average | License violation in progress |
 | 24h unique MACs ≥ `{$XIQ.NAC.USED.WARN}`% of total | yes | Warning | Default 90%. Dayside buy more |
 | 24h census truncated | yes | Average | `count == {$XIQ.NAC.ES.MAXRESULTS}` — number is a lie |
-| Pilot used ≥ `{$XIQ.PILOT.TOTAL}` | yes | Warning | Cannot onboard a switch / engine |
+| Pilot used ≥ `{$XIQ.PILOT.TOTAL}` | yes | Warning | Cannot onboard a switch / engine. `TOTAL=0` silences |
 | Pilot remaining ≤ `{$XIQ.PILOT.REMAIN.WARN}` | yes | Warning | Default 2 |
+| Navigator used ≥ `{$XIQ.NAV.TOTAL}` | yes | Warning | Cannot onboard a Navigator-tier device. `TOTAL=0` silences |
+| Navigator remaining ≤ `{$XIQ.NAV.REMAIN.WARN}` | yes | Warning | Default 2 |
 | Unplanned SE reboot (`upTime`) | yes | Warning | |
 | Cert on 8443 &lt; 30d | yes | Warning | |
 | Heap / RAM / threads | **no** until baseline | — | Items + Health graphs |
@@ -94,7 +102,9 @@ On **Site Engine → Health**:
 | NAC license remaining | `{$XIQ.NAC.TOTAL}` − used | Same series, easier to read |
 | NAC used % of entitlement | % | Warning at 90% |
 | Unique **usernames** 24h | count | Capacity story; **not** the license |
-| Pilot used / remaining | count | Device + engine seats |
+| Pilot used / remaining | count | Device + engine seats (`XIQ_PILOT`) |
+| Navigator used / remaining | count | `XIQ_NAVIGATOR` |
+| Pending / Platform ONE | count | Graph; no ticket yet |
 | Engine count | count | Census |
 | Heap used / max, physical RAM, threads | bytes / count | Collect first |
 | `upTime` | s | Reboot |
@@ -104,7 +114,7 @@ On **Site Engine → Engines** (LLD, one row per engine):
 | Graph | Why |
 |---|---|
 | 24h unique MACs on **this** engine | Hardware load (`1365/3000`) |
-| Age of newest `lastAuthEventTime` | Log-forwarding gap |
+| Age of newest `lastAuthEventTime` | NAC → SE log-forward gap |
 | Connected / licensed / `needsEnforce` | Honeycomb |
 
 Do **not** LLD every laptop. Sample and count on SE.
@@ -135,11 +145,12 @@ NBI lives on **SE only**. Client: Administration → Client API Access; rights *
 
 ## Ops
 
-- RADIUS Monitor Clients must exist on production engines **before** the High trigger is enabled. Until then RADIUS High stays **DISABLED**; event-freshness Average is the stand-in.
+- RADIUS Monitor Clients must exist on production engines **before** the High trigger is enabled. Until then RADIUS High stays **DISABLED**; log-forward Average is the stand-in.
 - Engine SNMP uses the switch **MONITORING** SNMPv3 profile (authPriv MD5/DES). Canary 2026-08-28: all five ENACs answered `1.3.6.1.4.1.5624.1.2.73`.
-- `{$XIQ.NAC.TOTAL}` / `{$XIQ.PILOT.TOTAL}` from Administration → Licenses (Access Control quantity is the first number in `100/50`; that is NAC / GIM).
+- `{$XIQ.NAC.TOTAL}` / `{$XIQ.PILOT.TOTAL}` / `{$XIQ.NAV.TOTAL}` from Administration → Licenses (Access Control quantity is the first number in `100/50`; that is NAC / GIM).
 - TLS: verify the SE cert. Do not copy vendor samples that set `verify=False`.
-- Quiet nights: event-freshness needs a floor (for example last auth older than N hours **and** wall-clock in production hours), or a known always-on Monitor Client.
+- Quiet nights: log-forward Average needs a floor (last auth older than N hours **and** wall-clock in production hours), or a known always-on Monitor Client. Default window is weekdays 07:00–19:00.
+- Extreme's `.xwf` license calculator stays a one-shot migration report. Do not schedule it from Zabbix. Do not point the template at `appdata/license`.
 
 ---
 
@@ -148,7 +159,7 @@ NBI lives on **SE only**. Client: Administration → Client API Access; rights *
 ```
 RADIUS High / NBI Average  →  engine or SE ICMP High  →  site
 engine disconnected Average  →  SE NBI Average  →  SE ICMP
-auth-event stale Average  →  engine ICMP (and does not fire if RADIUS High already did)
+auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High already did)
 ```
 
 ---
@@ -160,6 +171,7 @@ auth-event stale Average  →  engine ICMP (and does not fire if RADIUS High alr
 | GraphQL nodata | Token expired / SE upgrade / TLS |
 | Zero engines LLD | Access Control NBI right missing |
 | 24h census truncated | `maxResults` too small — license graph under-counts |
+| Device license census failed | NBI up but `xiqLicenseState` query failed — Pilot/Navigator remaining unknown |
 | Unsupported items | Schema field renamed on their SE version; or ENTERASYS-NAC-APPLIANCE-MIB view dropped on an engine |
 | Proxy last-seen | already in 01 |
 
@@ -183,9 +195,12 @@ Macros on the **SE template** (secrets on a nbxSync CG, not in YAML):
 {$XIQ.NAC.TOTAL}           = purchased Access Control end-systems
 {$XIQ.NAC.USED.WARN}       = 90
 {$XIQ.NAC.ES.MAXRESULTS}   = 20000
-{$XIQ.NAC.FRESH}           = quiet-hours-gated max age
+{$XIQ.NAC.FRESH}           = 86400 (stale log-forward age)
+{$XIQ.NAC.FRESH.CONTROL}   = 1 (ticket during business hours)
 {$XIQ.PILOT.TOTAL}         = purchased Pilot seats
 {$XIQ.PILOT.REMAIN.WARN}   = 2
+{$XIQ.NAV.TOTAL}           = purchased Navigator seats
+{$XIQ.NAV.REMAIN.WARN}     = 2
 ```
 
 `deleteMissing: false` on YAML. Cloud 7.0: no host-prototype `description`.
@@ -194,6 +209,6 @@ Macros on the **SE template** (secrets on a nbxSync CG, not in YAML):
 
 ## Later
 
-GIM remaining. Assessment licenses. Cloud XIQ entitlement API (Connected mode) so macros are not manual. Campus-wide auth **Disaster** on a service host. SE Event Details if GraphQL never exposes E-to-Sav.
+GIM remaining. Assessment licenses. Platform ONE tickets. Cloud XIQ entitlement API (Connected mode) so macros are not manual. Campus-wide auth **Disaster** on a service host. SE Event Details if GraphQL never exposes E-to-Sav.
 
 Analysis: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). SNMP OIDs: [templates/extremecontrol_snmp/OID_MAPPING.md](templates/extremecontrol_snmp/OID_MAPPING.md).

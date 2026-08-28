@@ -33,8 +33,11 @@ Live schema for **their** version: Diagnostics → Server Utilities → **NBI Sc
 |---|---|---|---|
 | Access Control (the RADIUS / NAC license) | `XIQ-NAC-S` | Unique **MACs** that **authenticated** in a **rolling 24h**, global across engines | **Not** a pool field. Count `EndSystemDTO` with `lastAuthEventTime` in window |
 | Guest / IoT | second number in Licenses Quantity `100/50` | GIM end-systems | later |
-| Pilot | `XIQ-PIL-S-C` | Switches + **1 per Control engine** | Count `deviceData.xiqLicenseState == XIQ_PILOT` (+ engines). Remaining vs macro |
-| Navigator / EP1 tiers | various | Device onboard | graph later if needed |
+| Pilot | `XIQ-PIL-S-C` | `network.devices` with `xiqLicenseState == XIQ_PILOT` (switches + Control engines in inventory) | Count + remaining vs `{$XIQ.PILOT.TOTAL}` |
+| Navigator | Navigator SKU | `xiqLicenseState == XIQ_NAVIGATOR` | Count + remaining vs `{$XIQ.NAV.TOTAL}` |
+| Platform ONE / Advanced / Standard | various | `XIQ_ADVANCED*` / `XIQ_STANDARD*` | graph `xiqse.lic.platformone`; tickets later |
+
+The Extreme **XIQ-SE licensing calculation** OneView workflow ([ExtremeScripting `oneview_workflows`](https://github.com/extremenetworks/ExtremeScripting/tree/master/XMC_XIQ-SE/oneview_workflows), `XIQ-SE_Licensing_calculation-v116.xwf`, [KB 000098925](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000098925)) is the official **one-shot** XMC → XIQ-SE buy-list. It reads `appdata/license` and JDBC to the SE database, and needs NMS-ADV / 27001 (or EVAL). Do **not** import or schedule that `.xwf` from Zabbix. Do **not** JDBC. Live monitoring is the same three pools from GraphQL.
 
 Accounting packets do **not** consume NAC seats. Unique **usernames** are a useful graph and are **not** the license.
 
@@ -84,7 +87,7 @@ Pilot used:
 network { devices { deviceData { xiqLicenseState xiqLicenseCount } } }
 ```
 
-`DeviceXIQLicenseState` includes `XIQ_PILOT`, `XIQ_NAVIGATOR`, `XIQ_UNMANAGED`, `NOT_LICENSED`, `XIQ_PENDING`, … Remaining = `{$XIQ.PILOT.TOTAL}` − used. Connected-mode cloud pool is shared; do not add an XIQ tenant host on this template.
+`DeviceXIQLicenseState` includes `XIQ_PILOT`, `XIQ_NAVIGATOR`, `XIQ_UNMANAGED`, `NOT_LICENSED`, `XIQ_PENDING`, Platform ONE `XIQ_ADVANCED*` / `XIQ_STANDARD*`, … Remaining = purchased macro − used. Connected-mode cloud pool is shared; do not add an XIQ tenant host on this template.
 
 ---
 
@@ -92,11 +95,12 @@ network { devices { deviceData { xiqLicenseState xiqLicenseCount } } }
 
 Published Engine type page is 404. Query `accessControl { engines }` and take whatever fields exist. Known on `NacAppliance`: `ipAddress`, `name`, `version`, `licensed`, `licenseData`, `capacity`, `freeRadiusEnabled`, `needsEnforce`, `applianceProperties`.
 
-Event pipeline (user-reported: RADIUS green, SE has no logs):
+Event pipeline (user-reported: RADIUS green, SE has no logs). This **is** the NAC → SE log-forward check. It is **not** syslog to a SIEM.
 
 - Per engine, max `lastAuthEventTime` (and/or `lastSeenTime`) of that engine’s end-systems.
-- Average when older than `{$XIQ.NAC.FRESH}` **and** RADIUS monitor is still OK.
-- Gate quiet nights. A Monitor Client that authenticates on a schedule is the cleanest heartbeat.
+- Average when older than `{$XIQ.NAC.FRESH}` during weekdays 07:00–19:00 (`{$XIQ.NAC.FRESH.CONTROL}`).
+- Trigger name: **not forwarding auth logs**. Age `-1` (no events in the census) stays silent so a quiet engine is not a ticket.
+- A Monitor Client that authenticates on a schedule is the cleanest heartbeat.
 
 `EndSystemDTO.lastAuthEventTime` is the auth-event clock; `lastSeenTime` is presence. Prefer auth-event for “did the log ship?”
 
@@ -110,7 +114,7 @@ Prerequisite: ExtremeControl **RADIUS Monitor Clients** on each production engin
 
 1. Canary: does NBI expose monitor last-success / fail?
 2. If yes: High on fail, depends on ICMP.
-3. If no: leave RADIUS High **DISABLED**; event-freshness Average is the stand-in until we have a real monitor field.
+3. If no: leave RADIUS High **DISABLED**; log-forward Average is the stand-in until we have a real monitor field.
 
 TCP 8444 is admin, not 1812.
 
@@ -154,7 +158,7 @@ On one SE, query-only, after `--apply-xiqse` + HostSync of that host:
 1. Token + `serverInfo` + 8443 + cert.
 2. `engines` / `NacAppliance` field dump (`licenseData`, connected/last-contact names).
 3. One page of `endSystems`: time units, typical `count`, whether 24h filter can be approximated.
-4. `xiqLicenseState` histogram (Pilot used).
+4. `xiqLicenseState` histogram (Pilot / Navigator / Platform ONE / pending).
 5. Confirm RADIUS Monitor Clients exist before enabling High.
 
 If `licenseData` already contains 24h used / entitlement, prefer that over paging MACs.
