@@ -48,6 +48,8 @@ U = {
     'item_nac_pct': '6d891b6cf37f4276bc1beb250ade16ed',
     'item_nac_fetched': 'cc8ad599f96846f099bed5d33161f134',
     'item_nac_trunc': 'fe030b13c4db4f94a7281bbc1d0296d3',
+    'item_nac_ok': '8c4e1f70a2b94d6e9f1a3c5d7e8b90a1',
+    'item_nac_error': '9d5f2071b3ca4e7f0a2b4c6d8e9c01b2',
     'item_pilot_used': '9f94cfa9e6434a3288713564107fdbfb',
     'item_pilot_remain': '63a299d472f740c39b5d1bb7cced92fe',
     'item_pilot_ok': '03b45dacb57f42c2aacc1556bc8369e2',
@@ -64,6 +66,7 @@ U = {
     'tr_tcp': '810c1bc3b2a24f1b8fa47e29d2c21b1e',
     'tr_zero_eng': '9c7efefa14934d78a059dbfdebe249be',
     'tr_trunc': '9319f3e3d55b47b59a93b801857c846f',
+    'tr_nac_fail': '0e6a3182c4db5f801b3c5d7e9f0d12c3',
     'tr_nac_cap': '12118b420e464f0ba5b63869fba1fb90',
     'tr_nac_warn': '5f355368b3ca4adc9ad31652151e2270',
     'tr_pilot_cap': '158689830fc5407b8522bedc7012ada8',
@@ -275,6 +278,13 @@ def render_se() -> str:
         'AVERAGE',
         'Fetched count hit {$XIQ.NAC.ES.MAXRESULTS}. The NAC license graph under-counts.',
     )
+    nac_fail = _trigger(
+        U['tr_nac_fail'],
+        f'last(/{TPL}/xiqse.nac.ok)=0 and last(/{TPL}/xiqse.nbi.available)=1',
+        'XIQ-SE: NAC census failed',
+        'AVERAGE',
+        'NBI is up but the endSystems 24h unique query failed. NAC used/remaining stay empty until it succeeds.',
+    )
     nac_cap = _trigger(
         U['tr_nac_cap'],
         f'{{$XIQ.NAC.TOTAL}}>0 and last(/{TPL}/xiqse.nac.used24h)>={{$XIQ.NAC.TOTAL}}',
@@ -471,26 +481,42 @@ def render_se() -> str:
         extra=f'      valuemap:\n        name: XIQ-SE truncated\n      triggers:\n{trunc_tr}\n',
         tags=TAGS_LIC,
     )
+    nac_ok = _dep(
+        U['item_nac_ok'],
+        'NAC census ok',
+        'xiqse.nac.ok',
+        'xiqse.nbi.licenses',
+        '$.ok',
+        'UNSIGNED',
+        extra=f'      valuemap:\n        name: XIQ-SE NBI\n      triggers:\n{nac_fail}\n',
+        tags=TAGS_LIC,
+    )
+    nac_err = _dep(U['item_nac_error'], 'NAC census last error', 'xiqse.nac.error', 'xiqse.nbi.licenses', '$.error', 'TEXT', tags=TAGS_LIC)
     pilot_used = _dep(U['item_pilot_used'], 'Pilot licenses used', 'xiqse.pilot.used', 'xiqse.nbi.pilot', '$.pilotUsed', 'UNSIGNED', extra=f'      triggers:\n{pilot_cap}\n', tags=TAGS_LIC)
     nav_used = _dep(U['item_nav_used'], 'Navigator licenses used', 'xiqse.nav.used', 'xiqse.nbi.pilot', '$.navigatorUsed', 'UNSIGNED', extra=f'      triggers:\n{nav_cap}\n', tags=TAGS_LIC)
     lic_pending = _dep(U['item_lic_pending'], 'Device licenses pending', 'xiqse.lic.pending', 'xiqse.nbi.pilot', '$.pending', 'UNSIGNED', tags=TAGS_LIC)
     lic_pone = _dep(U['item_lic_platformone'], 'Platform ONE / Advanced / Standard used', 'xiqse.lic.platformone', 'xiqse.nbi.pilot', '$.platformOne', 'UNSIGNED', tags=TAGS_LIC)
     pilot_ok = _dep(U['item_pilot_ok'], 'Pilot census ok', 'xiqse.pilot.ok', 'xiqse.nbi.pilot', '$.ok', 'UNSIGNED', extra=f'      valuemap:\n        name: XIQ-SE NBI\n      triggers:\n{pilot_fail}\n', tags=TAGS_LIC)
     heap_pct = _calc(U['item_heap_pct'], 'XIQ-SE heap used %', 'xiqse.nbi.heap.pct', 'last(//xiqse.nbi.heap.max)>0 ? last(//xiqse.nbi.heap.used)/last(//xiqse.nbi.heap.max)*100 : 0', '%', tags=TAGS_NBI)
-    nac_remain = _calc(U['item_nac_remain'], 'NAC license remaining', 'xiqse.nac.remaining', '{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)')
+    nac_remain = _calc(
+        U['item_nac_remain'],
+        'NAC license remaining',
+        'xiqse.nac.remaining',
+        '{$XIQ.NAC.TOTAL}>0 ? {$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h) : 0',
+    )
     nac_pct = _calc(U['item_nac_pct'], 'NAC license used %', 'xiqse.nac.used.pct', '{$XIQ.NAC.TOTAL}>0 ? last(//xiqse.nac.used24h)/{$XIQ.NAC.TOTAL}*100 : 0', '%')
     pilot_remain = _calc(
         U['item_pilot_remain'],
         'Pilot licenses remaining',
         'xiqse.pilot.remaining',
-        '{$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used)',
+        '{$XIQ.PILOT.TOTAL}>0 ? {$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used) : 0',
         extra=f'      triggers:\n{pilot_low}\n',
     )
     nav_remain = _calc(
         U['item_nav_remain'],
         'Navigator licenses remaining',
         'xiqse.nav.remaining',
-        '{$XIQ.NAV.TOTAL}-last(//xiqse.nav.used)',
+        '{$XIQ.NAV.TOTAL}>0 ? {$XIQ.NAV.TOTAL}-last(//xiqse.nav.used) : 0',
         extra=f'      triggers:\n{nav_low}\n',
     )
     unsup_item = f"""    - uuid: {U['item_unsupported']}
@@ -548,6 +574,8 @@ def render_se() -> str:
 {bump(nac_pct)}
 {bump(nac_fetched)}
 {bump(nac_trunc)}
+{bump(nac_ok)}
+{bump(nac_err)}
 {bump(pilot_used)}
 {bump(pilot_remain)}
 {bump(nav_used)}
@@ -613,10 +641,8 @@ def _se_macros() -> str:
         ('{$XIQ.NAC.USED.WARN}', '90', 'Warning percent of {$XIQ.NAC.TOTAL}.'),
         ('{$XIQ.NAC.ES.MAXRESULTS}', '20000', 'Stop paging at this many end-system rows.'),
         ('{$XIQ.NAC.ES.PAGE}', '500', 'endSystems page size.'),
-        ('{$XIQ.NAC.FRESH}', '86400', 'Auth-event stale after this many seconds.'),
-        ('{$XIQ.NAC.FRESH.CONTROL}', '1', 'Ticket stale auth events during business hours.'),
-        ('{$XIQ.NAC.FRESH.TIME.START}', '070000', 'Stale-event window start (HHMMSS).'),
-        ('{$XIQ.NAC.FRESH.TIME.END}', '190000', 'Stale-event window end (HHMMSS).'),
+        ('{$XIQ.NAC.FRESH}', '86400', 'Auth-event stale after this many seconds. Per engine: {$XIQ.NAC.FRESH:"<engine-ip>"}.'),
+        ('{$XIQ.NAC.FRESH.CONTROL}', '1', 'Ticket stale auth events. No clock window — engines are in different time zones.'),
         ('{$XIQ.PILOT.TOTAL}', '0', 'Purchased Pilot seats. 0 = graph used only.'),
         ('{$XIQ.PILOT.REMAIN.WARN}', '2', 'Warning when remaining Pilot seats at or below this.'),
         ('{$XIQ.NAV.TOTAL}', '0', 'Purchased Navigator seats. 0 = graph used only.'),
@@ -699,10 +725,10 @@ def _prototypes() -> str:
     )
     stale = _trigger(
         U['tr_stale'],
-        f'{{$XIQ.NAC.FRESH.CONTROL}}=1 and last(/{TPL}/xiqse.nbi.available)=1 and last(/{TPL}/xiqse.engine.auth.age[{{#ENGINE.IP}}])>={{$XIQ.NAC.FRESH}} and time()>={{$XIQ.NAC.FRESH.TIME.START}} and time()<{{$XIQ.NAC.FRESH.TIME.END}} and dayofweek()>1 and dayofweek()<7',
+        f'{{$XIQ.NAC.FRESH.CONTROL}}=1 and last(/{TPL}/xiqse.nbi.available)=1 and last(/{TPL}/xiqse.engine.auth.age[{{#ENGINE.IP}}])>={{$XIQ.NAC.FRESH:"{{#ENGINE.IP}}"}}',
         'XIQ-SE engine {#ENGINE.NAME}: not forwarding auth logs',
         'AVERAGE',
-        'NAC to SE log-forward: no lastAuthEventTime on Site Engine within {$XIQ.NAC.FRESH} during business hours. RADIUS on the engine may still work. Not syslog to a SIEM.',
+        'NAC to SE log-forward: no lastAuthEventTime on Site Engine within {$XIQ.NAC.FRESH} (elapsed seconds, any time zone). Override per engine with {$XIQ.NAC.FRESH:"<engine-ip>"}. RADIUS on the engine may still work. Not syslog to a SIEM.',
     )
 
     graph = f"""          graph_prototypes:
@@ -838,9 +864,9 @@ def _se_dashboards() -> str:
             - name: Overview
               widgets:
 {_item_widget('NBI', '0', 'xiqse.nbi.available', 'XNBI')}
-{_item_widget('NAC remaining', '18', 'xiqse.nac.remaining', 'XREM')}
-{_item_widget('Pilot remaining', '36', 'xiqse.pilot.remaining', 'XPIL')}
-{_item_widget('Navigator remaining', '54', 'xiqse.nav.remaining', 'XNAV')}
+{_item_widget('NAC 24h MACs', '18', 'xiqse.nac.used24h', 'XNAC')}
+{_item_widget('Pilot used', '36', 'xiqse.pilot.used', 'XPUO')}
+{_item_widget('Navigator used', '54', 'xiqse.nav.used', 'XNUO')}
                 - type: problems
                   name: Problems
                   y: '4'
@@ -911,10 +937,10 @@ def _se_dashboards() -> str:
                       value: '0'
             - name: Licenses
               widgets:
-{_item_widget('NAC used %', '0', 'xiqse.nac.used.pct', 'XPCT')}
-{_item_widget('Pilot used', '18', 'xiqse.pilot.used', 'XPU')}
-{_item_widget('Navigator used', '36', 'xiqse.nav.used', 'XNU')}
-{_item_widget('Census truncated', '54', 'xiqse.nac.truncated', 'XTRN')}
+{_item_widget('NAC remaining', '0', 'xiqse.nac.remaining', 'XREM')}
+{_item_widget('Pilot remaining', '18', 'xiqse.pilot.remaining', 'XPIL')}
+{_item_widget('Navigator remaining', '36', 'xiqse.nav.remaining', 'XNAV')}
+{_item_widget('NAC census', '54', 'xiqse.nac.ok', 'XNOK')}
                 - type: svggraph
                   name: Pilot used
                   y: '4'

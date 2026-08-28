@@ -315,7 +315,7 @@ class YamlContractTests(unittest.TestCase):
         low = next(tr for tr in remain['triggers'] if tr['name'] == 'XIQ-SE: few Navigator licenses remaining')
         self.assertIn('{$XIQ.NAV.TOTAL}>0', low['expression'])
 
-    def test_log_forward_trigger_is_business_hours_and_has_age_graph(self):
+    def test_log_forward_trigger_is_elapsed_not_clock_and_has_age_graph(self):
         proto = next(
             row
             for row in self.se['discovery_rules'][0]['item_prototypes']
@@ -325,9 +325,34 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(stale['name'], 'XIQ-SE engine {#ENGINE.NAME}: not forwarding auth logs')
         self.assertEqual(stale['priority'], 'AVERAGE')
         self.assertIn('{$XIQ.NAC.FRESH.CONTROL}=1', stale['expression'])
-        self.assertIn('dayofweek()', stale['expression'])
+        self.assertIn('{$XIQ.NAC.FRESH:"{#ENGINE.IP}"}', stale['expression'])
+        self.assertNotIn('dayofweek()', stale['expression'])
+        self.assertNotIn('time()', stale['expression'])
         graphs = {row['name'] for row in self.se['discovery_rules'][0]['graph_prototypes']}
         self.assertIn('Engine {#ENGINE.NAME}: last auth age', graphs)
+
+    def test_overview_shows_used_not_remaining(self):
+        overview = self.se['dashboards'][0]['pages'][0]
+        self.assertEqual(overview['name'], 'Overview')
+        keys = []
+        for widget in overview['widgets']:
+            for field in widget.get('fields') or []:
+                value = field.get('value')
+                if isinstance(value, dict) and value.get('key'):
+                    keys.append(value['key'])
+        self.assertEqual(
+            keys[:4],
+            ['xiqse.nbi.available', 'xiqse.nac.used24h', 'xiqse.pilot.used', 'xiqse.nav.used'],
+        )
+        self.assertNotIn('xiqse.nac.remaining', keys[:4])
+
+    def test_remaining_is_zero_until_purchased_total_is_set(self):
+        remain = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.remaining')
+        self.assertIn('{$XIQ.NAC.TOTAL}>0 ?', remain['params'])
+        self.assertTrue(remain['params'].rstrip().endswith(': 0'))
+        macros = {row['macro'] for row in self.se['macros']}
+        self.assertNotIn('{$XIQ.NAC.FRESH.TIME.START}', macros)
+        self.assertNotIn('{$XIQ.NAC.FRESH.TIME.END}', macros)
 
     def test_dashboards_and_valuemaps_live_on_the_template(self):
         self.assertEqual({d['name'] for d in self.se['dashboards']}, DASHBOARD_NAMES)

@@ -54,16 +54,10 @@ zabbix_export:
           description: 'endSystems page size.'
         - macro: '{$XIQ.NAC.FRESH}'
           value: '86400'
-          description: 'Auth-event stale after this many seconds.'
+          description: 'Auth-event stale after this many seconds. Per engine: {$XIQ.NAC.FRESH:"<engine-ip>"}.'
         - macro: '{$XIQ.NAC.FRESH.CONTROL}'
           value: '1'
-          description: 'Ticket stale auth events during business hours.'
-        - macro: '{$XIQ.NAC.FRESH.TIME.START}'
-          value: '070000'
-          description: 'Stale-event window start (HHMMSS).'
-        - macro: '{$XIQ.NAC.FRESH.TIME.END}'
-          value: '190000'
-          description: 'Stale-event window end (HHMMSS).'
+          description: 'Ticket stale auth events. No clock window — engines are in different time zones.'
         - macro: '{$XIQ.PILOT.TOTAL}'
           value: '0'
           description: 'Purchased Pilot seats. 0 = graph used only.'
@@ -1534,7 +1528,7 @@ zabbix_export:
           history: 7d
           trends: 365d
           value_type: FLOAT
-          params: '{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)'
+          params: '{$XIQ.NAC.TOTAL}>0 ? {$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h) : 0'
           tags:
             - tag: component
               value: license
@@ -1606,6 +1600,57 @@ zabbix_export:
               value: license
             - tag: scope
               value: health
+        - uuid: 8c4e1f70a2b94d6e9f1a3c5d7e8b90a1
+          name: NAC census ok
+          type: DEPENDENT
+          key: xiqse.nac.ok
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.ok'
+          master_item:
+            key: xiqse.nbi.licenses
+          valuemap:
+            name: XIQ-SE NBI
+          triggers:
+            - uuid: 0e6a3182c4db5f801b3c5d7e9f0d12c3
+              expression: 'last(/XIQ-SE Observability/xiqse.nac.ok)=0 and last(/XIQ-SE Observability/xiqse.nbi.available)=1'
+              name: 'XIQ-SE: NAC census failed'
+              event_name: 'XIQ-SE: NAC census failed'
+              priority: AVERAGE
+              description: |
+                NBI is up but the endSystems 24h unique query failed. NAC used/remaining stay empty until it succeeds.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 9d5f2071b3ca4e7f0a2b4c6d8e9c01b2
+          name: NAC census last error
+          type: DEPENDENT
+          key: xiqse.nac.error
+          delay: '0'
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.error'
+          master_item:
+            key: xiqse.nbi.licenses
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
         - uuid: 9f94cfa9e6434a3288713564107fdbfb
           name: Pilot licenses used
           type: DEPENDENT
@@ -1644,7 +1689,7 @@ zabbix_export:
           history: 7d
           trends: 365d
           value_type: FLOAT
-          params: '{$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used)'
+          params: '{$XIQ.PILOT.TOTAL}>0 ? {$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used) : 0'
           triggers:
             - uuid: 36805c7666e4437e9b083b4c9b58ee3f
               expression: '{$XIQ.PILOT.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.pilot.remaining)<={$XIQ.PILOT.REMAIN.WARN}'
@@ -1702,7 +1747,7 @@ zabbix_export:
           history: 7d
           trends: 365d
           value_type: FLOAT
-          params: '{$XIQ.NAV.TOTAL}-last(//xiqse.nav.used)'
+          params: '{$XIQ.NAV.TOTAL}>0 ? {$XIQ.NAV.TOTAL}-last(//xiqse.nav.used) : 0'
           triggers:
             - uuid: ce3614948ed94048983e6268e8651d27
               expression: '{$XIQ.NAV.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.nav.remaining)<={$XIQ.NAV.REMAIN.WARN}'
@@ -2584,12 +2629,12 @@ zabbix_export:
                   value: '{#ENGINE.IP}'
               trigger_prototypes:
                 - uuid: 40f29028ce49433bacbfefc289c0bafe
-                  expression: '{$XIQ.NAC.FRESH.CONTROL}=1 and last(/XIQ-SE Observability/xiqse.nbi.available)=1 and last(/XIQ-SE Observability/xiqse.engine.auth.age[{#ENGINE.IP}])>={$XIQ.NAC.FRESH} and time()>={$XIQ.NAC.FRESH.TIME.START} and time()<{$XIQ.NAC.FRESH.TIME.END} and dayofweek()>1 and dayofweek()<7'
+                  expression: '{$XIQ.NAC.FRESH.CONTROL}=1 and last(/XIQ-SE Observability/xiqse.nbi.available)=1 and last(/XIQ-SE Observability/xiqse.engine.auth.age[{#ENGINE.IP}])>={$XIQ.NAC.FRESH:"{#ENGINE.IP}"}'
                   name: 'XIQ-SE engine {#ENGINE.NAME}: not forwarding auth logs'
                   event_name: 'XIQ-SE engine {#ENGINE.NAME}: not forwarding auth logs'
                   priority: AVERAGE
                   description: |
-                    NAC to SE log-forward: no lastAuthEventTime on Site Engine within {$XIQ.NAC.FRESH} during business hours. RADIUS on the engine may still work. Not syslog to a SIEM.
+                    NAC to SE log-forward: no lastAuthEventTime on Site Engine within {$XIQ.NAC.FRESH} (elapsed seconds, any time zone). Override per engine with {$XIQ.NAC.FRESH:"<engine-ip>"}. RADIUS on the engine may still work. Not syslog to a SIEM.
                   tags:
                     - tag: scope
                       value: availability
@@ -2642,7 +2687,7 @@ zabbix_export:
                       name: reference
                       value: XNBI
                 - type: item
-                  name: NAC remaining
+                  name: NAC 24h MACs
                   x: '18'
                   width: '18'
                   height: '4'
@@ -2651,7 +2696,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nac.remaining
+                        key: xiqse.nac.used24h
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -2663,9 +2708,9 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XREM
+                      value: XNAC
                 - type: item
-                  name: Pilot remaining
+                  name: Pilot used
                   x: '36'
                   width: '18'
                   height: '4'
@@ -2674,7 +2719,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.pilot.remaining
+                        key: xiqse.pilot.used
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -2686,9 +2731,9 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XPIL
+                      value: XPUO
                 - type: item
-                  name: Navigator remaining
+                  name: Navigator used
                   x: '54'
                   width: '18'
                   height: '4'
@@ -2697,7 +2742,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nav.remaining
+                        key: xiqse.nav.used
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -2709,7 +2754,7 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XNAV
+                      value: XNUO
                 - type: problems
                   name: Problems
                   y: '4'
@@ -2781,7 +2826,7 @@ zabbix_export:
             - name: Licenses
               widgets:
                 - type: item
-                  name: NAC used %
+                  name: NAC remaining
                   width: '18'
                   height: '4'
                   fields:
@@ -2789,7 +2834,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nac.used.pct
+                        key: xiqse.nac.remaining
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -2801,9 +2846,9 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XPCT
+                      value: XREM
                 - type: item
-                  name: Pilot used
+                  name: Pilot remaining
                   x: '18'
                   width: '18'
                   height: '4'
@@ -2812,7 +2857,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.pilot.used
+                        key: xiqse.pilot.remaining
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -2824,9 +2869,9 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XPU
+                      value: XPIL
                 - type: item
-                  name: Navigator used
+                  name: Navigator remaining
                   x: '36'
                   width: '18'
                   height: '4'
@@ -2835,7 +2880,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nav.used
+                        key: xiqse.nav.remaining
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -2847,9 +2892,9 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XNU
+                      value: XNAV
                 - type: item
-                  name: Census truncated
+                  name: NAC census
                   x: '54'
                   width: '18'
                   height: '4'
@@ -2858,7 +2903,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nac.truncated
+                        key: xiqse.nac.ok
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -2870,7 +2915,7 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XTRN
+                      value: XNOK
                 - type: svggraph
                   name: Pilot used
                   y: '4'

@@ -98,7 +98,8 @@ Published Engine type page is 404. Query `accessControl { engines }` and take wh
 Event pipeline (user-reported: RADIUS green, SE has no logs). This **is** the NAC → SE log-forward check. It is **not** syslog to a SIEM.
 
 - Per engine, max `lastAuthEventTime` (and/or `lastSeenTime`) of that engine’s end-systems.
-- Average when older than `{$XIQ.NAC.FRESH}` during weekdays 07:00–19:00 (`{$XIQ.NAC.FRESH.CONTROL}`).
+- Average when older than `{$XIQ.NAC.FRESH}` elapsed seconds (`{$XIQ.NAC.FRESH.CONTROL}`). No `time()` / `dayofweek()` window — engines are in different time zones; Zabbix `time()` is the server clock.
+- Per-engine override: host macro `{$XIQ.NAC.FRESH:"10.0.104.43"}`.
 - Trigger name: **not forwarding auth logs**. Age `-1` (no events in the census) stays silent so a quiet engine is not a ticket.
 - A Monitor Client that authenticates on a schedule is the cleanest heartbeat.
 

@@ -17,9 +17,9 @@ This page is the **target contract**. YAML lives in `templates/xiqse_observabili
 | **Graph** / next day | Unique MACs that authenticated in **24h** (XIQ-NAC-S). Pilot + Navigator seats used / remaining (live equivalent of Extreme's XIQ-SE licensing-calculation workflow). Heap, uptime, version, engine load vs hardware capacity. Per-engine RADIUS request/success/fail rates (SNMP) |
 | One incident | RADIUS / GraphQL → ICMP → **site**. Engine tickets do not also fire SE. SE ingest jam is **one** SE ticket, not N engines |
 | Never silent | GraphQL nodata; zero engines discovered; 24h census truncated (`count == maxResults`). SNMP-dead Warning on the engine if the MONITORING profile stops answering |
-| Collect first | Heap / CPU thresholds off until a quiet baseline. Log-forward gated so a quiet night is not a ticket. SNMP fail-ratio and contact-lost gated (`101` / CONTROL=0) |
+| Collect first | Heap / CPU thresholds off until a quiet baseline. Log-forward is elapsed `{$XIQ.NAC.FRESH}` (no wall clock — engines are in CH / CN / HU / KR). SNMP fail-ratio and contact-lost gated (`101` / CONTROL=0) |
 | One `icmpping` | Nested only if the host does not already ping. Do not also assign Network Generic |
-| Host dashboard | **Health** (SE: NBI / licenses; engine: SNMP auth rates) + **Engines** (SE LLD map) |
+| Host dashboard | **Health** Overview: NBI + **used** seats (not remaining). Remaining is on the Licenses page and stays 0 until purchased `{$XIQ.*.TOTAL}` macros are set |
 
 Disaster is campus-wide auth later, on a **service / site** host — not on this template.
 
@@ -58,7 +58,7 @@ Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone`
 | GraphQL nodata | yes | Average | Token, TLS, or SE down |
 | Zero Control engines discovered | yes | Average | Filter / rights / template wrong |
 | Engine disconnected from SE | yes | Average | LLD on SE. Auth may still work locally |
-| NAC not forwarding auth logs to SE | yes | Average | Per engine: newest `lastAuthEventTime` older than `{$XIQ.NAC.FRESH}` (default 24h) **and** NBI up. Weekdays 07:00–19:00 only (`{$XIQ.NAC.FRESH.CONTROL}`). Quiet night is not a ticket. Not syslog to a SIEM |
+| NAC not forwarding auth logs to SE | yes | Average | Per engine: newest `lastAuthEventTime` older than `{$XIQ.NAC.FRESH}` (default 24h elapsed, **any time zone**). Override a quiet engine with `{$XIQ.NAC.FRESH:"<engine-ip>"}`. `{$XIQ.NAC.FRESH.CONTROL}` still gates the ticket. Not syslog to a SIEM |
 | SE ingest jam (E-to-Sav / drops) | **no** until the field exists | Average | One SE ticket if GraphQL exposes it on canary |
 | Engine `needsEnforce` stuck | yes | Average | Config never pushed |
 | 24h unique MACs ≥ `{$XIQ.NAC.TOTAL}` | yes | Average | License violation in progress |
@@ -149,7 +149,7 @@ NBI lives on **SE only**. Client: Administration → Client API Access; rights *
 - Engine SNMP uses the switch **MONITORING** SNMPv3 profile (authPriv MD5/DES). Canary 2026-08-28: all five ENACs answered `1.3.6.1.4.1.5624.1.2.73`.
 - `{$XIQ.NAC.TOTAL}` / `{$XIQ.PILOT.TOTAL}` / `{$XIQ.NAV.TOTAL}` from Administration → Licenses (Access Control quantity is the first number in `100/50`; that is NAC / GIM).
 - TLS: verify the SE cert. Do not copy vendor samples that set `verify=False`.
-- Quiet nights: log-forward Average needs a floor (last auth older than N hours **and** wall-clock in production hours), or a known always-on Monitor Client. Default window is weekdays 07:00–19:00.
+- Quiet engines: raise `{$XIQ.NAC.FRESH}` (elapsed seconds) or set `{$XIQ.NAC.FRESH:"<engine-ip>"}` on the SE host. There is **no** 07:00–19:00 clock — Site Engine `time()` is one TZ and the fleet is not.
 - Extreme's `.xwf` license calculator stays a one-shot migration report. Do not schedule it from Zabbix. Do not point the template at `appdata/license`.
 
 ---
@@ -171,6 +171,7 @@ auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High alr
 | GraphQL nodata | Token expired / SE upgrade / TLS |
 | Zero engines LLD | Access Control NBI right missing |
 | 24h census truncated | `maxResults` too small — license graph under-counts |
+| NAC census failed | NBI up but `endSystems` SCRIPT failed or timed out — Overview used tiles stay empty |
 | Device license census failed | NBI up but `xiqLicenseState` query failed — Pilot/Navigator remaining unknown |
 | Unsupported items | Schema field renamed on their SE version; or ENTERASYS-NAC-APPLIANCE-MIB view dropped on an engine |
 | Proxy last-seen | already in 01 |
@@ -195,11 +196,11 @@ Macros on the **SE template** (secrets on a nbxSync CG, not in YAML):
 {$XIQ.NAC.TOTAL}           = purchased Access Control end-systems
 {$XIQ.NAC.USED.WARN}       = 90
 {$XIQ.NAC.ES.MAXRESULTS}   = 20000
-{$XIQ.NAC.FRESH}           = 86400 (stale log-forward age)
-{$XIQ.NAC.FRESH.CONTROL}   = 1 (ticket during business hours)
-{$XIQ.PILOT.TOTAL}         = purchased Pilot seats
+{$XIQ.NAC.FRESH}           = 86400 elapsed seconds (any TZ)
+{$XIQ.NAC.FRESH.CONTROL}   = 1
+{$XIQ.PILOT.TOTAL}         = purchased Pilot seats (0 = graph used only; remaining tile stays 0)
 {$XIQ.PILOT.REMAIN.WARN}   = 2
-{$XIQ.NAV.TOTAL}           = purchased Navigator seats
+{$XIQ.NAV.TOTAL}           = purchased Navigator seats (0 = graph used only; remaining tile stays 0)
 {$XIQ.NAV.REMAIN.WARN}     = 2
 ```
 
