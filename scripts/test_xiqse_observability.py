@@ -254,6 +254,11 @@ class YamlContractTests(unittest.TestCase):
         lld = self.se['discovery_rules'][0]
         self.assertIn(lld_script().strip(), lld['preprocessing'][0]['parameters'][0])
 
+    def test_calculated_item_formulas_avoid_unsupported_ternaries(self):
+        for item in self.se['items']:
+            if item['type'] == 'CALCULATED':
+                self.assertNotIn('?', item['params'], item['key'])
+
     def test_http_uses_new_request_per_call_and_oauth(self):
         health = health_script()
         self.assertGreaterEqual(health.count('new HttpRequest()'), 2)

@@ -1369,7 +1369,7 @@ zabbix_export:
           trends: 365d
           value_type: FLOAT
           units: '%'
-          params: 'last(//xiqse.nbi.heap.max)>0 ? last(//xiqse.nbi.heap.used)/last(//xiqse.nbi.heap.max)*100 : 0'
+          params: 'last(//xiqse.nbi.heap.used)/(last(//xiqse.nbi.heap.max)+(last(//xiqse.nbi.heap.max)=0))*100'
           tags:
             - tag: component
               value: nbi
@@ -1549,7 +1549,7 @@ zabbix_export:
           trends: 365d
           value_type: FLOAT
           units: '%'
-          params: '{$XIQ.NAC.TOTAL}>0 ? last(//xiqse.nac.used24h)/{$XIQ.NAC.TOTAL}*100 : 0'
+          params: 'last(//xiqse.nac.used24h)/({$XIQ.NAC.TOTAL}+({$XIQ.NAC.TOTAL}=0))*100'
           tags:
             - tag: component
               value: license

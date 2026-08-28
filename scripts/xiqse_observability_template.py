@@ -476,9 +476,9 @@ def render_se() -> str:
     lic_pending = _dep(U['item_lic_pending'], 'Device licenses pending', 'xiqse.lic.pending', 'xiqse.nbi.pilot', '$.pending', 'UNSIGNED', tags=TAGS_LIC)
     lic_pone = _dep(U['item_lic_platformone'], 'Platform ONE / Advanced / Standard used', 'xiqse.lic.platformone', 'xiqse.nbi.pilot', '$.platformOne', 'UNSIGNED', tags=TAGS_LIC)
     pilot_ok = _dep(U['item_pilot_ok'], 'Pilot census ok', 'xiqse.pilot.ok', 'xiqse.nbi.pilot', '$.ok', 'UNSIGNED', extra=f'      valuemap:\n        name: XIQ-SE NBI\n      triggers:\n{pilot_fail}\n', tags=TAGS_LIC)
-    heap_pct = _calc(U['item_heap_pct'], 'XIQ-SE heap used %', 'xiqse.nbi.heap.pct', 'last(//xiqse.nbi.heap.max)>0 ? last(//xiqse.nbi.heap.used)/last(//xiqse.nbi.heap.max)*100 : 0', '%', tags=TAGS_NBI)
+    heap_pct = _calc(U['item_heap_pct'], 'XIQ-SE heap used %', 'xiqse.nbi.heap.pct', 'last(//xiqse.nbi.heap.used)/(last(//xiqse.nbi.heap.max)+(last(//xiqse.nbi.heap.max)=0))*100', '%', tags=TAGS_NBI)
     nac_remain = _calc(U['item_nac_remain'], 'NAC license remaining', 'xiqse.nac.remaining', '{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)')
-    nac_pct = _calc(U['item_nac_pct'], 'NAC license used %', 'xiqse.nac.used.pct', '{$XIQ.NAC.TOTAL}>0 ? last(//xiqse.nac.used24h)/{$XIQ.NAC.TOTAL}*100 : 0', '%')
+    nac_pct = _calc(U['item_nac_pct'], 'NAC license used %', 'xiqse.nac.used.pct', 'last(//xiqse.nac.used24h)/({$XIQ.NAC.TOTAL}+({$XIQ.NAC.TOTAL}=0))*100', '%')
     pilot_remain = _calc(
         U['item_pilot_remain'],
         'Pilot licenses remaining',
