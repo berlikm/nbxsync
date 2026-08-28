@@ -149,9 +149,11 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(self.tpl['template'], SNMP_TEMPLATE_NAME)
         self.assertEqual(self.tpl['template'], TPL)
 
-    def test_uuids_are_32_hex(self):
+    def test_uuids_are_version_four(self):
         for value in re.findall(r'uuid: ([0-9a-f]+)', self.text):
             self.assertRegex(value, UUID_RE)
+            self.assertEqual(value[12], '4')
+            self.assertIn(value[16], '89ab')
 
     def test_item_keys_and_triggers(self):
         keys = _walk_item_keys(self.tpl)
