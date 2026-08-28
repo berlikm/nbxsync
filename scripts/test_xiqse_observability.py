@@ -247,6 +247,14 @@ class YamlContractTests(unittest.TestCase):
         for snippet in FORBIDDEN_SNIPPETS:
             self.assertNotIn(snippet, blob, snippet)
 
+    def test_templates_stay_agentless(self):
+        self.assertNotIn('web.certificate.get[', self.se_text + self.nac_text)
+
+    def test_calculated_item_formulas_avoid_unsupported_ternaries(self):
+        for item in self.se['items']:
+            if item['type'] == 'CALCULATED':
+                self.assertNotIn('?', item['params'], item['key'])
+
     def test_scripts_are_embedded_from_js_files(self):
         items = {item['key']: item for item in self.se['items']}
         self.assertIn(health_script().strip(), items['xiqse.nbi.health']['params'])
@@ -348,8 +356,8 @@ class YamlContractTests(unittest.TestCase):
 
     def test_remaining_is_zero_until_purchased_total_is_set(self):
         remain = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.remaining')
-        self.assertIn('{$XIQ.NAC.TOTAL}>0 ?', remain['params'])
-        self.assertTrue(remain['params'].rstrip().endswith(': 0'))
+        self.assertIn('*({$XIQ.NAC.TOTAL}>0)', remain['params'])
+        self.assertNotIn('?', remain['params'])
         macros = {row['macro'] for row in self.se['macros']}
         self.assertNotIn('{$XIQ.NAC.FRESH.TIME.START}', macros)
         self.assertNotIn('{$XIQ.NAC.FRESH.TIME.END}', macros)

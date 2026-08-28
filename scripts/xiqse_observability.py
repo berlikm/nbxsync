@@ -83,8 +83,6 @@ SE_ITEM_KEYS = {
     'xiqse.lic.pending',
     'xiqse.lic.platformone',
     'net.tcp.service[tcp,{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]',
-    'web.certificate.get[{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]',
-    'xiqse.tls.not_after',
     'zabbix[host,,items_unsupported]',
 }
 
@@ -113,7 +111,6 @@ SE_TRIGGER_NAMES = {
     'XIQ-SE: Navigator licenses exhausted',
     'XIQ-SE: few Navigator licenses remaining',
     'XIQ-SE: unplanned reboot',
-    'XIQ-SE: TLS certificate expires soon',
     'XIQ-SE: version has changed',
     'XIQ-SE: unsupported items present',
     'XIQ-SE: Pilot census failed',
@@ -127,12 +124,9 @@ SE_TRIGGER_PROTOTYPE_NAMES = {
 }
 NAC_ITEM_KEYS = {
     'net.tcp.service[tcp,,{$NAC.PORTAL.PORT}]',
-    'web.certificate.get[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT}]',
-    'nac.tls.not_after',
 }
 NAC_TRIGGER_NAMES = {
     'ExtremeControl: portal TCP 8444 down',
-    'ExtremeControl: TLS certificate expires soon',
 }
 
 DASHBOARD_NAMES = {'Health', 'Engines'}
