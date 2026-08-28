@@ -214,6 +214,108 @@ LLD **will** write the prototype `{$MSSQL.URI}={#MSSQL.URI}` back on the next na
 
 Parent companion prototypes (`MSSQL [<instance>]: Version`, inventories) keep the LLD URI, so a VIP-only instance may stay unsupported **on the parent**. Stock graphs live on the child; that is the override that matters. Prefer binding the instance on the Windows IP (as MSQL10 already does) over a permanent VIP-only exception.
 
+### Confirm on a box (read-only)
+
+Run on the Windows SQL host (elevated PowerShell). **Do not** set `ListenOnAllIPs`, change IPAll ports, or restart SQL. These commands only read config and open a login — they do not retarget listeners.
+
+Set `$ListenHost` to that box’s NetBox `primary_ip4` (the Agent 2 interface), not a per-instance VIP.
+
+```powershell
+$ListenHost = '10.0.100.10'   # NetBox primary_ip4 / Zabbix agent IP
+
+Write-Host '=== Services ==='
+Get-CimInstance Win32_Service |
+  Where-Object { $_.Name -like 'MSSQL*' -or $_.Name -eq 'SQLBrowser' } |
+  Select-Object Name, State, StartMode, ProcessId |
+  Format-Table -AutoSize
+
+Write-Host '=== SQL Browser UDP 1434 ==='
+Get-NetUDPEndpoint -LocalPort 1434 -ErrorAction SilentlyContinue |
+  Select-Object LocalAddress, LocalPort |
+  Format-Table -AutoSize
+
+$names = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL'
+foreach ($p in $names.PSObject.Properties) {
+  if ($p.Name -match '^PS') { continue }
+  $instance = $p.Name
+  $id = $p.Value
+  $tcp = "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$id\MSSQLServer\SuperSocketNetLib\Tcp"
+  $lib = "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$id\MSSQLServer\SuperSocketNetLib"
+  if (-not (Test-Path $tcp)) { Write-Warning "No TCP key for $instance"; continue }
+  $listenAll = (Get-ItemProperty $tcp).ListenOnAllIPs
+  $hide = if (Test-Path $lib) { (Get-ItemProperty $lib).HideInstance } else { $null }
+  Write-Host "=== $instance ($id) ListenOnAllIPs=$listenAll HideInstance=$hide ==="
+  Get-ChildItem $tcp | ForEach-Object {
+    $ip = Get-ItemProperty $_.PSPath
+    [pscustomobject]@{
+      Key             = $_.PSChildName
+      DisplayName     = $ip.DisplayName
+      IpAddress       = $ip.IpAddress
+      Enabled         = $ip.Enabled
+      Active          = $ip.Active
+      TcpPort         = $ip.TcpPort
+      TcpDynamicPorts = $ip.TcpDynamicPorts
+    }
+  } | Format-Table -AutoSize
+}
+
+Write-Host '=== Listening sqlservr / sqlbrowser TCP ==='
+$procs = Get-Process sqlservr, sqlbrowser -ErrorAction SilentlyContinue
+Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+  Where-Object { $_.OwningProcess -in @($procs.Id) } |
+  ForEach-Object {
+    $proc = $procs | Where-Object Id -eq $_.OwningProcess | Select-Object -First 1
+    [pscustomobject]@{
+      Process      = $proc.ProcessName
+      PID          = $_.OwningProcess
+      LocalAddress = $_.LocalAddress
+      LocalPort    = $_.LocalPort
+    }
+  } |
+  Sort-Object Process, LocalAddress, LocalPort |
+  Format-Table -AutoSize
+```
+
+Then prove the same path Agent 2 will use (SQL Browser + instance name, **no port**). `-E` is Windows auth for this DBA check; Agent 2 still uses the `zabbix` SQL login on that instance.
+
+```powershell
+$ListenHost = '10.0.100.10'
+$instances = @(
+  Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' |
+    ForEach-Object { $_.PSObject.Properties } |
+    Where-Object { $_.Name -notmatch '^PS' } |
+    ForEach-Object { $_.Name }
+)
+foreach ($instance in $instances) {
+  Write-Host "---- tcp:$ListenHost\$instance (expected Zabbix URI host) ----"
+  sqlcmd -S "tcp:$ListenHost\$instance" -E -l 8 -Q "SELECT @@SERVICENAME AS instance, CONNECTIONPROPERTY('local_net_address') AS bound_ip, CONNECTIONPROPERTY('local_tcp_port') AS bound_port;"
+  Write-Host "---- tcp:127.0.0.1\$instance (localhost; often fails if loopback off) ----"
+  sqlcmd -S "tcp:127.0.0.1\$instance" -E -l 8 -Q "SELECT @@SERVICENAME AS instance;"
+}
+```
+
+To match Agent 2 credentials (after the listen path is green):
+
+```text
+sqlcmd -S "tcp:<ListenHost>\<Instance>" -U zabbix -P "<{$MSSQL.PASSWORD}>" -l 8 -Q "SELECT @@SERVICENAME;"
+```
+
+| Result | Meaning | Zabbix action |
+|---|---|---|
+| `tcp:<ListenHost>\<instance>` succeeds; socket list shows that instance on `$ListenHost` or `0.0.0.0` | Same as MSQL10 dedicated-IP instances | Leave role Jinja. No VIP URI |
+| That connect fails; sockets only `127.0.0.1` | Loopback-only box | Device `{$MSSQL.LISTEN.HOST}=localhost`, HostSync |
+| That connect fails; sockets only the instance VIP (not `$ListenHost`, not loopback) | VIP-only instance | Child `{$MSSQL.URI}=sqlserver://<vip>/<Instance>` (no port). Do **not** enable `ListenOnAllIPs` |
+| `HideInstance=1` or no UDP `0.0.0.0:1434` / `[::]:1434` | Browser cannot resolve the name | Start SQL Browser / unhide. Do not put a port in the named URI unless this is the VIP-only `:1433` exception |
+| `tcp:127.0.0.1\<instance>` fails and `$ListenHost` succeeds | Expected when `IPLocalhost` is off | Confirms why `sqlserver://localhost/…` was 89/89 unsupported |
+
+Optional: map a listen PID to an instance (`PathName` contains `-sINSTANCE`):
+
+```powershell
+Get-CimInstance Win32_Service |
+  Where-Object { $_.Name -like 'MSSQL$*' } |
+  Select-Object Name, ProcessId, PathName
+```
+
 A named-instance row with no resolvable parent **throws** (item unsupported), not a fake empty census.
 
 ### LLD filters (macros on the companion)
