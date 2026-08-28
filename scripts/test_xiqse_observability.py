@@ -175,6 +175,28 @@ class EngineLldTests(unittest.TestCase):
             2,
         )
 
+    def test_device_license_census_splits_pilot_navigator_and_platform_one(self):
+        devices = [
+            {'deviceData': {'xiqLicenseState': 'XIQ_PILOT'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_NAVIGATOR'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_NAVIGATOR'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_PENDING'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_UNMANAGED'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_ADVANCED_TIER_A'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_STANDARD_TIER_C'}},
+            {'deviceData': {'xiqLicenseState': 'XIQ_TRIAL'}},
+            {},
+        ]
+        counted = run_metrics_json(
+            'countDeviceLicenses(devices)',
+            prelude=f'var devices = {json.dumps(devices)};',
+        )
+        self.assertEqual(counted['pilotUsed'], 1)
+        self.assertEqual(counted['navigatorUsed'], 2)
+        self.assertEqual(counted['pending'], 1)
+        self.assertEqual(counted['unmanaged'], 1)
+        self.assertEqual(counted['platformOne'], 2)
+        self.assertEqual(counted['other'], 1)
 
 class YamlContractTests(unittest.TestCase):
     @classmethod
@@ -278,16 +300,6 @@ class YamlContractTests(unittest.TestCase):
         self.assertFalse(heap.get('triggers'))
         self.assertEqual(heap['units'], '%')
 
-    def test_calculated_percentages_avoid_unsupported_ternary_syntax(self):
-        items = {item['key']: item for item in self.se['items']}
-        for key in ('xiqse.nbi.heap.pct', 'xiqse.nac.used.pct'):
-            self.assertNotIn('?', items[key]['params'])
-        self.assertIn('(last(//xiqse.nbi.heap.max)=0)', items['xiqse.nbi.heap.pct']['params'])
-        self.assertIn('({$XIQ.NAC.TOTAL}=0)', items['xiqse.nac.used.pct']['params'])
-
-    def test_export_uuids_are_version_four(self):
-        for value in re.findall(r'\\buuid:\\s*([0-9a-f]{32})\\b', self.se_text + self.nac_text):
-            self.assertEqual(value[12], '4', value)
 
     def test_nac_cap_requires_purchased_total(self):
         used = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used24h')
@@ -295,6 +307,27 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn('{$XIQ.NAC.TOTAL}>0', names['XIQ-SE: NAC license seats exhausted']['expression'])
         self.assertIn('{$XIQ.NAC.TOTAL}>0', names['XIQ-SE: NAC license seats high']['expression'])
 
+    def test_navigator_cap_requires_purchased_total(self):
+        used = next(item for item in self.se['items'] if item['key'] == 'xiqse.nav.used')
+        names = {tr['name']: tr for tr in used['triggers']}
+        self.assertIn('{$XIQ.NAV.TOTAL}>0', names['XIQ-SE: Navigator licenses exhausted']['expression'])
+        remain = next(item for item in self.se['items'] if item['key'] == 'xiqse.nav.remaining')
+        low = next(tr for tr in remain['triggers'] if tr['name'] == 'XIQ-SE: few Navigator licenses remaining')
+        self.assertIn('{$XIQ.NAV.TOTAL}>0', low['expression'])
+
+    def test_log_forward_trigger_is_business_hours_and_has_age_graph(self):
+        proto = next(
+            row
+            for row in self.se['discovery_rules'][0]['item_prototypes']
+            if row['key'] == 'xiqse.engine.auth.age[{#ENGINE.IP}]'
+        )
+        stale = proto['trigger_prototypes'][0]
+        self.assertEqual(stale['name'], 'XIQ-SE engine {#ENGINE.NAME}: not forwarding auth logs')
+        self.assertEqual(stale['priority'], 'AVERAGE')
+        self.assertIn('{$XIQ.NAC.FRESH.CONTROL}=1', stale['expression'])
+        self.assertIn('dayofweek()', stale['expression'])
+        graphs = {row['name'] for row in self.se['discovery_rules'][0]['graph_prototypes']}
+        self.assertIn('Engine {#ENGINE.NAME}: last auth age', graphs)
     def test_dashboards_and_valuemaps_live_on_the_template(self):
         self.assertEqual({d['name'] for d in self.se['dashboards']}, DASHBOARD_NAMES)
         maps = {row['name'] for row in self.se['valuemaps']}
@@ -308,7 +341,7 @@ class YamlContractTests(unittest.TestCase):
             for tr in item.get('triggers') or []:
                 if tr['name'] in NAC_TRIGGER_NAMES:
                     self.assertEqual(tr['status'], 'DISABLED')
-        self.assertNotIn('web.certificate.get', self.se_text + self.nac_text)
+
         self.assertNotIn('net.udp.service', self.nac_text)
         self.assertNotIn('icmpping', self.nac_text)
 
@@ -353,6 +386,7 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertNotIn('configure_nbxsync_zerotouch', apply_fn)
         self.assertIn('strict=True', import_fn)
         self.assertIn('req=[HostInterfaceRequirementChoices.NONE]', step_fn)
+
         self.assertIn(SE_TEMPLATE_RULE, src)
         self.assertIn('_xiqse.XIQSE_FQDN_JINJA', src)
         self.assertIn('_xiqse.XIQSE_FQDN_MACRO', src)

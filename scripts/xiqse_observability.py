@@ -76,7 +76,13 @@ SE_ITEM_KEYS = {
     'xiqse.pilot.used',
     'xiqse.pilot.remaining',
     'xiqse.pilot.ok',
+    'xiqse.nav.used',
+    'xiqse.nav.remaining',
+    'xiqse.lic.pending',
+    'xiqse.lic.platformone',
     'net.tcp.service[tcp,{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]',
+    'web.certificate.get[{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]',
+    'xiqse.tls.not_after',
     'zabbix[host,,items_unsupported]',
 }
 
@@ -101,7 +107,10 @@ SE_TRIGGER_NAMES = {
     'XIQ-SE: NAC license seats high',
     'XIQ-SE: Pilot licenses exhausted',
     'XIQ-SE: few Pilot licenses remaining',
+    'XIQ-SE: Navigator licenses exhausted',
+    'XIQ-SE: few Navigator licenses remaining',
     'XIQ-SE: unplanned reboot',
+    'XIQ-SE: TLS certificate expires soon',
     'XIQ-SE: version has changed',
     'XIQ-SE: unsupported items present',
     'XIQ-SE: Pilot census failed',
@@ -111,13 +120,16 @@ SE_TRIGGER_PROTOTYPE_NAMES = {
     'XIQ-SE engine {#ENGINE.NAME}: needs enforce',
     'XIQ-SE engine {#ENGINE.NAME}: FreeRADIUS disabled',
     'XIQ-SE engine {#ENGINE.NAME}: 24h unique MACs at hardware capacity',
-    'XIQ-SE engine {#ENGINE.NAME}: auth events stale',
+    'XIQ-SE engine {#ENGINE.NAME}: not forwarding auth logs',
 }
 NAC_ITEM_KEYS = {
     'net.tcp.service[tcp,,{$NAC.PORTAL.PORT}]',
+    'web.certificate.get[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT}]',
+    'nac.tls.not_after',
 }
 NAC_TRIGGER_NAMES = {
     'ExtremeControl: portal TCP 8444 down',
+    'ExtremeControl: TLS certificate expires soon',
 }
 
 DASHBOARD_NAMES = {'Health', 'Engines'}

@@ -1,0 +1,35 @@
+EXTREME-ELRP-MIB DEFINITIONS ::= BEGIN
+
+        IMPORTS
+                MODULE-IDENTITY         FROM SNMPv2-SMI
+		NOTIFICATION-TYPE, OBJECT-IDENTITY
+        	FROM SNMPv2-SMI                  -- RFC2578
+		OBJECT-TYPE             FROM SNMPv2-SMI
+        extremeAgent            FROM EXTREME-BASE-MIB;
+
+
+        extremeElrp MODULE-IDENTITY
+                LAST-UPDATED "0007240000Z"
+                ORGANIZATION "Extreme Networks, Inc."
+                CONTACT-INFO "www.extremenetworks.com"
+                DESCRIPTION "Extreme Loop Recovery Protocol"
+        ::= { extremeAgent 56491 }
+        -- The anchor point above is just a dummy one. This will be changed
+        -- when there is a 'real' ELRP MIB
+
+        extremeElrpNotifications       OBJECT IDENTIFIER ::= { extremeElrp 1 }
+	    extremeElrpNotificationsPrefix OBJECT IDENTIFIER ::= { extremeElrpNotifications 0 }
+ 	    extremeElrpObjects             OBJECT IDENTIFIER ::= { extremeElrp 2 }
+    
+        extremeElrpGlobalInfo OBJECT IDENTIFIER
+        ::= { extremeElrpObjects 1 }
+        
+        extremeElrpGlobalEnabled OBJECT-TYPE
+            SYNTAX      TruthValue
+            MAX-ACCESS  accessible-for-notify
+            STATUS      current
+            DESCRIPTION "Flag to globally enable ELRP on the switch."
+        ::= { extremeElrpGlobalInfo 1 }
+
+END
+

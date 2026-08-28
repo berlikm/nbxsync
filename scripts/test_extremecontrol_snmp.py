@@ -215,7 +215,6 @@ class YamlContractTests(unittest.TestCase):
                     for coordinate in ('x', 'y', 'width', 'height'):
                         if coordinate in widget:
                             self.assertIsInstance(widget[coordinate], str)
-
     def test_javascript_is_indented_under_block_scalar(self):
         product = next(row for row in self.tpl['items'] if row['key'] == 'nac.snmp.product')
         js = product['preprocessing'][0]['parameters'][0]

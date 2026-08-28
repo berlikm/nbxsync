@@ -154,17 +154,46 @@ function enginesToLld(engines) {
   return out;
 }
 
-function countPilot(devices) {
-  var used = 0;
+function emptyDeviceLicenses() {
+  return {
+    pilotUsed: 0,
+    navigatorUsed: 0,
+    pending: 0,
+    unmanaged: 0,
+    platformOne: 0,
+    other: 0
+  };
+}
+
+function countDeviceLicenses(devices) {
+  var out = emptyDeviceLicenses();
   var i;
   var rows = Array.isArray(devices) ? devices : [];
   for (i = 0; i < rows.length; i++) {
     var data = rows[i] && rows[i].deviceData;
-    if (data && String(data.xiqLicenseState) === 'XIQ_PILOT') {
-      used++;
+    var state = data ? String(data.xiqLicenseState || '') : '';
+    if (!state) {
+      continue;
+    }
+    if (state === 'XIQ_PILOT') {
+      out.pilotUsed++;
+    } else if (state === 'XIQ_NAVIGATOR') {
+      out.navigatorUsed++;
+    } else if (state === 'XIQ_PENDING') {
+      out.pending++;
+    } else if (state === 'XIQ_UNMANAGED') {
+      out.unmanaged++;
+    } else if (state.indexOf('XIQ_ADVANCED') === 0 || state.indexOf('XIQ_STANDARD') === 0) {
+      out.platformOne++;
+    } else {
+      out.other++;
     }
   }
-  return used;
+  return out;
+}
+
+function countPilot(devices) {
+  return countDeviceLicenses(devices).pilotUsed;
 }
 
 function pickEngineField(payload, ip, field, missing) {

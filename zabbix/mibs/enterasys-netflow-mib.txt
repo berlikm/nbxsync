@@ -1,0 +1,458 @@
+ENTERASYS-NETFLOW-MIB DEFINITIONS ::= BEGIN
+
+--  enterasys-netflow-mib.txt
+--
+--  Part Number:
+--
+--
+
+--  This module provides authoritative definitions for Enterasys 
+--  Networks' Netflow functionality.
+
+--
+--  This module will be extended, as needed.
+
+--  Enterasys Networks reserves the right to make changes in this
+--  specification and other information contained in this document
+--  without prior notice.  The reader should consult Enterasys Networks
+--  to determine whether any such changes have been made.
+--
+--  In no event shall Enterasys Networks be liable for any incidental,
+--  indirect, special, or consequential damages whatsoever (including
+--  but not limited to lost profits) arising out of or related to this
+--  document or the information contained in it, even if Enterasys
+--  Networks has been advised of, known, or should have known, the
+--  possibility of such damages.
+--
+--  Enterasys Networks grants vendors, end-users, and other interested
+--  parties a non-exclusive license to use this Specification in 
+--  connection with the management of Enterasys Networks products.
+
+--  Copyright September 2012 Enterasys Networks, Inc.
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE, Unsigned32, Integer32
+        FROM SNMPv2-SMI
+    MODULE-COMPLIANCE, OBJECT-GROUP
+        FROM SNMPv2-CONF
+    ifIndex, InterfaceIndex
+        FROM IF-MIB
+    TEXTUAL-CONVENTION
+        FROM SNMPv2-TC 
+    entPhysicalIndex
+        FROM ENTITY-MIB
+    etsysModules
+        FROM ENTERASYS-MIB-NAMES;    
+
+etsysNetflowMIB MODULE-IDENTITY
+    LAST-UPDATED "201209181738Z"  -- Tue Sep 18 17:38 UTC 2012
+    ORGANIZATION "Enterasys Networks, Inc."
+    CONTACT-INFO
+        "Postal:  Enterasys Networks
+                  50 Minuteman Rd.
+                  Andover, MA 01810-1008
+                  USA
+         Phone:   +1 978 684 1000
+         E-mail:  support@enterasys.com
+         WWW:     http://www.enterasys.com"
+   
+    DESCRIPTION
+        "This MIB module defines a portion of the SNMP MIB under
+         the Enterasys Networks enterprise OID pertaining to 
+         configuration of Netflow on a device."
+
+    REVISION    "201209181738Z"  -- Tue Sep 18 17:38 UTC 2012
+    DESCRIPTION 
+        "Add the etsysNetflowMaxRecordExportRate object to control the 
+         maximum export rate from the device and
+         etsysNetflowSupportedMaxRecordExportRate to represent the
+         devices internal maximum.
+
+         Added the userId and higherLayerIfIndex enumerations to the 
+         EtsysNetflowOptDataTypes TEXTUAL-CONVENTION."
+    
+    REVISION    "201003241949Z"  -- Wed Mar 24 19:49 UTC 2010
+    DESCRIPTION 
+        "Add the etsysNetflowDataFlowSet group to control the export
+         of optional data fields on a per-cache basis."
+
+    REVISION    "200702071949Z"  -- Wed Feb  7 19:49 UTC 2007
+    DESCRIPTION 
+        "Clarify that the translation provided by this MIB is 
+         only applicable to NetFlow Version 5 export frames."
+
+    REVISION    "200603222136Z"  -- Wed Mar 22 21:36 UTC 2006
+    DESCRIPTION 
+        "The initial version of this MIB module."
+    ::= { etsysModules 61 } 
+
+
+-- -------------------------------------------------------------
+-- MIB Objects
+-- -------------------------------------------------------------
+
+etsysNetflowObjects        OBJECT IDENTIFIER 
+                           ::= { etsysNetflowMIB 1 }
+
+etsysNetflowInterfaceMap   OBJECT IDENTIFIER 
+                           ::= { etsysNetflowObjects 1 }
+
+etsysNetflowDataFlowSet    OBJECT IDENTIFIER 
+                           ::= { etsysNetflowObjects 2 }
+
+etsysNetflowModule         OBJECT IDENTIFIER 
+                           ::= { etsysNetflowObjects 3 }
+
+-- -------------------------------------------------------------
+-- Textual Conventions
+-- -------------------------------------------------------------
+
+EtsysNetflowCacheTypes ::= TEXTUAL-CONVENTION
+    STATUS  current
+    DESCRIPTION
+        "Defines different types of Netflow caches."
+    SYNTAX  INTEGER{
+                main(0),
+                as(1),
+                protocolPort(2),
+                sourcePrefix(3),
+                destinationPrefix(4),
+                prefix(5),
+                destinationOnly(6),
+                sourceDestination(7),
+                fullFlow(8),
+                asTos(9),
+                protocolPortTos(10),
+                sourcePrefixTos(11),
+                destinationPrefixTos(12),
+                prefixTos(13),
+                prefixPort(14),
+                bgpNexthopTos(15)
+            }
+
+EtsysNetflowOptDataTypes ::= TEXTUAL-CONVENTION
+    STATUS  current
+    DESCRIPTION
+        "The list of optional Netflow version 9 Data FlowSet data 
+         that could be supported and enabled on the managed entity.  
+
+         mac(0)    Source and Destination MAC Address
+         vlan(1)   Virtual LANs associated with the ingress and egress 
+                   interfaces.
+         userId(2) Username to user-id bindings will be exported.
+        
+         higherLayerIfIndex(3)
+                   Setting this bit indicates that the interface number 
+                   of the highest layer interface will be used.  
+                   For example, if a packet ingresses on front panel 
+                   interface 11001 and is subsequently routed on a Layer 
+                   3 interface with and ifIndex of 3094, the interface 
+                   represented in the netflow record will be 3094.  
+
+                   Clearing this bit indicates that the interface number 
+                   of the lower layer interface will be used.  In the 
+                   previous example the interface represented in the netflow 
+                   record would be 11001." 
+    SYNTAX  BITS {
+                mac(0),
+                vlan(1),
+                userId(2),
+                higherLayerIfIndex(3)
+            }
+
+-- -------------------------------------------------------------
+-- The Netflow Interface Mapping Group
+-- -------------------------------------------------------------
+
+etsysNetflowExportIntfMapTable OBJECT-TYPE
+    SYNTAX       SEQUENCE OF EtsysNetflowExportIntfMapEntry
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+        "A table of mappings from the Netflow version 5 export record 
+         interfaces to MIB-II ifIndex."
+    ::= {  etsysNetflowInterfaceMap 1 }
+    
+etsysNetflowExportIntfMapEntry OBJECT-TYPE
+    SYNTAX       EtsysNetflowExportIntfMapEntry
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+        "An entry containing per interface mapping of Netflow version 
+         5 export record interfaces to MIB-II ifIndex."
+    INDEX  { etsysNetflowExportIntf }
+    ::= { etsysNetflowExportIntfMapTable 1 }
+
+EtsysNetflowExportIntfMapEntry ::=
+    SEQUENCE {
+        etsysNetflowExportIntf
+            Integer32,
+        etsysNetflowIfIndex
+            InterfaceIndex
+    }
+
+etsysNetflowExportIntf OBJECT-TYPE
+    SYNTAX       Integer32 (1..65535)
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+        "The interface number used in the 16 bit interface fields of
+         Netflow version 5 export records."
+    ::= { etsysNetflowExportIntfMapEntry 1 }
+
+etsysNetflowIfIndex OBJECT-TYPE
+    SYNTAX       InterfaceIndex
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+        "The MIB-II ifIndex of the interface bound to 
+         etsysNetflowExportIntf."
+    ::= { etsysNetflowExportIntfMapEntry 2 }
+
+etsysNetflowIfIndexMapTable OBJECT-TYPE
+    SYNTAX       SEQUENCE OF EtsysNetflowIfIndexMapEntry
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+        "A table of mappings from MIB-II ifIndex to Netflow export record 
+         interfaces."
+    ::= {  etsysNetflowInterfaceMap 2 }
+
+etsysNetflowIfIndexMapEntry OBJECT-TYPE
+    SYNTAX       EtsysNetflowIfIndexMapEntry
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+        "An entry containing per interface mapping of MIB-II ifIndex to
+         Netflow version 5 export record interfaces."
+    INDEX  { ifIndex }
+    ::= { etsysNetflowIfIndexMapTable 1 }
+
+EtsysNetflowIfIndexMapEntry ::=
+    SEQUENCE {
+        etsysNetflowExportInterface
+            Integer32
+    }
+
+etsysNetflowExportInterface OBJECT-TYPE
+    SYNTAX       Integer32 (1..65535)
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+        "The 16 bit interface number used in the interface fields of
+         Netflow version 5 export records that is bound to the specified 
+         ifIndex."
+    ::= { etsysNetflowIfIndexMapEntry 1 }
+
+-- -------------------------------------------------------------
+-- The Netflow Data FlowSet Group
+-- -------------------------------------------------------------
+
+etsysNetflowDataFlowSetTable OBJECT-TYPE
+    SYNTAX       SEQUENCE OF EtsysNetflowDataFlowSetEntry
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+        "A table containing optional data FlowSet configuration per cache." 
+    ::= {  etsysNetflowDataFlowSet 1 }
+
+etsysNetflowDataFlowSetEntry OBJECT-TYPE
+    SYNTAX       EtsysNetflowDataFlowSetEntry
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+        "A conceptual row in the etsysNetflowDataFlowSetTable."
+    INDEX  { etsysNetflowDataFlowSetCacheType }
+    ::= { etsysNetflowDataFlowSetTable 1 }
+
+EtsysNetflowDataFlowSetEntry ::=
+    SEQUENCE {
+        etsysNetflowDataFlowSetCacheType 
+            EtsysNetflowCacheTypes, 
+        etsysNetflowOptDataSupported 
+            EtsysNetflowOptDataTypes,
+        etsysNetflowOptDataEnabled
+            EtsysNetflowOptDataTypes
+    }
+
+etsysNetflowDataFlowSetCacheType OBJECT-TYPE
+    SYNTAX       EtsysNetflowCacheTypes 
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+        "The type of netflow cache.
+
+         NetFlow aggregation maintains one or more extra flow caches
+         with different combinations of fields that determine
+         which traditional flows are grouped together."
+    ::= { etsysNetflowDataFlowSetEntry 1 }
+
+etsysNetflowOptDataSupported OBJECT-TYPE
+    SYNTAX       EtsysNetflowOptDataTypes
+    MAX-ACCESS   read-only
+    STATUS       current
+    DESCRIPTION
+        "The list of Neflow version 9 data FlowSet optional fields that 
+         the managed entity supports."
+    ::= { etsysNetflowDataFlowSetEntry 2 }
+
+etsysNetflowOptDataEnabled OBJECT-TYPE
+    SYNTAX       EtsysNetflowOptDataTypes
+    MAX-ACCESS   read-write
+    STATUS       current
+    DESCRIPTION
+        "The Neflow version 9 data FlowSet optional fields to export. The 
+         value of this object is limited to the overlapping set of 
+         enumerated bits in the EtsysNetflowOptDataTypes textual 
+         convention and the etsysNetflowOptDataSupported object of this 
+         conceptual row.  For bits set to 1, the corresponding data will be 
+         included in the data FlowSet."
+    DEFVAL       { { } }
+    ::= { etsysNetflowDataFlowSetEntry 3 }
+
+-- -------------------------------------------------------------
+-- The Netflow Module Group
+-- -------------------------------------------------------------
+etsysNetflowModuleTable OBJECT-TYPE 
+    SYNTAX       SEQUENCE OF EtsysNetflowModuleEntry
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+        "A table of per module information and configuration for Netflow."
+    ::= {  etsysNetflowModule 1 }
+    
+etsysNetflowModuleEntry OBJECT-TYPE
+    SYNTAX       EtsysNetflowModuleEntry
+    MAX-ACCESS   not-accessible
+    STATUS       current
+    DESCRIPTION
+        "An entry containing per module Netflow data.
+         Only physical indexes with a entPhysicalClass of module(9)
+         are represented in this table.  Furthermore, each entity
+         represented in this table must have Netflow resources
+         that are separate from every other entity in the table."
+    INDEX  { entPhysicalIndex }
+    ::= { etsysNetflowModuleTable 1 } 
+
+EtsysNetflowModuleEntry ::= 
+    SEQUENCE {
+        etsysNetflowMaxRecordExportRate
+            Unsigned32,
+        etsysNetflowSupportedMaxRecordExportRate
+            Unsigned32
+    }
+
+etsysNetflowMaxRecordExportRate OBJECT-TYPE
+    SYNTAX     Unsigned32 (1..4294967295)
+    UNITS      "records per second"
+    MAX-ACCESS read-write
+    STATUS     current
+    DESCRIPTION
+        "The maximum number of records the device will export to 
+         a configured collector per second.  The actual export rate may
+         be less than the configured value and MUST NOT exceed the
+         value returned by the etsysNetflowSupportedMaxRecordExportRate
+         object.  This object MUST be considered non-volatile and MUST be 
+         maintained across entity resets."
+    ::= { etsysNetflowModuleEntry 1 }
+
+etsysNetflowSupportedMaxRecordExportRate OBJECT-TYPE
+    SYNTAX     Unsigned32
+    UNITS      "records per second"
+    MAX-ACCESS read-only
+    STATUS     current
+    DESCRIPTION
+        "The supported maximum number of records the device will export to
+         a configured collector per second.  The actual export rate may
+         be less than the specified value."
+    ::= { etsysNetflowModuleEntry 2 }
+
+-- -------------------------------------------------------------
+-- Conformance Information
+-- -------------------------------------------------------------
+
+etsysNetflowConformance OBJECT IDENTIFIER ::= { etsysNetflowMIB 2 }
+
+etsysNetflowGroups      OBJECT IDENTIFIER ::= { etsysNetflowConformance 1 }
+etsysNetflowCompliances OBJECT IDENTIFIER ::= { etsysNetflowConformance 2 }
+
+-- -------------------------------------------------------------
+-- Units of conformance
+-- -------------------------------------------------------------
+
+etsysNetflowIntfMapGroup OBJECT-GROUP
+    OBJECTS {
+        etsysNetflowIfIndex,
+        etsysNetflowExportInterface
+    }
+    STATUS     current
+    DESCRIPTION
+        "The interface mapping group for all devices supporting Netflow
+         version 5 export records."
+    ::= { etsysNetflowGroups 1 }
+
+etsysNetflowDataFlowSetGroup OBJECT-GROUP
+    OBJECTS {
+        etsysNetflowOptDataSupported,
+        etsysNetflowOptDataEnabled 
+    }
+    STATUS     current
+    DESCRIPTION
+        "The data flowSet group for all devices supporting Netflow
+         version 9 export records."
+    ::= { etsysNetflowGroups 2 }
+
+
+etsysNetflowModuleGroup OBJECT-GROUP
+    OBJECTS {
+        etsysNetflowMaxRecordExportRate,
+        etsysNetflowSupportedMaxRecordExportRate
+    }
+    STATUS     current
+    DESCRIPTION
+        "Per module controls for all devices supporting Netflow."
+    ::= { etsysNetflowGroups 3 }
+
+
+-- -------------------------------------------------------------
+-- Compliance statements
+-- -------------------------------------------------------------
+
+etsysNetflowIntfMapCompliance MODULE-COMPLIANCE
+    STATUS     current
+    DESCRIPTION
+        "The compliance statement for devices that support Netflow."
+
+    MODULE
+        MANDATORY-GROUPS {
+            etsysNetflowIntfMapGroup
+        }
+    ::= { etsysNetflowCompliances 1 }   
+
+
+etsysNetflowDataFlowSetCompliance MODULE-COMPLIANCE
+    STATUS     current
+    DESCRIPTION
+        "The compliance statement for devices that controlling the 
+         export of optional data sets in Netflow records."
+
+    MODULE
+        MANDATORY-GROUPS {
+            etsysNetflowDataFlowSetGroup 
+        }
+    ::= { etsysNetflowCompliances 2 }   
+
+etsysNetflowModuleCompliance MODULE-COMPLIANCE
+    STATUS     current
+    DESCRIPTION
+        "The compliance statement for devices that support 
+         etsysNetflowModuleGroup."
+
+    MODULE
+        MANDATORY-GROUPS {
+            etsysNetflowModuleGroup
+        }
+    ::= { etsysNetflowCompliances 3 }
+
+END
+

@@ -1,0 +1,346 @@
+ENTERASYS-JUMBO-ETHERNET-FRAME-MIB DEFINITIONS ::= BEGIN
+
+--  enterasys-jumbo-ethernet-frame-mib.txt
+--
+--  Part Number:
+--
+--
+
+--  This module provides authoritative definitions for Enterasys 
+--  Networks' Jumbo Ethernet Frame MIB.
+
+--
+--  This module will be extended, as needed.
+
+--  Enterasys Networks reserves the right to make changes in this
+--  specification and other information contained in this document
+--  without prior notice.  The reader should consult Enterasys Networks
+--  to determine whether any such changes have been made.
+--
+--  In no event shall Enterasys Networks be liable for any incidental,
+--  indirect, special, or consequential damages whatsoever (including
+--  but not limited to lost profits) arising out of or related to this
+--  document or the information contained in it, even if Enterasys
+--  Networks has been advised of, known, or should have known, the
+--  possibility of such damages.
+--
+--  Enterasys Networks grants vendors, end-users, and other interested
+--  parties a non-exclusive license to use this Specification in 
+--  connection with the management of Enterasys Networks products.
+
+--  Copyright May, (2002-2013) Enterasys Networks, Inc.
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE, Integer32
+        FROM SNMPv2-SMI
+    MODULE-COMPLIANCE, OBJECT-GROUP
+        FROM SNMPv2-CONF
+    ifIndex
+        FROM IF-MIB
+    EnabledStatus
+        FROM P-BRIDGE-MIB
+    etsysModules
+        FROM ENTERASYS-MIB-NAMES;
+
+etsysJumboEthernetFrameMIB MODULE-IDENTITY
+    LAST-UPDATED "201305281444Z"  -- Tue May 28 14:44 UTC 2013 
+    ORGANIZATION "Enterasys Networks, Inc"
+    CONTACT-INFO
+        "Postal:  Enterasys Networks
+                  35 Industrial Way, P.O. Box 5005
+                  Rochester, NH 03867-0505
+
+         Phone:   +1 603 332 9400
+         E-mail:  support@enterasys.com
+         WWW:     http://www.enterasys.com"
+    DESCRIPTION
+        "This MIB module defines a portion of the SNMP MIB under
+         the Enterasys Networks enterprise OID pertaining to 
+         jumbo Ethernet frames."
+
+    REVISION    "201305281444Z"  -- Tue May 28 14:44 UTC 2013
+    DESCRIPTION
+        "Added six new leaves to etsysJumboEnetFrameTable."
+
+    REVISION "201001151225Z"  -- Fri Jan 15 12:25 UTC 2010
+    DESCRIPTION
+        "Added new values to the etsysJumboEnetFrameOperStatus
+         object."
+
+    REVISION "200301242126Z"  -- Fri Jan 24 21:26 GMT 2003
+    DESCRIPTION
+        "Changed the per port enable status to a per port
+         administrative and operational status."
+
+    REVISION "200212202156Z"  -- Fri Dec 20 21:56 GMT 2002
+    DESCRIPTION
+        "The initial version of this MIB module"
+
+    ::= { etsysModules 34 } 
+
+etsysJumboEthernetFrame
+    OBJECT IDENTIFIER ::= { etsysJumboEthernetFrameMIB 1 }
+
+
+-- ---------------------------------------------------------- --
+-- branches in the ENTERASYS-JUMBO-ETHERNET-FRAME-MIB
+-- ---------------------------------------------------------- --
+
+etsysJumboEnetFrameControl
+    OBJECT IDENTIFIER ::= { etsysJumboEthernetFrame 1 }
+
+
+-- ---------------------------------------------------------- --
+-- Objects in the etsysJumboEnetFrameControl group
+-- ---------------------------------------------------------- --
+
+etsysJumboEnetFrameTable OBJECT-TYPE
+    SYNTAX      SEQUENCE OF EtsysJumboEnetFrameEntry
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION
+        "A list of entries for interfaces that have support for
+         jumbo Ethernet frames."
+    ::= { etsysJumboEnetFrameControl 1 }
+
+etsysJumboEnetFrameEntry OBJECT-TYPE
+    SYNTAX      EtsysJumboEnetFrameEntry
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION
+        "An entry containing management information applicable to a
+         particular interface that has support for jumbo Ethernet
+         frames."
+    INDEX { ifIndex }
+    ::= { etsysJumboEnetFrameTable 1 }
+
+EtsysJumboEnetFrameEntry ::=
+    SEQUENCE { 
+        etsysJumboEnetFrameEnable         EnabledStatus,
+        etsysJumboEnetFrameMtu            Integer32,
+        etsysJumboEnetFrameAdminStatus    EnabledStatus,
+        etsysJumboEnetFrameOperStatus     INTEGER,
+        etsysJumboEnetFrameApplicationHdr Integer32,
+        etsysJumboEnetFrameApplications   OCTET STRING,
+        etsysJumboEnetFrameMinMtu         Integer32,
+        etsysJumboEnetFrameMaxMtu         Integer32,
+        etsysJumboEnetFrameAdminMtu       Integer32,
+        etsysJumboEnetFrameDynamicMtu     EnabledStatus 
+    }
+
+etsysJumboEnetFrameEnable   OBJECT-TYPE
+    SYNTAX      EnabledStatus
+    MAX-ACCESS  read-write
+    STATUS      obsolete
+    DESCRIPTION
+        "The enabled/disabled status of the passing of jumbo Ethernet
+         frames on the interface."
+    DEFVAL { disabled }
+    ::= { etsysJumboEnetFrameEntry 1 }
+
+etsysJumboEnetFrameMtu   OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "The MTU for this interface when etsysJumboEnetFrameEnable
+         is enabled.  The managed entity will reflect this value in
+         ifMtu when the passing of jumbo frames is enabled on this
+         interface."
+    REFERENCE
+        "IETF RFC2863 IF-MIB"
+    ::= { etsysJumboEnetFrameEntry 2 }
+
+etsysJumboEnetFrameAdminStatus   OBJECT-TYPE
+    SYNTAX      EnabledStatus
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "The administrative enabled/disabled status for the passing
+         of jumbo Ethernet frames on this interface."
+    DEFVAL { disabled }
+    ::= { etsysJumboEnetFrameEntry 3 }
+
+etsysJumboEnetFrameOperStatus   OBJECT-TYPE
+    SYNTAX      INTEGER {
+                  enabled(1),
+                  disabled(2),
+                  deferred(3)
+                }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "The operational status of the passing of jumbo Ethernet
+         frames on this interface.
+         
+         A value of enabled(1)indicates that passing of jumbo
+         Ethernet frames on this interface is enabled.
+
+         A value of disabled(2)indicates that passing of jumbo
+         Ethernet frames on this interface is disabled.
+         
+         A value of deferred(3)indicates that passing of jumbo
+         Ethernet frames on this interface is currently disabled
+         and deferred until module reset, at which time it will
+         be recalculated."
+    ::= { etsysJumboEnetFrameEntry 4 }
+
+etsysJumboEnetFrameApplicationHdr   OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "The header of all application/protocols that have requested
+         MTU increase on this interface.
+         It represents the total number of bytes that would be added
+         to etsysJumboEnetFrameAdminMtu to get the the operating MTU,
+         etsysJumboEnetFrameMtu, if etsysJumboEnetFrameDynamicMtu is
+         enabled."
+    ::= { etsysJumboEnetFrameEntry 5 }
+
+etsysJumboEnetFrameApplications    OBJECT-TYPE
+    SYNTAX      OCTET STRING (SIZE(1..80))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Name of applications/protocols that have requested
+          MTU increase and are enabled on this interface."
+    ::= { etsysJumboEnetFrameEntry 6 }
+
+
+etsysJumboEnetFrameMinMtu    OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "The minimum permissible value for etsysJumboEnetFrameMtu 
+         on this interface."
+         
+    ::= { etsysJumboEnetFrameEntry 7 }
+
+etsysJumboEnetFrameMaxMtu    OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "The maximum permissible value for etsysJumboEnetFrameMtu 
+         on this interface."
+    ::= { etsysJumboEnetFrameEntry 8 }
+
+etsysJumboEnetFrameAdminMtu    OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "The administrative MTU value for this interface.
+         Permissible values are limited by etsysJumboEnetFrameMinMtu
+         and etsysJumboEnetFrameMaxMtu. Some platforms may not support
+         all values in the range."
+    ::= { etsysJumboEnetFrameEntry 9 }
+
+etsysJumboEnetFrameDynamicMtu    OBJECT-TYPE
+    SYNTAX      EnabledStatus 
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "If enabled, value of etsysJumboEnetFrameMtu on this
+         interface will change dynamically according to the value
+         of etsysJumboEnetFrameAdminMtu and etsysJumboEnetFrameApplicationHdr.
+         If disabled, etsysJumboEnetFrameMtu will have same value
+         as etsysJumboEnetFrameAdminMtu."
+    ::= { etsysJumboEnetFrameEntry 10 }
+
+
+-- -------------------------------------------------------------
+-- Conformance Information
+-- -------------------------------------------------------------
+
+etsysJumboEnetFrameConformance
+    OBJECT IDENTIFIER ::= { etsysJumboEthernetFrameMIB 2 }
+
+etsysJumboEnetFrameGroups
+    OBJECT IDENTIFIER ::= { etsysJumboEnetFrameConformance 1 }
+
+etsysJumboEnetFrameCompliances
+    OBJECT IDENTIFIER ::= { etsysJumboEnetFrameConformance 2 }
+
+
+-- -------------------------------------------------------------
+-- Units of conformance
+-- -------------------------------------------------------------
+
+etsysJumboEnetFrameControlGroup OBJECT-GROUP
+    OBJECTS {
+        etsysJumboEnetFrameEnable,
+        etsysJumboEnetFrameMtu
+    }
+    STATUS      obsolete
+    DESCRIPTION
+        "A collection of objects relating to per interface
+         Jumbo Ethernet frame support."
+    ::= { etsysJumboEnetFrameGroups 1 }
+
+etsysJumboEnetFrameControlGroup2 OBJECT-GROUP
+    OBJECTS {
+        etsysJumboEnetFrameMtu,
+        etsysJumboEnetFrameAdminStatus,
+        etsysJumboEnetFrameOperStatus
+    }
+    STATUS      current
+    DESCRIPTION
+        "A collection of objects relating to per interface
+         Jumbo Ethernet frame support."
+    ::= { etsysJumboEnetFrameGroups 2 }
+
+etsysJumboEnetFrameControlGroup3 OBJECT-GROUP
+    OBJECTS {
+        etsysJumboEnetFrameApplicationHdr,
+        etsysJumboEnetFrameApplications,
+        etsysJumboEnetFrameMinMtu,
+        etsysJumboEnetFrameMaxMtu,
+        etsysJumboEnetFrameAdminMtu,
+        etsysJumboEnetFrameDynamicMtu
+    }
+    STATUS      current
+    DESCRIPTION
+        "A collection of objects relating to per interface
+         Jumbo Ethernet frame - configurable MTU support."
+    ::= { etsysJumboEnetFrameGroups 3 }
+
+-- -------------------------------------------------------------
+-- Compliance statements
+-- -------------------------------------------------------------
+
+etsysJumboEnetFrameCompliance MODULE-COMPLIANCE
+    STATUS      obsolete
+    DESCRIPTION
+        "The compliance statement for devices that support the
+         Enterasys Jumbo Ethernet Frame MIB."
+
+    MODULE
+    MANDATORY-GROUPS { etsysJumboEnetFrameControlGroup }
+
+    ::= { etsysJumboEnetFrameCompliances 1 }
+
+etsysJumboEnetFrameCompliance2 MODULE-COMPLIANCE
+    STATUS      current
+    DESCRIPTION
+        "The compliance statement for devices that support the
+         Enterasys Jumbo Ethernet Frame MIB."
+
+    MODULE
+    MANDATORY-GROUPS { etsysJumboEnetFrameControlGroup2 }
+
+    ::= { etsysJumboEnetFrameCompliances 2 }
+
+etsysJumboEnetFrameCompliance3 MODULE-COMPLIANCE
+    STATUS      current
+    DESCRIPTION
+        "The compliance statement for devices that support the
+         Enterasys Jumbo Ethernet Frame MIB and configurable MTU."
+
+    MODULE
+    MANDATORY-GROUPS { etsysJumboEnetFrameControlGroup3 }
+
+    ::= { etsysJumboEnetFrameCompliances 3 }
+END

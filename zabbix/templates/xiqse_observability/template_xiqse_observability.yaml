@@ -39,7 +39,7 @@ zabbix_export:
           description: 'Health SCRIPT timeout.'
         - macro: '{$XIQSE.LICENSE.TIMEOUT}'
           value: '60s'
-          description: 'End-system / Pilot SCRIPT timeout.'
+          description: 'End-system / device-license SCRIPT timeout.'
         - macro: '{$XIQ.NAC.TOTAL}'
           value: '0'
           description: 'Purchased XIQ-NAC-S end-systems. 0 = graph used only.'
@@ -70,6 +70,12 @@ zabbix_export:
         - macro: '{$XIQ.PILOT.REMAIN.WARN}'
           value: '2'
           description: 'Warning when remaining Pilot seats at or below this.'
+        - macro: '{$XIQ.NAV.TOTAL}'
+          value: '0'
+          description: 'Purchased Navigator seats. 0 = graph used only.'
+        - macro: '{$XIQ.NAV.REMAIN.WARN}'
+          value: '2'
+          description: 'Warning when remaining Navigator seats at or below this.'
         - macro: '{$XIQ.ENGINE.CONNECTED.CONTROL}'
           value: '1'
           description: 'Ticket engines with connected=0. Unknown (2) is silent.'
@@ -79,6 +85,12 @@ zabbix_export:
         - macro: '{$XIQ.ENGINE.RADIUSD.CONTROL}'
           value: '1'
           description: 'Page FreeRADIUS disabled on an engine.'
+        - macro: '{$XIQSE.CERT.CONTROL}'
+          value: '1'
+          description: 'Certificate Warning. Set 0 if the host has no agent.'
+        - macro: '{$XIQSE.CERT.WARN}'
+          value: '30'
+          description: 'Days before 8443 cert expiry.'
       items:
         - uuid: d8612bcd47b44c4cb60e679df06b67bd
           name: XIQ-SE NBI health snapshot
@@ -245,17 +257,46 @@ zabbix_export:
               return out;
             }
 
-            function countPilot(devices) {
-              var used = 0;
+            function emptyDeviceLicenses() {
+              return {
+                pilotUsed: 0,
+                navigatorUsed: 0,
+                pending: 0,
+                unmanaged: 0,
+                platformOne: 0,
+                other: 0
+              };
+            }
+
+            function countDeviceLicenses(devices) {
+              var out = emptyDeviceLicenses();
               var i;
               var rows = Array.isArray(devices) ? devices : [];
               for (i = 0; i < rows.length; i++) {
                 var data = rows[i] && rows[i].deviceData;
-                if (data && String(data.xiqLicenseState) === 'XIQ_PILOT') {
-                  used++;
+                var state = data ? String(data.xiqLicenseState || '') : '';
+                if (!state) {
+                  continue;
+                }
+                if (state === 'XIQ_PILOT') {
+                  out.pilotUsed++;
+                } else if (state === 'XIQ_NAVIGATOR') {
+                  out.navigatorUsed++;
+                } else if (state === 'XIQ_PENDING') {
+                  out.pending++;
+                } else if (state === 'XIQ_UNMANAGED') {
+                  out.unmanaged++;
+                } else if (state.indexOf('XIQ_ADVANCED') === 0 || state.indexOf('XIQ_STANDARD') === 0) {
+                  out.platformOne++;
+                } else {
+                  out.other++;
                 }
               }
-              return used;
+              return out;
+            }
+
+            function countPilot(devices) {
+              return countDeviceLicenses(devices).pilotUsed;
             }
 
             function pickEngineField(payload, ip, field, missing) {
@@ -575,17 +616,46 @@ zabbix_export:
               return out;
             }
 
-            function countPilot(devices) {
-              var used = 0;
+            function emptyDeviceLicenses() {
+              return {
+                pilotUsed: 0,
+                navigatorUsed: 0,
+                pending: 0,
+                unmanaged: 0,
+                platformOne: 0,
+                other: 0
+              };
+            }
+
+            function countDeviceLicenses(devices) {
+              var out = emptyDeviceLicenses();
               var i;
               var rows = Array.isArray(devices) ? devices : [];
               for (i = 0; i < rows.length; i++) {
                 var data = rows[i] && rows[i].deviceData;
-                if (data && String(data.xiqLicenseState) === 'XIQ_PILOT') {
-                  used++;
+                var state = data ? String(data.xiqLicenseState || '') : '';
+                if (!state) {
+                  continue;
+                }
+                if (state === 'XIQ_PILOT') {
+                  out.pilotUsed++;
+                } else if (state === 'XIQ_NAVIGATOR') {
+                  out.navigatorUsed++;
+                } else if (state === 'XIQ_PENDING') {
+                  out.pending++;
+                } else if (state === 'XIQ_UNMANAGED') {
+                  out.unmanaged++;
+                } else if (state.indexOf('XIQ_ADVANCED') === 0 || state.indexOf('XIQ_STANDARD') === 0) {
+                  out.platformOne++;
+                } else {
+                  out.other++;
                 }
               }
-              return used;
+              return out;
+            }
+
+            function countPilot(devices) {
+              return countDeviceLicenses(devices).pilotUsed;
             }
 
             function pickEngineField(payload, ip, field, missing) {
@@ -764,7 +834,7 @@ zabbix_export:
             - tag: scope
               value: health
         - uuid: 870e6b9527874183b9f0dc21946122e6
-          name: XIQ-SE Pilot license snapshot
+          name: XIQ-SE device license snapshot
           type: SCRIPT
           key: xiqse.nbi.pilot
           delay: 15m
@@ -928,17 +998,46 @@ zabbix_export:
               return out;
             }
 
-            function countPilot(devices) {
-              var used = 0;
+            function emptyDeviceLicenses() {
+              return {
+                pilotUsed: 0,
+                navigatorUsed: 0,
+                pending: 0,
+                unmanaged: 0,
+                platformOne: 0,
+                other: 0
+              };
+            }
+
+            function countDeviceLicenses(devices) {
+              var out = emptyDeviceLicenses();
               var i;
               var rows = Array.isArray(devices) ? devices : [];
               for (i = 0; i < rows.length; i++) {
                 var data = rows[i] && rows[i].deviceData;
-                if (data && String(data.xiqLicenseState) === 'XIQ_PILOT') {
-                  used++;
+                var state = data ? String(data.xiqLicenseState || '') : '';
+                if (!state) {
+                  continue;
+                }
+                if (state === 'XIQ_PILOT') {
+                  out.pilotUsed++;
+                } else if (state === 'XIQ_NAVIGATOR') {
+                  out.navigatorUsed++;
+                } else if (state === 'XIQ_PENDING') {
+                  out.pending++;
+                } else if (state === 'XIQ_UNMANAGED') {
+                  out.unmanaged++;
+                } else if (state.indexOf('XIQ_ADVANCED') === 0 || state.indexOf('XIQ_STANDARD') === 0) {
+                  out.platformOne++;
+                } else {
+                  out.other++;
                 }
               }
-              return used;
+              return out;
+            }
+
+            function countPilot(devices) {
+              return countDeviceLicenses(devices).pilotUsed;
             }
 
             function pickEngineField(payload, ip, field, missing) {
@@ -1037,17 +1136,41 @@ zabbix_export:
               '{ network { devices { ip deviceData { xiqLicenseState } } } }'
             ];
 
+            function emptyPilotSnapshot(error) {
+              var counted = emptyDeviceLicenses();
+              return {
+                ok: 0,
+                error: error,
+                pilotUsed: counted.pilotUsed,
+                navigatorUsed: counted.navigatorUsed,
+                pending: counted.pending,
+                unmanaged: counted.unmanaged,
+                platformOne: counted.platformOne,
+                other: counted.other
+              };
+            }
+
             function collectPilot(params) {
               var auth = fetchToken(params);
               if (!auth.ok) {
-                return { ok: 0, error: auth.error, pilotUsed: 0 };
+                return emptyPilotSnapshot(auth.error);
               }
               var result = graphqlTry(params, auth.token, PILOT_QUERIES);
               if (!result.ok) {
-                return { ok: 0, error: result.error, pilotUsed: 0 };
+                return emptyPilotSnapshot(result.error);
               }
               var devices = (((result.data || {}).network) || {}).devices;
-              return { ok: 1, error: '', pilotUsed: countPilot(devices) };
+              var counted = countDeviceLicenses(devices);
+              return {
+                ok: 1,
+                error: '',
+                pilotUsed: counted.pilotUsed,
+                navigatorUsed: counted.navigatorUsed,
+                pending: counted.pending,
+                unmanaged: counted.unmanaged,
+                platformOne: counted.platformOne,
+                other: counted.other
+              };
             }
 
             var params = JSON.parse(value);
@@ -1065,7 +1188,7 @@ zabbix_export:
             - name: client_secret
               value: '{$XIQSE.API.CLIENT.SECRET}'
           description: |
-            Counts network.devices with xiqLicenseState XIQ_PILOT.
+            Counts network.devices xiqLicenseState: Pilot, Navigator, pending, Platform ONE.
           tags:
             - tag: component
               value: license
@@ -1246,7 +1369,7 @@ zabbix_export:
           trends: 365d
           value_type: FLOAT
           units: '%'
-          params: 'last(//xiqse.nbi.heap.used)/(last(//xiqse.nbi.heap.max)+(last(//xiqse.nbi.heap.max)=0))*100'
+          params: 'last(//xiqse.nbi.heap.max)>0 ? last(//xiqse.nbi.heap.used)/last(//xiqse.nbi.heap.max)*100 : 0'
           tags:
             - tag: component
               value: nbi
@@ -1426,7 +1549,7 @@ zabbix_export:
           trends: 365d
           value_type: FLOAT
           units: '%'
-          params: '({$XIQ.NAC.TOTAL}>0)*last(//xiqse.nac.used24h)/({$XIQ.NAC.TOTAL}+({$XIQ.NAC.TOTAL}=0))*100'
+          params: '{$XIQ.NAC.TOTAL}>0 ? last(//xiqse.nac.used24h)/{$XIQ.NAC.TOTAL}*100 : 0'
           tags:
             - tag: component
               value: license
@@ -1541,6 +1664,102 @@ zabbix_export:
               value: license
             - tag: scope
               value: health
+        - uuid: e739b887216f410da53afafe4294db58
+          name: Navigator licenses used
+          type: DEPENDENT
+          key: xiqse.nav.used
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.navigatorUsed'
+          master_item:
+            key: xiqse.nbi.pilot
+          triggers:
+            - uuid: b2c7a454475e4636b8199a4c08fb1340
+              expression: '{$XIQ.NAV.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.nav.used)>={$XIQ.NAV.TOTAL}'
+              name: 'XIQ-SE: Navigator licenses exhausted'
+              event_name: 'XIQ-SE: Navigator licenses exhausted'
+              priority: WARNING
+              description: |
+                Cannot onboard another Navigator-tier device.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 679fe8d3980e4691a0c11a8be3d16ff0
+          name: Navigator licenses remaining
+          type: CALCULATED
+          key: xiqse.nav.remaining
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          params: '{$XIQ.NAV.TOTAL}-last(//xiqse.nav.used)'
+          triggers:
+            - uuid: ce3614948ed94048983e6268e8651d27
+              expression: '{$XIQ.NAV.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.nav.remaining)<={$XIQ.NAV.REMAIN.WARN}'
+              name: 'XIQ-SE: few Navigator licenses remaining'
+              event_name: 'XIQ-SE: few Navigator licenses remaining'
+              priority: WARNING
+              description: |
+                Navigator remaining at or below {$XIQ.NAV.REMAIN.WARN}.
+              dependencies:
+                - name: 'XIQ-SE: Navigator licenses exhausted'
+                  expression: '{$XIQ.NAV.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.nav.used)>={$XIQ.NAV.TOTAL}'
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: f152560225304bcd8adec843d76c532d
+          name: Device licenses pending
+          type: DEPENDENT
+          key: xiqse.lic.pending
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.pending'
+          master_item:
+            key: xiqse.nbi.pilot
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 6ad9ed0651a249578dbb63a07b0be9e7
+          name: Platform ONE / Advanced / Standard used
+          type: DEPENDENT
+          key: xiqse.lic.platformone
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.platformOne'
+          master_item:
+            key: xiqse.nbi.pilot
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
         - uuid: 03b45dacb57f42c2aacc1556bc8369e2
           name: Pilot census ok
           type: DEPENDENT
@@ -1564,7 +1783,7 @@ zabbix_export:
               event_name: 'XIQ-SE: Pilot census failed'
               priority: AVERAGE
               description: |
-                NBI is up but the devices xiqLicenseState query failed. Pilot remaining is unknown.
+                NBI is up but the devices xiqLicenseState query failed. Pilot and Navigator remaining are unknown.
               tags:
                 - tag: scope
                   value: availability
@@ -1599,6 +1818,48 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: availability
+        - uuid: 4420532ce6264a748084191925f211ee
+          name: XIQ-SE TLS certificate
+          type: ZABBIX_PASSIVE
+          key: 'web.certificate.get[{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]'
+          delay: 1h
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: |
+            Needs Zabbix agent on the Site Engine. Set {$XIQSE.CERT.CONTROL}=0 if unsupported.
+          tags:
+            - tag: component
+              value: tls
+        - uuid: b4e91c6a7d8f40c9a1e25b37c48d59e0
+          name: XIQ-SE TLS not after
+          type: DEPENDENT
+          key: xiqse.tls.not_after
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          units: unixtime
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.not_after
+          master_item:
+            key: 'web.certificate.get[{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]'
+          tags:
+            - tag: component
+              value: tls
+          triggers:
+            - uuid: a59e95e7308741eab8d05b728c8dce2a
+              expression: '{$XIQSE.CERT.CONTROL}=1 and (last(/XIQ-SE Observability/xiqse.tls.not_after)-now())<{$XIQSE.CERT.WARN}*86400'
+              name: 'XIQ-SE: TLS certificate expires soon'
+              event_name: 'XIQ-SE: TLS certificate expires soon'
+              priority: WARNING
+              description: |
+                8443 certificate expires within {$XIQSE.CERT.WARN} days.
+              tags:
+                - tag: scope
+                  value: availability
         - uuid: 35962793d7484596bee1d20ad9067757
           name: Unsupported items
           type: INTERNAL
@@ -1617,7 +1878,7 @@ zabbix_export:
               event_name: 'XIQ-SE: unsupported items present'
               priority: AVERAGE
               description: |
-                Schema field missing or SCRIPT error.
+                Schema field missing, no agent for the certificate item, or SCRIPT error.
               tags:
                 - tag: scope
                   value: availability
@@ -1793,17 +2054,46 @@ zabbix_export:
                     return out;
                   }
 
-                  function countPilot(devices) {
-                    var used = 0;
+                  function emptyDeviceLicenses() {
+                    return {
+                      pilotUsed: 0,
+                      navigatorUsed: 0,
+                      pending: 0,
+                      unmanaged: 0,
+                      platformOne: 0,
+                      other: 0
+                    };
+                  }
+
+                  function countDeviceLicenses(devices) {
+                    var out = emptyDeviceLicenses();
                     var i;
                     var rows = Array.isArray(devices) ? devices : [];
                     for (i = 0; i < rows.length; i++) {
                       var data = rows[i] && rows[i].deviceData;
-                      if (data && String(data.xiqLicenseState) === 'XIQ_PILOT') {
-                        used++;
+                      var state = data ? String(data.xiqLicenseState || '') : '';
+                      if (!state) {
+                        continue;
+                      }
+                      if (state === 'XIQ_PILOT') {
+                        out.pilotUsed++;
+                      } else if (state === 'XIQ_NAVIGATOR') {
+                        out.navigatorUsed++;
+                      } else if (state === 'XIQ_PENDING') {
+                        out.pending++;
+                      } else if (state === 'XIQ_UNMANAGED') {
+                        out.unmanaged++;
+                      } else if (state.indexOf('XIQ_ADVANCED') === 0 || state.indexOf('XIQ_STANDARD') === 0) {
+                        out.platformOne++;
+                      } else {
+                        out.other++;
                       }
                     }
-                    return used;
+                    return out;
+                  }
+
+                  function countPilot(devices) {
+                    return countDeviceLicenses(devices).pilotUsed;
                   }
 
                   function pickEngineField(payload, ip, field, missing) {
@@ -2295,11 +2585,11 @@ zabbix_export:
               trigger_prototypes:
                 - uuid: 40f29028ce49433bacbfefc289c0bafe
                   expression: '{$XIQ.NAC.FRESH.CONTROL}=1 and last(/XIQ-SE Observability/xiqse.nbi.available)=1 and last(/XIQ-SE Observability/xiqse.engine.auth.age[{#ENGINE.IP}])>={$XIQ.NAC.FRESH} and time()>={$XIQ.NAC.FRESH.TIME.START} and time()<{$XIQ.NAC.FRESH.TIME.END} and dayofweek()>1 and dayofweek()<7'
-                  name: 'XIQ-SE engine {#ENGINE.NAME}: auth events stale'
-                  event_name: 'XIQ-SE engine {#ENGINE.NAME}: auth events stale'
+                  name: 'XIQ-SE engine {#ENGINE.NAME}: not forwarding auth logs'
+                  event_name: 'XIQ-SE engine {#ENGINE.NAME}: not forwarding auth logs'
                   priority: AVERAGE
                   description: |
-                    No lastAuthEventTime within {$XIQ.NAC.FRESH} during business hours. RADIUS may still work.
+                    NAC to SE log-forward: no lastAuthEventTime on Site Engine within {$XIQ.NAC.FRESH} during business hours. RADIUS on the engine may still work. Not syslog to a SIEM.
                   tags:
                     - tag: scope
                       value: availability
@@ -2311,6 +2601,13 @@ zabbix_export:
                   item:
                     host: XIQ-SE Observability
                     key: 'xiqse.engine.used24h[{#ENGINE.IP}]'
+            - uuid: 519df3a273054e78864b380573f02769
+              name: 'Engine {#ENGINE.NAME}: last auth age'
+              graph_items:
+                - color: E68931
+                  item:
+                    host: XIQ-SE Observability
+                    key: 'xiqse.engine.auth.age[{#ENGINE.IP}]'
       tags:
         - tag: class
           value: network
@@ -2345,31 +2642,8 @@ zabbix_export:
                       name: reference
                       value: XNBI
                 - type: item
-                  name: NAC 24h MACs
-                  x: '18'
-                  width: '18'
-                  height: '4'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: XIQ-SE Observability
-                        key: xiqse.nac.used24h
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: value_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: value_size
-                      value: '28'
-                    - type: STRING
-                      name: reference
-                      value: XNAC
-                - type: item
                   name: NAC remaining
-                  x: '36'
+                  x: '18'
                   width: '18'
                   height: '4'
                   fields:
@@ -2392,7 +2666,7 @@ zabbix_export:
                       value: XREM
                 - type: item
                   name: Pilot remaining
-                  x: '54'
+                  x: '36'
                   width: '18'
                   height: '4'
                   fields:
@@ -2413,6 +2687,29 @@ zabbix_export:
                     - type: STRING
                       name: reference
                       value: XPIL
+                - type: item
+                  name: Navigator remaining
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nav.remaining
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XNAV
                 - type: problems
                   name: Problems
                   y: '4'
@@ -2506,31 +2803,8 @@ zabbix_export:
                       name: reference
                       value: XPCT
                 - type: item
-                  name: Usernames 24h
-                  x: '18'
-                  width: '18'
-                  height: '4'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: XIQ-SE Observability
-                        key: xiqse.nac.users24h
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: value_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: value_size
-                      value: '28'
-                    - type: STRING
-                      name: reference
-                      value: XUSR
-                - type: item
                   name: Pilot used
-                  x: '36'
+                  x: '18'
                   width: '18'
                   height: '4'
                   fields:
@@ -2551,6 +2825,29 @@ zabbix_export:
                     - type: STRING
                       name: reference
                       value: XPU
+                - type: item
+                  name: Navigator used
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nav.used
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XNU
                 - type: item
                   name: Census truncated
                   x: '54'
@@ -2574,6 +2871,53 @@ zabbix_export:
                     - type: STRING
                       name: reference
                       value: XTRN
+                - type: svggraph
+                  name: Pilot used
+                  y: '4'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 2774A4
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.pilot.used
+                    - type: STRING
+                      name: reference
+                      value: XPILG
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                - type: svggraph
+                  name: Navigator used
+                  x: '36'
+                  y: '4'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: E68931
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nav.used
+                    - type: STRING
+                      name: reference
+                      value: XNAVG
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
         - uuid: f22e74659b754873bc9958176cb81951
           name: Engines
           pages:
