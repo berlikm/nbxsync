@@ -277,4 +277,4 @@ Do **not** pass `--link-speed-expect` while nested: HostSync would try to link t
 
 OSPF stays imported-not-linked. Fabric High stays gated (`{$ISIS.CONTROL}=0`, `{$CARD.CONTROL}=0`) until a canary.
 
-FortiGate (API) and network VMs reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md)). Do not merge with Cato ([04](04-cato.md)).
+FortiGate (API), network VMs, and ExtremeControl / XIQ-SE reuse this bar ([03](03-fortinet.md), [06](06-network-vms.md), [07](07-extreme-control.md)). Do not merge with Cato ([04](04-cato.md)).
