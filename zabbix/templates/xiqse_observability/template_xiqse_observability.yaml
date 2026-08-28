@@ -1,0 +1,2837 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 36bff6c29af64692839d077febfc7079
+      name: Templates/Network devices
+  templates:
+    - uuid: d66fadb95254489ebaaa0b5eb4e6763f
+      template: XIQ-SE Observability
+      name: XIQ-SE Observability
+      description: |
+        ExtremeCloud IQ Site Engine companion. HTTPS GraphQL (OAuth client
+        credentials) from the proxy. Does not nest ICMP Ping — OS/ICMP stay on
+        the VM / Agent Monitoring path. Do not GraphQL Control engines. Do not
+        install an agent on the OVA for this pack.
+
+        Operator page: zabbix/07-extreme-control.md.
+        Refresh with configure_nbxsync_network.py --apply-xiqse.
+      groups:
+        - name: Templates/Network devices
+      macros:
+        - macro: '{$XIQSE.API.FQDN}'
+          value: ''
+          description: 'Site Engine FQDN or IP. Platform Jinja on primary_ip4.'
+        - macro: '{$XIQSE.API.PORT}'
+          value: '8443'
+          description: 'NBI HTTPS port.'
+        - macro: '{$XIQSE.SCHEME}'
+          value: 'https'
+          description: 'http only for a lab break-glass.'
+        - macro: '{$XIQSE.API.CLIENT.ID}'
+          value: ''
+          description: 'Client API Access id. Prefer a secret CG over YAML.'
+        - macro: '{$XIQSE.API.CLIENT.SECRET}'
+          type: SECRET_TEXT
+          value: ''
+          description: 'Client API Access secret.'
+        - macro: '{$XIQSE.DATA.TIMEOUT}'
+          value: '30s'
+          description: 'Health SCRIPT timeout.'
+        - macro: '{$XIQSE.LICENSE.TIMEOUT}'
+          value: '60s'
+          description: 'End-system / Pilot SCRIPT timeout.'
+        - macro: '{$XIQ.NAC.TOTAL}'
+          value: '0'
+          description: 'Purchased XIQ-NAC-S end-systems. 0 = graph used only.'
+        - macro: '{$XIQ.NAC.USED.WARN}'
+          value: '90'
+          description: 'Warning percent of {$XIQ.NAC.TOTAL}.'
+        - macro: '{$XIQ.NAC.ES.MAXRESULTS}'
+          value: '20000'
+          description: 'Stop paging at this many end-system rows.'
+        - macro: '{$XIQ.NAC.ES.PAGE}'
+          value: '500'
+          description: 'endSystems page size.'
+        - macro: '{$XIQ.NAC.FRESH}'
+          value: '86400'
+          description: 'Auth-event stale after this many seconds.'
+        - macro: '{$XIQ.NAC.FRESH.CONTROL}'
+          value: '1'
+          description: 'Ticket stale auth events during business hours.'
+        - macro: '{$XIQ.NAC.FRESH.TIME.START}'
+          value: '070000'
+          description: 'Stale-event window start (HHMMSS).'
+        - macro: '{$XIQ.NAC.FRESH.TIME.END}'
+          value: '190000'
+          description: 'Stale-event window end (HHMMSS).'
+        - macro: '{$XIQ.PILOT.TOTAL}'
+          value: '0'
+          description: 'Purchased Pilot seats. 0 = graph used only.'
+        - macro: '{$XIQ.PILOT.REMAIN.WARN}'
+          value: '2'
+          description: 'Warning when remaining Pilot seats at or below this.'
+        - macro: '{$XIQ.ENGINE.CONNECTED.CONTROL}'
+          value: '1'
+          description: 'Ticket engines with connected=0. Unknown (2) is silent.'
+        - macro: '{$XIQ.ENGINE.ENFORCE.CONTROL}'
+          value: '1'
+          description: 'Ticket needsEnforce=1.'
+        - macro: '{$XIQ.ENGINE.RADIUSD.CONTROL}'
+          value: '1'
+          description: 'Page FreeRADIUS disabled on an engine.'
+        - macro: '{$XIQSE.CERT.CONTROL}'
+          value: '1'
+          description: 'Certificate Warning. Set 0 if the host has no agent.'
+        - macro: '{$XIQSE.CERT.WARN}'
+          value: '30'
+          description: 'Days before 8443 cert expiry.'
+      items:
+        - uuid: d8612bcd47b44c4cb60e679df06b67bd
+          name: XIQ-SE NBI health snapshot
+          type: SCRIPT
+          key: xiqse.nbi.health
+          delay: 2m
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          params: |
+            function parseAuthTime(raw) {
+              if (raw === null || raw === undefined || raw === '') {
+                return null;
+              }
+              if (typeof raw === 'number' && isFinite(raw)) {
+                return raw > 0 && raw < 1e11 ? raw * 1000 : raw;
+              }
+              var text = String(raw);
+              if (/^\d+$/.test(text)) {
+                var numeric = Number(text);
+                return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
+              }
+              var parsed = Date.parse(text);
+              return isNaN(parsed) ? null : parsed;
+            }
+
+            function objectSize(obj) {
+              var count = 0;
+              var key;
+              for (key in obj) {
+                if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                  count++;
+                }
+              }
+              return count;
+            }
+
+            function countLicenseWindow(rows, nowMs, windowMs) {
+              var macs = {};
+              var users = {};
+              var byEngine = {};
+              var i;
+              if (!Array.isArray(rows)) {
+                rows = [];
+              }
+              for (i = 0; i < rows.length; i++) {
+                var row = rows[i] || {};
+                var stamp = parseAuthTime(row.lastAuthEventTime);
+                if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
+                  continue;
+                }
+                var mac = String(row.macAddress || '').toLowerCase();
+                if (!mac) {
+                  continue;
+                }
+                macs[mac] = 1;
+                var user = String(row.username || '').replace(/^\s+|\s+$/g, '');
+                if (user) {
+                  users[user] = 1;
+                }
+                var ip = String(row.nacApplianceIP || row.nacApplianceIp || '');
+                if (!ip) {
+                  continue;
+                }
+                if (!byEngine[ip]) {
+                  byEngine[ip] = { macs: {}, lastAuth: 0 };
+                }
+                byEngine[ip].macs[mac] = 1;
+                if (stamp > byEngine[ip].lastAuth) {
+                  byEngine[ip].lastAuth = stamp;
+                }
+              }
+              var engines = {};
+              var engineIp;
+              for (engineIp in byEngine) {
+                if (!Object.prototype.hasOwnProperty.call(byEngine, engineIp)) {
+                  continue;
+                }
+                engines[engineIp] = {
+                  used24h: objectSize(byEngine[engineIp].macs),
+                  lastAuthAge: byEngine[engineIp].lastAuth
+                    ? Math.floor((nowMs - byEngine[engineIp].lastAuth) / 1000)
+                    : -1
+                };
+              }
+              return {
+                nacUsed24h: objectSize(macs),
+                users24h: objectSize(users),
+                engines: engines
+              };
+            }
+
+            function bool01(value) {
+              if (value === true || value === 1 || value === '1' || value === 'true') {
+                return 1;
+              }
+              if (value === false || value === 0 || value === '0' || value === 'false') {
+                return 0;
+              }
+              return 2;
+            }
+
+            function uptimeSeconds(raw) {
+              var numeric = Number(raw);
+              if (!isFinite(numeric) || numeric < 0) {
+                return 0;
+              }
+              if (numeric > 1e10) {
+                return Math.floor(numeric / 1000);
+              }
+              return Math.floor(numeric);
+            }
+
+            function normalizeEngine(raw) {
+              var row = raw || {};
+              var ip = String(row.ipAddress || row.ip || '');
+              var connected = 2;
+              if (row.connected !== undefined) {
+                connected = bool01(row.connected);
+              } else if (row.isConnected !== undefined) {
+                connected = bool01(row.isConnected);
+              }
+              return {
+                ip: ip,
+                name: String(row.displayName || row.name || ip),
+                version: String(row.version || ''),
+                licensed: bool01(row.licensed),
+                capacity: Number(row.capacity) || 0,
+                freeRadiusEnabled: bool01(row.freeRadiusEnabled),
+                needsEnforce: bool01(row.needsEnforce),
+                connected: connected,
+                virtual: bool01(row.virtual)
+              };
+            }
+
+            function normalizeEngines(raw) {
+              var rows = Array.isArray(raw) ? raw : [];
+              var out = [];
+              var i;
+              for (i = 0; i < rows.length; i++) {
+                var engine = normalizeEngine(rows[i]);
+                if (engine.ip) {
+                  out.push(engine);
+                }
+              }
+              return out;
+            }
+
+            function enginesToLld(engines) {
+              var out = [];
+              var i;
+              var rows = Array.isArray(engines) ? engines : [];
+              for (i = 0; i < rows.length; i++) {
+                var engine = rows[i] || {};
+                if (!engine.ip) {
+                  continue;
+                }
+                out.push({
+                  '{#ENGINE.IP}': String(engine.ip),
+                  '{#ENGINE.NAME}': String(engine.name || engine.ip),
+                  '{#ENGINE.CAPACITY}': String(engine.capacity || 0)
+                });
+              }
+              return out;
+            }
+
+            function countPilot(devices) {
+              var used = 0;
+              var i;
+              var rows = Array.isArray(devices) ? devices : [];
+              for (i = 0; i < rows.length; i++) {
+                var data = rows[i] && rows[i].deviceData;
+                if (data && String(data.xiqLicenseState) === 'XIQ_PILOT') {
+                  used++;
+                }
+              }
+              return used;
+            }
+
+            function pickEngineField(payload, ip, field, missing) {
+              var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+              var i;
+              for (i = 0; i < engines.length; i++) {
+                if (String(engines[i].ip) === String(ip)) {
+                  if (engines[i][field] === undefined || engines[i][field] === null) {
+                    return missing;
+                  }
+                  return engines[i][field];
+                }
+              }
+              return missing;
+            }
+
+            function pickLicenseEngineField(payload, ip, field, missing) {
+              var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+              if (!row || row[field] === undefined || row[field] === null) {
+                return missing;
+              }
+              return row[field];
+            }
+
+            function httpAuthBasic() {
+              return typeof HTTPAUTH_BASIC === 'number' ? HTTPAUTH_BASIC : 1;
+            }
+
+            function nbiBase(params) {
+              return params.scheme + '://' + params.fqdn + ':' + params.port;
+            }
+
+            function fetchToken(params) {
+              var request = new HttpRequest();
+              request.addHeader('Content-Type: application/x-www-form-urlencoded');
+              request.setHttpAuth(httpAuthBasic(), params.client_id, params.client_secret);
+              var url = nbiBase(params) + '/oauth/token/access-token?grant_type=client_credentials';
+              var response = request.post(url, '');
+              var code = request.getStatus();
+              if (code !== 200) {
+                return { ok: 0, error: 'oauth HTTP ' + code };
+              }
+              var body;
+              try {
+                body = JSON.parse(response);
+              } catch (error) {
+                return { ok: 0, error: 'oauth invalid JSON' };
+              }
+              if (!body || !body.access_token) {
+                return { ok: 0, error: 'oauth no access_token' };
+              }
+              return { ok: 1, token: body.access_token };
+            }
+
+            function graphql(params, token, query) {
+              var request = new HttpRequest();
+              request.addHeader('Accept: application/json');
+              request.addHeader('Content-Type: application/json');
+              request.addHeader('Authorization: Bearer ' + token);
+              var url = nbiBase(params) + '/nbi/graphql';
+              var response = request.post(url, JSON.stringify({ query: query }));
+              var code = request.getStatus();
+              var body;
+              try {
+                body = JSON.parse(response);
+              } catch (error) {
+                return { ok: 0, error: 'graphql invalid JSON HTTP ' + code };
+              }
+              if (code !== 200) {
+                return { ok: 0, error: 'graphql HTTP ' + code };
+              }
+              if (body && Array.isArray(body.errors) && body.errors.length && !body.data) {
+                return { ok: 0, error: String(body.errors[0].message || 'graphql error') };
+              }
+              return {
+                ok: 1,
+                data: body.data,
+                errorCount: body && Array.isArray(body.errors) ? body.errors.length : 0
+              };
+            }
+
+            function graphqlTry(params, token, queries) {
+              var last = { ok: 0, error: 'no graphql query' };
+              var i;
+              for (i = 0; i < queries.length; i++) {
+                last = graphql(params, token, queries[i]);
+                if (last.ok) {
+                  return last;
+                }
+              }
+              return last;
+            }
+
+            var SERVER_INFO_QUERY = '{ administration { serverInfo { version upTime startTime heapMemoryUsed heapMemoryMax freePhysicalMemory totalPhysicalMemory threadCount } } }';
+            var ENGINES_QUERIES = [
+              '{ accessControl { engines { ipAddress name displayName version licensed capacity freeRadiusEnabled needsEnforce connected virtual } } }',
+              '{ accessControl { engines { ipAddress name displayName version licensed capacity freeRadiusEnabled needsEnforce isConnected virtual } } }',
+              '{ accessControl { engines { ipAddress name displayName version licensed capacity freeRadiusEnabled needsEnforce virtual } } }',
+              '{ accessControl { engines { ipAddress name version licensed capacity } } }',
+              '{ accessControl { engines { ipAddress name } } }'
+            ];
+
+            function collectHealth(params) {
+              var auth = fetchToken(params);
+              if (!auth.ok) {
+                return { ok: 0, error: auth.error, engineCount: 0, engines: [] };
+              }
+              var info = graphql(params, auth.token, SERVER_INFO_QUERY);
+              if (!info.ok) {
+                return { ok: 0, error: info.error, engineCount: 0, engines: [] };
+              }
+              var server = (((info.data || {}).administration || {}).serverInfo) || {};
+              var enginesResult = graphqlTry(params, auth.token, ENGINES_QUERIES);
+              var engines = [];
+              if (enginesResult.ok) {
+                engines = normalizeEngines((((enginesResult.data || {}).accessControl) || {}).engines);
+              }
+              return {
+                ok: 1,
+                error: enginesResult.ok ? '' : String(enginesResult.error || ''),
+                version: String(server.version || ''),
+                upTime: uptimeSeconds(server.upTime),
+                startTime: String(server.startTime || ''),
+                heapMemoryUsed: Number(server.heapMemoryUsed) || 0,
+                heapMemoryMax: Number(server.heapMemoryMax) || 0,
+                freePhysicalMemory: Number(server.freePhysicalMemory) || 0,
+                totalPhysicalMemory: Number(server.totalPhysicalMemory) || 0,
+                threadCount: Number(server.threadCount) || 0,
+                engineCount: engines.length,
+                engines: engines
+              };
+            }
+
+            var params = JSON.parse(value);
+            return JSON.stringify(collectHealth(params));
+          timeout: '{$XIQSE.DATA.TIMEOUT}'
+          parameters:
+            - name: fqdn
+              value: '{$XIQSE.API.FQDN}'
+            - name: port
+              value: '{$XIQSE.API.PORT}'
+            - name: scheme
+              value: '{$XIQSE.SCHEME}'
+            - name: client_id
+              value: '{$XIQSE.API.CLIENT.ID}'
+            - name: client_secret
+              value: '{$XIQSE.API.CLIENT.SECRET}'
+          description: |
+            OAuth + serverInfo + engines. Query only. New HttpRequest per call.
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: 774155de68b74b71b17bb24770360331
+          name: XIQ-SE NAC 24h unique snapshot
+          type: SCRIPT
+          key: xiqse.nbi.licenses
+          delay: 15m
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          params: |
+            function parseAuthTime(raw) {
+              if (raw === null || raw === undefined || raw === '') {
+                return null;
+              }
+              if (typeof raw === 'number' && isFinite(raw)) {
+                return raw > 0 && raw < 1e11 ? raw * 1000 : raw;
+              }
+              var text = String(raw);
+              if (/^\d+$/.test(text)) {
+                var numeric = Number(text);
+                return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
+              }
+              var parsed = Date.parse(text);
+              return isNaN(parsed) ? null : parsed;
+            }
+
+            function objectSize(obj) {
+              var count = 0;
+              var key;
+              for (key in obj) {
+                if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                  count++;
+                }
+              }
+              return count;
+            }
+
+            function countLicenseWindow(rows, nowMs, windowMs) {
+              var macs = {};
+              var users = {};
+              var byEngine = {};
+              var i;
+              if (!Array.isArray(rows)) {
+                rows = [];
+              }
+              for (i = 0; i < rows.length; i++) {
+                var row = rows[i] || {};
+                var stamp = parseAuthTime(row.lastAuthEventTime);
+                if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
+                  continue;
+                }
+                var mac = String(row.macAddress || '').toLowerCase();
+                if (!mac) {
+                  continue;
+                }
+                macs[mac] = 1;
+                var user = String(row.username || '').replace(/^\s+|\s+$/g, '');
+                if (user) {
+                  users[user] = 1;
+                }
+                var ip = String(row.nacApplianceIP || row.nacApplianceIp || '');
+                if (!ip) {
+                  continue;
+                }
+                if (!byEngine[ip]) {
+                  byEngine[ip] = { macs: {}, lastAuth: 0 };
+                }
+                byEngine[ip].macs[mac] = 1;
+                if (stamp > byEngine[ip].lastAuth) {
+                  byEngine[ip].lastAuth = stamp;
+                }
+              }
+              var engines = {};
+              var engineIp;
+              for (engineIp in byEngine) {
+                if (!Object.prototype.hasOwnProperty.call(byEngine, engineIp)) {
+                  continue;
+                }
+                engines[engineIp] = {
+                  used24h: objectSize(byEngine[engineIp].macs),
+                  lastAuthAge: byEngine[engineIp].lastAuth
+                    ? Math.floor((nowMs - byEngine[engineIp].lastAuth) / 1000)
+                    : -1
+                };
+              }
+              return {
+                nacUsed24h: objectSize(macs),
+                users24h: objectSize(users),
+                engines: engines
+              };
+            }
+
+            function bool01(value) {
+              if (value === true || value === 1 || value === '1' || value === 'true') {
+                return 1;
+              }
+              if (value === false || value === 0 || value === '0' || value === 'false') {
+                return 0;
+              }
+              return 2;
+            }
+
+            function uptimeSeconds(raw) {
+              var numeric = Number(raw);
+              if (!isFinite(numeric) || numeric < 0) {
+                return 0;
+              }
+              if (numeric > 1e10) {
+                return Math.floor(numeric / 1000);
+              }
+              return Math.floor(numeric);
+            }
+
+            function normalizeEngine(raw) {
+              var row = raw || {};
+              var ip = String(row.ipAddress || row.ip || '');
+              var connected = 2;
+              if (row.connected !== undefined) {
+                connected = bool01(row.connected);
+              } else if (row.isConnected !== undefined) {
+                connected = bool01(row.isConnected);
+              }
+              return {
+                ip: ip,
+                name: String(row.displayName || row.name || ip),
+                version: String(row.version || ''),
+                licensed: bool01(row.licensed),
+                capacity: Number(row.capacity) || 0,
+                freeRadiusEnabled: bool01(row.freeRadiusEnabled),
+                needsEnforce: bool01(row.needsEnforce),
+                connected: connected,
+                virtual: bool01(row.virtual)
+              };
+            }
+
+            function normalizeEngines(raw) {
+              var rows = Array.isArray(raw) ? raw : [];
+              var out = [];
+              var i;
+              for (i = 0; i < rows.length; i++) {
+                var engine = normalizeEngine(rows[i]);
+                if (engine.ip) {
+                  out.push(engine);
+                }
+              }
+              return out;
+            }
+
+            function enginesToLld(engines) {
+              var out = [];
+              var i;
+              var rows = Array.isArray(engines) ? engines : [];
+              for (i = 0; i < rows.length; i++) {
+                var engine = rows[i] || {};
+                if (!engine.ip) {
+                  continue;
+                }
+                out.push({
+                  '{#ENGINE.IP}': String(engine.ip),
+                  '{#ENGINE.NAME}': String(engine.name || engine.ip),
+                  '{#ENGINE.CAPACITY}': String(engine.capacity || 0)
+                });
+              }
+              return out;
+            }
+
+            function countPilot(devices) {
+              var used = 0;
+              var i;
+              var rows = Array.isArray(devices) ? devices : [];
+              for (i = 0; i < rows.length; i++) {
+                var data = rows[i] && rows[i].deviceData;
+                if (data && String(data.xiqLicenseState) === 'XIQ_PILOT') {
+                  used++;
+                }
+              }
+              return used;
+            }
+
+            function pickEngineField(payload, ip, field, missing) {
+              var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+              var i;
+              for (i = 0; i < engines.length; i++) {
+                if (String(engines[i].ip) === String(ip)) {
+                  if (engines[i][field] === undefined || engines[i][field] === null) {
+                    return missing;
+                  }
+                  return engines[i][field];
+                }
+              }
+              return missing;
+            }
+
+            function pickLicenseEngineField(payload, ip, field, missing) {
+              var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+              if (!row || row[field] === undefined || row[field] === null) {
+                return missing;
+              }
+              return row[field];
+            }
+
+            function httpAuthBasic() {
+              return typeof HTTPAUTH_BASIC === 'number' ? HTTPAUTH_BASIC : 1;
+            }
+
+            function nbiBase(params) {
+              return params.scheme + '://' + params.fqdn + ':' + params.port;
+            }
+
+            function fetchToken(params) {
+              var request = new HttpRequest();
+              request.addHeader('Content-Type: application/x-www-form-urlencoded');
+              request.setHttpAuth(httpAuthBasic(), params.client_id, params.client_secret);
+              var url = nbiBase(params) + '/oauth/token/access-token?grant_type=client_credentials';
+              var response = request.post(url, '');
+              var code = request.getStatus();
+              if (code !== 200) {
+                return { ok: 0, error: 'oauth HTTP ' + code };
+              }
+              var body;
+              try {
+                body = JSON.parse(response);
+              } catch (error) {
+                return { ok: 0, error: 'oauth invalid JSON' };
+              }
+              if (!body || !body.access_token) {
+                return { ok: 0, error: 'oauth no access_token' };
+              }
+              return { ok: 1, token: body.access_token };
+            }
+
+            function graphql(params, token, query) {
+              var request = new HttpRequest();
+              request.addHeader('Accept: application/json');
+              request.addHeader('Content-Type: application/json');
+              request.addHeader('Authorization: Bearer ' + token);
+              var url = nbiBase(params) + '/nbi/graphql';
+              var response = request.post(url, JSON.stringify({ query: query }));
+              var code = request.getStatus();
+              var body;
+              try {
+                body = JSON.parse(response);
+              } catch (error) {
+                return { ok: 0, error: 'graphql invalid JSON HTTP ' + code };
+              }
+              if (code !== 200) {
+                return { ok: 0, error: 'graphql HTTP ' + code };
+              }
+              if (body && Array.isArray(body.errors) && body.errors.length && !body.data) {
+                return { ok: 0, error: String(body.errors[0].message || 'graphql error') };
+              }
+              return {
+                ok: 1,
+                data: body.data,
+                errorCount: body && Array.isArray(body.errors) ? body.errors.length : 0
+              };
+            }
+
+            function graphqlTry(params, token, queries) {
+              var last = { ok: 0, error: 'no graphql query' };
+              var i;
+              for (i = 0; i < queries.length; i++) {
+                last = graphql(params, token, queries[i]);
+                if (last.ok) {
+                  return last;
+                }
+              }
+              return last;
+            }
+
+            function endSystemQuery(maxResults, firstResult) {
+              return '{ accessControl { endSystems(maxResults: ' + maxResults + ', firstResult: ' + firstResult + ') { count success errorMessage endSystems { macAddress lastAuthEventTime username nacApplianceIP } } } }';
+            }
+
+            function collectLicenses(params) {
+              var maxResults = Number(params.max_results) || 20000;
+              var pageSize = Number(params.page_size) || 500;
+              if (pageSize < 1) {
+                pageSize = 500;
+              }
+              if (pageSize > maxResults) {
+                pageSize = maxResults;
+              }
+              var auth = fetchToken(params);
+              if (!auth.ok) {
+                return { ok: 0, error: auth.error, truncated: 0, fetched: 0, nacUsed24h: 0, users24h: 0, engines: {} };
+              }
+              var rows = [];
+              var first = 0;
+              var truncated = 0;
+              while (first < maxResults) {
+                var take = pageSize;
+                if (first + take > maxResults) {
+                  take = maxResults - first;
+                }
+                var page = graphql(params, auth.token, endSystemQuery(take, first));
+                if (!page.ok) {
+                  return { ok: 0, error: page.error, truncated: truncated, fetched: rows.length, nacUsed24h: 0, users24h: 0, engines: {} };
+                }
+                var wrap = (((page.data || {}).accessControl) || {}).endSystems || {};
+                if (wrap.success === false) {
+                  return { ok: 0, error: String(wrap.errorMessage || 'endSystems success=false'), truncated: truncated, fetched: rows.length, nacUsed24h: 0, users24h: 0, engines: {} };
+                }
+                var batch = Array.isArray(wrap.endSystems) ? wrap.endSystems : [];
+                var i;
+                for (i = 0; i < batch.length; i++) {
+                  rows.push(batch[i]);
+                }
+                if (rows.length >= maxResults) {
+                  truncated = 1;
+                  break;
+                }
+                if (batch.length < take) {
+                  break;
+                }
+                first += take;
+              }
+              var counted = countLicenseWindow(rows, Date.now(), 86400000);
+              return {
+                ok: 1,
+                error: '',
+                truncated: truncated,
+                fetched: rows.length,
+                nacUsed24h: counted.nacUsed24h,
+                users24h: counted.users24h,
+                engines: counted.engines
+              };
+            }
+
+            var params = JSON.parse(value);
+            return JSON.stringify(collectLicenses(params));
+          timeout: '{$XIQSE.LICENSE.TIMEOUT}'
+          parameters:
+            - name: fqdn
+              value: '{$XIQSE.API.FQDN}'
+            - name: port
+              value: '{$XIQSE.API.PORT}'
+            - name: scheme
+              value: '{$XIQSE.SCHEME}'
+            - name: client_id
+              value: '{$XIQSE.API.CLIENT.ID}'
+            - name: client_secret
+              value: '{$XIQSE.API.CLIENT.SECRET}'
+            - name: max_results
+              value: '{$XIQ.NAC.ES.MAXRESULTS}'
+            - name: page_size
+              value: '{$XIQ.NAC.ES.PAGE}'
+          description: |
+            Pages endSystems and counts unique MACs with lastAuthEventTime in 24h.
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 870e6b9527874183b9f0dc21946122e6
+          name: XIQ-SE Pilot license snapshot
+          type: SCRIPT
+          key: xiqse.nbi.pilot
+          delay: 15m
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          params: |
+            function parseAuthTime(raw) {
+              if (raw === null || raw === undefined || raw === '') {
+                return null;
+              }
+              if (typeof raw === 'number' && isFinite(raw)) {
+                return raw > 0 && raw < 1e11 ? raw * 1000 : raw;
+              }
+              var text = String(raw);
+              if (/^\d+$/.test(text)) {
+                var numeric = Number(text);
+                return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
+              }
+              var parsed = Date.parse(text);
+              return isNaN(parsed) ? null : parsed;
+            }
+
+            function objectSize(obj) {
+              var count = 0;
+              var key;
+              for (key in obj) {
+                if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                  count++;
+                }
+              }
+              return count;
+            }
+
+            function countLicenseWindow(rows, nowMs, windowMs) {
+              var macs = {};
+              var users = {};
+              var byEngine = {};
+              var i;
+              if (!Array.isArray(rows)) {
+                rows = [];
+              }
+              for (i = 0; i < rows.length; i++) {
+                var row = rows[i] || {};
+                var stamp = parseAuthTime(row.lastAuthEventTime);
+                if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
+                  continue;
+                }
+                var mac = String(row.macAddress || '').toLowerCase();
+                if (!mac) {
+                  continue;
+                }
+                macs[mac] = 1;
+                var user = String(row.username || '').replace(/^\s+|\s+$/g, '');
+                if (user) {
+                  users[user] = 1;
+                }
+                var ip = String(row.nacApplianceIP || row.nacApplianceIp || '');
+                if (!ip) {
+                  continue;
+                }
+                if (!byEngine[ip]) {
+                  byEngine[ip] = { macs: {}, lastAuth: 0 };
+                }
+                byEngine[ip].macs[mac] = 1;
+                if (stamp > byEngine[ip].lastAuth) {
+                  byEngine[ip].lastAuth = stamp;
+                }
+              }
+              var engines = {};
+              var engineIp;
+              for (engineIp in byEngine) {
+                if (!Object.prototype.hasOwnProperty.call(byEngine, engineIp)) {
+                  continue;
+                }
+                engines[engineIp] = {
+                  used24h: objectSize(byEngine[engineIp].macs),
+                  lastAuthAge: byEngine[engineIp].lastAuth
+                    ? Math.floor((nowMs - byEngine[engineIp].lastAuth) / 1000)
+                    : -1
+                };
+              }
+              return {
+                nacUsed24h: objectSize(macs),
+                users24h: objectSize(users),
+                engines: engines
+              };
+            }
+
+            function bool01(value) {
+              if (value === true || value === 1 || value === '1' || value === 'true') {
+                return 1;
+              }
+              if (value === false || value === 0 || value === '0' || value === 'false') {
+                return 0;
+              }
+              return 2;
+            }
+
+            function uptimeSeconds(raw) {
+              var numeric = Number(raw);
+              if (!isFinite(numeric) || numeric < 0) {
+                return 0;
+              }
+              if (numeric > 1e10) {
+                return Math.floor(numeric / 1000);
+              }
+              return Math.floor(numeric);
+            }
+
+            function normalizeEngine(raw) {
+              var row = raw || {};
+              var ip = String(row.ipAddress || row.ip || '');
+              var connected = 2;
+              if (row.connected !== undefined) {
+                connected = bool01(row.connected);
+              } else if (row.isConnected !== undefined) {
+                connected = bool01(row.isConnected);
+              }
+              return {
+                ip: ip,
+                name: String(row.displayName || row.name || ip),
+                version: String(row.version || ''),
+                licensed: bool01(row.licensed),
+                capacity: Number(row.capacity) || 0,
+                freeRadiusEnabled: bool01(row.freeRadiusEnabled),
+                needsEnforce: bool01(row.needsEnforce),
+                connected: connected,
+                virtual: bool01(row.virtual)
+              };
+            }
+
+            function normalizeEngines(raw) {
+              var rows = Array.isArray(raw) ? raw : [];
+              var out = [];
+              var i;
+              for (i = 0; i < rows.length; i++) {
+                var engine = normalizeEngine(rows[i]);
+                if (engine.ip) {
+                  out.push(engine);
+                }
+              }
+              return out;
+            }
+
+            function enginesToLld(engines) {
+              var out = [];
+              var i;
+              var rows = Array.isArray(engines) ? engines : [];
+              for (i = 0; i < rows.length; i++) {
+                var engine = rows[i] || {};
+                if (!engine.ip) {
+                  continue;
+                }
+                out.push({
+                  '{#ENGINE.IP}': String(engine.ip),
+                  '{#ENGINE.NAME}': String(engine.name || engine.ip),
+                  '{#ENGINE.CAPACITY}': String(engine.capacity || 0)
+                });
+              }
+              return out;
+            }
+
+            function countPilot(devices) {
+              var used = 0;
+              var i;
+              var rows = Array.isArray(devices) ? devices : [];
+              for (i = 0; i < rows.length; i++) {
+                var data = rows[i] && rows[i].deviceData;
+                if (data && String(data.xiqLicenseState) === 'XIQ_PILOT') {
+                  used++;
+                }
+              }
+              return used;
+            }
+
+            function pickEngineField(payload, ip, field, missing) {
+              var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+              var i;
+              for (i = 0; i < engines.length; i++) {
+                if (String(engines[i].ip) === String(ip)) {
+                  if (engines[i][field] === undefined || engines[i][field] === null) {
+                    return missing;
+                  }
+                  return engines[i][field];
+                }
+              }
+              return missing;
+            }
+
+            function pickLicenseEngineField(payload, ip, field, missing) {
+              var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+              if (!row || row[field] === undefined || row[field] === null) {
+                return missing;
+              }
+              return row[field];
+            }
+
+            function httpAuthBasic() {
+              return typeof HTTPAUTH_BASIC === 'number' ? HTTPAUTH_BASIC : 1;
+            }
+
+            function nbiBase(params) {
+              return params.scheme + '://' + params.fqdn + ':' + params.port;
+            }
+
+            function fetchToken(params) {
+              var request = new HttpRequest();
+              request.addHeader('Content-Type: application/x-www-form-urlencoded');
+              request.setHttpAuth(httpAuthBasic(), params.client_id, params.client_secret);
+              var url = nbiBase(params) + '/oauth/token/access-token?grant_type=client_credentials';
+              var response = request.post(url, '');
+              var code = request.getStatus();
+              if (code !== 200) {
+                return { ok: 0, error: 'oauth HTTP ' + code };
+              }
+              var body;
+              try {
+                body = JSON.parse(response);
+              } catch (error) {
+                return { ok: 0, error: 'oauth invalid JSON' };
+              }
+              if (!body || !body.access_token) {
+                return { ok: 0, error: 'oauth no access_token' };
+              }
+              return { ok: 1, token: body.access_token };
+            }
+
+            function graphql(params, token, query) {
+              var request = new HttpRequest();
+              request.addHeader('Accept: application/json');
+              request.addHeader('Content-Type: application/json');
+              request.addHeader('Authorization: Bearer ' + token);
+              var url = nbiBase(params) + '/nbi/graphql';
+              var response = request.post(url, JSON.stringify({ query: query }));
+              var code = request.getStatus();
+              var body;
+              try {
+                body = JSON.parse(response);
+              } catch (error) {
+                return { ok: 0, error: 'graphql invalid JSON HTTP ' + code };
+              }
+              if (code !== 200) {
+                return { ok: 0, error: 'graphql HTTP ' + code };
+              }
+              if (body && Array.isArray(body.errors) && body.errors.length && !body.data) {
+                return { ok: 0, error: String(body.errors[0].message || 'graphql error') };
+              }
+              return {
+                ok: 1,
+                data: body.data,
+                errorCount: body && Array.isArray(body.errors) ? body.errors.length : 0
+              };
+            }
+
+            function graphqlTry(params, token, queries) {
+              var last = { ok: 0, error: 'no graphql query' };
+              var i;
+              for (i = 0; i < queries.length; i++) {
+                last = graphql(params, token, queries[i]);
+                if (last.ok) {
+                  return last;
+                }
+              }
+              return last;
+            }
+
+            var PILOT_QUERIES = [
+              '{ network { devices { deviceData { xiqLicenseState } } } }',
+              '{ network { devices { ip deviceData { xiqLicenseState } } } }'
+            ];
+
+            function collectPilot(params) {
+              var auth = fetchToken(params);
+              if (!auth.ok) {
+                return { ok: 0, error: auth.error, pilotUsed: 0 };
+              }
+              var result = graphqlTry(params, auth.token, PILOT_QUERIES);
+              if (!result.ok) {
+                return { ok: 0, error: result.error, pilotUsed: 0 };
+              }
+              var devices = (((result.data || {}).network) || {}).devices;
+              return { ok: 1, error: '', pilotUsed: countPilot(devices) };
+            }
+
+            var params = JSON.parse(value);
+            return JSON.stringify(collectPilot(params));
+          timeout: '{$XIQSE.LICENSE.TIMEOUT}'
+          parameters:
+            - name: fqdn
+              value: '{$XIQSE.API.FQDN}'
+            - name: port
+              value: '{$XIQSE.API.PORT}'
+            - name: scheme
+              value: '{$XIQSE.SCHEME}'
+            - name: client_id
+              value: '{$XIQSE.API.CLIENT.ID}'
+            - name: client_secret
+              value: '{$XIQSE.API.CLIENT.SECRET}'
+          description: |
+            Counts network.devices with xiqLicenseState XIQ_PILOT.
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: ff9d4a0c2bd243d3b50907d674c4c70d
+          name: XIQ-SE NBI available
+          type: DEPENDENT
+          key: xiqse.nbi.available
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.ok'
+          master_item:
+            key: xiqse.nbi.health
+          valuemap:
+            name: XIQ-SE NBI
+          triggers:
+            - uuid: 97921d61a0b34d7286b85c77180bf3ce
+              expression: 'min(/XIQ-SE Observability/xiqse.nbi.available,5m)=0'
+              name: 'XIQ-SE: NBI unexpected response'
+              event_name: 'XIQ-SE: NBI unexpected response'
+              priority: AVERAGE
+              description: |
+                OAuth or GraphQL failed while the host is still polled. RADIUS on engines may still work.
+              dependencies:
+                - name: 'XIQ-SE: HTTPS 8443 down'
+                  expression: 'max(/XIQ-SE Observability/net.tcp.service[tcp,{$XIQSE.API.FQDN},{$XIQSE.API.PORT}],#3)=0'
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: 40dd971c943f4a01b7927b5f1afcf575
+              expression: 'nodata(/XIQ-SE Observability/xiqse.nbi.health,15m)=1'
+              name: 'XIQ-SE: no NBI data for 15m'
+              event_name: 'XIQ-SE: no NBI data for 15m'
+              priority: AVERAGE
+              description: |
+                Health SCRIPT produced no values. Token, proxy, or TLS.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: 546cd559cf1d419c9454382ddd7f9ba0
+          name: XIQ-SE NBI last error
+          type: DEPENDENT
+          key: xiqse.nbi.error
+          delay: '0'
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.error'
+          master_item:
+            key: xiqse.nbi.health
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: 349eec0b35594c2aaa1bb6aeb18693a6
+          name: XIQ-SE version
+          type: DEPENDENT
+          key: xiqse.nbi.version
+          delay: '0'
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.version'
+          master_item:
+            key: xiqse.nbi.health
+          triggers:
+            - uuid: ca213b71fe584b7794cb053d766dcd61
+              expression: 'change(/XIQ-SE Observability/xiqse.nbi.version)<>0 and length(last(/XIQ-SE Observability/xiqse.nbi.version))>0'
+              name: 'XIQ-SE: version has changed'
+              event_name: 'XIQ-SE: version has changed'
+              priority: INFO
+              description: |
+                Site Engine version string changed.
+              manual_close: 'YES'
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: ac95ffe740aa4381afc2b82fbf4bee2b
+          name: XIQ-SE uptime
+          type: DEPENDENT
+          key: xiqse.nbi.uptime
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          units: 'uptime'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.upTime'
+          master_item:
+            key: xiqse.nbi.health
+          triggers:
+            - uuid: d375ab5185f043d2bece3b826fe78e76
+              expression: 'last(/XIQ-SE Observability/xiqse.nbi.uptime)>0 and last(/XIQ-SE Observability/xiqse.nbi.uptime)<10m'
+              name: 'XIQ-SE: unplanned reboot'
+              event_name: 'XIQ-SE: unplanned reboot'
+              priority: WARNING
+              description: |
+                JVM upTime dropped below 10 minutes.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: 085864f2324942d597d39328974a7569
+          name: XIQ-SE heap used
+          type: DEPENDENT
+          key: xiqse.nbi.heap.used
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: 'B'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.heapMemoryUsed'
+          master_item:
+            key: xiqse.nbi.health
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: 8fc39553db2244ab95c50def7bfc0bbe
+          name: XIQ-SE heap max
+          type: DEPENDENT
+          key: xiqse.nbi.heap.max
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: 'B'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.heapMemoryMax'
+          master_item:
+            key: xiqse.nbi.health
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: 2daf12be53ec4af1a1318e4d902faf99
+          name: XIQ-SE heap used %
+          type: CALCULATED
+          key: xiqse.nbi.heap.pct
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: '%'
+          params: 'last(//xiqse.nbi.heap.max)>0 ? last(//xiqse.nbi.heap.used)/last(//xiqse.nbi.heap.max)*100 : 0'
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: c42cd56afa92461788dfa89f3eb23411
+          name: XIQ-SE free physical memory
+          type: DEPENDENT
+          key: xiqse.nbi.ram.free
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: 'B'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.freePhysicalMemory'
+          master_item:
+            key: xiqse.nbi.health
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: f9a83d5cc1b346c9892e96d3d588b17c
+          name: XIQ-SE total physical memory
+          type: DEPENDENT
+          key: xiqse.nbi.ram.total
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: 'B'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.totalPhysicalMemory'
+          master_item:
+            key: xiqse.nbi.health
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: b083b3fd64b34c31b76e8f1aae7ff956
+          name: XIQ-SE threads
+          type: DEPENDENT
+          key: xiqse.nbi.threads
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.threadCount'
+          master_item:
+            key: xiqse.nbi.health
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: d78c94ad24b8400a90640848802268c8
+          name: XIQ-SE Control engine count
+          type: DEPENDENT
+          key: xiqse.engine.count
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.engineCount'
+          master_item:
+            key: xiqse.nbi.health
+          triggers:
+            - uuid: 9c7efefa14934d78a059dbfdebe249be
+              expression: 'last(/XIQ-SE Observability/xiqse.nbi.available)=1 and last(/XIQ-SE Observability/xiqse.engine.count)=0'
+              name: 'XIQ-SE: no Control engines discovered'
+              event_name: 'XIQ-SE: no Control engines discovered'
+              priority: AVERAGE
+              description: |
+                NBI is up but engines is empty. Access Control NBI right or filter.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+        - uuid: 42078351037e4a66a77525e8918d919a
+          name: NAC license used (24h unique MACs)
+          type: DEPENDENT
+          key: xiqse.nac.used24h
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.nacUsed24h'
+          master_item:
+            key: xiqse.nbi.licenses
+          triggers:
+            - uuid: 12118b420e464f0ba5b63869fba1fb90
+              expression: '{$XIQ.NAC.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.nac.used24h)>={$XIQ.NAC.TOTAL}'
+              name: 'XIQ-SE: NAC license seats exhausted'
+              event_name: 'XIQ-SE: NAC license seats exhausted'
+              priority: AVERAGE
+              description: |
+                Unique MACs authenticated in 24h reached {$XIQ.NAC.TOTAL} (XIQ-NAC-S).
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: 5f355368b3ca4adc9ad31652151e2270
+              expression: '{$XIQ.NAC.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.nac.used24h)*100>={$XIQ.NAC.TOTAL}*{$XIQ.NAC.USED.WARN}'
+              name: 'XIQ-SE: NAC license seats high'
+              event_name: 'XIQ-SE: NAC license seats high'
+              priority: WARNING
+              description: |
+                24h unique MACs at or above {$XIQ.NAC.USED.WARN}% of {$XIQ.NAC.TOTAL}.
+              dependencies:
+                - name: 'XIQ-SE: NAC license seats exhausted'
+                  expression: '{$XIQ.NAC.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.nac.used24h)>={$XIQ.NAC.TOTAL}'
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 7e7ca72601224d15a000bc81a5900db7
+          name: NAC unique usernames (24h)
+          type: DEPENDENT
+          key: xiqse.nac.users24h
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.users24h'
+          master_item:
+            key: xiqse.nbi.licenses
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 3fc85bb75873448a8f3b9e8db848f99f
+          name: NAC license remaining
+          type: CALCULATED
+          key: xiqse.nac.remaining
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          params: '{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)'
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 6d891b6cf37f4276bc1beb250ade16ed
+          name: NAC license used %
+          type: CALCULATED
+          key: xiqse.nac.used.pct
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: '%'
+          params: '{$XIQ.NAC.TOTAL}>0 ? last(//xiqse.nac.used24h)/{$XIQ.NAC.TOTAL}*100 : 0'
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: cc8ad599f96846f099bed5d33161f134
+          name: NAC end-systems fetched
+          type: DEPENDENT
+          key: xiqse.nac.fetched
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.fetched'
+          master_item:
+            key: xiqse.nbi.licenses
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: fe030b13c4db4f94a7281bbc1d0296d3
+          name: NAC 24h census truncated
+          type: DEPENDENT
+          key: xiqse.nac.truncated
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.truncated'
+          master_item:
+            key: xiqse.nbi.licenses
+          valuemap:
+            name: XIQ-SE truncated
+          triggers:
+            - uuid: 9319f3e3d55b47b59a93b801857c846f
+              expression: 'last(/XIQ-SE Observability/xiqse.nac.truncated)=1'
+              name: 'XIQ-SE: 24h end-system census truncated'
+              event_name: 'XIQ-SE: 24h end-system census truncated'
+              priority: AVERAGE
+              description: |
+                Fetched count hit {$XIQ.NAC.ES.MAXRESULTS}. The NAC license graph under-counts.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 9f94cfa9e6434a3288713564107fdbfb
+          name: Pilot licenses used
+          type: DEPENDENT
+          key: xiqse.pilot.used
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.pilotUsed'
+          master_item:
+            key: xiqse.nbi.pilot
+          triggers:
+            - uuid: 158689830fc5407b8522bedc7012ada8
+              expression: '{$XIQ.PILOT.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.pilot.used)>={$XIQ.PILOT.TOTAL}'
+              name: 'XIQ-SE: Pilot licenses exhausted'
+              event_name: 'XIQ-SE: Pilot licenses exhausted'
+              priority: WARNING
+              description: |
+                Cannot onboard another switch or Control engine.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 63a299d472f740c39b5d1bb7cced92fe
+          name: Pilot licenses remaining
+          type: CALCULATED
+          key: xiqse.pilot.remaining
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          params: '{$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used)'
+          triggers:
+            - uuid: 36805c7666e4437e9b083b4c9b58ee3f
+              expression: '{$XIQ.PILOT.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.pilot.remaining)<={$XIQ.PILOT.REMAIN.WARN}'
+              name: 'XIQ-SE: few Pilot licenses remaining'
+              event_name: 'XIQ-SE: few Pilot licenses remaining'
+              priority: WARNING
+              description: |
+                Pilot remaining at or below {$XIQ.PILOT.REMAIN.WARN}.
+              dependencies:
+                - name: 'XIQ-SE: Pilot licenses exhausted'
+                  expression: '{$XIQ.PILOT.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.pilot.used)>={$XIQ.PILOT.TOTAL}'
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 03b45dacb57f42c2aacc1556bc8369e2
+          name: Pilot census ok
+          type: DEPENDENT
+          key: xiqse.pilot.ok
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.ok'
+          master_item:
+            key: xiqse.nbi.pilot
+          valuemap:
+            name: XIQ-SE NBI
+          triggers:
+            - uuid: 3f6599c84332498485c73f96cd2353d7
+              expression: 'last(/XIQ-SE Observability/xiqse.pilot.ok)=0 and last(/XIQ-SE Observability/xiqse.nbi.available)=1'
+              name: 'XIQ-SE: Pilot census failed'
+              event_name: 'XIQ-SE: Pilot census failed'
+              priority: AVERAGE
+              description: |
+                NBI is up but the devices xiqLicenseState query failed. Pilot remaining is unknown.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 1f2a9aae5987421e837ec9d3d21b4839
+          name: XIQ-SE HTTPS 8443
+          type: SIMPLE
+          key: 'net.tcp.service[tcp,{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]'
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          valuemap:
+            name: 'Service state'
+          tags:
+            - tag: component
+              value: nbi
+            - tag: scope
+              value: health
+          triggers:
+            - uuid: 810c1bc3b2a24f1b8fa47e29d2c21b1e
+              expression: 'max(/XIQ-SE Observability/net.tcp.service[tcp,{$XIQSE.API.FQDN},{$XIQSE.API.PORT}],#3)=0'
+              name: 'XIQ-SE: HTTPS 8443 down'
+              event_name: 'XIQ-SE: HTTPS 8443 down'
+              priority: AVERAGE
+              description: |
+                NBI/GUI port is closed. RADIUS on engines may still work.
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 4420532ce6264a748084191925f211ee
+          name: XIQ-SE TLS certificate
+          type: ZABBIX_PASSIVE
+          key: 'web.certificate.get[{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]'
+          delay: 1h
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: |
+            Needs Zabbix agent on the Site Engine. Set {$XIQSE.CERT.CONTROL}=0 if unsupported.
+          tags:
+            - tag: component
+              value: tls
+        - uuid: b4e91c6a7d8f40c9a1e25b37c48d59e0
+          name: XIQ-SE TLS not after
+          type: DEPENDENT
+          key: xiqse.tls.not_after
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          units: unixtime
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.not_after
+          master_item:
+            key: 'web.certificate.get[{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]'
+          tags:
+            - tag: component
+              value: tls
+          triggers:
+            - uuid: a59e95e7308741eab8d05b728c8dce2a
+              expression: '{$XIQSE.CERT.CONTROL}=1 and (last(/XIQ-SE Observability/xiqse.tls.not_after)-now())<{$XIQSE.CERT.WARN}*86400'
+              name: 'XIQ-SE: TLS certificate expires soon'
+              event_name: 'XIQ-SE: TLS certificate expires soon'
+              priority: WARNING
+              description: |
+                8443 certificate expires within {$XIQSE.CERT.WARN} days.
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 35962793d7484596bee1d20ad9067757
+          name: Unsupported items
+          type: INTERNAL
+          key: 'zabbix[host,,items_unsupported]'
+          delay: 15m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          tags:
+            - tag: component
+              value: census
+          triggers:
+            - uuid: 85d9c4f699e0491b9ad49a7bd5db11a3
+              expression: 'last(/XIQ-SE Observability/zabbix[host,,items_unsupported])>0'
+              name: 'XIQ-SE: unsupported items present'
+              event_name: 'XIQ-SE: unsupported items present'
+              priority: AVERAGE
+              description: |
+                Schema field missing, no agent for the certificate item, or SCRIPT error.
+              tags:
+                - tag: scope
+                  value: availability
+      discovery_rules:
+        - uuid: b122be820bea45eaacc37bad188fef00
+          name: Control engine discovery
+          type: DEPENDENT
+          key: xiqse.engine.discovery
+          delay: '0'
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: |
+            Engines from the health snapshot. Never LLD end-system MACs.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  function parseAuthTime(raw) {
+                    if (raw === null || raw === undefined || raw === '') {
+                      return null;
+                    }
+                    if (typeof raw === 'number' && isFinite(raw)) {
+                      return raw > 0 && raw < 1e11 ? raw * 1000 : raw;
+                    }
+                    var text = String(raw);
+                    if (/^\d+$/.test(text)) {
+                      var numeric = Number(text);
+                      return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
+                    }
+                    var parsed = Date.parse(text);
+                    return isNaN(parsed) ? null : parsed;
+                  }
+
+                  function objectSize(obj) {
+                    var count = 0;
+                    var key;
+                    for (key in obj) {
+                      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                        count++;
+                      }
+                    }
+                    return count;
+                  }
+
+                  function countLicenseWindow(rows, nowMs, windowMs) {
+                    var macs = {};
+                    var users = {};
+                    var byEngine = {};
+                    var i;
+                    if (!Array.isArray(rows)) {
+                      rows = [];
+                    }
+                    for (i = 0; i < rows.length; i++) {
+                      var row = rows[i] || {};
+                      var stamp = parseAuthTime(row.lastAuthEventTime);
+                      if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
+                        continue;
+                      }
+                      var mac = String(row.macAddress || '').toLowerCase();
+                      if (!mac) {
+                        continue;
+                      }
+                      macs[mac] = 1;
+                      var user = String(row.username || '').replace(/^\s+|\s+$/g, '');
+                      if (user) {
+                        users[user] = 1;
+                      }
+                      var ip = String(row.nacApplianceIP || row.nacApplianceIp || '');
+                      if (!ip) {
+                        continue;
+                      }
+                      if (!byEngine[ip]) {
+                        byEngine[ip] = { macs: {}, lastAuth: 0 };
+                      }
+                      byEngine[ip].macs[mac] = 1;
+                      if (stamp > byEngine[ip].lastAuth) {
+                        byEngine[ip].lastAuth = stamp;
+                      }
+                    }
+                    var engines = {};
+                    var engineIp;
+                    for (engineIp in byEngine) {
+                      if (!Object.prototype.hasOwnProperty.call(byEngine, engineIp)) {
+                        continue;
+                      }
+                      engines[engineIp] = {
+                        used24h: objectSize(byEngine[engineIp].macs),
+                        lastAuthAge: byEngine[engineIp].lastAuth
+                          ? Math.floor((nowMs - byEngine[engineIp].lastAuth) / 1000)
+                          : -1
+                      };
+                    }
+                    return {
+                      nacUsed24h: objectSize(macs),
+                      users24h: objectSize(users),
+                      engines: engines
+                    };
+                  }
+
+                  function bool01(value) {
+                    if (value === true || value === 1 || value === '1' || value === 'true') {
+                      return 1;
+                    }
+                    if (value === false || value === 0 || value === '0' || value === 'false') {
+                      return 0;
+                    }
+                    return 2;
+                  }
+
+                  function uptimeSeconds(raw) {
+                    var numeric = Number(raw);
+                    if (!isFinite(numeric) || numeric < 0) {
+                      return 0;
+                    }
+                    if (numeric > 1e10) {
+                      return Math.floor(numeric / 1000);
+                    }
+                    return Math.floor(numeric);
+                  }
+
+                  function normalizeEngine(raw) {
+                    var row = raw || {};
+                    var ip = String(row.ipAddress || row.ip || '');
+                    var connected = 2;
+                    if (row.connected !== undefined) {
+                      connected = bool01(row.connected);
+                    } else if (row.isConnected !== undefined) {
+                      connected = bool01(row.isConnected);
+                    }
+                    return {
+                      ip: ip,
+                      name: String(row.displayName || row.name || ip),
+                      version: String(row.version || ''),
+                      licensed: bool01(row.licensed),
+                      capacity: Number(row.capacity) || 0,
+                      freeRadiusEnabled: bool01(row.freeRadiusEnabled),
+                      needsEnforce: bool01(row.needsEnforce),
+                      connected: connected,
+                      virtual: bool01(row.virtual)
+                    };
+                  }
+
+                  function normalizeEngines(raw) {
+                    var rows = Array.isArray(raw) ? raw : [];
+                    var out = [];
+                    var i;
+                    for (i = 0; i < rows.length; i++) {
+                      var engine = normalizeEngine(rows[i]);
+                      if (engine.ip) {
+                        out.push(engine);
+                      }
+                    }
+                    return out;
+                  }
+
+                  function enginesToLld(engines) {
+                    var out = [];
+                    var i;
+                    var rows = Array.isArray(engines) ? engines : [];
+                    for (i = 0; i < rows.length; i++) {
+                      var engine = rows[i] || {};
+                      if (!engine.ip) {
+                        continue;
+                      }
+                      out.push({
+                        '{#ENGINE.IP}': String(engine.ip),
+                        '{#ENGINE.NAME}': String(engine.name || engine.ip),
+                        '{#ENGINE.CAPACITY}': String(engine.capacity || 0)
+                      });
+                    }
+                    return out;
+                  }
+
+                  function countPilot(devices) {
+                    var used = 0;
+                    var i;
+                    var rows = Array.isArray(devices) ? devices : [];
+                    for (i = 0; i < rows.length; i++) {
+                      var data = rows[i] && rows[i].deviceData;
+                      if (data && String(data.xiqLicenseState) === 'XIQ_PILOT') {
+                        used++;
+                      }
+                    }
+                    return used;
+                  }
+
+                  function pickEngineField(payload, ip, field, missing) {
+                    var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+                    var i;
+                    for (i = 0; i < engines.length; i++) {
+                      if (String(engines[i].ip) === String(ip)) {
+                        if (engines[i][field] === undefined || engines[i][field] === null) {
+                          return missing;
+                        }
+                        return engines[i][field];
+                      }
+                    }
+                    return missing;
+                  }
+
+                  function pickLicenseEngineField(payload, ip, field, missing) {
+                    var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+                    if (!row || row[field] === undefined || row[field] === null) {
+                      return missing;
+                    }
+                    return row[field];
+                  }
+
+                  var payload;
+                  try {
+                    payload = JSON.parse(value);
+                  } catch (error) {
+                    throw 'XIQ-SE engine LLD: invalid health JSON';
+                  }
+                  var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+                  return JSON.stringify(enginesToLld(engines));
+          master_item:
+            key: xiqse.nbi.health
+          item_prototypes:
+            - uuid: 100cd1a56431429cb91cd8ff7a8d141b
+              name: 'Engine {#ENGINE.NAME}: Licensed'
+              type: DEPENDENT
+              key: 'xiqse.engine.licensed[{#ENGINE.IP}]'
+              delay: '0'
+              history: 7d
+              trends: 365d
+              value_type: UNSIGNED
+              valuemap:
+                name: 'XIQ-SE tri-state'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function pickEngineField(payload, ip, field, missing) {
+                        var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+                        var i;
+                        for (i = 0; i < engines.length; i++) {
+                          if (String(engines[i].ip) === String(ip)) {
+                            if (engines[i][field] === undefined || engines[i][field] === null) {
+                              return missing;
+                            }
+                            return engines[i][field];
+                          }
+                        }
+                        return missing;
+                      }
+
+                      function pickLicenseEngineField(payload, ip, field, missing) {
+                        var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+                        if (!row || row[field] === undefined || row[field] === null) {
+                          return missing;
+                        }
+                        return row[field];
+                      }
+
+                      var payload;
+                      try {
+                        payload = JSON.parse(value);
+                      } catch (error) {
+                        throw 'XIQ-SE engine field: invalid JSON';
+                      }
+                      return pickEngineField(payload, '{#ENGINE.IP}', 'licensed', 2);
+              master_item:
+                key: xiqse.nbi.health
+              tags:
+                - tag: component
+                  value: engine
+                - tag: engine
+                  value: '{#ENGINE.NAME}'
+                - tag: engine_ip
+                  value: '{#ENGINE.IP}'
+            - uuid: 8ea218cd93784f47be59584febef5c4f
+              name: 'Engine {#ENGINE.NAME}: Connected'
+              type: DEPENDENT
+              key: 'xiqse.engine.connected[{#ENGINE.IP}]'
+              delay: '0'
+              history: 7d
+              trends: 365d
+              value_type: UNSIGNED
+              valuemap:
+                name: 'XIQ-SE tri-state'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function pickEngineField(payload, ip, field, missing) {
+                        var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+                        var i;
+                        for (i = 0; i < engines.length; i++) {
+                          if (String(engines[i].ip) === String(ip)) {
+                            if (engines[i][field] === undefined || engines[i][field] === null) {
+                              return missing;
+                            }
+                            return engines[i][field];
+                          }
+                        }
+                        return missing;
+                      }
+
+                      function pickLicenseEngineField(payload, ip, field, missing) {
+                        var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+                        if (!row || row[field] === undefined || row[field] === null) {
+                          return missing;
+                        }
+                        return row[field];
+                      }
+
+                      var payload;
+                      try {
+                        payload = JSON.parse(value);
+                      } catch (error) {
+                        throw 'XIQ-SE engine field: invalid JSON';
+                      }
+                      return pickEngineField(payload, '{#ENGINE.IP}', 'connected', 2);
+              master_item:
+                key: xiqse.nbi.health
+              tags:
+                - tag: component
+                  value: engine
+                - tag: engine
+                  value: '{#ENGINE.NAME}'
+                - tag: engine_ip
+                  value: '{#ENGINE.IP}'
+              trigger_prototypes:
+                - uuid: da864acccba548148796be39ec378b3f
+                  expression: '{$XIQ.ENGINE.CONNECTED.CONTROL}=1 and last(/XIQ-SE Observability/xiqse.nbi.available)=1 and last(/XIQ-SE Observability/xiqse.engine.connected[{#ENGINE.IP}])=0'
+                  name: 'XIQ-SE engine {#ENGINE.NAME}: disconnected from Site Engine'
+                  event_name: 'XIQ-SE engine {#ENGINE.NAME}: disconnected from Site Engine'
+                  priority: AVERAGE
+                  description: |
+                    SE lists the engine as connected=0. Auth may still work locally.
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: a833fb6e1321428383e55ed5204f9663
+              name: 'Engine {#ENGINE.NAME}: Needs enforce'
+              type: DEPENDENT
+              key: 'xiqse.engine.needs_enforce[{#ENGINE.IP}]'
+              delay: '0'
+              history: 7d
+              trends: 365d
+              value_type: UNSIGNED
+              valuemap:
+                name: 'XIQ-SE tri-state'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function pickEngineField(payload, ip, field, missing) {
+                        var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+                        var i;
+                        for (i = 0; i < engines.length; i++) {
+                          if (String(engines[i].ip) === String(ip)) {
+                            if (engines[i][field] === undefined || engines[i][field] === null) {
+                              return missing;
+                            }
+                            return engines[i][field];
+                          }
+                        }
+                        return missing;
+                      }
+
+                      function pickLicenseEngineField(payload, ip, field, missing) {
+                        var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+                        if (!row || row[field] === undefined || row[field] === null) {
+                          return missing;
+                        }
+                        return row[field];
+                      }
+
+                      var payload;
+                      try {
+                        payload = JSON.parse(value);
+                      } catch (error) {
+                        throw 'XIQ-SE engine field: invalid JSON';
+                      }
+                      return pickEngineField(payload, '{#ENGINE.IP}', 'needsEnforce', 2);
+              master_item:
+                key: xiqse.nbi.health
+              tags:
+                - tag: component
+                  value: engine
+                - tag: engine
+                  value: '{#ENGINE.NAME}'
+                - tag: engine_ip
+                  value: '{#ENGINE.IP}'
+              trigger_prototypes:
+                - uuid: a8410a22a38b45c6a326ac739ad65e1d
+                  expression: '{$XIQ.ENGINE.ENFORCE.CONTROL}=1 and last(/XIQ-SE Observability/xiqse.engine.needs_enforce[{#ENGINE.IP}])=1'
+                  name: 'XIQ-SE engine {#ENGINE.NAME}: needs enforce'
+                  event_name: 'XIQ-SE engine {#ENGINE.NAME}: needs enforce'
+                  priority: AVERAGE
+                  description: |
+                    Config never pushed to this engine.
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: 6cf7d7dac82c4bc8840c491c5f1c5ce1
+              name: 'Engine {#ENGINE.NAME}: FreeRADIUS'
+              type: DEPENDENT
+              key: 'xiqse.engine.freeradius[{#ENGINE.IP}]'
+              delay: '0'
+              history: 7d
+              trends: 365d
+              value_type: UNSIGNED
+              valuemap:
+                name: 'XIQ-SE tri-state'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function pickEngineField(payload, ip, field, missing) {
+                        var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+                        var i;
+                        for (i = 0; i < engines.length; i++) {
+                          if (String(engines[i].ip) === String(ip)) {
+                            if (engines[i][field] === undefined || engines[i][field] === null) {
+                              return missing;
+                            }
+                            return engines[i][field];
+                          }
+                        }
+                        return missing;
+                      }
+
+                      function pickLicenseEngineField(payload, ip, field, missing) {
+                        var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+                        if (!row || row[field] === undefined || row[field] === null) {
+                          return missing;
+                        }
+                        return row[field];
+                      }
+
+                      var payload;
+                      try {
+                        payload = JSON.parse(value);
+                      } catch (error) {
+                        throw 'XIQ-SE engine field: invalid JSON';
+                      }
+                      return pickEngineField(payload, '{#ENGINE.IP}', 'freeRadiusEnabled', 2);
+              master_item:
+                key: xiqse.nbi.health
+              tags:
+                - tag: component
+                  value: engine
+                - tag: engine
+                  value: '{#ENGINE.NAME}'
+                - tag: engine_ip
+                  value: '{#ENGINE.IP}'
+              trigger_prototypes:
+                - uuid: 7e9aa7d8d6734243b446f4df80827c62
+                  expression: '{$XIQ.ENGINE.RADIUSD.CONTROL}=1 and last(/XIQ-SE Observability/xiqse.engine.freeradius[{#ENGINE.IP}])=0'
+                  name: 'XIQ-SE engine {#ENGINE.NAME}: FreeRADIUS disabled'
+                  event_name: 'XIQ-SE engine {#ENGINE.NAME}: FreeRADIUS disabled'
+                  priority: HIGH
+                  description: |
+                    NBI reports freeRadiusEnabled=false. Users fail 802.1X on this engine.
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: d255045f59544b94be7d383701432122
+              name: 'Engine {#ENGINE.NAME}: Hardware capacity'
+              type: DEPENDENT
+              key: 'xiqse.engine.capacity[{#ENGINE.IP}]'
+              delay: '0'
+              history: 7d
+              trends: 365d
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function pickEngineField(payload, ip, field, missing) {
+                        var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+                        var i;
+                        for (i = 0; i < engines.length; i++) {
+                          if (String(engines[i].ip) === String(ip)) {
+                            if (engines[i][field] === undefined || engines[i][field] === null) {
+                              return missing;
+                            }
+                            return engines[i][field];
+                          }
+                        }
+                        return missing;
+                      }
+
+                      function pickLicenseEngineField(payload, ip, field, missing) {
+                        var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+                        if (!row || row[field] === undefined || row[field] === null) {
+                          return missing;
+                        }
+                        return row[field];
+                      }
+
+                      var payload;
+                      try {
+                        payload = JSON.parse(value);
+                      } catch (error) {
+                        throw 'XIQ-SE engine field: invalid JSON';
+                      }
+                      return pickEngineField(payload, '{#ENGINE.IP}', 'capacity', 0);
+              master_item:
+                key: xiqse.nbi.health
+              tags:
+                - tag: component
+                  value: engine
+                - tag: engine
+                  value: '{#ENGINE.NAME}'
+                - tag: engine_ip
+                  value: '{#ENGINE.IP}'
+            - uuid: e9c853aaa79542bea5d4ff5f0d7d2300
+              name: 'Engine {#ENGINE.NAME}: Version'
+              type: DEPENDENT
+              key: 'xiqse.engine.version[{#ENGINE.IP}]'
+              delay: '0'
+              history: 7d
+              trends: '0'
+              value_type: TEXT
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function pickEngineField(payload, ip, field, missing) {
+                        var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+                        var i;
+                        for (i = 0; i < engines.length; i++) {
+                          if (String(engines[i].ip) === String(ip)) {
+                            if (engines[i][field] === undefined || engines[i][field] === null) {
+                              return missing;
+                            }
+                            return engines[i][field];
+                          }
+                        }
+                        return missing;
+                      }
+
+                      function pickLicenseEngineField(payload, ip, field, missing) {
+                        var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+                        if (!row || row[field] === undefined || row[field] === null) {
+                          return missing;
+                        }
+                        return row[field];
+                      }
+
+                      var payload;
+                      try {
+                        payload = JSON.parse(value);
+                      } catch (error) {
+                        throw 'XIQ-SE engine field: invalid JSON';
+                      }
+                      return pickEngineField(payload, '{#ENGINE.IP}', 'version', '');
+              master_item:
+                key: xiqse.nbi.health
+              tags:
+                - tag: component
+                  value: engine
+                - tag: engine
+                  value: '{#ENGINE.NAME}'
+                - tag: engine_ip
+                  value: '{#ENGINE.IP}'
+            - uuid: 6221ca75b0dd4443ab804ae28a1c7327
+              name: 'Engine {#ENGINE.NAME}: 24h unique MACs'
+              type: DEPENDENT
+              key: 'xiqse.engine.used24h[{#ENGINE.IP}]'
+              delay: '0'
+              history: 7d
+              trends: 365d
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function pickEngineField(payload, ip, field, missing) {
+                        var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+                        var i;
+                        for (i = 0; i < engines.length; i++) {
+                          if (String(engines[i].ip) === String(ip)) {
+                            if (engines[i][field] === undefined || engines[i][field] === null) {
+                              return missing;
+                            }
+                            return engines[i][field];
+                          }
+                        }
+                        return missing;
+                      }
+
+                      function pickLicenseEngineField(payload, ip, field, missing) {
+                        var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+                        if (!row || row[field] === undefined || row[field] === null) {
+                          return missing;
+                        }
+                        return row[field];
+                      }
+
+                      var payload;
+                      try {
+                        payload = JSON.parse(value);
+                      } catch (error) {
+                        throw 'XIQ-SE engine license field: invalid JSON';
+                      }
+                      return pickLicenseEngineField(payload, '{#ENGINE.IP}', 'used24h', 0);
+              master_item:
+                key: xiqse.nbi.licenses
+              tags:
+                - tag: component
+                  value: engine
+                - tag: engine
+                  value: '{#ENGINE.NAME}'
+                - tag: engine_ip
+                  value: '{#ENGINE.IP}'
+              trigger_prototypes:
+                - uuid: f200bad2977a4e058bb5eb4e496deea4
+                  expression: 'last(/XIQ-SE Observability/xiqse.engine.capacity[{#ENGINE.IP}])>0 and last(/XIQ-SE Observability/xiqse.engine.used24h[{#ENGINE.IP}])>=last(/XIQ-SE Observability/xiqse.engine.capacity[{#ENGINE.IP}])'
+                  name: 'XIQ-SE engine {#ENGINE.NAME}: 24h unique MACs at hardware capacity'
+                  event_name: 'XIQ-SE engine {#ENGINE.NAME}: 24h unique MACs at hardware capacity'
+                  priority: WARNING
+                  description: |
+                    Per-engine hardware load (Current Capacity), not the global NAC license.
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: e2df0122803749ab83062c589968491d
+              name: 'Engine {#ENGINE.NAME}: last auth age'
+              type: DEPENDENT
+              key: 'xiqse.engine.auth.age[{#ENGINE.IP}]'
+              delay: '0'
+              history: 7d
+              trends: 365d
+              value_type: FLOAT
+              units: 's'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function pickEngineField(payload, ip, field, missing) {
+                        var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
+                        var i;
+                        for (i = 0; i < engines.length; i++) {
+                          if (String(engines[i].ip) === String(ip)) {
+                            if (engines[i][field] === undefined || engines[i][field] === null) {
+                              return missing;
+                            }
+                            return engines[i][field];
+                          }
+                        }
+                        return missing;
+                      }
+
+                      function pickLicenseEngineField(payload, ip, field, missing) {
+                        var row = payload && payload.engines ? payload.engines[String(ip)] : null;
+                        if (!row || row[field] === undefined || row[field] === null) {
+                          return missing;
+                        }
+                        return row[field];
+                      }
+
+                      var payload;
+                      try {
+                        payload = JSON.parse(value);
+                      } catch (error) {
+                        throw 'XIQ-SE engine license field: invalid JSON';
+                      }
+                      return pickLicenseEngineField(payload, '{#ENGINE.IP}', 'lastAuthAge', -1);
+              master_item:
+                key: xiqse.nbi.licenses
+              tags:
+                - tag: component
+                  value: engine
+                - tag: engine
+                  value: '{#ENGINE.NAME}'
+                - tag: engine_ip
+                  value: '{#ENGINE.IP}'
+              trigger_prototypes:
+                - uuid: 40f29028ce49433bacbfefc289c0bafe
+                  expression: '{$XIQ.NAC.FRESH.CONTROL}=1 and last(/XIQ-SE Observability/xiqse.nbi.available)=1 and last(/XIQ-SE Observability/xiqse.engine.auth.age[{#ENGINE.IP}])>={$XIQ.NAC.FRESH} and time()>={$XIQ.NAC.FRESH.TIME.START} and time()<{$XIQ.NAC.FRESH.TIME.END} and dayofweek()>1 and dayofweek()<7'
+                  name: 'XIQ-SE engine {#ENGINE.NAME}: auth events stale'
+                  event_name: 'XIQ-SE engine {#ENGINE.NAME}: auth events stale'
+                  priority: AVERAGE
+                  description: |
+                    No lastAuthEventTime within {$XIQ.NAC.FRESH} during business hours. RADIUS may still work.
+                  tags:
+                    - tag: scope
+                      value: availability
+          graph_prototypes:
+            - uuid: b7babf7574ee45d08def304b49563f01
+              name: 'Engine {#ENGINE.NAME}: 24h unique MACs'
+              graph_items:
+                - color: 2774A4
+                  item:
+                    host: XIQ-SE Observability
+                    key: 'xiqse.engine.used24h[{#ENGINE.IP}]'
+      tags:
+        - tag: class
+          value: network
+        - tag: target
+          value: xiq-se
+      dashboards:
+        - uuid: af01ea155ec841d68ff2c118f17f0040
+          name: Health
+          pages:
+            - name: Overview
+              widgets:
+                - type: item
+                  name: NBI
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nbi.available
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XNBI
+                - type: item
+                  name: NAC 24h MACs
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nac.used24h
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XNAC
+                - type: item
+                  name: NAC remaining
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nac.remaining
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XREM
+                - type: item
+                  name: Pilot remaining
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.pilot.remaining
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XPIL
+                - type: problems
+                  name: Problems
+                  y: '4'
+                  width: '72'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: XPROB
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                - type: svggraph
+                  name: NAC license (24h unique MACs)
+                  y: '8'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 2774A4
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nac.used24h
+                    - type: STRING
+                      name: reference
+                      value: XNACG
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                - type: svggraph
+                  name: Heap
+                  x: '36'
+                  y: '8'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 199C0D
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nbi.heap.pct
+                    - type: STRING
+                      name: lefty_max
+                      value: '100'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: STRING
+                      name: reference
+                      value: XHEAP
+                    - type: INTEGER
+                      name: legend
+                      value: '0'
+            - name: Licenses
+              widgets:
+                - type: item
+                  name: NAC used %
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nac.used.pct
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XPCT
+                - type: item
+                  name: Usernames 24h
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nac.users24h
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XUSR
+                - type: item
+                  name: Pilot used
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.pilot.used
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XPU
+                - type: item
+                  name: Census truncated
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nac.truncated
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XTRN
+        - uuid: f22e74659b754873bc9958176cb81951
+          name: Engines
+          pages:
+            - name: Overview
+              widgets:
+                - type: item
+                  name: Engines
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.engine.count
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XENG
+                - type: item
+                  name: Version
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nbi.version
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XVER
+                - type: item
+                  name: Uptime
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nbi.uptime
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XUPT
+                - type: problems
+                  name: Problems
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: XEPRB
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                - type: honeycomb
+                  name: Connected
+                  y: '4'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Engine *: Connected'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^Engine (.*): Connected$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: XECON
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: '878787'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+                - type: honeycomb
+                  name: FreeRADIUS
+                  y: '9'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Engine *: FreeRADIUS'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("^Engine (.*): FreeRADIUS$","\1")}'
+                    - type: INTEGER
+                      name: interpolation
+                      value: '0'
+                    - type: INTEGER
+                      name: primary_label_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size_type
+                      value: '1'
+                    - type: INTEGER
+                      name: primary_label_size
+                      value: '20'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: XERAD
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'FF465C'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '0EC9AC'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: '878787'
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '2'
+
+      valuemaps:
+        - uuid: 3a97b114a68e416c97f5ab67825b74c3
+          name: XIQ-SE NBI
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+        - uuid: 16e31754297243d3a6340cdd9c7f4d96
+          name: XIQ-SE tri-state
+          mappings:
+            - value: '0'
+              newvalue: No
+            - value: '1'
+              newvalue: Yes
+            - value: '2'
+              newvalue: Unknown
+        - uuid: 744bebe2d8254181b2e1cbda6db8cf12
+          name: XIQ-SE truncated
+          mappings:
+            - value: '0'
+              newvalue: Complete
+            - value: '1'
+              newvalue: Truncated
+        - uuid: c8f1a0b24d6e4c9f8a7b6c5d4e3f2a1b
+          name: 'Service state'
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up

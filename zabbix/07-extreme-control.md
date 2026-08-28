@@ -4,7 +4,7 @@ Site Engine is the NBI and log brain. ExtremeControl engines are the RADIUS boxe
 
 Official Zabbix Extreme pack has **no** SE / NAC template. Collection is **HTTPS GraphQL on Site Engine** (OAuth client credentials). Do **not** put GraphQL on each engine. Do **not** install a Zabbix agent on vendor OVAs for this (BIN upgrades). Keep Linux agent if it is already there (CPU / disk).
 
-This page is the **target contract**. YAML is not built until this is approved.
+This page is the **target contract**. YAML lives in `templates/xiqse_observability/` and `templates/extremecontrol_observability/`. Refresh with `configure_nbxsync_network.py --apply-xiqse`.
 
 ---
 
@@ -157,8 +157,8 @@ Do not clone stock Extreme switch/AP templates.
 
 | Template | Where |
 |---|---|
-| **XIQ-SE Observability** (companion, after approve) | Platform / device Site Engine. HTTP agent on the proxy → `https://{$XIQSE.API.FQDN}:8443` |
-| **ExtremeControl Observability** (companion, after approve) | Role **NAC**. RADIUS + cert. Nested ICMP only if the host has no ping |
+| **XIQ-SE Observability** | Platform / device Site Engine. SCRIPT GraphQL from the proxy → `https://{$XIQSE.API.FQDN}:8443`. Does not nest ICMP. |
+| **ExtremeControl Observability** | Role **NAC**. Portal 8444 / cert **DISABLED**. FreeRADIUS High is LLD on SE. Nested ICMP only if the host has no ping — this template does not nest it. |
 | Linux by Zabbix agent | Keep if already linked. Do not add for this |
 
 Macros on the **SE template** (secrets on a nbxSync CG, not in YAML):

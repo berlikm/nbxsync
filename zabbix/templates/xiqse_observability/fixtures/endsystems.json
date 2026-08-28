@@ -1,0 +1,26 @@
+[
+  {
+    "macAddress": "00:11:22:33:44:55",
+    "lastAuthEventTime": 0,
+    "username": "alice",
+    "nacApplianceIP": "10.0.50.11"
+  },
+  {
+    "macAddress": "00:11:22:33:44:66",
+    "lastAuthEventTime": 0,
+    "username": "alice",
+    "nacApplianceIP": "10.0.50.11"
+  },
+  {
+    "macAddress": "00:11:22:33:44:55",
+    "lastAuthEventTime": 0,
+    "username": "alice",
+    "nacApplianceIP": "10.0.50.12"
+  },
+  {
+    "macAddress": "aa:bb:cc:dd:ee:ff",
+    "lastAuthEventTime": "2000-01-01T00:00:00Z",
+    "username": "stale",
+    "nacApplianceIP": "10.0.50.11"
+  }
+]

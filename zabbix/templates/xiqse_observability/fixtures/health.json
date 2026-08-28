@@ -1,0 +1,37 @@
+{
+  "ok": 1,
+  "error": "",
+  "version": "25.2.10.123",
+  "upTime": 86400,
+  "startTime": "2026-08-27T12:00:00Z",
+  "heapMemoryUsed": 1073741824,
+  "heapMemoryMax": 4294967296,
+  "freePhysicalMemory": 2147483648,
+  "totalPhysicalMemory": 8589934592,
+  "threadCount": 220,
+  "engineCount": 2,
+  "engines": [
+    {
+      "ip": "10.0.50.11",
+      "name": "NAC-SITE-A",
+      "version": "25.2.10",
+      "licensed": 1,
+      "capacity": 3000,
+      "freeRadiusEnabled": 1,
+      "needsEnforce": 0,
+      "connected": 1,
+      "virtual": 1
+    },
+    {
+      "ip": "10.0.50.12",
+      "name": "NAC-SITE-B",
+      "version": "25.2.10",
+      "licensed": 1,
+      "capacity": 3000,
+      "freeRadiusEnabled": 0,
+      "needsEnforce": 1,
+      "connected": 0,
+      "virtual": 1
+    }
+  ]
+}

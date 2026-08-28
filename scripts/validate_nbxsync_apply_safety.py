@@ -455,6 +455,41 @@ def main() -> int:
         'FMG/FAZ SNMP pack is network --apply-fmg-faz, not zerotouch',
     )
 
+    xiqse = _function_source(net_src, net_tree, 'run_apply_xiqse') or ''
+    record(
+        'network_xiqse_apply_exists',
+        bool(xiqse),
+        'run_apply_xiqse',
+    )
+    record(
+        'network_xiqse_apply_skips_extreme_and_hostsync',
+        bool(xiqse)
+        and 'import_extreme_templates' not in xiqse
+        and 'SyncHostJob' not in xiqse
+        and 'configure_nbxsync_zerotouch' not in xiqse,
+        'no Extreme import / HostSync / zerotouch in --apply-xiqse',
+    )
+    xiqse_preflight = _function_source(net_src, net_tree, '_require_xiqse_preflight') or ''
+    record(
+        'network_xiqse_fail_closed_preflight',
+        '_require_xiqse_preflight' in xiqse
+        and '_preflight_xiqse' in xiqse_preflight
+        and '_print_xiqse_plan' in xiqse_preflight
+        and 'raise SystemExit' in xiqse_preflight,
+        'XIQ-SE preflight prints the plan and aborts before YAML/NetBox writes',
+    )
+    xiqse_import = _function_source(net_src, net_tree, 'import_xiqse_templates') or ''
+    record(
+        'network_xiqse_import_is_strict',
+        'strict=True' in xiqse_import and 'TEMPLATE_FILES' in xiqse_import,
+        'XIQ-SE YAML import is mandatory and fail-closed',
+    )
+    record(
+        'zerotouch_no_xiqse_cutover',
+        'apply-xiqse' not in ztc_src and 'import_xiqse_templates' not in ztc_src,
+        'XIQ-SE pack is network --apply-xiqse, not zerotouch',
+    )
+
     failed = sum(1 for _, ok, _ in RESULTS if not ok)
     print(f'\n{len(RESULTS) - failed}/{len(RESULTS)} apply-safety checks passed')
     return 1 if failed else 0
