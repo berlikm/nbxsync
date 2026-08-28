@@ -61,7 +61,6 @@ NBI has **no** entitlements field. Used seats we **count**. Purchased totals are
 | Pilot used ≥ `{$XIQ.PILOT.TOTAL}` | yes | Warning | Cannot onboard a switch / engine |
 | Pilot remaining ≤ `{$XIQ.PILOT.REMAIN.WARN}` | yes | Warning | Default 2 |
 | Unplanned SE reboot (`upTime`) | yes | Warning | |
-| Cert on 8443 &lt; 30d | yes | Warning | |
 | Heap / RAM / threads | **no** until baseline | — | Items + Health graphs |
 | Version change | yes | Info | |
 | `network { devices { up } }` | **no** | — | Switches already have SNMP/ICMP |
@@ -138,7 +137,7 @@ NBI lives on **SE only**. Client: Administration → Client API Access; rights *
 - RADIUS Monitor Clients must exist on production engines **before** the High trigger is enabled. Until then RADIUS High stays **DISABLED**; event-freshness Average is the stand-in.
 - Engine SNMP uses the switch **MONITORING** SNMPv3 profile (authPriv MD5/DES). Canary 2026-08-28: all five ENACs answered `1.3.6.1.4.1.5624.1.2.73`.
 - `{$XIQ.NAC.TOTAL}` / `{$XIQ.PILOT.TOTAL}` from Administration → Licenses (Access Control quantity is the first number in `100/50`; that is NAC / GIM).
-- TLS: verify the SE cert. Do not copy vendor samples that set `verify=False`.
+- TLS: GraphQL SCRIPT validates the SE certificate. Certificate-expiry telemetry requires a managed Agent 2 and is deliberately out of this agentless pack.
 - Quiet nights: event-freshness needs a floor (for example last auth older than N hours **and** wall-clock in production hours), or a known always-on Monitor Client.
 
 ---

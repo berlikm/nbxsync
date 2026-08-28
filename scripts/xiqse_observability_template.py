@@ -91,7 +91,7 @@ U = {
     'nac_template': '36b575ac588e4b7aa053ab032b3c6ac3',
     'nac_tcp': '12acf3f8703d49368e9c54f5d0898ef1',
     'nac_cert': '4080a3e7292a4e4a9d53a848d6302af8',
-    'nac_not_after': '7c1a2b3d4e5f60718293a4b5c6d7e8f9',
+    'nac_not_after': '7c1a2b3d4e5f40718293a4b5c6d7e8f9',
     'nac_tr_tcp': 'd5155205a96c41d090036cf608fc9bb9',
     'nac_tr_cert': '19b5008086d64146a248b4aa0587dc4c',
     'nac_dash': '1c957a19146f46ef94da5522bdea4fc9',
@@ -338,7 +338,7 @@ def render_se() -> str:
         f'last(/{TPL}/zabbix[host,,items_unsupported])>0',
         'XIQ-SE: unsupported items present',
         'AVERAGE',
-        'Schema field missing, no agent for the certificate item, or SCRIPT error.',
+        'Schema field missing or SCRIPT error.',
     )
 
     tcp_item = f"""    - uuid: {U['item_tcp8443']}
@@ -368,49 +368,6 @@ def render_se() -> str:
             - tag: scope
               value: availability"""
 
-    cert_item = f"""    - uuid: {U['item_cert']}
-      name: XIQ-SE TLS certificate
-      type: ZABBIX_PASSIVE
-      key: 'web.certificate.get[{{$XIQSE.API.FQDN}},{{$XIQSE.API.PORT}}]'
-      delay: 1h
-      history: 7d
-      trends: '0'
-      value_type: TEXT
-      description: |
-        Needs Zabbix agent on the Site Engine. Set {{$XIQSE.CERT.CONTROL}}=0 if unsupported.
-      tags:
-        - tag: component
-          value: tls"""
-
-    not_after = f"""    - uuid: {U['item_not_after']}
-      name: XIQ-SE TLS not after
-      type: DEPENDENT
-      key: xiqse.tls.not_after
-      delay: '0'
-      history: 7d
-      trends: 365d
-      value_type: UNSIGNED
-      units: unixtime
-      preprocessing:
-        - type: JSONPATH
-          parameters:
-            - $.not_after
-      master_item:
-        key: 'web.certificate.get[{{$XIQSE.API.FQDN}},{{$XIQSE.API.PORT}}]'
-      tags:
-        - tag: component
-          value: tls
-      triggers:
-        - uuid: {U['tr_cert']}
-          expression: '{{$XIQSE.CERT.CONTROL}}=1 and (last(/{TPL}/xiqse.tls.not_after)-now())<{{$XIQSE.CERT.WARN}}*86400'
-          name: 'XIQ-SE: TLS certificate expires soon'
-          event_name: 'XIQ-SE: TLS certificate expires soon'
-          priority: WARNING
-          description: |
-            8443 certificate expires within {{$XIQSE.CERT.WARN}} days.
-          tags:
-            - tag: scope
-              value: availability"""
 
     dash = _se_dashboards()
     macros = _se_macros()
@@ -448,9 +405,9 @@ def render_se() -> str:
     )
     pilot_used = _dep(U['item_pilot_used'], 'Pilot licenses used', 'xiqse.pilot.used', 'xiqse.nbi.pilot', '$.pilotUsed', 'UNSIGNED', extra=f'      triggers:\n{pilot_cap}\n', tags=TAGS_LIC)
     pilot_ok = _dep(U['item_pilot_ok'], 'Pilot census ok', 'xiqse.pilot.ok', 'xiqse.nbi.pilot', '$.ok', 'UNSIGNED', extra=f'      valuemap:\n        name: XIQ-SE NBI\n      triggers:\n{pilot_fail}\n', tags=TAGS_LIC)
-    heap_pct = _calc(U['item_heap_pct'], 'XIQ-SE heap used %', 'xiqse.nbi.heap.pct', 'last(//xiqse.nbi.heap.max)>0 ? last(//xiqse.nbi.heap.used)/last(//xiqse.nbi.heap.max)*100 : 0', '%', tags=TAGS_NBI)
+    heap_pct = _calc(U['item_heap_pct'], 'XIQ-SE heap used %', 'xiqse.nbi.heap.pct', 'last(//xiqse.nbi.heap.used)/(last(//xiqse.nbi.heap.max)+(last(//xiqse.nbi.heap.max)=0))*100', '%', tags=TAGS_NBI)
     nac_remain = _calc(U['item_nac_remain'], 'NAC license remaining', 'xiqse.nac.remaining', '{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)')
-    nac_pct = _calc(U['item_nac_pct'], 'NAC license used %', 'xiqse.nac.used.pct', '{$XIQ.NAC.TOTAL}>0 ? last(//xiqse.nac.used24h)/{$XIQ.NAC.TOTAL}*100 : 0', '%')
+    nac_pct = _calc(U['item_nac_pct'], 'NAC license used %', 'xiqse.nac.used.pct', '({$XIQ.NAC.TOTAL}>0)*last(//xiqse.nac.used24h)/({$XIQ.NAC.TOTAL}+({$XIQ.NAC.TOTAL}=0))*100', '%')
     pilot_remain = _calc(
         U['item_pilot_remain'],
         'Pilot licenses remaining',
@@ -517,8 +474,6 @@ def render_se() -> str:
 {bump(pilot_remain)}
 {bump(pilot_ok)}
 {bump(tcp_item)}
-{bump(cert_item)}
-{bump(not_after)}
 {bump(unsup_item)}
 {_prototypes()}
       tags:
@@ -583,8 +538,6 @@ def _se_macros() -> str:
         ('{$XIQ.ENGINE.CONNECTED.CONTROL}', '1', 'Ticket engines with connected=0. Unknown (2) is silent.'),
         ('{$XIQ.ENGINE.ENFORCE.CONTROL}', '1', 'Ticket needsEnforce=1.'),
         ('{$XIQ.ENGINE.RADIUSD.CONTROL}', '1', 'Page FreeRADIUS disabled on an engine.'),
-        ('{$XIQSE.CERT.CONTROL}', '1', 'Certificate Warning. Set 0 if the host has no agent.'),
-        ('{$XIQSE.CERT.WARN}', '30', 'Days before 8443 cert expiry.'),
     ]
     lines = ['      macros:']
     for row in rows:
@@ -904,9 +857,9 @@ def render_nac() -> str:
       name: {NAC}
       description: |
         ExtremeControl engine companion. ICMP and Linux agent stay on the VM
-        path — this template does not nest ICMP Ping and does not speak RADIUS.
+        path — this template does not nest ICMP and does not speak RADIUS.
         FreeRADIUS down is ticketed from XIQ-SE Observability engine LLD.
-        Portal TCP 8444 and certificate Warning stay disabled until opted in.
+        Portal TCP 8444 is disabled until opted in.
 
         Operator page: zabbix/07-extreme-control.md.
         Refresh with configure_nbxsync_network.py --apply-xiqse.
@@ -918,16 +871,10 @@ def render_nac() -> str:
           description: Captive portal / admin HTTPS. Not RADIUS 1812.
         - macro: '{{$NAC.PORTAL.FQDN}}'
           value: ''
-          description: Engine FQDN or IP for the certificate item. Role Jinja on primary_ip4.
+          description: Engine FQDN or IP. Role Jinja on primary_ip4.
         - macro: '{{$NAC.PORTAL.CONTROL}}'
           value: '0'
           description: Ticket portal TCP down. Default off — not auth.
-        - macro: '{{$NAC.CERT.CONTROL}}'
-          value: '0'
-          description: Certificate Warning. Default off until a quiet pilot.
-        - macro: '{{$NAC.CERT.WARN}}'
-          value: '30'
-          description: Days before portal cert expiry.
       items:
         - uuid: {U['nac_tcp']}
           name: ExtremeControl portal TCP
@@ -951,47 +898,6 @@ def render_nac() -> str:
               status: DISABLED
               description: |
                 Admin/portal port, not RADIUS. Enable {{$NAC.PORTAL.CONTROL}} after a quiet pilot.
-              tags:
-                - tag: scope
-                  value: availability
-        - uuid: {U['nac_cert']}
-          name: ExtremeControl portal certificate
-          type: ZABBIX_PASSIVE
-          key: 'web.certificate.get[{{$NAC.PORTAL.FQDN}},{{$NAC.PORTAL.PORT}}]'
-          delay: 1h
-          history: 7d
-          trends: '0'
-          value_type: TEXT
-          tags:
-            - tag: component
-              value: tls
-        - uuid: {U['nac_not_after']}
-          name: ExtremeControl portal TLS not after
-          type: DEPENDENT
-          key: nac.tls.not_after
-          delay: '0'
-          history: 7d
-          trends: 365d
-          value_type: UNSIGNED
-          units: unixtime
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.not_after
-          master_item:
-            key: 'web.certificate.get[{{$NAC.PORTAL.FQDN}},{{$NAC.PORTAL.PORT}}]'
-          tags:
-            - tag: component
-              value: tls
-          triggers:
-            - uuid: {U['nac_tr_cert']}
-              expression: '{{$NAC.CERT.CONTROL}}=1 and (last(/{NAC}/nac.tls.not_after)-now())<{{$NAC.CERT.WARN}}*86400'
-              name: 'ExtremeControl: TLS certificate expires soon'
-              event_name: 'ExtremeControl: TLS certificate expires soon'
-              priority: WARNING
-              status: DISABLED
-              description: |
-                Portal certificate Warning. Default off.
               tags:
                 - tag: scope
                   value: availability
