@@ -51,6 +51,7 @@ from xiqse_observability_template import render_nac, render_se, write_yaml
 
 
 UUID_RE = re.compile(r'^[0-9a-f]{32}$')
+UUID4_RE = re.compile(r'^[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$')
 
 
 def _walk_names(node, keys: tuple[str, ...], found: set[str] | None = None) -> set[str]:
@@ -228,6 +229,12 @@ class YamlContractTests(unittest.TestCase):
         self.assertTrue(uuids)
         for value in uuids:
             self.assertRegex(value, UUID_RE)
+
+    def test_nac_census_uuids_are_v4(self):
+        items = {item['key']: item for item in self.se['items']}
+        self.assertRegex(items['xiqse.nac.error']['uuid'], UUID4_RE)
+        nac_ok_trigger = next(trigger for trigger in items['xiqse.nac.ok']['triggers'] if trigger['name'] == 'XIQ-SE: NAC census failed')
+        self.assertRegex(nac_ok_trigger['uuid'], UUID4_RE)
 
     def test_se_item_and_prototype_keys(self):
         keys = _walk_item_keys(self.se)

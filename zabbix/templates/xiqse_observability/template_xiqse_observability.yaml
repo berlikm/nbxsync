@@ -1611,7 +1611,7 @@ zabbix_export:
           valuemap:
             name: XIQ-SE NBI
           triggers:
-            - uuid: 0e6a3182c4db5f801b3c5d7e9f0d12c3
+            - uuid: e05cce6447474716b449f0057a058756
               expression: 'last(/XIQ-SE Observability/xiqse.nac.ok)=0 and last(/XIQ-SE Observability/xiqse.nbi.available)=1'
               name: 'XIQ-SE: NAC census failed'
               event_name: 'XIQ-SE: NAC census failed'
@@ -1626,7 +1626,7 @@ zabbix_export:
               value: license
             - tag: scope
               value: health
-        - uuid: 9d5f2071b3ca4e7f0a2b4c6d8e9c01b2
+        - uuid: fbae0e30c20d46d8b4ebeebd8a420b17
           name: NAC census last error
           type: DEPENDENT
           key: xiqse.nac.error
