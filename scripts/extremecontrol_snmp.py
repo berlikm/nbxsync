@@ -22,7 +22,7 @@ _NS = uuid.UUID('3e7c0a11-57d2-4c8b-9e01-a1b2c3d4e5f6')
 
 
 def uid(*parts: str) -> str:
-    return uuid.uuid5(_NS, '|'.join(parts)).hex
+    return uuid.UUID(bytes=uuid.uuid5(_NS, '|'.join(parts)).bytes, version=4).hex
 
 
 # Live walk 2026-08-28 from NetBox Dev (MONITORING MD5/DES): five ENACs, all 16
@@ -146,10 +146,10 @@ def item_field(doc: Doc, indent: int, key: str, x: int | None, y: int | None, wi
     doc.add(indent, '- type: item')
     doc.add(indent + 1, f'name: {name}')
     if x:
-        doc.add(indent + 1, f'x: {x!r}')
+        doc.add(indent + 1, f"x: '{x}'")
     if y:
-        doc.add(indent + 1, f'y: {y!r}')
-    doc.add(indent + 1, f'width: {width!r}')
+        doc.add(indent + 1, f"y: '{y}'")
+    doc.add(indent + 1, f"width: '{width}'")
     doc.add(indent + 1, "height: '4'")
     doc.add(indent + 1, 'fields:')
     doc.add(indent + 2, '- type: ITEM')
@@ -185,10 +185,10 @@ def svg_graph(
     doc.add(indent, '- type: svggraph')
     doc.add(indent + 1, f'name: {name}')
     if x:
-        doc.add(indent + 1, f'x: {x!r}')
+        doc.add(indent + 1, f"x: '{x}'")
     if y:
-        doc.add(indent + 1, f'y: {y!r}')
-    doc.add(indent + 1, f'width: {width!r}')
+        doc.add(indent + 1, f"y: '{y}'")
+    doc.add(indent + 1, f"width: '{width}'")
     doc.add(indent + 1, "height: '6'")
     doc.add(indent + 1, 'fields:')
     doc.add(indent + 2, '- type: INTEGER')

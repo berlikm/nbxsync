@@ -149,9 +149,11 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(self.tpl['template'], SNMP_TEMPLATE_NAME)
         self.assertEqual(self.tpl['template'], TPL)
 
-    def test_uuids_are_32_hex(self):
+    def test_uuids_are_version_four(self):
         for value in re.findall(r'uuid: ([0-9a-f]+)', self.text):
             self.assertRegex(value, UUID_RE)
+            self.assertEqual(value[12], '4')
+            self.assertIn(value[16], '89ab')
 
     def test_item_keys_and_triggers(self):
         keys = _walk_item_keys(self.tpl)
@@ -206,6 +208,13 @@ class YamlContractTests(unittest.TestCase):
         pages = {p['name'] for p in self.tpl['dashboards'][0]['pages']}
         self.assertEqual(pages, {'Overview', 'Auth'})
 
+    def test_dashboard_coordinates_are_strings(self):
+        for dashboard in self.tpl['dashboards']:
+            for page in dashboard['pages']:
+                for widget in page['widgets']:
+                    for coordinate in ('x', 'y', 'width', 'height'):
+                        if coordinate in widget:
+                            self.assertIsInstance(widget[coordinate], str)
     def test_javascript_is_indented_under_block_scalar(self):
         product = next(row for row in self.tpl['items'] if row['key'] == 'nac.snmp.product')
         js = product['preprocessing'][0]['parameters'][0]
@@ -227,6 +236,8 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertIsNotNone(step)
         self.assertIn('SNMP_TEMPLATE_NAME', step)
         self.assertIn('HostInterfaceRequirementChoices.SNMP', step)
+        self.assertIn('ZabbixConfigurationGroupAssignment', step)
+        self.assertIn('_SNMP_MONITORING_CG', step)
         self.assertNotIn('import_extreme_templates', step)
         self.assertNotIn('SyncHostJob', step)
 

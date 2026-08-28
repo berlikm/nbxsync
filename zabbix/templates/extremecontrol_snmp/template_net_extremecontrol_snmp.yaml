@@ -4,7 +4,7 @@ zabbix_export:
     - uuid: 36bff6c29af64692839d077febfc7079
       name: Templates/Network devices
   templates:
-    - uuid: dc9704d3a182532bb9832dcb62f9d4e0
+    - uuid: dc9704d3a182432bb9832dcb62f9d4e0
       template: ExtremeControl by SNMP
       name: ExtremeControl by SNMP
       description: |
@@ -36,7 +36,7 @@ zabbix_export:
           value: '101'
           description: Decided-auth failure % Warning. 101 silences until a quiet baseline.
       items:
-        - uuid: d4b892e15d4155f1824526d6725666d8
+        - uuid: d4b892e15d4145f1824526d6725666d8
           name: SNMP agent availability
           type: INTERNAL
           key: 'zabbix[host,snmp,available]'
@@ -48,7 +48,7 @@ zabbix_export:
             - tag: component
               value: health
           triggers:
-            - uuid: 32e02f7816b65d879fc4698404633d2b
+            - uuid: 32e02f7816b64d879fc4698404633d2b
               expression: max(/ExtremeControl by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
               name: 'ExtremeControl SNMP: No SNMP data collection'
               event_name: 'ExtremeControl SNMP: No SNMP data collection'
@@ -59,7 +59,7 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: availability
-        - uuid: eaf043853f4e580893d02f8945622c3d
+        - uuid: eaf043853f4e480893d02f8945622c3d
           name: Unsupported item count
           type: INTERNAL
           key: 'zabbix[host,,items_unsupported]'
@@ -69,7 +69,7 @@ zabbix_export:
             - tag: component
               value: health
           triggers:
-            - uuid: 45a3a824e2d05f5980c03346649e7b17
+            - uuid: 45a3a824e2d04f5980c03346649e7b17
               expression: min(/ExtremeControl by SNMP/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.MAX}
               name: 'ExtremeControl SNMP: Too many unsupported items'
               event_name: 'ExtremeControl SNMP: Too many unsupported items'
@@ -81,7 +81,7 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: availability
-        - uuid: 93046c3946d15491b88182bce9dcf579
+        - uuid: 93046c3946d14491b88182bce9dcf579
           name: SNMP
           type: CALCULATED
           key: nac.snmp.available
@@ -94,7 +94,7 @@ zabbix_export:
           tags:
             - tag: component
               value: health
-        - uuid: 29bcdef835445d6ea59ba454bcb5fac9
+        - uuid: 29bcdef835444d6ea59ba454bcb5fac9
           name: System name
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.2.1.1.5.0
@@ -112,7 +112,7 @@ zabbix_export:
             - tag: component
               value: system
           triggers:
-            - uuid: f3b06d702a095615994b8f729d15a2ba
+            - uuid: f3b06d702a094615994b8f729d15a2ba
               expression: last(/ExtremeControl by SNMP/system.name,#1)<>last(/ExtremeControl by SNMP/system.name,#2) and length(last(/ExtremeControl by SNMP/system.name))>0
               name: 'ExtremeControl SNMP: System name has changed'
               event_name: 'ExtremeControl SNMP: System name has changed'
@@ -122,7 +122,7 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: notice
-        - uuid: c741e56e1d1850829201ff7146cb8efa
+        - uuid: c741e56e1d1840829201ff7146cb8efa
           name: System description
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.2.1.1.1.0
@@ -139,7 +139,7 @@ zabbix_export:
           tags:
             - tag: component
               value: system
-        - uuid: f9c3ab8360715fbf9c63ba1f53cac04b
+        - uuid: f9c3ab8360714fbf9c63ba1f53cac04b
           name: System object ID
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.2.1.1.2.0
@@ -155,7 +155,7 @@ zabbix_export:
           tags:
             - tag: component
               value: system
-        - uuid: 423cbe088201577ab9bf97e5710c630e
+        - uuid: 423cbe088201477ab9bf97e5710c630e
           name: ExtremeControl product
           type: DEPENDENT
           key: nac.snmp.product
@@ -196,7 +196,7 @@ zabbix_export:
           tags:
             - tag: component
               value: system
-        - uuid: f279640b7b905a65976ab96ef7d0ad03
+        - uuid: f279640b7b904a65976ab96ef7d0ad03
           name: ExtremeControl product identity
           type: DEPENDENT
           key: nac.snmp.identity
@@ -240,7 +240,7 @@ zabbix_export:
           tags:
             - tag: component
               value: system
-        - uuid: d5fb1880ca185e6dbb6d2292a3cbc1aa
+        - uuid: d5fb1880ca184e6dbb6d2292a3cbc1aa
           name: Uptime (network)
           type: SNMP_AGENT
           snmp_oid: 'get[1.3.6.1.2.1.1.3.0]'
@@ -257,7 +257,7 @@ zabbix_export:
             - tag: component
               value: system
           triggers:
-            - uuid: 703f134580ef54c28b4de5688295974b
+            - uuid: 703f134580ef44c28b4de5688295974b
               expression: last(/ExtremeControl by SNMP/system.net.uptime[sysUpTime.0])<10m
               name: 'ExtremeControl SNMP: Host has been restarted'
               event_name: 'ExtremeControl SNMP: Host has been restarted'
@@ -269,7 +269,7 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: notice
-        - uuid: 48f44a33b6c15f4fbaf13e624a7252e0
+        - uuid: 48f44a33b6c14f4fbaf13e624a7252e0
           name: ExtremeControl Authentication requests
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.1.0
@@ -284,7 +284,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: af95126a43fe52039eb3a68130dd896e
+        - uuid: af95126a43fe42039eb3a68130dd896e
           name: ExtremeControl Authentication requests per second
           type: DEPENDENT
           key: nac.appl.auth.requests.rate
@@ -300,7 +300,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 047dbb96466a5ea8aa1eb62a9333ee8c
+        - uuid: 047dbb96466a4ea8aa1eb62a9333ee8c
           name: ExtremeControl Authentication successes
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.2.0
@@ -315,7 +315,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 97741b4a15985abd8ba39d141875fd88
+        - uuid: 97741b4a15984abd8ba39d141875fd88
           name: ExtremeControl Authentication successes per second
           type: DEPENDENT
           key: nac.appl.auth.successes.rate
@@ -331,7 +331,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 4a34cfc1cc6458e79b744099c28a3e1f
+        - uuid: 4a34cfc1cc6448e79b744099c28a3e1f
           name: ExtremeControl Authentication failures
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.3.0
@@ -346,7 +346,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: d4be4fa42a415515a64eae361fcdac90
+        - uuid: d4be4fa42a414515a64eae361fcdac90
           name: ExtremeControl Authentication failures per second
           type: DEPENDENT
           key: nac.appl.auth.failures.rate
@@ -362,7 +362,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 238bc23c8b6e5b01a3107d4f36052208
+        - uuid: 238bc23c8b6e4b01a3107d4f36052208
           name: ExtremeControl RADIUS challenges
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.4.0
@@ -377,7 +377,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 15e5eff08cc759f49427aeda3304f55f
+        - uuid: 15e5eff08cc749f49427aeda3304f55f
           name: ExtremeControl RADIUS challenges per second
           type: DEPENDENT
           key: nac.appl.auth.challenges.rate
@@ -393,7 +393,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: cac77551b03c576e86bf77ec3d83fbfa
+        - uuid: cac77551b03c476e86bf77ec3d83fbfa
           name: ExtremeControl Invalid authentication requests
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.5.0
@@ -408,7 +408,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 02ecb379e438538f9e6be58cc1be5eba
+        - uuid: 02ecb379e438438f9e6be58cc1be5eba
           name: ExtremeControl Invalid authentication requests per second
           type: DEPENDENT
           key: nac.appl.auth.invalid.rate
@@ -424,7 +424,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: c1a178221a2e5e7d8c67dd93f6434070
+        - uuid: c1a178221a2e4e7d8c67dd93f6434070
           name: ExtremeControl Duplicate authentication requests
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.6.0
@@ -439,7 +439,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 4a02295f4851506597cc7f25cc381cb4
+        - uuid: 4a02295f4851406597cc7f25cc381cb4
           name: ExtremeControl Duplicate authentication requests per second
           type: DEPENDENT
           key: nac.appl.auth.duplicate.rate
@@ -455,7 +455,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 45c2b7321ec85c4e90a8d35a4a5d4f35
+        - uuid: 45c2b7321ec84c4e90a8d35a4a5d4f35
           name: ExtremeControl Malformed authentication requests
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.7.0
@@ -470,7 +470,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 4f569441c04e5961a09468e08fa1b9de
+        - uuid: 4f569441c04e4961a09468e08fa1b9de
           name: ExtremeControl Malformed authentication requests per second
           type: DEPENDENT
           key: nac.appl.auth.malformed.rate
@@ -486,7 +486,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 755d6e8b836e55a0b6127b44d0754034
+        - uuid: 755d6e8b836e45a0b6127b44d0754034
           name: ExtremeControl Bad authentication requests
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.8.0
@@ -501,7 +501,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: b8182397e2515fe89679860a33184885
+        - uuid: b8182397e2514fe89679860a33184885
           name: ExtremeControl Bad authentication requests per second
           type: DEPENDENT
           key: nac.appl.auth.bad.rate
@@ -517,7 +517,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 67fcf17b63dc5a6dbc14d7be87549770
+        - uuid: 67fcf17b63dc4a6dbc14d7be87549770
           name: ExtremeControl Dropped authentication packets
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.9.0
@@ -532,7 +532,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 2fa4190faebe5d9eab65f172393c6261
+        - uuid: 2fa4190faebe4d9eab65f172393c6261
           name: ExtremeControl Dropped authentication packets per second
           type: DEPENDENT
           key: nac.appl.auth.dropped.rate
@@ -548,7 +548,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 816e9fbbb19d57aea3bda81f4dd3d6d5
+        - uuid: 816e9fbbb19d47aea3bda81f4dd3d6d5
           name: ExtremeControl Unknown authentication types
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.10.0
@@ -563,7 +563,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 0ec16bbbcef3577799d61153dec96615
+        - uuid: 0ec16bbbcef3477799d61153dec96615
           name: ExtremeControl Unknown authentication types per second
           type: DEPENDENT
           key: nac.appl.auth.unknown.rate
@@ -579,7 +579,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: ed81e80e23e857008bec0afcdc6d4ea8
+        - uuid: ed81e80e23e847008bec0afcdc6d4ea8
           name: ExtremeControl Assessment requests
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.11.0
@@ -594,7 +594,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 3eadd0120d365e7284dd9380557007fc
+        - uuid: 3eadd0120d364e7284dd9380557007fc
           name: ExtremeControl Assessment requests per second
           type: DEPENDENT
           key: nac.appl.assessment.rate
@@ -610,7 +610,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 624b351d7ef15905bcab9bdac8b339e4
+        - uuid: 624b351d7ef14905bcab9bdac8b339e4
           name: ExtremeControl Captive portal requests
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.12.0
@@ -625,7 +625,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 40bff658b79d50a9b3a1ad3f08159fa5
+        - uuid: 40bff658b79d40a9b3a1ad3f08159fa5
           name: ExtremeControl Captive portal requests per second
           type: DEPENDENT
           key: nac.appl.captive.portal.rate
@@ -641,7 +641,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: dce79a8b0dfa53789bcae40becd6861c
+        - uuid: dce79a8b0dfa43789bcae40becd6861c
           name: ExtremeControl Contact-lost switches
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.13.0
@@ -657,7 +657,7 @@ zabbix_export:
             - tag: component
               value: nac
           triggers:
-            - uuid: 06afff382f3259e8a9af79ca5e8b60a1
+            - uuid: 06afff382f3249e8a9af79ca5e8b60a1
               expression: '{$NAC.SNMP.CONTACTLOST.CONTROL}=1 and min(/ExtremeControl by SNMP/nac.appl.contact.lost,15m)>0'
               name: 'ExtremeControl SNMP: contact-lost switches'
               event_name: 'ExtremeControl SNMP: contact-lost switches'
@@ -673,7 +673,7 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: availability
-        - uuid: 90388a880b8c5e988375eb65750b33b8
+        - uuid: 90388a880b8c4e988375eb65750b33b8
           name: ExtremeControl IP resolution failures
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.14.0
@@ -688,7 +688,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: c5724f16b3a657359d8ebfbc6fe0fc2a
+        - uuid: c5724f16b3a647359d8ebfbc6fe0fc2a
           name: ExtremeControl IP resolution failures per second
           type: DEPENDENT
           key: nac.appl.ip.res.failures.rate
@@ -704,7 +704,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 6dc85181e5105605a3620ba4944c2ec6
+        - uuid: 6dc85181e5104605a3620ba4944c2ec6
           name: ExtremeControl IP resolution timeouts
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.15.0
@@ -719,7 +719,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: fc624f15d9375de2943c52a105ac0dfb
+        - uuid: fc624f15d9374de2943c52a105ac0dfb
           name: ExtremeControl IP resolution timeouts per second
           type: DEPENDENT
           key: nac.appl.ip.res.timeouts.rate
@@ -735,7 +735,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 89a6fa7d953c5d0eb70b61d36f9815f7
+        - uuid: 89a6fa7d953c4d0eb70b61d36f9815f7
           name: ExtremeControl Connected assessment agents
           type: SNMP_AGENT
           snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.16.0
@@ -750,7 +750,7 @@ zabbix_export:
           tags:
             - tag: component
               value: nac
-        - uuid: 02ffda4357915096ae3f991988f0b7fa
+        - uuid: 02ffda4357914096ae3f991988f0b7fa
           name: ExtremeControl decided-auth failure ratio
           type: CALCULATED
           key: nac.appl.auth.fail.pct
@@ -767,7 +767,7 @@ zabbix_export:
             - tag: component
               value: nac
           triggers:
-            - uuid: ea6672d1bd2f5502a6f890eb5975b2f4
+            - uuid: ea6672d1bd2f4502a6f890eb5975b2f4
               expression: '{$NAC.SNMP.FAIL.WARN}<101 and min(/ExtremeControl by SNMP/nac.appl.auth.fail.pct,15m)>{$NAC.SNMP.FAIL.WARN}'
               name: 'ExtremeControl SNMP: authentication failure ratio high'
               event_name: 'ExtremeControl SNMP: authentication failure ratio high'
@@ -787,14 +787,14 @@ zabbix_export:
         - tag: target
           value: extremecontrol
       dashboards:
-        - uuid: 21db0f1b9ff9525dbaec8838df4b69eb
+        - uuid: 21db0f1b9ff9425dbaec8838df4b69eb
           name: Health
           pages:
             - name: Overview
               widgets:
                 - type: item
                   name: SNMP
-                  width: 18
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -816,8 +816,8 @@ zabbix_export:
                       value: NSNMP
                 - type: item
                   name: Auth requests/s
-                  x: 18
-                  width: 18
+                  x: '18'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -839,8 +839,8 @@ zabbix_export:
                       value: NREQ
                 - type: item
                   name: Auth failures/s
-                  x: 36
-                  width: 18
+                  x: '36'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -862,8 +862,8 @@ zabbix_export:
                       value: NFAIL
                 - type: item
                   name: Contact lost
-                  x: 54
-                  width: 18
+                  x: '54'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -897,8 +897,8 @@ zabbix_export:
                       value: '3'
                 - type: svggraph
                   name: Authentication
-                  y: 7
-                  width: 36
+                  y: '7'
+                  width: '36'
                   height: '6'
                   fields:
                     - type: INTEGER
@@ -945,9 +945,9 @@ zabbix_export:
                       value: now
                 - type: svggraph
                   name: Challenges / dropped
-                  x: 36
-                  y: 7
-                  width: 36
+                  x: '36'
+                  y: '7'
+                  width: '36'
                   height: '6'
                   fields:
                     - type: INTEGER
@@ -988,7 +988,7 @@ zabbix_export:
               widgets:
                 - type: item
                   name: Fail %
-                  width: 18
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1010,8 +1010,8 @@ zabbix_export:
                       value: NPCT
                 - type: item
                   name: Successes/s
-                  x: 18
-                  width: 18
+                  x: '18'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1033,8 +1033,8 @@ zabbix_export:
                       value: NOK
                 - type: item
                   name: Challenges/s
-                  x: 36
-                  width: 18
+                  x: '36'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1056,8 +1056,8 @@ zabbix_export:
                       value: NCHAL
                 - type: item
                   name: Uptime
-                  x: 54
-                  width: 18
+                  x: '54'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1079,8 +1079,8 @@ zabbix_export:
                       value: NUPT
                 - type: svggraph
                   name: Invalid / duplicate / dropped
-                  y: 4
-                  width: 36
+                  y: '4'
+                  width: '36'
                   height: '6'
                   fields:
                     - type: INTEGER
@@ -1127,9 +1127,9 @@ zabbix_export:
                       value: now
                 - type: svggraph
                   name: IP resolution
-                  x: 36
-                  y: 4
-                  width: 36
+                  x: '36'
+                  y: '4'
+                  width: '36'
                   height: '6'
                   fields:
                     - type: INTEGER
@@ -1168,8 +1168,8 @@ zabbix_export:
                       value: now
                 - type: svggraph
                   name: Captive portal / assessment
-                  y: 10
-                  width: 36
+                  y: '10'
+                  width: '36'
                   height: '6'
                   fields:
                     - type: INTEGER
@@ -1208,9 +1208,9 @@ zabbix_export:
                       value: now
                 - type: item
                   name: Product
-                  x: 36
-                  y: 10
-                  width: 18
+                  x: '36'
+                  y: '10'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1232,9 +1232,9 @@ zabbix_export:
                       value: NPROD
                 - type: item
                   name: Agents
-                  x: 54
-                  y: 10
-                  width: 18
+                  x: '54'
+                  y: '10'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1255,14 +1255,14 @@ zabbix_export:
                       name: reference
                       value: NAGT
       valuemaps:
-        - uuid: 3329d443590659d7a1f0b758c335d421
+        - uuid: 3329d443590649d7a1f0b758c335d421
           name: Service state
           mappings:
             - value: '0'
               newvalue: Down
             - value: '1'
               newvalue: Up
-        - uuid: f2c1418661525d55b922e0c781bd4704
+        - uuid: f2c1418661524d55b922e0c781bd4704
           name: zabbix.host.available
           mappings:
             - value: '0'
@@ -1271,7 +1271,7 @@ zabbix_export:
               newvalue: Up
             - value: '2'
               newvalue: Unknown
-        - uuid: 09dc436e43a85d6097d04fa1e402cf7b
+        - uuid: 09dc436e43a84d6097d04fa1e402cf7b
           name: ExtremeControl identity
           mappings:
             - value: '0'

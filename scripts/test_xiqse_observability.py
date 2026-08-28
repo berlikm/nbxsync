@@ -198,7 +198,6 @@ class EngineLldTests(unittest.TestCase):
         self.assertEqual(counted['platformOne'], 2)
         self.assertEqual(counted['other'], 1)
 
-
 class YamlContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -247,6 +246,9 @@ class YamlContractTests(unittest.TestCase):
         for snippet in FORBIDDEN_SNIPPETS:
             self.assertNotIn(snippet, blob, snippet)
 
+    def test_templates_stay_agentless(self):
+        self.assertNotIn('web.certificate.get[', self.se_text + self.nac_text)
+
     def test_scripts_are_embedded_from_js_files(self):
         items = {item['key']: item for item in self.se['items']}
         self.assertIn(health_script().strip(), items['xiqse.nbi.health']['params'])
@@ -254,6 +256,11 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn(pilot_script().strip(), items['xiqse.nbi.pilot']['params'])
         lld = self.se['discovery_rules'][0]
         self.assertIn(lld_script().strip(), lld['preprocessing'][0]['parameters'][0])
+
+    def test_calculated_item_formulas_avoid_unsupported_ternaries(self):
+        for item in self.se['items']:
+            if item['type'] == 'CALCULATED':
+                self.assertNotIn('?', item['params'], item['key'])
 
     def test_http_uses_new_request_per_call_and_oauth(self):
         health = health_script()
@@ -301,6 +308,7 @@ class YamlContractTests(unittest.TestCase):
         self.assertFalse(heap.get('triggers'))
         self.assertEqual(heap['units'], '%')
 
+
     def test_nac_cap_requires_purchased_total(self):
         used = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used24h')
         names = {tr['name']: tr for tr in used['triggers']}
@@ -328,7 +336,6 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn('dayofweek()', stale['expression'])
         graphs = {row['name'] for row in self.se['discovery_rules'][0]['graph_prototypes']}
         self.assertIn('Engine {#ENGINE.NAME}: last auth age', graphs)
-
     def test_dashboards_and_valuemaps_live_on_the_template(self):
         self.assertEqual({d['name'] for d in self.se['dashboards']}, DASHBOARD_NAMES)
         maps = {row['name'] for row in self.se['valuemaps']}
@@ -342,6 +349,7 @@ class YamlContractTests(unittest.TestCase):
             for tr in item.get('triggers') or []:
                 if tr['name'] in NAC_TRIGGER_NAMES:
                     self.assertEqual(tr['status'], 'DISABLED')
+
         self.assertNotIn('net.udp.service', self.nac_text)
         self.assertNotIn('icmpping', self.nac_text)
 
@@ -377,12 +385,16 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertIn('run_apply_xiqse', src)
         apply_fn = _function_source(src, 'run_apply_xiqse')
         import_fn = _function_source(src, 'import_xiqse_templates')
+        step_fn = _function_source(src, '_step_xiqse_nbxsync')
         self.assertIsNotNone(apply_fn)
         self.assertIsNotNone(import_fn)
+        self.assertIsNotNone(step_fn)
         self.assertNotIn('import_extreme_templates', apply_fn)
         self.assertNotIn('SyncHostJob', apply_fn)
         self.assertNotIn('configure_nbxsync_zerotouch', apply_fn)
         self.assertIn('strict=True', import_fn)
+        self.assertIn('req=[HostInterfaceRequirementChoices.NONE]', step_fn)
+
         self.assertIn(SE_TEMPLATE_RULE, src)
         self.assertIn('_xiqse.XIQSE_FQDN_JINJA', src)
         self.assertIn('_xiqse.XIQSE_FQDN_MACRO', src)

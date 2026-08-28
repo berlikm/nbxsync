@@ -85,12 +85,6 @@ zabbix_export:
         - macro: '{$XIQ.ENGINE.RADIUSD.CONTROL}'
           value: '1'
           description: 'Page FreeRADIUS disabled on an engine.'
-        - macro: '{$XIQSE.CERT.CONTROL}'
-          value: '1'
-          description: 'Certificate Warning. Set 0 if the host has no agent.'
-        - macro: '{$XIQSE.CERT.WARN}'
-          value: '30'
-          description: 'Days before 8443 cert expiry.'
       items:
         - uuid: d8612bcd47b44c4cb60e679df06b67bd
           name: XIQ-SE NBI health snapshot
@@ -1369,7 +1363,7 @@ zabbix_export:
           trends: 365d
           value_type: FLOAT
           units: '%'
-          params: 'last(//xiqse.nbi.heap.max)>0 ? last(//xiqse.nbi.heap.used)/last(//xiqse.nbi.heap.max)*100 : 0'
+          params: 'last(//xiqse.nbi.heap.used)/(last(//xiqse.nbi.heap.max)+(last(//xiqse.nbi.heap.max)=0))*100'
           tags:
             - tag: component
               value: nbi
@@ -1549,7 +1543,7 @@ zabbix_export:
           trends: 365d
           value_type: FLOAT
           units: '%'
-          params: '{$XIQ.NAC.TOTAL}>0 ? last(//xiqse.nac.used24h)/{$XIQ.NAC.TOTAL}*100 : 0'
+          params: 'last(//xiqse.nac.used24h)/({$XIQ.NAC.TOTAL}+({$XIQ.NAC.TOTAL}=0))*100'
           tags:
             - tag: component
               value: license
@@ -1818,48 +1812,6 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: availability
-        - uuid: 4420532ce6264a748084191925f211ee
-          name: XIQ-SE TLS certificate
-          type: ZABBIX_PASSIVE
-          key: 'web.certificate.get[{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]'
-          delay: 1h
-          history: 7d
-          trends: '0'
-          value_type: TEXT
-          description: |
-            Needs Zabbix agent on the Site Engine. Set {$XIQSE.CERT.CONTROL}=0 if unsupported.
-          tags:
-            - tag: component
-              value: tls
-        - uuid: b4e91c6a7d8f40c9a1e25b37c48d59e0
-          name: XIQ-SE TLS not after
-          type: DEPENDENT
-          key: xiqse.tls.not_after
-          delay: '0'
-          history: 7d
-          trends: 365d
-          value_type: UNSIGNED
-          units: unixtime
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.not_after
-          master_item:
-            key: 'web.certificate.get[{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]'
-          tags:
-            - tag: component
-              value: tls
-          triggers:
-            - uuid: a59e95e7308741eab8d05b728c8dce2a
-              expression: '{$XIQSE.CERT.CONTROL}=1 and (last(/XIQ-SE Observability/xiqse.tls.not_after)-now())<{$XIQSE.CERT.WARN}*86400'
-              name: 'XIQ-SE: TLS certificate expires soon'
-              event_name: 'XIQ-SE: TLS certificate expires soon'
-              priority: WARNING
-              description: |
-                8443 certificate expires within {$XIQSE.CERT.WARN} days.
-              tags:
-                - tag: scope
-                  value: availability
         - uuid: 35962793d7484596bee1d20ad9067757
           name: Unsupported items
           type: INTERNAL
@@ -1878,7 +1830,7 @@ zabbix_export:
               event_name: 'XIQ-SE: unsupported items present'
               priority: AVERAGE
               description: |
-                Schema field missing, no agent for the certificate item, or SCRIPT error.
+                Schema field missing or SCRIPT error.
               tags:
                 - tag: scope
                   value: availability

@@ -4893,6 +4893,8 @@ def _preflight_xiqse() -> list[str]:
     for name, path in _xiqse.TEMPLATE_FILES.items():
         if not path.exists() or not path.read_text(encoding='utf-8').strip():
             errors.append(f'missing YAML for {name}: {path}')
+    if _snmp_monitoring_group() is None:
+        errors.append(f'{_SNMP_MONITORING_CG} CG missing — ExtremeControl by SNMP needs SNMP transport')
     return errors
 
 
@@ -4906,7 +4908,7 @@ def _print_xiqse_plan(server, *, errors: list[str], apply: bool, zbx_names: list
         logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
     platforms = _xiqse_platforms()
     logger.info(
-        '  TemplateRule %s pattern %s → %s (ANY; soft if no platform matches yet)',
+        '  TemplateRule %s pattern %s → %s (NONE; agentless and soft if no platform matches yet)',
         _xiqse.SE_TEMPLATE_RULE,
         _xiqse.SE_PLATFORM_PATTERN,
         _xiqse.SE_TEMPLATE_NAME,
@@ -4963,7 +4965,7 @@ def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
         server,
         imported[_xiqse.SE_TEMPLATE_NAME][0],
         imported[_xiqse.SE_TEMPLATE_NAME][1],
-        req=[HostInterfaceRequirementChoices.ANY],
+        req=[HostInterfaceRequirementChoices.NONE],
     )
     nac = ensure_nbx_template(
         server,
@@ -5016,6 +5018,9 @@ def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
     except DeviceRole.DoesNotExist:
         logger.warning('  Role %s not found — skip ExtremeControl assignment', _xiqse.NAC_ROLE)
         return
+    snmp_cg = _snmp_monitoring_group()
+    if snmp_cg is None:
+        raise SystemExit(f'{_SNMP_MONITORING_CG} CG missing — ExtremeControl by SNMP needs SNMP transport')
     ensure(
         M.ZabbixTemplateAssignment,
         zabbixtemplate=nac,
@@ -5030,6 +5035,13 @@ def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
         assigned_object_id=role.id,
         defaults={},
     )
+    ensure(
+        M.ZabbixConfigurationGroupAssignment,
+        zabbixconfigurationgroup=snmp_cg,
+        assigned_object_type=ct(DeviceRole),
+        assigned_object_id=role.id,
+        defaults={},
+    )
     _upsert_object_macro_assignment(
         server,
         role,
@@ -5038,7 +5050,13 @@ def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
         mtype=ZabbixMacroTypeChoices.TEXT,
         description=f'nwn:xiqse:{_xiqse.NAC_PORTAL_FQDN_MACRO}',
     )
-    logger.info('  Role %s → %s (ANY) + %s (SNMP)', role.name, nac.name, snmp.name)
+    logger.info(
+        '  Role %s → %s (ANY) + %s (SNMP) via %s',
+        role.name,
+        nac.name,
+        snmp.name,
+        _SNMP_MONITORING_CG,
+    )
 
 
 def run_check_xiqse() -> int:
