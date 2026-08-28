@@ -2344,6 +2344,8 @@ def step11_macros(server):
         ('{$MSSQL.DSN}', 'nbxsync', 'MSSQL'),
         ('{$MSSQL.URI}', 'sqlserver://localhost:1433', 'MSSQL'),
         ('{$MSSQL.URI}', 'sqlserver://localhost:1433', 'MSSQL Query Server'),
+        ('{$MSSQL.LISTEN.HOST}', '{{ object.primary_ip4.address.ip }}', 'MSSQL'),
+        ('{$MSSQL.LISTEN.HOST}', '{{ object.primary_ip4.address.ip }}', 'MSSQL Query Server'),
         ('{$VMWARE.URL}', 'https://{{ object.primary_ip4.address.ip }}/sdk', 'vCenter'),
     ]
     for macro_name, macro_value, role_name in text_specs:

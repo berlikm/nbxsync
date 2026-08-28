@@ -8,7 +8,7 @@ Verified against official Zabbix **7.0**:
 
 - Template **MSSQL by Zabbix agent 2** vendor **7.0-6** (`templates/db/mssql_agent2/`)
 - Agent 2 MSSQL plugin (template requires plugin **≥ 7.0.10**)
-- Plugin URI instance form since **Zabbix 7.0.6**: `sqlserver://localhost/InstanceName` (no port; a port in the URI **ignores** the instance name)
+- Plugin URI instance form since **Zabbix 7.0.6**: `sqlserver://<host>/InstanceName` (no port; a port in the URI **ignores** the instance name). Named-instance `<host>` is `{$MSSQL.LISTEN.HOST}` (NetBox `primary_ip4` after HostSync). Stock **parent** default-instance URI stays `sqlserver://localhost:1433`.
 - Host prototypes: LLD expands `{#…}` only. `{HOST.HOST}` / `{HOST.NAME}` / `{HOST.CONN}` are **not** substituted in host names, visible names, group prototypes, tags, or prototype macro values (`src/zabbix_server/lld/lld_host.c` → `zbx_substitute_lld_macros`). Nested discovery-under-discovery on the same host is **7.4+** (ZBXNEXT-1527), not Cloud 7.0.
 - Cloud **7.0** import **rejects** a `description` field on host prototypes. Leave it off the YAML. The import-contract test asserts that.
 
@@ -57,7 +57,7 @@ Stock macros that stay on the role / template (do not duplicate in the companion
 
 | Macro | Stock default | Companion |
 |---|---|---|
-| `{$MSSQL.URI}` | empty space in YAML — **set** `sqlserver://localhost:1433` on the role | unused by named-instance item prototypes; **overridden on each child** to `sqlserver://localhost/{#MSSQL.INSTANCE}` |
+| `{$MSSQL.URI}` | empty space in YAML — **set** `sqlserver://localhost:1433` on the role | unused by named-instance item prototypes; **overridden on each child** to `{#MSSQL.URI}` (`sqlserver://{$MSSQL.LISTEN.HOST}/{#MSSQL.INSTANCE}`) |
 | `{$MSSQL.USER}` / `{$MSSQL.PASSWORD}` | empty | **same macros** in prototype keys; children inherit the Windows host values |
 | `{$MSSQL.HOST}` / `{$MSSQL.PORT}` | `localhost` / `1433` | do not use for named instances (dynamic ports). Stock TCP Disaster on children still uses these — see canary |
 | `{$MSSQL.DBNAME.NOT_MATCHES}` | `master\|tempdb\|model\|msdb` | applies to stock per-database LLD (default instance on the parent, named instance on the child) |
@@ -164,15 +164,31 @@ For each WMI row `Name` = `MSSQL$PITDV02`:
 |---|---|
 | `{#MSSQL.SERVICE}` | `MSSQL$PITDV02` |
 | `{#MSSQL.INSTANCE}` | `PITDV02` (strip `MSSQL$`) |
-| `{#MSSQL.URI}` | `sqlserver://localhost/PITDV02` |
+| `{#MSSQL.URI}` | `sqlserver://{$MSSQL.LISTEN.HOST}/PITDV02` (falls back to `localhost` if the macro is empty, unresolved, or contains `:` / `/`) |
+| `{#MSSQL.LISTEN}` | resolved listen host (NetBox primary IPv4 after HostSync, else `localhost`) |
 | `{#MSSQL.DISPLAY}` | WMI `DisplayName` (hover; e.g. `SQL Server (PITDV02)`) |
 | `{#MSSQL.PARENT}` | `{$MSSQL.PARENT.HOST}` if set, else sanitized `SystemName` |
 
 URI rules (plugin 7.0.6+):
 
-- Named: `sqlserver://localhost/{#MSSQL.INSTANCE}` — **no port**
+- Named: `sqlserver://{$MSSQL.LISTEN.HOST}/{#MSSQL.INSTANCE}` — **no port**
 - Never `sqlserver://localhost:1433/PITDV02` (port wins, instance ignored)
-- Never `sqlserver://<primary_ip>/…` for Agent 2 on-box (that is a different host)
+- Never put a port in `sqlserver://10.0.100.10/PCONF02` either (same rule)
+- Do **not** put per-instance VIP:1433 URIs in NetBox. SQL Browser on the Windows host plus the instance name is the discovery path.
+
+`{$MSSQL.LISTEN.HOST}` is required when SQL has `ListenOnAllIPs=0` and loopback (`IPLocalhost`) off: those instances listen on the Windows IP (and often a dedicated VIP:1433), **not** on `127.0.0.1`. Agent 2 `sqlserver://localhost/<instance>` then fails with `no instance matching '…' returned from host 'localhost'`. Pointing Browser at the Windows `primary_ip4` (`sqlserver://10.0.100.10/PCONF02`) hits the IPHost port. Instances that already listen on `0.0.0.0` (e.g. PAPPDB01) keep working. Override the host macro to `localhost` only on a box whose SQL is loopback-only. Do **not** enable `ListenOnAllIPs` on the four dedicated-IP instances (they share 1433 on different VIPs).
+
+Live on `CH-STA-P-MSQL10` (do not change SQL):
+
+| Instance | ListenOnAllIPs | Loopback | Where it actually listens |
+|---|---|---|---|
+| **PAPPDB01** (MSSQL17) | **1** | yes (`0.0.0.0:50807`) | Agent 2 already ESTABLISHED to `127.0.0.1:50807` |
+| **PCONF02** | 0 | IPLocalhost **Enabled=0** | `10.0.100.10:55664`, VIP `10.0.100.23:1433` |
+| **PWARE01** | 0 | off | `10.0.100.10:55665`, VIP `10.0.100.32:1433` |
+| **PJIRA01** | 0 | off | `10.0.100.10:55666`, VIP `10.0.100.36:1433` |
+| **PITDB02** | 0 | off | `10.0.100.10:55662`, VIP `10.0.100.20:1433` (also `.19:1433`) |
+
+SQL Browser is up on `0.0.0.0:1434`. `HideInstance=0`. IPAll dynamic ports are **not** listening. Same four named instances fail the same way on MSQL11.
 
 A named-instance row with no resolvable parent **throws** (item unsupported), not a fake empty census.
 
@@ -184,6 +200,7 @@ A named-instance row with no resolvable parent **throws** (item unsupported), no
 | `{$MSSQL.INSTANCE.NOT_MATCHES}` | `CHANGE_IF_NEEDED` | e.g. `SQLEXPRESS` |
 | `{$MSSQL.INSTANCE.DISCOVERY.MIN}` | `0` | census; **0** is valid (`MSQL01`). Set per Device only if you want “we expect five” |
 | `{$MSSQL.PARENT.HOST}` | empty | optional Zabbix technical name; empty → WMI `SystemName` |
+| `{$MSSQL.LISTEN.HOST}` | `localhost` | named-instance plugin host (no port). HostSync Jinja `{{ object.primary_ip4.address.ip }}` on the role. Override to `localhost` if SQL is loopback-only |
 
 Filter on `{#MSSQL.INSTANCE}`. Do not filter in NetBox.
 
@@ -225,9 +242,9 @@ Open the **child** host for per-database graphs. Parent inventories remain the s
 | Technical name | `{#MSSQL.PARENT}-mssql-{#MSSQL.INSTANCE}` (unique vs NetBox device names; contains `{#…}`) |
 | Visible name | `{#MSSQL.PARENT} / {#MSSQL.INSTANCE}` |
 | Templates | **MSSQL by Zabbix agent 2** only (no Windows, no ICMP) |
-| Interfaces | inherit parent (`custom_interfaces: NO`) — passive poll of the Windows IP; plugin URI is `localhost` |
+| Interfaces | inherit parent (`custom_interfaces: NO`) — passive poll of the Windows IP; plugin URI is `{$MSSQL.LISTEN.HOST}` (primary IPv4 after HostSync) |
 | Inventory | DISABLED |
-| Macro | `{$MSSQL.URI}=sqlserver://localhost/{#MSSQL.INSTANCE}` |
+| Macro | `{$MSSQL.URI}={#MSSQL.URI}` (`sqlserver://{$MSSQL.LISTEN.HOST}/{#MSSQL.INSTANCE}`; `{HOST.CONN}` is not expanded on prototypes) |
 | Tags | `component=mssql-instance`, `sql_instance={#MSSQL.INSTANCE}`, `parent_host={#MSSQL.PARENT}` |
 | Host groups | **`MSSQL instances` only** (`group_links`). No group prototypes |
 
@@ -283,14 +300,15 @@ Same password as `{$MSSQL.PASSWORD}` on that NetBox object. Repeat on PITDV02, P
 | Object | Assignment |
 |---|---|
 | Role **MSSQL** / **MSSQL Query Server** | stock **MSSQL by Zabbix agent 2** (already) + companion **MSSQL Observability** (soft: only after YAML import) |
-| Role | `{$MSSQL.URI}` = `sqlserver://localhost:1433` |
+| Role | `{$MSSQL.URI}` = `sqlserver://localhost:1433` (default instance on the **parent**) |
+| Role | `{$MSSQL.LISTEN.HOST}` = `{{ object.primary_ip4.address.ip }}` (named-instance URI host; zerotouch step 11) |
 | Role | `{$MSSQL.USER}` only if the login **name** is global |
 | Role (optional) | `{$MSSQL.PARENT.HOST}` = `{{ object.name }}` so child host names match the Zabbix host when WMI `SystemName` differs |
 | **Device / VM** | `{$MSSQL.PASSWORD}` (and USER if not global) — like vCenter, not like a shared Forti token |
 | Device | optional `{$MSSQL.INSTANCE.DISCOVERY.MIN}` = `5` on `MSSQL10` if you want census |
-| Device | **no** instance names, **no** DSN contexts |
+| Device | **no** instance names, **no** DSN contexts, **no** VIP:1433 URIs |
 
-Import the companion YAML in Zabbix (GUI). Then HostSync the **canary Windows host** only. LLD creates children. No nbxsync code change. Template import alone must **not** HostSync the fleet.
+Import the companion YAML in Zabbix (GUI). Then HostSync the **canary Windows host** so Jinja renders `{$MSSQL.LISTEN.HOST}` (and optional `{$MSSQL.PARENT.HOST}`). LLD creates children. Template import alone must **not** HostSync the fleet.
 
 ---
 
@@ -299,7 +317,7 @@ Import the companion YAML in Zabbix (GUI). Then HostSync the **canary Windows ho
 | Idea | Why not |
 |---|---|
 | `{$MSSQL.DSN:"PITDV02"}` in NetBox | Agent 2 has no DSN; not in stock 7.0-6 |
-| `{HOST.HOST}` in host/group prototype fields | Server LLD does not expand built-in host macros there; children would collide as `{HOST.HOST}-mssql-PITDV02` |
+| `{HOST.HOST}` / `{HOST.CONN}` in host/group prototype fields | Server LLD does not expand built-in host macros there; children would collide as `{HOST.HOST}-mssql-PITDV02`. Listen host is `{$MSSQL.LISTEN.HOST}` (user macros **do** expand in JS) |
 | `description` on the host prototype | Cloud 7.0 import rejects the field; keep it off the YAML |
 | Fork stock to “fix” named-instance DB perf counters | Stock already matches `.*Databases`. Missing `Transactions/sec` etc. means those counters are absent from `mssql.perfcounter.get` for that DB. Enable/repair SQL perf counters on the instance; do not vendor-fork |
 | Put children in HostSync group `Roles/MSSQL` via `group_links` | Prototype groups that match manually created groups are not linked |
@@ -310,6 +328,7 @@ Import the companion YAML in Zabbix (GUI). Then HostSync the **canary Windows ho
 | `Plugins.MSSQL.Sessions` in `mssql.conf` | Hand-edited agents |
 | Fork stock YAML to add instance LLD | Update pain; companion only |
 | URI `sqlserver://localhost:1433/PITDV02` | Port wins; instance ignored |
+| URI `sqlserver://<vip>:1433` per instance in NetBox | Children are LLD, not NetBox objects. Browser + Windows `primary_ip4` is the path. Do not enable `ListenOnAllIPs` on dedicated-VIP instances that share 1433 |
 | Disaster on one named instance down | Site/service only; Windows service is Average/High per estate OS bar |
 | Nest ICMP Ping or Windows by agent on the child | Duplicate OS/ICMP; parent already has them |
 | HostSync the fleet from this template import | Children are LLD; sync the canary Windows host only |
@@ -378,7 +397,7 @@ Remaining checklist:
 
 1. Plugin version on the agent matches 7.0.10+.
 2. `MSQL01`: stock `mssql.version` works with role URI; companion LLD **empty**; no census alarm (MIN=0); **no** child hosts.
-3. `MSSQL10`: Windows shows five `MSSQL$*` services; companion LLD = five URIs `sqlserver://localhost/PITDV02` …; each parent `mssql.version` has a value.
+3. `MSSQL10` / `MSQL11`: Windows shows five `MSSQL$*` services; HostSync renders `{$MSSQL.LISTEN.HOST}` = `10.0.100.10`; companion LLD = five URIs `sqlserver://10.0.100.10/PCONF02` … (no port); PAPPDB01 (ListenOnAllIPs=1) and the four dedicated-IP instances all return plugin version. `sqlserver://localhost/<instance>` stays **wrong** for PCONF02 / PITDB02 / PJIRA01 / PWARE01 (loopback off).
 4. Five children `…-mssql-PITDV02` … with stock Agent 2. Host group: **MSSQL instances** only. Parent stays in NetBox `Roles/MSSQL`. No hostname / `{parent}/{instance}` / `Roles/MSSQL/{parent}` groups.
 5. Open a **child** → Latest data → stock database LLD (graphs / honeycomb / `database:` tags). Hide `component: raw` (history 0). Count **Not supported**, not blank Get-items. Do not look for those graphs on the Observability filter of the Windows host.
 6. Login missing on **one** instance → one Average on that child/parent version item, not five, not a Windows service down.
@@ -412,7 +431,7 @@ Reporting Service QUEUE (LogicMonitor leftover) remains a **custom query**, not 
 **Covered in-repo** (`scripts/test_mssql_observability.py`):
 
 - Default-only WMI fixture (`MSSQLSERVER` + Browser + Agent + FDLauncher) → LLD `[]`
-- `MSSQL10` fixture → five URIs `sqlserver://localhost/PITDV02` … `PAPDB01`, no port, `{#MSSQL.PARENT}=CH-STA-P-MSSQL10`
+- `MSSQL10` fixture → five URIs `sqlserver://localhost/PITDV02` … `PAPDB01` when `{$MSSQL.LISTEN.HOST}` is unresolved (Node does not expand macros); with listen host `10.0.100.10` → `sqlserver://10.0.100.10/PCONF02` …, no port, `{#MSSQL.LISTEN}` set, `{#MSSQL.PARENT}=CH-STA-P-MSSQL10`
 - JS drops `MSSQLFDLauncher$…`, `SQLAgent$…`, telemetry, writer
 - Single WMI object (not array) still becomes one LLD row
 - Invalid JSON throws (item unsupported) instead of a fake empty census
@@ -424,8 +443,11 @@ Reporting Service QUEUE (LogicMonitor leftover) remains a **custom query**, not 
   (Cloud import rejects it), **no group prototypes**, children `group_links`
   only `MSSQL instances`, `{#MSSQL.PARENT}` in host/visible names and tags
   (not `{HOST.HOST}`), no `service.discovery`, no
-  `graphprototype`, no `net.tcp.service`, no Disaster, no `last_foreach`
-- Zerotouch: optional template, no YAML import, URI on both MSSQL roles
+  `graphprototype`, no `net.tcp.service`, no Disaster, no `last_foreach`,
+  host-prototype `{$MSSQL.URI}={#MSSQL.URI}`, companion `{$MSSQL.LISTEN.HOST}`
+- Zerotouch: optional template, no YAML import, parent URI on both MSSQL
+  roles, `{$MSSQL.LISTEN.HOST}` Jinja `{{ object.primary_ip4.address.ip }}`
+  on both MSSQL roles
 
 **Still canary-only** (no Windows/SQL in this environment): plugin
 `mssql.version` against a real named instance, WMI `SystemName` vs NetBox
@@ -449,5 +471,7 @@ Observability**.
 - One WMI master, dependent instance LLD + census, plugin prototypes,
   inventories, and one host prototype.
 - No dashboard and no stock graph prototypes on the companion.
-- No nbxsync source change. Import the YAML in Zabbix, then HostSync the
-  canary; do not HostSync the fleet from a template import alone.
+- Zerotouch step 11 writes `{$MSSQL.LISTEN.HOST}` Jinja on both MSSQL
+  roles (same HostSync path as `{$VMWARE.URL}`). Import the YAML in
+  Zabbix, then HostSync the canary Windows parent so the listen host
+  renders; do not HostSync the fleet from a template import alone.

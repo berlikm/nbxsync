@@ -16,6 +16,8 @@ from mssql_observability import (
     HOST_PROTO_VISIBLE,
     INSTANCE_HOST_GROUP,
     INSTANCE_HOST_GROUP_UUID,
+    LISTEN_HOST_JINJA,
+    LISTEN_HOST_MACRO,
     LLD_JS,
     NAMED_URI,
     PARENT_MACRO,
@@ -30,7 +32,9 @@ from mssql_observability import (
     javascript_steps,
     lld_js_source,
     load_template,
+    named_instance_uri,
     named_instances_from_wmi,
+    resolve_listen_host,
     run_javascript,
     run_lld_js,
     template_block,
@@ -127,6 +131,7 @@ class LldNamedInstanceTests(unittest.TestCase):
                 row['{#MSSQL.URI}'],
                 'sqlserver://localhost/' + row['{#MSSQL.INSTANCE}'],
             )
+            self.assertEqual(row['{#MSSQL.LISTEN}'], 'localhost')
             self.assertEqual(row['{#MSSQL.PARENT}'], 'CH-STA-P-MSSQL10')
             self.assertEqual(
                 HOST_PROTO_HOST.replace('{#MSSQL.PARENT}', row['{#MSSQL.PARENT}']).replace(
@@ -153,6 +158,7 @@ class LldNamedInstanceTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['{#MSSQL.INSTANCE}'], 'SQLEXPRESS')
         self.assertEqual(rows[0]['{#MSSQL.URI}'], 'sqlserver://localhost/SQLEXPRESS')
+        self.assertEqual(rows[0]['{#MSSQL.LISTEN}'], 'localhost')
         self.assertEqual(rows[0]['{#MSSQL.PARENT}'], 'WIN-SQLEXPRESS')
 
     def test_parent_macro_wins_over_systemname(self):
@@ -203,6 +209,35 @@ class LldNamedInstanceTests(unittest.TestCase):
         dumped = json.dumps(rows)
         self.assertNotIn('1433', dumped)
         self.assertNotIn('localhost:', dumped)
+
+    def test_listen_host_falls_back_when_unresolved_or_ported(self):
+        self.assertEqual(resolve_listen_host('{$MSSQL.LISTEN.HOST}'), 'localhost')
+        self.assertEqual(resolve_listen_host(''), 'localhost')
+        self.assertEqual(resolve_listen_host('CHANGE_IF_NEEDED'), 'localhost')
+        self.assertEqual(resolve_listen_host('10.0.100.10:1433'), 'localhost')
+        self.assertEqual(resolve_listen_host('10.0.100.10/32'), 'localhost')
+        self.assertEqual(resolve_listen_host('10.0.100.10'), '10.0.100.10')
+
+    def test_named_uri_uses_windows_listen_host_without_port(self):
+        raw = _fixture('wmi_mssql10.json')
+        py_out = named_instances_from_wmi(raw, listen_macro='10.0.100.10')
+        js_script = lld_js_source().replace(LISTEN_HOST_MACRO, '10.0.100.10')
+        js_out = json.loads(run_lld_js(raw, script=js_script))
+        self.assertEqual(js_out, py_out)
+        uris = {row['{#MSSQL.URI}'] for row in py_out}
+        self.assertEqual(
+            uris,
+            {named_instance_uri(name, '10.0.100.10') for name in MSSQL10_INSTANCES},
+        )
+        for row in py_out:
+            self.assertEqual(row['{#MSSQL.LISTEN}'], '10.0.100.10')
+            self.assertEqual(
+                row['{#MSSQL.URI}'],
+                'sqlserver://10.0.100.10/' + row['{#MSSQL.INSTANCE}'],
+            )
+            self.assertNotIn(':', row['{#MSSQL.URI}'].split('10.0.100.10', 1)[1])
+            self.assertNotIn('1433', row['{#MSSQL.URI}'])
+            self.assertNotIn('localhost', row['{#MSSQL.URI}'])
 
 
 class YamlContractTests(unittest.TestCase):
@@ -271,8 +306,9 @@ class YamlContractTests(unittest.TestCase):
         self.assertNotIn('Windows by Zabbix agent', json.dumps(proto))
         macros = {row['macro']: row['value'] for row in proto['macros']}
         self.assertEqual(macros['{$MSSQL.URI}'], NAMED_URI)
+        self.assertEqual(NAMED_URI, '{#MSSQL.URI}')
         self.assertNotIn('{$MSSQL.HOST}', macros)
-        self.assertNotIn(':', macros['{$MSSQL.URI}'].split('localhost', 1)[1])
+        self.assertNotIn('localhost', macros['{$MSSQL.URI}'])
         tags = {row['tag']: row['value'] for row in proto['tags']}
         self.assertEqual(tags['sql_instance'], '{#MSSQL.INSTANCE}')
         self.assertEqual(tags['parent_host'], '{#MSSQL.PARENT}')
@@ -326,7 +362,10 @@ class YamlContractTests(unittest.TestCase):
         file_js = run_lld_js(_fixture('wmi_mssql10.json'))
         self.assertEqual(json.loads(yaml_js), json.loads(file_js))
         self.assertIn(PARENT_MACRO, want)
+        self.assertIn(LISTEN_HOST_MACRO, want)
         self.assertIn('{#MSSQL.PARENT}', want)
+        self.assertIn('{#MSSQL.LISTEN}', want)
+        self.assertIn("{#MSSQL.URI}': 'sqlserver://' + listen + '/' + instance", want)
 
     def test_inventory_preprocessors_match_source_files(self):
         self.assertTrue(DB_INVENTORY_JS.is_file())
@@ -367,6 +406,7 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(str(macros['{$MSSQL.INSTANCE.DISCOVERY.MIN}']['value']), '0')
         self.assertIn(PARENT_MACRO, macros)
         self.assertFalse(macros[PARENT_MACRO].get('value'))
+        self.assertEqual(macros[LISTEN_HOST_MACRO]['value'], 'localhost')
         self.assertNotIn('{$MSSQL.URI}', macros)
         self.assertNotIn('{$MSSQL.USER}', macros)
         self.assertNotIn('{$MSSQL.PASSWORD}', macros)
@@ -455,6 +495,11 @@ class ZerotouchSoftAssignTests(unittest.TestCase):
         self.assertNotIn('import_yaml_templates', src)
         self.assertIn("'{$MSSQL.URI}', 'sqlserver://localhost:1433', 'MSSQL'", src)
         self.assertIn("'{$MSSQL.URI}', 'sqlserver://localhost:1433', 'MSSQL Query Server'", src)
+        self.assertIn(f"'{LISTEN_HOST_MACRO}', '{LISTEN_HOST_JINJA}', 'MSSQL'", src)
+        self.assertIn(
+            f"'{LISTEN_HOST_MACRO}', '{LISTEN_HOST_JINJA}', 'MSSQL Query Server'",
+            src,
+        )
 
 
 if __name__ == '__main__':

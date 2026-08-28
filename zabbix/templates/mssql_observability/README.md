@@ -1,6 +1,6 @@
 # MSSQL Observability (estate companion)
 
-Sits **next to** stock **MSSQL by Zabbix agent 2** (not nested). Stock on the Windows host keeps the default instance (`{$MSSQL.URI}=sqlserver://localhost:1433`). This companion LLD `MSSQL$*` named instances, calls the same Agent 2 plugin with `sqlserver://localhost/{#MSSQL.INSTANCE}`, and (on Cloud 7.0) creates a **host prototype** so each named instance is a child host with stock Agent 2 — that is how per-database graphs work until nested LLD exists.
+Sits **next to** stock **MSSQL by Zabbix agent 2** (not nested). Stock on the Windows host keeps the default instance (`{$MSSQL.URI}=sqlserver://localhost:1433`). This companion LLD `MSSQL$*` named instances, calls the same Agent 2 plugin with `sqlserver://{$MSSQL.LISTEN.HOST}/{#MSSQL.INSTANCE}` (no port; HostSync Jinja sets `LISTEN.HOST` to the NetBox primary IPv4), and (on Cloud 7.0) creates a **host prototype** so each named instance is a child host with stock Agent 2 — that is how per-database graphs work until nested LLD exists.
 
 Import `template_mssql_observability.yaml` into Zabbix 7.0 (Templates/Databases). Zerotouch then **soft-assigns** it on roles MSSQL / MSSQL Query Server; apply does **not** fail if Cloud has not imported it yet, and it does **not** HostSync the fleet.
 

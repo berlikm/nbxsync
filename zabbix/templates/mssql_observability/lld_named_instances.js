@@ -17,6 +17,7 @@ if (Object.prototype.toString.call(parsed) === '[object Array]') {
 }
 var PREFIX = 'MSSQL$';
 var parentMacro = '{$MSSQL.PARENT.HOST}';
+var listenMacro = '{$MSSQL.LISTEN.HOST}';
 var out = [];
 function trimCopy(text) {
   return String(text).replace(/^[ \t]+|[ \t]+$/g, '');
@@ -52,6 +53,16 @@ function resolveParent(row) {
   }
   return sanitizeParent(raw);
 }
+function resolveListen() {
+  var macro = trimCopy(listenMacro);
+  if (!macro || macro.indexOf('{$') === 0 || macro === 'CHANGE_IF_NEEDED') {
+    return 'localhost';
+  }
+  if (macro.indexOf(':') !== -1 || macro.indexOf('/') !== -1) {
+    return 'localhost';
+  }
+  return macro;
+}
 for (var i = 0; i < rows.length; i++) {
   var row = rows[i];
   var name = row && row.Name;
@@ -72,10 +83,12 @@ for (var i = 0; i < rows.length; i++) {
   if (!parent) {
     throw 'MSSQL named-instance LLD: missing parent host name';
   }
+  var listen = resolveListen();
   out.push({
     '{#MSSQL.SERVICE}': name,
     '{#MSSQL.INSTANCE}': instance,
-    '{#MSSQL.URI}': 'sqlserver://localhost/' + instance,
+    '{#MSSQL.LISTEN}': listen,
+    '{#MSSQL.URI}': 'sqlserver://' + listen + '/' + instance,
     '{#MSSQL.DISPLAY}': row.DisplayName || name,
     '{#MSSQL.PARENT}': parent
   });

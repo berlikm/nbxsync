@@ -16,9 +16,13 @@ zabbix_export:
         Link this template *alongside* stock Agent 2 on roles MSSQL and
         MSSQL Query Server. Do not nest stock — nesting would still be one
         {$MSSQL.URI}. Stock keeps sqlserver://localhost:1433 (default
-        instance). This companion discovers Windows named instances
-        (MSSQL$…) and calls the same plugin keys with
-        sqlserver://localhost/{#MSSQL.INSTANCE} (no port; plugin 7.0.6+).
+        instance on the Windows parent). This companion discovers Windows
+        named instances (MSSQL$…) and calls the same plugin keys with
+        {#MSSQL.URI}=sqlserver://{$MSSQL.LISTEN.HOST}/{#MSSQL.INSTANCE}
+        (no port; plugin 7.0.6+). LISTEN.HOST is the NetBox primary IPv4
+        so dedicated-IP instances (ListenOnAllIPs=0, loopback off) still
+        resolve via SQL Browser. Unset/invalid LISTEN.HOST falls back to
+        localhost. Do not put a port in a named URI.
 
         Requires Zabbix agent 2 with MSSQL loadable plugin >= 7.0.10 and
         server/proxy >= 7.0.6. Uses wmi.getall, not service.discovery
@@ -29,9 +33,10 @@ zabbix_export:
         Named-instance databases/graphs use a 7.0 host prototype (Zabbix
         cannot nest LLD-under-LLD on Cloud 7.0). Each MSSQL$* becomes
         {#MSSQL.PARENT}-mssql-{#MSSQL.INSTANCE} with stock Agent 2 and
-        {$MSSQL.URI}=sqlserver://localhost/{#MSSQL.INSTANCE}. Parent name
-        is {$MSSQL.PARENT.HOST} when set, else Win32_Service.SystemName
-        ({HOST.HOST} is not expanded in host/group prototypes). Children
+        {$MSSQL.URI}={#MSSQL.URI}. Parent name is {$MSSQL.PARENT.HOST}
+        when set, else Win32_Service.SystemName ({HOST.HOST} / {HOST.CONN}
+        are not expanded in host/group prototypes or prototype macros).
+        Children
         join only the YAML host group MSSQL instances. Do not add
         hostname or Roles/MSSQL/* group prototypes (they explode the
         Sites/Roles/OS tree and put Query Server children under MSSQL).
@@ -96,6 +101,7 @@ zabbix_export:
                   }
                   var PREFIX = 'MSSQL$';
                   var parentMacro = '{$MSSQL.PARENT.HOST}';
+                  var listenMacro = '{$MSSQL.LISTEN.HOST}';
                   var out = [];
                   function trimCopy(text) {
                     return String(text).replace(/^[ \t]+|[ \t]+$/g, '');
@@ -131,6 +137,16 @@ zabbix_export:
                     }
                     return sanitizeParent(raw);
                   }
+                  function resolveListen() {
+                    var macro = trimCopy(listenMacro);
+                    if (!macro || macro.indexOf('{$') === 0 || macro === 'CHANGE_IF_NEEDED') {
+                      return 'localhost';
+                    }
+                    if (macro.indexOf(':') !== -1 || macro.indexOf('/') !== -1) {
+                      return 'localhost';
+                    }
+                    return macro;
+                  }
                   for (var i = 0; i < rows.length; i++) {
                     var row = rows[i];
                     var name = row && row.Name;
@@ -151,10 +167,12 @@ zabbix_export:
                     if (!parent) {
                       throw 'MSSQL named-instance LLD: missing parent host name';
                     }
+                    var listen = resolveListen();
                     out.push({
                       '{#MSSQL.SERVICE}': name,
                       '{#MSSQL.INSTANCE}': instance,
-                      '{#MSSQL.URI}': 'sqlserver://localhost/' + instance,
+                      '{#MSSQL.LISTEN}': listen,
+                      '{#MSSQL.URI}': 'sqlserver://' + listen + '/' + instance,
                       '{#MSSQL.DISPLAY}': row.DisplayName || name,
                       '{#MSSQL.PARENT}': parent
                     });
@@ -502,8 +520,8 @@ zabbix_export:
               custom_interfaces: 'NO'
               macros:
                 - macro: '{$MSSQL.URI}'
-                  value: 'sqlserver://localhost/{#MSSQL.INSTANCE}'
-                  description: 'Named instance URI (no port). Overrides the parent default-instance URI inherited from the Windows host.'
+                  value: '{#MSSQL.URI}'
+                  description: 'Named instance URI from LLD (sqlserver://{$MSSQL.LISTEN.HOST}/instance, no port). Overrides the parent default-instance URI inherited from the Windows host.'
               tags:
                 - tag: component
                   value: mssql-instance
@@ -534,6 +552,7 @@ zabbix_export:
                   }
                   var PREFIX = 'MSSQL$';
                   var parentMacro = '{$MSSQL.PARENT.HOST}';
+                  var listenMacro = '{$MSSQL.LISTEN.HOST}';
                   var out = [];
                   function trimCopy(text) {
                     return String(text).replace(/^[ \t]+|[ \t]+$/g, '');
@@ -569,6 +588,16 @@ zabbix_export:
                     }
                     return sanitizeParent(raw);
                   }
+                  function resolveListen() {
+                    var macro = trimCopy(listenMacro);
+                    if (!macro || macro.indexOf('{$') === 0 || macro === 'CHANGE_IF_NEEDED') {
+                      return 'localhost';
+                    }
+                    if (macro.indexOf(':') !== -1 || macro.indexOf('/') !== -1) {
+                      return 'localhost';
+                    }
+                    return macro;
+                  }
                   for (var i = 0; i < rows.length; i++) {
                     var row = rows[i];
                     var name = row && row.Name;
@@ -589,10 +618,12 @@ zabbix_export:
                     if (!parent) {
                       throw 'MSSQL named-instance LLD: missing parent host name';
                     }
+                    var listen = resolveListen();
                     out.push({
                       '{#MSSQL.SERVICE}': name,
                       '{#MSSQL.INSTANCE}': instance,
-                      '{#MSSQL.URI}': 'sqlserver://localhost/' + instance,
+                      '{#MSSQL.LISTEN}': listen,
+                      '{#MSSQL.URI}': 'sqlserver://' + listen + '/' + instance,
                       '{#MSSQL.DISPLAY}': row.DisplayName || name,
                       '{#MSSQL.PARENT}': parent
                     });
@@ -622,3 +653,14 @@ zabbix_export:
             Empty falls back to Win32_Service.SystemName. Set from NetBox
             to the device name when the Windows computer name differs from
             the Zabbix host. Not used for host groups.
+        - macro: '{$MSSQL.LISTEN.HOST}'
+          value: localhost
+          description: |
+            Hostname or IPv4 SQL Browser / the Agent 2 sqlserver plugin
+            uses for named-instance URIs. No port (7.0.6+ a port wins and
+            the instance name is ignored). Default localhost (loopback).
+            nbxsync HostSync writes the NetBox primary IPv4 via Jinja
+            {{ object.primary_ip4.address.ip }} so dedicated-IP instances
+            (ListenOnAllIPs=0, loopback off) still resolve. Override to
+            localhost on a parent whose SQL only listens on 127.0.0.1.
+            Do not put a port, path, or per-instance VIP here.
