@@ -56,8 +56,6 @@ U = {
     'item_lic_pending': 'f152560225304bcd8adec843d76c532d',
     'item_lic_platformone': '6ad9ed0651a249578dbb63a07b0be9e7',
     'item_tcp8443': '1f2a9aae5987421e837ec9d3d21b4839',
-    'item_cert': '4420532ce6264a748084191925f211ee',
-    'item_not_after': 'b4e91c6a7d8f40c9a1e25b37c48d59e0',
     'item_unsupported': '35962793d7484596bee1d20ad9067757',
     'tr_avail': '97921d61a0b34d7286b85c77180bf3ce',
     'tr_nodata': '40dd971c943f4a01b7927b5f1afcf575',
@@ -71,7 +69,6 @@ U = {
     'tr_nav_cap': 'b2c7a454475e4636b8199a4c08fb1340',
     'tr_nav_low': 'ce3614948ed94048983e6268e8651d27',
     'tr_reboot': 'd375ab5185f043d2bece3b826fe78e76',
-    'tr_cert': 'a59e95e7308741eab8d05b728c8dce2a',
     'tr_version': 'ca213b71fe584b7794cb053d766dcd61',
     'tr_unsup': '85d9c4f699e0491b9ad49a7bd5db11a3',
     'tr_pilot_fail': '3f6599c84332498485c73f96cd2353d7',
@@ -363,7 +360,7 @@ def render_se() -> str:
         f'last(/{TPL}/zabbix[host,,items_unsupported])>0',
         'XIQ-SE: unsupported items present',
         'AVERAGE',
-        'Schema field missing, no agent for the certificate item, or SCRIPT error.',
+        'Schema field missing or SCRIPT error.',
     )
 
     tcp_item = f"""    - uuid: {U['item_tcp8443']}
@@ -393,49 +390,6 @@ def render_se() -> str:
             - tag: scope
               value: availability"""
 
-    cert_item = f"""    - uuid: {U['item_cert']}
-      name: XIQ-SE TLS certificate
-      type: ZABBIX_PASSIVE
-      key: 'web.certificate.get[{{$XIQSE.API.FQDN}},{{$XIQSE.API.PORT}}]'
-      delay: 1h
-      history: 7d
-      trends: '0'
-      value_type: TEXT
-      description: |
-        Needs Zabbix agent on the Site Engine. Set {{$XIQSE.CERT.CONTROL}}=0 if unsupported.
-      tags:
-        - tag: component
-          value: tls"""
-
-    not_after = f"""    - uuid: {U['item_not_after']}
-      name: XIQ-SE TLS not after
-      type: DEPENDENT
-      key: xiqse.tls.not_after
-      delay: '0'
-      history: 7d
-      trends: 365d
-      value_type: UNSIGNED
-      units: unixtime
-      preprocessing:
-        - type: JSONPATH
-          parameters:
-            - $.not_after
-      master_item:
-        key: 'web.certificate.get[{{$XIQSE.API.FQDN}},{{$XIQSE.API.PORT}}]'
-      tags:
-        - tag: component
-          value: tls
-      triggers:
-        - uuid: {U['tr_cert']}
-          expression: '{{$XIQSE.CERT.CONTROL}}=1 and (last(/{TPL}/xiqse.tls.not_after)-now())<{{$XIQSE.CERT.WARN}}*86400'
-          name: 'XIQ-SE: TLS certificate expires soon'
-          event_name: 'XIQ-SE: TLS certificate expires soon'
-          priority: WARNING
-          description: |
-            8443 certificate expires within {{$XIQSE.CERT.WARN}} days.
-          tags:
-            - tag: scope
-              value: availability"""
 
     dash = _se_dashboards()
     macros = _se_macros()
@@ -556,8 +510,6 @@ def render_se() -> str:
 {bump(lic_pone)}
 {bump(pilot_ok)}
 {bump(tcp_item)}
-{bump(cert_item)}
-{bump(not_after)}
 {bump(unsup_item)}
 {_prototypes()}
       tags:
@@ -624,8 +576,6 @@ def _se_macros() -> str:
         ('{$XIQ.ENGINE.CONNECTED.CONTROL}', '1', 'Ticket engines with connected=0. Unknown (2) is silent.'),
         ('{$XIQ.ENGINE.ENFORCE.CONTROL}', '1', 'Ticket needsEnforce=1.'),
         ('{$XIQ.ENGINE.RADIUSD.CONTROL}', '1', 'Page FreeRADIUS disabled on an engine.'),
-        ('{$XIQSE.CERT.CONTROL}', '1', 'Certificate Warning. Set 0 if the host has no agent.'),
-        ('{$XIQSE.CERT.WARN}', '30', 'Days before 8443 cert expiry.'),
     ]
     lines = ['      macros:']
     for row in rows:
