@@ -190,6 +190,30 @@ Live on `CH-STA-P-MSQL10` (do not change SQL):
 
 SQL Browser is up on `0.0.0.0:1434`. `HideInstance=0`. IPAll dynamic ports are **not** listening. Same four named instances fail the same way on MSQL11.
 
+MSQL10/11 is **not** VIP-only: each dedicated-IP instance still listens on `10.0.100.10`. Leave the role Jinja. Override only when a box (or one instance) does **not** listen on that Windows IP.
+
+### Override when loopback-only or VIP-only
+
+`{$MSSQL.LISTEN.HOST}` is **one value for the whole Windows parent**. LLD copies it into every named-instance URI. It cannot be a different VIP per instance.
+
+| Situation | Where | What to set |
+|---|---|---|
+| Default (MSQL10/11) | Role Jinja, already | `{{ object.primary_ip4.address.ip }}` — do nothing |
+| **Whole box** SQL listens only on `127.0.0.1` | NetBox **Device** `{$MSSQL.LISTEN.HOST}` (wins over the role), then HostSync that Windows host | `localhost` — no port, no path |
+| **Whole box** should use one other IP (rare; every named instance listens there) | Same Device macro, then HostSync | that IPv4 only, e.g. `10.0.100.23` |
+| **One instance VIP-only** (no listen on the Windows `primary_ip4`; only the dedicated VIP) | Zabbix **child** host, not NetBox | see below |
+
+VIP-only is per instance, so it cannot live in NetBox (children are LLD, not devices). After LLD has created the child:
+
+1. Data collection → Hosts → `…-mssql-<INSTANCE>` → Macros.
+2. Set `{$MSSQL.URI}` to `sqlserver://<vip>/<InstanceName>` — **no port** (Browser on that VIP still names the instance). Example: `sqlserver://10.0.100.23/PCONF02`.
+3. If SQL Browser is not reachable on the VIP but the instance’s only listener is VIP:1433, use `sqlserver://<vip>:1433`. A port **ignores** the instance name; that is OK only because that IP:port *is* this instance.
+4. Check now the child. Do **not** put that URI on the Windows parent, the role, or a NetBox device.
+
+LLD **will** write the prototype `{$MSSQL.URI}={#MSSQL.URI}` back on the next named-instance discovery. If Check-now on the parent snaps the child URI to `sqlserver://<windows-ip>/<instance>`, set the child macro again. Do not invent `{$MSSQL.DSN:"PCONF02"}` or a NetBox VIP row to make it stick.
+
+Parent companion prototypes (`MSSQL [<instance>]: Version`, inventories) keep the LLD URI, so a VIP-only instance may stay unsupported **on the parent**. Stock graphs live on the child; that is the override that matters. Prefer binding the instance on the Windows IP (as MSQL10 already does) over a permanent VIP-only exception.
+
 A named-instance row with no resolvable parent **throws** (item unsupported), not a fake empty census.
 
 ### LLD filters (macros on the companion)
@@ -200,7 +224,7 @@ A named-instance row with no resolvable parent **throws** (item unsupported), no
 | `{$MSSQL.INSTANCE.NOT_MATCHES}` | `CHANGE_IF_NEEDED` | e.g. `SQLEXPRESS` |
 | `{$MSSQL.INSTANCE.DISCOVERY.MIN}` | `0` | census; **0** is valid (`MSQL01`). Set per Device only if you want “we expect five” |
 | `{$MSSQL.PARENT.HOST}` | empty | optional Zabbix technical name; empty → WMI `SystemName` |
-| `{$MSSQL.LISTEN.HOST}` | `localhost` | named-instance plugin host (no port). HostSync Jinja `{{ object.primary_ip4.address.ip }}` on the role. Override to `localhost` if SQL is loopback-only |
+| `{$MSSQL.LISTEN.HOST}` | `localhost` | named-instance plugin host (no port). HostSync Jinja `{{ object.primary_ip4.address.ip }}` on the role. Device override `localhost` if SQL is loopback-only. VIP-only **one** instance: override `{$MSSQL.URI}` on that **child** in Zabbix — see Override when loopback-only or VIP-only |
 
 Filter on `{#MSSQL.INSTANCE}`. Do not filter in NetBox.
 
@@ -306,7 +330,8 @@ Same password as `{$MSSQL.PASSWORD}` on that NetBox object. Repeat on PITDV02, P
 | Role (optional) | `{$MSSQL.PARENT.HOST}` = `{{ object.name }}` so child host names match the Zabbix host when WMI `SystemName` differs |
 | **Device / VM** | `{$MSSQL.PASSWORD}` (and USER if not global) — like vCenter, not like a shared Forti token |
 | Device | optional `{$MSSQL.INSTANCE.DISCOVERY.MIN}` = `5` on `MSSQL10` if you want census |
-| Device | **no** instance names, **no** DSN contexts, **no** VIP:1433 URIs |
+| Device | optional `{$MSSQL.LISTEN.HOST}` = `localhost` (or one IPv4) when the **whole box** must not use `primary_ip4` |
+| Device | **no** instance names, **no** DSN contexts, **no** VIP:1433 URIs. VIP-only **one** instance: child `{$MSSQL.URI}` in Zabbix, not NetBox |
 
 Import the companion YAML in Zabbix (GUI). Then HostSync the **canary Windows host** so Jinja renders `{$MSSQL.LISTEN.HOST}` (and optional `{$MSSQL.PARENT.HOST}`). LLD creates children. Template import alone must **not** HostSync the fleet.
 
@@ -328,7 +353,7 @@ Import the companion YAML in Zabbix (GUI). Then HostSync the **canary Windows ho
 | `Plugins.MSSQL.Sessions` in `mssql.conf` | Hand-edited agents |
 | Fork stock YAML to add instance LLD | Update pain; companion only |
 | URI `sqlserver://localhost:1433/PITDV02` | Port wins; instance ignored |
-| URI `sqlserver://<vip>:1433` per instance in NetBox | Children are LLD, not NetBox objects. Browser + Windows `primary_ip4` is the path. Do not enable `ListenOnAllIPs` on dedicated-VIP instances that share 1433 |
+| URI `sqlserver://<vip>:1433` per instance in NetBox | Children are LLD, not NetBox objects. Browser + Windows `primary_ip4` is the path. VIP-only exception: override `{$MSSQL.URI}` on that **child** in Zabbix (see Override when loopback-only or VIP-only). Do not enable `ListenOnAllIPs` on dedicated-VIP instances that share 1433 |
 | Disaster on one named instance down | Site/service only; Windows service is Average/High per estate OS bar |
 | Nest ICMP Ping or Windows by agent on the child | Duplicate OS/ICMP; parent already has them |
 | HostSync the fleet from this template import | Children are LLD; sync the canary Windows host only |

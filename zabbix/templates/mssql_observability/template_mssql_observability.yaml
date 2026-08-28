@@ -661,6 +661,11 @@ zabbix_export:
             the instance name is ignored). Default localhost (loopback).
             nbxsync HostSync writes the NetBox primary IPv4 via Jinja
             {{ object.primary_ip4.address.ip }} so dedicated-IP instances
-            (ListenOnAllIPs=0, loopback off) still resolve. Override to
-            localhost on a parent whose SQL only listens on 127.0.0.1.
-            Do not put a port, path, or per-instance VIP here.
+            (ListenOnAllIPs=0, loopback off) still resolve. Whole-box
+            loopback-only: set this host macro to localhost (NetBox Device
+            assignment, then HostSync). One instance VIP-only: do not put
+            a VIP here (one value for every named instance) — override
+            {$MSSQL.URI} on that child host in Zabbix to
+            sqlserver://<vip>/<instance> with no port. See
+            zabbix/notes/mssql-agent2-instances.md. Do not put a port,
+            path, or per-instance VIP in this macro.
