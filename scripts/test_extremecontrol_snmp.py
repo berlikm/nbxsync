@@ -237,6 +237,8 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertIsNotNone(step)
         self.assertIn('SNMP_TEMPLATE_NAME', step)
         self.assertIn('HostInterfaceRequirementChoices.SNMP', step)
+        self.assertIn('ZabbixConfigurationGroupAssignment', step)
+        self.assertIn('_SNMP_MONITORING_CG', step)
         self.assertNotIn('import_extreme_templates', step)
         self.assertNotIn('SyncHostJob', step)
 
