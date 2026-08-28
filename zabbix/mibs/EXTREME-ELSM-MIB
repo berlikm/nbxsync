@@ -1,0 +1,170 @@
+EXTREME-ELSM-MIB DEFINITIONS ::= BEGIN
+
+        IMPORTS
+                MODULE-IDENTITY         FROM SNMPv2-SMI
+		NOTIFICATION-TYPE, OBJECT-IDENTITY
+        	FROM SNMPv2-SMI                  -- RFC2578
+		OBJECT-TYPE             FROM SNMPv2-SMI
+        extremeAgent            FROM EXTREME-BASE-MIB;
+
+
+        extremeElsm MODULE-IDENTITY
+                LAST-UPDATED "0007240000Z"
+                ORGANIZATION "Extreme Networks, Inc."
+                CONTACT-INFO "www.extremenetworks.com"
+                DESCRIPTION "Extreme Link Status Monitoring"
+        ::= { extremeAgent 57491 }
+        -- The anchor point above is just a dummy one. This will be changed
+        -- when there is a 'real' ELSM MIB
+
+	extremeElsmTable	OBJECT-TYPE
+		SYNTAX	SEQUENCE OF ExtremeElsmEntry
+		MAX-ACCESS  not-accessible
+		STATUS current
+		DESCRIPTION
+			"This table contains ELSM information of this device."
+		::= { extremeElsm 2 }
+
+	extremeElsmEntry	OBJECT-TYPE
+		SYNTAX	ExtremeElsmEntry
+		MAX-ACCESS	not-accessible
+		STATUS	current
+		DESCRIPTION
+			"An entry in the table of ELSM information of this device."
+		INDEX {extremeElsmPortIfIndex}
+		::= {extremeElsmTable 1}
+
+	ExtremeElsmEntry ::= SEQUENCE {
+                extremeElsmPortIfIndex             INTEGER,
+                extremeElsmPortHelloTime           Integer32,
+                extremeElsmPortHoldThreshold       Integer32,
+                extremeElsmPortAutoRestart         INTEGER,
+                extremeElsmPortAdminState          INTEGER,
+                extremeElsmPortLinkState           INTEGER,
+                extremeElsmPortRxState             INTEGER,
+                extremeElsmPortTxState             INTEGER,
+                extremeElsmPortRxHelloPlus         Counter64,
+                extremeElsmPortRxHelloMinus        Counter64,
+                extremeElsmPortTxHelloPlus         Counter64,
+                extremeElsmPortTxHelloMinus        Counter64,
+                extremeElsmPortUpCount             Counter64,
+                extremeElsmPortDownCount           Counter64
+        }
+
+        extremeElsmPortIfIndex OBJECT-TYPE
+                SYNTAX  INTEGER (1..65535)
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "The ifIndex of the physical port"
+                ::= { extremeElsmEntry 1 }
+
+        extremeElsmPortHelloTime OBJECT-TYPE
+		SYNTAX  INTEGER (1..128)
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "Time in seconds between consecutive hellos"
+                ::= { extremeElsmEntry 2 }
+
+
+        extremeElsmPortHoldThreshold OBJECT-TYPE
+		SYNTAX  INTEGER (1..3)
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "Number of hello+ packets that must be received to 
+			 transition from down-wait to up state"
+                ::= { extremeElsmEntry 3 }
+
+        extremeElsmPortAutoRestart OBJECT-TYPE
+		SYNTAX  INTEGER { enabled(1), disabled(2) } 
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "When disabled, port stays in down state until user clears."
+                ::= { extremeElsmEntry 4 }
+
+        extremeElsmPortAdminState OBJECT-TYPE
+		SYNTAX  INTEGER { enabled(1), disabled(2) } 
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "Admin state of the port."
+                ::= { extremeElsmEntry 5 }
+    
+        extremeElsmPortLinkState OBJECT-TYPE
+		SYNTAX  INTEGER { up(1), down(2) } 
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "Upper layer link state."
+                ::= { extremeElsmEntry 6 }
+
+        extremeElsmPortRxState OBJECT-TYPE
+		SYNTAX  INTEGER { up(1), down(2), downWait(3), downStuck(4) } 
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "Receive state machine state"
+                ::= { extremeElsmEntry 7 }
+
+        extremeElsmPortTxState OBJECT-TYPE
+                SYNTAX INTEGER { helloRxPlus(1), helloRxMinus(2), init(3) } 
+                MAX-ACCESS	not-accessible
+                STATUS	current
+                DESCRIPTION
+                        "Transmit state machine state"
+                ::= { extremeElsmEntry 8 }
+
+
+        extremeElsmPortRxHelloPlus OBJECT-TYPE
+                SYNTAX  Counter64
+                MAX-ACCESS not-accessible
+                STATUS	current
+                DESCRIPTION
+                        "Received Hello Plus PDUs"
+                ::= { extremeElsmEntry 9 }
+
+        extremeElsmPortRxHelloMinus OBJECT-TYPE
+                SYNTAX  Counter64
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "Received Hello Minus PDUs"
+                ::= { extremeElsmEntry 10 }
+
+        extremeElsmPortTxHelloPlus OBJECT-TYPE
+		SYNTAX  Counter64
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "Transmitted Hello Plus PDUs"
+                ::= { extremeElsmEntry 11 }
+
+        extremeElsmPortTxHelloMinus OBJECT-TYPE
+		SYNTAX  Counter64
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "Transmitted Hello Minus PDUs"
+                ::= { extremeElsmEntry 12 }
+
+        extremeElsmPortUpCount OBJECT-TYPE
+		SYNTAX  Counter64
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "Number of transitions to Up state"
+                ::= { extremeElsmEntry 13 }
+
+        extremeElsmPortDownCount OBJECT-TYPE
+		SYNTAX  Counter64
+                MAX-ACCESS	accessible-for-notify
+                STATUS	current
+                DESCRIPTION
+                        "Number of transitions to Down state"
+                ::= { extremeElsmEntry 14 }
+
+END
+

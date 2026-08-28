@@ -1,0 +1,103 @@
+EXTREME-CLEARFLOW-MIB DEFINITIONS ::= BEGIN
+
+        IMPORTS
+                MODULE-IDENTITY         FROM SNMPv2-SMI
+                OBJECT-TYPE             FROM SNMPv2-SMI
+                DisplayString           FROM RFC1213-MIB
+	        Unsigned32               FROM SNMPv2-SMI
+		Counter64		FROM SNMPv2-SMI
+	        NOTIFICATION-TYPE       FROM SNMPv2-SMI
+                extremeAgent            FROM EXTREME-BASE-MIB;
+
+        extremeClearflow MODULE-IDENTITY
+	        LAST-UPDATED "200503220000Z"
+                ORGANIZATION "Extreme Networks, Inc."
+                CONTACT-INFO "www.extremenetworks.com"
+                DESCRIPTION "CLEAR-Flow MIB"
+        ::= { extremeAgent 30 }
+        
+        extremeClearflowMsgId OBJECT-TYPE
+        SYNTAX     Unsigned32
+        MAX-ACCESS accessible-for-notify
+        STATUS     current
+        DESCRIPTION "User-defined message id"
+        ::= { extremeClearflow 1 }
+        
+        extremeClearflowMsg OBJECT-TYPE
+        SYNTAX     DisplayString (SIZE(1..256))
+        MAX-ACCESS accessible-for-notify
+        STATUS     current
+        DESCRIPTION "User-defined message"
+        ::= { extremeClearflow 2 }
+        
+        extremeClearflowPolicyName OBJECT-TYPE
+        SYNTAX     DisplayString (SIZE(1..32))
+        MAX-ACCESS accessible-for-notify
+        STATUS     current
+        DESCRIPTION "Policy file name"
+        ::= { extremeClearflow 3 }
+        
+        extremeClearflowRuleName OBJECT-TYPE
+        SYNTAX     DisplayString (SIZE(1..32))
+        MAX-ACCESS accessible-for-notify
+        STATUS     current
+        DESCRIPTION "Rule name which triggered this message"
+        ::= { extremeClearflow 4 }
+
+        extremeClearflowRuleValue OBJECT-TYPE
+        SYNTAX     Counter64
+        MAX-ACCESS accessible-for-notify
+        STATUS     current
+        DESCRIPTION "Calculated rule value"
+        ::= { extremeClearflow 5 }
+
+        extremeClearflowRuleThreshold OBJECT-TYPE
+        SYNTAX     Counter64
+        MAX-ACCESS accessible-for-notify
+        STATUS     current
+        DESCRIPTION "Rule threshold value"
+        ::= { extremeClearflow 6 }
+
+        extremeClearflowRuleInterval OBJECT-TYPE
+        SYNTAX     Unsigned32
+        MAX-ACCESS accessible-for-notify
+        STATUS     current
+        DESCRIPTION "Rule sampling and evaluation interval"
+        ::= { extremeClearflow 7 }
+
+        extremeClearflowVlanName OBJECT-TYPE
+        SYNTAX     DisplayString (SIZE(1..32))
+        MAX-ACCESS accessible-for-notify
+        STATUS     current
+        DESCRIPTION "Vlan name on which this policy is applied"
+        ::= { extremeClearflow 8 }
+        
+        extremeClearflowPortName OBJECT-TYPE
+        SYNTAX     DisplayString (SIZE(1..32))
+        MAX-ACCESS accessible-for-notify
+        STATUS     current
+        DESCRIPTION "Port name on which this policy is applied"
+        ::= { extremeClearflow 9 }
+
+        extremeClearflowTraps     OBJECT IDENTIFIER
+        ::= { extremeClearflow 0 }
+    
+        extremeClearflowTrapsPrefix     OBJECT IDENTIFIER
+        ::= { extremeClearflowTraps 0 }
+
+        extremeClearflowMessage NOTIFICATION-TYPE
+            OBJECTS {   extremeClearflowMsgId, 
+                        extremeClearflowMsg,
+                        extremeClearflowPolicyName,
+                        extremeClearflowRuleName,
+                        extremeClearflowRuleValue,
+                        extremeClearflowRuleThreshold,
+                        extremeClearflowRuleInterval,
+                        extremeClearflowVlanName,
+                        extremeClearflowPortName}
+            STATUS  current
+            DESCRIPTION "CLEAR-Flow message trap"
+        ::= { extremeClearflowTrapsPrefix 1 }
+
+
+END
