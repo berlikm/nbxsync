@@ -278,6 +278,17 @@ class YamlContractTests(unittest.TestCase):
         self.assertFalse(heap.get('triggers'))
         self.assertEqual(heap['units'], '%')
 
+    def test_calculated_percentages_avoid_unsupported_ternary_syntax(self):
+        items = {item['key']: item for item in self.se['items']}
+        for key in ('xiqse.nbi.heap.pct', 'xiqse.nac.used.pct'):
+            self.assertNotIn('?', items[key]['params'])
+        self.assertIn('(last(//xiqse.nbi.heap.max)=0)', items['xiqse.nbi.heap.pct']['params'])
+        self.assertIn('({$XIQ.NAC.TOTAL}=0)', items['xiqse.nac.used.pct']['params'])
+
+    def test_export_uuids_are_version_four(self):
+        for value in re.findall(r'\\buuid:\\s*([0-9a-f]{32})\\b', self.se_text + self.nac_text):
+            self.assertEqual(value[12], '4', value)
+
     def test_nac_cap_requires_purchased_total(self):
         used = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used24h')
         names = {tr['name']: tr for tr in used['triggers']}
@@ -297,6 +308,7 @@ class YamlContractTests(unittest.TestCase):
             for tr in item.get('triggers') or []:
                 if tr['name'] in NAC_TRIGGER_NAMES:
                     self.assertEqual(tr['status'], 'DISABLED')
+        self.assertNotIn('web.certificate.get', self.se_text + self.nac_text)
         self.assertNotIn('net.udp.service', self.nac_text)
         self.assertNotIn('icmpping', self.nac_text)
 

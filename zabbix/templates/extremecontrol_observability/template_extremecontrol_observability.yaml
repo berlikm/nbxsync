@@ -9,9 +9,9 @@ zabbix_export:
       name: ExtremeControl Observability
       description: |
         ExtremeControl engine companion. ICMP and Linux agent stay on the VM
-        path — this template does not nest ICMP Ping and does not speak RADIUS.
+        path — this template does not nest ICMP and does not speak RADIUS.
         FreeRADIUS down is ticketed from XIQ-SE Observability engine LLD.
-        Portal TCP 8444 and certificate Warning stay disabled until opted in.
+        Portal TCP 8444 is disabled until opted in.
 
         Operator page: zabbix/07-extreme-control.md.
         Refresh with configure_nbxsync_network.py --apply-xiqse.
@@ -23,16 +23,10 @@ zabbix_export:
           description: Captive portal / admin HTTPS. Not RADIUS 1812.
         - macro: '{$NAC.PORTAL.FQDN}'
           value: ''
-          description: Engine FQDN or IP for the certificate item. Role Jinja on primary_ip4.
+          description: Engine FQDN or IP. Role Jinja on primary_ip4.
         - macro: '{$NAC.PORTAL.CONTROL}'
           value: '0'
           description: Ticket portal TCP down. Default off — not auth.
-        - macro: '{$NAC.CERT.CONTROL}'
-          value: '0'
-          description: Certificate Warning. Default off until a quiet pilot.
-        - macro: '{$NAC.CERT.WARN}'
-          value: '30'
-          description: Days before portal cert expiry.
       items:
         - uuid: 12acf3f8703d49368e9c54f5d0898ef1
           name: ExtremeControl portal TCP
@@ -56,47 +50,6 @@ zabbix_export:
               status: DISABLED
               description: |
                 Admin/portal port, not RADIUS. Enable {$NAC.PORTAL.CONTROL} after a quiet pilot.
-              tags:
-                - tag: scope
-                  value: availability
-        - uuid: 4080a3e7292a4e4a9d53a848d6302af8
-          name: ExtremeControl portal certificate
-          type: ZABBIX_PASSIVE
-          key: 'web.certificate.get[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT}]'
-          delay: 1h
-          history: 7d
-          trends: '0'
-          value_type: TEXT
-          tags:
-            - tag: component
-              value: tls
-        - uuid: 7c1a2b3d4e5f60718293a4b5c6d7e8f9
-          name: ExtremeControl portal TLS not after
-          type: DEPENDENT
-          key: nac.tls.not_after
-          delay: '0'
-          history: 7d
-          trends: 365d
-          value_type: UNSIGNED
-          units: unixtime
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.not_after
-          master_item:
-            key: 'web.certificate.get[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT}]'
-          tags:
-            - tag: component
-              value: tls
-          triggers:
-            - uuid: 19b5008086d64146a248b4aa0587dc4c
-              expression: '{$NAC.CERT.CONTROL}=1 and (last(/ExtremeControl Observability/nac.tls.not_after)-now())<{$NAC.CERT.WARN}*86400'
-              name: 'ExtremeControl: TLS certificate expires soon'
-              event_name: 'ExtremeControl: TLS certificate expires soon'
-              priority: WARNING
-              status: DISABLED
-              description: |
-                Portal certificate Warning. Default off.
               tags:
                 - tag: scope
                   value: availability
