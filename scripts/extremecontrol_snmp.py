@@ -146,10 +146,10 @@ def item_field(doc: Doc, indent: int, key: str, x: int | None, y: int | None, wi
     doc.add(indent, '- type: item')
     doc.add(indent + 1, f'name: {name}')
     if x:
-        doc.add(indent + 1, f'x: {x!r}')
+        doc.add(indent + 1, f"x: '{x}'")
     if y:
-        doc.add(indent + 1, f'y: {y!r}')
-    doc.add(indent + 1, f'width: {width!r}')
+        doc.add(indent + 1, f"y: '{y}'")
+    doc.add(indent + 1, f"width: '{width}'")
     doc.add(indent + 1, "height: '4'")
     doc.add(indent + 1, 'fields:')
     doc.add(indent + 2, '- type: ITEM')
@@ -185,10 +185,10 @@ def svg_graph(
     doc.add(indent, '- type: svggraph')
     doc.add(indent + 1, f'name: {name}')
     if x:
-        doc.add(indent + 1, f'x: {x!r}')
+        doc.add(indent + 1, f"x: '{x}'")
     if y:
-        doc.add(indent + 1, f'y: {y!r}')
-    doc.add(indent + 1, f'width: {width!r}')
+        doc.add(indent + 1, f"y: '{y}'")
+    doc.add(indent + 1, f"width: '{width}'")
     doc.add(indent + 1, "height: '6'")
     doc.add(indent + 1, 'fields:')
     doc.add(indent + 2, '- type: INTEGER')
