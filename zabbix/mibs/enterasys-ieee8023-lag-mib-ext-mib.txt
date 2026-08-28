@@ -1,0 +1,594 @@
+ENTERASYS-IEEE8023-LAG-MIB-EXT-MIB DEFINITIONS ::= BEGIN
+
+--  enterasys-ieee8023-lag-mib-ext-mib.txt
+--
+--  Part Number:
+--
+--
+
+--  This module provides authoritative definitions for Enterasys 
+--  Networks' IEEE8023-LAG-MIB extension MIB.
+
+--
+--  This module will be extended, as needed.
+
+--  Enterasys Networks reserves the right to make changes in this
+--  specification and other information contained in this document
+--  without prior notice.  The reader should consult Enterasys Networks
+--  to determine whether any such changes have been made.
+--
+--  In no event shall Enterasys Networks be liable for any incidental,
+--  indirect, special, or consequential damages whatsoever (including
+--  but not limited to lost profits) arising out of or related to this
+--  document or the information contained in it, even if Enterasys
+--  Networks has been advised of, known, or should have known, the
+--  possibility of such damages.
+--
+--  Enterasys Networks grants vendors, end-users, and other interested
+--  parties a non-exclusive license to use this Specification in 
+--  connection with the management of Enterasys Networks products.
+
+--  Copyright October, 2011 Enterasys Networks, Inc.
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE
+        FROM SNMPv2-SMI
+    MODULE-COMPLIANCE, OBJECT-GROUP
+        FROM SNMPv2-CONF
+    dot3adAggPortEntry, dot3adAggPortListEntry
+        FROM IEEE8023-LAG-MIB
+    EnabledStatus
+        FROM P-BRIDGE-MIB
+    etsysModules
+        FROM ENTERASYS-MIB-NAMES
+    PortList
+        FROM Q-BRIDGE-MIB;
+
+etsysIeee8023LagMibExtMIB MODULE-IDENTITY
+    LAST-UPDATED "201110121338Z"  -- Wed Oct 12 13:38 UTC 2011
+    ORGANIZATION "Enterasys Networks, Inc"
+    CONTACT-INFO
+        "Postal:  Enterasys Networks
+                  50 Minuteman Rd.
+                  Andover, MA 01810-1008
+                  USA
+         Phone:   +1 978 684 1000
+         E-mail:  support@enterasys.com
+         WWW:     http://www.enterasys.com"
+
+    DESCRIPTION
+        "This MIB module defines a portion of the SNMP MIB under
+         Enterasys Networks' enterprise OID pertaining to proprietary
+         extensions to the IEEE8023-LAG-MIB as defined by the IEEE
+         802.3ad Working Group."
+
+    REVISION "201110121338Z"  -- Wed Oct 12 13:38 UTC 2011
+    DESCRIPTION
+        "Added the Dot3adAggLocalPortPreferencesSupportedTC and
+         Dot3adAggLocalPortPreferenceTC textual-conventions,
+         the etsysDot3adAggLocalPortPreferencesSupported object,
+         and the etsysDot3adAggLocalPortPreference object."
+
+    REVISION "201008091747Z"  -- Mon Aug  9 17:47 UTC 2010
+    DESCRIPTION
+        "Added the Dot3adAggHashAlgorithmsSupportedTC and
+         Dot3adAggHashAlgorithmTC textual-conventions,
+         the etsysDot3adAggHashAlgorithmsSupported object,
+         the etsysDot3adAggHashAlgorithm object,
+         the etsysDot3adAggPortStandbyStatus object, and
+         added etsysDot3adAggPortStandbyListPorts to the
+         etsysDot3adAggPortListTable."
+
+    REVISION "200409031514Z"  -- Fri Sep  3 15:14 GMT 2004
+    DESCRIPTION
+        "Added the etsysDot3adAggGlobalFormSinglePortLags object."
+
+    REVISION "200301312316Z"  -- Fri Jan 31 23:16 GMT 2003
+    DESCRIPTION
+        "The initial version of this MIB module"
+
+    ::= { etsysModules 35 } 
+
+etsysIeee8023LagMibExt
+    OBJECT IDENTIFIER ::= { etsysIeee8023LagMibExtMIB 1 }
+
+
+-- -------------------------------------------------------------
+-- Textual Conventions
+-- -------------------------------------------------------------
+
+Dot3adAggHashAlgorithmsSupportedTC ::=  TEXTUAL-CONVENTION
+    STATUS  current
+    DESCRIPTION
+        "Enumerates the possible hash algorithms which may be supported
+         by a device.  These hashing algorithms are used to determine the 
+         underlying-physical-port used to transmit a frame logically 
+         transmitted out a link-aggregation.
+
+         ipAddress(0)   The Destination and Source IP address is used.
+         macAddress(1)  The IEEE standard methodology, using the DA/SA of the
+                        frame.  This is the default algorithm.
+         roundRobin(2)  Frames are distributed in a round-robin fashion.  This
+                        may lead to out-of-order delivery on some platforms.
+         other(3)       A method not explicitly enumerated below."
+
+    SYNTAX BITS {
+        ipAddress(0),
+        macAddress(1),
+        roundRobin(2),
+        other(3) 
+    }
+
+Dot3adAggHashAlgorithmsTC ::=  TEXTUAL-CONVENTION
+    STATUS  current
+    DESCRIPTION
+        "This textual convention defines the possible hashing algorithms
+         used to determine the underlying-physical-port used to transmit
+         a frame logically transmitted out a link-aggregation.
+
+         ipAddress(1)   The Destination and Source IP address is used.
+         macAddress(2)  The IEEE standard methodology, using the DA/SA of the
+                        frame.  This is the default algorithm.
+         roundRobin(3)  Frames are distributed in a round-robin fashion.  This
+                        may lead to out-of-order delivery on some platforms.
+         other(4)       A method not explicitly enumerated below."
+
+    SYNTAX INTEGER {
+        ipAddress(1),
+        macAddress(2),
+        roundRobin(3),
+        other(4) 
+    }
+
+Dot3adAggLocalPortPreferencesSupportedTC ::=  TEXTUAL-CONVENTION
+    STATUS  current
+    DESCRIPTION
+        "This textual convention enumerates the possible local port preferences
+         which may be supported by a device.  These preferences are used in
+         determining the underlying-physical-port used to transmit a frame
+         logically transmitted out a link-aggregation when virtual switching is
+         in use.
+
+         none(0)     No preference to local ports is used.
+         weak(1)     A weak preference to local ports is used.
+         strong(2)   A strong preference to local ports is used. 
+         allLocal(3) All packets are hashed to local chassis ports unless only
+                     remote ports comprise the aggregate.
+         other(4)    A method not explicitly enumerated below."
+
+    SYNTAX BITS {
+        none(0),
+        weak(1),
+        strong(2),
+        allLocal(3),
+        other(4) 
+    }
+
+Dot3adAggLocalPortPreferencesTC ::=  TEXTUAL-CONVENTION
+    STATUS  current
+    DESCRIPTION
+        "This textual convention defines the possible local port preferences
+         used in determining the underlying-physical-port used to transmit a
+         frame logically transmitted out a link-aggregation when virtual
+         switching is in use.
+
+         none(1)     No preference to local ports is used.
+         weak(2)     A weak preference to local ports is used.
+         strong(3)   A strong preference to local ports is used. 
+         allLocal(4) All packets are hashed to local chassis ports unless only
+                     remote ports comprise the aggregate.
+         other(5)    A method not explicitly enumerated below."
+
+    SYNTAX INTEGER {
+        none(1),
+        weak(2),
+        strong(3),
+        allLocal(4),
+        other(5) 
+    }
+
+
+-- ---------------------------------------------------------- --
+-- branches in the ENTERASYS-IETF-P-BRIDGE-MIB-EXT-MIB
+-- ---------------------------------------------------------- --
+
+etsysDot3adAggGlobal
+    OBJECT IDENTIFIER ::= { etsysIeee8023LagMibExt 1 }
+
+etsysDot3adAggPort
+    OBJECT IDENTIFIER ::= { etsysIeee8023LagMibExt 2 }
+
+
+-- -------------------------------------------------------------
+-- Extension to globally enable or disable the LAG functionality.
+-- -------------------------------------------------------------
+
+etsysDot3adAggGlobalEnable   OBJECT-TYPE
+    SYNTAX      EnabledStatus
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "The enabled/disabled status of the IEEE 802.3ad link
+         aggregation functionality on the managed entity.
+         A value of disabled(2) will prevent the formation of
+         Link Aggregations, and the transmission and processing
+         of LACP BPDUs, however, all relevant MIBs will still be
+         present."
+    REFERENCE
+        "IEEE Standard 802.3-2002, Section 3, part 43."
+    DEFVAL { enabled }
+    ::= { etsysDot3adAggGlobal 1 }
+
+etsysDot3adAggGlobalFormSinglePortLags   OBJECT-TYPE
+    SYNTAX      EnabledStatus
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "The ability of forming single port Link Aggregation 
+         Groups on this entity. If enabled(1) Link Aggregation 
+         Groups can form with 1 port, otherwise 2 or more ports 
+         are required."
+    REFERENCE
+        "IEEE Standard 802.3-2002, Section 3, part 43."
+    DEFVAL { disabled }
+    ::= { etsysDot3adAggGlobal 2 }
+
+etsysDot3adAggHashAlgorithmsSupported OBJECT-TYPE
+    SYNTAX      Dot3adAggHashAlgorithmsSupportedTC
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Bits set represent the hash algorithms supported by this device in
+         determining the physical port used to transmit a frame destined out 
+         a Link-Aggregation port."
+    ::= { etsysDot3adAggGlobal 3 }
+
+etsysDot3adAggHashAlgorithm OBJECT-TYPE
+    SYNTAX      Dot3adAggHashAlgorithmsTC
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Controls the algorithm used to determine the actual underlying
+         physical port used to transmit a frame destined out a Link-Aggregation
+         port."
+    DEFVAL { macAddress }
+    ::= { etsysDot3adAggGlobal 4 }
+
+etsysDot3adAggLocalPortPreferencesSupported OBJECT-TYPE
+    SYNTAX      Dot3adAggLocalPortPreferencesSupportedTC
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Bits set represent the local port preference types supported by this
+         device in determining the physical port used to transmit a frame
+         destined out a Link-Aggregation port when virtual switching is in use."
+    ::= { etsysDot3adAggGlobal 5 }
+
+etsysDot3adAggLocalPortPreference OBJECT-TYPE
+    SYNTAX      Dot3adAggLocalPortPreferencesTC
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Controls the local port preference used in determining the actual
+         underlying physical port used to transmit a frame destined out a
+         Link-Aggregation port when virtual switching is in use."
+    DEFVAL { none }
+    ::= { etsysDot3adAggGlobal 6 }
+
+-- -------------------------------------------------------------
+-- Extensions to the Aggregation Port Table
+-- -------------------------------------------------------------
+
+etsysDot3adAggPortTable OBJECT-TYPE
+    SYNTAX      SEQUENCE OF EtsysDot3adAggPortEntry
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION
+        "Extensions to the table that contains Link Aggregation
+         Control configuration information about every Aggregation
+         Port associated with this device.  A row appears in this
+         table for each physical port."
+    ::= { etsysDot3adAggPort 1 }
+
+etsysDot3adAggPortEntry OBJECT-TYPE
+    SYNTAX      EtsysDot3adAggPortEntry
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION
+        "A list of proprietary Link Aggregation Control configuration
+         parameters for each Aggregation Port on this device."
+    AUGMENTS { dot3adAggPortEntry }
+    ::= { etsysDot3adAggPortTable 1 }
+
+EtsysDot3adAggPortEntry ::=
+    SEQUENCE { 
+        etsysDot3adAggPortEnable            INTEGER,
+        etsysDot3adAggPortStandbyStatus     INTEGER
+    }
+
+etsysDot3adAggPortEnable   OBJECT-TYPE
+    SYNTAX      EnabledStatus
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "The enabled/disabled status of the IEEE 802.3ad link
+         aggregation functionality on this port.
+         A value of disabled(2) will prevent the transmission
+         and processing of LACP BPDUs on this port."
+    REFERENCE
+        "IEEE Standard 802.3-2002, Section 3, part 43."
+    DEFVAL { enabled }
+    ::= { etsysDot3adAggPortEntry 1 }
+
+etsysDot3adAggPortStandbyStatus   OBJECT-TYPE
+    SYNTAX      INTEGER {
+                         notInStandby(1),
+                         speedMismatch(2),
+                         noResource(3)
+                }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "The Standby Status indicates the reason the port is in 
+         standby or that the port is not in standby."
+    REFERENCE
+        "IEEE Standard 802.3-2002, Section 3, part 43."
+    ::= { etsysDot3adAggPortEntry 2 }
+
+-- -------------------------------------------------------------
+-- Extensions to the Aggregation Port List Table
+-- -------------------------------------------------------------
+
+etsysDot3adAggPortListTable OBJECT-TYPE
+    SYNTAX      SEQUENCE OF EtsysDot3adAggPortListEntry
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION
+        "Extensions to the table that contains a list of ports
+         associated with each Aggregator."
+    ::= { etsysDot3adAggPort 2 }
+
+etsysDot3adAggPortListEntry OBJECT-TYPE
+    SYNTAX      EtsysDot3adAggPortListEntry
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION
+        "A list of the ports associated with a given Aggregator.
+         This is indexed by the ifIndex of the Aggregator."
+    AUGMENTS { dot3adAggPortListEntry }
+    ::= { etsysDot3adAggPortListTable 1 }
+
+EtsysDot3adAggPortListEntry::=
+    SEQUENCE {
+        etsysDot3adAggPortStandbyListPorts
+            PortList
+    }
+
+etsysDot3adAggPortStandbyListPorts OBJECT-TYPE
+    SYNTAX      PortList
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "The set of ports currently associated with this Aggregator
+         for which the value of the Selected variable is STANDBY.
+         Each bit set in this list represents an Actor Port member
+         of this Link Aggregation."
+    REFERENCE
+        "IEEE Standard 802.3-2002, Section 3, part 43."
+    ::= { etsysDot3adAggPortListEntry 1 }
+
+-- -------------------------------------------------------------
+-- Conformance Information
+-- -------------------------------------------------------------
+
+etsysIeee8023LagConformance
+    OBJECT IDENTIFIER ::= { etsysIeee8023LagMibExtMIB 2 }
+
+etsysIeee8023LagGroups
+    OBJECT IDENTIFIER ::= { etsysIeee8023LagConformance 1 }
+
+etsysIeee8023LagCompliances
+    OBJECT IDENTIFIER ::= { etsysIeee8023LagConformance 2 }
+
+
+-- -------------------------------------------------------------
+-- Units of conformance
+-- -------------------------------------------------------------
+
+etsysDot3adAggGlobalGroup OBJECT-GROUP
+    OBJECTS {
+        etsysDot3adAggGlobalEnable
+    }
+    STATUS      current
+    DESCRIPTION
+        "A collection of objects relating to the global control
+         of LAG on the device."
+    ::= { etsysIeee8023LagGroups 1 }
+
+etsysDot3adAggPortGroup OBJECT-GROUP
+    OBJECTS {
+        etsysDot3adAggPortEnable
+    }
+    STATUS      deprecated
+    DESCRIPTION
+        "A collection of objects relating to proprietary per port
+         configuration."
+    ::= { etsysIeee8023LagGroups 2 }
+
+etsysDot3adAggGlobalSinglePortGroup OBJECT-GROUP
+    OBJECTS {
+        etsysDot3adAggGlobalFormSinglePortLags
+    }
+    STATUS      current
+    DESCRIPTION
+        "A collection of objects relating to forming LAG groups
+         with single ports."
+    ::= { etsysIeee8023LagGroups 3 }
+
+etsysDot3adAggHashAlgorithmGroup OBJECT-GROUP
+    OBJECTS {
+        etsysDot3adAggHashAlgorithmsSupported,
+        etsysDot3adAggHashAlgorithm
+    }
+    STATUS      current
+    DESCRIPTION
+        "A collection of objects relating to the hashing algorithm 
+         used by LAG on the device."
+    ::= { etsysIeee8023LagGroups 4 }
+
+etsysDot3adAggPortGroup2 OBJECT-GROUP
+    OBJECTS {
+        etsysDot3adAggPortEnable,
+        etsysDot3adAggPortStandbyStatus
+    }
+    STATUS      current
+    DESCRIPTION
+        "A collection of objects relating to proprietary per port
+         configuration."
+    ::= { etsysIeee8023LagGroups 5 }
+
+etsysDot3adAggPortListGroup OBJECT-GROUP
+    OBJECTS {
+        etsysDot3adAggPortStandbyListPorts
+    }
+    STATUS      current
+    DESCRIPTION
+        "A collection of objects that extend the dot3adAggPortListEntry."
+    ::= { etsysIeee8023LagGroups 6 }
+
+etsysDot3adAggLocalPortPreferenceGroup OBJECT-GROUP
+    OBJECTS {
+        etsysDot3adAggLocalPortPreferencesSupported,
+        etsysDot3adAggLocalPortPreference
+    }
+    STATUS      current
+    DESCRIPTION
+        "A collection of objects relating to the port preference
+         used by LAG on the device when virtual switching is in use."
+    ::= { etsysIeee8023LagGroups 7 }
+
+
+-- -------------------------------------------------------------
+-- Compliance statements
+-- -------------------------------------------------------------
+
+etsysIeee8023LagCompliance MODULE-COMPLIANCE
+    STATUS      deprecated
+    DESCRIPTION
+        "The compliance statement for devices that support the
+         IEEE8023-LAG-MIB Extension MIB."
+
+    MODULE
+
+        GROUP       etsysDot3adAggGlobalGroup
+        DESCRIPTION
+            "Support for this group is optional and only applies
+             to products that wish to support the enabling and
+             disabling of IEEE 802.3ad Aggregation functionality 
+             on a global basis."
+
+        GROUP       etsysDot3adAggPortGroup
+        DESCRIPTION
+            "Support for this group is optional and only applies
+             to products that wish to support the enabling and
+             disabling of the transmission and processing of LACP
+             BPDUs on a per port basis."
+
+        GROUP       etsysDot3adAggGlobalSinglePortGroup
+        DESCRIPTION
+            "Support for this group is optional and only applies
+             to products that wish to support the formation of
+             single port Link Aggregation Groups."
+
+    ::= { etsysIeee8023LagCompliances 1 }
+
+etsysIeee8023LagCompliance2 MODULE-COMPLIANCE
+    STATUS      deprecated
+    DESCRIPTION
+        "The compliance statement for devices that support the
+         IEEE8023-LAG-MIB Extension MIB."
+
+    MODULE
+
+        GROUP       etsysDot3adAggGlobalGroup
+        DESCRIPTION
+            "Support for this group is optional and only applies
+             to products that wish to support the enabling and
+             disabling of IEEE 802.3ad Aggregation functionality
+             on a global basis."
+
+        GROUP       etsysDot3adAggPortGroup2
+        DESCRIPTION
+            "Support for this group is optional and only applies
+             to products that wish to support the enabling and
+             disabling of the transmission and processing of LACP
+             BPDUs on a per port basis and report the port's 
+             standby status."
+
+        GROUP       etsysDot3adAggGlobalSinglePortGroup
+        DESCRIPTION
+            "Support for this group is optional and only applies
+             to products that wish to support the formation of
+             single port Link Aggregation Groups."
+
+        GROUP       etsysDot3adAggHashAlgorithmGroup
+        DESCRIPTION
+            "Support for this group is required for products
+             that allow for the control the the LAG hash algorithm."
+       
+        GROUP       etsysDot3adAggPortListGroup
+        DESCRIPTION
+            "Support for this group is required for products
+             that report the ports that are in the standby state
+             for a given Aggregator."
+       
+    ::= { etsysIeee8023LagCompliances 2 }
+
+etsysIeee8023LagCompliance3 MODULE-COMPLIANCE
+    STATUS      current
+    DESCRIPTION
+        "The compliance statement for devices that support the
+         IEEE8023-LAG-MIB Extension MIB."
+
+    MODULE
+
+        GROUP       etsysDot3adAggGlobalGroup
+        DESCRIPTION
+            "Support for this group is optional and only applies
+             to products that wish to support the enabling and
+             disabling of IEEE 802.3ad Aggregation functionality
+             on a global basis."
+
+        GROUP       etsysDot3adAggPortGroup2
+        DESCRIPTION
+            "Support for this group is optional and only applies
+             to products that wish to support the enabling and
+             disabling of the transmission and processing of LACP
+             BPDUs on a per port basis and report the port's 
+             standby status."
+
+        GROUP       etsysDot3adAggGlobalSinglePortGroup
+        DESCRIPTION
+            "Support for this group is optional and only applies
+             to products that wish to support the formation of
+             single port Link Aggregation Groups."
+
+        GROUP       etsysDot3adAggHashAlgorithmGroup
+        DESCRIPTION
+            "Support for this group is required for products
+             that allow for the control the the LAG hash algorithm."
+       
+        GROUP       etsysDot3adAggPortListGroup
+        DESCRIPTION
+            "Support for this group is required for products
+             that report the ports that are in the standby state
+             for a given Aggregator."
+
+        GROUP       etsysDot3adAggLocalPortPreferenceGroup
+        DESCRIPTION
+            "Support for this group is required for products
+             that allow for preferring local chassis ports of a lag."
+       
+    ::= { etsysIeee8023LagCompliances 3 }
+
+END
