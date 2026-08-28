@@ -484,6 +484,14 @@ def main() -> int:
         'strict=True' in xiqse_import and 'TEMPLATE_FILES' in xiqse_import,
         'XIQ-SE YAML import is mandatory and fail-closed',
     )
+    xiqse_step = _function_source(net_src, net_tree, '_step_xiqse_nbxsync') or ''
+    record(
+        'network_xiqse_assigns_control_snmp',
+        'SNMP_TEMPLATE_NAME' in xiqse_step
+        and 'HostInterfaceRequirementChoices.SNMP' in xiqse_step
+        and 'icmpping' not in xiqse_step,
+        'role NAC gets ExtremeControl by SNMP (SNMP interface), no icmpping nest',
+    )
     record(
         'zerotouch_no_xiqse_cutover',
         'apply-xiqse' not in ztc_src and 'import_xiqse_templates' not in ztc_src,

@@ -9,13 +9,14 @@ If a script and that document disagree, **fix the script or the document so they
 | Order | Script | Applies |
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
-| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-fmg-faz` / `--check-fmg-faz` import **Fortinet FMG-FAZ by SNMP** plus Observability companions, split FortiManager / FortiAnalyzer platform rules, and disable leftover Network Generic — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. `--apply-xiqse` / `--check-xiqse` import **XIQ-SE Observability** plus **ExtremeControl Observability**, soft Site Engine TemplateRule, role **NAC** (ANY) — **do not re-run zerotouch** for that. None of those flags HostSync. |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-fmg-faz` / `--check-fmg-faz` import **Fortinet FMG-FAZ by SNMP** plus Observability companions, split FortiManager / FortiAnalyzer platform rules, and disable leftover Network Generic — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. `--apply-xiqse` / `--check-xiqse` import **XIQ-SE Observability**, **ExtremeControl Observability**, and **ExtremeControl by SNMP**, soft Site Engine TemplateRule, role **NAC** (ANY + SNMP) — **do not re-run zerotouch** for that. None of those flags HostSync. |
 | — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** and **Network interfaces** ship from platform templates/runtime patch |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
 | — | `validate_extreme_templates.py` | YAML contract + optional `--zabbix` double-import |
 | — | `test_mssql_observability.py` | MSSQL Observability named-instance LLD, host-prototype YAML contract, and database/backup-inventory fixtures (no live SQL) |
 | — | `test_xiqse_observability.py` | XIQ-SE / ExtremeControl Observability: 24h unique MAC license count, engine LLD, YAML contract (no live NBI) |
+| — | `test_extremecontrol_snmp.py` | ExtremeControl by SNMP: live ENAC canary counters, ENTERASYS-NAC-APPLIANCE-MIB OIDs, YAML contract |
 | — | `zabbix_api.py` | Shared JSON-RPC helper |
 | — | `configure_cato_zabbix.py` | Zabbix-API implementation for the Cato collector (lab `--simulate`, used by `--apply-cato`). Never manages NetBox Socket hosts |
 
@@ -118,13 +119,16 @@ python3 scripts/configure_nbxsync_network.py --check-xiqse
 python3 scripts/configure_nbxsync_network.py --apply-xiqse
 ```
 
-That fail-closes on missing YAML, imports **XIQ-SE Observability** plus
-**ExtremeControl Observability**, creates a soft platform TemplateRule
-(`XIQ.?SE|Site Engine|NetSight`), writes FQDN Jinja on matching platforms,
-and assigns the thin NAC companion on role **NAC** (ANY). No HostSync, no
-Extreme import. Put Client API Access secrets on a nbxSync CG, not in YAML.
-Then HostSync the Site Engine and each Control engine. If zerotouch is re-run
-by mistake, run `--apply-xiqse` again. Tests: `python3 scripts/test_xiqse_observability.py`.
+That fail-closes on missing YAML, imports **XIQ-SE Observability**,
+**ExtremeControl Observability**, and **ExtremeControl by SNMP**, creates a
+soft platform TemplateRule (`XIQ.?SE|Site Engine|NetSight`), writes FQDN Jinja
+on matching platforms, and assigns role **NAC** (ANY companion + SNMP pack).
+No HostSync, no Extreme import. Put Client API Access secrets on a nbxSync CG,
+not in YAML. Engine SNMP uses the switch MONITORING SNMPv3 profile (canary:
+five ENACs, `1.3.6.1.4.1.5624.1.2.73`). Then HostSync the Site Engine and each
+Control engine. If zerotouch is re-run by mistake, run `--apply-xiqse` again.
+Tests: `python3 scripts/test_xiqse_observability.py` and
+`python3 scripts/test_extremecontrol_snmp.py`.
 
 
 ## Re-syncing a single host (testing)

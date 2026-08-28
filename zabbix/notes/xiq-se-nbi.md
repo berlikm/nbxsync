@@ -1,13 +1,13 @@
 # XIQ-SE / ExtremeControl NBI — analysis
 
 Operator page: [07-extreme-control.md](../07-extreme-control.md).  
-This note is the research that page compresses. **Do not** treat it as a second policy. YAML: [`templates/xiqse_observability/`](../templates/xiqse_observability/) and [`templates/extremecontrol_observability/`](../templates/extremecontrol_observability/).
+This note is the research that page compresses. **Do not** treat it as a second policy. YAML: [`templates/xiqse_observability/`](../templates/xiqse_observability/), [`templates/extremecontrol_observability/`](../templates/extremecontrol_observability/), and [`templates/extremecontrol_snmp/`](../templates/extremecontrol_snmp/).
 
 ---
 
 ## Decision
 
-Monitor **Site Engine** with companion **XIQ-SE Observability** (HTTPS GraphQL, OAuth). Monitor each **Control engine** as a NetBox role **NAC** host for ICMP + RADIUS. Application data for engines is LLD **on SE**, not a GraphQL scrape of each OVA.
+Monitor **Site Engine** with companion **XIQ-SE Observability** (HTTPS GraphQL, OAuth). Monitor each **Control engine** as a NetBox role **NAC** host for ICMP + RADIUS + **ExtremeControl by SNMP** (`ENTERASYS-NAC-APPLIANCE-MIB`). License / connected / needsEnforce stay **on SE**, not a GraphQL scrape of each OVA.
 
 Do **not**: install agent on vendor OVAs for this; GraphQL to NAC IPs; SNMP EXOS/VOSS/IQ templates on these appliances; Cloud XIQ tenant as a host; `system.run`; mutations; `net.udp.service` as a RADIUS check; second `icmpping`.
 
@@ -158,3 +158,22 @@ On one SE, query-only, after `--apply-xiqse` + HostSync of that host:
 5. Confirm RADIUS Monitor Clients exist before enabling High.
 
 If `licenseData` already contains 24h used / entitlement, prefer that over paging MACs.
+
+---
+
+## Engine SNMP (live)
+
+IA-V `sysObjectID` (`1.3.6.1.4.1.1916.2.252` in `EXTREME-BASE-MIB`) is identity only.
+
+Status is `ENTERASYS-NAC-APPLIANCE-MIB` (`1.3.6.1.4.1.5624.1.2.73`). Canary
+2026-08-28 from NetBox Dev with the switch **MONITORING** SNMPv3 profile: all
+five ENACs returned 16 Counter64 scalars `.1.1.0` … `.1.16.0`.
+`contact.lost` and `connected.agents` were 0 everywhere. Assessment requests
+were 0. Challenges dominate successes (EAP).
+
+That MIB does **not** expose `XIQ-NAC-S`, Pilot, `connected`, `needsEnforce`,
+or FreeRADIUS. Those stay GraphQL.
+
+OIDs: [`templates/extremecontrol_snmp/OID_MAPPING.md`](../templates/extremecontrol_snmp/OID_MAPPING.md).
+Fixture: [`templates/extremecontrol_snmp/fixtures/canary_enac.json`](../templates/extremecontrol_snmp/fixtures/canary_enac.json).
+

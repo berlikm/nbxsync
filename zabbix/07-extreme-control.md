@@ -4,7 +4,7 @@ Site Engine is the NBI and log brain. ExtremeControl engines are the RADIUS boxe
 
 Official Zabbix Extreme pack has **no** SE / NAC template. Collection is **HTTPS GraphQL on Site Engine** (OAuth client credentials). Do **not** put GraphQL on each engine. Do **not** install a Zabbix agent on vendor OVAs for this (BIN upgrades). Keep Linux agent if it is already there (CPU / disk).
 
-This page is the **target contract**. YAML lives in `templates/xiqse_observability/` and `templates/extremecontrol_observability/`. Refresh with `configure_nbxsync_network.py --apply-xiqse`.
+This page is the **target contract**. YAML lives in `templates/xiqse_observability/`, `templates/extremecontrol_observability/`, and `templates/extremecontrol_snmp/`. Refresh with `configure_nbxsync_network.py --apply-xiqse`.
 
 ---
 
@@ -14,12 +14,12 @@ This page is the **target contract**. YAML lives in `templates/xiqse_observabili
 |---|---|
 | Page **symptoms** | Engine ICMP down. RADIUS 1812 dead while the box is up (users cannot 802.1X) |
 | **Ticket** (Average) | SE NBI/GUI dead while ICMP up (ops blind; RADIUS often still works). Engine disconnected from SE. **Auth events stale while RADIUS is up** (NAC worked, logs never reached SE). SE ingest jam. Engine `needsEnforce` stuck |
-| **Graph** / next day | Unique MACs that authenticated in **24h** (how Extreme counts the NAC license). Pilot seats used / remaining. Heap, uptime, version, engine load vs hardware capacity |
+| **Graph** / next day | Unique MACs that authenticated in **24h** (how Extreme counts the NAC license). Pilot seats used / remaining. Heap, uptime, version, engine load vs hardware capacity. Per-engine RADIUS request/success/fail rates (SNMP) |
 | One incident | RADIUS / GraphQL → ICMP → **site**. Engine tickets do not also fire SE. SE ingest jam is **one** SE ticket, not N engines |
-| Never silent | GraphQL nodata; zero engines discovered; 24h census truncated (`count == maxResults`) |
-| Collect first | Heap / CPU thresholds off until a quiet baseline. Event-freshness gated so a quiet night is not a ticket |
+| Never silent | GraphQL nodata; zero engines discovered; 24h census truncated (`count == maxResults`). SNMP-dead Warning on the engine if the MONITORING profile stops answering |
+| Collect first | Heap / CPU thresholds off until a quiet baseline. Event-freshness gated so a quiet night is not a ticket. SNMP fail-ratio and contact-lost gated (`101` / CONTROL=0) |
 | One `icmpping` | Nested only if the host does not already ping. Do not also assign Network Generic |
-| Host dashboard | **Health** (SE: NBI / licenses / 24h unique) + **Engines** (LLD map, like FMG Devices) |
+| Host dashboard | **Health** (SE: NBI / licenses; engine: SNMP auth rates) + **Engines** (SE LLD map) |
 
 Disaster is campus-wide auth later, on a **service / site** host — not on this template.
 
@@ -76,6 +76,9 @@ NBI has **no** entitlements field. Used seats we **count**. Purchased totals are
 | TCP 8444 | **no** as High | Warning later | Admin UI, not auth |
 | Engine hardware 24h unique ≥ rating | yes | Warning | Per-engine load, not the global license |
 | Linux CPU / disk (existing agent) | yes | Warning | Do not add an agent for this |
+| SNMP agent dead, ICMP up | yes | Warning | `ExtremeControl by SNMP`. Same MONITORING profile as switches. RADIUS may still work |
+| Engine lost SNMP to switches (`contact.lost` > 0) | **no** until opted in | Warning | Canary 2026-08-28 was **0** on all five ENACs. `{$NAC.SNMP.CONTACTLOST.CONTROL}` |
+| Auth fail ratio / drop rate | **no** until baseline | Warning | `{$NAC.SNMP.FAIL.WARN}=101`. Challenges are EAP, not failures |
 
 Do **not** alert on: Cloud XIQ tenant, every end-system MAC as a host, GraphQL mutations, accounting-only storms, Guest/IoT (GIM) until the same 24h pattern is proven.
 
@@ -106,6 +109,16 @@ On **Site Engine → Engines** (LLD, one row per engine):
 
 Do **not** LLD every laptop. Sample and count on SE.
 
+On each **Control engine → Health** (SNMP):
+
+| Graph | Why |
+|---|---|
+| Auth requests / successes / failures per second | Engine is doing RADIUS. Failures going up is **not** RADIUS-dead |
+| RADIUS challenges per second | EAP; large vs successes on the 2026-08-28 canary |
+| Dropped / invalid / duplicate | Error rates |
+| Contact-lost switches | Engine → switch SNMP (the other direction). 0 on all five ENACs |
+| Captive portal / assessment / connected agents | Assessment was 0 fleet-wide |
+
 ---
 
 ## Scope
@@ -113,7 +126,7 @@ Do **not** LLD every laptop. Sample and count on SE.
 | Role / class | In | Out |
 |---|---|---|
 | Site Engine | GraphQL NBI + 8443 + licenses + engine LLD | SNMP walk of the OVA, Cloud XIQ |
-| Role **NAC** (Control engine) | ICMP + RADIUS monitor + optional existing Linux agent | GraphQL to the engine, second ping |
+| Role **NAC** (Control engine) | ICMP + RADIUS monitor + optional existing Linux agent + **ExtremeControl by SNMP** (`ENTERASYS-NAC-APPLIANCE-MIB`) | GraphQL to the engine, second ping, EXOS/VOSS/IQ templates |
 | Switches / APs already in 01/02 | — | Do not double-ticket `up` from SE inventory |
 
 NBI lives on **SE only**. Client: Administration → Client API Access; rights **Northbound Interface** + **Access Control NBI**. Queries only — never `enforceNacEnginesAll` or MAC add.
@@ -123,6 +136,7 @@ NBI lives on **SE only**. Client: Administration → Client API Access; rights *
 ## Ops
 
 - RADIUS Monitor Clients must exist on production engines **before** the High trigger is enabled. Until then RADIUS High stays **DISABLED**; event-freshness Average is the stand-in.
+- Engine SNMP uses the switch **MONITORING** SNMPv3 profile (authPriv MD5/DES). Canary 2026-08-28: all five ENACs answered `1.3.6.1.4.1.5624.1.2.73`.
 - `{$XIQ.NAC.TOTAL}` / `{$XIQ.PILOT.TOTAL}` from Administration → Licenses (Access Control quantity is the first number in `100/50`; that is NAC / GIM).
 - TLS: verify the SE cert. Do not copy vendor samples that set `verify=False`.
 - Quiet nights: event-freshness needs a floor (for example last auth older than N hours **and** wall-clock in production hours), or a known always-on Monitor Client.
@@ -146,7 +160,7 @@ auth-event stale Average  →  engine ICMP (and does not fire if RADIUS High alr
 | GraphQL nodata | Token expired / SE upgrade / TLS |
 | Zero engines LLD | Access Control NBI right missing |
 | 24h census truncated | `maxResults` too small — license graph under-counts |
-| Unsupported items | Schema field renamed on their SE version |
+| Unsupported items | Schema field renamed on their SE version; or ENTERASYS-NAC-APPLIANCE-MIB view dropped on an engine |
 | Proxy last-seen | already in 01 |
 
 ---
@@ -159,6 +173,7 @@ Do not clone stock Extreme switch/AP templates.
 |---|---|
 | **XIQ-SE Observability** | Platform / device Site Engine. SCRIPT GraphQL from the proxy → `https://{$XIQSE.API.FQDN}:8443`. Does not nest ICMP. |
 | **ExtremeControl Observability** | Role **NAC**. Portal 8444 / cert **DISABLED**. FreeRADIUS High is LLD on SE. Nested ICMP only if the host has no ping — this template does not nest it. |
+| **ExtremeControl by SNMP** | Role **NAC**, SNMP interface. `ENTERASYS-NAC-APPLIANCE-MIB` (canary: five ENACs). Does not nest ICMP. OIDs: [templates/extremecontrol_snmp/OID_MAPPING.md](templates/extremecontrol_snmp/OID_MAPPING.md) |
 | Linux by Zabbix agent | Keep if already linked. Do not add for this |
 
 Macros on the **SE template** (secrets on a nbxSync CG, not in YAML):
@@ -181,4 +196,4 @@ Macros on the **SE template** (secrets on a nbxSync CG, not in YAML):
 
 GIM remaining. Assessment licenses. Cloud XIQ entitlement API (Connected mode) so macros are not manual. Campus-wide auth **Disaster** on a service host. SE Event Details if GraphQL never exposes E-to-Sav.
 
-Analysis: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md).
+Analysis: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). SNMP OIDs: [templates/extremecontrol_snmp/OID_MAPPING.md](templates/extremecontrol_snmp/OID_MAPPING.md).

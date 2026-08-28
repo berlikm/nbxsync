@@ -207,6 +207,7 @@ TPL_NAMES = {
     # imports the YAML. Missing in Cloud is a warning, not an apply abort.
     'xiqse_observability': 'XIQ-SE Observability',
     'extremecontrol_observability': 'ExtremeControl Observability',
+    'extremecontrol_snmp': 'ExtremeControl by SNMP',
     'pure_storage_http': 'Pure Storage FlashArray v2 by HTTP',
     'gitlab_http': 'GitLab by HTTP',
     # Created in Zabbix: clone of Network Generic without snmptrap.fallback
@@ -599,6 +600,7 @@ OPTIONAL_TPL_KEYS = frozenset({
     'mssql_observability',
     'xiqse_observability',
     'extremecontrol_observability',
+    'extremecontrol_snmp',
 })
 
 # Alternate Zabbix names tried in order when the primary TPL_NAMES entry is absent.
@@ -1942,9 +1944,11 @@ def step7_template_assignments(server):
         ('mssql_observability', 'MSSQL'),
         ('mssql_observability', 'MSSQL Query Server'),
         ('extremecontrol_observability', 'NAC'),
+        ('extremecontrol_snmp', 'NAC'),
     ]
     stub_req = {
         'extremecontrol_observability': [HostInterfaceRequirementChoices.ANY],
+        'extremecontrol_snmp': [HostInterfaceRequirementChoices.SNMP],
     }
     for tpl_key, role_name in stub_assignments:
         if tpl_key in TPL:

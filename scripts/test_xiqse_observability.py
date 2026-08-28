@@ -310,7 +310,10 @@ class YamlContractTests(unittest.TestCase):
 
 class ApplyWiringTests(unittest.TestCase):
     def test_yaml_paths_exist(self):
-        self.assertEqual(set(TEMPLATE_FILES), {SE_TEMPLATE_NAME, NAC_TEMPLATE_NAME})
+        self.assertEqual(
+            set(TEMPLATE_FILES),
+            {SE_TEMPLATE_NAME, NAC_TEMPLATE_NAME, 'ExtremeControl by SNMP'},
+        )
         for path in TEMPLATE_FILES.values():
             self.assertTrue(path.exists(), path)
 
@@ -350,10 +353,13 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertIsNotNone(optional)
         self.assertIn("'extremecontrol_observability'", optional.group(1))
         self.assertIn("'xiqse_observability'", optional.group(1))
+        self.assertIn("'extremecontrol_snmp'", optional.group(1))
         self.assertNotIn('template_xiqse_observability.yaml', src)
         self.assertNotIn('import_yaml_templates', src)
         self.assertIn(f"'{NAC_PORTAL_FQDN_MACRO}', '{XIQSE_FQDN_JINJA}', '{NAC_ROLE}'", src)
         self.assertIn("'extremecontrol_observability': [HostInterfaceRequirementChoices.ANY]", src)
+        self.assertIn("'extremecontrol_snmp': 'ExtremeControl by SNMP'", src)
+        self.assertIn("'extremecontrol_snmp': [HostInterfaceRequirementChoices.SNMP]", src)
 
 
 def _function_source(src: str, name: str) -> str | None:
