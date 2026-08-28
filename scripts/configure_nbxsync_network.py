@@ -68,6 +68,11 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     **Cato Networks by HTTP**, fail-close on GraphQL preflight, and converge
     the one owned interface-free host. No HostSync, no Extreme import, no
     Socket role mutation. Do **not** re-run zerotouch to refresh the collector.
+  * XIQ-SE / ExtremeControl: ``--apply-xiqse`` / ``--check-xiqse`` import
+    **XIQ-SE Observability** plus **ExtremeControl Observability**, soft
+    platform TemplateRule ``XIQ.?SE|Site Engine|NetSight``, FQDN Jinja on
+    matching platforms, role **NAC** assignment (ANY). Fail-closed on missing
+    YAML. No HostSync, no Extreme import, no zerotouch.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -85,6 +90,7 @@ Stage matrix (what each flag enables):
   ``--apply-fortigate-http``      = FortiGate HTTP cutover without zerotouch: lookup Cloud **Zabbix, 7.0-2**, patch ZBX-27082 / WAN state, import Observability companion, FortiOS rule only (not role Firewall). Fail-closed preflight. No HostSync.
   ``--check-fmg-faz`` / ``--apply-fmg-faz`` = FortiManager/FortiAnalyzer SNMP pack without zerotouch: import parent + Observability companions, split platform rules, disable leftover Network Generic rule. No HostSync.
   ``--apply-cato`` / ``--check-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
+  ``--apply-xiqse`` / ``--check-xiqse`` = XIQ-SE / ExtremeControl Observability without zerotouch: import both YAML companions, soft Site Engine TemplateRule, role NAC (ANY). Fail-closed missing YAML. No HostSync.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -139,6 +145,10 @@ Usage::
   # Cato account collector refresh (no zerotouch, no Extreme YAML, no HostSync)
   python scripts/configure_nbxsync_network.py --check-cato   # GraphQL preflight + collector shape
   python scripts/configure_nbxsync_network.py --apply-cato
+
+  # XIQ-SE / ExtremeControl Observability (no zerotouch, no Extreme YAML, no HostSync)
+  python scripts/configure_nbxsync_network.py --check-xiqse
+  python scripts/configure_nbxsync_network.py --apply-xiqse
 
   # Temporary LM cutover silence only (not the long-term target)
   python scripts/configure_nbxsync_network.py --apply --cutover-silence
@@ -251,6 +261,7 @@ from fortigate_http_zabbix import (
     inspect_http_scripts,
 )
 from extreme_ascii_titles import title_payload as _title_payload
+import xiqse_observability as _xiqse
 from extreme_health_zabbix import (
     IQ_HEALTH_MACROS,
     SPEED_EXPECT_HEALTH_MACROS,
@@ -4872,6 +4883,181 @@ def run_apply_cato() -> int:
     return 0
 
 
+def _xiqse_platforms() -> list:
+    return [p for p in Platform.objects.all() if _xiqse.platform_is_xiqse(p.name)]
+
+
+def _preflight_xiqse() -> list[str]:
+    errors: list[str] = []
+    for name, path in _xiqse.TEMPLATE_FILES.items():
+        if not path.exists() or not path.read_text(encoding='utf-8').strip():
+            errors.append(f'missing YAML for {name}: {path}')
+    return errors
+
+
+def _print_xiqse_plan(server, *, errors: list[str], apply: bool, zbx_names: list[str] | None = None) -> None:
+    logger.info('=' * 60)
+    logger.info('XIQ-SE / ExtremeControl proposed writes (nothing written yet)' if apply else 'XIQ-SE / ExtremeControl check (read-only)')
+    logger.info('=' * 60)
+    for name, path in _xiqse.TEMPLATE_FILES.items():
+        logger.info('  %s ← %s', name, path)
+    if zbx_names:
+        logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
+    platforms = _xiqse_platforms()
+    logger.info(
+        '  TemplateRule %s pattern %s → %s (ANY; soft if no platform matches yet)',
+        _xiqse.SE_TEMPLATE_RULE,
+        _xiqse.SE_PLATFORM_PATTERN,
+        _xiqse.SE_TEMPLATE_NAME,
+    )
+    logger.info('  Platforms: %s', ', '.join(p.name for p in platforms) or '(none — rule still created)')
+    logger.info('  %s Jinja %s on matching platforms', _xiqse.XIQSE_FQDN_MACRO, _xiqse.XIQSE_FQDN_JINJA)
+    logger.info('  Role %s → %s (ANY)', _xiqse.NAC_ROLE, _xiqse.NAC_TEMPLATE_NAME)
+    logger.info('  %s Jinja on role %s', _xiqse.NAC_PORTAL_FQDN_MACRO, _xiqse.NAC_ROLE)
+    logger.info('  No HostSync, no Extreme import, no zerotouch, no ICMP nest')
+    if errors:
+        logger.info('Preflight errors (%s) — abort, no writes:', len(errors))
+        for err in errors:
+            logger.info('  %s', err)
+
+
+def _require_xiqse_preflight(*, server=None, apply: bool = True):
+    """Fail-closed YAML gate. Does not import YAML or retarget rules."""
+    errors = _preflight_xiqse()
+    if server is None:
+        server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
+        if server is None:
+            raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
+    zbx_names: list[str] = []
+    if not errors:
+        with ZabbixConnection(server) as api:
+            for name in _xiqse.TEMPLATE_FILES:
+                row = _lookup_zabbix_template(api, name)
+                if row is not None:
+                    zbx_names.append(name)
+    _print_xiqse_plan(server, errors=errors, apply=apply, zbx_names=zbx_names)
+    if errors:
+        for error in errors:
+            logger.error('  preflight: %s', error)
+        raise SystemExit('XIQ-SE preflight failed — no writes:\n  ' + '\n  '.join(errors))
+    return server
+
+
+def import_xiqse_templates(api) -> dict[str, tuple[int, str]]:
+    """Import Site Engine first, then the thin ExtremeControl companion. Fail closed."""
+    logger.info('Network: import XIQ-SE / ExtremeControl Observability')
+    out = import_yaml_templates(api, _xiqse.TEMPLATE_FILES, strict=True)
+    missing = [name for name in _xiqse.TEMPLATE_FILES if name not in out]
+    if missing:
+        raise SystemExit('XIQ-SE templates missing after import: ' + ', '.join(missing))
+    return out
+
+
+def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
+    """Soft Site Engine TemplateRule + role NAC. No HostSync."""
+    logger.info('=' * 60)
+    logger.info('Network: XIQ-SE / ExtremeControl nbxSync levers (no HostSync)')
+    logger.info('=' * 60)
+    se = ensure_nbx_template(
+        server,
+        imported[_xiqse.SE_TEMPLATE_NAME][0],
+        imported[_xiqse.SE_TEMPLATE_NAME][1],
+        req=[HostInterfaceRequirementChoices.ANY],
+    )
+    nac = ensure_nbx_template(
+        server,
+        imported[_xiqse.NAC_TEMPLATE_NAME][0],
+        imported[_xiqse.NAC_TEMPLATE_NAME][1],
+        req=[HostInterfaceRequirementChoices.ANY],
+    )
+    existing = get_template_rule(server, _xiqse.SE_TEMPLATE_RULE)
+    hg = existing.zabbixhostgroup if existing is not None and existing.zabbixhostgroup_id else _os_network_hostgroup(server)
+    rule_defaults = {
+        'pattern': _xiqse.SE_PLATFORM_PATTERN,
+        'zabbixtemplate': se,
+        'enabled': True,
+        'priority': 100,
+        'zabbixtag': None,
+        'zabbixhostgroup': hg,
+        'require_tags': '',
+        'role_pattern': '',
+        'manufacturer': None,
+    }
+    update_fields = (
+        ['zabbixtemplate', 'enabled', 'pattern', 'priority']
+        if existing is not None
+        else None
+    )
+    ensure_template_rule(server, _xiqse.SE_TEMPLATE_RULE, rule_defaults, update_fields=update_fields)
+    logger.info(
+        '  TemplateRule %s → %s (ANY)',
+        simulation_rule_name(server, _xiqse.SE_TEMPLATE_RULE),
+        se.name,
+    )
+    for plat in _xiqse_platforms():
+        _upsert_object_macro_assignment(
+            server,
+            plat,
+            _xiqse.XIQSE_FQDN_MACRO,
+            _xiqse.XIQSE_FQDN_JINJA,
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description=f'nwn:xiqse:{_xiqse.XIQSE_FQDN_MACRO}',
+        )
+        logger.info('  Platform %s %s Jinja (no HostSync)', plat.name, _xiqse.XIQSE_FQDN_MACRO)
+    try:
+        role = get_role(_xiqse.NAC_ROLE)
+    except DeviceRole.DoesNotExist:
+        logger.warning('  Role %s not found — skip ExtremeControl assignment', _xiqse.NAC_ROLE)
+        return
+    ensure(
+        M.ZabbixTemplateAssignment,
+        zabbixtemplate=nac,
+        assigned_object_type=ct(DeviceRole),
+        assigned_object_id=role.id,
+        defaults={},
+    )
+    _upsert_object_macro_assignment(
+        server,
+        role,
+        _xiqse.NAC_PORTAL_FQDN_MACRO,
+        _xiqse.XIQSE_FQDN_JINJA,
+        mtype=ZabbixMacroTypeChoices.TEXT,
+        description=f'nwn:xiqse:{_xiqse.NAC_PORTAL_FQDN_MACRO}',
+    )
+    logger.info('  Role %s → %s (ANY)', role.name, nac.name)
+
+
+def run_check_xiqse() -> int:
+    """Read-only XIQ-SE YAML + Zabbix presence check."""
+    _require_xiqse_preflight(apply=False)
+    logger.info('XIQ-SE preflight OK — check-only mode wrote nothing')
+    return 0
+
+
+def run_apply_xiqse() -> int:
+    """Import XIQ-SE / ExtremeControl Observability without zerotouch or Extreme YAML.
+
+    Fail-closed on missing YAML. Soft TemplateRule for Site Engine platforms.
+    Role NAC gets the thin companion (ANY). No HostSync.
+    """
+    server = _require_xiqse_preflight(apply=True)
+    logger.info('Preflight OK — importing XIQ-SE templates and writing nbxSync levers')
+    with ZabbixConnection(server) as api:
+        imported = import_xiqse_templates(api)
+    _step_xiqse_nbxsync(server, imported)
+    logger.info(
+        'XIQ-SE / ExtremeControl pack written in NetBox. No HostSync. '
+        'TemplateRule %s → %s. Role %s → %s. '
+        'Put Client API Access secrets on a nbxSync CG, not in YAML. '
+        'Do not re-run zerotouch to refresh this pack.',
+        _xiqse.SE_TEMPLATE_RULE,
+        _xiqse.SE_TEMPLATE_NAME,
+        _xiqse.NAC_ROLE,
+        _xiqse.NAC_TEMPLATE_NAME,
+    )
+    return 0
+
+
 def run_zabbix_only(*, link_speed_expect: bool = False) -> int:
     """Fallback smoke without NetBox object graph — delegates to run_network_zabbix_sim."""
     from run_network_zabbix_sim import main as sim_main
@@ -4924,6 +5110,16 @@ def main() -> int:
         action='store_true',
         help='Read-only Cato GraphQL preflight and collector host/template shape; no writes',
     )
+    mode.add_argument(
+        '--apply-xiqse',
+        action='store_true',
+        help='XIQ-SE / ExtremeControl Observability: import both YAML companions, soft Site Engine TemplateRule, role NAC (ANY); no HostSync, no zerotouch',
+    )
+    mode.add_argument(
+        '--check-xiqse',
+        action='store_true',
+        help='Read-only XIQ-SE YAML presence check; no writes',
+    )
     parser.add_argument('--link-speed-expect', action='store_true', help='Also assign Port Speed Expect on Switch roles (avoid if already nested on VOSS/Observability)')
     parser.add_argument(
         '--cutover-silence',
@@ -4963,6 +5159,14 @@ def main() -> int:
         if args.link_speed_expect or args.cutover_silence:
             raise SystemExit('--apply-cato does not take --link-speed-expect or --cutover-silence')
         return run_apply_cato()
+    if args.check_xiqse:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--check-xiqse does not take --link-speed-expect or --cutover-silence')
+        return run_check_xiqse()
+    if args.apply_xiqse:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--apply-xiqse does not take --link-speed-expect or --cutover-silence')
+        return run_apply_xiqse()
     return run_apply(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
 
 

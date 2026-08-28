@@ -1,7 +1,7 @@
 # XIQ-SE / ExtremeControl NBI — analysis
 
 Operator page: [07-extreme-control.md](../07-extreme-control.md).  
-This note is the research that page compresses. Do **not** treat it as a second policy. **Do not build YAML until 07 is approved.**
+This note is the research that page compresses. **Do not** treat it as a second policy. YAML: [`templates/xiqse_observability/`](../templates/xiqse_observability/) and [`templates/extremecontrol_observability/`](../templates/extremecontrol_observability/).
 
 ---
 
@@ -147,9 +147,9 @@ administration {
 
 ---
 
-## Canary (after 07 approved, before YAML)
+## Canary (live SE)
 
-On one SE, query-only:
+On one SE, query-only, after `--apply-xiqse` + HostSync of that host:
 
 1. Token + `serverInfo` + 8443 + cert.
 2. `engines` / `NacAppliance` field dump (`licenseData`, connected/last-contact names).
