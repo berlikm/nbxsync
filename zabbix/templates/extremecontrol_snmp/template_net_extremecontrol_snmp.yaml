@@ -794,7 +794,7 @@ zabbix_export:
               widgets:
                 - type: item
                   name: SNMP
-                  width: 18
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -816,8 +816,8 @@ zabbix_export:
                       value: NSNMP
                 - type: item
                   name: Auth requests/s
-                  x: 18
-                  width: 18
+                  x: '18'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -839,8 +839,8 @@ zabbix_export:
                       value: NREQ
                 - type: item
                   name: Auth failures/s
-                  x: 36
-                  width: 18
+                  x: '36'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -862,8 +862,8 @@ zabbix_export:
                       value: NFAIL
                 - type: item
                   name: Contact lost
-                  x: 54
-                  width: 18
+                  x: '54'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -897,8 +897,8 @@ zabbix_export:
                       value: '3'
                 - type: svggraph
                   name: Authentication
-                  y: 7
-                  width: 36
+                  y: '7'
+                  width: '36'
                   height: '6'
                   fields:
                     - type: INTEGER
@@ -945,9 +945,9 @@ zabbix_export:
                       value: now
                 - type: svggraph
                   name: Challenges / dropped
-                  x: 36
-                  y: 7
-                  width: 36
+                  x: '36'
+                  y: '7'
+                  width: '36'
                   height: '6'
                   fields:
                     - type: INTEGER
@@ -988,7 +988,7 @@ zabbix_export:
               widgets:
                 - type: item
                   name: Fail %
-                  width: 18
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1010,8 +1010,8 @@ zabbix_export:
                       value: NPCT
                 - type: item
                   name: Successes/s
-                  x: 18
-                  width: 18
+                  x: '18'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1033,8 +1033,8 @@ zabbix_export:
                       value: NOK
                 - type: item
                   name: Challenges/s
-                  x: 36
-                  width: 18
+                  x: '36'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1056,8 +1056,8 @@ zabbix_export:
                       value: NCHAL
                 - type: item
                   name: Uptime
-                  x: 54
-                  width: 18
+                  x: '54'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1079,8 +1079,8 @@ zabbix_export:
                       value: NUPT
                 - type: svggraph
                   name: Invalid / duplicate / dropped
-                  y: 4
-                  width: 36
+                  y: '4'
+                  width: '36'
                   height: '6'
                   fields:
                     - type: INTEGER
@@ -1127,9 +1127,9 @@ zabbix_export:
                       value: now
                 - type: svggraph
                   name: IP resolution
-                  x: 36
-                  y: 4
-                  width: 36
+                  x: '36'
+                  y: '4'
+                  width: '36'
                   height: '6'
                   fields:
                     - type: INTEGER
@@ -1168,8 +1168,8 @@ zabbix_export:
                       value: now
                 - type: svggraph
                   name: Captive portal / assessment
-                  y: 10
-                  width: 36
+                  y: '10'
+                  width: '36'
                   height: '6'
                   fields:
                     - type: INTEGER
@@ -1208,9 +1208,9 @@ zabbix_export:
                       value: now
                 - type: item
                   name: Product
-                  x: 36
-                  y: 10
-                  width: 18
+                  x: '36'
+                  y: '10'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1232,9 +1232,9 @@ zabbix_export:
                       value: NPROD
                 - type: item
                   name: Agents
-                  x: 54
-                  y: 10
-                  width: 18
+                  x: '54'
+                  y: '10'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM

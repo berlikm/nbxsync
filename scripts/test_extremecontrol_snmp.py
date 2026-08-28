@@ -206,6 +206,13 @@ class YamlContractTests(unittest.TestCase):
         pages = {p['name'] for p in self.tpl['dashboards'][0]['pages']}
         self.assertEqual(pages, {'Overview', 'Auth'})
 
+    def test_dashboard_coordinates_are_strings_for_zabbix_import(self):
+        for page in self.tpl['dashboards'][0]['pages']:
+            for widget in page['widgets']:
+                for key in ('x', 'y', 'width', 'height'):
+                    if key in widget:
+                        self.assertIsInstance(widget[key], str, (page['name'], widget['name'], key))
+
     def test_javascript_is_indented_under_block_scalar(self):
         product = next(row for row in self.tpl['items'] if row['key'] == 'nac.snmp.product')
         js = product['preprocessing'][0]['parameters'][0]
