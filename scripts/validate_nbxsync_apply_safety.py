@@ -493,6 +493,16 @@ def main() -> int:
         'role NAC gets ExtremeControl by SNMP (SNMP interface), no icmpping nest',
     )
     record(
+        'network_xiqse_license_cg_never_overwrites_totals',
+        '_step_xiqse_license_scope' in (xiqse_step)
+        and '_ensure_macro_assignment_if_absent' in net_src
+        and '_mirror_license_totals_to_platform' in net_src
+        and 'LICENSE_CG_NAME' in net_src
+        and 'ma.value = value' not in (_function_source(net_src, net_tree, '_ensure_macro_assignment_if_absent') or '')
+        and 'keeper.value = value' in (_function_source(net_src, net_tree, '_mirror_license_totals_to_platform') or ''),
+        'XIQ-SE license CG totals are create-if-absent; apply mirrors onto platforms',
+    )
+    record(
         'zerotouch_no_xiqse_cutover',
         'apply-xiqse' not in ztc_src and 'import_xiqse_templates' not in ztc_src,
         'XIQ-SE pack is network --apply-xiqse, not zerotouch',

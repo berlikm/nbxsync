@@ -42,7 +42,7 @@ zabbix_export:
           description: 'End-system / device-license SCRIPT timeout.'
         - macro: '{$XIQ.NAC.TOTAL}'
           value: '0'
-          description: 'Purchased XIQ-NAC-S end-systems. 0 = graph used only.'
+          description: 'Purchased XIQ-NAC-S. Set on CG XIQ-SE licenses. 0 = remaining forced 0, not out of seats.'
         - macro: '{$XIQ.NAC.USED.WARN}'
           value: '90'
           description: 'Warning percent of {$XIQ.NAC.TOTAL}.'
@@ -60,13 +60,13 @@ zabbix_export:
           description: 'Ticket stale auth events. No clock window — engines are in different time zones.'
         - macro: '{$XIQ.PILOT.TOTAL}'
           value: '0'
-          description: 'Purchased Pilot seats. 0 = graph used only.'
+          description: 'Purchased Pilot seats. Set on CG XIQ-SE licenses. 0 = remaining forced 0.'
         - macro: '{$XIQ.PILOT.REMAIN.WARN}'
           value: '2'
           description: 'Warning when remaining Pilot seats at or below this.'
         - macro: '{$XIQ.NAV.TOTAL}'
           value: '0'
-          description: 'Purchased Navigator seats. 0 = graph used only.'
+          description: 'Purchased Navigator seats. Set on CG XIQ-SE licenses. 0 = remaining forced 0.'
         - macro: '{$XIQ.NAV.REMAIN.WARN}'
           value: '2'
           description: 'Warning when remaining Navigator seats at or below this.'
@@ -1523,6 +1523,8 @@ zabbix_export:
           trends: 365d
           value_type: FLOAT
           params: '({$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h))*({$XIQ.NAC.TOTAL}>0)'
+          description: |
+            Purchased {$XIQ.NAC.TOTAL} minus 24h unique MACs. Stays 0 while that macro is 0 (CG XIQ-SE licenses unset) — NBI cannot read Administration → Licenses. Not out of seats.
           tags:
             - tag: component
               value: license
@@ -1684,6 +1686,8 @@ zabbix_export:
           trends: 365d
           value_type: FLOAT
           params: '({$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used))*({$XIQ.PILOT.TOTAL}>0)'
+          description: |
+            Purchased {$XIQ.PILOT.TOTAL} minus XIQ_PILOT devices. Stays 0 while that macro is 0 (CG XIQ-SE licenses). Not out of seats.
           triggers:
             - uuid: 36805c7666e4437e9b083b4c9b58ee3f
               expression: '{$XIQ.PILOT.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.pilot.remaining)<={$XIQ.PILOT.REMAIN.WARN}'
@@ -1742,6 +1746,8 @@ zabbix_export:
           trends: 365d
           value_type: FLOAT
           params: '({$XIQ.NAV.TOTAL}-last(//xiqse.nav.used))*({$XIQ.NAV.TOTAL}>0)'
+          description: |
+            Purchased {$XIQ.NAV.TOTAL} minus XIQ_NAVIGATOR devices. Stays 0 while that macro is 0 (CG XIQ-SE licenses). Not out of seats.
           triggers:
             - uuid: ce3614948ed94048983e6268e8651d27
               expression: '{$XIQ.NAV.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.nav.remaining)<={$XIQ.NAV.REMAIN.WARN}'
@@ -2778,7 +2784,7 @@ zabbix_export:
             - name: Licenses
               widgets:
                 - type: item
-                  name: NAC remaining
+                  name: NAC 24h MACs
                   width: '18'
                   height: '4'
                   fields:
@@ -2786,7 +2792,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nac.remaining
+                        key: xiqse.nac.used24h
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -2798,9 +2804,9 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XREM
+                      value: XNAC2
                 - type: item
-                  name: Pilot remaining
+                  name: Pilot used
                   x: '18'
                   width: '18'
                   height: '4'
@@ -2809,7 +2815,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.pilot.remaining
+                        key: xiqse.pilot.used
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -2821,9 +2827,9 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XPIL
+                      value: XPU
                 - type: item
-                  name: Navigator remaining
+                  name: Navigator used
                   x: '36'
                   width: '18'
                   height: '4'
@@ -2832,7 +2838,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nav.remaining
+                        key: xiqse.nav.used
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -2844,7 +2850,7 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XNAV
+                      value: XNU
                 - type: item
                   name: NAC census
                   x: '54'

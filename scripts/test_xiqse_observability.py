@@ -17,6 +17,8 @@ from xiqse_observability import (
     FIXTURES,
     FORBIDDEN_SNIPPETS,
     JS_DIR,
+    LICENSE_CG_NAME,
+    LICENSE_TOTAL_MACROS,
     NAC_ITEM_KEYS,
     NAC_PORTAL_FQDN_MACRO,
     NAC_ROLE,
@@ -359,13 +361,42 @@ class YamlContractTests(unittest.TestCase):
             keys[:4],
             ['xiqse.nbi.available', 'xiqse.nac.used24h', 'xiqse.pilot.used', 'xiqse.nav.used'],
         )
-        self.assertNotIn('xiqse.nac.remaining', keys[:4])
+        self.assertNotIn('xiqse.nac.remaining', keys)
+        self.assertNotIn('xiqse.pilot.remaining', keys)
+        self.assertNotIn('xiqse.nav.remaining', keys)
+        licenses = self.se['dashboards'][0]['pages'][1]
+        self.assertEqual(licenses['name'], 'Licenses')
+        lic_keys = []
+        for widget in licenses['widgets']:
+            for field in widget.get('fields') or []:
+                value = field.get('value')
+                if isinstance(value, dict) and value.get('key'):
+                    lic_keys.append(value['key'])
+        self.assertEqual(
+            lic_keys[:4],
+            ['xiqse.nac.used24h', 'xiqse.pilot.used', 'xiqse.nav.used', 'xiqse.nac.ok'],
+        )
+        self.assertNotIn('xiqse.nac.remaining', lic_keys)
+        self.assertNotIn('xiqse.pilot.remaining', lic_keys)
+        self.assertNotIn('xiqse.nav.remaining', lic_keys)
 
     def test_remaining_is_zero_until_purchased_total_is_set(self):
         remain = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.remaining')
         self.assertIn('*({$XIQ.NAC.TOTAL}>0)', remain['params'])
         self.assertNotIn('?', remain['params'])
-        macros = {row['macro'] for row in self.se['macros']}
+        self.assertIn('Not out of seats', remain.get('description') or '')
+        self.assertIn('XIQ-SE licenses', remain.get('description') or '')
+        pilot = next(item for item in self.se['items'] if item['key'] == 'xiqse.pilot.remaining')
+        self.assertIn('*({$XIQ.PILOT.TOTAL}>0)', pilot['params'])
+        self.assertNotIn('?', pilot['params'])
+        nav = next(item for item in self.se['items'] if item['key'] == 'xiqse.nav.remaining')
+        self.assertIn('*({$XIQ.NAV.TOTAL}>0)', nav['params'])
+        self.assertNotIn('?', nav['params'])
+        macros = {row['macro']: row for row in self.se['macros']}
+        self.assertEqual(macros['{$XIQ.NAC.TOTAL}']['value'], '0')
+        self.assertEqual(macros['{$XIQ.PILOT.TOTAL}']['value'], '0')
+        self.assertEqual(macros['{$XIQ.NAV.TOTAL}']['value'], '0')
+        self.assertIn('XIQ-SE licenses', macros['{$XIQ.NAC.TOTAL}']['description'])
         self.assertNotIn('{$XIQ.NAC.FRESH.TIME.START}', macros)
         self.assertNotIn('{$XIQ.NAC.FRESH.TIME.END}', macros)
 
@@ -428,6 +459,30 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertIn('_xiqse.XIQSE_FQDN_MACRO', src)
         self.assertIn('_xiqse.NAC_PORTAL_FQDN_MACRO', src)
         self.assertIn("'deleteMissing': False", src)
+        self.assertIn('LICENSE_CG_NAME', src)
+        self.assertIn('_step_xiqse_license_scope', src)
+        self.assertIn('_ensure_macro_assignment_if_absent', src)
+        self.assertIn('_mirror_license_totals_to_platform', src)
+        license_fn = _function_source(src, '_step_xiqse_license_scope')
+        self.assertIsNotNone(license_fn)
+        self.assertIn('_ensure_macro_assignment_if_absent', license_fn)
+        self.assertIn('_mirror_license_totals_to_platform', license_fn)
+        self.assertIn('LICENSE_TOTAL_MACROS', license_fn)
+        self.assertNotIn('SyncHostJob', license_fn)
+        ensure_fn = _function_source(src, '_ensure_macro_assignment_if_absent')
+        self.assertIsNotNone(ensure_fn)
+        self.assertIn('if ma is not None', ensure_fn)
+        self.assertNotIn('ma.value = value', ensure_fn)
+        mirror_fn = _function_source(src, '_mirror_license_totals_to_platform')
+        self.assertIsNotNone(mirror_fn)
+        self.assertIn('keeper.value = value', mirror_fn)
+        self.assertIn('extras', mirror_fn)
+        self.assertIn('LICENSE_CG_NAME', apply_fn)
+        self.assertEqual(
+            [row[0] for row in LICENSE_TOTAL_MACROS],
+            ['{$XIQ.NAC.TOTAL}', '{$XIQ.PILOT.TOTAL}', '{$XIQ.NAV.TOTAL}'],
+        )
+        self.assertEqual(LICENSE_CG_NAME, 'XIQ-SE licenses')
 
     def test_zerotouch_soft_assigns_nac_with_any(self):
         src = zerotouch_source()

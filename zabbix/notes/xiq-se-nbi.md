@@ -87,7 +87,7 @@ Pilot used:
 network { devices { deviceData { xiqLicenseState xiqLicenseCount } } }
 ```
 
-`DeviceXIQLicenseState` includes `XIQ_PILOT`, `XIQ_NAVIGATOR`, `XIQ_UNMANAGED`, `NOT_LICENSED`, `XIQ_PENDING`, Platform ONE `XIQ_ADVANCED*` / `XIQ_STANDARD*`, … Remaining = purchased macro − used. Connected-mode cloud pool is shared; do not add an XIQ tenant host on this template.
+`DeviceXIQLicenseState` includes `XIQ_PILOT`, `XIQ_NAVIGATOR`, `XIQ_UNMANAGED`, `NOT_LICENSED`, `XIQ_PENDING`, Platform ONE `XIQ_ADVANCED*` / `XIQ_STANDARD*`, … Purchased totals (`{$XIQ.PILOT.TOTAL}`, `{$XIQ.NAV.TOTAL}`, `{$XIQ.NAC.TOTAL}`) live on nbxSync CG **XIQ-SE licenses**, assigned to Site Engine platforms. Remaining = purchased − used. `0.00` remaining means the CG is still 0, not that the pool is empty. `--apply-xiqse` never overwrites the CG; it mirrors CG → platform (HostSync does not expand CG macros at resolve time). After editing the CG, re-apply then HostSync the SE. Do not set Zabbix host macros on `ch-sta-p-ensa01`.
 
 ---
 

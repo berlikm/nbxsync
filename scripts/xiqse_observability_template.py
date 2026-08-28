@@ -454,6 +454,7 @@ def render_se() -> str:
         'NAC license remaining',
         'xiqse.nac.remaining',
         '({$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h))*({$XIQ.NAC.TOTAL}>0)',
+        extra="      description: |\n        Purchased {$XIQ.NAC.TOTAL} minus 24h unique MACs. Stays 0 while that macro is 0 (CG XIQ-SE licenses unset) — NBI cannot read Administration → Licenses. Not out of seats.\n",
     )
     nac_pct = _calc(U['item_nac_pct'], 'NAC license used %', 'xiqse.nac.used.pct', 'last(//xiqse.nac.used24h)/({$XIQ.NAC.TOTAL}+({$XIQ.NAC.TOTAL}=0))*100*({$XIQ.NAC.TOTAL}>0)', '%')
     pilot_remain = _calc(
@@ -461,14 +462,16 @@ def render_se() -> str:
         'Pilot licenses remaining',
         'xiqse.pilot.remaining',
         '({$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used))*({$XIQ.PILOT.TOTAL}>0)',
-        extra=f'      triggers:\n{pilot_low}\n',
+        extra="      description: |\n        Purchased {$XIQ.PILOT.TOTAL} minus XIQ_PILOT devices. Stays 0 while that macro is 0 (CG XIQ-SE licenses). Not out of seats.\n      triggers:\n"
+        + f'{pilot_low}\n',
     )
     nav_remain = _calc(
         U['item_nav_remain'],
         'Navigator licenses remaining',
         'xiqse.nav.remaining',
         '({$XIQ.NAV.TOTAL}-last(//xiqse.nav.used))*({$XIQ.NAV.TOTAL}>0)',
-        extra=f'      triggers:\n{nav_low}\n',
+        extra="      description: |\n        Purchased {$XIQ.NAV.TOTAL} minus XIQ_NAVIGATOR devices. Stays 0 while that macro is 0 (CG XIQ-SE licenses). Not out of seats.\n      triggers:\n"
+        + f'{nav_low}\n',
     )
     unsup_item = f"""    - uuid: {U['item_unsupported']}
       name: Unsupported items
@@ -586,15 +589,15 @@ def _se_macros() -> str:
         ('{$XIQSE.API.CLIENT.SECRET}', '', 'Client API Access secret.', 'SECRET_TEXT'),
         ('{$XIQSE.DATA.TIMEOUT}', '30s', 'Health SCRIPT timeout.'),
         ('{$XIQSE.LICENSE.TIMEOUT}', '60s', 'End-system / device-license SCRIPT timeout.'),
-        ('{$XIQ.NAC.TOTAL}', '0', 'Purchased XIQ-NAC-S end-systems. 0 = graph used only.'),
+        ('{$XIQ.NAC.TOTAL}', '0', 'Purchased XIQ-NAC-S. Set on CG XIQ-SE licenses. 0 = remaining forced 0, not out of seats.'),
         ('{$XIQ.NAC.USED.WARN}', '90', 'Warning percent of {$XIQ.NAC.TOTAL}.'),
         ('{$XIQ.NAC.ES.MAXRESULTS}', '20000', 'Stop paging at this many end-system rows.'),
         ('{$XIQ.NAC.ES.PAGE}', '500', 'endSystems page size.'),
         ('{$XIQ.NAC.FRESH}', '86400', 'Auth-event stale after this many seconds. Per engine: {$XIQ.NAC.FRESH:"<engine-ip>"}.'),
         ('{$XIQ.NAC.FRESH.CONTROL}', '1', 'Ticket stale auth events. No clock window — engines are in different time zones.'),
-        ('{$XIQ.PILOT.TOTAL}', '0', 'Purchased Pilot seats. 0 = graph used only.'),
+        ('{$XIQ.PILOT.TOTAL}', '0', 'Purchased Pilot seats. Set on CG XIQ-SE licenses. 0 = remaining forced 0.'),
         ('{$XIQ.PILOT.REMAIN.WARN}', '2', 'Warning when remaining Pilot seats at or below this.'),
-        ('{$XIQ.NAV.TOTAL}', '0', 'Purchased Navigator seats. 0 = graph used only.'),
+        ('{$XIQ.NAV.TOTAL}', '0', 'Purchased Navigator seats. Set on CG XIQ-SE licenses. 0 = remaining forced 0.'),
         ('{$XIQ.NAV.REMAIN.WARN}', '2', 'Warning when remaining Navigator seats at or below this.'),
         ('{$XIQ.ENGINE.CONNECTED.CONTROL}', '1', 'Ticket engines with connected=0. Unknown (2) is silent.'),
         ('{$XIQ.ENGINE.ENFORCE.CONTROL}', '1', 'Ticket needsEnforce=1.'),
@@ -884,9 +887,9 @@ def _se_dashboards() -> str:
                       value: '0'
             - name: Licenses
               widgets:
-{_item_widget('NAC remaining', '0', 'xiqse.nac.remaining', 'XREM')}
-{_item_widget('Pilot remaining', '18', 'xiqse.pilot.remaining', 'XPIL')}
-{_item_widget('Navigator remaining', '36', 'xiqse.nav.remaining', 'XNAV')}
+{_item_widget('NAC 24h MACs', '0', 'xiqse.nac.used24h', 'XNAC2')}
+{_item_widget('Pilot used', '18', 'xiqse.pilot.used', 'XPU')}
+{_item_widget('Navigator used', '36', 'xiqse.nav.used', 'XNU')}
 {_item_widget('NAC census', '54', 'xiqse.nac.ok', 'XNOK')}
                 - type: svggraph
                   name: Pilot used

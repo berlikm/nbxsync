@@ -2657,6 +2657,116 @@ def _upsert_object_macro_assignment(
         ma.save(update_fields=['value'])
 
 
+def _ensure_macro_assignment_if_absent(
+    server,
+    obj,
+    macro_name: str,
+    value: str,
+    *,
+    mtype,
+    description: str,
+    context: str = '',
+) -> bool:
+    """Create the assignment only when missing. Never overwrite an operator-set value."""
+    zmacro, _ = ensure(
+        M.ZabbixMacro,
+        macro=macro_name,
+        assigned_object_type=ct(M.ZabbixServer),
+        assigned_object_id=server.id,
+        defaults={
+            'value': '',
+            'type': mtype,
+            'description': description,
+        },
+        update_fields=['type', 'description'],
+    )
+    ma = M.ZabbixMacroAssignment.objects.filter(
+        zabbixmacro=zmacro,
+        assigned_object_type=ct(type(obj)),
+        assigned_object_id=obj.id,
+        context=context,
+        is_regex=False,
+    ).first()
+    if ma is not None:
+        return False
+    M.ZabbixMacroAssignment.objects.create(
+        zabbixmacro=zmacro,
+        assigned_object_type=ct(type(obj)),
+        assigned_object_id=obj.id,
+        value=value,
+        context=context,
+        is_regex=False,
+    )
+    return True
+
+
+def _mirror_license_totals_to_platform(server, platform, cg, macro_name: str, value: str, *, mtype) -> None:
+    """One HostSync-visible copy of a CG license total on the Site Engine platform.
+
+    HostSync inherits platform macros. It does not expand CG macros at resolve
+    time, so --apply-xiqse copies CG → platform. Dedupes RQ clones that used
+    the unique-on-value constraint. Delete extras before changing value.
+    """
+    zmacro, _ = ensure(
+        M.ZabbixMacro,
+        macro=macro_name,
+        assigned_object_type=ct(M.ZabbixServer),
+        assigned_object_id=server.id,
+        defaults={
+            'value': '',
+            'type': mtype,
+            'description': f'nwn:xiqse:{macro_name}',
+        },
+        update_fields=['type', 'description'],
+    )
+    parent = M.ZabbixMacroAssignment.objects.filter(
+        zabbixmacro=zmacro,
+        assigned_object_type=ct(type(cg)),
+        assigned_object_id=cg.id,
+        context='',
+        is_regex=False,
+    ).first()
+    rows = list(
+        M.ZabbixMacroAssignment.objects.filter(
+            zabbixmacro=zmacro,
+            assigned_object_type=ct(type(platform)),
+            assigned_object_id=platform.id,
+            context='',
+            is_regex=False,
+        ).order_by('pk')
+    )
+    if not rows:
+        M.ZabbixMacroAssignment.objects.create(
+            zabbixmacro=zmacro,
+            assigned_object_type=ct(type(platform)),
+            assigned_object_id=platform.id,
+            value=value,
+            context='',
+            is_regex=False,
+            zabbixconfigurationgroup=cg,
+            parent=parent,
+        )
+        return
+    keeper = next((row for row in rows if row.value == value), None)
+    if keeper is None:
+        keeper = next((row for row in rows if row.zabbixconfigurationgroup_id == cg.id), rows[0])
+    extras = [row for row in rows if row.pk != keeper.pk]
+    if extras:
+        M.ZabbixMacroAssignment.objects.filter(pk__in=[row.pk for row in extras]).delete()
+    dirty = []
+    if keeper.value != value:
+        keeper.value = value
+        dirty.append('value')
+    if keeper.zabbixconfigurationgroup_id != cg.id:
+        keeper.zabbixconfigurationgroup = cg
+        dirty.append('zabbixconfigurationgroup')
+    if parent is not None and keeper.parent_id != parent.id:
+        keeper.parent = parent
+        dirty.append('parent')
+    if dirty:
+        keeper.save(update_fields=dirty)
+
+
 def _assignment_value(server, obj, macro_name: str) -> str:
     zmacro = M.ZabbixMacro.objects.filter(
         macro=macro_name,
@@ -4913,6 +5023,13 @@ def _print_xiqse_plan(server, *, errors: list[str], apply: bool, zbx_names: list
     )
     logger.info('  Platforms: %s', ', '.join(p.name for p in platforms) or '(none — rule still created)')
     logger.info('  %s Jinja %s on matching platforms', _xiqse.XIQSE_FQDN_MACRO, _xiqse.XIQSE_FQDN_JINJA)
+    logger.info(
+        '  CG %s %s / %s / %s (create-if-absent, never overwrite CG; mirror onto Site Engine platforms for HostSync)',
+        _xiqse.LICENSE_CG_NAME,
+        _xiqse.LICENSE_TOTAL_MACROS[0][0],
+        _xiqse.LICENSE_TOTAL_MACROS[1][0],
+        _xiqse.LICENSE_TOTAL_MACROS[2][0],
+    )
     logger.info('  Role %s → %s (ANY) + %s (SNMP)', _xiqse.NAC_ROLE, _xiqse.NAC_TEMPLATE_NAME, _xiqse.SNMP_TEMPLATE_NAME)
     logger.info('  %s Jinja on role %s', _xiqse.NAC_PORTAL_FQDN_MACRO, _xiqse.NAC_ROLE)
     logger.info('  No HostSync, no Extreme import, no zerotouch, no ICMP nest')
@@ -5001,7 +5118,8 @@ def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
         simulation_rule_name(server, _xiqse.SE_TEMPLATE_RULE),
         se.name,
     )
-    for plat in _xiqse_platforms():
+    platforms = _xiqse_platforms()
+    for plat in platforms:
         _upsert_object_macro_assignment(
             server,
             plat,
@@ -5011,6 +5129,7 @@ def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
             description=f'nwn:xiqse:{_xiqse.XIQSE_FQDN_MACRO}',
         )
         logger.info('  Platform %s %s Jinja (no HostSync)', plat.name, _xiqse.XIQSE_FQDN_MACRO)
+    _step_xiqse_license_scope(server, platforms)
     try:
         role = get_role(_xiqse.NAC_ROLE)
     except DeviceRole.DoesNotExist:
@@ -5041,6 +5160,60 @@ def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
     logger.info('  Role %s → %s (ANY) + %s (SNMP)', role.name, nac.name, snmp.name)
 
 
+def _step_xiqse_license_scope(server, platforms) -> None:
+    """Purchased seat totals: CG XIQ-SE licenses is the source of truth.
+
+    Remaining stays 0 until an operator types Administration → Licenses
+    numbers onto that CG. Re-apply never overwrites the CG; it mirrors the
+    CG onto Site Engine platforms so HostSync can push them. No HostSync here.
+    """
+    cg, cg_created = M.ZabbixConfigurationGroup.objects.get_or_create(
+        name=_xiqse.LICENSE_CG_NAME,
+        defaults={
+            'description': (
+                'Purchased XIQ-NAC-S / Pilot / Navigator seats for XIQ-SE Observability. '
+                'Set the three TOTAL macros here from Administration → Licenses, then '
+                're-run --apply-xiqse and HostSync the Site Engine. Apply never overwrites this CG.'
+            )
+        },
+    )
+    if cg_created:
+        logger.info('  Created CG %s', cg.name)
+    for macro, _desc in _xiqse.LICENSE_TOTAL_MACROS:
+        created = _ensure_macro_assignment_if_absent(
+            server,
+            cg,
+            macro,
+            '0',
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description=f'nwn:xiqse:{macro}',
+        )
+        cg_value = _assignment_value(server, cg, macro) or '0'
+        logger.info('  CG %s %s = %s%s', cg.name, macro, cg_value, ' (created)' if created else '')
+        for plat in platforms:
+            _mirror_license_totals_to_platform(
+                server,
+                plat,
+                cg,
+                macro,
+                cg_value,
+                mtype=ZabbixMacroTypeChoices.TEXT,
+            )
+            logger.info('  Platform %s %s ← CG %s', plat.name, macro, cg_value)
+    if not platforms:
+        logger.warning('  No XIQ-SE platforms — CG %s exists; assign it when the platform is named', cg.name)
+        return
+    for plat in platforms:
+        _asg, assigned = ensure(
+            M.ZabbixConfigurationGroupAssignment,
+            zabbixconfigurationgroup=cg,
+            assigned_object_type=ct(Platform),
+            assigned_object_id=plat.id,
+            defaults={},
+        )
+        logger.info('  Platform %s ← CG %s%s', plat.name, cg.name, ' (new)' if assigned else '')
+
+
 def run_check_xiqse() -> int:
     """Read-only XIQ-SE YAML + Zabbix presence check."""
     _require_xiqse_preflight(apply=False)
@@ -5063,6 +5236,8 @@ def run_apply_xiqse() -> int:
     logger.info(
         'XIQ-SE / ExtremeControl pack written in NetBox. No HostSync. '
         'TemplateRule %s → %s. Role %s → %s (ANY) + %s (SNMP). '
+        'Set purchased {$XIQ.NAC.TOTAL} / {$XIQ.PILOT.TOTAL} / {$XIQ.NAV.TOTAL} '
+        'on CG %s, re-run --apply-xiqse so platforms match, then HostSync the Site Engine. '
         'Put Client API Access secrets on a nbxSync CG, not in YAML. '
         'Do not re-run zerotouch to refresh this pack.',
         _xiqse.SE_TEMPLATE_RULE,
@@ -5070,6 +5245,7 @@ def run_apply_xiqse() -> int:
         _xiqse.NAC_ROLE,
         _xiqse.NAC_TEMPLATE_NAME,
         _xiqse.SNMP_TEMPLATE_NAME,
+        _xiqse.LICENSE_CG_NAME,
     )
     return 0
 

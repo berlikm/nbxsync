@@ -27,6 +27,12 @@ XIQSE_FQDN_MACRO = '{$XIQSE.API.FQDN}'
 XIQSE_FQDN_JINJA = '{{ object.primary_ip4.address.ip }}'
 NAC_PORTAL_FQDN_MACRO = '{$NAC.PORTAL.FQDN}'
 NAC_ROLE = 'NAC'
+LICENSE_CG_NAME = 'XIQ-SE licenses'
+LICENSE_TOTAL_MACROS = (
+    ('{$XIQ.NAC.TOTAL}', 'Purchased XIQ-NAC-S end-systems from Administration → Licenses. Set on CG XIQ-SE licenses.'),
+    ('{$XIQ.PILOT.TOTAL}', 'Purchased Pilot seats from Administration → Licenses. Set on CG XIQ-SE licenses.'),
+    ('{$XIQ.NAV.TOTAL}', 'Purchased Navigator seats from Administration → Licenses. Set on CG XIQ-SE licenses.'),
+)
 APPLY_FLAG = '--apply-xiqse'
 CHECK_FLAG = '--check-xiqse'
 
