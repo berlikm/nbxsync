@@ -1,0 +1,1280 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 36bff6c29af64692839d077febfc7079
+      name: Templates/Network devices
+  templates:
+    - uuid: dc9704d3a182532bb9832dcb62f9d4e0
+      template: ExtremeControl by SNMP
+      name: ExtremeControl by SNMP
+      description: |
+        ExtremeControl / IA-V engine via SNMP. MIB: ENTERASYS-NAC-APPLIANCE-MIB
+        (etsysModules 73, 1.3.6.1.4.1.5624.1.2.73). Canary 2026-08-28: all five
+        ENACs answered 16 Counter64 scalars with the switch MONITORING SNMPv3
+        profile (MD5/DES).
+
+        Does not nest ICMP (06 / existing ping owns it). Does not speak RADIUS
+        UDP. Does not clone EXOS/VOSS/IQ templates. License seats stay on
+        XIQ-SE Observability GraphQL.
+
+        Operator page: zabbix/07-extreme-control.md.
+        OIDs: templates/extremecontrol_snmp/OID_MAPPING.md.
+        Refresh with configure_nbxsync_network.py --apply-xiqse.
+      groups:
+        - name: Templates/Network devices
+      macros:
+        - macro: '{$SNMP.TIMEOUT}'
+          value: '5m'
+          description: Time interval for the SNMP availability trigger.
+        - macro: '{$UNSUPPORTED.MAX}'
+          value: '1'
+          description: Average when unsupported items stay above this for 30m.
+        - macro: '{$NAC.SNMP.CONTACTLOST.CONTROL}'
+          value: '0'
+          description: Ticket contact-lost switches > 0. Default off until the Counter64-as-gauge reading is trusted.
+        - macro: '{$NAC.SNMP.FAIL.WARN}'
+          value: '101'
+          description: Decided-auth failure % Warning. 101 silences until a quiet baseline.
+      items:
+        - uuid: d4b892e15d4155f1824526d6725666d8
+          name: SNMP agent availability
+          type: INTERNAL
+          key: 'zabbix[host,snmp,available]'
+          description: |
+            0 not available, 1 available, 2 unknown. Mgmt blind; RADIUS may still work.
+          valuemap:
+            name: zabbix.host.available
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: 32e02f7816b65d879fc4698404633d2b
+              expression: max(/ExtremeControl by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              name: 'ExtremeControl SNMP: No SNMP data collection'
+              event_name: 'ExtremeControl SNMP: No SNMP data collection'
+              priority: WARNING
+              description: |
+                Mgmt blind; 802.1X may still work. ICMP High from 06 is the page
+                if the box is gone. Same SNMPv3 profile as switches (MONITORING).
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: eaf043853f4e580893d02f8945622c3d
+          name: Unsupported item count
+          type: INTERNAL
+          key: 'zabbix[host,,items_unsupported]'
+          delay: 15m
+          description: Watch the watcher — the 16 canary OIDs must not go silent.
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: 45a3a824e2d05f5980c03346649e7b17
+              expression: min(/ExtremeControl by SNMP/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.MAX}
+              name: 'ExtremeControl SNMP: Too many unsupported items'
+              event_name: 'ExtremeControl SNMP: Too many unsupported items'
+              priority: AVERAGE
+              description: SNMP=1 but items unsupported — view/OID mismatch, not a cable.
+              dependencies:
+                - name: 'ExtremeControl SNMP: No SNMP data collection'
+                  expression: max(/ExtremeControl by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 93046c3946d15491b88182bce9dcf579
+          name: SNMP
+          type: CALCULATED
+          key: nac.snmp.available
+          delay: 1m
+          value_type: FLOAT
+          params: 'last(//zabbix[host,snmp,available])'
+          description: Headline SNMP for the Overview tile.
+          valuemap:
+            name: zabbix.host.available
+          tags:
+            - tag: component
+              value: health
+        - uuid: 29bcdef835445d6ea59ba454bcb5fac9
+          name: System name
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.5.0
+          key: system.name
+          delay: 1h
+          value_type: CHAR
+          history: 7d
+          trends: '0'
+          inventory_link: NAME
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 6h
+          tags:
+            - tag: component
+              value: system
+          triggers:
+            - uuid: f3b06d702a095615994b8f729d15a2ba
+              expression: last(/ExtremeControl by SNMP/system.name,#1)<>last(/ExtremeControl by SNMP/system.name,#2) and length(last(/ExtremeControl by SNMP/system.name))>0
+              name: 'ExtremeControl SNMP: System name has changed'
+              event_name: 'ExtremeControl SNMP: System name has changed'
+              priority: INFO
+              description: Possible replacement or rename. Acknowledge to close.
+              manual_close: 'YES'
+              tags:
+                - tag: scope
+                  value: notice
+        - uuid: c741e56e1d1850829201ff7146cb8efa
+          name: System description
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.1.0
+          key: system.descr
+          delay: 1h
+          value_type: CHAR
+          history: 7d
+          trends: '0'
+          inventory_link: TYPE
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 6h
+          tags:
+            - tag: component
+              value: system
+        - uuid: f9c3ab8360715fbf9c63ba1f53cac04b
+          name: System object ID
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.2.0
+          key: 'system.objectid[sysObjectID.0]'
+          delay: 1h
+          value_type: CHAR
+          history: 7d
+          trends: '0'
+          description: |
+            IA-V is 1.3.6.1.4.1.1916.2.252 when Extreme set sysObjectID.
+            Stock net-snmp Linux is 1.3.6.1.4.1.8072.3.2.10 — still a Control
+            engine if ENTERASYS-NAC-APPLIANCE-MIB answers.
+          tags:
+            - tag: component
+              value: system
+        - uuid: 423cbe088201577ab9bf97e5710c630e
+          name: ExtremeControl product
+          type: DEPENDENT
+          key: nac.snmp.product
+          delay: '0'
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                    var CONTROL_PRODUCTS = {
+                      '1.3.6.1.4.1.1916.2.251': 'NAC-A-20',
+                      '1.3.6.1.4.1.1916.2.252': 'IA-V',
+                      '1.3.6.1.4.1.1916.2.253': 'IA-A-20',
+                      '1.3.6.1.4.1.1916.2.254': 'IA-A-300',
+                      '1.3.6.1.4.1.1916.2.279': 'IA-A-25',
+                      '1.3.6.1.4.1.1916.2.280': 'IA-A-305',
+                      '1.3.6.1.4.1.1916.2.418': 'IA-Generic'
+                    };
+
+                    function normalizeOid(oid) {
+                      return String(oid || '').replace(/^\.+/, '');
+                    }
+
+                    function classifyControlProduct(oid) {
+                      return CONTROL_PRODUCTS[normalizeOid(oid)] || '';
+                    }
+
+                    function controlProductIdentity(oid) {
+                      return classifyControlProduct(oid) ? 1 : 0;
+                    }
+
+                    return classifyControlProduct(value);
+
+          master_item:
+            key: 'system.objectid[sysObjectID.0]'
+          tags:
+            - tag: component
+              value: system
+        - uuid: f279640b7b905a65976ab96ef7d0ad03
+          name: ExtremeControl product identity
+          type: DEPENDENT
+          key: nac.snmp.identity
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: 1 when sysObjectID is an Extreme Access Control product. 0 for net-snmp Linux is OK.
+          valuemap:
+            name: ExtremeControl identity
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                    var CONTROL_PRODUCTS = {
+                      '1.3.6.1.4.1.1916.2.251': 'NAC-A-20',
+                      '1.3.6.1.4.1.1916.2.252': 'IA-V',
+                      '1.3.6.1.4.1.1916.2.253': 'IA-A-20',
+                      '1.3.6.1.4.1.1916.2.254': 'IA-A-300',
+                      '1.3.6.1.4.1.1916.2.279': 'IA-A-25',
+                      '1.3.6.1.4.1.1916.2.280': 'IA-A-305',
+                      '1.3.6.1.4.1.1916.2.418': 'IA-Generic'
+                    };
+
+                    function normalizeOid(oid) {
+                      return String(oid || '').replace(/^\.+/, '');
+                    }
+
+                    function classifyControlProduct(oid) {
+                      return CONTROL_PRODUCTS[normalizeOid(oid)] || '';
+                    }
+
+                    function controlProductIdentity(oid) {
+                      return classifyControlProduct(oid) ? 1 : 0;
+                    }
+
+                    return controlProductIdentity(value);
+
+          master_item:
+            key: 'system.objectid[sysObjectID.0]'
+          tags:
+            - tag: component
+              value: system
+        - uuid: d5fb1880ca185e6dbb6d2292a3cbc1aa
+          name: Uptime (network)
+          type: SNMP_AGENT
+          snmp_oid: 'get[1.3.6.1.2.1.1.3.0]'
+          key: 'system.net.uptime[sysUpTime.0]'
+          delay: 1m
+          trends: '0'
+          units: uptime
+          description: SNMPv2-MIB sysUpTime.
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '0.01'
+          tags:
+            - tag: component
+              value: system
+          triggers:
+            - uuid: 703f134580ef54c28b4de5688295974b
+              expression: last(/ExtremeControl by SNMP/system.net.uptime[sysUpTime.0])<10m
+              name: 'ExtremeControl SNMP: Host has been restarted'
+              event_name: 'ExtremeControl SNMP: Host has been restarted'
+              priority: WARNING
+              description: sysUpTime under 10 minutes. Next day, not a page.
+              dependencies:
+                - name: 'ExtremeControl SNMP: No SNMP data collection'
+                  expression: max(/ExtremeControl by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              tags:
+                - tag: scope
+                  value: notice
+        - uuid: 48f44a33b6c15f4fbaf13e624a7252e0
+          name: ExtremeControl Authentication requests
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.1.0
+          key: nac.appl.auth.requests
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplAuthenticationRequests (1.3.6.1.4.1.5624.1.2.73.1.1.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: af95126a43fe52039eb3a68130dd896e
+          name: ExtremeControl Authentication requests per second
+          type: DEPENDENT
+          key: nac.appl.auth.requests.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.auth.requests
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 047dbb96466a5ea8aa1eb62a9333ee8c
+          name: ExtremeControl Authentication successes
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.2.0
+          key: nac.appl.auth.successes
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplAuthenticationSuccesses (1.3.6.1.4.1.5624.1.2.73.1.2.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 97741b4a15985abd8ba39d141875fd88
+          name: ExtremeControl Authentication successes per second
+          type: DEPENDENT
+          key: nac.appl.auth.successes.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.auth.successes
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 4a34cfc1cc6458e79b744099c28a3e1f
+          name: ExtremeControl Authentication failures
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.3.0
+          key: nac.appl.auth.failures
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplAuthenticationFailures (1.3.6.1.4.1.5624.1.2.73.1.3.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: d4be4fa42a415515a64eae361fcdac90
+          name: ExtremeControl Authentication failures per second
+          type: DEPENDENT
+          key: nac.appl.auth.failures.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.auth.failures
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 238bc23c8b6e5b01a3107d4f36052208
+          name: ExtremeControl RADIUS challenges
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.4.0
+          key: nac.appl.auth.challenges
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplRadiusChallenges (1.3.6.1.4.1.5624.1.2.73.1.4.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 15e5eff08cc759f49427aeda3304f55f
+          name: ExtremeControl RADIUS challenges per second
+          type: DEPENDENT
+          key: nac.appl.auth.challenges.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.auth.challenges
+          tags:
+            - tag: component
+              value: nac
+        - uuid: cac77551b03c576e86bf77ec3d83fbfa
+          name: ExtremeControl Invalid authentication requests
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.5.0
+          key: nac.appl.auth.invalid
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplAuthenticationInvalidRequests (1.3.6.1.4.1.5624.1.2.73.1.5.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 02ecb379e438538f9e6be58cc1be5eba
+          name: ExtremeControl Invalid authentication requests per second
+          type: DEPENDENT
+          key: nac.appl.auth.invalid.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.auth.invalid
+          tags:
+            - tag: component
+              value: nac
+        - uuid: c1a178221a2e5e7d8c67dd93f6434070
+          name: ExtremeControl Duplicate authentication requests
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.6.0
+          key: nac.appl.auth.duplicate
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplAuthenticationDuplicateRequests (1.3.6.1.4.1.5624.1.2.73.1.6.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 4a02295f4851506597cc7f25cc381cb4
+          name: ExtremeControl Duplicate authentication requests per second
+          type: DEPENDENT
+          key: nac.appl.auth.duplicate.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.auth.duplicate
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 45c2b7321ec85c4e90a8d35a4a5d4f35
+          name: ExtremeControl Malformed authentication requests
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.7.0
+          key: nac.appl.auth.malformed
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplAuthenticationMalformedRequests (1.3.6.1.4.1.5624.1.2.73.1.7.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 4f569441c04e5961a09468e08fa1b9de
+          name: ExtremeControl Malformed authentication requests per second
+          type: DEPENDENT
+          key: nac.appl.auth.malformed.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.auth.malformed
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 755d6e8b836e55a0b6127b44d0754034
+          name: ExtremeControl Bad authentication requests
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.8.0
+          key: nac.appl.auth.bad
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplAuthenticationBadRequests (1.3.6.1.4.1.5624.1.2.73.1.8.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: b8182397e2515fe89679860a33184885
+          name: ExtremeControl Bad authentication requests per second
+          type: DEPENDENT
+          key: nac.appl.auth.bad.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.auth.bad
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 67fcf17b63dc5a6dbc14d7be87549770
+          name: ExtremeControl Dropped authentication packets
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.9.0
+          key: nac.appl.auth.dropped
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplAuthenticationDroppedPackets (1.3.6.1.4.1.5624.1.2.73.1.9.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 2fa4190faebe5d9eab65f172393c6261
+          name: ExtremeControl Dropped authentication packets per second
+          type: DEPENDENT
+          key: nac.appl.auth.dropped.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.auth.dropped
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 816e9fbbb19d57aea3bda81f4dd3d6d5
+          name: ExtremeControl Unknown authentication types
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.10.0
+          key: nac.appl.auth.unknown
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplAuthenticationUnknownTypes (1.3.6.1.4.1.5624.1.2.73.1.10.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 0ec16bbbcef3577799d61153dec96615
+          name: ExtremeControl Unknown authentication types per second
+          type: DEPENDENT
+          key: nac.appl.auth.unknown.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.auth.unknown
+          tags:
+            - tag: component
+              value: nac
+        - uuid: ed81e80e23e857008bec0afcdc6d4ea8
+          name: ExtremeControl Assessment requests
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.11.0
+          key: nac.appl.assessment
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplAssessmentRequests (1.3.6.1.4.1.5624.1.2.73.1.11.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 3eadd0120d365e7284dd9380557007fc
+          name: ExtremeControl Assessment requests per second
+          type: DEPENDENT
+          key: nac.appl.assessment.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.assessment
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 624b351d7ef15905bcab9bdac8b339e4
+          name: ExtremeControl Captive portal requests
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.12.0
+          key: nac.appl.captive.portal
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplCaptivePortalRequests (1.3.6.1.4.1.5624.1.2.73.1.12.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 40bff658b79d50a9b3a1ad3f08159fa5
+          name: ExtremeControl Captive portal requests per second
+          type: DEPENDENT
+          key: nac.appl.captive.portal.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.captive.portal
+          tags:
+            - tag: component
+              value: nac
+        - uuid: dce79a8b0dfa53789bcae40becd6861c
+          name: ExtremeControl Contact-lost switches
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.13.0
+          key: nac.appl.contact.lost
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplContactLostSwitches (1.3.6.1.4.1.5624.1.2.73.1.13.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+          triggers:
+            - uuid: 06afff382f3259e8a9af79ca5e8b60a1
+              expression: '{$NAC.SNMP.CONTACTLOST.CONTROL}=1 and min(/ExtremeControl by SNMP/nac.appl.contact.lost,15m)>0'
+              name: 'ExtremeControl SNMP: contact-lost switches'
+              event_name: 'ExtremeControl SNMP: contact-lost switches'
+              priority: WARNING
+              description: |
+                Engine lost SNMP to one or more configured switches (the other
+                SNMP direction). Fleet canary 2026-08-28 was 0 on all five ENACs.
+                Enable {$NAC.SNMP.CONTACTLOST.CONTROL} after confirming this
+                object stays a gauge (MIB syntax is Counter64).
+              dependencies:
+                - name: 'ExtremeControl SNMP: No SNMP data collection'
+                  expression: max(/ExtremeControl by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 90388a880b8c5e988375eb65750b33b8
+          name: ExtremeControl IP resolution failures
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.14.0
+          key: nac.appl.ip.res.failures
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplIPResolutionFailures (1.3.6.1.4.1.5624.1.2.73.1.14.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: c5724f16b3a657359d8ebfbc6fe0fc2a
+          name: ExtremeControl IP resolution failures per second
+          type: DEPENDENT
+          key: nac.appl.ip.res.failures.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.ip.res.failures
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 6dc85181e5105605a3620ba4944c2ec6
+          name: ExtremeControl IP resolution timeouts
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.15.0
+          key: nac.appl.ip.res.timeouts
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplIPResolutionTimeouts (1.3.6.1.4.1.5624.1.2.73.1.15.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: fc624f15d9375de2943c52a105ac0dfb
+          name: ExtremeControl IP resolution timeouts per second
+          type: DEPENDENT
+          key: nac.appl.ip.res.timeouts.rate
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: pps
+          preprocessing:
+            - type: CHANGE_PER_SECOND
+          master_item:
+            key: nac.appl.ip.res.timeouts
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 89a6fa7d953c5d0eb70b61d36f9815f7
+          name: ExtremeControl Connected assessment agents
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.5624.1.2.73.1.16.0
+          key: nac.appl.connected.agents
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          description: |
+            MIB: etsysNacApplConnectedAgents (1.3.6.1.4.1.5624.1.2.73.1.16.0).
+            ENTERASYS-NAC-APPLIANCE-MIB. Live on five ENACs 2026-08-28.
+          tags:
+            - tag: component
+              value: nac
+        - uuid: 02ffda4357915096ae3f991988f0b7fa
+          name: ExtremeControl decided-auth failure ratio
+          type: CALCULATED
+          key: nac.appl.auth.fail.pct
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: '%'
+          params: '(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)>0)*((last(//nac.appl.auth.failures.rate)/(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)))*100)'
+          description: |
+            Failures / (successes + failures). Challenges are EAP and are not
+            failures. Collect first — STA canary decided-fail was ~30%.
+          tags:
+            - tag: component
+              value: nac
+          triggers:
+            - uuid: ea6672d1bd2f5502a6f890eb5975b2f4
+              expression: '{$NAC.SNMP.FAIL.WARN}<101 and min(/ExtremeControl by SNMP/nac.appl.auth.fail.pct,15m)>{$NAC.SNMP.FAIL.WARN}'
+              name: 'ExtremeControl SNMP: authentication failure ratio high'
+              event_name: 'ExtremeControl SNMP: authentication failure ratio high'
+              priority: WARNING
+              description: |
+                Decided-auth failure % above {$NAC.SNMP.FAIL.WARN}. Default 101
+                silences until a quiet baseline. Not RADIUS-dead.
+              dependencies:
+                - name: 'ExtremeControl SNMP: No SNMP data collection'
+                  expression: max(/ExtremeControl by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              tags:
+                - tag: scope
+                  value: performance
+      tags:
+        - tag: class
+          value: network
+        - tag: target
+          value: extremecontrol
+      dashboards:
+        - uuid: 21db0f1b9ff9525dbaec8838df4b69eb
+          name: Health
+          pages:
+            - name: Overview
+              widgets:
+                - type: item
+                  name: SNMP
+                  width: 18
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.snmp.available
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NSNMP
+                - type: item
+                  name: Auth requests/s
+                  x: 18
+                  width: 18
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.requests.rate
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NREQ
+                - type: item
+                  name: Auth failures/s
+                  x: 36
+                  width: 18
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.failures.rate
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NFAIL
+                - type: item
+                  name: Contact lost
+                  x: 54
+                  width: 18
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.contact.lost
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NCL
+                - type: problems
+                  name: Problems
+                  y: '4'
+                  width: '72'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: NPROB
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                - type: svggraph
+                  name: Authentication
+                  y: 7
+                  width: 36
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 2774A4
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.requests.rate
+                    - type: STRING
+                      name: ds.0.color.1
+                      value: 199C0D
+                    - type: ITEM
+                      name: ds.0.itemids.1
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.successes.rate
+                    - type: STRING
+                      name: ds.0.color.2
+                      value: FF465C
+                    - type: ITEM
+                      name: ds.0.itemids.2
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.failures.rate
+                    - type: STRING
+                      name: reference
+                      value: NAUTH
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                    - type: STRING
+                      name: time_period.from
+                      value: now-1d
+                    - type: STRING
+                      name: time_period.to
+                      value: now
+                - type: svggraph
+                  name: Challenges / dropped
+                  x: 36
+                  y: 7
+                  width: 36
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: F2B90D
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.challenges.rate
+                    - type: STRING
+                      name: ds.0.color.1
+                      value: E97659
+                    - type: ITEM
+                      name: ds.0.itemids.1
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.dropped.rate
+                    - type: STRING
+                      name: reference
+                      value: NDROP
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                    - type: STRING
+                      name: time_period.from
+                      value: now-1d
+                    - type: STRING
+                      name: time_period.to
+                      value: now
+            - name: Auth
+              widgets:
+                - type: item
+                  name: Fail %
+                  width: 18
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.fail.pct
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NPCT
+                - type: item
+                  name: Successes/s
+                  x: 18
+                  width: 18
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.successes.rate
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NOK
+                - type: item
+                  name: Challenges/s
+                  x: 36
+                  width: 18
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.challenges.rate
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NCHAL
+                - type: item
+                  name: Uptime
+                  x: 54
+                  width: 18
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: 'system.net.uptime[sysUpTime.0]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NUPT
+                - type: svggraph
+                  name: Invalid / duplicate / dropped
+                  y: 4
+                  width: 36
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: FF465C
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.invalid.rate
+                    - type: STRING
+                      name: ds.0.color.1
+                      value: F2B90D
+                    - type: ITEM
+                      name: ds.0.itemids.1
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.duplicate.rate
+                    - type: STRING
+                      name: ds.0.color.2
+                      value: E97659
+                    - type: ITEM
+                      name: ds.0.itemids.2
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.auth.dropped.rate
+                    - type: STRING
+                      name: reference
+                      value: NERR
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                    - type: STRING
+                      name: time_period.from
+                      value: now-1d
+                    - type: STRING
+                      name: time_period.to
+                      value: now
+                - type: svggraph
+                  name: IP resolution
+                  x: 36
+                  y: 4
+                  width: 36
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 2774A4
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.ip.res.failures.rate
+                    - type: STRING
+                      name: ds.0.color.1
+                      value: F2B90D
+                    - type: ITEM
+                      name: ds.0.itemids.1
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.ip.res.timeouts.rate
+                    - type: STRING
+                      name: reference
+                      value: NIP
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                    - type: STRING
+                      name: time_period.from
+                      value: now-1d
+                    - type: STRING
+                      name: time_period.to
+                      value: now
+                - type: svggraph
+                  name: Captive portal / assessment
+                  y: 10
+                  width: 36
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 199C0D
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.captive.portal.rate
+                    - type: STRING
+                      name: ds.0.color.1
+                      value: 2774A4
+                    - type: ITEM
+                      name: ds.0.itemids.1
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.assessment.rate
+                    - type: STRING
+                      name: reference
+                      value: NPORT
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                    - type: STRING
+                      name: time_period.from
+                      value: now-1d
+                    - type: STRING
+                      name: time_period.to
+                      value: now
+                - type: item
+                  name: Product
+                  x: 36
+                  y: 10
+                  width: 18
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.snmp.product
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NPROD
+                - type: item
+                  name: Agents
+                  x: 54
+                  y: 10
+                  width: 18
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl by SNMP
+                        key: nac.appl.connected.agents
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NAGT
+      valuemaps:
+        - uuid: 3329d443590659d7a1f0b758c335d421
+          name: Service state
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+        - uuid: f2c1418661525d55b922e0c781bd4704
+          name: zabbix.host.available
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+            - value: '2'
+              newvalue: Unknown
+        - uuid: 09dc436e43a85d6097d04fa1e402cf7b
+          name: ExtremeControl identity
+          mappings:
+            - value: '0'
+              newvalue: Other / net-snmp
+            - value: '1'
+              newvalue: Access Control

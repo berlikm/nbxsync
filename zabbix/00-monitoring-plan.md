@@ -83,7 +83,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 04 | Cato | **built** — `Cato Networks by HTTP` | yes (`04`) | collector and 21/21 Socket ICMP hosts validated | yes (21/21 Socket ICMP hosts) |
 | 05 | Circuits | n/a | scaffold | no | Cato-only last-mile, Degraded, and WAN `mediaIn` live on 04; Forti Path is the Forti probe |
 | 06 | Network VMs | stock OS templates | scaffold | no | no |
-| 07 | ExtremeControl / XIQ-SE | **built** — [07](07-extreme-control.md) | yes | no | no |
+| 07 | ExtremeControl / XIQ-SE | **built** — [07](07-extreme-control.md) (GraphQL + engine SNMP) | yes | no | no |
 
 ## Principles
 

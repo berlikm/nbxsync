@@ -8,6 +8,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from extremecontrol_snmp import SNMP_TEMPLATE_NAME, SNMP_YAML
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = ROOT / 'zabbix/templates/xiqse_observability'
 NAC_TEMPLATE_DIR = ROOT / 'zabbix/templates/extremecontrol_observability'
@@ -31,6 +33,7 @@ CHECK_FLAG = '--check-xiqse'
 TEMPLATE_FILES = {
     SE_TEMPLATE_NAME: SE_YAML,
     NAC_TEMPLATE_NAME: NAC_YAML,
+    SNMP_TEMPLATE_NAME: SNMP_YAML,
 }
 
 HEALTH_JS = ('nbi_metrics.js', 'http_nbi.js', 'collect_health.js')
