@@ -38,7 +38,7 @@ from xiqse_observability import (
     zerotouch_source,
 )
 
-UUID_RE = re.compile(r'^[0-9a-f]{32}$')
+UUID_RE = re.compile(r'^[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$')
 
 
 def _walk_names(node, keys: tuple[str, ...], found: set[str] | None = None) -> set[str]:
@@ -149,7 +149,7 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(self.tpl['template'], SNMP_TEMPLATE_NAME)
         self.assertEqual(self.tpl['template'], TPL)
 
-    def test_uuids_are_32_hex(self):
+    def test_uuids_are_v4(self):
         for value in re.findall(r'uuid: ([0-9a-f]+)', self.text):
             self.assertRegex(value, UUID_RE)
 
