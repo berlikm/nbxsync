@@ -38,7 +38,7 @@ Do **not** alert on: the general server estate.
 
 | In | Out |
 |---|---|
-| NetBox, Zabbix, XIQ-SE, RADIUS/NAC, DHCP/IPAM, jump hosts, collectors | General servers |
+| NetBox, Zabbix, XIQ-SE, RADIUS/NAC, DHCP/IPAM, jump hosts, collectors | General servers. XIQ-SE GraphQL, NAC 24h license, and RADIUS High are [07](07-extreme-control.md) — this page stays ICMP / OS / disk / cert |
 
 Needs an **explicit list**.
 

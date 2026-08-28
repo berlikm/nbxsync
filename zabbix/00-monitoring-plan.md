@@ -7,7 +7,7 @@ Status: active
 **Hard deadline: LogicMonitor → Zabbix cutover.** That reframes everything below.
 
 **In scope now:** Extreme switches (01) and access points (02).  
-**Prepared, not blocking cutover:** FortiGate over **API** (03), network VMs (06). Same page shape and observability bar. Live FortiOS still SNMP until `--apply-fortigate-http` + HostSync of **both HA members** via unique OOB (do not re-run zerotouch).  
+**Prepared, not blocking cutover:** FortiGate over **API** (03), network VMs (06), ExtremeControl / XIQ-SE (07). Same page shape and observability bar. Live FortiOS still SNMP until `--apply-fortigate-http` + HostSync of **both HA members** via unique OOB (do not re-run zerotouch).  
 **Later still:** circuits (05).
 
 The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everything in the design docs". Anything LM does not watch today cannot be a regression.
@@ -33,7 +33,7 @@ The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everythi
 | Capacity: discards + utilisation | new capability. Needs 4+ weeks of history to threshold honestly |
 | CRC / `dot3StatsFCSErrors` | items live (VOSS EtherLike LLD + EXOS companion); OID canary still needed |
 | Full port-label rollout | parity only needs *link down* on Core/Dist/Mgmt; Access is `USW`+`UP` only |
-| Fortinet, circuits, VMs (03, 05–06) | FortiGate API spec is written; live FortiOS stays SNMP. Do not block switch/AP cutover |
+| Fortinet, circuits, VMs, NAC (03, 05–07) | FortiGate API spec is written; live FortiOS stays SNMP. 07 is spec-only until approved. Do not block switch/AP cutover |
 
 **Rule for the migration window:** if a request is not in the "cutover minimum" table, it goes on the post-cutover list. Scope creep is the main risk to the date, not technical difficulty.
 
@@ -59,6 +59,9 @@ port-identity (foundation)
     │
     ▼
 06  Network VMs                               ← prepared
+    │
+    ▼
+07  ExtremeControl / XIQ-SE                   ← spec; YAML after approve
 
 post-cutover:  OSPF · VOSS fabric · USW discards/util · label compliance · site synthetic
 ```
@@ -80,6 +83,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 04 | Cato | **built** — `Cato Networks by HTTP` | yes (`04`) | collector and 21/21 Socket ICMP hosts validated | yes (21/21 Socket ICMP hosts) |
 | 05 | Circuits | n/a | scaffold | no | Cato-only last-mile, Degraded, and WAN `mediaIn` live on 04; Forti Path is the Forti probe |
 | 06 | Network VMs | stock OS templates | scaffold | no | no |
+| 07 | ExtremeControl / XIQ-SE | **not built** — spec [07](07-extreme-control.md) | yes | no | no |
 
 ## Principles
 
@@ -91,7 +95,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 6. Collect first; enable noisy triggers after a quiet pilot.
 7. Macro overrides, not cloned stock templates.
 8. Signal with no trigger and no dashboard → delete it. Device **Health** is a **template** (host) dashboard.
-9. Next domain copies [_template.md](_template.md) — FortiGate (03) is written in that shape; VMs stay stubbed.
+9. Next domain copies [_template.md](_template.md) — FortiGate (03) and ExtremeControl (07) are written in that shape; VMs stay stubbed.
 10. Use the full Zabbix scale. **Disaster** is site/service only (never on a switch/AP template). Do not park everything on Warning.
 
 ## Lab proof
