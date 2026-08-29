@@ -189,6 +189,17 @@ class YamlContractTests(unittest.TestCase):
         self.assertNotIn('icmpping', trig['expression'])
         self.assertFalse(trig.get('dependencies'))
 
+    def test_unsupported_threshold_allows_only_one_remaining_calculated_item(self):
+        unsupported = next(row for row in self.tpl['items'] if row['key'] == 'zabbix[host,,items_unsupported]')
+        trigger = unsupported['triggers'][0]
+        threshold = next(m for m in self.tpl['macros'] if m['macro'] == '{$UNSUPPORTED.MAX}')
+        self.assertEqual(threshold['value'], '1')
+        self.assertIn('>{$UNSUPPORTED.MAX}', trigger['expression'])
+
+    def test_snmp_dashboard_uses_the_supported_internal_item(self):
+        self.assertNotIn('nac.snmp.available', _walk_item_keys(self.tpl))
+        self.assertIn("'zabbix[host,snmp,available]'", self.text)
+
     def test_fail_ratio_default_is_silent(self):
         item = next(row for row in self.tpl['items'] if row['key'] == 'nac.appl.auth.fail.pct')
         trig = item['triggers'][0]

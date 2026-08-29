@@ -28,7 +28,7 @@ zabbix_export:
           description: Time interval for the SNMP availability trigger.
         - macro: '{$UNSUPPORTED.MAX}'
           value: '1'
-          description: Average when unsupported items stay above this for 30m.
+          description: Allow the derived authentication-failure ratio to await its first raw values; alert when an additional item is unsupported for 30m.
         - macro: '{$NAC.SNMP.CONTACTLOST.CONTROL}'
           value: '0'
           description: Ticket contact-lost switches > 0. Default off until the Counter64-as-gauge reading is trusted.
@@ -64,7 +64,7 @@ zabbix_export:
           type: INTERNAL
           key: 'zabbix[host,,items_unsupported]'
           delay: 15m
-          description: Watch the watcher — the 16 canary OIDs must not go silent.
+          description: Watch the watcher — the 16 canary OIDs must not go silent. The derived authentication-failure ratio can be unsupported before its first raw values arrive.
           tags:
             - tag: component
               value: health
@@ -74,26 +74,13 @@ zabbix_export:
               name: 'ExtremeControl SNMP: Too many unsupported items'
               event_name: 'ExtremeControl SNMP: Too many unsupported items'
               priority: AVERAGE
-              description: SNMP=1 but items unsupported — view/OID mismatch, not a cable.
+              description: More than the derived authentication-failure ratio is unsupported for 30m; investigate the additional source item/OID.
               dependencies:
                 - name: 'ExtremeControl SNMP: No SNMP data collection'
                   expression: max(/ExtremeControl by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
               tags:
                 - tag: scope
                   value: availability
-        - uuid: 93046c3946d14491b88182bce9dcf579
-          name: SNMP
-          type: CALCULATED
-          key: nac.snmp.available
-          delay: 1m
-          value_type: FLOAT
-          params: 'last(//zabbix[host,snmp,available])'
-          description: Headline SNMP for the Overview tile.
-          valuemap:
-            name: zabbix.host.available
-          tags:
-            - tag: component
-              value: health
         - uuid: 29bcdef835444d6ea59ba454bcb5fac9
           name: System name
           type: SNMP_AGENT
@@ -801,7 +788,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: ExtremeControl by SNMP
-                        key: nac.snmp.available
+                        key: 'zabbix[host,snmp,available]'
                     - type: INTEGER
                       name: show.0
                       value: '2'

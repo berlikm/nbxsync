@@ -53,7 +53,6 @@ APPL_RATE_KEYS = {f'nac.appl.{key}.rate' for key, *_, rate in APPL if rate}
 SNMP_ITEM_KEYS = {
     'zabbix[host,snmp,available]',
     'zabbix[host,,items_unsupported]',
-    'nac.snmp.available',
     'system.name',
     'system.descr',
     'system.objectid[sysObjectID.0]',
@@ -252,7 +251,7 @@ Refresh with configure_nbxsync_network.py --apply-xiqse.""",
     doc.add(3, 'macros:')
     for macro, value, descr in (
         ('{$SNMP.TIMEOUT}', '5m', 'Time interval for the SNMP availability trigger.'),
-        ('{$UNSUPPORTED.MAX}', '1', 'Average when unsupported items stay above this for 30m.'),
+        ('{$UNSUPPORTED.MAX}', '1', 'Allow the derived authentication-failure ratio to await its first raw values; alert when an additional item is unsupported for 30m.'),
         (
             '{$NAC.SNMP.CONTACTLOST.CONTROL}',
             '0',
@@ -298,7 +297,7 @@ if the box is gone. Same SNMPv3 profile as switches (MONITORING).""",
     doc.add(5, 'type: INTERNAL')
     doc.add(5, "key: 'zabbix[host,,items_unsupported]'")
     doc.add(5, 'delay: 15m')
-    doc.add(5, 'description: Watch the watcher — the 16 canary OIDs must not go silent.')
+    doc.add(5, 'description: Watch the watcher — the 16 canary OIDs must not go silent. The derived authentication-failure ratio can be unsupported before its first raw values arrive.')
     tags(doc, 5, 'health')
     doc.add(5, 'triggers:')
     doc.add(6, f'- uuid: {uid("tr", "unsup")}')
@@ -306,21 +305,10 @@ if the box is gone. Same SNMPv3 profile as switches (MONITORING).""",
     doc.add(7, f'name: {q("ExtremeControl SNMP: Too many unsupported items")}')
     doc.add(7, f'event_name: {q("ExtremeControl SNMP: Too many unsupported items")}')
     doc.add(7, 'priority: AVERAGE')
-    doc.add(7, 'description: SNMP=1 but items unsupported — view/OID mismatch, not a cable.')
+    doc.add(7, 'description: More than the derived authentication-failure ratio is unsupported for 30m; investigate the additional source item/OID.')
     dep_snmp(doc, 7)
     scope(doc, 7, 'availability')
 
-    doc.add(4, f'- uuid: {uid("item", "snmp.hl")}')
-    doc.add(5, 'name: SNMP')
-    doc.add(5, 'type: CALCULATED')
-    doc.add(5, 'key: nac.snmp.available')
-    doc.add(5, 'delay: 1m')
-    doc.add(5, 'value_type: FLOAT')
-    doc.add(5, "params: 'last(//zabbix[host,snmp,available])'")
-    doc.add(5, 'description: Headline SNMP for the Overview tile.')
-    doc.add(5, 'valuemap:')
-    doc.add(6, 'name: zabbix.host.available')
-    tags(doc, 5, 'health')
 
     doc.add(4, f'- uuid: {uid("item", "sysname")}')
     doc.add(5, 'name: System name')
@@ -560,7 +548,7 @@ silences until a quiet baseline. Not RADIUS-dead.""",
     doc.add(5, 'pages:')
     doc.add(6, '- name: Overview')
     doc.add(7, 'widgets:')
-    item_field(doc, 8, 'nac.snmp.available', None, None, 18, 'NSNMP', 'SNMP')
+    item_field(doc, 8, 'zabbix[host,snmp,available]', None, None, 18, 'NSNMP', 'SNMP')
     item_field(doc, 8, 'nac.appl.auth.requests.rate', 18, None, 18, 'NREQ', 'Auth requests/s')
     item_field(doc, 8, 'nac.appl.auth.failures.rate', 36, None, 18, 'NFAIL', 'Auth failures/s')
     item_field(doc, 8, 'nac.appl.contact.lost', 54, None, 18, 'NCL', 'Contact lost')
