@@ -74,3 +74,5 @@ service port / HTTP  →  host ICMP  →  site
 ## Later
 
 Agree the VM list. Agent vs agentless. Overlap with whoever owns servers. Do not wait on this to cut over Extreme/APs — but the external Zabbix check should exist before we trust “all green.”
+
+Domain Controllers are **not** this page (general servers). OS is already Windows by agent. Directory Services counters are a post-cutover companion if server owners want them — [notes/ad-ds-coverage.md](notes/ad-ds-coverage.md).

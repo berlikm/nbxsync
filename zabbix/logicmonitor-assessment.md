@@ -20,7 +20,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 | LM protocol | Scope | Zabbix equivalent | Status |
 |---|---|---|---|
 | **WMI** (global `CH-UPA-Monitor`) | Windows servers | `Windows by Zabbix agent` (agent, not WMI) | ✅ Covered (agent replaces WMI) |
-| **WMI** (DC override `CORP-UPA-Dom_Monitor`) | Domain Controllers | Agent — DCs get Windows by agent via platform rule | ✅ Covered |
+| **WMI** (DC override `CORP-UPA-Dom_Monitor`) | Domain Controllers | Windows by agent = OS + Automatic services. Directory Services counters are **not** in stock 7.0 — [notes/ad-ds-coverage.md](notes/ad-ds-coverage.md) | ⚠️ OS covered; AD DS gap |
 | **JDBC Oracle** (`C##logicmonitor`) | Oracle DBs | Not yet — Oracle by ODBC needed | ❌ Gap |
 | **ESX/vCenter** (`LogicMonitor` SSO) | 4 vCenters (per-site SSO) | `VMware FQDN` template + per-vCenter `{$VMWARE.USERNAME}`/`{$VMWARE.PASSWORD}`/`{$VMWARE.URL}` macros (old `{$VMWARE.USER}` pruned) | ✅ Covered (per-vCenter macros via §11.4) |
 | **Horizon View** (`CH-UPA-Monitor`) | VDI | Not yet — Zabbix doesn't have Horizon template | ❌ Gap (post-cutover) |
@@ -70,6 +70,7 @@ All 38 ConfigSources in LM are standard Exchange content. Zabbix doesn't have a 
 |---|---|---|---|---|
 | Switch/AP/Firewall SNMP | ~568 devices | ✅ 568 synced | 0 | Templates: EXOS, VOSS, IQ Engine, FortiGate |
 | Windows servers (agent/WMI) | ~100+ | ✅ 37+ synced | 0 | Windows by Zabbix agent replaces WMI |
+| AD DS (Directory Services / NTDS) | DC override `CORP-UPA-Dom_Monitor` | ❌ stock OS only | role companion | [notes/ad-ds-coverage.md](notes/ad-ds-coverage.md) — not cutover |
 | Linux servers (agent) | ~50+ | ✅ 9+ synced | 0 | Linux by Zabbix agent |
 | VMware/vCenter | 4 vCenters + ESXi | ✅ 24 ESXi synced | 0 | `{$VMWARE.USERNAME}`/`{$VMWARE.PASSWORD}`/`{$VMWARE.URL}` per vCenter (§11.4) |
 | MSSQL | ~30 | ✅ 2 synced (Agent 2) | 0 | `MSSQL by Zabbix agent 2` on MSSQL role |

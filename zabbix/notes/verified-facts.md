@@ -49,6 +49,7 @@ The VOSS/Fabric Engine **CLI Commands Reference is not in the doc-to-rag corpus*
 | `net.if.speed[ifHighSpeed…]` units | **bps** — custom multiplier 1000000 applied | same |
 | Same item preprocessing | discard unchanged, heartbeat 1h | same |
 | Master-branch template requires | **Zabbix 8.0+** — use release/7.0 branch | template README |
+| Official AD DS / NTDS template in 7.0 | **none** — `templates/app` has IIS/Exchange/SharePoint, not AD. Windows by agent is OS + Automatic services only | git.zabbix.com `templates/app` + `templates/os/windows_agent` on release/7.0; [ad-ds-coverage.md](ad-ds-coverage.md) |
 | Change-detect safety net | already exists as "Ethernet has changed to lower speed than it was before" (`change()<0`, ethernet ifTypes, manual close, **no settle**) | same |
 | Per-interface link-down kill switch | `{$IFCONTROL:"{#IFNAME}"}` = 0 — keyed on ifName, not ifAlias. Not our mechanism | same |
 
