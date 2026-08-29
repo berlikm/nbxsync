@@ -77,4 +77,4 @@ Agree the VM list. Agent vs agentless. Overlap with whoever owns servers. Do not
 
 Domain Controllers are **not** this page (general servers). OS is already Windows by agent. AD + DNS + DHCP on those VMs are a post-cutover **DC Observability** companion if server owners want them — [notes/ad-ds-coverage.md](notes/ad-ds-coverage.md). Do not invent a second host for DHCP/IPAM when it already lives on the DC.
 
-IIS cert Warning at 30d is **Website certificate by Zabbix agent 2**, not **IIS by Zabbix agent** — [notes/iis-coverage.md](notes/iis-coverage.md).
+IIS cert Warning at 30d is companion **IIS Observability** (HTTPS binding LLD from `applicationHost.config`, no FQDN list), not stock **IIS by Zabbix agent** — [notes/iis-coverage.md](notes/iis-coverage.md).

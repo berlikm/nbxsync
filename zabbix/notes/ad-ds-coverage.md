@@ -20,7 +20,7 @@ Three **separate** collectors. Only `dns` is on by default. None have alerting e
 | [`dfsr`](https://github.com/prometheus-community/windows_exporter/blob/master/docs/collector.dfsr.md) | SYSVOL / DFS-R folders | **off**, experimental | DFSR connection/folder/volume | skip unless SYSVOL is a known pain — stock already has `DFSR` service state |
 | [`time`](https://github.com/prometheus-community/windows_exporter/blob/master/docs/collector.time.md) | W32Time offset | **off** | W32Time PDH (2016+) | stock already has `system.localtime` fuzzytime vs the server |
 
-Not this VM: [`adcs`](https://github.com/prometheus-community/windows_exporter/blob/master/docs/collector.adcs.md) (role **PKI**), `adfs` (no NetBox role). IIS is a **different** box — stock **IIS by Zabbix agent** already exists; [iis-coverage.md](iis-coverage.md).
+Not this VM: [`adcs`](https://github.com/prometheus-community/windows_exporter/blob/master/docs/collector.adcs.md) (role **PKI**), `adfs` (no NetBox role). IIS is a **different** box — stock **IIS by Zabbix agent** plus companion **IIS Observability** for HTTPS binding certs; [iis-coverage.md](iis-coverage.md).
 
 ---
 

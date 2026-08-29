@@ -2,9 +2,9 @@
 
 Question: does [windows_exporter `iis`](https://github.com/prometheus-community/windows_exporter/blob/master/docs/collector.iis.md) need a custom template, like AD/DNS/DHCP?
 
-**Answer: no. Use stock [IIS by Zabbix agent](https://git.zabbix.com/projects/ZBX/repos/zabbix/browse/templates/app/iis_agent?at=refs%2Fheads%2Frelease%2F7.0) (7.0).** Cloud already has it. Do not scrape the exporter. Do not write a companion. The gap is **linking the template** on the couple of IIS hosts — zerotouch does not assign it today.
+**Answer: stock [IIS by Zabbix agent](https://git.zabbix.com/projects/ZBX/repos/zabbix/browse/templates/app/iis_agent?at=refs%2Fheads%2Frelease%2F7.0) for W3SVC / WAS / port / app pools. HTTPS certificates are a thin companion — [IIS Observability](../templates/iis_observability/).** Cloud already has stock IIS. Do not scrape the exporter. Do not clone stock IIS. The remaining gap is **linking both** on the couple of IIS hosts — zerotouch does not assign them today (no IIS role).
 
-These are **not** Domain Controllers. OS still comes from **Windows by Zabbix agent**. IIS sits next to it, same pattern as MSSQL / GitLab.
+These are **not** Domain Controllers. OS still comes from **Windows by Zabbix agent**. Stock IIS + this companion sit next to it, same pattern as MSSQL / GitLab.
 
 ---
 
@@ -39,27 +39,28 @@ Skip exporter extras unless a ticket names a **site** (not `_Total`) or worker-p
 
 ---
 
-## Certificate expiry — **not** in IIS
+## Certificate expiry — companion, not a FQDN list
 
 Stock **IIS by Zabbix agent** does not inspect TLS. `{$IIS.SERVICE}` / `{$IIS.PORT}` default **http/80** — a TCP ping, not a handshake. No `web.certificate.get`, no binding LLD, no days-to-expiry. [windows_exporter `iis`](https://github.com/prometheus-community/windows_exporter/blob/master/docs/collector.iis.md) has no cert metrics either.
 
-Use stock **Website certificate by Zabbix agent 2** ([`templates/app/certificate_agent2`](https://git.zabbix.com/projects/ZBX/repos/zabbix/browse/templates/app/certificate_agent2?at=refs%2Fheads%2Frelease%2F7.0)) **next to** IIS, not inside it.
+Stock **Website certificate by Zabbix agent 2** is one `{$CERT.WEBSITE.HOSTNAME}` per host on **7.0**. We do **not** have that FQDN list, and one name per box cannot cover several SNI bindings.
 
-| Thing | Stock cert 7.0 |
+**IIS Observability** (`templates/iis_observability/`) sits **next to** stock IIS. It does not nest it. An HTTPS `<binding>` in `applicationHost.config` is treated as “certificate applied on the binding.” HTTP-only boxes discover nothing and stay at binding count 0.
+
+| Thing | Companion |
 |---|---|
-| Item | `web.certificate.get[{$CERT.WEBSITE.HOSTNAME},{$CERT.WEBSITE.PORT},{$CERT.WEBSITE.IP}]` |
-| Expires soon | Warning — `(not_after - now())/86400 < {$CERT.EXPIRY.WARN}` default **7d** |
-| Invalid / wrong name | **High** |
-| Fingerprint changed | Info (manual close) |
-| IIS site / binding LLD | **no** — one hostname per host on **7.0** |
+| Who has a cert | LLD `https` bindings from `{$IIS.CONFIG.PATH}` (default `C:\Windows\System32\inetsrv\config\applicationHost.config`) |
+| Handshake | Agent 2 `web.certificate.get["{#IIS.SNI}","{#IIS.PORT}","{#IIS.CONNECT}"]` |
+| Connect | Binding IP, or `127.0.0.1` when the IP is `*` — **no public DNS** |
+| SNI | Host header. Empty host = default SSL binding; `{#IIS.SNI}` is the connect address |
+| Expires soon | Warning — `(not_after - now())/86400 < {$IIS.CERT.EXPIRY.WARN}` default **30** (matches [06](../06-network-vms.md)) |
+| Invalid / wrong name | **High** only when `{#IIS.HAS_HOST}=1` (empty host header skips hostname-mismatch) |
 
 Needs **Zabbix agent 2** (WebCertificate plugin). Classic agent cannot. Agent 2 still serves Windows + IIS `perf_counter_en` — swap those boxes to Agent 2 rather than a second agent.
 
-[06](../06-network-vms.md) wants cert Warning at **30d**. Override `{$CERT.EXPIRY.WARN}=30` on the IIS hosts (do not fork the template).
+Do not also link **Website certificate** on the same IIS sites (duplicate handshakes, and 7.0 still needs a handwritten hostname). Use that stock template only for a **known** non-IIS name. Do not WMI-scrape the Windows cert store — the handshake is the symptom.
 
-7.0 is **one DNS name per Zabbix host**. A box with several IIS sites / SNI bindings is several names: set `{$CERT.WEBSITE.HOSTNAME}` to the name clients use; extra names need extra hosts or a later thin companion (7.4 can comma-list hostnames). `{$CERT.WEBSITE.IP}` = the box if the check must hit this VM; leave empty to follow DNS (what the internet sees).
-
-Do not WMI-scrape the Windows cert store for this — the handshake is the symptom.
+Tests (no live IIS): `python3 scripts/test_iis_observability.py`.
 
 ---
 
@@ -68,7 +69,8 @@ Do not WMI-scrape the Windows cert store for this — the handshake is the sympt
 | Source | Why not |
 |---|---|
 | windows_exporter on IIS boxes | Second agent; stock already uses the same Perflib objects |
-| Custom “IIS Observability” YAML | Official template exists — principle 7 |
+| Clone **IIS by Zabbix agent** | Companion is cert-only; stock already pages W3SVC/WAS/pools |
+| Link **Website certificate by Zabbix agent 2** for IIS sites | Needs a FQDN list; 7.0 is one hostname per host |
 | Fork **Windows by Zabbix agent** | Link IIS beside it |
 | Community “Template Microsoft IIS” XML from random blogs | Use Cloud **IIS by Zabbix agent** 7.0 |
 
@@ -78,9 +80,9 @@ Do not WMI-scrape the Windows cert store for this — the handshake is the sympt
 
 ## Assignment (the actual gap)
 
-A couple of hosts → assign **IIS by Zabbix agent** on the **Device/VM** in NetBox ([configuration.md](../../docs/netbox-zabbix/configuration.md) §7: one-offs on the object, not a new role). If a dedicated IIS role exists, put the assignment on the role instead.
+A couple of hosts → assign **IIS by Zabbix agent** **and** **IIS Observability** on the **Device/VM** in NetBox ([configuration.md](../../docs/netbox-zabbix/configuration.md) §7: one-offs on the object, not a new role). If a dedicated IIS role exists, put both on the role instead.
 
-Not in zerotouch today (no IIS role in step 7). Do not invent a role for two boxes.
+Not in zerotouch today (no IIS role in step 7). Do not invent a role for two boxes. Import the companion YAML before linking it.
 
 Macros on the host if not :80/http:
 
@@ -91,10 +93,10 @@ Macros on the host if not :80/http:
 {$IIS.APPPOOL.NOT_MATCHES} =
 ```
 
-Port check depends on W3SVC. App-pool High depends on W3SVC. Do not also page host ICMP for the same outage (Windows / ICMP already cover the box). Cert expiry is a **separate** template (Agent 2), not this one.
+Port check depends on W3SVC. App-pool High depends on W3SVC. Do not also page host ICMP for the same outage (Windows / ICMP already cover the box). Cert expiry is the companion (Agent 2), not stock IIS.
 
 ---
 
 ## Cutover
 
-Not a switch/AP item. Template exists; linking is post-cutover / whenever those hosts are in the onboarding wave.
+Not a switch/AP item. Companion YAML is built; import + Device link is post-cutover / whenever those hosts are in the onboarding wave. Canary still needs a live IIS box (Agent 2 handshake).

@@ -5,7 +5,7 @@
 **Live collector:** [04 Cato](04-cato.md) account monitoring and all 21 NetBox-backed Socket ICMP hosts.
 Copy [_template.md](_template.md) for the next domain. Same observability bar everywhere.
 
-**Rules:** one short page per domain; one data path per doc; OID/lab notes in `templates/<name>/` or `notes/`. Extreme alerting + host **Health**: [notes/alerting-and-health.md](notes/alerting-and-health.md). FortiGate API + Health: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md). XIQ-SE NBI + NAC license count: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). MSSQL named instances (Agent 2 companion): [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md). DC AD+DNS+DHCP vs stock Windows: [notes/ad-ds-coverage.md](notes/ad-ds-coverage.md) (one companion; not cutover). IIS: [notes/iis-coverage.md](notes/iis-coverage.md) (stock **IIS by Zabbix agent**; link it, do not scrape).
+**Rules:** one short page per domain; one data path per doc; OID/lab notes in `templates/<name>/` or `notes/`. Extreme alerting + host **Health**: [notes/alerting-and-health.md](notes/alerting-and-health.md). FortiGate API + Health: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md). XIQ-SE NBI + NAC license count: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). MSSQL named instances (Agent 2 companion): [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md). DC AD+DNS+DHCP vs stock Windows: [notes/ad-ds-coverage.md](notes/ad-ds-coverage.md) (one companion; not cutover). IIS: [notes/iis-coverage.md](notes/iis-coverage.md) (stock **IIS by Zabbix agent** for W3SVC; companion **IIS Observability** for HTTPS binding certs — no FQDN list).
 
 ## Doc set
 
@@ -34,6 +34,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/fortinet_fortimanager_observability/` | FortiManager Observability | companion; nests FMG-FAZ SNMP; **Devices** board; FGFM connect-down; config drift collect-only — [03](03-fortinet.md) |
 | `templates/fortinet_fortianalyzer_observability/` | FortiAnalyzer Observability | companion; nests FMG-FAZ SNMP; **Logs** board; log lag Average; log-disk High at 95% — [03](03-fortinet.md) |
 | `templates/mssql_observability/` | MSSQL Observability | companion YAML: named-instance LLD, inventories, 7.0 host prototypes (stock on children, fleet group `MSSQL instances` only); **soft** zerotouch assign; import before canary — [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md) |
+| `templates/iis_observability/` | IIS Observability | companion YAML: HTTPS binding LLD from `applicationHost.config` (no FQDN list), Agent 2 handshake, Warning 30d; sits next to stock IIS; Device assignment — [notes/iis-coverage.md](notes/iis-coverage.md) |
 | `templates/xiqse_observability/` | XIQ-SE Observability | **built**; GraphQL NBI + 24h unique MAC license + engine LLD; **Health** + **Engines** — [07](07-extreme-control.md) |
 | `templates/extremecontrol_observability/` | ExtremeControl Observability | **built**; thin role **NAC** companion; portal/cert Warning **DISABLED** — [07](07-extreme-control.md) |
 | `templates/extremecontrol_snmp/` | ExtremeControl by SNMP | **built**; `ENTERASYS-NAC-APPLIANCE-MIB` canary on five ENACs; **Health** — [07](07-extreme-control.md) |

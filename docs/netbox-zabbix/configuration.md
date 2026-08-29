@@ -374,7 +374,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 | Acronis Cyber Protect Cloud by HTTP | Device Role Acronis Management | Assign if the template exists |
 | SCCM by Zabbix agent `(stub)` | Device Role SCCM | Assign if the template exists |
 | IIS by Zabbix agent | IIS VMs (Device, or a dedicated role if one exists) | Stock 7.0 — Cloud has it. Not zerotouched. A couple of hosts → Device assignment. [notes/iis-coverage.md](../../zabbix/notes/iis-coverage.md) |
-| Website certificate by Zabbix agent 2 | Same IIS VMs (and any other HTTPS name we care about) | **Not** inside IIS. 7.0 = one `{$CERT.WEBSITE.HOSTNAME}` per host. `{$CERT.EXPIRY.WARN}=30` to match 06. Needs Agent 2 |
+| IIS Observability | Same IIS VMs | Companion next to stock IIS. HTTPS binding LLD from `applicationHost.config` (no FQDN list). `{$IIS.CERT.EXPIRY.WARN}=30`. Needs Agent 2. Import YAML before linking. Do **not** also link Website certificate for these sites |
 | Remote Zabbix proxy health | Device Role Zabbix Proxy | ICMP comes from the Agent Monitoring CG (§6.4) |
 
 Pure / Dell / Huawei / Synology storage and Dell iDRAC: §6.3 (and tag `oracle` → §6.2).  
