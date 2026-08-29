@@ -2,9 +2,24 @@ function endSystemQuery(maxResults, firstResult) {
   return '{ accessControl { endSystems(maxResults: ' + maxResults + ', firstResult: ' + firstResult + ') { count success errorMessage endSystems { macAddress lastAuthEventTime username nacApplianceIP } } } }';
 }
 
+function emptyLicenseSnapshot(error) {
+  return {
+    ok: 0,
+    error: error,
+    truncated: 0,
+    fetched: 0,
+    nacUsed24h: 0,
+    users24h: 0,
+    nacRemaining: 0,
+    nacUsedPct: 0,
+    engines: {}
+  };
+}
+
 function collectLicenses(params) {
   var maxResults = Number(params.max_results) || 20000;
   var pageSize = Number(params.page_size) || 500;
+  var nacTotal = params.nac_total;
   if (pageSize < 1) {
     pageSize = 500;
   }
@@ -13,7 +28,7 @@ function collectLicenses(params) {
   }
   var auth = fetchToken(params);
   if (!auth.ok) {
-    return { ok: 0, error: auth.error, truncated: 0, fetched: 0, nacUsed24h: 0, users24h: 0, engines: {} };
+    return emptyLicenseSnapshot(auth.error);
   }
   var rows = [];
   var first = 0;
@@ -25,11 +40,17 @@ function collectLicenses(params) {
     }
     var page = graphql(params, auth.token, endSystemQuery(take, first));
     if (!page.ok) {
-      return { ok: 0, error: page.error, truncated: truncated, fetched: rows.length, nacUsed24h: 0, users24h: 0, engines: {} };
+      var failed = emptyLicenseSnapshot(page.error);
+      failed.truncated = truncated;
+      failed.fetched = rows.length;
+      return failed;
     }
     var wrap = (((page.data || {}).accessControl) || {}).endSystems || {};
     if (wrap.success === false) {
-      return { ok: 0, error: String(wrap.errorMessage || 'endSystems success=false'), truncated: truncated, fetched: rows.length, nacUsed24h: 0, users24h: 0, engines: {} };
+      var denied = emptyLicenseSnapshot(String(wrap.errorMessage || 'endSystems success=false'));
+      denied.truncated = truncated;
+      denied.fetched = rows.length;
+      return denied;
     }
     var batch = Array.isArray(wrap.endSystems) ? wrap.endSystems : [];
     var i;
@@ -53,6 +74,8 @@ function collectLicenses(params) {
     fetched: rows.length,
     nacUsed24h: counted.nacUsed24h,
     users24h: counted.users24h,
+    nacRemaining: remainingSeats(nacTotal, counted.nacUsed24h),
+    nacUsedPct: usedSeatPercent(nacTotal, counted.nacUsed24h),
     engines: counted.engines
   };
 }

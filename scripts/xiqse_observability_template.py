@@ -138,11 +138,18 @@ def _params(names: tuple[str, ...]) -> str:
             lines += ["        - name: max_results", "          value: '{$XIQ.NAC.ES.MAXRESULTS}'"]
         elif name == 'page_size':
             lines += ["        - name: page_size", "          value: '{$XIQ.NAC.ES.PAGE}'"]
+        elif name == 'nac_total':
+            lines += ["        - name: nac_total", "          value: '{$XIQ.NAC.TOTAL}'"]
+        elif name == 'pilot_total':
+            lines += ["        - name: pilot_total", "          value: '{$XIQ.PILOT.TOTAL}'"]
+        elif name == 'nav_total':
+            lines += ["        - name: nav_total", "          value: '{$XIQ.NAV.TOTAL}'"]
     return '\n'.join(lines)
 
 
 AUTH_PARAMS = ('fqdn', 'port', 'scheme', 'client_id', 'client_secret')
-LICENSE_PARAMS = AUTH_PARAMS + ('max_results', 'page_size')
+LICENSE_PARAMS = AUTH_PARAMS + ('max_results', 'page_size', 'nac_total')
+PILOT_PARAMS = AUTH_PARAMS + ('pilot_total', 'nav_total')
 
 
 def bump(text: str, spaces: int = 4) -> str:
@@ -232,7 +239,7 @@ def render_se() -> str:
         '{$XIQSE.LICENSE.TIMEOUT}',
         licenses_script(),
         LICENSE_PARAMS,
-        extra="      description: |\n        Pages endSystems and counts unique MACs with lastAuthEventTime in 24h.\n",
+        extra="      description: |\n        Pages endSystems and counts unique MACs with lastAuthEventTime in 24h. Remaining and used % are computed here from {$XIQ.NAC.TOTAL} so Cloud 7.0 cannot keep an unguarded calculated formula.\n",
     )
     licenses = licenses.replace(TAGS_NBI, TAGS_LIC)
     pilot = _script_item(
@@ -242,7 +249,7 @@ def render_se() -> str:
         '15m',
         '{$XIQSE.LICENSE.TIMEOUT}',
         pilot_script(),
-        AUTH_PARAMS,
+        PILOT_PARAMS,
         extra="      description: |\n        Counts network.devices xiqLicenseState: Pilot, Navigator, pending, Platform ONE.\n",
     )
     pilot = pilot.replace(TAGS_NBI, TAGS_LIC)
@@ -449,29 +456,47 @@ def render_se() -> str:
     lic_pone = _dep(U['item_lic_platformone'], 'Platform ONE / Advanced / Standard used', 'xiqse.lic.platformone', 'xiqse.nbi.pilot', '$.platformOne', 'UNSIGNED', tags=TAGS_LIC)
     pilot_ok = _dep(U['item_pilot_ok'], 'Pilot census ok', 'xiqse.pilot.ok', 'xiqse.nbi.pilot', '$.ok', 'UNSIGNED', extra=f'      valuemap:\n        name: XIQ-SE NBI\n      triggers:\n{pilot_fail}\n', tags=TAGS_LIC)
     heap_pct = _calc(U['item_heap_pct'], 'XIQ-SE heap used %', 'xiqse.nbi.heap.pct', 'last(//xiqse.nbi.heap.used)/(last(//xiqse.nbi.heap.max)+(last(//xiqse.nbi.heap.max)=0))*100', '%', tags=TAGS_NBI)
-    nac_remain = _calc(
+    nac_remain = _dep(
         U['item_nac_remain'],
         'NAC license remaining',
         'xiqse.nac.remaining',
-        '({$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h))*({$XIQ.NAC.TOTAL}>0)',
-        extra="      description: |\n        Purchased {$XIQ.NAC.TOTAL} minus 24h unique MACs. Stays 0 while that macro is 0 (CG XIQ-SE licenses unset) — NBI cannot read Administration → Licenses. Not out of seats.\n",
+        'xiqse.nbi.licenses',
+        '$.nacRemaining',
+        'FLOAT',
+        extra="      description: |\n        Purchased {$XIQ.NAC.TOTAL} minus 24h unique MACs, computed in the census SCRIPT. Stays 0 while that macro is 0 — NBI cannot read Administration → Licenses. Not out of seats. Not a calculated item (those kept the unguarded TOTAL-used formula on Cloud 7.0).\n",
+        tags=TAGS_LIC,
     )
-    nac_pct = _calc(U['item_nac_pct'], 'NAC license used %', 'xiqse.nac.used.pct', 'last(//xiqse.nac.used24h)/({$XIQ.NAC.TOTAL}+({$XIQ.NAC.TOTAL}=0))*100*({$XIQ.NAC.TOTAL}>0)', '%')
-    pilot_remain = _calc(
+    nac_pct = _dep(
+        U['item_nac_pct'],
+        'NAC license used %',
+        'xiqse.nac.used.pct',
+        'xiqse.nbi.licenses',
+        '$.nacUsedPct',
+        'FLOAT',
+        '%',
+        tags=TAGS_LIC,
+    )
+    pilot_remain = _dep(
         U['item_pilot_remain'],
         'Pilot licenses remaining',
         'xiqse.pilot.remaining',
-        '({$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used))*({$XIQ.PILOT.TOTAL}>0)',
-        extra="      description: |\n        Purchased {$XIQ.PILOT.TOTAL} minus XIQ_PILOT devices. Stays 0 while that macro is 0 (CG XIQ-SE licenses). Not out of seats.\n      triggers:\n"
+        'xiqse.nbi.pilot',
+        '$.pilotRemaining',
+        'FLOAT',
+        extra="      description: |\n        Purchased {$XIQ.PILOT.TOTAL} minus XIQ_PILOT devices, computed in the census SCRIPT. Stays 0 while that macro is 0. Not out of seats.\n      triggers:\n"
         + f'{pilot_low}\n',
+        tags=TAGS_LIC,
     )
-    nav_remain = _calc(
+    nav_remain = _dep(
         U['item_nav_remain'],
         'Navigator licenses remaining',
         'xiqse.nav.remaining',
-        '({$XIQ.NAV.TOTAL}-last(//xiqse.nav.used))*({$XIQ.NAV.TOTAL}>0)',
-        extra="      description: |\n        Purchased {$XIQ.NAV.TOTAL} minus XIQ_NAVIGATOR devices. Stays 0 while that macro is 0 (CG XIQ-SE licenses). Not out of seats.\n      triggers:\n"
+        'xiqse.nbi.pilot',
+        '$.navRemaining',
+        'FLOAT',
+        extra="      description: |\n        Purchased {$XIQ.NAV.TOTAL} minus XIQ_NAVIGATOR devices, computed in the census SCRIPT. Stays 0 while that macro is 0. Not out of seats.\n      triggers:\n"
         + f'{nav_low}\n',
+        tags=TAGS_LIC,
     )
     unsup_item = f"""    - uuid: {U['item_unsupported']}
       name: Unsupported items
@@ -599,7 +624,7 @@ def _se_macros() -> str:
         ('{$XIQ.PILOT.REMAIN.WARN}', '2', 'Warning when remaining Pilot seats at or below this.'),
         ('{$XIQ.NAV.TOTAL}', '0', 'Purchased Navigator seats. Set on CG XIQ-SE licenses. 0 = remaining forced 0.'),
         ('{$XIQ.NAV.REMAIN.WARN}', '2', 'Warning when remaining Navigator seats at or below this.'),
-        ('{$XIQ.ENGINE.CONNECTED.CONTROL}', '1', 'Ticket engines with connected=0. Unknown (2) is silent.'),
+        ('{$XIQ.ENGINE.CONNECTED.CONTROL}', '1', 'Ticket engines with connected=0. 25.5.12.6 has no connected field — item stays 2 (silent).'),
         ('{$XIQ.ENGINE.ENFORCE.CONTROL}', '1', 'Ticket needsEnforce=1.'),
         ('{$XIQ.ENGINE.RADIUSD.CONTROL}', '1', 'Page FreeRADIUS disabled on an engine.'),
     ]
@@ -671,7 +696,7 @@ def _prototypes() -> str:
         f'last(/{TPL}/xiqse.engine.capacity[{{#ENGINE.IP}}])>0 and last(/{TPL}/xiqse.engine.used24h[{{#ENGINE.IP}}])>=last(/{TPL}/xiqse.engine.capacity[{{#ENGINE.IP}}])',
         'XIQ-SE engine {#ENGINE.NAME}: 24h unique MACs at hardware capacity',
         'WARNING',
-        'Per-engine hardware load (Current Capacity), not the global NAC license.',
+        'Per-engine hardware load (GUI Current Capacity), not the global NAC license. 25.5.12.6 NBI capacity is 0 — this trigger stays silent until that field is non-zero.',
     )
     stale = _trigger(
         U['tr_stale'],

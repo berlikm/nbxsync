@@ -129,6 +129,19 @@ class LicenseWindowTests(unittest.TestCase):
         )
         self.assertEqual(counted['nacUsed24h'], 1)
 
+    def test_remaining_is_zero_when_purchased_total_is_unset(self):
+        self.assertEqual(run_metrics_json('remainingSeats(0, 2150)'), 0)
+        self.assertEqual(run_metrics_json('remainingSeats("0", 2150)'), 0)
+        self.assertEqual(run_metrics_json('remainingSeats("", 2150)'), 0)
+        self.assertEqual(run_metrics_json('remainingSeats(3000, 2150)'), 850)
+        self.assertEqual(run_metrics_json('remainingSeats(0, 320)'), 0)
+        self.assertEqual(run_metrics_json('usedSeatPercent(0, 2150)'), 0)
+        self.assertAlmostEqual(
+            run_metrics_json('usedSeatPercent(3000, 2150)'),
+            100 * 2150 / 3000,
+            places=8,
+        )
+
 
 class EngineLldTests(unittest.TestCase):
     def test_health_fixture_discovers_both_engines(self):
@@ -291,6 +304,7 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn('connected', health)
         self.assertIn('isConnected', health)
         self.assertIn('freeRadiusEnabled', health)
+        self.assertIn('!last.errorCount', health)
 
     def test_item_prototypes_use_compact_extract_js(self):
         proto = next(
@@ -382,16 +396,21 @@ class YamlContractTests(unittest.TestCase):
 
     def test_remaining_is_zero_until_purchased_total_is_set(self):
         remain = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.remaining')
-        self.assertIn('*({$XIQ.NAC.TOTAL}>0)', remain['params'])
-        self.assertNotIn('?', remain['params'])
+        self.assertEqual(remain['type'], 'DEPENDENT')
+        self.assertEqual(remain['preprocessing'][0]['parameters'][0], '$.nacRemaining')
+        self.assertNotIn('params', remain)
         self.assertIn('Not out of seats', remain.get('description') or '')
-        self.assertIn('XIQ-SE licenses', remain.get('description') or '')
+        self.assertIn('census SCRIPT', remain.get('description') or '')
+        licenses = next(item for item in self.se['items'] if item['key'] == 'xiqse.nbi.licenses')
+        self.assertIn('{$XIQ.NAC.TOTAL}', json.dumps(licenses.get('parameters') or licenses))
+        self.assertIn('nac_total', licenses_script() + render_se())
+        self.assertNotIn('{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)', render_se())
         pilot = next(item for item in self.se['items'] if item['key'] == 'xiqse.pilot.remaining')
-        self.assertIn('*({$XIQ.PILOT.TOTAL}>0)', pilot['params'])
-        self.assertNotIn('?', pilot['params'])
+        self.assertEqual(pilot['type'], 'DEPENDENT')
+        self.assertEqual(pilot['preprocessing'][0]['parameters'][0], '$.pilotRemaining')
         nav = next(item for item in self.se['items'] if item['key'] == 'xiqse.nav.remaining')
-        self.assertIn('*({$XIQ.NAV.TOTAL}>0)', nav['params'])
-        self.assertNotIn('?', nav['params'])
+        self.assertEqual(nav['type'], 'DEPENDENT')
+        self.assertEqual(nav['preprocessing'][0]['parameters'][0], '$.navRemaining')
         macros = {row['macro']: row for row in self.se['macros']}
         self.assertEqual(macros['{$XIQ.NAC.TOTAL}']['value'], '0')
         self.assertEqual(macros['{$XIQ.PILOT.TOTAL}']['value'], '0')
@@ -399,6 +418,25 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn('XIQ-SE licenses', macros['{$XIQ.NAC.TOTAL}']['description'])
         self.assertNotIn('{$XIQ.NAC.FRESH.TIME.START}', macros)
         self.assertNotIn('{$XIQ.NAC.FRESH.TIME.END}', macros)
+        used_pct = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used.pct')
+        self.assertEqual(used_pct['type'], 'DEPENDENT')
+        self.assertEqual(used_pct['preprocessing'][0]['parameters'][0], '$.nacUsedPct')
+        calculated = [item['key'] for item in self.se['items'] if item['type'] == 'CALCULATED']
+        self.assertEqual(calculated, ['xiqse.nbi.heap.pct'])
+
+    def test_hardware_capacity_trigger_stays_silent_when_api_capacity_is_zero(self):
+        proto = next(
+            row
+            for row in self.se['discovery_rules'][0]['item_prototypes']
+            if row['key'] == 'xiqse.engine.used24h[{#ENGINE.IP}]'
+        )
+        load = proto['trigger_prototypes'][0]
+        self.assertEqual(
+            load['name'],
+            'XIQ-SE engine {#ENGINE.NAME}: 24h unique MACs at hardware capacity',
+        )
+        self.assertIn('xiqse.engine.capacity[{#ENGINE.IP}])>0', load['expression'])
+        self.assertIn('25.5.12.6', load.get('description') or '')
 
     def test_dashboards_and_valuemaps_live_on_the_template(self):
         self.assertEqual({d['name'] for d in self.se['dashboards']}, DASHBOARD_NAMES)

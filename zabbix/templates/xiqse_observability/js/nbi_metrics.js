@@ -25,6 +25,32 @@ function objectSize(obj) {
   return count;
 }
 
+function remainingSeats(total, used) {
+  // Purchased totals are macros. 0 / blank / NaN means unknown entitlement,
+  // not "sold out" — do not return used as a negative remaining.
+  var purchased = Number(total);
+  var observed = Number(used);
+  if (!isFinite(purchased) || purchased <= 0) {
+    return 0;
+  }
+  if (!isFinite(observed) || observed < 0) {
+    observed = 0;
+  }
+  return purchased - observed;
+}
+
+function usedSeatPercent(total, used) {
+  var purchased = Number(total);
+  var observed = Number(used);
+  if (!isFinite(purchased) || purchased <= 0) {
+    return 0;
+  }
+  if (!isFinite(observed) || observed < 0) {
+    observed = 0;
+  }
+  return observed / purchased * 100;
+}
+
 function countLicenseWindow(rows, nowMs, windowMs) {
   var macs = {};
   var users = {};

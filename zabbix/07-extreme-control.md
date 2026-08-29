@@ -19,7 +19,7 @@ This page is the **target contract**. YAML lives in `templates/xiqse_observabili
 | Never silent | GraphQL nodata; zero engines discovered; 24h census truncated (`count == maxResults`). SNMP-dead Warning on the engine if the MONITORING profile stops answering |
 | Collect first | Heap / CPU thresholds off until a quiet baseline. Log-forward is elapsed `{$XIQ.NAC.FRESH}` (no wall clock — engines are in CH / CN / HU / KR). SNMP fail-ratio and contact-lost gated (`101` / CONTROL=0) |
 | One `icmpping` | Nested only if the host does not already ping. Do not also assign Network Generic |
-| Host dashboard | **Health** Overview + Licenses: **used** seats. Remaining is an item only — it stays 0 until you set purchased `{$XIQ.*.TOTAL}` (NBI has no entitlements field) |
+| Host dashboard | **Health** Overview + Licenses: **used** seats. Remaining is an item only — SCRIPT-computed, 0 until you set purchased `{$XIQ.*.TOTAL}` (NBI has no entitlements field) |
 
 Disaster is campus-wide auth later, on a **service / site** host — not on this template.
 
@@ -57,7 +57,7 @@ Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone`
 | HTTPS 8443 / NBI unexpected | yes | Average | Ops blind; RADIUS may still work (SE upgrade) |
 | GraphQL nodata | yes | Average | Token, TLS, or SE down |
 | Zero Control engines discovered | yes | Average | Filter / rights / template wrong |
-| Engine disconnected from SE | yes | Average | LLD on SE. Auth may still work locally |
+| Engine disconnected from SE | yes | Average | LLD on SE. Auth may still work locally. `connected` is **not** on 25.5.12.6 `NacAppliance` — item stays `2` (silent) |
 | NAC not forwarding auth logs to SE | yes | Average | Per engine: newest `lastAuthEventTime` older than `{$XIQ.NAC.FRESH}` (default 24h elapsed, **any time zone**). Override a quiet engine with `{$XIQ.NAC.FRESH:"<engine-ip>"}`. `{$XIQ.NAC.FRESH.CONTROL}` still gates the ticket. Not syslog to a SIEM |
 | SE ingest jam (E-to-Sav / drops) | **no** until the field exists | Average | One SE ticket if GraphQL exposes it on canary |
 | Engine `needsEnforce` stuck | yes | Average | Config never pushed |
@@ -82,7 +82,7 @@ Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone`
 | RADIUS 1812 dead, ICMP up | yes | **High** | Requires vendor **RADIUS Monitor Clients**. Zabbix `net.udp.service` is **not** RADIUS — do not use it |
 | `freeRadiusEnabled` false | yes | **High** | If NBI returns it on the engine object |
 | TCP 8444 | **no** as High | Warning later | Admin UI, not auth |
-| Engine hardware 24h unique ≥ rating | yes | Warning | Per-engine load, not the global license |
+| Engine hardware 24h unique ≥ rating | yes | Warning | Per-engine load, not the global license. 25.5.12.6 NBI `capacity` is **0** on every engine — trigger requires `last(capacity)>0` |
 | Linux CPU / disk (existing agent) | yes | Warning | Do not add an agent for this |
 | SNMP agent dead, ICMP up | yes | Warning | `ExtremeControl by SNMP`. Same MONITORING profile as switches. RADIUS may still work |
 | Engine lost SNMP to switches (`contact.lost` > 0) | **no** until opted in | Warning | Canary 2026-08-28 was **0** on all five ENACs. `{$NAC.SNMP.CONTACTLOST.CONTROL}` |
@@ -99,7 +99,7 @@ On **Site Engine → Health**:
 | Graph | Unit | Why |
 |---|---|---|
 | **NAC license used (24h unique MACs)** | count | The number Extreme bills / enforces |
-| NAC license remaining | `{$XIQ.NAC.TOTAL}` − used | **Item only** (Health tiles show used). **0 until you set the CG.** That is not “out of seats”. NBI cannot read Administration → Licenses |
+| NAC license remaining | SCRIPT: 0 while `{$XIQ.NAC.TOTAL}` is 0, else purchased − used | **Item only** (Health tiles show used). **0 until you set the CG.** That is not “out of seats” and not −2175. NBI cannot read Administration → Licenses |
 | NAC used % of entitlement | % | Warning at 90% |
 | Unique **usernames** 24h | count | Capacity story; **not** the license |
 | Pilot used / remaining | count | Device + engine seats (`XIQ_PILOT`) |
@@ -151,18 +151,19 @@ NBI lives on **SE only**. Client: Administration → Client API Access; rights *
 - TLS: verify the SE cert. Do not copy vendor samples that set `verify=False`.
 - Quiet engines: raise `{$XIQ.NAC.FRESH}` (elapsed seconds) or set `{$XIQ.NAC.FRESH:"<engine-ip>"}` on the SE host. There is **no** 07:00–19:00 clock — Site Engine `time()` is one TZ and the fleet is not.
 - Extreme's `.xwf` license calculator stays a one-shot migration report. Do not schedule it from Zabbix. Do not point the template at `appdata/license`.
+- Production canary 2026-08-29 (`ch-sta-p-ensa01`, 25.5.12.6): NBI up, 4055 end-systems / 2150 24h MACs / 320 Pilot / 0 Navigator. `connected` and RADIUS monitor fields absent. NBI `capacity` is 0. Details: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md).
 
 ---
 
 ## Purchased seat totals
 
-`ch-sta-p-ensa01` is linked to **XIQ-SE Observability** with no host-level macro overrides. Template defaults are `{$XIQ.NAC.TOTAL}=0`, `{$XIQ.PILOT.TOTAL}=0`, `{$XIQ.NAV.TOTAL}=0`. Remaining is calculated:
+`ch-sta-p-ensa01` is linked to **XIQ-SE Observability** with no host-level macro overrides. Template defaults are `{$XIQ.NAC.TOTAL}=0`, `{$XIQ.PILOT.TOTAL}=0`, `{$XIQ.NAV.TOTAL}=0`.
 
-- NAC: purchased NAC seats − observed 24-hour unique MACs
-- Pilot: purchased Pilot seats − observed Pilot use
-- Navigator: purchased Navigator seats − observed Navigator use
+Remaining is computed **inside the census SCRIPT** (NAC from `{$XIQ.NAC.TOTAL}`, Pilot / Navigator from their macros) and stored as a DEPENDENT item. It is not a calculated item. Cloud 7.0 kept the unguarded live formula `{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)` — that produced **−2175** on 2026-08-29 (`TOTAL=0`, `used24h=2150`). SCRIPT-side remaining stays **0** while TOTAL is 0.
 
-While a purchased total is 0, remaining is forced to **0.00**. That avoids a misleading negative from live usage minus an unknown entitlement. It is **not** “out of seats”. Cap tickets stay silent until the total is set.
+While a purchased total is 0, remaining is forced to **0**. That is “unknown entitlement”, not “out of seats” and not a negative. Cap tickets stay silent until the total is set.
+
+After this template change: `--apply-xiqse` (re-import) then HostSync `ch-sta-p-ensa01`. If remaining stays negative, the leftover CALCULATED item was not replaced — delete that item or unlink/relink the template.
 
 NBI has no entitlements field. Set the three counts on nbxSync CG **XIQ-SE licenses**, not as Zabbix host macros.
 
@@ -197,6 +198,7 @@ auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High alr
 | 24h census truncated | `maxResults` too small — license graph under-counts |
 | NAC census failed | NBI up but `endSystems` SCRIPT failed or timed out — Overview used tiles stay empty |
 | Device license census failed | NBI up but `xiqLicenseState` query failed — Pilot/Navigator remaining unknown |
+| Remaining negative | Leftover CALCULATED remaining item after import (2026-08-29 live: −2175). Re-import or unlink/relink |
 | Unsupported items | Schema field renamed on their SE version; or ENTERASYS-NAC-APPLIANCE-MIB view dropped on an engine |
 | Proxy last-seen | already in 01 |
 

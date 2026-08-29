@@ -41,7 +41,7 @@ The Extreme **XIQ-SE licensing calculation** OneView workflow ([ExtremeScripting
 
 Accounting packets do **not** consume NAC seats. Unique **usernames** are a useful graph and are **not** the license.
 
-NAC Manager **Current Capacity** `1365/3000` is 24h unique **on that engine** vs **hardware** rating. Unrelated to `{$XIQ.NAC.TOTAL}`. `NacAppliance.capacity` is that rating; `licensed` is a boolean; `licenseData` is an undocumented blob — dump on canary.
+NAC Manager **Current Capacity** `1365/3000` is 24h unique **on that engine** vs **hardware** rating. Unrelated to `{$XIQ.NAC.TOTAL}`. `NacAppliance.capacity` is on the schema but **25.5.12.6 NBI returns 0** for every engine — the GUI column is a different number. The hardware-cap trigger requires `last(capacity)>0`. `licensed` is a boolean; each engine reports license class `XIQ-NAC-S`. `licenseData` is an undocumented blob — not used.
 
 Published GraphQL through 26.08: `Administration` has `serverInfo` only (version, upTime, heap, RAM, threads). No `entitlements`. Old XMC community: “no way to query licenses via the API” still holds for the **purchased** pool.
 
@@ -87,13 +87,13 @@ Pilot used:
 network { devices { deviceData { xiqLicenseState xiqLicenseCount } } }
 ```
 
-`DeviceXIQLicenseState` includes `XIQ_PILOT`, `XIQ_NAVIGATOR`, `XIQ_UNMANAGED`, `NOT_LICENSED`, `XIQ_PENDING`, Platform ONE `XIQ_ADVANCED*` / `XIQ_STANDARD*`, … Purchased totals (`{$XIQ.PILOT.TOTAL}`, `{$XIQ.NAV.TOTAL}`, `{$XIQ.NAC.TOTAL}`) live on nbxSync CG **XIQ-SE licenses**, assigned to Site Engine platforms. Remaining = purchased − used. `0.00` remaining means the CG is still 0, not that the pool is empty. `--apply-xiqse` never overwrites the CG; it mirrors CG → platform (HostSync does not expand CG macros at resolve time). After editing the CG, re-apply then HostSync the SE. Do not set Zabbix host macros on `ch-sta-p-ensa01`.
+`DeviceXIQLicenseState` includes `XIQ_PILOT`, `XIQ_NAVIGATOR`, `XIQ_UNMANAGED`, `NOT_LICENSED`, `XIQ_PENDING`, Platform ONE `XIQ_ADVANCED*` / `XIQ_STANDARD*`, … Purchased totals (`{$XIQ.PILOT.TOTAL}`, `{$XIQ.NAV.TOTAL}`, `{$XIQ.NAC.TOTAL}`) live on nbxSync CG **XIQ-SE licenses**, assigned to Site Engine platforms. Remaining is computed in the census SCRIPT (`if purchased <= 0: 0 else purchased − used`) and exported as a DEPENDENT item. Calculated remaining was rejected or left unguarded on Cloud 7.0 (live `−2175` on 2026-08-29). `0` remaining means the CG is still 0, not that the pool is empty. `--apply-xiqse` never overwrites the CG; it mirrors CG → platform (HostSync does not expand CG macros at resolve time). After editing the CG, re-apply then HostSync the SE. Do not set Zabbix host macros on `ch-sta-p-ensa01`.
 
 ---
 
 ## Engine / freshness
 
-Published Engine type page is 404. Query `accessControl { engines }` and take whatever fields exist. Known on `NacAppliance`: `ipAddress`, `name`, `version`, `licensed`, `licenseData`, `capacity`, `freeRadiusEnabled`, `needsEnforce`, `applianceProperties`.
+Published Engine type page is 404. Query `accessControl { engines }` and take whatever fields exist. Known on `NacAppliance` (25.5.12.6): `ipAddress`, `name`, `version`, `licensed`, `licenseData`, `capacity`, `freeRadiusEnabled`, `needsEnforce`, `applianceProperties`. **`connected` is not on the type.** The engine SCRIPT tries `connected`, then `isConnected`, then a query without either, and prefers a later clean response over a GraphQL error. The item stays `2` (unknown). The disconnected trigger is `last()=0`, so unknown does not page.
 
 Event pipeline (user-reported: RADIUS green, SE has no logs). This **is** the NAC → SE log-forward check. It is **not** syslog to a SIEM.
 
@@ -134,7 +134,7 @@ administration {
 }
 ```
 
-8443 + certificate item on the same host. Heap triggers **DISABLED** until baseline.
+8443 is a SIMPLE TCP item. No `web.certificate.get` — YAML cannot carry it without an agent on the OVA. TLS verify stays on the GraphQL SCRIPT. Heap / RAM / threads are items only (collect first). 2026-08-29: heap 3.88 / 7.64 GB, free RAM 357 MB / 16.76 GB, 1040 threads — no trigger.
 
 ---
 
@@ -154,15 +154,49 @@ administration {
 
 ## Canary (live SE)
 
-On one SE, query-only, after `--apply-xiqse` + HostSync of that host:
+### 2026-08-29 — production `ch-sta-p-ensa01` (query only)
 
-1. Token + `serverInfo` + 8443 + cert.
-2. `engines` / `NacAppliance` field dump (`licenseData`, connected/last-contact names).
-3. One page of `endSystems`: time units, typical `count`, whether 24h filter can be approximated.
-4. `xiqLicenseState` histogram (Pilot / Navigator / Platform ONE / pending).
-5. Confirm RADIUS Monitor Clients exist before enabling High.
+NBI OAuth client-credentials succeeded with TLS verify on. Version **25.5.12.6**, started 2026-03-29 09:00:52 CEST, uptime ~153 days (`upTime` is **ms**: 13,221,883,291). Heap 3.88 / 7.64 GB. Free RAM 357 MB / 16.76 GB. Threads 1040.
 
-If `licenseData` already contains 24h used / entitlement, prefer that over paging MACs.
+Five engines, same version, licensed, `needsEnforce=no`, FreeRADIUS enabled, license class `XIQ-NAC-S`:
+
+| Engine | IP |
+|---|---|
+| CH-STA-P-ENAC01 | 10.0.104.43 |
+| CH-STA-P-ENAC02 | 10.0.105.36 |
+| KR-SEL-P-ENAC01 | 10.30.100.15 |
+| CN-SHA-P-ENAC01 | 10.31.100.15 |
+| HU-DEB-P-ENAC01 | 10.40.100.15 |
+
+`connected` is **not** on `NacAppliance`. `capacity` is **0** for all five through NBI (GUI Current Capacity is a different number). `administration.eventStats` does not exist. `NacAppliance.radiusMonitorClients` does not exist.
+
+`accessControl.endSystems`: count **4055**, success=true, not truncated. Sample auth: EAP-PEAP / EAP-TLS, states ACCEPT / REJECT. Zabbix `xiqse.nac.used24h` = **2150** (rolling 24h unique MACs — not the 4055 inventory).
+
+Devices: **563** total — **320** `XIQ_PILOT`, **243** `XIQ_PENDING`, **0** Navigator.
+
+Purchased Access Control / Pilot / Navigator quantities are **not** on the OAuth NBI client. Do not invent them.
+
+Zabbix on `ch-sta-p-ensa01` (all queried items supported, inherited totals still 0):
+
+| Item | Value |
+|---|---|
+| `xiqse.nbi.available` | 1 |
+| `xiqse.nac.fetched` | 4055 |
+| `xiqse.nac.ok` | 1 |
+| `xiqse.nac.truncated` | 0 |
+| `xiqse.nac.used24h` | 2150 |
+| `xiqse.pilot.used` | 320 |
+| `xiqse.pilot.ok` | 1 |
+| `xiqse.nav.used` | 0 |
+| `xiqse.nac.remaining` | **−2175** |
+
+That remaining value is the live **unguarded calculated** formula `{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)` with TOTAL=0. Repo later used a multiply-guard; Cloud 7.0 did not apply it to calculated `params`. Remaining is now computed in the SCRIPT and must stay **0** until the CG totals are set.
+
+### Still open on canary
+
+1. Native 24h-unique / entitlement field in `schema.idl` or `licenseData` — not present; keep paging MACs.
+2. RADIUS Monitor Clients field on `NacAppliance` — still absent; RADIUS High stays DISABLED.
+3. Purchased seat integers from Administration → Licenses — fill CG **XIQ-SE licenses** by hand.
 
 ---
 

@@ -56,6 +56,9 @@ FORBIDDEN_SNIPPETS = (
     'icmpping',
     '{HOST.HOST}',
     '{HOST.CONN}',
+    '{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)',
+    '{$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used)',
+    '{$XIQ.NAV.TOTAL}-last(//xiqse.nav.used)',
 )
 
 SE_ITEM_KEYS = {

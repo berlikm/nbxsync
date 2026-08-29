@@ -13,7 +13,9 @@ function emptyPilotSnapshot(error) {
     pending: counted.pending,
     unmanaged: counted.unmanaged,
     platformOne: counted.platformOne,
-    other: counted.other
+    other: counted.other,
+    pilotRemaining: 0,
+    navRemaining: 0
   };
 }
 
@@ -36,7 +38,9 @@ function collectPilot(params) {
     pending: counted.pending,
     unmanaged: counted.unmanaged,
     platformOne: counted.platformOne,
-    other: counted.other
+    other: counted.other,
+    pilotRemaining: remainingSeats(params.pilot_total, counted.pilotUsed),
+    navRemaining: remainingSeats(params.nav_total, counted.navigatorUsed)
   };
 }
 

@@ -56,13 +56,19 @@ function graphql(params, token, query) {
 }
 
 function graphqlTry(params, token, queries) {
+  // Prefer a later clean query. On 25.5.12.6 the first engines query asks
+  // for connected (not on NacAppliance) and must not win over the fallback.
   var last = { ok: 0, error: 'no graphql query' };
+  var partial = null;
   var i;
   for (i = 0; i < queries.length; i++) {
     last = graphql(params, token, queries[i]);
-    if (last.ok) {
+    if (last.ok && !last.errorCount) {
       return last;
     }
+    if (last.ok) {
+      partial = last;
+    }
   }
-  return last;
+  return partial || last;
 }

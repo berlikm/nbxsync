@@ -72,7 +72,7 @@ zabbix_export:
           description: 'Warning when remaining Navigator seats at or below this.'
         - macro: '{$XIQ.ENGINE.CONNECTED.CONTROL}'
           value: '1'
-          description: 'Ticket engines with connected=0. Unknown (2) is silent.'
+          description: 'Ticket engines with connected=0. 25.5.12.6 has no connected field — item stays 2 (silent).'
         - macro: '{$XIQ.ENGINE.ENFORCE.CONTROL}'
           value: '1'
           description: 'Ticket needsEnforce=1.'
@@ -114,6 +114,32 @@ zabbix_export:
                 }
               }
               return count;
+            }
+
+            function remainingSeats(total, used) {
+              // Purchased totals are macros. 0 / blank / NaN means unknown entitlement,
+              // not "sold out" — do not return used as a negative remaining.
+              var purchased = Number(total);
+              var observed = Number(used);
+              if (!isFinite(purchased) || purchased <= 0) {
+                return 0;
+              }
+              if (!isFinite(observed) || observed < 0) {
+                observed = 0;
+              }
+              return purchased - observed;
+            }
+
+            function usedSeatPercent(total, used) {
+              var purchased = Number(total);
+              var observed = Number(used);
+              if (!isFinite(purchased) || purchased <= 0) {
+                return 0;
+              }
+              if (!isFinite(observed) || observed < 0) {
+                observed = 0;
+              }
+              return observed / purchased * 100;
             }
 
             function countLicenseWindow(rows, nowMs, windowMs) {
@@ -367,15 +393,21 @@ zabbix_export:
             }
 
             function graphqlTry(params, token, queries) {
+              // Prefer a later clean query. On 25.5.12.6 the first engines query asks
+              // for connected (not on NacAppliance) and must not win over the fallback.
               var last = { ok: 0, error: 'no graphql query' };
+              var partial = null;
               var i;
               for (i = 0; i < queries.length; i++) {
                 last = graphql(params, token, queries[i]);
-                if (last.ok) {
+                if (last.ok && !last.errorCount) {
                   return last;
                 }
+                if (last.ok) {
+                  partial = last;
+                }
               }
-              return last;
+              return partial || last;
             }
 
             var SERVER_INFO_QUERY = '{ administration { serverInfo { version upTime startTime heapMemoryUsed heapMemoryMax freePhysicalMemory totalPhysicalMemory threadCount } } }';
@@ -475,6 +507,32 @@ zabbix_export:
               return count;
             }
 
+            function remainingSeats(total, used) {
+              // Purchased totals are macros. 0 / blank / NaN means unknown entitlement,
+              // not "sold out" — do not return used as a negative remaining.
+              var purchased = Number(total);
+              var observed = Number(used);
+              if (!isFinite(purchased) || purchased <= 0) {
+                return 0;
+              }
+              if (!isFinite(observed) || observed < 0) {
+                observed = 0;
+              }
+              return purchased - observed;
+            }
+
+            function usedSeatPercent(total, used) {
+              var purchased = Number(total);
+              var observed = Number(used);
+              if (!isFinite(purchased) || purchased <= 0) {
+                return 0;
+              }
+              if (!isFinite(observed) || observed < 0) {
+                observed = 0;
+              }
+              return observed / purchased * 100;
+            }
+
             function countLicenseWindow(rows, nowMs, windowMs) {
               var macs = {};
               var users = {};
@@ -726,24 +784,45 @@ zabbix_export:
             }
 
             function graphqlTry(params, token, queries) {
+              // Prefer a later clean query. On 25.5.12.6 the first engines query asks
+              // for connected (not on NacAppliance) and must not win over the fallback.
               var last = { ok: 0, error: 'no graphql query' };
+              var partial = null;
               var i;
               for (i = 0; i < queries.length; i++) {
                 last = graphql(params, token, queries[i]);
-                if (last.ok) {
+                if (last.ok && !last.errorCount) {
                   return last;
                 }
+                if (last.ok) {
+                  partial = last;
+                }
               }
-              return last;
+              return partial || last;
             }
 
             function endSystemQuery(maxResults, firstResult) {
               return '{ accessControl { endSystems(maxResults: ' + maxResults + ', firstResult: ' + firstResult + ') { count success errorMessage endSystems { macAddress lastAuthEventTime username nacApplianceIP } } } }';
             }
 
+            function emptyLicenseSnapshot(error) {
+              return {
+                ok: 0,
+                error: error,
+                truncated: 0,
+                fetched: 0,
+                nacUsed24h: 0,
+                users24h: 0,
+                nacRemaining: 0,
+                nacUsedPct: 0,
+                engines: {}
+              };
+            }
+
             function collectLicenses(params) {
               var maxResults = Number(params.max_results) || 20000;
               var pageSize = Number(params.page_size) || 500;
+              var nacTotal = params.nac_total;
               if (pageSize < 1) {
                 pageSize = 500;
               }
@@ -752,7 +831,7 @@ zabbix_export:
               }
               var auth = fetchToken(params);
               if (!auth.ok) {
-                return { ok: 0, error: auth.error, truncated: 0, fetched: 0, nacUsed24h: 0, users24h: 0, engines: {} };
+                return emptyLicenseSnapshot(auth.error);
               }
               var rows = [];
               var first = 0;
@@ -764,11 +843,17 @@ zabbix_export:
                 }
                 var page = graphql(params, auth.token, endSystemQuery(take, first));
                 if (!page.ok) {
-                  return { ok: 0, error: page.error, truncated: truncated, fetched: rows.length, nacUsed24h: 0, users24h: 0, engines: {} };
+                  var failed = emptyLicenseSnapshot(page.error);
+                  failed.truncated = truncated;
+                  failed.fetched = rows.length;
+                  return failed;
                 }
                 var wrap = (((page.data || {}).accessControl) || {}).endSystems || {};
                 if (wrap.success === false) {
-                  return { ok: 0, error: String(wrap.errorMessage || 'endSystems success=false'), truncated: truncated, fetched: rows.length, nacUsed24h: 0, users24h: 0, engines: {} };
+                  var denied = emptyLicenseSnapshot(String(wrap.errorMessage || 'endSystems success=false'));
+                  denied.truncated = truncated;
+                  denied.fetched = rows.length;
+                  return denied;
                 }
                 var batch = Array.isArray(wrap.endSystems) ? wrap.endSystems : [];
                 var i;
@@ -792,6 +877,8 @@ zabbix_export:
                 fetched: rows.length,
                 nacUsed24h: counted.nacUsed24h,
                 users24h: counted.users24h,
+                nacRemaining: remainingSeats(nacTotal, counted.nacUsed24h),
+                nacUsedPct: usedSeatPercent(nacTotal, counted.nacUsed24h),
                 engines: counted.engines
               };
             }
@@ -814,8 +901,10 @@ zabbix_export:
               value: '{$XIQ.NAC.ES.MAXRESULTS}'
             - name: page_size
               value: '{$XIQ.NAC.ES.PAGE}'
+            - name: nac_total
+              value: '{$XIQ.NAC.TOTAL}'
           description: |
-            Pages endSystems and counts unique MACs with lastAuthEventTime in 24h.
+            Pages endSystems and counts unique MACs with lastAuthEventTime in 24h. Remaining and used % are computed here from {$XIQ.NAC.TOTAL} so Cloud 7.0 cannot keep an unguarded calculated formula.
           tags:
             - tag: component
               value: license
@@ -857,6 +946,32 @@ zabbix_export:
               return count;
             }
 
+            function remainingSeats(total, used) {
+              // Purchased totals are macros. 0 / blank / NaN means unknown entitlement,
+              // not "sold out" — do not return used as a negative remaining.
+              var purchased = Number(total);
+              var observed = Number(used);
+              if (!isFinite(purchased) || purchased <= 0) {
+                return 0;
+              }
+              if (!isFinite(observed) || observed < 0) {
+                observed = 0;
+              }
+              return purchased - observed;
+            }
+
+            function usedSeatPercent(total, used) {
+              var purchased = Number(total);
+              var observed = Number(used);
+              if (!isFinite(purchased) || purchased <= 0) {
+                return 0;
+              }
+              if (!isFinite(observed) || observed < 0) {
+                observed = 0;
+              }
+              return observed / purchased * 100;
+            }
+
             function countLicenseWindow(rows, nowMs, windowMs) {
               var macs = {};
               var users = {};
@@ -1108,15 +1223,21 @@ zabbix_export:
             }
 
             function graphqlTry(params, token, queries) {
+              // Prefer a later clean query. On 25.5.12.6 the first engines query asks
+              // for connected (not on NacAppliance) and must not win over the fallback.
               var last = { ok: 0, error: 'no graphql query' };
+              var partial = null;
               var i;
               for (i = 0; i < queries.length; i++) {
                 last = graphql(params, token, queries[i]);
-                if (last.ok) {
+                if (last.ok && !last.errorCount) {
                   return last;
                 }
+                if (last.ok) {
+                  partial = last;
+                }
               }
-              return last;
+              return partial || last;
             }
 
             var PILOT_QUERIES = [
@@ -1134,7 +1255,9 @@ zabbix_export:
                 pending: counted.pending,
                 unmanaged: counted.unmanaged,
                 platformOne: counted.platformOne,
-                other: counted.other
+                other: counted.other,
+                pilotRemaining: 0,
+                navRemaining: 0
               };
             }
 
@@ -1157,7 +1280,9 @@ zabbix_export:
                 pending: counted.pending,
                 unmanaged: counted.unmanaged,
                 platformOne: counted.platformOne,
-                other: counted.other
+                other: counted.other,
+                pilotRemaining: remainingSeats(params.pilot_total, counted.pilotUsed),
+                navRemaining: remainingSeats(params.nav_total, counted.navigatorUsed)
               };
             }
 
@@ -1175,6 +1300,10 @@ zabbix_export:
               value: '{$XIQSE.API.CLIENT.ID}'
             - name: client_secret
               value: '{$XIQSE.API.CLIENT.SECRET}'
+            - name: pilot_total
+              value: '{$XIQ.PILOT.TOTAL}'
+            - name: nav_total
+              value: '{$XIQ.NAV.TOTAL}'
           description: |
             Counts network.devices xiqLicenseState: Pilot, Navigator, pending, Platform ONE.
           tags:
@@ -1516,15 +1645,20 @@ zabbix_export:
               value: health
         - uuid: 3fc85bb75873448a8f3b9e8db848f99f
           name: NAC license remaining
-          type: CALCULATED
+          type: DEPENDENT
           key: xiqse.nac.remaining
-          delay: 1m
+          delay: '0'
           history: 7d
           trends: 365d
           value_type: FLOAT
-          params: '({$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h))*({$XIQ.NAC.TOTAL}>0)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.nacRemaining'
+          master_item:
+            key: xiqse.nbi.licenses
           description: |
-            Purchased {$XIQ.NAC.TOTAL} minus 24h unique MACs. Stays 0 while that macro is 0 (CG XIQ-SE licenses unset) — NBI cannot read Administration → Licenses. Not out of seats.
+            Purchased {$XIQ.NAC.TOTAL} minus 24h unique MACs, computed in the census SCRIPT. Stays 0 while that macro is 0 — NBI cannot read Administration → Licenses. Not out of seats. Not a calculated item (those kept the unguarded TOTAL-used formula on Cloud 7.0).
           tags:
             - tag: component
               value: license
@@ -1532,14 +1666,19 @@ zabbix_export:
               value: health
         - uuid: 6d891b6cf37f4276bc1beb250ade16ed
           name: NAC license used %
-          type: CALCULATED
+          type: DEPENDENT
           key: xiqse.nac.used.pct
-          delay: 1m
+          delay: '0'
           history: 7d
           trends: 365d
           value_type: FLOAT
           units: '%'
-          params: 'last(//xiqse.nac.used24h)/({$XIQ.NAC.TOTAL}+({$XIQ.NAC.TOTAL}=0))*100*({$XIQ.NAC.TOTAL}>0)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.nacUsedPct'
+          master_item:
+            key: xiqse.nbi.licenses
           tags:
             - tag: component
               value: license
@@ -1679,15 +1818,20 @@ zabbix_export:
               value: health
         - uuid: 63a299d472f740c39b5d1bb7cced92fe
           name: Pilot licenses remaining
-          type: CALCULATED
+          type: DEPENDENT
           key: xiqse.pilot.remaining
-          delay: 1m
+          delay: '0'
           history: 7d
           trends: 365d
           value_type: FLOAT
-          params: '({$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used))*({$XIQ.PILOT.TOTAL}>0)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.pilotRemaining'
+          master_item:
+            key: xiqse.nbi.pilot
           description: |
-            Purchased {$XIQ.PILOT.TOTAL} minus XIQ_PILOT devices. Stays 0 while that macro is 0 (CG XIQ-SE licenses). Not out of seats.
+            Purchased {$XIQ.PILOT.TOTAL} minus XIQ_PILOT devices, computed in the census SCRIPT. Stays 0 while that macro is 0. Not out of seats.
           triggers:
             - uuid: 36805c7666e4437e9b083b4c9b58ee3f
               expression: '{$XIQ.PILOT.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.pilot.remaining)<={$XIQ.PILOT.REMAIN.WARN}'
@@ -1739,15 +1883,20 @@ zabbix_export:
               value: health
         - uuid: 679fe8d3980e4691a0c11a8be3d16ff0
           name: Navigator licenses remaining
-          type: CALCULATED
+          type: DEPENDENT
           key: xiqse.nav.remaining
-          delay: 1m
+          delay: '0'
           history: 7d
           trends: 365d
           value_type: FLOAT
-          params: '({$XIQ.NAV.TOTAL}-last(//xiqse.nav.used))*({$XIQ.NAV.TOTAL}>0)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.navRemaining'
+          master_item:
+            key: xiqse.nbi.pilot
           description: |
-            Purchased {$XIQ.NAV.TOTAL} minus XIQ_NAVIGATOR devices. Stays 0 while that macro is 0 (CG XIQ-SE licenses). Not out of seats.
+            Purchased {$XIQ.NAV.TOTAL} minus XIQ_NAVIGATOR devices, computed in the census SCRIPT. Stays 0 while that macro is 0. Not out of seats.
           triggers:
             - uuid: ce3614948ed94048983e6268e8651d27
               expression: '{$XIQ.NAV.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.nav.remaining)<={$XIQ.NAV.REMAIN.WARN}'
@@ -1926,6 +2075,32 @@ zabbix_export:
                       }
                     }
                     return count;
+                  }
+
+                  function remainingSeats(total, used) {
+                    // Purchased totals are macros. 0 / blank / NaN means unknown entitlement,
+                    // not "sold out" — do not return used as a negative remaining.
+                    var purchased = Number(total);
+                    var observed = Number(used);
+                    if (!isFinite(purchased) || purchased <= 0) {
+                      return 0;
+                    }
+                    if (!isFinite(observed) || observed < 0) {
+                      observed = 0;
+                    }
+                    return purchased - observed;
+                  }
+
+                  function usedSeatPercent(total, used) {
+                    var purchased = Number(total);
+                    var observed = Number(used);
+                    if (!isFinite(purchased) || purchased <= 0) {
+                      return 0;
+                    }
+                    if (!isFinite(observed) || observed < 0) {
+                      observed = 0;
+                    }
+                    return observed / purchased * 100;
                   }
 
                   function countLicenseWindow(rows, nowMs, windowMs) {
@@ -2530,7 +2705,7 @@ zabbix_export:
                   event_name: 'XIQ-SE engine {#ENGINE.NAME}: 24h unique MACs at hardware capacity'
                   priority: WARNING
                   description: |
-                    Per-engine hardware load (Current Capacity), not the global NAC license.
+                    Per-engine hardware load (GUI Current Capacity), not the global NAC license. 25.5.12.6 NBI capacity is 0 — this trigger stays silent until that field is non-zero.
                   tags:
                     - tag: scope
                       value: availability
