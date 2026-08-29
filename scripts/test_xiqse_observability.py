@@ -129,6 +129,30 @@ class LicenseWindowTests(unittest.TestCase):
         )
         self.assertEqual(counted['nacUsed24h'], 1)
 
+    def test_future_auth_within_skew_window_counts_and_age_is_zero(self):
+        now_ms = int(time.time() * 1000)
+        rows = [
+            {
+                'macAddress': 'aa:aa:aa:aa:aa:aa',
+                'lastAuthEventTime': now_ms + 33000,
+                'username': 'bob',
+                'nacApplianceIP': '10.0.104.43',
+            }
+        ]
+        counted = run_metrics_json(
+            f'countLicenseWindow(rows, {now_ms}, 86400000)',
+            prelude=f'var rows = {json.dumps(rows)};',
+        )
+        self.assertEqual(counted['nacUsed24h'], 1)
+        self.assertEqual(counted['engines']['10.0.104.43']['lastAuthAge'], 0)
+
+    def test_missing_engine_auth_age_stays_absent(self):
+        counted = run_metrics_json(
+            'countLicenseWindow(rows, Date.now(), 86400000)',
+            prelude='var rows = [];',
+        )
+        self.assertEqual(counted['engines'], {})
+
     def test_remaining_is_zero_when_purchased_total_is_unset(self):
         self.assertEqual(run_metrics_json('remainingSeats(0, 2150)'), 0)
         self.assertEqual(run_metrics_json('remainingSeats("0", 2150)'), 0)

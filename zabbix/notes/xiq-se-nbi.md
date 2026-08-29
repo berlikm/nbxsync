@@ -192,6 +192,32 @@ Zabbix on `ch-sta-p-ensa01` (all queried items supported, inherited totals still
 
 That remaining value is the live **unguarded calculated** formula `{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)` with TOTAL=0. Repo later used a multiply-guard; Cloud 7.0 did not apply it to calculated `params`. Remaining is now computed in the SCRIPT and must stay **0** until the CG totals are set.
 
+### 2026-08-29 — Latest data after SCRIPT remaining import
+
+Template re-import is live on `ch-sta-p-ensa01`. Snapshot JSON includes `nacRemaining` / `nacUsedPct` / `pilotRemaining` / `navRemaining`. Remaining items are **0**, used % is **0 %**, unsupported items **0**. Not −2175.
+
+| Item | Value |
+|---|---|
+| `xiqse.nac.used24h` | **1815** (Saturday; was 2150 earlier) |
+| `xiqse.nac.users24h` | 992 |
+| `xiqse.nac.fetched` | 4055, not truncated |
+| `xiqse.pilot.used` | 320 |
+| `xiqse.lic.pending` | 243 |
+| `xiqse.nav.used` | 0 |
+| remaining / used % | **0** / **0 %** (totals still unset) |
+
+Per-engine 24h unique MACs sum to the global seat count (no cross-engine overlap this window):
+
+| Engine | 24h MACs | last auth age |
+|---|---|---|
+| CH-STA-P-ENAC01 | 1460 | was **−33s** (SE clock ahead of proxy; clamp to 0) |
+| HU-DEB-P-ENAC01 | 227 | 11m |
+| CN-SHA-P-ENAC01 | 105 | 20m |
+| KR-SEL-P-ENAC01 | 21 | 41m |
+| CH-STA-P-ENAC02 | 2 | 6h 27m (quiet pair; under 24h FRESH) |
+
+`connected=2` and `capacity=0` on all five. FreeRADIUS yes, licensed yes, `needsEnforce=no`. Heap ~60 %, free RAM ~372 MB (collect-first). Age `-1` still means “no event in census”; a slightly-future `lastAuthEventTime` is now age **0**, not a negative.
+
 ### Still open on canary
 
 1. Native 24h-unique / entitlement field in `schema.idl` or `licenseData` — not present; keep paging MACs.

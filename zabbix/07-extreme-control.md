@@ -58,7 +58,7 @@ Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone`
 | GraphQL nodata | yes | Average | Token, TLS, or SE down |
 | Zero Control engines discovered | yes | Average | Filter / rights / template wrong |
 | Engine disconnected from SE | yes | Average | LLD on SE. Auth may still work locally. `connected` is **not** on 25.5.12.6 `NacAppliance` — item stays `2` (silent) |
-| NAC not forwarding auth logs to SE | yes | Average | Per engine: newest `lastAuthEventTime` older than `{$XIQ.NAC.FRESH}` (default 24h elapsed, **any time zone**). Override a quiet engine with `{$XIQ.NAC.FRESH:"<engine-ip>"}`. `{$XIQ.NAC.FRESH.CONTROL}` still gates the ticket. Not syslog to a SIEM |
+| NAC not forwarding auth logs to SE | yes | Average | Per engine: newest `lastAuthEventTime` older than `{$XIQ.NAC.FRESH}` (default 24h elapsed, **any time zone**). Override a quiet engine with `{$XIQ.NAC.FRESH:"<engine-ip>"}`. `{$XIQ.NAC.FRESH.CONTROL}` still gates the ticket. Age `-1` = no event in the census (silent). Age `0` = just now, or SE clock slightly ahead of the proxy. Not syslog to a SIEM |
 | SE ingest jam (E-to-Sav / drops) | **no** until the field exists | Average | One SE ticket if GraphQL exposes it on canary |
 | Engine `needsEnforce` stuck | yes | Average | Config never pushed |
 | 24h unique MACs ≥ `{$XIQ.NAC.TOTAL}` | yes | Average | License violation in progress |

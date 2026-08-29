@@ -94,8 +94,10 @@ function countLicenseWindow(rows, nowMs, windowMs) {
     }
     engines[engineIp] = {
       used24h: objectSize(byEngine[engineIp].macs),
+      // -1 = no event in the census. 0 = just now, or SE clock slightly ahead
+      // of the proxy (25.5.12.6 canary: ENAC01 lastAuthAge was -33s).
       lastAuthAge: byEngine[engineIp].lastAuth
-        ? Math.floor((nowMs - byEngine[engineIp].lastAuth) / 1000)
+        ? Math.max(0, Math.floor((nowMs - byEngine[engineIp].lastAuth) / 1000))
         : -1
     };
   }
