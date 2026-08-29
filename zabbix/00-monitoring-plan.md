@@ -35,6 +35,7 @@ The bar for switch/AP cutover is **"no worse than LogicMonitor"**, not "everythi
 | Full port-label rollout | parity only needs *link down* on Core/Dist/Mgmt; Access is `USW`+`UP` only |
 | Fortinet, circuits, VMs, NAC (03, 05–07) | FortiGate API spec is written; live FortiOS stays SNMP. 07 YAML is built (`--apply-xiqse`); not live. Do not block switch/AP cutover |
 | AD DS Directory Services counters | Stock Windows by agent is OS + service **state**. NTDS / DNS / DHCP on the same DC VM need **one** companion — [notes/ad-ds-coverage.md](notes/ad-ds-coverage.md). Server estate, not 01/02 |
+| IIS | Stock **IIS by Zabbix agent** already covers W3SVC/WAS/port/app pools. Link it on the hosts; do not scrape windows_exporter — [notes/iis-coverage.md](notes/iis-coverage.md) |
 
 **Rule for the migration window:** if a request is not in the "cutover minimum" table, it goes on the post-cutover list. Scope creep is the main risk to the date, not technical difficulty.
 
