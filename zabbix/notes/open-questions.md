@@ -56,4 +56,4 @@ The finalised port-identity doc dropped these; confirm they live in the plan or 
 - [ ] Maintenance-window process for firmware upgrades — **with data collection**, so we don't create data gaps as well as suppressing noise.
 - [ ] Zabbix proxy per site — the cleanest suppression for site-wide outages.
 - [ ] Template upgrade process — diff the stock template before importing a new version; keep macro overrides at host-group level so re-import cannot clobber them.
-- [ ] **AD DS Observability** — stock Windows has no NTDS/LDAP/DRA counters. Companion spec: [ad-ds-coverage.md](ad-ds-coverage.md). Confirm `\NTDS\` vs `DirectoryServices` on a live DC; agree ownership with server team; do not block 01/02.
+- [ ] **DC Observability (AD + DNS + DHCP)** — one companion on role Domain Controller; stock Windows has no NTDS / `\DNS\` / DHCP-scope counters. Spec: [ad-ds-coverage.md](ad-ds-coverage.md). Canary English object names + DHCP scope WMI; agree ownership with server team; do not block 01/02.
