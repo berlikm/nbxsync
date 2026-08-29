@@ -39,6 +39,30 @@ Skip exporter extras unless a ticket names a **site** (not `_Total`) or worker-p
 
 ---
 
+## Certificate expiry — **not** in IIS
+
+Stock **IIS by Zabbix agent** does not inspect TLS. `{$IIS.SERVICE}` / `{$IIS.PORT}` default **http/80** — a TCP ping, not a handshake. No `web.certificate.get`, no binding LLD, no days-to-expiry. [windows_exporter `iis`](https://github.com/prometheus-community/windows_exporter/blob/master/docs/collector.iis.md) has no cert metrics either.
+
+Use stock **Website certificate by Zabbix agent 2** ([`templates/app/certificate_agent2`](https://git.zabbix.com/projects/ZBX/repos/zabbix/browse/templates/app/certificate_agent2?at=refs%2Fheads%2Frelease%2F7.0)) **next to** IIS, not inside it.
+
+| Thing | Stock cert 7.0 |
+|---|---|
+| Item | `web.certificate.get[{$CERT.WEBSITE.HOSTNAME},{$CERT.WEBSITE.PORT},{$CERT.WEBSITE.IP}]` |
+| Expires soon | Warning — `(not_after - now())/86400 < {$CERT.EXPIRY.WARN}` default **7d** |
+| Invalid / wrong name | **High** |
+| Fingerprint changed | Info (manual close) |
+| IIS site / binding LLD | **no** — one hostname per host on **7.0** |
+
+Needs **Zabbix agent 2** (WebCertificate plugin). Classic agent cannot. Agent 2 still serves Windows + IIS `perf_counter_en` — swap those boxes to Agent 2 rather than a second agent.
+
+[06](../06-network-vms.md) wants cert Warning at **30d**. Override `{$CERT.EXPIRY.WARN}=30` on the IIS hosts (do not fork the template).
+
+7.0 is **one DNS name per Zabbix host**. A box with several IIS sites / SNI bindings is several names: set `{$CERT.WEBSITE.HOSTNAME}` to the name clients use; extra names need extra hosts or a later thin companion (7.4 can comma-list hostnames). `{$CERT.WEBSITE.IP}` = the box if the check must hit this VM; leave empty to follow DNS (what the internet sees).
+
+Do not WMI-scrape the Windows cert store for this — the handshake is the symptom.
+
+---
+
 ## Do not
 
 | Source | Why not |
@@ -67,7 +91,7 @@ Macros on the host if not :80/http:
 {$IIS.APPPOOL.NOT_MATCHES} =
 ```
 
-Port check depends on W3SVC. App-pool High depends on W3SVC. Do not also page host ICMP for the same outage (Windows / ICMP already cover the box).
+Port check depends on W3SVC. App-pool High depends on W3SVC. Do not also page host ICMP for the same outage (Windows / ICMP already cover the box). Cert expiry is a **separate** template (Agent 2), not this one.
 
 ---
 
