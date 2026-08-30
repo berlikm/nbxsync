@@ -493,3 +493,151 @@ class SyncHostJobTestCase(TestCase):
         self.assertGreater(call_log['hostiface_calls'], 0)
         # The final HostSync still ran after the interface failure.
         self.assertGreaterEqual(call_log['hostsync_calls'], 2)
+
+
+class SyncHostJobInheritedSNMPTests(TestCase):
+    """Job-level coverage for inherited Agent+SNMP when only Agent exists remotely."""
+
+    def setUp(self):
+        self.device = create_test_device(name='STA-ME05-job')
+        self.device_ct = ContentType.objects.get_for_model(Device)
+        self.zabbixserver = ZabbixServer.objects.create(name='Zabbix Job SNMP', url='http://zabbix.local', token='abc123')
+        self.ip = IPAddress.objects.create(address='10.0.109.60/24')
+        self.assignment = ZabbixServerAssignment.objects.create(
+            zabbixserver=self.zabbixserver,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.id,
+            hostid='14030',
+        )
+        self.agent = ZabbixHostInterface(
+            zabbixserver=self.zabbixserver,
+            type=1,
+            interface_type=1,
+            useip=1,
+            dns='',
+            ip=self.ip,
+            port=10050,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.id,
+        )
+        self.agent.pk = None
+        self.agent.interfaceid = None
+        self.agent._is_inherited_copy = True
+        self.snmp = ZabbixHostInterface(
+            zabbixserver=self.zabbixserver,
+            type=2,
+            interface_type=1,
+            useip=1,
+            dns='',
+            ip=self.ip,
+            port=161,
+            snmp_version=2,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.id,
+        )
+        self.snmp.pk = None
+        self.snmp.interfaceid = None
+        self.snmp._is_inherited_copy = True
+
+        self.remote = [
+            {'interfaceid': '3285', 'hostid': '14030', 'type': 1, 'main': 1, 'useip': 1, 'port': '10050', 'ip': '10.0.109.60', 'dns': ''},
+        ]
+        self.creates = []
+        self.hostsync_calls = 0
+
+        self.zabbix_patcher = patch('nbxsync.utils.sync.run_zabbix_operations.ZabbixConnection')
+        mock_conn_class = self.zabbix_patcher.start()
+        self.addCleanup(self.zabbix_patcher.stop)
+        self.mock_api = MagicMock()
+        self.mock_api.host.get.return_value = [{'hostid': '14030'}]
+        self.mock_api.host.create.return_value = {'hostids': ['14030']}
+        self.mock_api.host.update.return_value = {'hostids': ['14030']}
+        self.mock_api.host.delete.return_value = True
+        self.mock_api.hostinterface.get.side_effect = self._get_interfaces
+        self.mock_api.hostinterface.create.side_effect = self._create_interface
+        self.mock_api.hostgroup.get.return_value = [{'groupid': '1'}]
+        mock_conn_class.return_value.__enter__.return_value = self.mock_api
+
+    def _get_interfaces(self, **kwargs):
+        ifaces = list(self.remote)
+        wanted = (kwargs.get('filter') or {}).get('type')
+        if wanted is not None:
+            ifaces = [iface for iface in ifaces if str(int(iface['type'])) == str(int(wanted))]
+        return ifaces
+
+    def _create_interface(self, **params):
+        if int(params.get('type', 0)) == 2 and int(params.get('main', 1)) == 0:
+            raise RuntimeError('No default interface for "SNMP" type on "CH-STA-D-ME05".')
+        self.creates.append(params)
+        new_id = str(5000 + len(self.creates))
+        self.remote.append(
+            {
+                'interfaceid': new_id,
+                'hostid': '14030',
+                'type': int(params['type']),
+                'main': int(params.get('main', 1)),
+                'useip': int(params.get('useip', 1)),
+                'port': str(params.get('port', '')),
+                'ip': params.get('ip', ''),
+                'dns': params.get('dns', ''),
+            }
+        )
+        return {'interfaceids': [new_id]}
+
+    def _assigned(self, templates=None):
+        return {
+            'hostgroups': [],
+            'hostinterfaces': [self.agent, self.snmp],
+            'server_assignments': [self.assignment],
+            'templates': templates or [],
+            'macros': [],
+            'tags': [],
+            'hostinventory': None,
+            'configurationgroup': None,
+        }
+
+    @patch('nbxsync.jobs.synchost.safe_sync')
+    @patch.object(SyncHostJob, 'verify_hostinterfaces')
+    def test_no_snmp_template_still_creates_snmp_as_main(self, mock_verify, mock_safe_sync):
+        job = SyncHostJob(instance=self.device)
+        with patch('nbxsync.jobs.synchost.get_assigned_zabbixobjects', return_value=self._assigned()):
+            job.run()
+
+        snmp_creates = [params for params in self.creates if int(params['type']) == 2]
+        self.assertEqual(len(snmp_creates), 1)
+        self.assertEqual(int(snmp_creates[0]['main']), 1)
+
+    @patch.object(SyncHostJob, 'verify_hostinterfaces')
+    def test_snmp_required_template_recovers_after_interface_create(self, mock_verify):
+        from nbxsync.choices import HostInterfaceRequirementChoices
+        from nbxsync.models import ZabbixTemplate, ZabbixTemplateAssignment
+
+        template = ZabbixTemplate.objects.create(
+            name='Needs SNMP',
+            zabbixserver=self.zabbixserver,
+            templateid=8801,
+            interface_requirements=[HostInterfaceRequirementChoices.SNMP],
+        )
+        assignment = ZabbixTemplateAssignment(zabbixtemplate=template)
+        hostsync_calls = {'n': 0, 'failed_initial': False}
+
+        def safe_sync_side_effect(sync_class, *args, **kwargs):
+            name = getattr(sync_class, '__name__', None)
+            if name == 'HostSync':
+                hostsync_calls['n'] += 1
+                has_snmp = any(int(iface.get('type', 0)) == 2 and int(iface.get('main', 0)) == 1 for iface in self.remote)
+                if hostsync_calls['n'] == 1 and not has_snmp:
+                    hostsync_calls['failed_initial'] = True
+                    raise RuntimeError('Cannot link SNMP-required template without SNMP interface')
+
+        job = SyncHostJob(instance=self.device)
+        with (
+            patch('nbxsync.jobs.synchost.safe_sync', side_effect=safe_sync_side_effect),
+            patch('nbxsync.jobs.synchost.get_assigned_zabbixobjects', return_value=self._assigned(templates=[assignment])),
+        ):
+            job.run()
+
+        snmp_creates = [params for params in self.creates if int(params['type']) == 2]
+        self.assertEqual(len(snmp_creates), 1)
+        self.assertEqual(int(snmp_creates[0]['main']), 1)
+        self.assertGreaterEqual(hostsync_calls['n'], 2)

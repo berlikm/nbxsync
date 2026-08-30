@@ -94,6 +94,39 @@ class ConfigGroupInterfaceExpansionTestCase(TestCase):
             assigned_object_id=self.configgroup.pk,
         )
 
+    def test_inherited_agent_and_snmp_copies_do_not_persist_source_ids(self):
+        """Per-VM ConfigGroup copies must not write interfaceid back to SAP Agent+SNMP."""
+        cg_ct = ContentType.objects.get_for_model(ZabbixConfigurationGroup)
+        agent_src = ZabbixHostInterface.objects.create(
+            zabbixserver=self.server,
+            type=ZabbixHostInterfaceTypeChoices.AGENT,
+            useip=ZabbixInterfaceUseChoices.IP,
+            interface_type=ZabbixInterfaceTypeChoices.DEFAULT,
+            port=10050,
+            assigned_object_type=cg_ct,
+            assigned_object_id=self.configgroup.pk,
+        )
+        snmp_src = self._cg_interface(port=161)
+
+        result = get_assigned_zabbixobjects(self.device)
+        copies = result['hostinterfaces']
+        self.assertEqual({int(interface.type) for interface in copies}, {int(ZabbixHostInterfaceTypeChoices.AGENT), int(ZabbixHostInterfaceTypeChoices.SNMP)})
+        self.assertTrue(all(getattr(interface, '_is_inherited_copy', False) for interface in copies))
+        self.assertTrue(all(interface.pk is None for interface in copies))
+        self.assertTrue(all(interface.interfaceid is None for interface in copies))
+        self.assertEqual(
+            ZabbixHostInterface.objects.filter(
+                assigned_object_type=ContentType.objects.get_for_model(type(self.device)),
+                assigned_object_id=self.device.pk,
+            ).count(),
+            0,
+        )
+
+        agent_src.refresh_from_db()
+        snmp_src.refresh_from_db()
+        self.assertIsNone(agent_src.interfaceid)
+        self.assertIsNone(snmp_src.interfaceid)
+
     def test_two_snmp_interfaces_on_different_ports_are_both_expanded(self):
         self._cg_interface(port=161)
         self._cg_interface(port=1161, interface_type=ZabbixInterfaceTypeChoices.NOTDEFAULT)
