@@ -745,3 +745,232 @@ class HostSyncTestCase(TestCase):
         self.assertEqual(creates, [])
         self.assertEqual(clone.interfaceid, 999)
         self.assertEqual(updates[0]['interfaces'][0]['interfaceid'], 999)
+
+
+class HostSyncFirstOfTypeDefaultTests(TestCase):
+    """Production matrix: inherited Agent+SNMP defaults, remote Agent only.
+
+    Creating the first SNMP interface as main=0 is invalid. Zabbix permits
+    Agent main=1 and SNMP main=1 on the same host; another type already
+    having a default must not force a non-default create.
+    """
+
+    def setUp(self):
+        self.device = create_test_device(name='STA-ME05')
+        self.device_ct = ContentType.objects.get_for_model(Device)
+        self.zabbixserver = ZabbixServer.objects.create(name='Zabbix FirstOfType', url='http://example.com', token='dummy-token', validate_certs=True)
+        self.ip = IPAddress.objects.create(address='10.0.109.60/24')
+
+        class DummyHost:
+            def __init__(self, device, device_ct, server):
+                self.assigned_object = device
+                self.assigned_object_id = device.id
+                self.assigned_object_type = device_ct
+                self.hostid = '14030'
+                self.zabbixserver = server
+                self.zabbixproxy = None
+                self.zabbixproxygroup = None
+                self.assigned_objects = {'hostgroups': []}
+
+            def save(self):
+                pass
+
+            def update_sync_info(self, success, message):
+                pass
+
+        class DummyAPI:
+            def __init__(self):
+                self.host = self.Host()
+                self.hostinterface = self.HostInterface()
+
+            class Host:
+                def update(self, **kwargs):
+                    return {}
+
+            class HostInterface:
+                def get(self, **kwargs):
+                    return []
+
+                def create(self, **params):
+                    return {'interfaceids': ['9000']}
+
+        self.obj = DummyHost(self.device, self.device_ct, self.zabbixserver)
+        self.sync = HostSync(api=DummyAPI(), netbox_obj=self.obj, obj=self.obj)
+        self.sync.context = {'all_objects': {'hostinterfaces': [], '_instance': self.device}}
+        self.sync.pluginsettings = self._pluginsettings()
+        self.remote = []
+        self.creates = []
+        self.updates = []
+        self.sync.api.hostinterface.get = self._get
+        self.sync.api.hostinterface.create = self._create
+        self.sync.api.host.update = self._update
+
+    def _pluginsettings(self):
+        class PluginSettings:
+            class StatusMapping:
+                device = {'active': ZabbixHostStatus.ENABLED}
+
+            statusmapping = StatusMapping()
+
+            class SNMPConfig:
+                snmp_community = '{$SNMP_COMMUNITY}'
+                snmp_authpass = '{$SNMP_AUTHPASS}'
+                snmp_privpass = '{$SNMP_PRIVPASS}'
+
+            snmpconfig = SNMPConfig()
+
+            class SOT:
+                hostmacro = SyncSOT.ZABBIX
+                hosttemplate = SyncSOT.NETBOX
+                hostinterface = SyncSOT.NETBOX
+                host = SyncSOT.NETBOX
+
+            sot = SOT()
+            attach_objtag = True
+            objtag_type = 'nb_type'
+            objtag_id = 'nb_id'
+            allow_inherited_deletion = False
+
+        return PluginSettings()
+
+    def _inherited(self, interface_type, port, **kwargs):
+        clone = ZabbixHostInterface(
+            zabbixserver=self.zabbixserver,
+            type=interface_type,
+            interface_type=ZabbixInterfaceTypeChoices.DEFAULT,
+            useip=ZabbixInterfaceUseChoices.IP,
+            port=port,
+            ip=self.ip,
+            assigned_object_type=self.device_ct,
+            assigned_object_id=self.device.id,
+            **kwargs,
+        )
+        clone.pk = None
+        clone.interfaceid = None
+        clone._is_inherited_copy = True
+        return clone
+
+    def _remote_iface(self, interfaceid, itype, port, main=1, hostid='14030', **extra):
+        row = {
+            'interfaceid': str(interfaceid),
+            'hostid': str(hostid),
+            'type': int(itype),
+            'main': int(main),
+            'useip': 1,
+            'ip': '10.0.109.60',
+            'port': str(port),
+            'dns': '',
+        }
+        row.update(extra)
+        return row
+
+    def _get(self, **kwargs):
+        ifaces = list(self.remote)
+        wanted = (kwargs.get('filter') or {}).get('type')
+        if wanted is not None:
+            ifaces = [iface for iface in ifaces if str(int(iface['type'])) == str(int(wanted))]
+        return ifaces
+
+    def _create(self, **params):
+        if int(params.get('type', 0)) == int(ZabbixHostInterfaceTypeChoices.SNMP) and int(params.get('main', 1)) == 0:
+            raise RuntimeError('No default interface for "SNMP" type on "CH-STA-D-ME05".')
+        self.creates.append(params)
+        new_id = str(9000 + len(self.creates))
+        self.remote.append(
+            self._remote_iface(
+                new_id,
+                params.get('type'),
+                params.get('port', '0'),
+                main=params.get('main', 1),
+                **{'ip': params.get('ip', '10.0.109.60')},
+            )
+        )
+        return {'interfaceids': [new_id]}
+
+    def _update(self, **kwargs):
+        self.updates.append(kwargs)
+        return {}
+
+    def test_inherited_snmp_absent_remotely_is_created_as_main(self):
+        agent = self._inherited(ZabbixHostInterfaceTypeChoices.AGENT, 10050)
+        snmp = self._inherited(
+            ZabbixHostInterfaceTypeChoices.SNMP,
+            161,
+            snmp_version=ZabbixHostInterfaceSNMPVersionChoices.SNMPV3,
+            snmp_usebulk=True,
+        )
+        self.sync.context['all_objects']['hostinterfaces'] = [agent, snmp]
+        self.remote = [self._remote_iface(3285, ZabbixHostInterfaceTypeChoices.AGENT, 10050)]
+
+        before = ZabbixHostInterface.objects.count()
+        self.sync.check_default_hostinterface()
+
+        snmp_creates = [params for params in self.creates if int(params['type']) == int(ZabbixHostInterfaceTypeChoices.SNMP)]
+        self.assertEqual(len(snmp_creates), 1)
+        self.assertEqual(int(snmp_creates[0]['main']), 1)
+        self.assertEqual(int(snmp_creates[0]['type']), int(ZabbixHostInterfaceTypeChoices.SNMP))
+        self.assertEqual(agent.interfaceid, 3285)
+        self.assertIsNotNone(snmp.interfaceid)
+        self.assertEqual(ZabbixHostInterface.objects.count(), before)
+
+    def test_agent_and_snmp_defaults_coexist(self):
+        agent = self._inherited(ZabbixHostInterfaceTypeChoices.AGENT, 10050)
+        snmp = self._inherited(ZabbixHostInterfaceTypeChoices.SNMP, 161, snmp_version=ZabbixHostInterfaceSNMPVersionChoices.SNMPV2)
+        self.sync.context['all_objects']['hostinterfaces'] = [agent, snmp]
+        self.remote = [
+            self._remote_iface(3285, ZabbixHostInterfaceTypeChoices.AGENT, 10050),
+            self._remote_iface(4001, ZabbixHostInterfaceTypeChoices.SNMP, 161),
+        ]
+
+        self.sync.check_default_hostinterface()
+
+        self.assertEqual(self.creates, [])
+        self.assertEqual(agent.interfaceid, 3285)
+        self.assertEqual(snmp.interfaceid, 4001)
+
+    def test_foreign_host_snmp_default_does_not_force_nonstrict_create(self):
+        """A default SNMP id from another host must not make this host create main=0."""
+        agent = self._inherited(ZabbixHostInterfaceTypeChoices.AGENT, 10050)
+        snmp = self._inherited(ZabbixHostInterfaceTypeChoices.SNMP, 161, snmp_version=ZabbixHostInterfaceSNMPVersionChoices.SNMPV2)
+        self.sync.context['all_objects']['hostinterfaces'] = [agent, snmp]
+        self.remote = [
+            self._remote_iface(3285, ZabbixHostInterfaceTypeChoices.AGENT, 10050, hostid='14030'),
+            self._remote_iface(7777, ZabbixHostInterfaceTypeChoices.SNMP, 161, hostid='99999'),
+        ]
+
+        self.sync.check_default_hostinterface()
+
+        snmp_creates = [params for params in self.creates if int(params['type']) == int(ZabbixHostInterfaceTypeChoices.SNMP)]
+        self.assertEqual(len(snmp_creates), 1)
+        self.assertEqual(int(snmp_creates[0]['main']), 1)
+
+    def test_existing_nonstrict_snmp_is_promoted_not_duplicated(self):
+        snmp = self._inherited(ZabbixHostInterfaceTypeChoices.SNMP, 161, snmp_version=ZabbixHostInterfaceSNMPVersionChoices.SNMPV2)
+        self.sync.context['all_objects']['hostinterfaces'] = [snmp]
+        self.remote = [self._remote_iface(4001, ZabbixHostInterfaceTypeChoices.SNMP, 161, main=0)]
+
+        self.sync.check_default_hostinterface()
+
+        self.assertEqual(self.creates, [])
+        self.assertEqual(snmp.interfaceid, 4001)
+        self.assertTrue(self.updates)
+        flipped = self.updates[0]['interfaces'][0]
+        self.assertEqual(int(flipped['interfaceid']), 4001)
+        self.assertEqual(int(flipped['main']), int(ZabbixInterfaceTypeChoices.DEFAULT))
+
+    def test_inventory_uses_extend_and_hostid_list(self):
+        seen = []
+
+        def capture_get(**kwargs):
+            seen.append(kwargs)
+            return [self._remote_iface(3285, ZabbixHostInterfaceTypeChoices.AGENT, 10050)]
+
+        agent = self._inherited(ZabbixHostInterfaceTypeChoices.AGENT, 10050)
+        self.sync.context['all_objects']['hostinterfaces'] = [agent]
+        self.sync.api.hostinterface.get = capture_get
+
+        self.sync.check_default_hostinterface()
+
+        inventory = seen[0]
+        self.assertEqual(inventory.get('output'), 'extend')
+        self.assertEqual(inventory.get('hostids'), [14030])
