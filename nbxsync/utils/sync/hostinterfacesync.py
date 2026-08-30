@@ -29,7 +29,17 @@ class HostInterfaceSync(ZabbixSyncBase):
             return []
         # output='extend' is required so type/main/port are present.
         # IntegerChoices.__str__ is the label ('SNMP'), not the Zabbix type id.
-        return self.api_object().get(hostids=[int(hostid)], output='extend', filter={'type': str(int(self.obj.type))}) or []
+        candidates = self.api_object().get(hostids=[int(hostid)], output='extend', filter={'type': str(int(self.obj.type))}) or []
+        own = []
+        for iface in candidates:
+            if 'hostid' in iface:
+                try:
+                    if int(iface['hostid']) != int(hostid):
+                        continue
+                except (TypeError, ValueError):
+                    continue
+            own.append(iface)
+        return own
 
     def get_create_params(self):
         hostid = self._resolve_hostid()

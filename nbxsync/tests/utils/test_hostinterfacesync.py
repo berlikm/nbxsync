@@ -69,6 +69,16 @@ class HostInterfaceSyncTests(TestCase):
         self.assertEqual(kwargs.get('hostids'), [10101])
         self.assertEqual(kwargs.get('filter'), {'type': str(int(ZabbixHostInterfaceTypeChoices.AGENT))})
 
+    def test_find_by_name_ignores_same_tuple_on_another_host(self):
+        api = MagicMock()
+        api.hostinterface.get.return_value = [
+            {'interfaceid': '7777', 'hostid': '99999', 'type': '1', 'port': '10050', 'useip': '1', 'main': '1', 'ip': '10.1.1.1', 'dns': ''},
+        ]
+        sync = HostInterfaceSync(api=api, netbox_obj=self.hostinterface)
+        sync.context = {'hostid': '10101'}
+
+        self.assertEqual(sync.find_by_name(), [])
+
     def test_get_create_params_basic(self):
         sync = HostInterfaceSync(api=None, netbox_obj=self.hostinterface)
         sync.context = {}
