@@ -943,6 +943,7 @@ class HostSyncFirstOfTypeDefaultTests(TestCase):
         snmp_creates = [params for params in self.creates if int(params['type']) == int(ZabbixHostInterfaceTypeChoices.SNMP)]
         self.assertEqual(len(snmp_creates), 1)
         self.assertEqual(int(snmp_creates[0]['main']), 1)
+        self.assertNotEqual(snmp.interfaceid, 7777)
 
     def test_existing_nonstrict_snmp_is_promoted_not_duplicated(self):
         snmp = self._inherited(ZabbixHostInterfaceTypeChoices.SNMP, 161, snmp_version=ZabbixHostInterfaceSNMPVersionChoices.SNMPV2)

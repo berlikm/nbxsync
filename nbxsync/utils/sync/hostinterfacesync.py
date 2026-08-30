@@ -45,10 +45,19 @@ class HostInterfaceSync(ZabbixSyncBase):
         # output='extend' is required so port/useip/main are present for matching.
         # IntegerChoices.__str__ is the label ('SNMP'), not the Zabbix type id.
         candidates = self.api_object().get(hostids=[int(hostid)], output='extend', filter={'type': str(int(self.obj.type))}) or []
+        own = []
+        for iface in candidates:
+            if 'hostid' in iface:
+                try:
+                    if int(iface['hostid']) != int(hostid):
+                        continue
+                except (TypeError, ValueError):
+                    continue
+            own.append(iface)
         port = str(self.obj.port)
         useip = str(int(self.obj.useip))
         main = str(int(self.obj.interface_type))
-        matches = [iface for iface in candidates if str(iface.get('port', '')) == port and str(iface.get('useip', '')) == useip and str(iface.get('main', '')) == main]
+        matches = [iface for iface in own if str(iface.get('port', '')) == port and str(iface.get('useip', '')) == useip and str(iface.get('main', '')) == main]
         if len(matches) <= 1:
             return matches
         return [self._canonical_interface(matches)]
