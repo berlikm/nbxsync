@@ -297,7 +297,19 @@ class ZabbixHostInventoryForm(NetBoxModelForm):
 
     @property
     def assignable_fields(self):
-        return list(ASSIGNMENT_TYPE_TO_FIELD_NBOBJS.values())
+        """Assignment targets that are object pickers on this form.
+
+        ``ASSIGNMENT_TYPE_TO_FIELD_NBOBJS`` maps extras.Tag to ``tag``. This
+        form's ``tag`` field is the Zabbix inventory string, not a NetBox Tag
+        picker. Only ModelChoiceFields count, so filling the inventory tag
+        no longer looks like a second assignment.
+        """
+        names = []
+        for name in ASSIGNMENT_TYPE_TO_FIELD_NBOBJS.values():
+            field = self.fields.get(name)
+            if isinstance(field, forms.ModelChoiceField):
+                names.append(name)
+        return names
 
     def __init__(self, *args, **kwargs):
         instance = kwargs.get('instance')
@@ -305,6 +317,8 @@ class ZabbixHostInventoryForm(NetBoxModelForm):
 
         if instance and instance.assigned_object:
             for model_class, field in ASSIGNMENT_TYPE_TO_FIELD_NBOBJS.items():
+                if field == 'tag':
+                    continue
                 if isinstance(instance.assigned_object, model_class):
                     initial[field] = instance.assigned_object
                     break
@@ -314,6 +328,8 @@ class ZabbixHostInventoryForm(NetBoxModelForm):
                 content_type = ContentType.objects.get(pk=initial['assigned_object_type'])
                 obj = content_type.get_object_for_this_type(pk=initial['assigned_object_id'])
                 for model_class, field in ASSIGNMENT_TYPE_TO_FIELD_NBOBJS.items():
+                    if field == 'tag':
+                        continue
                     if isinstance(obj, model_class):
                         initial[field] = obj.pk
                         break
@@ -328,7 +344,7 @@ class ZabbixHostInventoryForm(NetBoxModelForm):
         super().clean()
         selected = [field for field in self.assignable_fields if self.cleaned_data.get(field)]
         if len(selected) > 1:
-            raise forms.ValidationError({selected[1]: _('Zabbox Host Inventory can only be assigned to one object.')})
+            raise forms.ValidationError({selected[1]: _('Zabbix Host Inventory can only be assigned to one object.')})
         elif selected:
             self.instance.assigned_object = self.cleaned_data[selected[0]]
         else:
