@@ -657,100 +657,167 @@ class HostSync(ZabbixSyncBase):
         if binding and binding.hostid:
             self.obj.hostid = binding.hostid
 
-    def check_default_hostinterface(self):  # noqa: C901
+    def _remote_hostinterfaces_by_type(self, hostid):
+        """Return this host's remote interfaces grouped by Zabbix type.
+
+        ``hostinterface.get`` must be host-scoped and use ``output='extend'``.
+        Without ``extend``, ``type``/``main``/``port`` can come back empty; a
+        loosely scoped get can also include another host's default. Either
+        mistake makes this host look like it already has an SNMP default, so
+        the flip path creates the first local SNMP interface as ``main=0``
+        and Zabbix rejects it with "No default interface for SNMP type".
+        """
+        raw = self.api.hostinterface.get(hostids=[int(hostid)], output='extend') or []
+        by_type = {}
+        defaults = {}
+        for iface in raw:
+            if 'hostid' in iface:
+                try:
+                    if int(iface['hostid']) != int(hostid):
+                        continue
+                except (TypeError, ValueError):
+                    continue
+            try:
+                itype = int(iface.get('type'))
+                iid = str(int(iface.get('interfaceid')))
+            except (TypeError, ValueError):
+                continue
+            by_type.setdefault(itype, []).append(iface)
+            if int(iface.get('main', 0)) == 1:
+                defaults[itype] = iid
+        return by_type, defaults
+
+    def _match_remote_interface(self, nb_obj, remote_of_type):
+        """Pick an existing remote interface of this type on the same endpoint.
+
+        ``find_by_name`` also requires ``main`` to match. Default reconciliation
+        must be able to promote a same-port non-default (e.g. leftover SNMP
+        ``main=0``) instead of creating a duplicate.
+        """
+        port = str(nb_obj.port)
+        useip = str(int(nb_obj.useip))
+        same_endpoint = [iface for iface in remote_of_type if str(iface.get('port', '')) == port and str(iface.get('useip', '')) == useip]
+        if not same_endpoint:
+            return None
+        mains = [iface for iface in same_endpoint if int(iface.get('main', 0)) == 1]
+        pool = mains or same_endpoint
+        return min(pool, key=lambda iface: int(iface['interfaceid']))
+
+    def _bind_interfaceid(self, nb_obj, hostinterface_id):
+        """Remember the remote id on the working object without persisting clones."""
+        nb_obj.interfaceid = int(hostinterface_id)
+        # Transient ConfigGroup clones are pk=None in-memory copies.
+        # Saving them would INSERT a new HostInterface row without
+        # ConfigGroup provenance. Keep the interfaceid on the
+        # working object only; the next sync resolves by identity.
+        if not getattr(nb_obj, '_is_inherited_copy', False) and nb_obj.pk:
+            nb_obj.save()
+        return str(int(hostinterface_id))
+
+    def _attach_or_create_default_interface(self, nb_obj, hostid, instance, remote_of_type):
+        """Resolve the NetBox default onto a remote interface of the same type.
+
+        First interface of a type on this host is created with ``main=1``.
+        ``main=0`` is only used when this host already has that type, so a
+        later atomic ``host.update`` can flip the default. Agent already
+        having a default does not make SNMP a non-default create.
+        """
+        syncer = HostInterfaceSync(self.api, nb_obj, hostid=hostid, _instance=instance)
+        matches = syncer.find_by_name()
+        hostinterface_id = matches[0].get('interfaceid') if matches else None
+        if not hostinterface_id:
+            matched = self._match_remote_interface(nb_obj, remote_of_type)
+            hostinterface_id = matched.get('interfaceid') if matched else None
+        if hostinterface_id:
+            return self._bind_interfaceid(nb_obj, hostinterface_id)
+
+        params = syncer.get_create_params()
+        if not params:
+            return None
+
+        # Zabbix requires one default per interface type. The first remote
+        # interface of a type must be that default. Forcing main=0 is only
+        # valid when a default of this type already exists on this host.
+        params['main'] = 0 if remote_of_type else 1
+        created = self.api.hostinterface.create(**params)
+        hostinterface_id = created.get('interfaceids', [None])[0]
+        if not hostinterface_id:
+            raise RuntimeError(f'Failed to create interface for type={int(nb_obj.type)}: {created}')
+        return self._bind_interfaceid(nb_obj, hostinterface_id)
+
+    def _flip_default_interfaces(self, netbox_hostinterfaces, hostid, instance):
+        """Atomically apply NetBox main flags; Zabbix allows one default per type."""
+        desired_hostinterfaces = []
+        for netbox_hostinterface in netbox_hostinterfaces:
+            syncer = HostInterfaceSync(self.api, netbox_hostinterface, hostid=hostid, _instance=instance)
+            params = syncer.get_update_params()
+            if not params or not params.get('interfaceid'):
+                continue
+            desired_hostinterfaces.append(params)
+        if desired_hostinterfaces:
+            self.api.host.update(hostid=hostid, interfaces=desired_hostinterfaces)
+
+    def _netbox_defaults_by_type(self, netbox_hostinterfaces):
+        objects_by_type = {}
+        ids_by_type = {}
+        for netbox_hostinterface in netbox_hostinterfaces:
+            if int(getattr(netbox_hostinterface, 'interface_type', 0)) != 1:
+                continue
+            itype = int(netbox_hostinterface.type)
+            objects_by_type[itype] = netbox_hostinterface
+            interface_id = None
+            if getattr(netbox_hostinterface, 'interfaceid', None):
+                interface_id = str(int(netbox_hostinterface.interfaceid))
+            ids_by_type[itype] = interface_id
+        return objects_by_type, ids_by_type
+
+    def _reconcile_default_for_type(self, nb_obj, nb_id, zbx_default_id, remote_of_type, netbox_hostinterfaces, hostid, instance):
+        """Create, attach, or flip the default for one Zabbix interface type."""
+        # Remote default exists but NetBox no longer wants one (e.g. OOB
+        # SNMP removed and waiting for verify_hostinterfaces to delete it).
+        if not nb_obj:
+            return
+
+        if not remote_of_type:
+            # First interface of this type on this host. Create (or attach)
+            # as main=1. Do not enter the create-as-non-default flip path
+            # just because some other type already has a default, or
+            # because a foreign host's default leaked into the inventory.
+            self._attach_or_create_default_interface(nb_obj, hostid, instance, remote_of_type)
+            return
+
+        if nb_id == zbx_default_id and nb_id:
+            return
+
+        if not nb_id:
+            nb_id = self._attach_or_create_default_interface(nb_obj, hostid, instance, remote_of_type)
+            if not nb_id:
+                return
+
+        self._flip_default_interfaces(netbox_hostinterfaces, hostid, instance)
+
+    def check_default_hostinterface(self):
         self._ensure_hostid()
         if not self.obj.hostid:
             return
 
         hostid = str(int(self.obj.hostid))
         netbox_hostinterfaces = self.context.get('all_objects', {}).get('hostinterfaces', []) or []
-        zabbix_hostinterfaces = self.api.hostinterface.get(hostids=hostid)
-
-        netbox_default_obj_by_type = {}
-        netbox_default_id_by_type = {}
-        zabbix_default_id_by_type = {}
-
-        # Loop through all Netbox Host Interfaces and get the default interface id per type
-        for netbox_hostinterface in netbox_hostinterfaces:
-            if int(getattr(netbox_hostinterface, 'interface_type', 0)) == 1:
-                netbox_default_obj_by_type[int(netbox_hostinterface.type)] = netbox_hostinterface
-                interface_id = None
-                if getattr(netbox_hostinterface, 'interfaceid', None):
-                    interface_id = str(int(netbox_hostinterface.interfaceid))
-
-                netbox_default_id_by_type[int(netbox_hostinterface.type)] = interface_id
-
-        # Loop through all Zabbix Host Interfaces and get the default interface id per type
-        for zabbix_hostinterface in zabbix_hostinterfaces:
-            if int(zabbix_hostinterface.get('main', 0)) == 1:
-                zabbix_default_id_by_type[int(zabbix_hostinterface.get('type'))] = str(int(zabbix_hostinterface.get('interfaceid')))
-
-        all_types = set(netbox_default_id_by_type) | set(zabbix_default_id_by_type)
+        remote_by_type, zabbix_default_id_by_type = self._remote_hostinterfaces_by_type(hostid)
+        netbox_default_obj_by_type, netbox_default_id_by_type = self._netbox_defaults_by_type(netbox_hostinterfaces)
+        instance = self.context.get('all_objects', {}).get('_instance')
+        all_types = set(netbox_default_id_by_type) | set(zabbix_default_id_by_type) | set(remote_by_type)
 
         for hostinterface_type in sorted(all_types):
-            nb_default_hostinterface_obj = netbox_default_obj_by_type.get(hostinterface_type)
-            nb_default_hostinterface_id = netbox_default_id_by_type.get(hostinterface_type)
-            zbx_default_hostinterfaceid = zabbix_default_id_by_type.get(hostinterface_type)
-
-            if not zbx_default_hostinterfaceid:
-                # No zabbix interfaces?
-                # Nothing to do here in that case
-                continue
-
-            if nb_default_hostinterface_id != zbx_default_hostinterfaceid:
-                # Zabbix still has a default of this type, but NetBox no longer
-                # does (e.g. OOB SNMP removed from the expected set and waiting
-                # for verify_hostinterfaces to delete it). Nothing to flip.
-                if not nb_default_hostinterface_obj:
-                    continue
-
-                instance = self.context.get('all_objects', {}).get('_instance')
-                # Resolve an existing interface before creating one. Inherited
-                # interface rows intentionally have no persisted interfaceid;
-                # blindly creating a replacement makes host.update try to delete
-                # the original interface, which Zabbix rejects while items use it.
-                if not nb_default_hostinterface_id:
-                    syncer = HostInterfaceSync(self.api, nb_default_hostinterface_obj, hostid=hostid, _instance=instance)
-                    matches = syncer.find_by_name()
-                    hostinterface_id = matches[0].get('interfaceid') if matches else None
-
-                    if not hostinterface_id:
-                        params = syncer.get_create_params()
-                        if not params:
-                            continue
-
-                        params['main'] = 0  # create as NON-default
-                        created = self.api.hostinterface.create(**params)
-                        hostinterface_id = created.get('interfaceids', [None])[0]
-                        if not hostinterface_id:
-                            raise RuntimeError(f'Failed to create interface for type={hostinterface_type}: {created}')
-
-                    nb_default_hostinterface_obj.interfaceid = int(hostinterface_id)
-                    # Transient ConfigGroup clones are pk=None in-memory copies.
-                    # Saving them would INSERT a new HostInterface row without
-                    # ConfigGroup provenance. Keep the interfaceid on the
-                    # working object only; the next sync resolves by identity.
-                    if not getattr(nb_default_hostinterface_obj, '_is_inherited_copy', False) and nb_default_hostinterface_obj.pk:
-                        nb_default_hostinterface_obj.save()
-
-                    # update local variable so the compare is correct for the flip step
-                    nb_default_hostinterface_id = str(int(hostinterface_id))
-
-                # Some very 'complicated' logic to flip the main
-                # As Zabbix can have only 1 default/main interface at the time, we must update all interfaces at once
-                # As such, we loop through all hostinterfaces, and use the HostInterfaceSync module to get the create params
-                # That way, we can update all interfaces at once
-                desired_hostinterfaces = []
-                for netbox_hostinterface in netbox_hostinterfaces:
-                    syncer = HostInterfaceSync(self.api, netbox_hostinterface, hostid=hostid, _instance=instance)
-                    params = syncer.get_update_params()
-                    if not params or not params.get('interfaceid'):
-                        continue
-                    desired_hostinterfaces.append(params)
-
-                if desired_hostinterfaces:
-                    self.api.host.update(hostid=hostid, interfaces=desired_hostinterfaces)
-        return
+            self._reconcile_default_for_type(
+                netbox_default_obj_by_type.get(hostinterface_type),
+                netbox_default_id_by_type.get(hostinterface_type),
+                zabbix_default_id_by_type.get(hostinterface_type),
+                remote_by_type.get(hostinterface_type) or [],
+                netbox_hostinterfaces,
+                hostid,
+                instance,
+            )
 
     def verify_hostinterfaces(self):
         # If there is no hostid, no need to continue - so fail early

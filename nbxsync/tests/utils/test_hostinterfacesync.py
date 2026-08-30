@@ -53,6 +53,22 @@ class HostInterfaceSyncTests(TestCase):
         params = sync.get_create_params()
         self.assertEqual(params['hostid'], 4242)
 
+    def test_find_by_name_requests_extend_and_numeric_type(self):
+        api = MagicMock()
+        api.hostinterface.get.return_value = [
+            {'interfaceid': '10', 'type': '1', 'port': '10050', 'useip': '1', 'main': '1', 'ip': '10.1.1.1', 'dns': ''},
+        ]
+        sync = HostInterfaceSync(api=api, netbox_obj=self.hostinterface)
+        sync.context = {'hostid': '10101'}
+
+        found = sync.find_by_name()
+
+        self.assertEqual([iface['interfaceid'] for iface in found], ['10'])
+        kwargs = api.hostinterface.get.call_args.kwargs
+        self.assertEqual(kwargs.get('output'), 'extend')
+        self.assertEqual(kwargs.get('hostids'), [10101])
+        self.assertEqual(kwargs.get('filter'), {'type': str(int(ZabbixHostInterfaceTypeChoices.AGENT))})
+
     def test_get_create_params_basic(self):
         sync = HostInterfaceSync(api=None, netbox_obj=self.hostinterface)
         sync.context = {}
