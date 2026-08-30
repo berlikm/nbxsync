@@ -15,6 +15,7 @@ If a script and that document disagree, **fix the script or the document so they
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
 | — | `validate_extreme_templates.py` | YAML contract + optional `--zabbix` double-import |
 | — | `test_mssql_observability.py` | MSSQL Observability named-instance LLD, host-prototype YAML contract, and database/backup-inventory fixtures (no live SQL) |
+| — | `test_iis_observability.py` | IIS Observability HTTPS-binding LLD from `applicationHost.config` fixtures and YAML contract (no live IIS) |
 | — | `test_xiqse_observability.py` | XIQ-SE / ExtremeControl Observability: 24h unique MAC license count, engine LLD, YAML contract (no live NBI) |
 | — | `test_extremecontrol_snmp.py` | ExtremeControl by SNMP: live ENAC canary counters, ENTERASYS-NAC-APPLIANCE-MIB OIDs, YAML contract |
 | — | `zabbix_api.py` | Shared JSON-RPC helper |

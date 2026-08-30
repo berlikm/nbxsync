@@ -1,0 +1,548 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 095e4c765f8c4f5f9374385adb66278d
+      name: Templates/Applications
+  templates:
+    - uuid: c084fd556dc645048a71d418772029cc
+      template: IIS Observability
+      name: IIS Observability
+      description: |
+        Companion next to stock IIS by Zabbix agent. Discovers HTTPS
+        bindings from applicationHost.config (no FQDN inventory) and
+        TLS-handshakes each one on this box via Agent 2
+        web.certificate.get. Do not nest stock IIS. Do not scrape
+        windows_exporter. Do not link Website certificate by Zabbix agent 2
+        for these sites (7.0 is one hostname per host).
+
+        Connects to {#IIS.CONNECT} (loopback when the binding is *) with
+        SNI {#IIS.SNI} from the host header. Empty host header = default
+        SSL binding; expiry still alerts. Identity validation is
+        not_evaluated_no_host_header (Agent 2 invalid against loopback is
+        not a certificate fault). High invalid only when HAS_HOST=1.
+
+        See zabbix/notes/iis-coverage.md.
+      groups:
+        - name: Templates/Applications
+      macros:
+        - macro: '{$IIS.CONFIG.PATH}'
+          value: 'C:\Windows\System32\inetsrv\config\applicationHost.config'
+          description: IIS site/binding config. Local System can read it.
+        - macro: '{$IIS.CERT.EXPIRY.WARN}'
+          value: '30'
+          description: 'Days until expiry. Matches 06 (stock Website certificate defaults to 7).'
+        - macro: '{$IIS.SSL.SITE.MATCHES}'
+          value: '.+'
+          description: HTTPS binding LLD include on {#IIS.SITE}.
+        - macro: '{$IIS.SSL.SITE.NOT_MATCHES}'
+          value: CHANGE_IF_NEEDED
+          description: HTTPS binding LLD exclude on {#IIS.SITE}.
+        - macro: '{$IIS.SSL.HOST.MATCHES}'
+          value: '.*'
+          description: Include on {#IIS.HOST} (empty host header is allowed).
+        - macro: '{$IIS.SSL.HOST.NOT_MATCHES}'
+          value: CHANGE_IF_NEEDED
+          description: Exclude host headers you do not want to handshake.
+      items:
+        - uuid: 4653a6fd92684bdba44ec98c4b91dff5
+          name: 'IIS: applicationHost.config'
+          key: 'vfs.file.contents["{$IIS.CONFIG.PATH}"]'
+          delay: 1h
+          history: 1h
+          value_type: TEXT
+          trends: '0'
+          description: |
+            Site and binding XML. HTTPS rows with a binding are treated as
+            having a certificate selected in IIS Manager. Not a FQDN list.
+          timeout: 30s
+          tags:
+            - tag: component
+              value: census
+        - uuid: 98c5a075b6a34b62b26c2e464ad4ff9e
+          name: 'IIS: HTTPS binding count'
+          type: DEPENDENT
+          key: iis.ssl.binding.count
+          delay: '0'
+          history: 90d
+          value_type: FLOAT
+          description: Count of https bindings after LLD parse. HTTP-only boxes stay at 0.
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  function attr(attrs, name) {
+                    var re = new RegExp('\\b' + name + '\\s*=\\s*"([^"]*)"', 'i');
+                    var m = attrs.match(re);
+                    if (m) {
+                      return m[1];
+                    }
+                    re = new RegExp('\\b' + name + '\\s*=\\s*\'([^\']*)\'', 'i');
+                    m = attrs.match(re);
+                    return m ? m[1] : '';
+                  }
+
+                  function splitBinding(info) {
+                    var text = String(info || '');
+                    var last = text.lastIndexOf(':');
+                    if (last < 0) {
+                      return { ip: '*', port: '443', host: '' };
+                    }
+                    var host = text.substring(last + 1);
+                    var rest = text.substring(0, last);
+                    var last2 = rest.lastIndexOf(':');
+                    if (last2 < 0) {
+                      return { ip: '*', port: rest || '443', host: host };
+                    }
+                    return {
+                      ip: rest.substring(0, last2),
+                      port: rest.substring(last2 + 1),
+                      host: host,
+                    };
+                  }
+
+                  function stripComments(xml) {
+                    return String(xml).replace(/<!--[\s\S]*?-->/g, '');
+                  }
+
+                  function stripBrackets(ip) {
+                    var text = String(ip || '');
+                    if (text.charAt(0) === '[' && text.charAt(text.length - 1) === ']') {
+                      return text.substring(1, text.length - 1);
+                    }
+                    return text;
+                  }
+
+                  function parseHttpsBindings(xml) {
+                    var body = stripComments(xml);
+                    var out = [];
+                    var seen = {};
+                    var siteRe = /<site\b([^>]*)>([\s\S]*?)<\/site>/gi;
+                    var siteMatch;
+                    while ((siteMatch = siteRe.exec(body)) !== null) {
+                      var siteName = attr(siteMatch[1], 'name') || 'site';
+                      var inner = siteMatch[2];
+                      var bindRe = /<binding\b([^>]*?)\/?>/gi;
+                      var bindMatch;
+                      while ((bindMatch = bindRe.exec(inner)) !== null) {
+                        var attrs = bindMatch[1];
+                        var proto = attr(attrs, 'protocol');
+                        if (String(proto).toLowerCase() !== 'https') {
+                          continue;
+                        }
+                        var parts = splitBinding(attr(attrs, 'bindingInformation'));
+                        var ip = parts.ip || '*';
+                        var port = parts.port || '443';
+                        var host = parts.host || '';
+                        var connect = ip === '*' || ip === '' ? '127.0.0.1' : stripBrackets(ip);
+                        var sni = host !== '' ? host : connect;
+                        var bindId = siteName + '/' + ip + '/' + port + '/' + (host !== '' ? host : '_');
+                        if (seen[bindId]) {
+                          continue;
+                        }
+                        seen[bindId] = true;
+                        out.push({
+                          '{#IIS.SITE}': siteName,
+                          '{#IIS.IP}': ip,
+                          '{#IIS.PORT}': port,
+                          '{#IIS.HOST}': host,
+                          '{#IIS.SNI}': sni,
+                          '{#IIS.CONNECT}': connect,
+                          '{#IIS.HAS_HOST}': host !== '' ? '1' : '0',
+                          '{#IIS.BIND}': bindId,
+                        });
+                      }
+                    }
+                    return out;
+                  }
+
+                  return JSON.stringify(parseHttpsBindings(value));
+            - type: JSONPATH
+              parameters:
+                - $.length()
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: 'vfs.file.contents["{$IIS.CONFIG.PATH}"]'
+          tags:
+            - tag: component
+              value: census
+      discovery_rules:
+        - uuid: fcd579e0575e4c73a8db9d09e73f0d07
+          name: 'IIS: HTTPS binding discovery'
+          type: DEPENDENT
+          key: iis.ssl.binding.discovery
+          delay: '0'
+          lifetime: 7d
+          lifetime_type: DELETE_AFTER
+          enabled_lifetime: '0'
+          enabled_lifetime_type: DISABLE_IMMEDIATELY
+          description: |
+            HTTPS bindings from applicationHost.config. Host header is the
+            SNI name when set. Not a handwritten FQDN list.
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#IIS.SITE}'
+                value: '{$IIS.SSL.SITE.MATCHES}'
+                formulaid: A
+              - macro: '{#IIS.SITE}'
+                operator: NOT_MATCHES_REGEX
+                value: '{$IIS.SSL.SITE.NOT_MATCHES}'
+                formulaid: B
+              - macro: '{#IIS.HOST}'
+                value: '{$IIS.SSL.HOST.MATCHES}'
+                formulaid: C
+              - macro: '{#IIS.HOST}'
+                operator: NOT_MATCHES_REGEX
+                value: '{$IIS.SSL.HOST.NOT_MATCHES}'
+                formulaid: D
+          item_prototypes:
+            - uuid: caff29c0beeb49d48277e41766a0163b
+              name: 'IIS [{#IIS.SITE} {#IIS.SNI}:{#IIS.PORT}]: Get certificate'
+              key: 'web.certificate.get["{#IIS.SNI}","{#IIS.PORT}","{#IIS.CONNECT}"]'
+              delay: 6h
+              history: 7d
+              value_type: TEXT
+              trends: '0'
+              description: |
+                Agent 2 WebCertificate plugin. Hits this box ({#IIS.CONNECT})
+                with SNI {#IIS.SNI} from the IIS host header. Does not need
+                public DNS. Requires Zabbix agent 2.
+              timeout: 15s
+              tags:
+                - tag: component
+                  value: certificate
+                - tag: iis_site
+                  value: '{#IIS.SITE}'
+            - uuid: 6a38f8fde8424659b1bdf686799c94d7
+              name: 'IIS [{#IIS.SITE} {#IIS.SNI}:{#IIS.PORT}]: Expires on'
+              type: DEPENDENT
+              key: 'iis.ssl.cert.not_after["{#IIS.BIND}"]'
+              delay: '0'
+              history: 90d
+              value_type: UNSIGNED
+              units: unixtime
+              description: NotAfter of the certificate IIS serves on this binding.
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - $.x509.not_after.timestamp
+              master_item:
+                key: 'web.certificate.get["{#IIS.SNI}","{#IIS.PORT}","{#IIS.CONNECT}"]'
+              tags:
+                - tag: component
+                  value: certificate
+                - tag: iis_site
+                  value: '{#IIS.SITE}'
+              trigger_prototypes:
+                - uuid: 4ba4b860a5b84641b06642e3742e5044
+                  expression: '(last(/IIS Observability/iis.ssl.cert.not_after["{#IIS.BIND}"]) - now()) / 86400 < {$IIS.CERT.EXPIRY.WARN}'
+                  name: 'IIS [{#IIS.SITE}]: certificate for {#IIS.SNI}:{#IIS.PORT} expires soon'
+                  event_name: 'IIS [{#IIS.SITE}]: {#IIS.SNI}:{#IIS.PORT} certificate expires in < {$IIS.CERT.EXPIRY.WARN}d'
+                  priority: WARNING
+                  description: |
+                    Binding has a certificate (HTTPS in applicationHost.config).
+                    Days-to-expiry from a local TLS handshake. Override
+                    {$IIS.CERT.EXPIRY.WARN} (default 30).
+                  dependencies:
+                    - name: 'IIS [{#IIS.SITE}]: certificate for {#IIS.SNI}:{#IIS.PORT} is invalid'
+                      expression: '{#IIS.HAS_HOST}=1 and find(/IIS Observability/iis.ssl.cert.validation["{#IIS.BIND}"],,"like","invalid")=1'
+                  tags:
+                    - tag: scope
+                      value: certificate
+            - uuid: 5b026ea4f91c4d959ec4b7d234044f21
+              name: 'IIS [{#IIS.SITE} {#IIS.SNI}:{#IIS.PORT}]: Validation'
+              type: DEPENDENT
+              key: 'iis.ssl.cert.validation["{#IIS.BIND}"]'
+              delay: '0'
+              history: 90d
+              value_type: CHAR
+              trends: '0'
+              valuemap:
+                name: IIS certificate identity
+              description: |
+                User-facing identity state. With an IIS host header: valid /
+                invalid / valid-but-self-signed from Agent 2. With no host
+                header: not_evaluated_no_host_header — loopback is not a SAN
+                and is not a High. Raw Agent 2 result stays on the diagnostic
+                item. Do not choose SNI from the certificate SAN.
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function parseCertPayload(raw) {
+                        try {
+                          return JSON.parse(raw);
+                        } catch (error) {
+                          throw 'IIS certificate: invalid JSON';
+                        }
+                      }
+
+                      function agentValidation(payload) {
+                        if (!payload || !payload.result || payload.result.value === undefined || payload.result.value === null) {
+                          return '';
+                        }
+                        return String(payload.result.value);
+                      }
+
+                      function agentValidationMessage(payload) {
+                        if (!payload || !payload.result || payload.result.message === undefined || payload.result.message === null) {
+                          return '';
+                        }
+                        return String(payload.result.message).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+                      }
+
+                      function userFacingValidation(payload, hasHost) {
+                        // Empty IIS host header: Agent 2 validates SNI 127.0.0.1 against a
+                        // real SAN list. That invalid is loopback identity, not a bad cert.
+                        // Do not pick a SAN from the certificate — that would be circular.
+                        if (String(hasHost) !== '1') {
+                          return 'not_evaluated_no_host_header';
+                        }
+                        return agentValidation(payload);
+                      }
+
+                      function rawValidationDisplay(payload) {
+                        var result = agentValidation(payload);
+                        var message = agentValidationMessage(payload);
+                        if (!result && !message) {
+                          return '';
+                        }
+                        if (message) {
+                          return 'Raw Agent 2 validation: ' + result + ' — ' + message;
+                        }
+                        return 'Raw Agent 2 validation: ' + result;
+                      }
+
+                      var payload = parseCertPayload(value);
+                      return userFacingValidation(payload, '{#IIS.HAS_HOST}');
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              master_item:
+                key: 'web.certificate.get["{#IIS.SNI}","{#IIS.PORT}","{#IIS.CONNECT}"]'
+              tags:
+                - tag: component
+                  value: certificate
+                - tag: iis_site
+                  value: '{#IIS.SITE}'
+              trigger_prototypes:
+                - uuid: a2712d7e31e2444d93ddbe29fd3e8ed7
+                  expression: '{#IIS.HAS_HOST}=1 and find(/IIS Observability/iis.ssl.cert.validation["{#IIS.BIND}"],,"like","invalid")=1'
+                  name: 'IIS [{#IIS.SITE}]: certificate for {#IIS.SNI}:{#IIS.PORT} is invalid'
+                  event_name: 'IIS [{#IIS.SITE}]: {#IIS.SNI}:{#IIS.PORT} certificate is invalid'
+                  priority: HIGH
+                  description: |
+                    SNI host header is set and the handshake cert is invalid
+                    or not for that name. Empty host header (default binding)
+                    is not_evaluated_no_host_header and never opens this
+                    trigger — expiry still fires.
+                  tags:
+                    - tag: scope
+                      value: certificate
+            - uuid: e5c59579a59c42c6b71624b32e99792a
+              name: 'IIS [{#IIS.SITE} {#IIS.SNI}:{#IIS.PORT}]: Raw Agent 2 validation'
+              type: DEPENDENT
+              key: 'iis.ssl.cert.validation.raw["{#IIS.BIND}"]'
+              delay: '0'
+              history: 7d
+              value_type: TEXT
+              trends: '0'
+              description: |
+                Agent 2 result.value and message. When the binding has no host
+                header this is diagnostic only (loopback is not a SAN).
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function parseCertPayload(raw) {
+                        try {
+                          return JSON.parse(raw);
+                        } catch (error) {
+                          throw 'IIS certificate: invalid JSON';
+                        }
+                      }
+
+                      function agentValidation(payload) {
+                        if (!payload || !payload.result || payload.result.value === undefined || payload.result.value === null) {
+                          return '';
+                        }
+                        return String(payload.result.value);
+                      }
+
+                      function agentValidationMessage(payload) {
+                        if (!payload || !payload.result || payload.result.message === undefined || payload.result.message === null) {
+                          return '';
+                        }
+                        return String(payload.result.message).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+                      }
+
+                      function userFacingValidation(payload, hasHost) {
+                        // Empty IIS host header: Agent 2 validates SNI 127.0.0.1 against a
+                        // real SAN list. That invalid is loopback identity, not a bad cert.
+                        // Do not pick a SAN from the certificate — that would be circular.
+                        if (String(hasHost) !== '1') {
+                          return 'not_evaluated_no_host_header';
+                        }
+                        return agentValidation(payload);
+                      }
+
+                      function rawValidationDisplay(payload) {
+                        var result = agentValidation(payload);
+                        var message = agentValidationMessage(payload);
+                        if (!result && !message) {
+                          return '';
+                        }
+                        if (message) {
+                          return 'Raw Agent 2 validation: ' + result + ' — ' + message;
+                        }
+                        return 'Raw Agent 2 validation: ' + result;
+                      }
+
+                      var payload = parseCertPayload(value);
+                      return rawValidationDisplay(payload);
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              master_item:
+                key: 'web.certificate.get["{#IIS.SNI}","{#IIS.PORT}","{#IIS.CONNECT}"]'
+              tags:
+                - tag: component
+                  value: certificate
+                - tag: iis_site
+                  value: '{#IIS.SITE}'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  function attr(attrs, name) {
+                    var re = new RegExp('\\b' + name + '\\s*=\\s*"([^"]*)"', 'i');
+                    var m = attrs.match(re);
+                    if (m) {
+                      return m[1];
+                    }
+                    re = new RegExp('\\b' + name + '\\s*=\\s*\'([^\']*)\'', 'i');
+                    m = attrs.match(re);
+                    return m ? m[1] : '';
+                  }
+
+                  function splitBinding(info) {
+                    var text = String(info || '');
+                    var last = text.lastIndexOf(':');
+                    if (last < 0) {
+                      return { ip: '*', port: '443', host: '' };
+                    }
+                    var host = text.substring(last + 1);
+                    var rest = text.substring(0, last);
+                    var last2 = rest.lastIndexOf(':');
+                    if (last2 < 0) {
+                      return { ip: '*', port: rest || '443', host: host };
+                    }
+                    return {
+                      ip: rest.substring(0, last2),
+                      port: rest.substring(last2 + 1),
+                      host: host,
+                    };
+                  }
+
+                  function stripComments(xml) {
+                    return String(xml).replace(/<!--[\s\S]*?-->/g, '');
+                  }
+
+                  function stripBrackets(ip) {
+                    var text = String(ip || '');
+                    if (text.charAt(0) === '[' && text.charAt(text.length - 1) === ']') {
+                      return text.substring(1, text.length - 1);
+                    }
+                    return text;
+                  }
+
+                  function parseHttpsBindings(xml) {
+                    var body = stripComments(xml);
+                    var out = [];
+                    var seen = {};
+                    var siteRe = /<site\b([^>]*)>([\s\S]*?)<\/site>/gi;
+                    var siteMatch;
+                    while ((siteMatch = siteRe.exec(body)) !== null) {
+                      var siteName = attr(siteMatch[1], 'name') || 'site';
+                      var inner = siteMatch[2];
+                      var bindRe = /<binding\b([^>]*?)\/?>/gi;
+                      var bindMatch;
+                      while ((bindMatch = bindRe.exec(inner)) !== null) {
+                        var attrs = bindMatch[1];
+                        var proto = attr(attrs, 'protocol');
+                        if (String(proto).toLowerCase() !== 'https') {
+                          continue;
+                        }
+                        var parts = splitBinding(attr(attrs, 'bindingInformation'));
+                        var ip = parts.ip || '*';
+                        var port = parts.port || '443';
+                        var host = parts.host || '';
+                        var connect = ip === '*' || ip === '' ? '127.0.0.1' : stripBrackets(ip);
+                        var sni = host !== '' ? host : connect;
+                        var bindId = siteName + '/' + ip + '/' + port + '/' + (host !== '' ? host : '_');
+                        if (seen[bindId]) {
+                          continue;
+                        }
+                        seen[bindId] = true;
+                        out.push({
+                          '{#IIS.SITE}': siteName,
+                          '{#IIS.IP}': ip,
+                          '{#IIS.PORT}': port,
+                          '{#IIS.HOST}': host,
+                          '{#IIS.SNI}': sni,
+                          '{#IIS.CONNECT}': connect,
+                          '{#IIS.HAS_HOST}': host !== '' ? '1' : '0',
+                          '{#IIS.BIND}': bindId,
+                        });
+                      }
+                    }
+                    return out;
+                  }
+
+                  return JSON.stringify(parseHttpsBindings(value));
+          master_item:
+            key: 'vfs.file.contents["{$IIS.CONFIG.PATH}"]'
+      tags:
+        - tag: class
+          value: application
+        - tag: target
+          value: iis
+      dashboards:
+        - uuid: 086079e1df094bf5adf049136fdc0221
+          name: Health
+          pages:
+            - name: Overview
+              widgets:
+                - type: item
+                  name: HTTPS bindings
+                  width: '24'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: IIS Observability
+                        key: iis.ssl.binding.count
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: decimal_places
+                      value: '0'
+      valuemaps:
+        - uuid: 98c67b5fb5c7467a83473c1cdb2b37d4
+          name: IIS certificate identity
+          mappings:
+            - value: valid
+              newvalue: Valid
+            - value: invalid
+              newvalue: Invalid
+            - value: valid-but-self-signed
+              newvalue: Valid but self-signed
+            - value: not_evaluated_no_host_header
+              newvalue: Identity not evaluated — IIS binding has no host header

@@ -373,6 +373,8 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 | SAP template from Sensirion | Device Role SAP ME, SAP HANA | Exact name on the Zabbix server |
 | Acronis Cyber Protect Cloud by HTTP | Device Role Acronis Management | Assign if the template exists |
 | SCCM by Zabbix agent `(stub)` | Device Role SCCM | Assign if the template exists |
+| IIS by Zabbix agent | IIS VMs (Device, or a dedicated role if one exists) | Stock 7.0 — Cloud has it. Not zerotouched. A couple of hosts → Device assignment. [notes/iis-coverage.md](../../zabbix/notes/iis-coverage.md) |
+| IIS Observability | Same IIS VMs | Companion next to stock IIS. HTTPS binding LLD from `applicationHost.config` (no FQDN list). `{$IIS.CERT.EXPIRY.WARN}=30`. Needs Agent 2. Import YAML before linking. Do **not** also link Website certificate for these sites |
 | Remote Zabbix proxy health | Device Role Zabbix Proxy | ICMP comes from the Agent Monitoring CG (§6.4) |
 
 Pure / Dell / Huawei / Synology storage and Dell iDRAC: §6.3 (and tag `oracle` → §6.2).  
