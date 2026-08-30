@@ -63,7 +63,15 @@ Do not also link **Website certificate** on the same IIS sites (duplicate handsh
 
 Do **not** pick a validation name from the certificate SAN. That would be circular. The IIS host header is the only identity the binding states.
 
-Production canary 2026-08-30 `CH-STA-P-WEBN02` (`*:443:`): handshake and NotAfter (2026-09-05) work; Agent 2 result is `invalid` because SNI is loopback. User-facing state must be `not_evaluated_no_host_header`, not `invalid`. Expiry Warning still opens.
+Production canary 2026-08-30 `CH-STA-P-WEBN02` (`*:443:`, after re-import):
+
+| Item | Live |
+|---|---|
+| Expires on | 2026-09-05 14:37:02 GMT (`not_after.timestamp` 1788619022) |
+| Validation | **Identity not evaluated — IIS binding has no host header** (`not_evaluated_no_host_header`) |
+| Raw Agent 2 | `invalid` — `x509: certificate is valid for 10.0.104.155, 10.0.104.158, …, not 127.0.0.1` |
+
+Handshake and expiry are good. Agent 2 `invalid` is loopback identity: SNI is an IP, so Go checks **IP SANs**, not the DNS names on the cert (`CH-STA-P-WEBN02`, WEBL/WEBN farm). Do not use those DNS names as SNI. High invalid must stay closed.
 
 Tests (no live IIS): `python3 scripts/test_iis_observability.py`.
 

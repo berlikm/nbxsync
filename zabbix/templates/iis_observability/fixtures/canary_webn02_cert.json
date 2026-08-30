@@ -1,10 +1,11 @@
 {
   "result": {
     "value": "invalid",
-    "message": "failed to verify certificate:\ncertificate is valid for CH-STA-P-WEBN02, 10.0.104.158, not 127.0.0.1"
+    "message": "failed to verify certificate: x509: certificate is valid for 10.0.104.155, 10.0.104.158, 10.0.105.158, 10.0.106.158, 10.0.108.1, not 127.0.0.1"
   },
   "x509": {
     "not_after": {
+      "value": "Sep 05 14:37:02 2026 GMT",
       "timestamp": 1788619022
     }
   }
