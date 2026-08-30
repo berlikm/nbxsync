@@ -11,7 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = ROOT / 'zabbix/templates/iis_observability'
 TEMPLATE_YAML = TEMPLATE_DIR / 'template_iis_observability.yaml'
 LLD_JS = TEMPLATE_DIR / 'lld_https_bindings.js'
+CERT_VALIDATION_JS = TEMPLATE_DIR / 'cert_validation.js'
 FIXTURES = TEMPLATE_DIR / 'fixtures'
+NO_HOST_VALIDATION = 'not_evaluated_no_host_header'
 
 TEMPLATE_NAME = 'IIS Observability'
 STOCK_IIS_TEMPLATE = 'IIS by Zabbix agent'
@@ -34,6 +36,28 @@ def template_block(doc: dict | None = None) -> dict:
 
 def lld_js_source() -> str:
     return LLD_JS.read_text(encoding='utf-8').strip()
+
+
+def cert_validation_js_source() -> str:
+    return CERT_VALIDATION_JS.read_text(encoding='utf-8').strip()
+
+
+def user_facing_validation_script() -> str:
+    return (
+        cert_validation_js_source()
+        + '\n\n'
+        + 'var payload = parseCertPayload(value);\n'
+        + "return userFacingValidation(payload, '{#IIS.HAS_HOST}');\n"
+    )
+
+
+def raw_validation_script() -> str:
+    return (
+        cert_validation_js_source()
+        + '\n\n'
+        + 'var payload = parseCertPayload(value);\n'
+        + 'return rawValidationDisplay(payload);\n'
+    )
 
 
 def javascript_steps(obj: dict) -> list[str]:

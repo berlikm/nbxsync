@@ -10,13 +10,16 @@ from iis_observability import (
     CERT_GET_PREFIX,
     CONFIG_KEY,
     FIXTURES,
+    NO_HOST_VALIDATION,
     STOCK_CERT_TEMPLATE,
     STOCK_IIS_TEMPLATE,
     TEMPLATE_NAME,
     javascript_steps,
     lld_js_source,
     load_template,
+    raw_validation_script,
     template_block,
+    user_facing_validation_script,
 )
 from mssql_observability import run_javascript
 
@@ -65,6 +68,38 @@ class HttpsBindingLldTests(unittest.TestCase):
         self.assertEqual(ipv6['{#IIS.SNI}'], 'ipv6.corp.local')
 
 
+class CertValidationDisplayTests(unittest.TestCase):
+    def setUp(self):
+        self.canary = (FIXTURES / 'canary_webn02_cert.json').read_text(encoding='utf-8')
+
+    def test_empty_host_header_is_not_evaluated(self):
+        script = user_facing_validation_script().replace("'{#IIS.HAS_HOST}'", "'0'")
+        self.assertEqual(run_javascript(self.canary, script=script), NO_HOST_VALIDATION)
+
+    def test_empty_host_header_does_not_surface_agent_invalid(self):
+        script = user_facing_validation_script().replace("'{#IIS.HAS_HOST}'", "'0'")
+        shown = run_javascript(self.canary, script=script)
+        self.assertNotEqual(shown, 'invalid')
+        self.assertNotIn('invalid', shown)
+
+    def test_host_header_keeps_agent_invalid(self):
+        script = user_facing_validation_script().replace("'{#IIS.HAS_HOST}'", "'1'")
+        self.assertEqual(run_javascript(self.canary, script=script), 'invalid')
+
+    def test_host_header_keeps_valid_and_self_signed(self):
+        script = user_facing_validation_script().replace("'{#IIS.HAS_HOST}'", "'1'")
+        valid = json.dumps({'result': {'value': 'valid'}})
+        self_signed = json.dumps({'result': {'value': 'valid-but-self-signed'}})
+        self.assertEqual(run_javascript(valid, script=script), 'valid')
+        self.assertEqual(run_javascript(self_signed, script=script), 'valid-but-self-signed')
+
+    def test_raw_line_keeps_agent_result_for_diagnosis(self):
+        shown = run_javascript(self.canary, script=raw_validation_script())
+        self.assertTrue(shown.startswith('Raw Agent 2 validation: invalid — '))
+        self.assertIn('not 127.0.0.1', shown)
+        self.assertIn('10.0.104.158', shown)
+
+
 class YamlContractTests(unittest.TestCase):
     def setUp(self):
         self.tpl = template_block(load_template())
@@ -105,6 +140,22 @@ class YamlContractTests(unittest.TestCase):
         expr = validation['trigger_prototypes'][0]['expression']
         self.assertIn('{#IIS.HAS_HOST}=1', expr)
         self.assertEqual(validation['trigger_prototypes'][0]['priority'], 'HIGH')
+        self.assertEqual(javascript_steps(validation), [user_facing_validation_script().strip()])
+        self.assertIn('{#IIS.HAS_HOST}', javascript_steps(validation)[0])
+        self.assertEqual(validation['valuemap']['name'], 'IIS certificate identity')
+        maps = {row['name']: row for row in self.tpl['valuemaps']}
+        mapped = {m['value']: m['newvalue'] for m in maps['IIS certificate identity']['mappings']}
+        self.assertEqual(
+            mapped[NO_HOST_VALIDATION],
+            'Identity not evaluated — IIS binding has no host header',
+        )
+        raw = next(
+            p
+            for p in self.tpl['discovery_rules'][0]['item_prototypes']
+            if p['key'].startswith('iis.ssl.cert.validation.raw[')
+        )
+        self.assertEqual(javascript_steps(raw), [raw_validation_script().strip()])
+        self.assertFalse(raw.get('trigger_prototypes'))
 
     def test_expiry_is_warning(self):
         not_after = next(

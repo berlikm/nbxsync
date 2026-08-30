@@ -17,7 +17,9 @@ zabbix_export:
 
         Connects to {#IIS.CONNECT} (loopback when the binding is *) with
         SNI {#IIS.SNI} from the host header. Empty host header = default
-        SSL binding; expiry still alerts, hostname-invalid does not.
+        SSL binding; expiry still alerts. Identity validation is
+        not_evaluated_no_host_header (Agent 2 invalid against loopback is
+        not a certificate fault). High invalid only when HAS_HOST=1.
 
         See zabbix/notes/iis-coverage.md.
       groups:
@@ -257,11 +259,64 @@ zabbix_export:
               history: 90d
               value_type: CHAR
               trends: '0'
-              description: valid / invalid / valid-but-self-signed.
+              valuemap:
+                name: IIS certificate identity
+              description: |
+                User-facing identity state. With an IIS host header: valid /
+                invalid / valid-but-self-signed from Agent 2. With no host
+                header: not_evaluated_no_host_header — loopback is not a SAN
+                and is not a High. Raw Agent 2 result stays on the diagnostic
+                item. Do not choose SNI from the certificate SAN.
               preprocessing:
-                - type: JSONPATH
+                - type: JAVASCRIPT
                   parameters:
-                    - $.result.value
+                    - |
+                      function parseCertPayload(raw) {
+                        try {
+                          return JSON.parse(raw);
+                        } catch (error) {
+                          throw 'IIS certificate: invalid JSON';
+                        }
+                      }
+
+                      function agentValidation(payload) {
+                        if (!payload || !payload.result || payload.result.value === undefined || payload.result.value === null) {
+                          return '';
+                        }
+                        return String(payload.result.value);
+                      }
+
+                      function agentValidationMessage(payload) {
+                        if (!payload || !payload.result || payload.result.message === undefined || payload.result.message === null) {
+                          return '';
+                        }
+                        return String(payload.result.message).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+                      }
+
+                      function userFacingValidation(payload, hasHost) {
+                        // Empty IIS host header: Agent 2 validates SNI 127.0.0.1 against a
+                        // real SAN list. That invalid is loopback identity, not a bad cert.
+                        // Do not pick a SAN from the certificate — that would be circular.
+                        if (String(hasHost) !== '1') {
+                          return 'not_evaluated_no_host_header';
+                        }
+                        return agentValidation(payload);
+                      }
+
+                      function rawValidationDisplay(payload) {
+                        var result = agentValidation(payload);
+                        var message = agentValidationMessage(payload);
+                        if (!result && !message) {
+                          return '';
+                        }
+                        if (message) {
+                          return 'Raw Agent 2 validation: ' + result + ' — ' + message;
+                        }
+                        return 'Raw Agent 2 validation: ' + result;
+                      }
+
+                      var payload = parseCertPayload(value);
+                      return userFacingValidation(payload, '{#IIS.HAS_HOST}');
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1d
@@ -281,10 +336,82 @@ zabbix_export:
                   description: |
                     SNI host header is set and the handshake cert is invalid
                     or not for that name. Empty host header (default binding)
-                    skips this trigger — expiry still fires.
+                    is not_evaluated_no_host_header and never opens this
+                    trigger — expiry still fires.
                   tags:
                     - tag: scope
                       value: certificate
+            - uuid: e5c59579a59c42c6b71624b32e99792a
+              name: 'IIS [{#IIS.SITE} {#IIS.SNI}:{#IIS.PORT}]: Raw Agent 2 validation'
+              type: DEPENDENT
+              key: 'iis.ssl.cert.validation.raw["{#IIS.BIND}"]'
+              delay: '0'
+              history: 7d
+              value_type: TEXT
+              trends: '0'
+              description: |
+                Agent 2 result.value and message. When the binding has no host
+                header this is diagnostic only (loopback is not a SAN).
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      function parseCertPayload(raw) {
+                        try {
+                          return JSON.parse(raw);
+                        } catch (error) {
+                          throw 'IIS certificate: invalid JSON';
+                        }
+                      }
+
+                      function agentValidation(payload) {
+                        if (!payload || !payload.result || payload.result.value === undefined || payload.result.value === null) {
+                          return '';
+                        }
+                        return String(payload.result.value);
+                      }
+
+                      function agentValidationMessage(payload) {
+                        if (!payload || !payload.result || payload.result.message === undefined || payload.result.message === null) {
+                          return '';
+                        }
+                        return String(payload.result.message).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+                      }
+
+                      function userFacingValidation(payload, hasHost) {
+                        // Empty IIS host header: Agent 2 validates SNI 127.0.0.1 against a
+                        // real SAN list. That invalid is loopback identity, not a bad cert.
+                        // Do not pick a SAN from the certificate — that would be circular.
+                        if (String(hasHost) !== '1') {
+                          return 'not_evaluated_no_host_header';
+                        }
+                        return agentValidation(payload);
+                      }
+
+                      function rawValidationDisplay(payload) {
+                        var result = agentValidation(payload);
+                        var message = agentValidationMessage(payload);
+                        if (!result && !message) {
+                          return '';
+                        }
+                        if (message) {
+                          return 'Raw Agent 2 validation: ' + result + ' — ' + message;
+                        }
+                        return 'Raw Agent 2 validation: ' + result;
+                      }
+
+                      var payload = parseCertPayload(value);
+                      return rawValidationDisplay(payload);
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              master_item:
+                key: 'web.certificate.get["{#IIS.SNI}","{#IIS.PORT}","{#IIS.CONNECT}"]'
+              tags:
+                - tag: component
+                  value: certificate
+                - tag: iis_site
+                  value: '{#IIS.SITE}'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
@@ -407,3 +534,15 @@ zabbix_export:
                     - type: INTEGER
                       name: decimal_places
                       value: '0'
+      valuemaps:
+        - uuid: 98c67b5fb5c7467a83473c1cdb2b37d4
+          name: IIS certificate identity
+          mappings:
+            - value: valid
+              newvalue: Valid
+            - value: invalid
+              newvalue: Invalid
+            - value: valid-but-self-signed
+              newvalue: Valid but self-signed
+            - value: not_evaluated_no_host_header
+              newvalue: Identity not evaluated — IIS binding has no host header

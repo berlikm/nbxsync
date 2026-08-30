@@ -54,11 +54,16 @@ Stock **Website certificate by Zabbix agent 2** is one `{$CERT.WEBSITE.HOSTNAME}
 | Connect | Binding IP, or `127.0.0.1` when the IP is `*` — **no public DNS** |
 | SNI | Host header. Empty host = default SSL binding; `{#IIS.SNI}` is the connect address |
 | Expires soon | Warning — `(not_after - now())/86400 < {$IIS.CERT.EXPIRY.WARN}` default **30** (matches [06](../06-network-vms.md)) |
-| Invalid / wrong name | **High** only when `{#IIS.HAS_HOST}=1` (empty host header skips hostname-mismatch) |
+| Identity | User-facing `iis.ssl.cert.validation`. Host header set: Agent 2 `valid` / `invalid` / `valid-but-self-signed` (High on invalid). **No host header:** `not_evaluated_no_host_header` — display “Identity not evaluated — IIS binding has no host header”. Agent 2 `invalid` against `127.0.0.1` is kept on the raw diagnostic item only |
+| Invalid / wrong name | **High** only when `{#IIS.HAS_HOST}=1`. Empty host header never opens this trigger |
 
 Needs **Zabbix agent 2** (WebCertificate plugin). Classic agent cannot. Agent 2 still serves Windows + IIS `perf_counter_en` — swap those boxes to Agent 2 rather than a second agent.
 
 Do not also link **Website certificate** on the same IIS sites (duplicate handshakes, and 7.0 still needs a handwritten hostname). Use that stock template only for a **known** non-IIS name. Do not WMI-scrape the Windows cert store — the handshake is the symptom.
+
+Do **not** pick a validation name from the certificate SAN. That would be circular. The IIS host header is the only identity the binding states.
+
+Production canary 2026-08-30 `CH-STA-P-WEBN02` (`*:443:`): handshake and NotAfter (2026-09-05) work; Agent 2 result is `invalid` because SNI is loopback. User-facing state must be `not_evaluated_no_host_header`, not `invalid`. Expiry Warning still opens.
 
 Tests (no live IIS): `python3 scripts/test_iis_observability.py`.
 
