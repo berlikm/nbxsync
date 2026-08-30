@@ -240,6 +240,21 @@ class ZabbixHostInventoryTestCase(
         self.assertIn('virtualmachine', form.errors)
         self.assertIn('only be assigned to one object', form.errors['virtualmachine'][0])
 
+    def test_clean_accepts_inventory_tag_string_with_device_assignment(self):
+        """extras.Tag is mapped to 'tag', but inventory.tag is a Zabbix string."""
+        form = ZabbixHostInventoryForm(
+            data={
+                'inventory_mode': 0,
+                'device': self.devices[1].pk,
+                'tag': 'TAG',
+                'alias': 'Alias',
+            }
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.instance.assigned_object, self.devices[1])
+        self.assertEqual(form.cleaned_data['tag'], 'TAG')
+
     def test_clean_sets_assigned_object_none_if_unassigned(self):
         form = ZabbixHostInventoryForm(data={'alias': 'Unassigned Inventory'})
 
