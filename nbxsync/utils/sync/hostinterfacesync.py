@@ -42,7 +42,9 @@ class HostInterfaceSync(ZabbixSyncBase):
         hostid = self._resolve_hostid()
         if not hostid:
             return []
-        candidates = self.api_object().get(hostids=[hostid], filter={'type': str(self.obj.type)}) or []
+        # output='extend' is required so port/useip/main are present for matching.
+        # IntegerChoices.__str__ is the label ('SNMP'), not the Zabbix type id.
+        candidates = self.api_object().get(hostids=[int(hostid)], output='extend', filter={'type': str(int(self.obj.type))}) or []
         port = str(self.obj.port)
         useip = str(int(self.obj.useip))
         main = str(int(self.obj.interface_type))
