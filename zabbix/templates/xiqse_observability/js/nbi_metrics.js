@@ -245,3 +245,32 @@ function pickLicenseEngineField(payload, ip, field, missing) {
   }
   return row[field];
 }
+
+function nbiHealthSnapshot(server, engines, error, ok) {
+  // Always emit the numeric fields JSONPath dependents read. An NBI failure
+  // that omitted heapMemoryUsed made xiqse.nbi.heap.used unsupported, and the
+  // calculated heap % then failed with last() of that item.
+  // ok defaults from error. Pass 1 when serverInfo succeeded but engines LLD
+  // did not — NBI is still up.
+  var info = server || {};
+  var rows = Array.isArray(engines) ? engines : [];
+  var used = Number(info.heapMemoryUsed) || 0;
+  var max = Number(info.heapMemoryMax) || 0;
+  var fail = error ? String(error) : '';
+  var available = (ok === undefined || ok === null) ? (fail ? 0 : 1) : (ok ? 1 : 0);
+  return {
+    ok: available,
+    error: fail,
+    version: String(info.version || ''),
+    upTime: uptimeSeconds(info.upTime),
+    startTime: String(info.startTime || ''),
+    heapMemoryUsed: used,
+    heapMemoryMax: max,
+    heapUsedPct: usedSeatPercent(max, used),
+    freePhysicalMemory: Number(info.freePhysicalMemory) || 0,
+    totalPhysicalMemory: Number(info.totalPhysicalMemory) || 0,
+    threadCount: Number(info.threadCount) || 0,
+    engineCount: rows.length,
+    engines: rows
+  };
+}

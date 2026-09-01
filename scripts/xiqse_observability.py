@@ -59,6 +59,15 @@ FORBIDDEN_SNIPPETS = (
     '{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)',
     '{$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used)',
     '{$XIQ.NAV.TOTAL}-last(//xiqse.nav.used)',
+    'last(//xiqse.nbi.heap.used)',
+)
+
+ZABBIX_ITEM_TYPE_CALCULATED = '15'
+CALCULATED_SCRIPT_ITEM_KEYS = (
+    'xiqse.nbi.heap.pct',
+    'xiqse.nac.remaining',
+    'xiqse.pilot.remaining',
+    'xiqse.nav.remaining',
 )
 
 SE_ITEM_KEYS = {
@@ -172,7 +181,7 @@ def extract_engine_script(field: str, missing: str) -> str:
         + "} catch (error) {\n"
         + "  throw 'XIQ-SE engine field: invalid JSON';\n"
         + '}\n'
-        + f"return pickEngineField(payload, '{{#ENGINE.IP}}', '{field}', {missing});\n"
+        + f"return zabbixItemValue(pickEngineField(payload, '{{#ENGINE.IP}}', '{field}', {missing}));\n"
     )
 
 
@@ -186,7 +195,7 @@ def extract_license_engine_script(field: str, missing: str) -> str:
         + "} catch (error) {\n"
         + "  throw 'XIQ-SE engine license field: invalid JSON';\n"
         + '}\n'
-        + f"return pickLicenseEngineField(payload, '{{#ENGINE.IP}}', '{field}', {missing});\n"
+        + f"return zabbixItemValue(pickLicenseEngineField(payload, '{{#ENGINE.IP}}', '{field}', {missing}));\n"
     )
 
 
@@ -267,3 +276,56 @@ def yaml_literal(text: str, indent: int) -> str:
     if lines and lines[-1] == '':
         lines = lines[:-1]
     return '\n'.join(pad + line if line else pad.rstrip() for line in lines)
+
+
+def _is_calculated_type(value) -> bool:
+    return str(value) in {ZABBIX_ITEM_TYPE_CALCULATED, 'CALCULATED'}
+
+
+def _calculated_script_items(api, hostids: list[str]) -> list[dict]:
+    if not hostids:
+        return []
+    items = (
+        api.item.get(
+            hostids=hostids,
+            filter={'key_': list(CALCULATED_SCRIPT_ITEM_KEYS)},
+            output=['itemid', 'key_', 'type'],
+        )
+        or []
+    )
+    return [
+        item
+        for item in items
+        if _is_calculated_type(item.get('type'))
+        and str(item.get('key_', '')) in CALCULATED_SCRIPT_ITEM_KEYS
+    ]
+
+
+def _delete_items(api, items: list[dict]) -> int:
+    itemids = sorted({str(item['itemid']) for item in items}, key=int)
+    if not itemids:
+        return 0
+    api.item.delete(*itemids)
+    return len(itemids)
+
+
+def retire_calculated_script_items(api) -> int:
+    """Drop leftover CALCULATED heap % / remaining so import can create dependents.
+
+    Cloud 7.0 import cannot change item type. Same-key leftover CALCULATED
+    items keep the old last() formula after --apply-xiqse.
+    """
+    found = api.template.get(
+        filter={'name': [SE_TEMPLATE_NAME]},
+        output=['templateid', 'name'],
+    ) or []
+    if len(found) > 1:
+        raise RuntimeError(f'multiple templates named {SE_TEMPLATE_NAME!r}')
+    if not found:
+        return 0
+    templateid = str(found[0]['templateid'])
+    deleted = _delete_items(api, _calculated_script_items(api, [templateid]))
+    hosts = api.host.get(templateids=[templateid], output=['hostid']) or []
+    hostids = [str(host['hostid']) for host in hosts]
+    deleted += _delete_items(api, _calculated_script_items(api, hostids))
+    return deleted

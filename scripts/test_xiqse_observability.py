@@ -38,7 +38,19 @@ from xiqse_observability import (
     XIQSE_FQDN_JINJA,
     XIQSE_FQDN_MACRO,
     extract_engine_script,
+    extract_license_engine_script,
     health_script,
+    licenses_script,
+    lld_script,
+    load_fixture,
+    network_source,
+    pilot_script,
+    platform_is_xiqse,
+    retire_calculated_script_items,
+    run_lld,
+    run_metrics_json,
+    run_node,
+    zerotouch_source,
     licenses_script,
     lld_script,
     load_fixture,
@@ -165,6 +177,29 @@ class LicenseWindowTests(unittest.TestCase):
             100 * 2150 / 3000,
             places=8,
         )
+
+    def test_health_snapshot_always_includes_heap_percent(self):
+        failed = run_metrics_json("nbiHealthSnapshot({}, [], 'token failed')")
+        self.assertEqual(failed['ok'], 0)
+        self.assertEqual(failed['heapMemoryUsed'], 0)
+        self.assertEqual(failed['heapMemoryMax'], 0)
+        self.assertEqual(failed['heapUsedPct'], 0)
+        self.assertEqual(failed['engineCount'], 0)
+        self.assertEqual(failed['engines'], [])
+        live = run_metrics_json(
+            'nbiHealthSnapshot(server, [], "")',
+            prelude='var server = {heapMemoryUsed: 1073741824, heapMemoryMax: 4294967296, version: "25.5.12.6", upTime: 86400};',
+        )
+        self.assertEqual(live['ok'], 1)
+        self.assertEqual(live['heapMemoryUsed'], 1073741824)
+        self.assertEqual(live['heapUsedPct'], 25)
+        degraded = run_metrics_json(
+            'nbiHealthSnapshot(server, [], "engines query failed", 1)',
+            prelude='var server = {heapMemoryUsed: 1073741824, heapMemoryMax: 4294967296};',
+        )
+        self.assertEqual(degraded['ok'], 1)
+        self.assertEqual(degraded['error'], 'engines query failed')
+        self.assertEqual(degraded['heapUsedPct'], 25)
 
 
 class EngineLldTests(unittest.TestCase):
@@ -344,6 +379,24 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn('trigger_prototypes', self.se['discovery_rules'][0]['item_prototypes'][1])
         self.assertNotIn('triggers', self.se['discovery_rules'][0]['item_prototypes'][1])
 
+    def test_engine_extract_stringifies_zero(self):
+        lic = extract_license_engine_script('lastAuthAge', '-1')
+        self.assertIn('function zabbixItemValue', lic)
+        self.assertIn("return zabbixItemValue(pickLicenseEngineField", lic)
+        helper = (JS_DIR / 'extract_engine.js').read_text(encoding='utf-8')
+        self.assertEqual(
+            json.loads(run_node(helper + '\nconsole.log(JSON.stringify(zabbixItemValue(0)));\n')),
+            '0',
+        )
+        self.assertEqual(
+            json.loads(run_node(helper + '\nconsole.log(JSON.stringify(zabbixItemValue(-1)));\n')),
+            '-1',
+        )
+        self.assertEqual(
+            json.loads(run_node(helper + "\nconsole.log(JSON.stringify(zabbixItemValue('')));\n")),
+            '-',
+        )
+
     def test_nbi_average_depends_on_8443_not_icmp(self):
         avail = next(item for item in self.se['items'] if item['key'] == 'xiqse.nbi.available')
         nbi = next(tr for tr in avail['triggers'] if tr['name'] == 'XIQ-SE: NBI unexpected response')
@@ -355,6 +408,11 @@ class YamlContractTests(unittest.TestCase):
         heap = next(item for item in self.se['items'] if item['key'] == 'xiqse.nbi.heap.pct')
         self.assertFalse(heap.get('triggers'))
         self.assertEqual(heap['units'], '%')
+        self.assertEqual(heap['type'], 'DEPENDENT')
+        self.assertEqual(heap['master_item']['key'], 'xiqse.nbi.health')
+        self.assertIn('Not a calculated item', heap.get('description') or '')
+        self.assertIn('nbiHealthSnapshot', health_script())
+        self.assertIn('heapUsedPct', health_script())
 
     def test_nac_cap_requires_purchased_total(self):
         used = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used24h')
@@ -445,8 +503,13 @@ class YamlContractTests(unittest.TestCase):
         used_pct = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used.pct')
         self.assertEqual(used_pct['type'], 'DEPENDENT')
         self.assertEqual(used_pct['preprocessing'][0]['parameters'][0], '$.nacUsedPct')
+        heap_pct = next(item for item in self.se['items'] if item['key'] == 'xiqse.nbi.heap.pct')
+        self.assertEqual(heap_pct['type'], 'DEPENDENT')
+        self.assertEqual(heap_pct['preprocessing'][0]['parameters'][0], '$.heapUsedPct')
+        self.assertEqual(heap_pct.get('units'), '%')
+        self.assertNotIn('params', heap_pct)
         calculated = [item['key'] for item in self.se['items'] if item['type'] == 'CALCULATED']
-        self.assertEqual(calculated, ['xiqse.nbi.heap.pct'])
+        self.assertEqual(calculated, [])
 
     def test_hardware_capacity_trigger_stays_silent_when_api_capacity_is_zero(self):
         proto = next(
@@ -516,6 +579,7 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertNotIn('SyncHostJob', apply_fn)
         self.assertNotIn('configure_nbxsync_zerotouch', apply_fn)
         self.assertIn('strict=True', import_fn)
+        self.assertIn('retire_calculated_script_items', import_fn)
         self.assertIn(SE_TEMPLATE_RULE, src)
         self.assertIn('_xiqse.XIQSE_FQDN_JINJA', src)
         self.assertIn('_xiqse.XIQSE_FQDN_MACRO', src)
@@ -562,6 +626,71 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertIn("'extremecontrol_observability': [HostInterfaceRequirementChoices.ANY]", src)
         self.assertIn("'extremecontrol_snmp': 'ExtremeControl by SNMP'", src)
         self.assertIn("'extremecontrol_snmp': [HostInterfaceRequirementChoices.SNMP]", src)
+
+
+class CalculatedScriptItemRetirementTests(unittest.TestCase):
+    class _Api:
+        def __init__(self):
+            self.deleted: list[str] = []
+            self.template = self
+            self.host = self
+            self.item = self
+            self.template_items = [
+                {
+                    'itemid': '10',
+                    'key_': 'xiqse.nbi.heap.pct',
+                    'type': '15',
+                },
+                {
+                    'itemid': '11',
+                    'key_': 'xiqse.nac.remaining',
+                    'type': '15',
+                },
+                {
+                    'itemid': '12',
+                    'key_': 'xiqse.nbi.heap.used',
+                    'type': '18',
+                },
+            ]
+            self.host_items = [
+                {
+                    'itemid': '20',
+                    'key_': 'xiqse.pilot.remaining',
+                    'type': '15',
+                },
+                {
+                    'itemid': '21',
+                    'key_': 'xiqse.nav.remaining',
+                    'type': '18',
+                },
+            ]
+
+        def get(self, **kwargs):
+            if kwargs.get('filter', {}).get('name') == [SE_TEMPLATE_NAME]:
+                return [{'templateid': '99', 'name': SE_TEMPLATE_NAME}]
+            if 'templateids' in kwargs:
+                return [{'hostid': '42'}]
+            hostids = {str(hostid) for hostid in kwargs.get('hostids') or []}
+            if '99' in hostids:
+                return list(self.template_items)
+            if '42' in hostids:
+                return list(self.host_items)
+            return []
+
+        def delete(self, *itemids):
+            self.deleted.extend(str(itemid) for itemid in itemids)
+            return list(itemids)
+
+    def test_retires_only_calculated_heap_and_remaining(self):
+        api = self._Api()
+        self.assertEqual(retire_calculated_script_items(api), 3)
+        self.assertEqual(api.deleted, ['10', '11', '20'])
+
+    def test_skips_when_template_is_missing(self):
+        api = self._Api()
+        api.get = lambda **kwargs: []
+        self.assertEqual(retire_calculated_script_items(api), 0)
+        self.assertEqual(api.deleted, [])
 
 
 def _function_source(src: str, name: str) -> str | None:
