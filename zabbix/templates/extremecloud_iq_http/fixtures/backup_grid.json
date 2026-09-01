@@ -1,0 +1,23 @@
+{
+  "page": 1,
+  "count": 2,
+  "total_pages": 1,
+  "total_count": 2,
+  "data": [
+    {
+      "backup_date": 1720506187810,
+      "backup_units": "CONFIG",
+      "backup_file_name": "viq-config-old.tar.gz"
+    },
+    {
+      "backup_date": 1721111111111,
+      "backup_units": "CONFIG",
+      "backup_file_name": "viq-config-new.tar.gz"
+    },
+    {
+      "backup_date": 1722000000000,
+      "backup_units": "FULL",
+      "backup_file_name": "viq-full-ignored.tar.gz"
+    }
+  ]
+}

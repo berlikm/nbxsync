@@ -508,6 +508,59 @@ def main() -> int:
         'XIQ-SE pack is network --apply-xiqse, not zerotouch',
     )
 
+    xiq_cloud = _function_source(net_src, net_tree, 'run_apply_xiq_cloud') or ''
+    record(
+        'network_xiq_cloud_apply_exists',
+        bool(xiq_cloud),
+        'run_apply_xiq_cloud',
+    )
+    record(
+        'network_xiq_cloud_apply_skips_extreme_nbi_and_hostsync',
+        bool(xiq_cloud)
+        and 'import_extreme_templates' not in xiq_cloud
+        and 'import_xiqse_templates' not in xiq_cloud
+        and 'SyncHostJob' not in xiq_cloud
+        and 'configure_nbxsync_zerotouch' not in xiq_cloud,
+        'no Extreme import / NBI import / HostSync / zerotouch in --apply-xiq-cloud',
+    )
+    xiq_cloud_preflight = _function_source(net_src, net_tree, '_require_xiq_cloud_preflight') or ''
+    record(
+        'network_xiq_cloud_fail_closed_preflight',
+        '_require_xiq_cloud_preflight' in xiq_cloud
+        and '_preflight_xiq_cloud' in xiq_cloud_preflight
+        and '_print_xiq_cloud_plan' in xiq_cloud_preflight
+        and 'raise SystemExit' in xiq_cloud_preflight,
+        'ExtremeCloud IQ preflight prints the plan and aborts before YAML/NetBox writes',
+    )
+    xiq_cloud_import = _function_source(net_src, net_tree, 'import_xiq_cloud_templates') or ''
+    record(
+        'network_xiq_cloud_import_is_strict',
+        'strict=True' in xiq_cloud_import and 'TEMPLATE_FILES' in xiq_cloud_import,
+        'ExtremeCloud IQ YAML import is mandatory and fail-closed',
+    )
+    xiq_cloud_step = _function_source(net_src, net_tree, '_step_xiq_cloud_nbxsync') or ''
+    record(
+        'network_xiq_cloud_second_template_any_no_icmp',
+        'CLOUD_TEMPLATE_NAME' in xiq_cloud_step
+        and 'HostInterfaceRequirementChoices.ANY' in xiq_cloud_step
+        and 'icmpping' not in xiq_cloud_step,
+        'Site Engine gets ExtremeCloud IQ by HTTP (ANY), no icmpping nest',
+    )
+    xiq_cloud_token = _function_source(net_src, net_tree, '_step_xiq_cloud_token_scope') or ''
+    record(
+        'network_xiq_cloud_token_cg_never_overwrites',
+        '_step_xiq_cloud_token_scope' in (xiq_cloud_step)
+        and '_ensure_macro_assignment_if_absent' in xiq_cloud_token
+        and 'TOKEN_CG_NAME' in net_src
+        and 'ma.value = value' not in (_function_source(net_src, net_tree, '_ensure_macro_assignment_if_absent') or ''),
+        'Cloud API token CG is create-if-absent; apply mirrors onto platforms',
+    )
+    record(
+        'zerotouch_no_xiq_cloud_cutover',
+        'apply-xiq-cloud' not in ztc_src and 'import_xiq_cloud_templates' not in ztc_src,
+        'ExtremeCloud IQ pack is network --apply-xiq-cloud, not zerotouch',
+    )
+
     failed = sum(1 for _, ok, _ in RESULTS if not ok)
     print(f'\n{len(RESULTS) - failed}/{len(RESULTS)} apply-safety checks passed')
     return 1 if failed else 0

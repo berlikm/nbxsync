@@ -9,7 +9,7 @@ This note is the research that page compresses. **Do not** treat it as a second 
 
 Monitor **Site Engine** with companion **XIQ-SE Observability** (HTTPS GraphQL, OAuth). Monitor each **Control engine** as a NetBox role **NAC** host for ICMP + RADIUS + **ExtremeControl by SNMP** (`ENTERASYS-NAC-APPLIANCE-MIB`). License / connected / needsEnforce stay **on SE**, not a GraphQL scrape of each OVA.
 
-Do **not**: install agent on vendor OVAs for this; GraphQL to NAC IPs; SNMP EXOS/VOSS/IQ templates on these appliances; Cloud XIQ tenant as a host; `system.run`; mutations; `net.udp.service` as a RADIUS check; second `icmpping`.
+Do **not**: install agent on vendor OVAs for this; GraphQL to NAC IPs; SNMP EXOS/VOSS/IQ templates on these appliances; Cloud REST inside the NBI SCRIPT; `system.run`; mutations; `net.udp.service` as a RADIUS check; second `icmpping`. Cloud VIQ is [08](../08-extremecloud-iq.md) on the same SE host.
 
 ---
 
@@ -146,7 +146,7 @@ administration {
 | `network { devices { up } }` | 01/02 already own switches |
 | Host prototype per end-system | Scale |
 | SNMP on SE/NAC OVAs | Wrong MIBs; BIN upgrades |
-| Cloud XIQ license API | Separate host later |
+| Cloud XIQ tenant | Companion on the SE host — [08](../08-extremecloud-iq.md) |
 | GIM / assessment | Same 24h idea, after NAC MAC graph is quiet |
 | Campus auth Disaster | Service host, not device template |
 

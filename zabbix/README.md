@@ -1,11 +1,11 @@
 # Zabbix network monitoring
 
 **In scope now:** [01 Extreme switching](01-extreme-switching.md), [02 access points](02-extreme-access-points.md).  
-**Prepared:** [03 Fortinet](03-fortinet.md) (FortiGate **API** spec written; FMG/FAZ SNMP YAML built, not live), [06 network VMs](06-network-vms.md), [07 ExtremeControl / XIQ-SE](07-extreme-control.md) (GraphQL + engine SNMP YAML built; not live).  
+**Prepared:** [03 Fortinet](03-fortinet.md) (FortiGate **API** spec written; FMG/FAZ SNMP YAML built, not live), [06 network VMs](06-network-vms.md), [07 ExtremeControl / XIQ-SE](07-extreme-control.md) (GraphQL + engine SNMP YAML built; not live), [08 ExtremeCloud IQ](08-extremecloud-iq.md) (VIQ companion YAML built; not live).  
 **Live collector:** [04 Cato](04-cato.md) account monitoring and all 21 NetBox-backed Socket ICMP hosts.
 Copy [_template.md](_template.md) for the next domain. Same observability bar everywhere.
 
-**Rules:** one short page per domain; one data path per doc; OID/lab notes in `templates/<name>/` or `notes/`. Extreme alerting + host **Health**: [notes/alerting-and-health.md](notes/alerting-and-health.md). FortiGate API + Health: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md). XIQ-SE NBI + NAC license count: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). MSSQL named instances (Agent 2 companion): [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md).
+**Rules:** one short page per domain; one data path per doc; OID/lab notes in `templates/<name>/` or `notes/`. Extreme alerting + host **Health**: [notes/alerting-and-health.md](notes/alerting-and-health.md). FortiGate API + Health: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md). XIQ-SE NBI + NAC license count: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). ExtremeCloud IQ tenant: [notes/xiq-cloud.md](notes/xiq-cloud.md). MSSQL named instances (Agent 2 companion): [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md).
 
 ## Doc set
 
@@ -20,6 +20,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | 05 | [05-internet-circuits.md](05-internet-circuits.md) | ISP / WAN | later |
 | 06 | [06-network-vms.md](06-network-vms.md) | Infra VMs | prepared |
 | 07 | [07-extreme-control.md](07-extreme-control.md) | XIQ-SE GraphQL + ExtremeControl RADIUS / NAC licenses + engine SNMP | **built**; not live |
+| 08 | [08-extremecloud-iq.md](08-extremecloud-iq.md) | ExtremeCloud IQ VIQ companion on the SE host (Portal seats, backup, tenant health) | **built**; not live |
 
 ## Templates
 
@@ -37,6 +38,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/xiqse_observability/` | XIQ-SE Observability | **built**; GraphQL NBI + 24h unique MAC license + engine LLD; **Health** + **Engines** — [07](07-extreme-control.md) |
 | `templates/extremecontrol_observability/` | ExtremeControl Observability | **built**; thin role **NAC** companion; portal/cert Warning **DISABLED** — [07](07-extreme-control.md) |
 | `templates/extremecontrol_snmp/` | ExtremeControl by SNMP | **built**; `ENTERASYS-NAC-APPLIANCE-MIB` canary on five ENACs; **Health** — [07](07-extreme-control.md) |
+| `templates/extremecloud_iq_http/` | ExtremeCloud IQ by HTTP | **built**; SCRIPT REST to `api.extremecloudiq.com` on the SE host; **Health** — [08](08-extremecloud-iq.md) |
 | `templates/cato_http/` | Cato Networks by HTTP | imported; account collector with **Health** (Census/API) + **Path** (Last mile/Probe) + **Network** (Tunnels/HA/Port); 21/21 Socket ICMP hosts live — [04](04-cato.md) |
 
 ## Related
