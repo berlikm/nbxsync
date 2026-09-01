@@ -148,8 +148,13 @@ Degraded value map: `0=OK`, `1=Degraded`. CMA Degraded is **not** a third
 connectivity state — `connectivityStatus` stays connected|disconnected.
 
 Numeric SLA prototypes keep 30 days of history and 365 days of trends. Overlay
-loss for Path is `max(RX, TX)` so one honeycomb can go yellow at CMA's 2%
-threshold without 51 line graphs. Overlay **loss** stays dashboard-only.
+loss and overlay jitter for Path are `max(RX, TX)` so one honeycomb can go
+yellow at CMA's 2% / 10 ms without 51 line graphs. Those max values are
+computed in the metrics **dependent** JavaScript from the same GraphQL
+payload as the RX/TX series — not CALCULATED `max(last(RX), last(TX))`.
+Zabbix 7.0 leaves that calculated form stuck unsupported after a directional
+hole even after RX/TX recover (CN-SHA / CN-SZX-LAB). One missing direction
+uses the other; both missing discards. Overlay **loss** stays dashboard-only.
 Overlay **RTT** and last-mile **latency** ticket Warning when the last three
 5-minute samples are all at or above the red honeycomb (`{$CATO.RTT.WARN}` /
 `{$CATO.LASTMILE.LATENCY.WARN}`, default 150 ms). Yellow at 80 ms is visual
@@ -240,7 +245,9 @@ Collector refresh is **`configure_nbxsync_network.py --apply-cato`**. That flag
 fail-closes on GraphQL preflight, imports the YAML, and converges the owned
 account host. It does **not** run zerotouch, HostSync Socket devices, or mutate
 NetBox Socket roles. `--check-cato` is the read-only preflight plus collector
-shape.
+shape. Zabbix 7.0 import cannot change item type, so apply deletes leftover
+CALCULATED overlay-loss/jitter prototypes and discovered items; LLD recreates
+them as dependents of `cato.account.metrics` on the next metrics collection.
 
 Do **not** re-run `configure_nbxsync_zerotouch.py` to refresh this pack. The
 one-time Socket migration is complete; use the per-Socket onboarding runbook

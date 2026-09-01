@@ -246,6 +246,7 @@ SLA_PREFIXES = {
     'cato.wan.loss.max.pct[': 'overlay loss',
     'cato.wan.jitter.rx.ms[': 'RX jitter',
     'cato.wan.jitter.tx.ms[': 'TX jitter',
+    'cato.wan.jitter.max.ms[': 'overlay jitter',
     'cato.wan.rtt.ms[': 'RTT',
 }
 COLLECTOR_COUNTER_KEYS = {

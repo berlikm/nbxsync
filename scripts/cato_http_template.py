@@ -614,6 +614,41 @@ def metric_js(field: str, label: str, scale: str = '') -> str:
         + f'return numeric{multiply};\n'
     )
 
+
+def metric_max_js(rx_field: str, tx_field: str, label: str) -> str:
+    """Max of two SLA directions from the same metrics payload.
+
+    Cloud 7.0 leaves CALCULATED ``max(last(RX), last(TX))`` stuck unsupported
+    after a directional hole. A metrics dependent discards instead of sticking.
+    """
+    return (
+        METRICS_IFACE_PREAMBLE
+        + """function catoFiniteMetric(raw) {
+  if (raw === undefined || raw === null || raw === '') {
+    return null;
+  }
+  var numeric = Number(raw);
+  if (!isFinite(numeric)) {
+    return null;
+  }
+  return numeric;
+}
+"""
+        + 'var ifaceMetrics = iface && iface.metrics ? iface.metrics : {};\n'
+        + f'var rx = catoFiniteMetric(ifaceMetrics.{rx_field});\n'
+        + f'var tx = catoFiniteMetric(ifaceMetrics.{tx_field});\n'
+        + 'if (rx === null && tx === null) {\n'
+        + f"  throw '{label} missing';\n"
+        + '}\n'
+        + 'if (rx === null) {\n'
+        + '  return tx;\n'
+        + '}\n'
+        + 'if (tx === null) {\n'
+        + '  return rx;\n'
+        + '}\n'
+        + 'return Math.max(rx, tx);\n'
+    )
+
 TIMESERIES_LATEST_FN = """\
 function catoTimeseriesLatest(entry) {
   var data = Array.isArray(entry.data) ? entry.data : [];
@@ -2272,23 +2307,33 @@ def render_template() -> str:
         *proto_item(uid_key='sla_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX bandwidth', key='cato.wan.tx.bps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('bytesUpstream', 'TX rate', '8'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='bps', trends='365d'),
         *proto_item(uid_key='sla_loss_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX packet loss', key='cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('lostDownstreamPcnt', 'RX loss'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='%', trends='365d'),
         *proto_item(uid_key='sla_loss_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX packet loss', key='cato.wan.loss.tx.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('lostUpstreamPcnt', 'TX loss'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='%', trends='365d'),
-        *calc_proto(
+        *proto_item(
             uid_key='sla_loss_max',
             name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Overlay loss',
             key='cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}]',
-            params=f'max(last(//cato.wan.loss.rx.pct[{{#SITE.ID}},{{#LINK.ID}}]),last(//cato.wan.loss.tx.pct[{{#SITE.ID}},{{#LINK.ID}}]))',
-            scope='wan_sla', extra_tags=SLA_TAGS,
+            master='cato.account.metrics',
+            js=metric_max_js('lostDownstreamPcnt', 'lostUpstreamPcnt', 'overlay loss'),
+            scope='wan_sla',
+            extra_tags=SLA_TAGS,
+            value_type='FLOAT',
+            valuemap=None,
             units='%',
+            trends='365d',
         ),
         *proto_item(uid_key='sla_jit_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX jitter', key='cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('jitterDownstream', 'RX jitter'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
         *proto_item(uid_key='sla_jit_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX jitter', key='cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('jitterUpstream', 'TX jitter'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
-        *calc_proto(
+        *proto_item(
             uid_key='sla_jit_max',
             name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Overlay jitter',
             key='cato.wan.jitter.max.ms[{#SITE.ID},{#LINK.ID}]',
-            params='max(last(//cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]),last(//cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]))',
-            scope='wan_sla', extra_tags=SLA_TAGS,
+            master='cato.account.metrics',
+            js=metric_max_js('jitterDownstream', 'jitterUpstream', 'overlay jitter'),
+            scope='wan_sla',
+            extra_tags=SLA_TAGS,
+            value_type='FLOAT',
+            valuemap=None,
             units='ms',
+            trends='365d',
         ),
         *proto_item(
             uid_key='sla_rtt',

@@ -96,6 +96,12 @@ LEGACY_LAN_ITEM_PREFIXES = (
     "cato.lan.port.rx.bps[",
     "cato.lan.port.tx.bps[",
 )
+ZABBIX_ITEM_TYPE_CALCULATED = "15"
+SLA_METRICS_DISCOVERY_KEY = "cato.wan.metrics.discovery"
+CALCULATED_OVERLAY_MAX_KEY_PREFIXES = (
+    "cato.wan.loss.max.pct[",
+    "cato.wan.jitter.max.ms[",
+)
 
 
 def import_rules() -> dict[str, dict[str, bool]]:
@@ -366,6 +372,91 @@ def retire_legacy_lan_port_discovery(
             f"graphs={remaining_graphids}"
         )
     return len(ruleids), len(graphids), len(itemids)
+
+
+def _is_calculated_type(value: Any) -> bool:
+    return str(value) in {ZABBIX_ITEM_TYPE_CALCULATED, "CALCULATED"}
+
+
+def _is_overlay_max_key(key: str) -> bool:
+    if "[__seed]" in key:
+        return False
+    return key.startswith(CALCULATED_OVERLAY_MAX_KEY_PREFIXES)
+
+
+def _calculated_overlay_max_itemids(api: ZabbixAPI, hostid: str) -> list[str]:
+    """Discovered CALCULATED overlay max items Zabbix 7.0 left stuck unsupported."""
+    items = api.call(
+        "item.get",
+        {
+            "hostids": hostid,
+            "output": ["itemid", "key_", "type", "flags"],
+            "selectDiscoveryRule": ["key_"],
+        },
+    )
+    itemids: list[str] = []
+    for item in items:
+        discovery_rule = item.get("discoveryRule") or {}
+        if (
+            str(item.get("flags")) == "4"
+            and _is_calculated_type(item.get("type"))
+            and isinstance(discovery_rule, dict)
+            and discovery_rule.get("key_") == SLA_METRICS_DISCOVERY_KEY
+            and _is_overlay_max_key(str(item.get("key_", "")))
+        ):
+            itemids.append(str(item["itemid"]))
+    return sorted(itemids, key=int)
+
+
+def retire_calculated_overlay_max_items(api: ZabbixAPI, hostid: str) -> int:
+    """Delete leftover CALCULATED overlay loss/jitter max items so LLD recreates them."""
+    itemids = _calculated_overlay_max_itemids(api, hostid)
+    if not itemids:
+        return 0
+    deleted = {str(itemid) for itemid in api.call("item.delete", itemids)["itemids"]}
+    if deleted != set(itemids):
+        raise RuntimeError(
+            "Cato overlay max retirement did not delete exactly the selected items: "
+            f"selected={itemids} deleted={sorted(deleted, key=int)}"
+        )
+    return len(itemids)
+
+
+def _calculated_overlay_max_prototype_ids(api: ZabbixAPI, templateid: str) -> list[str]:
+    """CALCULATED overlay max prototypes. Import cannot change their type."""
+    items = api.call(
+        "itemprototype.get",
+        {
+            "hostids": templateid,
+            "output": ["itemid", "key_", "type"],
+        },
+    )
+    prototypeids: list[str] = []
+    for item in items:
+        if _is_calculated_type(item.get("type")) and _is_overlay_max_key(
+            str(item.get("key_", ""))
+        ):
+            prototypeids.append(str(item["itemid"]))
+    return sorted(prototypeids, key=int)
+
+
+def retire_calculated_overlay_max_prototypes(api: ZabbixAPI, templateid: str) -> int:
+    """Drop CALCULATED overlay max prototypes so import can create DEPENDENT ones."""
+    prototypeids = _calculated_overlay_max_prototype_ids(api, templateid)
+    if not prototypeids:
+        return 0
+    result = api.call("itemprototype.delete", prototypeids)
+    deleted = {
+        str(itemid)
+        for itemid in result.get("prototypeids") or result.get("itemids") or []
+    }
+    if deleted != set(prototypeids):
+        raise RuntimeError(
+            "Cato overlay max prototype retirement did not delete exactly the "
+            f"selected prototypes: selected={prototypeids} "
+            f"deleted={sorted(deleted, key=int)}"
+        )
+    return len(prototypeids)
 
 
 def _owned(host_data: dict[str, Any]) -> bool:
@@ -1218,11 +1309,6 @@ def _expected_data_families(census: dict[str, int]) -> dict[str, tuple[int, int,
             for prefix, label in SLA_PREFIXES.items()
         }
     )
-    families["cato.wan.jitter.max.ms["] = (
-        census["sla_rows"],
-        METRICS_FRESH_SECONDS,
-        "overlay jitter",
-    )
     return families
 
 
@@ -1670,21 +1756,45 @@ def apply_cato_pack(
         live = collected
     if proxy_group:
         _get_proxy_group_id(api, proxy_group)
+    collector_name = host or collector_host()
+    existing_host = _get_host(api, collector_name)
+    retired_overlay_items = 0
+    if existing_host:
+        retired_overlay_items = retire_calculated_overlay_max_items(
+            api, str(existing_host["hostid"])
+        )
+    existing_template = _exact_template(api)
+    retired_overlay_protos = 0
+    if existing_template:
+        retired_overlay_protos = retire_calculated_overlay_max_prototypes(
+            api, str(existing_template["templateid"])
+        )
     templateid = import_template(api)
     hostid = ensure_account_host(
         api,
         templateid,
         api_token,
-        host=host or collector_host(),
+        host=collector_name,
         visible_name=visible_name or collector_visible_name(),
         proxy_group=proxy_group,
     )
     _set_census_macros(api, hostid, live)
+    retired_overlay_items += retire_calculated_overlay_max_items(api, hostid)
     legacy_rules, legacy_graphs, legacy_items = retire_legacy_lan_port_discovery(
         api, hostid, templateid
     )
     retired_usb = retire_legacy_usb_port_items(api, hostid)
     records = [
+        _record(
+            "Cato leftover CALCULATED overlay max prototypes retired",
+            True,
+            f"count={retired_overlay_protos}",
+        ),
+        _record(
+            "Cato leftover CALCULATED overlay max items retired",
+            True,
+            f"count={retired_overlay_items}",
+        ),
         _record(
             "Cato legacy LAN discovery retired",
             True,

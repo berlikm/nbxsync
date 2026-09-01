@@ -45,10 +45,12 @@ from cato_http import (
 )
 from configure_cato_zabbix import (
     _legacy_usb_port_itemids,
+    retire_calculated_overlay_max_items,
+    retire_calculated_overlay_max_prototypes,
     retire_legacy_lan_port_discovery,
     retire_legacy_usb_port_items,
 )
-from cato_http_template import char_from_path_js, render_template
+from cato_http_template import char_from_path_js, metric_max_js, render_template
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -186,7 +188,13 @@ METRICS_FIXTURE = {
                         {
                             'name': 'WAN1',
                             'interfaceInfo': {'id': 'l1', 'name': 'WAN1', 'destType': 'CATO'},
-                            'metrics': {'bytesDownstream': 1},
+                            'metrics': {
+                                'bytesDownstream': 1,
+                                'lostDownstreamPcnt': '1.5',
+                                'lostUpstreamPcnt': '4',
+                                'jitterDownstream': '2',
+                                'jitterUpstream': '8',
+                            },
                             'timeseries': [
                                 {
                                     'label': 'lastMilePacketLoss',
@@ -217,7 +225,12 @@ METRICS_FIXTURE = {
                         {
                             'name': 'WAN2',
                             'interfaceInfo': {'id': 'l2', 'name': 'WAN2', 'destType': 'CATO'},
-                            'metrics': {'bytesDownstream': 1},
+                            'metrics': {
+                                'bytesDownstream': 1,
+                                'lostDownstreamPcnt': '3',
+                                'jitterDownstream': '0',
+                                'jitterUpstream': '0',
+                            },
                             'timeseries': [
                                 {
                                     'label': 'lastMilePacketLoss',
@@ -387,6 +400,14 @@ class CatoTemplateContractTests(unittest.TestCase):
         blob = TEMPLATE_PATH.read_text(encoding='utf-8')
         self.assertNotIn('icmpping', blob)
         self.assertNotIn('service.discovery', blob)
+        self.assertNotIn(
+            "max(last(//cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}])",
+            blob,
+        )
+        self.assertNotIn(
+            "max(last(//cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}])",
+            blob,
+        )
         self.assertNotIn('type: ICMPPING', blob)
         self.assertNotIn('priority: DISASTER', blob)
 
@@ -645,6 +666,77 @@ class CatoTemplateContractTests(unittest.TestCase):
             'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile latency',
             sla_names,
         )
+
+    def test_overlay_max_is_metrics_dependent_not_calculated(self):
+        sla = next(
+            rule
+            for rule in self.tpl['discovery_rules']
+            if rule['key'] == 'cato.wan.metrics.discovery'
+        )
+        prototypes = {item['key']: item for item in sla['item_prototypes']}
+        payload = json.dumps(METRICS_FIXTURE)
+        cases = (
+            (
+                'cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}]',
+                'lostDownstreamPcnt',
+                'lostUpstreamPcnt',
+                (('10', 'l1', 4), ('10', 'l2', 3)),
+            ),
+            (
+                'cato.wan.jitter.max.ms[{#SITE.ID},{#LINK.ID}]',
+                'jitterDownstream',
+                'jitterUpstream',
+                (('10', 'l1', 8), ('10', 'l2', 0)),
+            ),
+        )
+        for key, rx_field, tx_field, expected in cases:
+            item = prototypes[key]
+            self.assertEqual(item['type'], 'DEPENDENT', key)
+            self.assertEqual(item['master_item']['key'], 'cato.account.metrics', key)
+            self.assertNotIn('params', item)
+            self.assertEqual(item['preprocessing'][0]['error_handler'], 'DISCARD_VALUE')
+            js = _js(item)
+            self.assertIn('Math.max', js)
+            self.assertIn(rx_field, js)
+            self.assertIn(tx_field, js)
+            self.assertNotIn('max(last(', js)
+            for site, link, value in expected:
+                self.assertEqual(
+                    run_lld_js(
+                        js.replace('{#SITE.ID}', site).replace('{#LINK.ID}', link),
+                        payload,
+                    ),
+                    value,
+                    f'{key} {site}/{link}',
+                )
+            with self.assertRaisesRegex(RuntimeError, 'missing'):
+                run_lld_js(
+                    js.replace('{#SITE.ID}', '20').replace('{#LINK.ID}', 'x1'),
+                    payload,
+                )
+
+    def test_overlay_max_js_keeps_the_present_direction(self):
+        js = metric_max_js(
+            'lostDownstreamPcnt', 'lostUpstreamPcnt', 'overlay loss'
+        ).replace('{#SITE.ID}', '10').replace('{#LINK.ID}', 'solo')
+        payload = json.dumps({
+            'data': {
+                'accountMetrics': {
+                    'sites': [
+                        {
+                            'id': '10',
+                            'interfaces': [
+                                {
+                                    'interfaceInfo': {'id': 'solo'},
+                                    'metrics': {'lostUpstreamPcnt': '2.5'},
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        })
+        self.assertEqual(run_lld_js(js, payload), 2.5)
 
     def test_last_mile_probe_count_explains_single_series_sites(self):
         sla = next(
@@ -1375,6 +1467,101 @@ class CatoLegacyLanRetirementTests(unittest.TestCase):
         self.assertEqual([graph['graphid'] for graph in api.graphs], ['201'])
 
 
+class CatoCalculatedOverlayMaxRetirementTests(unittest.TestCase):
+    class _ItemApi:
+        def __init__(self):
+            self.deleted: list[list[str]] = []
+            self.items = [
+                {
+                    'itemid': '10',
+                    'key_': 'cato.wan.loss.max.pct[100,WAN1]',
+                    'type': '15',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'cato.wan.metrics.discovery'},
+                },
+                {
+                    'itemid': '11',
+                    'key_': 'cato.wan.jitter.max.ms[100,WAN1]',
+                    'type': '15',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'cato.wan.metrics.discovery'},
+                },
+                {
+                    'itemid': '12',
+                    'key_': 'cato.wan.loss.max.pct[__seed]',
+                    'type': '15',
+                    'flags': '0',
+                    'discoveryRule': {},
+                },
+                {
+                    'itemid': '13',
+                    'key_': 'cato.wan.loss.max.pct[100,WAN2]',
+                    'type': '18',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'cato.wan.metrics.discovery'},
+                },
+                {
+                    'itemid': '14',
+                    'key_': 'cato.wan.rtt.ms[100,WAN1]',
+                    'type': '15',
+                    'flags': '4',
+                    'discoveryRule': {'key_': 'cato.wan.metrics.discovery'},
+                },
+            ]
+
+        def call(self, method, params):
+            if method == 'item.get':
+                return self.items
+            if method != 'item.delete':
+                raise AssertionError(f'unexpected call {method!r}')
+            self.deleted.append(params)
+            return {'itemids': params}
+
+    class _PrototypeApi:
+        def __init__(self):
+            self.deleted: list[list[str]] = []
+            self.items = [
+                {
+                    'itemid': '20',
+                    'key_': 'cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}]',
+                    'type': '15',
+                },
+                {
+                    'itemid': '21',
+                    'key_': 'cato.wan.jitter.max.ms[{#SITE.ID},{#LINK.ID}]',
+                    'type': '15',
+                },
+                {
+                    'itemid': '22',
+                    'key_': 'cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}]',
+                    'type': '18',
+                },
+                {
+                    'itemid': '23',
+                    'key_': 'cato.wan.jitter.max.ms[{#SITE.ID},{#LINK.ID}]',
+                    'type': '18',
+                },
+            ]
+
+        def call(self, method, params):
+            if method == 'itemprototype.get':
+                return self.items
+            if method != 'itemprototype.delete':
+                raise AssertionError(f'unexpected call {method!r}')
+            self.deleted.append(params)
+            return {'prototypeids': params}
+
+    def test_retires_only_stuck_calculated_overlay_max_items(self):
+        api = self._ItemApi()
+        self.assertEqual(retire_calculated_overlay_max_items(api, '42'), 2)
+        self.assertEqual(api.deleted, [['10', '11']])
+
+    def test_retires_only_calculated_overlay_max_prototypes(self):
+        api = self._PrototypeApi()
+        self.assertEqual(retire_calculated_overlay_max_prototypes(api, '99'), 2)
+        self.assertEqual(api.deleted, [['20', '21']])
+
+
 class CatoApplyWiringTests(unittest.TestCase):
     def test_network_script_documents_apply_cato(self):
         src = (ROOT / 'scripts/configure_nbxsync_network.py').read_text(encoding='utf-8')
@@ -1383,6 +1570,13 @@ class CatoApplyWiringTests(unittest.TestCase):
         self.assertIn('run_apply_cato', src)
         self.assertIn('collect_cato_preflight', src)
         self.assertIn('skip_preflight', src)
+
+    def test_apply_retires_stuck_calculated_overlay_max(self):
+        src = (ROOT / 'scripts/configure_cato_zabbix.py').read_text(encoding='utf-8')
+        self.assertIn('retire_calculated_overlay_max_prototypes', src)
+        self.assertIn('retire_calculated_overlay_max_items', src)
+        self.assertIn('retire_calculated_overlay_max_prototypes(', src.split('def apply_cato_pack')[1])
+        self.assertIn('retire_calculated_overlay_max_items(', src.split('def apply_cato_pack')[1])
 
     def test_zerotouch_is_not_the_collector_refresh(self):
         src = (ROOT / 'scripts/configure_nbxsync_zerotouch.py').read_text(encoding='utf-8')

@@ -3224,14 +3224,62 @@ zabbix_export:
           value: '{#DEST.TYPE}'
       - uuid: 8c52fad0de9a4c7c982643a0ce610167
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Overlay loss'
-        type: CALCULATED
+        type: DEPENDENT
         key: 'cato.wan.loss.max.pct[{#SITE.ID},{#LINK.ID}]'
-        delay: 1m
+        delay: '0'
         history: 30d
         trends: 365d
         value_type: FLOAT
         units: '%'
-        params: 'max(last(//cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}]),last(//cato.wan.loss.tx.pct[{#SITE.ID},{#LINK.ID}]))'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            function catoFiniteMetric(raw) {
+              if (raw === undefined || raw === null || raw === '') {
+                return null;
+              }
+              var numeric = Number(raw);
+              if (!isFinite(numeric)) {
+                return null;
+              }
+              return numeric;
+            }
+            var ifaceMetrics = iface && iface.metrics ? iface.metrics : {};
+            var rx = catoFiniteMetric(ifaceMetrics.lostDownstreamPcnt);
+            var tx = catoFiniteMetric(ifaceMetrics.lostUpstreamPcnt);
+            if (rx === null && tx === null) {
+              throw 'overlay loss missing';
+            }
+            if (rx === null) {
+              return tx;
+            }
+            if (tx === null) {
+              return rx;
+            }
+            return Math.max(rx, tx);
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
         tags:
         - tag: component
           value: cato
@@ -3355,14 +3403,62 @@ zabbix_export:
           value: '{#DEST.TYPE}'
       - uuid: 51d10c4beb1346c8b1e83fc6e3418470
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Overlay jitter'
-        type: CALCULATED
+        type: DEPENDENT
         key: 'cato.wan.jitter.max.ms[{#SITE.ID},{#LINK.ID}]'
-        delay: 1m
+        delay: '0'
         history: 30d
         trends: 365d
         value_type: FLOAT
         units: 'ms'
-        params: 'max(last(//cato.wan.jitter.rx.ms[{#SITE.ID},{#LINK.ID}]),last(//cato.wan.jitter.tx.ms[{#SITE.ID},{#LINK.ID}]))'
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |
+            var root = JSON.parse(value);
+            var metrics = root && root.data && root.data.accountMetrics;
+            var sites = metrics && Array.isArray(metrics.sites) ? metrics.sites : null;
+            if (!sites) {
+              throw 'accountMetrics missing';
+            }
+            var iface = null;
+            for (var i = 0; i < sites.length && !iface; i++) {
+              if (String(sites[i].id) !== '{#SITE.ID}') {
+                continue;
+              }
+              var interfaces = Array.isArray(sites[i].interfaces) ? sites[i].interfaces : [];
+              for (var j = 0; j < interfaces.length; j++) {
+                if (interfaces[j].interfaceInfo && String(interfaces[j].interfaceInfo.id) === '{#LINK.ID}') {
+                  iface = interfaces[j];
+                  break;
+                }
+              }
+            }
+            function catoFiniteMetric(raw) {
+              if (raw === undefined || raw === null || raw === '') {
+                return null;
+              }
+              var numeric = Number(raw);
+              if (!isFinite(numeric)) {
+                return null;
+              }
+              return numeric;
+            }
+            var ifaceMetrics = iface && iface.metrics ? iface.metrics : {};
+            var rx = catoFiniteMetric(ifaceMetrics.jitterDownstream);
+            var tx = catoFiniteMetric(ifaceMetrics.jitterUpstream);
+            if (rx === null && tx === null) {
+              throw 'overlay jitter missing';
+            }
+            if (rx === null) {
+              return tx;
+            }
+            if (tx === null) {
+              return rx;
+            }
+            return Math.max(rx, tx);
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: cato.account.metrics
         tags:
         - tag: component
           value: cato
