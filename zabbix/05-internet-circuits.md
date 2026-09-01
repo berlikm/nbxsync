@@ -73,11 +73,14 @@ Cato documents two different losses:
 Public schema puts last-mile on **timeseries labels** `lastMilePacketLoss` /
 `lastMileLatency`, not on the scalar `metrics { }` object. The collector reads
 those labels from the existing `accountMetrics` master (`buckets: 1`) and
-averages the latest point across probe endpoints. Do not invent a third HTTP
-master. Last-mile **loss** is dashboard-only. Last-mile **latency** tickets
-Warning after three samples at `{$CATO.LASTMILE.LATENCY.WARN}` (default 150 ms,
-honeycomb red). Overlay RTT uses the same duration and red threshold
-(`{$CATO.RTT.WARN}`).
+averages the latest point across probe endpoints. Timeseries `info` and
+`dimensions { label value }` ride the same selection so Latest can show how
+many probes that WAN actually has (HU-DEB `WAN 01` can be one dest; dual-WAN
+or dual-probe sites show more). Do not invent a third HTTP master, extra WAN
+rows, or overlay RTT from last-mile. Last-mile **loss** is dashboard-only.
+Last-mile **latency** tickets Warning after three samples at
+`{$CATO.LASTMILE.LATENCY.WARN}` (default 150 ms, honeycomb red). Overlay RTT
+uses the same duration and red threshold (`{$CATO.RTT.WARN}`).
 
 `socketPortMetrics` (physical LAN throughput) rides the existing 5-minute
 `accountMetrics` HTTP master as a sibling root field. Filter

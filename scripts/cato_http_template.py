@@ -613,10 +613,67 @@ def metric_js(field: str, label: str, scale: str = '') -> str:
         + f'return numeric{multiply};\n'
     )
 
+TIMESERIES_LATEST_FN = """\
+function catoTimeseriesLatest(entry) {
+  var data = Array.isArray(entry.data) ? entry.data : [];
+  if (!data.length) {
+    return null;
+  }
+  var point = data[data.length - 1];
+  var raw = null;
+  if (Array.isArray(point)) {
+    raw = point.length > 1 ? point[1] : point[0];
+  } else if (point && typeof point === 'object') {
+    raw = point.value !== undefined ? point.value : point.y;
+  } else {
+    raw = point;
+  }
+  var numeric = Number(raw);
+  if (raw === null || raw === '' || !isFinite(numeric)) {
+    return null;
+  }
+  return numeric;
+}
+"""
+
+TIMESERIES_DESTS_FN = """\
+function catoTimeseriesDests(entry) {
+  var names = [];
+  var seen = {};
+  function add(raw) {
+    if (raw === undefined || raw === null || raw === '') {
+      return;
+    }
+    var text = String(raw);
+    if (!seen[text]) {
+      seen[text] = 1;
+      names.push(text);
+    }
+  }
+  var info = entry.info;
+  if (Array.isArray(info)) {
+    for (var n = 0; n < info.length; n++) {
+      add(info[n]);
+    }
+  } else {
+    add(info);
+  }
+  var dims = Array.isArray(entry.dimensions) ? entry.dimensions : [];
+  for (var d = 0; d < dims.length; d++) {
+    if (dims[d]) {
+      add(dims[d].value);
+    }
+  }
+  return names;
+}
+"""
+
+
 def timeseries_metric_js(label: str, description: str) -> str:
     """Average the latest Cato last-mile probe readings for one discovered link."""
     return (
         METRICS_IFACE_PREAMBLE
+        + TIMESERIES_LATEST_FN
         + f"""var series = iface && Array.isArray(iface.timeseries) ? iface.timeseries : [];
 var values = [];
 for (var i = 0; i < series.length; i++) {{
@@ -624,21 +681,8 @@ for (var i = 0; i < series.length; i++) {{
   if (!entry || String(entry.label) !== '{label}') {{
     continue;
   }}
-  var data = Array.isArray(entry.data) ? entry.data : [];
-  if (!data.length) {{
-    continue;
-  }}
-  var point = data[data.length - 1];
-  var raw = null;
-  if (Array.isArray(point)) {{
-    raw = point.length > 1 ? point[1] : point[0];
-  }} else if (point && typeof point === 'object') {{
-    raw = point.value !== undefined ? point.value : point.y;
-  }} else {{
-    raw = point;
-  }}
-  var numeric = Number(raw);
-  if (raw !== null && raw !== '' && isFinite(numeric)) {{
+  var numeric = catoTimeseriesLatest(entry);
+  if (numeric !== null) {{
     values.push(numeric);
   }}
 }}
@@ -650,6 +694,66 @@ for (var v = 0; v < values.length; v++) {{
   sum += values[v];
 }}
 return sum / values.length;
+"""
+    )
+
+
+def timeseries_probe_count_js(label: str) -> str:
+    """Count last-mile probe series for one WAN. Zero is a real answer, not a missing SLA row."""
+    return (
+        METRICS_IFACE_PREAMBLE
+        + TIMESERIES_LATEST_FN
+        + """if (!iface) {
+  throw 'interface missing';
+}
+"""
+        + f"""var series = Array.isArray(iface.timeseries) ? iface.timeseries : [];
+var count = 0;
+for (var i = 0; i < series.length; i++) {{
+  var entry = series[i];
+  if (!entry || String(entry.label) !== '{label}') {{
+    continue;
+  }}
+  if (catoTimeseriesLatest(entry) !== null) {{
+    count += 1;
+  }}
+}}
+return count;
+"""
+    )
+
+
+def timeseries_probe_dests_js(label: str) -> str:
+    """Join unique last-mile probe dest strings from timeseries info/dimensions."""
+    return (
+        METRICS_IFACE_PREAMBLE
+        + TIMESERIES_DESTS_FN
+        + """if (!iface) {
+  throw 'interface missing';
+}
+"""
+        + f"""var series = Array.isArray(iface.timeseries) ? iface.timeseries : [];
+var names = [];
+var seen = {{}};
+for (var i = 0; i < series.length; i++) {{
+  var entry = series[i];
+  if (!entry || String(entry.label) !== '{label}') {{
+    continue;
+  }}
+  var dests = catoTimeseriesDests(entry);
+  for (var d = 0; d < dests.length; d++) {{
+    if (!seen[dests[d]]) {{
+      seen[dests[d]] = 1;
+      names.push(dests[d]);
+    }}
+  }}
+}}
+names.sort();
+var out = names.join(',');
+if (out.length > 255) {{
+  out = out.substring(0, 255);
+}}
+return out;
 """
     )
 
@@ -1407,6 +1511,8 @@ def path_probe_widgets() -> list[str]:
             'Cato WAN *: Overlay jitter',
             'Cato WAN *: Last-mile loss',
             'Cato WAN *: Last-mile latency',
+            'Cato WAN *: Last-mile loss probes',
+            'Cato WAN *: Last-mile latency probes',
             'Cato WAN *: RX bandwidth',
             'Cato WAN *: TX bandwidth',
             'Cato WAN *: RX utilization',
@@ -2235,6 +2341,46 @@ def render_template() -> str:
                 'priority': 'WARNING',
                 'dependencies': [SITE_DISCONNECTED],
             }],
+        ),
+        *proto_item(
+            uid_key='sla_lm_loss_n',
+            name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile loss probes',
+            key='cato.wan.lastmile.loss.probes[{#SITE.ID},{#LINK.ID}]',
+            master='cato.account.metrics',
+            js=timeseries_probe_count_js('lastMilePacketLoss'),
+            scope='wan_sla', extra_tags=SLA_TAGS,
+            valuemap=None,
+            trends='365d',
+        ),
+        *proto_item(
+            uid_key='sla_lm_lat_n',
+            name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency probes',
+            key='cato.wan.lastmile.latency.probes[{#SITE.ID},{#LINK.ID}]',
+            master='cato.account.metrics',
+            js=timeseries_probe_count_js('lastMileLatency'),
+            scope='wan_sla', extra_tags=SLA_TAGS,
+            valuemap=None,
+            trends='365d',
+        ),
+        *proto_item(
+            uid_key='sla_lm_loss_dest',
+            name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile loss probe dests',
+            key='cato.wan.lastmile.loss.dests[{#SITE.ID},{#LINK.ID}]',
+            master='cato.account.metrics',
+            js=timeseries_probe_dests_js('lastMilePacketLoss'),
+            scope='wan_sla', extra_tags=SLA_TAGS,
+            value_type='CHAR',
+            valuemap=None,
+        ),
+        *proto_item(
+            uid_key='sla_lm_lat_dest',
+            name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency probe dests',
+            key='cato.wan.lastmile.latency.dests[{#SITE.ID},{#LINK.ID}]',
+            master='cato.account.metrics',
+            js=timeseries_probe_dests_js('lastMileLatency'),
+            scope='wan_sla', extra_tags=SLA_TAGS,
+            value_type='CHAR',
+            valuemap=None,
         ),
         *proto_item(uid_key='sla_disc_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX discarded', key='cato.wan.discard.rx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedDownstream', 'RX discarded'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='pps', trends='365d'),
         *proto_item(uid_key='sla_disc_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX discarded', key='cato.wan.discard.tx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedUpstream', 'TX discarded'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='pps', trends='365d'),

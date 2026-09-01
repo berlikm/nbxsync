@@ -190,14 +190,26 @@ METRICS_FIXTURE = {
                                 {
                                     'label': 'lastMilePacketLoss',
                                     'data': [[100, 1], [200, 2]],
+                                    'info': ['8.8.8.8'],
+                                    'dimensions': [
+                                        {'label': 'destination', 'value': '8.8.8.8'}
+                                    ],
                                 },
                                 {
                                     'label': 'lastMilePacketLoss',
                                     'data': [[100, 3], [200, 4]],
+                                    'info': ['1.1.1.1'],
+                                    'dimensions': [
+                                        {'label': 'destination', 'value': '1.1.1.1'}
+                                    ],
                                 },
                                 {
                                     'label': 'lastMileLatency',
                                     'data': [[100, 10], [200, 20]],
+                                    'info': ['8.8.8.8'],
+                                    'dimensions': [
+                                        {'label': 'destination', 'value': '8.8.8.8'}
+                                    ],
                                 },
                             ],
                         },
@@ -209,10 +221,18 @@ METRICS_FIXTURE = {
                                 {
                                     'label': 'lastMilePacketLoss',
                                     'data': [[100, 5], [200, 6]],
+                                    'info': ['8.8.8.8'],
+                                    'dimensions': [
+                                        {'label': 'destination', 'value': '8.8.8.8'}
+                                    ],
                                 },
                                 {
                                     'label': 'lastMileLatency',
                                     'data': [[100, 30], [200, 40]],
+                                    'info': ['8.8.8.8'],
+                                    'dimensions': [
+                                        {'label': 'destination', 'value': '8.8.8.8'}
+                                    ],
                                 },
                             ],
                         },
@@ -321,6 +341,11 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertIn('lastMilePacketLoss', items['cato.account.metrics']['posts'])
         self.assertIn('lastMileLatency', items['cato.account.metrics']['posts'])
         self.assertIn('timeseries(', items['cato.account.metrics']['posts'])
+        self.assertIn(
+            'timeseries(labels: [lastMilePacketLoss, lastMileLatency], buckets: 1) '
+            '{ label data info dimensions { label value } }',
+            items['cato.account.metrics']['posts'],
+        )
         self.assertIn('packetsDiscardedDownstream', items['cato.account.metrics']['posts'])
         self.assertIn('destType', items['cato.account.metrics']['posts'])
         self.assertNotIn('wanRole', items['cato.account.snapshot']['posts'])
@@ -619,6 +644,193 @@ class CatoTemplateContractTests(unittest.TestCase):
             'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile latency',
             sla_names,
         )
+
+    def test_last_mile_probe_count_explains_single_series_sites(self):
+        sla = next(
+            rule
+            for rule in self.tpl['discovery_rules']
+            if rule['key'] == 'cato.wan.metrics.discovery'
+        )
+        prototypes = {item['key']: item for item in sla['item_prototypes']}
+        payload = json.dumps(METRICS_FIXTURE)
+
+        def item_js(key: str, site: str, link: str) -> str:
+            return (
+                _js(prototypes[key])
+                .replace('{#SITE.ID}', site)
+                .replace('{#LINK.ID}', link)
+            )
+
+        self.assertEqual(
+            run_lld_js(
+                item_js('cato.wan.lastmile.loss.probes[{#SITE.ID},{#LINK.ID}]', '10', 'l1'),
+                payload,
+            ),
+            2,
+        )
+        self.assertEqual(
+            run_lld_js(
+                item_js(
+                    'cato.wan.lastmile.latency.probes[{#SITE.ID},{#LINK.ID}]',
+                    '10',
+                    'l1',
+                ),
+                payload,
+            ),
+            1,
+        )
+        self.assertEqual(
+            run_lld_js(
+                item_js('cato.wan.lastmile.loss.dests[{#SITE.ID},{#LINK.ID}]', '10', 'l1'),
+                payload,
+                json_output=False,
+            ),
+            '1.1.1.1,8.8.8.8',
+        )
+        self.assertEqual(
+            run_lld_js(
+                item_js(
+                    'cato.wan.lastmile.latency.dests[{#SITE.ID},{#LINK.ID}]',
+                    '10',
+                    'l1',
+                ),
+                payload,
+                json_output=False,
+            ),
+            '8.8.8.8',
+        )
+
+        hu_deb = {
+            'data': {
+                'accountMetrics': {
+                    'sites': [
+                        {
+                            'id': '30',
+                            'name': 'HU-DEB',
+                            'info': {'connType': 'SOCKET_X1500'},
+                            'interfaces': [
+                                {
+                                    'name': 'WAN1',
+                                    'interfaceInfo': {
+                                        'id': 'd1',
+                                        'name': 'WAN 01',
+                                        'destType': 'CATO',
+                                    },
+                                    'metrics': {'bytesDownstream': 1},
+                                    'timeseries': [
+                                        {
+                                            'label': 'lastMileLatency',
+                                            'data': [[100, 10], [200, 20]],
+                                            'info': ['8.8.8.8'],
+                                            'dimensions': [
+                                                {
+                                                    'label': 'destination',
+                                                    'value': '8.8.8.8',
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        }
+        hu_payload = json.dumps(hu_deb)
+        self.assertEqual(
+            run_lld_js(
+                item_js(
+                    'cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]',
+                    '30',
+                    'd1',
+                ),
+                hu_payload,
+            ),
+            20,
+        )
+        self.assertEqual(
+            run_lld_js(
+                item_js(
+                    'cato.wan.lastmile.latency.probes[{#SITE.ID},{#LINK.ID}]',
+                    '30',
+                    'd1',
+                ),
+                hu_payload,
+            ),
+            1,
+        )
+        self.assertEqual(
+            run_lld_js(
+                item_js(
+                    'cato.wan.lastmile.loss.probes[{#SITE.ID},{#LINK.ID}]',
+                    '30',
+                    'd1',
+                ),
+                hu_payload,
+            ),
+            0,
+        )
+        self.assertEqual(
+            run_lld_js(
+                item_js(
+                    'cato.wan.lastmile.latency.dests[{#SITE.ID},{#LINK.ID}]',
+                    '30',
+                    'd1',
+                ),
+                hu_payload,
+                json_output=False,
+            ),
+            '8.8.8.8',
+        )
+        self.assertEqual(
+            run_lld_js(
+                item_js(
+                    'cato.wan.lastmile.loss.dests[{#SITE.ID},{#LINK.ID}]',
+                    '30',
+                    'd1',
+                ),
+                hu_payload,
+                json_output=False,
+            ),
+            '',
+        )
+        with self.assertRaises(RuntimeError):
+            run_lld_js(
+                item_js(
+                    'cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}]',
+                    '30',
+                    'd1',
+                ),
+                hu_payload,
+            )
+        with self.assertRaises(RuntimeError):
+            run_lld_js(
+                item_js('cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}]', '30', 'd1'),
+                hu_payload,
+            )
+
+        probe_page = None
+        for dashboard in self.tpl['dashboards']:
+            if dashboard['name'] != 'Path':
+                continue
+            for page in dashboard['pages']:
+                if page['name'] == 'Probe':
+                    probe_page = page
+        self.assertIsNotNone(probe_page)
+        nav = next(
+            widget
+            for widget in probe_page['widgets']
+            if widget['type'] == 'itemnavigator'
+        )
+        nav_items = [
+            field['value']
+            for field in nav['fields']
+            if field['name'].startswith('items.')
+        ]
+        self.assertIn('Cato WAN *: Last-mile latency probes', nav_items)
+        self.assertIn('Cato WAN *: Last-mile loss probes', nav_items)
+        self.assertNotIn('Cato WAN *: Last-mile latency probe dests', nav_items)
 
     def test_overlay_rtt_trigger_uses_warn_macro_and_three_samples(self):
         sla = next(

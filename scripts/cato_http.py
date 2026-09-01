@@ -77,7 +77,8 @@ METRICS_QUERY = (
     'metrics(toRate: true) { bytesDownstream bytesUpstream '
     'lostDownstreamPcnt lostUpstreamPcnt jitterDownstream jitterUpstream rtt '
     'packetsDiscardedDownstream packetsDiscardedUpstream } '
-    'timeseries(labels: [lastMilePacketLoss, lastMileLatency], buckets: 1) { label data } '
+    'timeseries(labels: [lastMilePacketLoss, lastMileLatency], buckets: 1) { '
+    'label data info dimensions { label value } } '
     '} } } '
     'socketPortMetrics(accountID: $accountID, timeFrame: "last.PT5M", '
     'measures: [{ fieldName: throughput_upstream, aggType: max }, '
@@ -221,6 +222,10 @@ EXPECTED_ITEM_PROTOTYPE_KEYS = {
     'cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.lastmile.loss.pct[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]',
+    'cato.wan.lastmile.loss.probes[{#SITE.ID},{#LINK.ID}]',
+    'cato.wan.lastmile.latency.probes[{#SITE.ID},{#LINK.ID}]',
+    'cato.wan.lastmile.loss.dests[{#SITE.ID},{#LINK.ID}]',
+    'cato.wan.lastmile.latency.dests[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.discard.rx.pps[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.discard.tx.pps[{#SITE.ID},{#LINK.ID}]',
     'cato.wan.rx.util.pct[{#SITE.ID},{#LINK.ID}]',
@@ -329,8 +334,14 @@ def substitute_lld_macros(
     return source.replace('{$CATO.PORT.TUNNEL.MATCHES}', tunnel)
 
 
-def run_lld_js(js: str, payload: str, *, conn_type: str = DEFAULT_CONN_TYPE) -> Any:
-    """Execute a Cato LLD script with Node. ``payload`` is the HTTP body string."""
+def run_lld_js(
+    js: str,
+    payload: str,
+    *,
+    conn_type: str = DEFAULT_CONN_TYPE,
+    json_output: bool = True,
+) -> Any:
+    """Execute a Cato LLD/item script with Node. ``payload`` is the HTTP body string."""
     import shutil
     import subprocess
     import tempfile
@@ -361,7 +372,9 @@ def run_lld_js(js: str, payload: str, *, conn_type: str = DEFAULT_CONN_TYPE) -> 
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout or 'node failed').strip()
         raise RuntimeError(err)
-    return json.loads(proc.stdout)
+    if json_output:
+        return json.loads(proc.stdout)
+    return proc.stdout
 
 
 def _schema_violation_count(body: dict[str, Any]) -> int:
