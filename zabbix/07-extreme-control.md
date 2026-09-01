@@ -163,7 +163,7 @@ Remaining is computed **inside the census SCRIPT** (NAC from `{$XIQ.NAC.TOTAL}`,
 
 While a purchased total is 0, remaining is forced to **0**. That is “unknown entitlement”, not “out of seats” and not a negative. Cap tickets stay silent until the total is set.
 
-After this template change: `--apply-xiqse` (re-import) then HostSync `ch-sta-p-ensa01`. If remaining stays negative, the leftover CALCULATED item was not replaced — delete that item or unlink/relink the template.
+After this template change: `--apply-xiqse` (re-import) then HostSync `ch-sta-p-ensa01`. If remaining stays negative, the leftover CALCULATED remaining item was not replaced — delete that item or unlink/relink the template. The same leftover-item trap applies to heap used % (see below).
 
 NBI has no entitlements field. Set the three counts on nbxSync CG **XIQ-SE licenses**, not as Zabbix host macros.
 
@@ -176,6 +176,20 @@ NBI has no entitlements field. Set the three counts on nbxSync CG **XIQ-SE licen
 4. HostSync `ch-sta-p-ensa01`.
 
 If numbers were already typed as Zabbix host macros, copy them onto the CG **before** HostSync, or HostSync will replace them with the platform copy (0 until the CG is set).
+
+---
+
+## Heap used %
+
+`xiqse.nbi.heap.pct` is a DEPENDENT of `xiqse.nbi.health` (`$.heapUsedPct`), same pattern as remaining seats. It is not `last()` of heap.used / heap.max.
+
+Cloud 7.0 error on `ch-sta-p-ensa01`:
+
+`Cannot evaluate function: item "/ch-sta-p-ensa01/xiqse.nbi.heap.used" is not supported at "last(//xiqse.nbi.heap.used)/…"`
+
+An NBI SCRIPT error used to return `{ok:0, error, engineCount:0, engines:[]}` with no heap fields. JSONPath then marked `xiqse.nbi.heap.used` unsupported, and the calculated % died even when Latest data still showed a last heap.used value. The health SCRIPT now always emits numeric heap fields (0 on failure) and `heapUsedPct`.
+
+After `--apply-xiqse`, if heap used % stays empty with that calculated-item error, the leftover CALCULATED `xiqse.nbi.heap.pct` was not replaced — delete that item or unlink/relink the template.
 
 ---
 
@@ -199,6 +213,7 @@ auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High alr
 | NAC census failed | NBI up but `endSystems` SCRIPT failed or timed out — Overview used tiles stay empty |
 | Device license census failed | NBI up but `xiqLicenseState` query failed — Pilot/Navigator remaining unknown |
 | Remaining negative | Leftover CALCULATED remaining item after import (2026-08-29 live: −2175). Re-import or unlink/relink |
+| Heap used % empty / “heap.used is not supported” | Leftover CALCULATED `xiqse.nbi.heap.pct`, or an old health SCRIPT that omitted heap fields on NBI error. Re-import; unlink/relink if the calculated item remains |
 | Unsupported items | Schema field renamed on their SE version; or ENTERASYS-NAC-APPLIANCE-MIB view dropped on an engine |
 | Proxy last-seen | already in 01 |
 

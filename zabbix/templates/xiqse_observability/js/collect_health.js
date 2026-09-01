@@ -10,11 +10,11 @@ var ENGINES_QUERIES = [
 function collectHealth(params) {
   var auth = fetchToken(params);
   if (!auth.ok) {
-    return { ok: 0, error: auth.error, engineCount: 0, engines: [] };
+    return nbiHealthSnapshot({}, [], auth.error);
   }
   var info = graphql(params, auth.token, SERVER_INFO_QUERY);
   if (!info.ok) {
-    return { ok: 0, error: info.error, engineCount: 0, engines: [] };
+    return nbiHealthSnapshot({}, [], info.error);
   }
   var server = (((info.data || {}).administration || {}).serverInfo) || {};
   var enginesResult = graphqlTry(params, auth.token, ENGINES_QUERIES);
@@ -22,20 +22,12 @@ function collectHealth(params) {
   if (enginesResult.ok) {
     engines = normalizeEngines((((enginesResult.data || {}).accessControl) || {}).engines);
   }
-  return {
-    ok: 1,
-    error: enginesResult.ok ? '' : String(enginesResult.error || ''),
-    version: String(server.version || ''),
-    upTime: uptimeSeconds(server.upTime),
-    startTime: String(server.startTime || ''),
-    heapMemoryUsed: Number(server.heapMemoryUsed) || 0,
-    heapMemoryMax: Number(server.heapMemoryMax) || 0,
-    freePhysicalMemory: Number(server.freePhysicalMemory) || 0,
-    totalPhysicalMemory: Number(server.totalPhysicalMemory) || 0,
-    threadCount: Number(server.threadCount) || 0,
-    engineCount: engines.length,
-    engines: engines
-  };
+  return nbiHealthSnapshot(
+    server,
+    engines,
+    enginesResult.ok ? '' : String(enginesResult.error || ''),
+    1
+  );
 }
 
 var params = JSON.parse(value);

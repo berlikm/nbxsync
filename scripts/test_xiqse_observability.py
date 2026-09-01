@@ -166,6 +166,29 @@ class LicenseWindowTests(unittest.TestCase):
             places=8,
         )
 
+    def test_health_snapshot_always_includes_heap_percent(self):
+        failed = run_metrics_json("nbiHealthSnapshot({}, [], 'token failed')")
+        self.assertEqual(failed['ok'], 0)
+        self.assertEqual(failed['heapMemoryUsed'], 0)
+        self.assertEqual(failed['heapMemoryMax'], 0)
+        self.assertEqual(failed['heapUsedPct'], 0)
+        self.assertEqual(failed['engineCount'], 0)
+        self.assertEqual(failed['engines'], [])
+        live = run_metrics_json(
+            'nbiHealthSnapshot(server, [], "")',
+            prelude='var server = {heapMemoryUsed: 1073741824, heapMemoryMax: 4294967296, version: "25.5.12.6", upTime: 86400};',
+        )
+        self.assertEqual(live['ok'], 1)
+        self.assertEqual(live['heapMemoryUsed'], 1073741824)
+        self.assertEqual(live['heapUsedPct'], 25)
+        degraded = run_metrics_json(
+            'nbiHealthSnapshot(server, [], "engines query failed", 1)',
+            prelude='var server = {heapMemoryUsed: 1073741824, heapMemoryMax: 4294967296};',
+        )
+        self.assertEqual(degraded['ok'], 1)
+        self.assertEqual(degraded['error'], 'engines query failed')
+        self.assertEqual(degraded['heapUsedPct'], 25)
+
 
 class EngineLldTests(unittest.TestCase):
     def test_health_fixture_discovers_both_engines(self):
@@ -355,6 +378,11 @@ class YamlContractTests(unittest.TestCase):
         heap = next(item for item in self.se['items'] if item['key'] == 'xiqse.nbi.heap.pct')
         self.assertFalse(heap.get('triggers'))
         self.assertEqual(heap['units'], '%')
+        self.assertEqual(heap['type'], 'DEPENDENT')
+        self.assertEqual(heap['master_item']['key'], 'xiqse.nbi.health')
+        self.assertIn('Not a calculated item', heap.get('description') or '')
+        self.assertIn('nbiHealthSnapshot', health_script())
+        self.assertIn('heapUsedPct', health_script())
 
     def test_nac_cap_requires_purchased_total(self):
         used = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used24h')
@@ -445,8 +473,13 @@ class YamlContractTests(unittest.TestCase):
         used_pct = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used.pct')
         self.assertEqual(used_pct['type'], 'DEPENDENT')
         self.assertEqual(used_pct['preprocessing'][0]['parameters'][0], '$.nacUsedPct')
+        heap_pct = next(item for item in self.se['items'] if item['key'] == 'xiqse.nbi.heap.pct')
+        self.assertEqual(heap_pct['type'], 'DEPENDENT')
+        self.assertEqual(heap_pct['preprocessing'][0]['parameters'][0], '$.heapUsedPct')
+        self.assertEqual(heap_pct.get('units'), '%')
+        self.assertNotIn('params', heap_pct)
         calculated = [item['key'] for item in self.se['items'] if item['type'] == 'CALCULATED']
-        self.assertEqual(calculated, ['xiqse.nbi.heap.pct'])
+        self.assertEqual(calculated, [])
 
     def test_hardware_capacity_trigger_stays_silent_when_api_capacity_is_zero(self):
         proto = next(

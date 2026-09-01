@@ -223,6 +223,7 @@ Per-engine 24h unique MACs sum to the global seat count (no cross-engine overlap
 1. Native 24h-unique / entitlement field in `schema.idl` or `licenseData` — not present; keep paging MACs.
 2. RADIUS Monitor Clients field on `NacAppliance` — still absent; RADIUS High stays DISABLED.
 3. Purchased seat integers from Administration → Licenses — fill CG **XIQ-SE licenses** by hand.
+4. Heap used % empty with Cloud 7.0 `last(//xiqse.nbi.heap.used)` unsupported — calculated item; percent now lives on the health SCRIPT as `heapUsedPct`. Re-import `--apply-xiqse`.
 
 ---
 

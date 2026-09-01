@@ -193,20 +193,6 @@ def _dep(uuid: str, name: str, key: str, master: str, jpath: str, value_type: st
 {extra}{tags}"""
 
 
-def _calc(uuid: str, name: str, key: str, params: str, units: str = '', extra: str = '', tags: str = TAGS_LIC) -> str:
-    units_l = ("\n      units: '" + units + "'") if units else ''
-    return f"""    - uuid: {uuid}
-      name: {name}
-      type: CALCULATED
-      key: {key}
-      delay: 1m
-      history: 7d
-      trends: 365d
-      value_type: FLOAT{units_l}
-      params: '{params}'
-{extra}{tags}"""
-
-
 def _trigger(uuid: str, expression: str, name: str, priority: str, description: str, extra: str = '') -> str:
     return f"""        - uuid: {uuid}
           expression: '{expression}'
@@ -455,7 +441,16 @@ def render_se() -> str:
     lic_pending = _dep(U['item_lic_pending'], 'Device licenses pending', 'xiqse.lic.pending', 'xiqse.nbi.pilot', '$.pending', 'UNSIGNED', tags=TAGS_LIC)
     lic_pone = _dep(U['item_lic_platformone'], 'Platform ONE / Advanced / Standard used', 'xiqse.lic.platformone', 'xiqse.nbi.pilot', '$.platformOne', 'UNSIGNED', tags=TAGS_LIC)
     pilot_ok = _dep(U['item_pilot_ok'], 'Pilot census ok', 'xiqse.pilot.ok', 'xiqse.nbi.pilot', '$.ok', 'UNSIGNED', extra=f'      valuemap:\n        name: XIQ-SE NBI\n      triggers:\n{pilot_fail}\n', tags=TAGS_LIC)
-    heap_pct = _calc(U['item_heap_pct'], 'XIQ-SE heap used %', 'xiqse.nbi.heap.pct', 'last(//xiqse.nbi.heap.used)/(last(//xiqse.nbi.heap.max)+(last(//xiqse.nbi.heap.max)=0))*100', '%', tags=TAGS_NBI)
+    heap_pct = _dep(
+        U['item_heap_pct'],
+        'XIQ-SE heap used %',
+        'xiqse.nbi.heap.pct',
+        'xiqse.nbi.health',
+        '$.heapUsedPct',
+        'FLOAT',
+        units='%',
+        extra="      description: |\n        used/max from the health SCRIPT. Not a calculated item — Cloud 7.0 marks last() of heap.used unsupported whenever that dependent is unsupported (NBI error payloads used to omit heap fields).\n",
+    )
     nac_remain = _dep(
         U['item_nac_remain'],
         'NAC license remaining',

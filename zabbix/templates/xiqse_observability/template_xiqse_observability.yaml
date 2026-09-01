@@ -337,6 +337,35 @@ zabbix_export:
               return row[field];
             }
 
+            function nbiHealthSnapshot(server, engines, error, ok) {
+              // Always emit the numeric fields JSONPath dependents read. An NBI failure
+              // that omitted heapMemoryUsed made xiqse.nbi.heap.used unsupported, and the
+              // calculated heap % then failed with last() of that item.
+              // ok defaults from error. Pass 1 when serverInfo succeeded but engines LLD
+              // did not — NBI is still up.
+              var info = server || {};
+              var rows = Array.isArray(engines) ? engines : [];
+              var used = Number(info.heapMemoryUsed) || 0;
+              var max = Number(info.heapMemoryMax) || 0;
+              var fail = error ? String(error) : '';
+              var available = (ok === undefined || ok === null) ? (fail ? 0 : 1) : (ok ? 1 : 0);
+              return {
+                ok: available,
+                error: fail,
+                version: String(info.version || ''),
+                upTime: uptimeSeconds(info.upTime),
+                startTime: String(info.startTime || ''),
+                heapMemoryUsed: used,
+                heapMemoryMax: max,
+                heapUsedPct: usedSeatPercent(max, used),
+                freePhysicalMemory: Number(info.freePhysicalMemory) || 0,
+                totalPhysicalMemory: Number(info.totalPhysicalMemory) || 0,
+                threadCount: Number(info.threadCount) || 0,
+                engineCount: rows.length,
+                engines: rows
+              };
+            }
+
             function httpAuthBasic() {
               return typeof HTTPAUTH_BASIC === 'number' ? HTTPAUTH_BASIC : 1;
             }
@@ -424,11 +453,11 @@ zabbix_export:
             function collectHealth(params) {
               var auth = fetchToken(params);
               if (!auth.ok) {
-                return { ok: 0, error: auth.error, engineCount: 0, engines: [] };
+                return nbiHealthSnapshot({}, [], auth.error);
               }
               var info = graphql(params, auth.token, SERVER_INFO_QUERY);
               if (!info.ok) {
-                return { ok: 0, error: info.error, engineCount: 0, engines: [] };
+                return nbiHealthSnapshot({}, [], info.error);
               }
               var server = (((info.data || {}).administration || {}).serverInfo) || {};
               var enginesResult = graphqlTry(params, auth.token, ENGINES_QUERIES);
@@ -436,20 +465,12 @@ zabbix_export:
               if (enginesResult.ok) {
                 engines = normalizeEngines((((enginesResult.data || {}).accessControl) || {}).engines);
               }
-              return {
-                ok: 1,
-                error: enginesResult.ok ? '' : String(enginesResult.error || ''),
-                version: String(server.version || ''),
-                upTime: uptimeSeconds(server.upTime),
-                startTime: String(server.startTime || ''),
-                heapMemoryUsed: Number(server.heapMemoryUsed) || 0,
-                heapMemoryMax: Number(server.heapMemoryMax) || 0,
-                freePhysicalMemory: Number(server.freePhysicalMemory) || 0,
-                totalPhysicalMemory: Number(server.totalPhysicalMemory) || 0,
-                threadCount: Number(server.threadCount) || 0,
-                engineCount: engines.length,
-                engines: engines
-              };
+              return nbiHealthSnapshot(
+                server,
+                engines,
+                enginesResult.ok ? '' : String(enginesResult.error || ''),
+                1
+              );
             }
 
             var params = JSON.parse(value);
@@ -728,6 +749,35 @@ zabbix_export:
                 return missing;
               }
               return row[field];
+            }
+
+            function nbiHealthSnapshot(server, engines, error, ok) {
+              // Always emit the numeric fields JSONPath dependents read. An NBI failure
+              // that omitted heapMemoryUsed made xiqse.nbi.heap.used unsupported, and the
+              // calculated heap % then failed with last() of that item.
+              // ok defaults from error. Pass 1 when serverInfo succeeded but engines LLD
+              // did not — NBI is still up.
+              var info = server || {};
+              var rows = Array.isArray(engines) ? engines : [];
+              var used = Number(info.heapMemoryUsed) || 0;
+              var max = Number(info.heapMemoryMax) || 0;
+              var fail = error ? String(error) : '';
+              var available = (ok === undefined || ok === null) ? (fail ? 0 : 1) : (ok ? 1 : 0);
+              return {
+                ok: available,
+                error: fail,
+                version: String(info.version || ''),
+                upTime: uptimeSeconds(info.upTime),
+                startTime: String(info.startTime || ''),
+                heapMemoryUsed: used,
+                heapMemoryMax: max,
+                heapUsedPct: usedSeatPercent(max, used),
+                freePhysicalMemory: Number(info.freePhysicalMemory) || 0,
+                totalPhysicalMemory: Number(info.totalPhysicalMemory) || 0,
+                threadCount: Number(info.threadCount) || 0,
+                engineCount: rows.length,
+                engines: rows
+              };
             }
 
             function httpAuthBasic() {
@@ -1171,6 +1221,35 @@ zabbix_export:
               return row[field];
             }
 
+            function nbiHealthSnapshot(server, engines, error, ok) {
+              // Always emit the numeric fields JSONPath dependents read. An NBI failure
+              // that omitted heapMemoryUsed made xiqse.nbi.heap.used unsupported, and the
+              // calculated heap % then failed with last() of that item.
+              // ok defaults from error. Pass 1 when serverInfo succeeded but engines LLD
+              // did not — NBI is still up.
+              var info = server || {};
+              var rows = Array.isArray(engines) ? engines : [];
+              var used = Number(info.heapMemoryUsed) || 0;
+              var max = Number(info.heapMemoryMax) || 0;
+              var fail = error ? String(error) : '';
+              var available = (ok === undefined || ok === null) ? (fail ? 0 : 1) : (ok ? 1 : 0);
+              return {
+                ok: available,
+                error: fail,
+                version: String(info.version || ''),
+                upTime: uptimeSeconds(info.upTime),
+                startTime: String(info.startTime || ''),
+                heapMemoryUsed: used,
+                heapMemoryMax: max,
+                heapUsedPct: usedSeatPercent(max, used),
+                freePhysicalMemory: Number(info.freePhysicalMemory) || 0,
+                totalPhysicalMemory: Number(info.totalPhysicalMemory) || 0,
+                threadCount: Number(info.threadCount) || 0,
+                engineCount: rows.length,
+                engines: rows
+              };
+            }
+
             function httpAuthBasic() {
               return typeof HTTPAUTH_BASIC === 'number' ? HTTPAUTH_BASIC : 1;
             }
@@ -1485,14 +1564,21 @@ zabbix_export:
               value: health
         - uuid: 2daf12be53ec4af1a1318e4d902faf99
           name: XIQ-SE heap used %
-          type: CALCULATED
+          type: DEPENDENT
           key: xiqse.nbi.heap.pct
-          delay: 1m
+          delay: '0'
           history: 7d
           trends: 365d
           value_type: FLOAT
           units: '%'
-          params: 'last(//xiqse.nbi.heap.used)/(last(//xiqse.nbi.heap.max)+(last(//xiqse.nbi.heap.max)=0))*100'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.heapUsedPct'
+          master_item:
+            key: xiqse.nbi.health
+          description: |
+            used/max from the health SCRIPT. Not a calculated item — Cloud 7.0 marks last() of heap.used unsupported whenever that dependent is unsupported (NBI error payloads used to omit heap fields).
           tags:
             - tag: component
               value: nbi
@@ -2302,6 +2388,35 @@ zabbix_export:
                       return missing;
                     }
                     return row[field];
+                  }
+
+                  function nbiHealthSnapshot(server, engines, error, ok) {
+                    // Always emit the numeric fields JSONPath dependents read. An NBI failure
+                    // that omitted heapMemoryUsed made xiqse.nbi.heap.used unsupported, and the
+                    // calculated heap % then failed with last() of that item.
+                    // ok defaults from error. Pass 1 when serverInfo succeeded but engines LLD
+                    // did not — NBI is still up.
+                    var info = server || {};
+                    var rows = Array.isArray(engines) ? engines : [];
+                    var used = Number(info.heapMemoryUsed) || 0;
+                    var max = Number(info.heapMemoryMax) || 0;
+                    var fail = error ? String(error) : '';
+                    var available = (ok === undefined || ok === null) ? (fail ? 0 : 1) : (ok ? 1 : 0);
+                    return {
+                      ok: available,
+                      error: fail,
+                      version: String(info.version || ''),
+                      upTime: uptimeSeconds(info.upTime),
+                      startTime: String(info.startTime || ''),
+                      heapMemoryUsed: used,
+                      heapMemoryMax: max,
+                      heapUsedPct: usedSeatPercent(max, used),
+                      freePhysicalMemory: Number(info.freePhysicalMemory) || 0,
+                      totalPhysicalMemory: Number(info.totalPhysicalMemory) || 0,
+                      threadCount: Number(info.threadCount) || 0,
+                      engineCount: rows.length,
+                      engines: rows
+                    };
                   }
 
                   var payload;
