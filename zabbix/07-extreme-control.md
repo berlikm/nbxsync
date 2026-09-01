@@ -163,7 +163,7 @@ Remaining is computed **inside the census SCRIPT** (NAC from `{$XIQ.NAC.TOTAL}`,
 
 While a purchased total is 0, remaining is forced to **0**. That is “unknown entitlement”, not “out of seats” and not a negative. Cap tickets stay silent until the total is set.
 
-After this template change: `--apply-xiqse` (re-import) then HostSync `ch-sta-p-ensa01`. If remaining stays negative, the leftover CALCULATED remaining item was not replaced — delete that item or unlink/relink the template. The same leftover-item trap applies to heap used % (see below).
+After this template change: `--apply-xiqse` deletes leftover CALCULATED remaining / heap.pct items (Zabbix 7.0 import cannot change item type) and re-imports them as dependents. Then HostSync `ch-sta-p-ensa01`.
 
 NBI has no entitlements field. Set the three counts on nbxSync CG **XIQ-SE licenses**, not as Zabbix host macros.
 
@@ -189,7 +189,7 @@ Cloud 7.0 error on `ch-sta-p-ensa01`:
 
 An NBI SCRIPT error used to return `{ok:0, error, engineCount:0, engines:[]}` with no heap fields. JSONPath then marked `xiqse.nbi.heap.used` unsupported, and the calculated % died even when Latest data still showed a last heap.used value. The health SCRIPT now always emits numeric heap fields (0 on failure) and `heapUsedPct`.
 
-After `--apply-xiqse`, if heap used % stays empty with that calculated-item error, the leftover CALCULATED `xiqse.nbi.heap.pct` was not replaced — delete that item or unlink/relink the template.
+`--apply-xiqse` deletes leftover CALCULATED `xiqse.nbi.heap.pct` before import so Cloud 7.0 does not keep the old `last()` formula on the same key.
 
 ---
 
@@ -212,8 +212,8 @@ auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High alr
 | 24h census truncated | `maxResults` too small — license graph under-counts |
 | NAC census failed | NBI up but `endSystems` SCRIPT failed or timed out — Overview used tiles stay empty |
 | Device license census failed | NBI up but `xiqLicenseState` query failed — Pilot/Navigator remaining unknown |
-| Remaining negative | Leftover CALCULATED remaining item after import (2026-08-29 live: −2175). Re-import or unlink/relink |
-| Heap used % empty / “heap.used is not supported” | Leftover CALCULATED `xiqse.nbi.heap.pct`, or an old health SCRIPT that omitted heap fields on NBI error. Re-import; unlink/relink if the calculated item remains |
+| Remaining negative | Leftover CALCULATED remaining item (2026-08-29 live: −2175). `--apply-xiqse` now deletes it before import |
+| Heap used % empty / “heap.used is not supported” | Leftover CALCULATED `xiqse.nbi.heap.pct`, or an old health SCRIPT that omitted heap fields on NBI error. `--apply-xiqse` deletes the calculated item |
 | Engine last auth age empty while 24h MACs exist | Age 0 (SE clock ahead). JS preprocessing must stringify 0 |
 | Unsupported items | First check NBI nodata. Then schema rename / SNMP view |
 | Proxy last-seen | already in 01 |

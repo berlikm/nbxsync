@@ -46,6 +46,7 @@ from xiqse_observability import (
     network_source,
     pilot_script,
     platform_is_xiqse,
+    retire_calculated_script_items,
     run_lld,
     run_metrics_json,
     run_node,
@@ -578,6 +579,7 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertNotIn('SyncHostJob', apply_fn)
         self.assertNotIn('configure_nbxsync_zerotouch', apply_fn)
         self.assertIn('strict=True', import_fn)
+        self.assertIn('retire_calculated_script_items', import_fn)
         self.assertIn(SE_TEMPLATE_RULE, src)
         self.assertIn('_xiqse.XIQSE_FQDN_JINJA', src)
         self.assertIn('_xiqse.XIQSE_FQDN_MACRO', src)
@@ -624,6 +626,71 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertIn("'extremecontrol_observability': [HostInterfaceRequirementChoices.ANY]", src)
         self.assertIn("'extremecontrol_snmp': 'ExtremeControl by SNMP'", src)
         self.assertIn("'extremecontrol_snmp': [HostInterfaceRequirementChoices.SNMP]", src)
+
+
+class CalculatedScriptItemRetirementTests(unittest.TestCase):
+    class _Api:
+        def __init__(self):
+            self.deleted: list[str] = []
+            self.template = self
+            self.host = self
+            self.item = self
+            self.template_items = [
+                {
+                    'itemid': '10',
+                    'key_': 'xiqse.nbi.heap.pct',
+                    'type': '15',
+                },
+                {
+                    'itemid': '11',
+                    'key_': 'xiqse.nac.remaining',
+                    'type': '15',
+                },
+                {
+                    'itemid': '12',
+                    'key_': 'xiqse.nbi.heap.used',
+                    'type': '18',
+                },
+            ]
+            self.host_items = [
+                {
+                    'itemid': '20',
+                    'key_': 'xiqse.pilot.remaining',
+                    'type': '15',
+                },
+                {
+                    'itemid': '21',
+                    'key_': 'xiqse.nav.remaining',
+                    'type': '18',
+                },
+            ]
+
+        def get(self, **kwargs):
+            if kwargs.get('filter', {}).get('name') == [SE_TEMPLATE_NAME]:
+                return [{'templateid': '99', 'name': SE_TEMPLATE_NAME}]
+            if 'templateids' in kwargs:
+                return [{'hostid': '42'}]
+            hostids = {str(hostid) for hostid in kwargs.get('hostids') or []}
+            if '99' in hostids:
+                return list(self.template_items)
+            if '42' in hostids:
+                return list(self.host_items)
+            return []
+
+        def delete(self, *itemids):
+            self.deleted.extend(str(itemid) for itemid in itemids)
+            return list(itemids)
+
+    def test_retires_only_calculated_heap_and_remaining(self):
+        api = self._Api()
+        self.assertEqual(retire_calculated_script_items(api), 3)
+        self.assertEqual(api.deleted, ['10', '11', '20'])
+
+    def test_skips_when_template_is_missing(self):
+        api = self._Api()
+        api.get = lambda **kwargs: []
+        self.assertEqual(retire_calculated_script_items(api), 0)
+        self.assertEqual(api.deleted, [])
 
 
 def _function_source(src: str, name: str) -> str | None:

@@ -5064,6 +5064,8 @@ def _require_xiqse_preflight(*, server=None, apply: bool = True):
 def import_xiqse_templates(api) -> dict[str, tuple[int, str]]:
     """Import Site Engine, the thin NAC companion, then ExtremeControl by SNMP. Fail closed."""
     logger.info('Network: import XIQ-SE / ExtremeControl Observability + SNMP')
+    retired = _xiqse.retire_calculated_script_items(api)
+    logger.info('  leftover CALCULATED heap/remaining retired: %s', retired)
     out = import_yaml_templates(api, _xiqse.TEMPLATE_FILES, strict=True)
     missing = [name for name in _xiqse.TEMPLATE_FILES if name not in out]
     if missing:
