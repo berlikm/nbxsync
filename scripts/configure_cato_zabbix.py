@@ -51,6 +51,7 @@ from cato_http import (  # noqa: E402
     EXPECTED_DASHBOARD_NAMES,
     EXPECTED_DASHBOARD_ITEM_REFERENCES,
     EXPECTED_DASHBOARD_NAVIGATOR_GROUPS,
+    EXPECTED_NAVIGATOR_SHOW_LINES,
     EXPECTED_DISCOVERY_KEYS,
     EXPECTED_GRAPH_PROTOTYPES,
     EXPECTED_HEALTH_PAGES,
@@ -687,6 +688,33 @@ def _template_pack_checks(api: ZabbixAPI, templateid: str) -> list[dict[str, Any
             "Cato dashboard nested navigator filters",
             navigator_groups == EXPECTED_DASHBOARD_NAVIGATOR_GROUPS,
             f"actual={navigator_groups}",
+        )
+    )
+    navigator_limits: list[tuple[str, str, str, str]] = []
+    for dashboard in dashboards:
+        for page in dashboard.get("pages", []):
+            for widget in page.get("widgets", []):
+                if widget.get("type") != "itemnavigator":
+                    continue
+                fields = {
+                    field["name"]: field["value"]
+                    for field in widget.get("fields", [])
+                }
+                limit = str(fields.get("show_lines") or "")
+                if limit != EXPECTED_NAVIGATOR_SHOW_LINES:
+                    navigator_limits.append(
+                        (
+                            dashboard["name"],
+                            page["name"],
+                            str(widget.get("name")),
+                            limit,
+                        )
+                    )
+    checks.append(
+        _record(
+            "Cato dashboard navigator item limit",
+            not navigator_limits,
+            f"expected={EXPECTED_NAVIGATOR_SHOW_LINES} bad={navigator_limits}",
         )
     )
     item_references: dict[tuple[str, str, str], str] = {}

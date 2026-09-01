@@ -9,6 +9,7 @@ from pathlib import Path
 
 from cato_http import (
     EXPECTED_GRAPH_PROTOTYPES,
+    EXPECTED_NAVIGATOR_SHOW_LINES,
     LLD_JS,
     METRICS_QUERY,
     SNAPSHOT_QUERY,
@@ -1112,6 +1113,19 @@ def problems_strip(*, y: str = '4', reference: str = 'CPROB') -> list[str]:
     )
 
 
+def _navigator_fields(items: list[str], group_tags: list[str], nav_ref: str) -> list[dict]:
+    """Item-navigator fields. ``show_lines`` must beat Zabbix's default of 100."""
+    fields: list[dict] = []
+    for idx, tag in enumerate(group_tags):
+        fields.append({'type': 'INTEGER', 'name': f'group_by.{idx}.attribute', 'value': '3'})
+        fields.append({'type': 'STRING', 'name': f'group_by.{idx}.tag_name', 'value': tag})
+    for idx, item in enumerate(items):
+        fields.append({'type': 'STRING', 'name': f'items.{idx}', 'value': item})
+    fields.append({'type': 'INTEGER', 'name': 'show_lines', 'value': EXPECTED_NAVIGATOR_SHOW_LINES})
+    fields.append({'type': 'STRING', 'name': 'reference', 'value': nav_ref})
+    return fields
+
+
 def navigator_and_history(
     *,
     items: list[str],
@@ -1125,13 +1139,7 @@ def navigator_and_history(
     nav_width: str = '28',
 ) -> list[str]:
     tags = list(group_tags or [group_tag])
-    nav_fields: list[dict] = []
-    for idx, tag in enumerate(tags):
-        nav_fields.append({'type': 'INTEGER', 'name': f'group_by.{idx}.attribute', 'value': '3'})
-        nav_fields.append({'type': 'STRING', 'name': f'group_by.{idx}.tag_name', 'value': tag})
-    for idx, item in enumerate(items):
-        nav_fields.append({'type': 'STRING', 'name': f'items.{idx}', 'value': item})
-    nav_fields.append({'type': 'STRING', 'name': 'reference', 'value': nav_ref})
+    nav_fields = _navigator_fields(items, tags, nav_ref)
     graph_width = str(72 - int(nav_width))
     return [
         *widget(
@@ -1176,13 +1184,7 @@ def navigator_and_latest(
     value_size: str = '14',
 ) -> list[str]:
     """CHAR/identity navigator. Latest value is text, never a graph."""
-    nav_fields: list[dict] = []
-    for idx, tag in enumerate(group_tags):
-        nav_fields.append({'type': 'INTEGER', 'name': f'group_by.{idx}.attribute', 'value': '3'})
-        nav_fields.append({'type': 'STRING', 'name': f'group_by.{idx}.tag_name', 'value': tag})
-    for idx, item in enumerate(items):
-        nav_fields.append({'type': 'STRING', 'name': f'items.{idx}', 'value': item})
-    nav_fields.append({'type': 'STRING', 'name': 'reference', 'value': nav_ref})
+    nav_fields = _navigator_fields(items, group_tags, nav_ref)
     graph_width = str(72 - int(nav_width))
     return [
         *widget(

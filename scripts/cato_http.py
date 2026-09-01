@@ -145,6 +145,11 @@ EXPECTED_DASHBOARD_NAVIGATOR_GROUPS = {
     ('Network', 'Port', 'Ports'): ['site', 'serial', 'port_kind'],
 }
 EXPECTED_CHAR_LATEST_VALUE_SIZE = '14'
+# Zabbix item-navigator default is 100. 17 SLA rows × 13 Path Probe
+# patterns is already 221; Tunnels Details is 33 WAN rows × CHAR items.
+# Without an explicit limit, later sites (HU-DEB after CH-* / CN-*) only
+# show leftover counters — often a single Last-mile latency row.
+EXPECTED_NAVIGATOR_SHOW_LINES = '1000'
 EXPECTED_DASHBOARD_ITEM_REFERENCES = {
     ('Health', 'Degraded', 'Latest'): 'DGDET._itemid',
     ('Network', 'Tunnels', 'Latest'): 'CNDET._itemid',

@@ -77,10 +77,11 @@ averages the latest point across probe endpoints. Timeseries `info` and
 `dimensions { label value }` ride the same selection so Latest can show how
 many probes that WAN actually has (HU-DEB `WAN 01` can be one dest; dual-WAN
 or dual-probe sites show more). Do not invent a third HTTP master, extra WAN
-rows, or overlay RTT from last-mile. Last-mile **loss** is dashboard-only.
-Last-mile **latency** tickets Warning after three samples at
-`{$CATO.LASTMILE.LATENCY.WARN}` (default 150 ms, honeycomb red). Overlay RTT
-uses the same duration and red threshold (`{$CATO.RTT.WARN}`).
+rows, or overlay RTT from last-mile. Path → Probe item limit is 1000 so a
+dual-WAN site such as HU-DEB is not truncated after CH-NKN. Last-mile
+**loss** is dashboard-only. Last-mile **latency** tickets Warning after three
+samples at `{$CATO.LASTMILE.LATENCY.WARN}` (default 150 ms, honeycomb red).
+Overlay RTT uses the same duration and red threshold (`{$CATO.RTT.WARN}`).
 
 `socketPortMetrics` (physical LAN throughput) rides the existing 5-minute
 `accountMetrics` HTTP master as a sibling root field. Filter

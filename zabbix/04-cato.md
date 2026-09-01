@@ -135,7 +135,7 @@ cannot become a site outage.
 | `cato.socket.discovery` | snapshot | `{#SITE.ID}`, `{#SOCKET.ID}` | Socket state, row-local site state, version, uptime. Labels are `site / serial`. `{#HA.ROLE}` is CMA `MASTER` / `BACKUP` / `NONE` from `device.haRole` (with `isPrimary` fallback). |
 | `cato.wan.discovery` | snapshot | `{#SITE.ID}`, `{#SOCKET.ID}`, `{#LINK.ID}` | Per-Socket WAN state, tunnel uptime, POP, dest type, physical port, ISP provider, tunnel remote IP. Labels are `site / serial / link`. USB identities are skipped. |
 | `cato.port.discovery` | snapshot | `{#SITE.ID}`, `{#SOCKET.ID}`, `{#PORT.ID}` | Physical `mediaIn` / link / tunnel / internet from `interfacesLinkState`. `{#PORT.KIND}` is `wan` / `lan` / `other`. USB ports are skipped (unused on this estate). LTE/ALT stay WAN. |
-| `cato.wan.metrics.discovery` | metrics | `{#SITE.ID}`, `{#LINK.ID}` | HA-merged overlay SLA, last-mile loss/latency, last-mile probe count/dests, discards, util %. Labels stay `site / link`. USB identities are skipped. Single-WAN sites (HU-DEB) have one row (`WAN 01`); dual-WAN sites have two. That is not an LLD miss. |
+| `cato.wan.metrics.discovery` | metrics | `{#SITE.ID}`, `{#LINK.ID}` | HA-merged overlay SLA, last-mile loss/latency, last-mile probe count/dests, discards, util %. Labels stay `site / link`. USB identities are skipped. Dual-WAN sites (HU-DEB, CH-NKN) have WAN 01 and WAN 02; single-WAN sites have one row. |
 | `cato.lan.metrics.discovery` | metrics | `{#SITE.ID}`, `{#PORT.ID}` | HA-merged LAN bits from `socketPortMetrics` (`transport_type` LAN). Labels stay `site / LAN*`. USB identities are skipped. |
 
 Every item prototype (and its triggers) is tagged `site={#SITE.NAME}` and
@@ -182,16 +182,15 @@ when `cato.api.snapshot.available=1` (SLA census uses metrics availability).
 Last-mile **loss** stays dashboard-only. Cato probes several public
 endpoints per WAN; the loss/latency items are the **average** of the latest
 point on each `lastMilePacketLoss` / `lastMileLatency` series, not the worst
-probe and not one item per dest. A single-WAN site such as HU-DEB therefore
-shows one Last-mile latency honeycomb cell (`WAN 01`) while dual-WAN sites
-show WAN 01 and WAN 02. Probe count can also differ: HU-DEB may have one
-latency series; another site may average two. That is Cato's timeseries, not
-a collector hole — do not invent extra WANs or copy last-mile latency onto
-overlay RTT (`metrics.rtt` is a different field and can be empty on its own).
-Latest data has `Last-mile latency probes` / `Last-mile loss probes` (count)
-and matching `probe dests` CHAR from timeseries `info` / `dimensions`. Path →
-Last mile honeycomb still yellows at 2% loss / 80 ms latency. Last-mile
-**latency** now tickets Warning at the red 150 ms honeycomb
+probe and not one item per dest. Dual-WAN HA sites such as HU-DEB have two
+SLA rows (`WAN 01` and `WAN 02`); Path → Probe must list both. Probe count
+can still differ per WAN (one dest vs several). That is Cato's timeseries,
+not a collector hole — do not invent extra WANs or copy last-mile latency
+onto overlay RTT (`metrics.rtt` is a different field and can be empty on its
+own). Latest data has `Last-mile latency probes` / `Last-mile loss probes`
+(count) and matching `probe dests` CHAR from timeseries `info` /
+`dimensions`. Path → Last mile honeycomb still yellows at 2% loss / 80 ms
+latency. Last-mile **latency** now tickets Warning at the red 150 ms honeycomb
 (`{$CATO.LASTMILE.LATENCY.WARN}`). `{$CATO.LASTMILE.LOSS.WARN}` remains a
 visual hint, not a trigger.
 
@@ -225,8 +224,8 @@ this template (same-template refs are valid) but are not dumped onto Health.
 | **Health → Degraded** | Degraded count, site Degraded honeycomb, numeric navigator plus History, CHAR **Details** (reasons, operational status, POP) plus Latest. Navigators are **site** only. Latest is 14% left-aligned, not bold, so long `WAN_DISCONNECTED,LAN_*` strings fit | CMA yellow, not site High. CHAR is not graphed. Zabbix item-value `value_size` is **percent of widget height** — 28% clipped the reasons. |
 | **Health → API** | GraphQL error and schema-violation tiles, unsupported items, Snapshot/Metrics gauges, error history | Collector failures, not overlay outages |
 | **Path → Overview** | Full-width overlay **loss** honeycomb (yellow at CMA 2%), then RTT and jitter | Overlay quality scan |
-| **Path → Last mile** | Last-mile loss, last-mile latency, RX/TX utilization honeycombs | Underlay toward the Socket, plus WAN fill %. One hex per SLA row: HU-DEB-style sites have `WAN 01` only. Last-mile latency tickets Warning at 150 ms; last-mile loss stays visual. WAN **bits** graphs live on Network → Ports. |
-| **Path → Probe** | Navigator grouped by **site → dest_type** (loss / RTT / jitter / last-mile / probe counts / bps / util / discards) plus selected-metric history | Drill-down for one site's overlay, not a 51-graph gallery. Probe **dests** CHAR stays on host Latest data, not this graph. |
+| **Path → Last mile** | Last-mile loss, last-mile latency, RX/TX utilization honeycombs | Underlay toward the Socket, plus WAN fill %. One hex per SLA row (HU-DEB has WAN 01 and WAN 02). Last-mile latency tickets Warning at 150 ms; last-mile loss stays visual. WAN **bits** graphs live on Network → Ports. |
+| **Path → Probe** | Navigator grouped by **site → dest_type** (loss / RTT / jitter / last-mile / probe counts / bps / util / discards) plus selected-metric history | Drill-down for one site's overlay, not a 51-graph gallery. Item limit is **1000** (Zabbix default 100 hid later sites: CH-NKN filled the widget, HU-DEB kept a leftover Last-mile latency row). Probe **dests** CHAR stays on host Latest data, not this graph. |
 | **Network → Overview** | WAN connectivity then Socket honeycomb. WAN hex labels are `site port` (serial dropped so 33 cells stay readable) | Tunnel and Socket up/down. No USB. |
 | **Network → Tunnels** | Numeric navigator (connectivity, tunnel uptime) plus History; CHAR **Details** plus Latest. Grouped **site → serial → dest_type** | Pick a Socket, then its WAN tunnels. CHAR is not graphed. |
 | **Network → Ports** | WAN vs LAN **mediaIn** honeycombs side by side (`site port` labels), then EXOS-style 3×2 **WAN traffic** and **LAN traffic** | Estate scan of physical media and bits. USB ports are not discovered. |

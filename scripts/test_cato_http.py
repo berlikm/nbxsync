@@ -16,6 +16,7 @@ from cato_http import (
     EXPECTED_DASHBOARD_NAMES,
     EXPECTED_DASHBOARD_ITEM_REFERENCES,
     EXPECTED_DASHBOARD_NAVIGATOR_GROUPS,
+    EXPECTED_NAVIGATOR_SHOW_LINES,
     EXPECTED_DISCOVERY_KEYS,
     EXPECTED_GRAPH_PROTOTYPES,
     EXPECTED_HEALTH_PAGES,
@@ -947,6 +948,29 @@ class CatoTemplateContractTests(unittest.TestCase):
                         self.assertNotIn('serial', tags, key)
                     self.assertNotIn('connection_type', tags, key)
         self.assertEqual(found, expected)
+
+    def test_item_navigators_raise_default_hundred_item_limit(self):
+        sla_rows = int(TEMPLATE_MACROS['{$CATO.SLA.EXPECTED}'])
+        probe = None
+        found = 0
+        for dash in self.tpl['dashboards']:
+            for page in dash['pages']:
+                for widget in page['widgets']:
+                    if widget['type'] != 'itemnavigator':
+                        continue
+                    found += 1
+                    fields = {field['name']: field['value'] for field in widget['fields']}
+                    self.assertEqual(
+                        str(fields.get('show_lines')),
+                        EXPECTED_NAVIGATOR_SHOW_LINES,
+                        (dash['name'], page['name'], widget.get('name')),
+                    )
+                    if dash['name'] == 'Path' and page['name'] == 'Probe':
+                        probe = fields
+        self.assertGreater(found, 0)
+        self.assertIsNotNone(probe)
+        patterns = [value for name, value in probe.items() if name.startswith('items.')]
+        self.assertGreaterEqual(int(EXPECTED_NAVIGATOR_SHOW_LINES), sla_rows * len(patterns))
 
     def test_health_degraded_and_network_ports_pages(self):
         health = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Health')

@@ -5789,6 +5789,9 @@ zabbix_export:
           - type: STRING
             name: items.3
             value: 'Cato site *: HA ready'
+          - type: INTEGER
+            name: show_lines
+            value: '1000'
           - type: STRING
             name: reference
             value: 'CDEGN'
@@ -5838,6 +5841,9 @@ zabbix_export:
           - type: STRING
             name: items.2
             value: 'Cato site *: POP'
+          - type: INTEGER
+            name: show_lines
+            value: '1000'
           - type: STRING
             name: reference
             value: 'DGDET'
@@ -6713,6 +6719,9 @@ zabbix_export:
           - type: STRING
             name: items.12
             value: 'Cato WAN *: TX discarded'
+          - type: INTEGER
+            name: show_lines
+            value: '1000'
           - type: STRING
             name: reference
             value: 'CNAVP'
@@ -6871,6 +6880,9 @@ zabbix_export:
           - type: STRING
             name: items.1
             value: 'Cato WAN *: Tunnel uptime'
+          - type: INTEGER
+            name: show_lines
+            value: '1000'
           - type: STRING
             name: reference
             value: 'CNNAV'
@@ -6940,6 +6952,9 @@ zabbix_export:
           - type: STRING
             name: items.5
             value: 'Cato WAN *: Connection reason'
+          - type: INTEGER
+            name: show_lines
+            value: '1000'
           - type: STRING
             name: reference
             value: 'CNDET'
@@ -7169,6 +7184,9 @@ zabbix_export:
           - type: STRING
             name: items.5
             value: 'Cato wan port *: Has internet'
+          - type: INTEGER
+            name: show_lines
+            value: '1000'
           - type: STRING
             name: reference
             value: 'NPNAV'
@@ -7266,6 +7284,9 @@ zabbix_export:
           - type: STRING
             name: items.2
             value: 'Cato Socket *: Uptime'
+          - type: INTEGER
+            name: show_lines
+            value: '1000'
           - type: STRING
             name: reference
             value: 'NHAV'
@@ -7315,6 +7336,9 @@ zabbix_export:
           - type: STRING
             name: items.2
             value: 'Cato site *: Operational status'
+          - type: INTEGER
+            name: show_lines
+            value: '1000'
           - type: STRING
             name: reference
             value: 'NHDET'
