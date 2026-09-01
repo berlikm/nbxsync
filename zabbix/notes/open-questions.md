@@ -56,3 +56,6 @@ The finalised port-identity doc dropped these; confirm they live in the plan or 
 - [ ] Maintenance-window process for firmware upgrades — **with data collection**, so we don't create data gaps as well as suppressing noise.
 - [ ] Zabbix proxy per site — the cleanest suppression for site-wide outages.
 - [ ] Template upgrade process — diff the stock template before importing a new version; keep macro overrides at host-group level so re-import cannot clobber them.
+- [ ] **DC Observability (AD + DNS + DHCP)** — one companion on role Domain Controller; stock Windows has no NTDS / `\DNS\` / DHCP-scope counters. Spec: [ad-ds-coverage.md](ad-ds-coverage.md). Canary English object names + DHCP scope WMI; agree ownership with server team; do not block 01/02.
+- [ ] **IIS by Zabbix agent** — stock 7.0 exists; not assigned. Link on the IIS VMs (Device, not a new role for two boxes). [iis-coverage.md](iis-coverage.md). Need IIS Management Scripts and Tools on the box.
+- [ ] **IIS Observability** — YAML built (`templates/iis_observability/`). Import, then link next to stock IIS on the same Devices. Agent 2 on those boxes. No FQDN list: LLD HTTPS bindings, handshake locally, Warning at `{$IIS.CERT.EXPIRY.WARN}=30`. Canary still needs a live IIS box.
