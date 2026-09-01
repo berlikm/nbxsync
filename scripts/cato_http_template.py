@@ -12,7 +12,11 @@ from cato_http import (
     EXPECTED_NAVIGATOR_SHOW_LINES,
     LLD_JS,
     METRICS_QUERY,
+    NETBOX_SOCKET_COUNT_KEY,
+    NETBOX_SOCKET_COUNT_PARAMS,
+    NETBOX_SOCKET_INVENTORY_TRIGGER,
     SNAPSHOT_QUERY,
+    TEMPLATE_MACRO_DESCRIPTIONS,
     TEMPLATE_MACROS,
     TEMPLATE_NAME,
     TEMPLATE_PATH,
@@ -296,6 +300,33 @@ def census_item(
         f'      - uuid: {uid(trigger_uid)}',
         f'        expression: {q(expr)}',
         f'        name: {q(trigger_name)}',
+        '        priority: AVERAGE',
+        *collector_tags(8),
+    ]
+
+
+def netbox_socket_count_item() -> list[str]:
+    """CMA vs NetBox Socket inventory: count tagged ICMP hosts, not CMA LLD."""
+    expr = (
+        f'last(/{TPL}/cato.api.snapshot.available)=1 and '
+        f'{{$CATO.NETBOX.SOCKET.CONTROL}}=1 and '
+        f'min(/{TPL}/cato.socket.discovery.count,30m)>max(/{TPL}/{NETBOX_SOCKET_COUNT_KEY},30m)'
+    )
+    return [
+        f'    - uuid: {uid("netbox_socket_count")}',
+        '      name: Cato NetBox Socket inventory count',
+        '      type: CALCULATED',
+        f'      key: {NETBOX_SOCKET_COUNT_KEY}',
+        '      delay: 1m',
+        '      history: 7d',
+        '      value_type: FLOAT',
+        f'      params: {q(NETBOX_SOCKET_COUNT_PARAMS)}',
+        f'      description: {q("Count of stock icmpping items on hosts tagged component=cato and monitoring_domain=cato_socket (NetBox Sd Wan Socket). This collector stays ICMP-free; foreach is all hosts, not this host.")}',
+        *collector_tags(),
+        '      triggers:',
+        f'      - uuid: {uid("netbox_socket_count_tr")}',
+        f'        expression: {q(expr)}',
+        f'        name: {q(NETBOX_SOCKET_INVENTORY_TRIGGER)}',
         '        priority: AVERAGE',
         *collector_tags(8),
     ]
@@ -1276,6 +1307,7 @@ def health_overview_widgets() -> list[str]:
             [
                 ('cato.site.discovery.count', '199C0D'),
                 ('cato.socket.discovery.count', '2774A4'),
+                (NETBOX_SOCKET_COUNT_KEY, '7E57C2'),
                 ('cato.wan.discovery.count', 'F7941D'),
             ],
             reference='CHCEN',
@@ -1353,6 +1385,7 @@ def health_census_widgets() -> list[str]:
             [
                 ('cato.site.discovery.count', '199C0D'),
                 ('cato.socket.discovery.count', '2774A4'),
+                (NETBOX_SOCKET_COUNT_KEY, '7E57C2'),
                 ('cato.wan.discovery.count', 'F7941D'),
                 ('cato.wan.metrics.discovery.count', '42A5F5'),
             ],
@@ -1858,6 +1891,8 @@ def render_template() -> str:
         '',
         '      NetBox Socket hosts remain ICMP-only. This template owns no ICMP item',
         '      and never turns collector loss into a site, Socket, or WAN outage.',
+        '      cato.netbox.socket.count foreach-counts icmpping on hosts tagged',
+        '      monitoring_domain=cato_socket so CMA vs NetBox inventory can ticket.',
         '',
         '      Refresh with configure_nbxsync_network.py --apply-cato. Do not re-run',
         '      zerotouch to update this pack.',
@@ -1922,6 +1957,7 @@ def render_template() -> str:
         *seed_item('tx_util_seed', 'Cato TX utilization seed', 'cato.wan.tx.util.pct[__seed]', 'FLOAT'),
         *census_item('site_count', 'Cato discovered Socket site count', 'cato.site.discovery.count', 'cato.site.connected[*]', 'site_count_tr', 'Cato census: fewer Socket sites than expected', '{$CATO.SITES.EXPECTED}', 'cato.api.snapshot.available'),
         *census_item('socket_count', 'Cato discovered Socket count', 'cato.socket.discovery.count', 'cato.socket.connected[*,*]', 'socket_count_tr', 'Cato census: fewer Sockets than expected', '{$CATO.SOCKETS.EXPECTED}', 'cato.api.snapshot.available'),
+        *netbox_socket_count_item(),
         *census_item('wan_count', 'Cato discovered WAN link count', 'cato.wan.discovery.count', 'cato.wan.connected[*,*,*]', 'wan_count_tr', 'Cato census: fewer WAN links than expected', '{$CATO.WAN.EXPECTED}', 'cato.api.snapshot.available'),
         *census_item('sla_count', 'Cato discovered WAN SLA row count', 'cato.wan.metrics.discovery.count', 'cato.wan.rx.bps[*,*]', 'sla_count_tr', 'Cato census: fewer WAN SLA rows than expected', '{$CATO.SLA.EXPECTED}', 'cato.api.metrics.available'),
         *calc_item('site_up', 'Cato connected Socket site count', 'cato.site.up.count', 'sum(last_foreach(//cato.site.connected[*]))'),
@@ -2534,6 +2570,9 @@ def render_template() -> str:
     for macro, value in TEMPLATE_MACROS.items():
         lines.append(f'    - macro: {q(macro)}')
         lines.append(f'      value: {q(value)}')
+        description = TEMPLATE_MACRO_DESCRIPTIONS.get(macro)
+        if description:
+            lines.append(f'      description: {q(description)}')
     lines.extend(
         [
             '    valuemaps:',

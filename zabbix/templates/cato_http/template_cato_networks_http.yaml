@@ -12,6 +12,8 @@ zabbix_export:
 
       NetBox Socket hosts remain ICMP-only. This template owns no ICMP item
       and never turns collector loss into a site, Socket, or WAN outage.
+      cato.netbox.socket.count foreach-counts icmpping on hosts tagged
+      monitoring_domain=cato_socket so CMA vs NetBox inventory can ticket.
 
       Refresh with configure_nbxsync_network.py --apply-cato. Do not re-run
       zerotouch to update this pack.
@@ -622,6 +624,34 @@ zabbix_export:
       - uuid: 2368fc63a1044c6faea5cc866edd862d
         expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.SOCKETS.EXPECTED}>0 and max(/Cato Networks by HTTP/cato.socket.discovery.count,30m)<{$CATO.SOCKETS.EXPECTED}'
         name: 'Cato census: fewer Sockets than expected'
+        priority: AVERAGE
+        tags:
+        - tag: component
+          value: cato
+        - tag: monitoring_domain
+          value: cato_overlay
+        - tag: scope
+          value: collector
+    - uuid: 37c731d453aa4fb4ab0dc57bb02474aa
+      name: Cato NetBox Socket inventory count
+      type: CALCULATED
+      key: cato.netbox.socket.count
+      delay: 1m
+      history: 7d
+      value_type: FLOAT
+      params: 'count(exists_foreach(/*/icmpping?[tag="component:cato" and tag="monitoring_domain:cato_socket"]))'
+      description: 'Count of stock icmpping items on hosts tagged component=cato and monitoring_domain=cato_socket (NetBox Sd Wan Socket). This collector stays ICMP-free; foreach is all hosts, not this host.'
+      tags:
+      - tag: component
+        value: cato
+      - tag: monitoring_domain
+        value: cato_overlay
+      - tag: scope
+        value: collector
+      triggers:
+      - uuid: bb275061bbc549c8a0b90f0b5f8d12f0
+        expression: 'last(/Cato Networks by HTTP/cato.api.snapshot.available)=1 and {$CATO.NETBOX.SOCKET.CONTROL}=1 and min(/Cato Networks by HTTP/cato.socket.discovery.count,30m)>max(/Cato Networks by HTTP/cato.netbox.socket.count,30m)'
+        name: 'Cato CMA Socket inventory exceeds NetBox Socket inventory'
         priority: AVERAGE
         tags:
         - tag: component
@@ -4602,6 +4632,9 @@ zabbix_export:
       value: 'ready'
     - macro: '{$CATO.HA.VERSION.OK}'
       value: 'ok'
+    - macro: '{$CATO.NETBOX.SOCKET.CONTROL}'
+      value: '1'
+      description: 'Ticket when CMA Socket census stays above NetBox cato_socket ICMP hosts for 30m. Set 0 to mute during an intentional hold.'
     valuemaps:
     - uuid: 4c65ce16533446d78da1b96a2e1aad9a
       name: Cato connectivity
@@ -4917,6 +4950,9 @@ zabbix_export:
             value: '2774A4'
           - type: STRING
             name: ds.0.color.2
+            value: '7E57C2'
+          - type: STRING
+            name: ds.0.color.3
             value: 'F7941D'
           - type: INTEGER
             name: ds.0.dataset_type
@@ -4933,6 +4969,11 @@ zabbix_export:
               key: cato.socket.discovery.count
           - type: ITEM
             name: ds.0.itemids.2
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.netbox.socket.count
+          - type: ITEM
+            name: ds.0.itemids.3
             value:
               host: 'Cato Networks by HTTP'
               key: cato.wan.discovery.count
@@ -5518,9 +5559,12 @@ zabbix_export:
             value: '2774A4'
           - type: STRING
             name: ds.0.color.2
-            value: 'F7941D'
+            value: '7E57C2'
           - type: STRING
             name: ds.0.color.3
+            value: 'F7941D'
+          - type: STRING
+            name: ds.0.color.4
             value: '42A5F5'
           - type: INTEGER
             name: ds.0.dataset_type
@@ -5539,9 +5583,14 @@ zabbix_export:
             name: ds.0.itemids.2
             value:
               host: 'Cato Networks by HTTP'
-              key: cato.wan.discovery.count
+              key: cato.netbox.socket.count
           - type: ITEM
             name: ds.0.itemids.3
+            value:
+              host: 'Cato Networks by HTTP'
+              key: cato.wan.discovery.count
+          - type: ITEM
+            name: ds.0.itemids.4
             value:
               host: 'Cato Networks by HTTP'
               key: cato.wan.metrics.discovery.count

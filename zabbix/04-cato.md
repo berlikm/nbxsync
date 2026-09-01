@@ -176,12 +176,21 @@ to mute.
 | Average | Site connected, `isHA`, `haStatus.readiness` not `{$CATO.HA.READINESS.OK}` | HA not ready. May coexist with site Degraded when the reason is `HA_NOT_READY_*`. |
 | Warning | HA `socketVersion` not `{$CATO.HA.VERSION.OK}` | Socket software skew. |
 | Average | Census below host `{$CATO.SITES.EXPECTED}` / `SOCKETS` / `WAN` / `SLA` for **30m** while the matching master is available | Silent LLD loss. `--apply-cato` writes those macros from live USB-filtered GraphQL census. Macro `0` mutes that family. |
+| Average | `Cato CMA Socket inventory exceeds NetBox Socket inventory` for **30m** while snapshot is available | CMA LLD Socket count stays above the count of Zabbix hosts tagged `component=cato` and `monitoring_domain=cato_socket` (NetBox `Sd Wan Socket` ICMP). A Socket in CMA that is not in NetBox yet. `{$CATO.NETBOX.SOCKET.CONTROL}=0` mutes. Not serial identity (`--verify --require-sockets` still does that). |
 | Average | Snapshot/metrics GraphQL errors, no snapshot for 5m, no metrics for 15m, unsupported items | Collector/API health only. |
 | Warning | Snapshot or metrics schema violations | Schema drift / invalid optional-field observation. |
 
 Site High does **not** depend on collector `nodata()`. Stale last-value during
 an API outage is better than hiding a real overlay outage. Census fires only
 when `cato.api.snapshot.available=1` (SLA census uses metrics availability).
+CMA vs NetBox Socket inventory is a **count** compare (`cato.socket.discovery.count`
+vs `cato.netbox.socket.count`), gated the same way. The NetBox side is
+`count(exists_foreach(/*/icmpping?[tag="component:cato" and tag="monitoring_domain:cato_socket"]))`
+on the collector — it does **not** put `icmpping` on `cato-account-964`. Zero
+tagged Socket ICMP hosts leaves that calculated item unsupported, so the
+trigger stays silent (same as an intentional hold). `{$CATO.NETBOX.SOCKET.CONTROL}=0`
+also mutes. Serial mismatches with equal counts still need
+`--verify --require-sockets`.
 `Unsupported items present` depends on both no-data triggers.
 
 Last-mile **loss** stays dashboard-only. Cato probes several public
@@ -213,8 +222,9 @@ have `__seed` items so they stay supported before LLD and when every real
 prototype discards (no timeseries, no bandwidth cap). Do not treat seed `0`
 as a real 0% last-mile.
 
-Direct ICMP failure on a NetBox Socket, Cato site/Socket/WAN state, and API
-collector failure remain separate problem classes.
+Direct ICMP failure on a NetBox Socket, Cato site/Socket/WAN state, API
+collector failure, and CMA-vs-NetBox Socket inventory remain separate problem
+classes.
 
 ## Dashboards
 
@@ -225,7 +235,7 @@ this template (same-template refs are valid) but are not dumped onto Health.
 | Dashboard | Pages | What it is |
 |---|---|---|
 | **Health → Overview** | Snapshot / Metrics gauges, **Sites up** / **Sockets up**, problems (tags, site first), full-width **site** honeycomb (names, not serials), census and worst-overlay-loss history | The collector box plus the estate map |
-| **Health → Census** | Discovered vs up counts (sites / Sockets / WAN / SLA), **Degraded** count, worst overlay loss / RTT / last-mile loss / RX util gauges, discovery and connected history | 11 / 21 / 33 / 17 expected; 33 vs 17 is `groupDevices: true`. USB is excluded from WAN/port/SLA LLD — if census WAN drops after apply, set `{$CATO.WAN.EXPECTED}` (and SLA if needed) to the new Health → Census count. |
+| **Health → Census** | Discovered vs up counts (sites / Sockets / WAN / SLA), **Degraded** count, worst overlay loss / RTT / last-mile loss / RX util gauges, discovery and connected history. Discovery history also plots **NetBox** Socket ICMP host count next to CMA Socket LLD. | 11 / 21 / 33 / 17 expected; 33 vs 17 is `groupDevices: true`. USB is excluded from WAN/port/SLA LLD — if census WAN drops after apply, set `{$CATO.WAN.EXPECTED}` (and SLA if needed) to the new Health → Census count. |
 | **Health → Degraded** | Degraded count, site Degraded honeycomb, numeric navigator plus History, CHAR **Details** (reasons, operational status, POP) plus Latest. Navigators are **site** only. Latest is 14% left-aligned, not bold, so long `WAN_DISCONNECTED,LAN_*` strings fit | CMA yellow, not site High. CHAR is not graphed. Zabbix item-value `value_size` is **percent of widget height** — 28% clipped the reasons. |
 | **Health → API** | GraphQL error and schema-violation tiles, unsupported items, Snapshot/Metrics gauges, error history | Collector failures, not overlay outages |
 | **Path → Overview** | Full-width overlay **loss** honeycomb (yellow at CMA 2%), then RTT and jitter | Overlay quality scan |

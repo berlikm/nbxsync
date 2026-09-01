@@ -106,7 +106,8 @@ python scripts/configure_nbxsync_zerotouch.py --enable-cato --mutate-netbox
 
 `configure_cato_zabbix.py --simulate` requires `NBX_CATO_API_KEY` and a local
 Zabbix lab. `--verify --require-sockets` validates the 21/21 Socket ICMP
-identity census.
+identity census. The collector also tickets when CMA Socket LLD stays above
+the count of `cato_socket`-tagged ICMP hosts (`{$CATO.NETBOX.SOCKET.CONTROL}`).
 
 
 ## XIQ-SE / ExtremeControl Observability

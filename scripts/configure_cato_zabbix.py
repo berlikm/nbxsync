@@ -1055,9 +1055,11 @@ def verify_socket_hosts(
 ) -> list[dict[str, Any]]:
     """Compare Cato's last snapshot serials with NetBox-owned Socket ICMP hosts.
 
-    Default is collector-safe: 0/N Socket ICMP hosts (the current hold) does
-    not fail. Pass require_sockets=True only after the approved Socket
-    migration.
+    Default is collector-safe: fewer Socket ICMP hosts than snapshot serials
+    does not fail. Pass require_sockets=True for exact serial identity.
+    The collector trigger "Cato CMA Socket inventory exceeds NetBox Socket
+    inventory" is the live count analogue of missing serials; it does not
+    replace this serial check.
     """
     checks: list[dict[str, Any]] = []
     masters = _master_items(api, account_hostid)

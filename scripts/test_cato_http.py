@@ -27,6 +27,10 @@ from cato_http import (
     EXPECTED_TEMPLATE_ITEM_KEYS,
     LLD_JS,
     METRICS_QUERY,
+    NETBOX_SOCKET_COUNT_KEY,
+    NETBOX_SOCKET_COUNT_PARAMS,
+    NETBOX_SOCKET_FOREACH,
+    NETBOX_SOCKET_INVENTORY_TRIGGER,
     SNAPSHOT_QUERY,
     TEMPLATE_MACROS,
     TEMPLATE_NAME,
@@ -395,10 +399,10 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertEqual(macros['{$CATO.LOSS.WARN}'], '2')
         self.assertEqual(macros['{$CATO.RTT.WARN}'], '150')
         self.assertEqual(macros['{$CATO.LASTMILE.LATENCY.WARN}'], '150')
+        self.assertEqual(macros['{$CATO.NETBOX.SOCKET.CONTROL}'], '1')
 
-    def test_no_icmp_or_nested_service_discovery(self):
+    def test_no_icmp_item_on_collector_template(self):
         blob = TEMPLATE_PATH.read_text(encoding='utf-8')
-        self.assertNotIn('icmpping', blob)
         self.assertNotIn('service.discovery', blob)
         self.assertNotIn(
             "max(last(//cato.wan.loss.rx.pct[{#SITE.ID},{#LINK.ID}])",
@@ -410,6 +414,23 @@ class CatoTemplateContractTests(unittest.TestCase):
         )
         self.assertNotIn('type: ICMPPING', blob)
         self.assertNotIn('priority: DISASTER', blob)
+        keys = {item['key'] for item in self.tpl['items']}
+        self.assertNotIn('icmpping', keys)
+        for rule in self.tpl['discovery_rules']:
+            for item in rule.get('item_prototypes') or []:
+                self.assertFalse(
+                    str(item['key']).startswith('icmpping'),
+                    item['key'],
+                )
+        # Inventory count may foreach icmpping on tagged Socket hosts.
+        netbox = next(
+            item
+            for item in self.tpl['items']
+            if item['key'] == NETBOX_SOCKET_COUNT_KEY
+        )
+        self.assertIn('icmpping', netbox['params'])
+        self.assertIn('/*/', netbox['params'])
+        self.assertNotIn('//icmpping', netbox['params'])
 
     def test_site_disconnected_is_high(self):
         site = next(
@@ -991,6 +1012,49 @@ class CatoTemplateContractTests(unittest.TestCase):
         self.assertIn('max(/Cato Networks by HTTP/cato.site.discovery.count,30m)', expr)
         sla = by_key['cato.wan.metrics.discovery.count']
         self.assertIn('cato.api.metrics.available', sla['triggers'][0]['expression'])
+
+    def test_netbox_socket_inventory_compares_cma_to_cato_socket_icmp_hosts(self):
+        by_key = {item['key']: item for item in self.tpl['items']}
+        item = by_key[NETBOX_SOCKET_COUNT_KEY]
+        self.assertEqual(item['type'], 'CALCULATED')
+        self.assertEqual(item['params'], NETBOX_SOCKET_COUNT_PARAMS)
+        self.assertIn('monitoring_domain:cato_socket', item['params'])
+        self.assertIn('component:cato', item['params'])
+        self.assertEqual(item['params'], f'count(exists_foreach({NETBOX_SOCKET_FOREACH}))')
+        self.assertNotIn('cato.socket.connected', item['params'])
+        tags = {row['tag']: row['value'] for row in item['tags']}
+        self.assertEqual(tags.get('monitoring_domain'), 'cato_overlay')
+        self.assertNotEqual(tags.get('monitoring_domain'), 'cato_socket')
+        trigger = item['triggers'][0]
+        self.assertEqual(trigger['name'], NETBOX_SOCKET_INVENTORY_TRIGGER)
+        self.assertEqual(trigger['priority'], 'AVERAGE')
+        expr = trigger['expression']
+        self.assertIn('cato.api.snapshot.available', expr)
+        self.assertIn('{$CATO.NETBOX.SOCKET.CONTROL}=1', expr)
+        self.assertIn('min(/Cato Networks by HTTP/cato.socket.discovery.count,30m)', expr)
+        self.assertIn(f'max(/Cato Networks by HTTP/{NETBOX_SOCKET_COUNT_KEY},30m)', expr)
+        self.assertNotIn('{$CATO.SOCKETS.EXPECTED}', expr)
+        self.assertNotIn('nodata(', expr.lower())
+        health = next(dash for dash in self.tpl['dashboards'] if dash['name'] == 'Health')
+        series_keys = []
+        for page in health['pages']:
+            for widget in page['widgets']:
+                if widget['type'] != 'svggraph':
+                    continue
+                for field in widget['fields']:
+                    if (
+                        field['name'].startswith('ds.')
+                        and '.itemids.' in field['name']
+                        and isinstance(field.get('value'), dict)
+                    ):
+                        series_keys.append(field['value'].get('key'))
+        self.assertIn(NETBOX_SOCKET_COUNT_KEY, series_keys)
+        names = {
+            row['name']
+            for collector_item in self.tpl['items']
+            for row in collector_item.get('triggers') or []
+        }
+        self.assertIn(NETBOX_SOCKET_INVENTORY_TRIGGER, names)
 
     def test_host_name_uses_account_id(self):
         self.assertEqual(collector_host('964'), 'cato-account-964')

@@ -113,6 +113,7 @@ EXPECTED_TEMPLATE_ITEM_KEYS = {
     'cato.wan.tx.util.pct[__seed]',
     'cato.site.discovery.count',
     'cato.socket.discovery.count',
+    'cato.netbox.socket.count',
     'cato.wan.discovery.count',
     'cato.wan.metrics.discovery.count',
     'cato.site.up.count',
@@ -174,6 +175,7 @@ EXPECTED_COLLECTOR_TRIGGER_NAMES = {
     'Cato census: fewer Sockets than expected',
     'Cato census: fewer WAN links than expected',
     'Cato census: fewer WAN SLA rows than expected',
+    'Cato CMA Socket inventory exceeds NetBox Socket inventory',
 }
 EXPECTED_STATE_TRIGGER_PROTOTYPE_NAMES = {
     'Cato site {#SITE.NAME}: Disconnected',
@@ -273,6 +275,26 @@ TEMPLATE_MACROS = {
     '{$CATO.LASTMILE.LATENCY.WARN}': '150',
     '{$CATO.HA.READINESS.OK}': 'ready',
     '{$CATO.HA.VERSION.OK}': 'ok',
+    '{$CATO.NETBOX.SOCKET.CONTROL}': '1',
+}
+
+# Count of stock icmpping items on NetBox Sd Wan Socket hosts. Host tags
+# component=cato and monitoring_domain=cato_socket are the same identity the
+# verifier uses. The collector has component=cato / cato_overlay and no
+# icmpping, so it is not included. Foreach is /*/ (all hosts), not //.
+NETBOX_SOCKET_COUNT_KEY = 'cato.netbox.socket.count'
+NETBOX_SOCKET_FOREACH = (
+    '/*/icmpping?[tag="component:cato" and tag="monitoring_domain:cato_socket"]'
+)
+NETBOX_SOCKET_COUNT_PARAMS = f'count(exists_foreach({NETBOX_SOCKET_FOREACH}))'
+NETBOX_SOCKET_INVENTORY_TRIGGER = (
+    'Cato CMA Socket inventory exceeds NetBox Socket inventory'
+)
+TEMPLATE_MACRO_DESCRIPTIONS = {
+    '{$CATO.NETBOX.SOCKET.CONTROL}': (
+        'Ticket when CMA Socket census stays above NetBox cato_socket ICMP '
+        'hosts for 30m. Set 0 to mute during an intentional hold.'
+    ),
 }
 
 CENSUS_EXPECTED_MACROS = (
