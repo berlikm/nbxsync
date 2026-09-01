@@ -2444,6 +2444,15 @@ zabbix_export:
                 - type: JAVASCRIPT
                   parameters:
                     - |
+                      function zabbixItemValue(value) {
+                        // Cloud 7.0 JS preprocessing treats numeric 0 and '' as empty → item
+                        // unsupported. lastAuthAge 0 (SE clock ahead) and capacity 0 hit this.
+                        if (value === undefined || value === null || value === '') {
+                          return '-';
+                        }
+                        return String(value);
+                      }
+
                       function pickEngineField(payload, ip, field, missing) {
                         var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
                         var i;
@@ -2472,7 +2481,7 @@ zabbix_export:
                       } catch (error) {
                         throw 'XIQ-SE engine field: invalid JSON';
                       }
-                      return pickEngineField(payload, '{#ENGINE.IP}', 'licensed', 2);
+                      return zabbixItemValue(pickEngineField(payload, '{#ENGINE.IP}', 'licensed', 2));
               master_item:
                 key: xiqse.nbi.health
               tags:
@@ -2496,6 +2505,15 @@ zabbix_export:
                 - type: JAVASCRIPT
                   parameters:
                     - |
+                      function zabbixItemValue(value) {
+                        // Cloud 7.0 JS preprocessing treats numeric 0 and '' as empty → item
+                        // unsupported. lastAuthAge 0 (SE clock ahead) and capacity 0 hit this.
+                        if (value === undefined || value === null || value === '') {
+                          return '-';
+                        }
+                        return String(value);
+                      }
+
                       function pickEngineField(payload, ip, field, missing) {
                         var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
                         var i;
@@ -2524,7 +2542,7 @@ zabbix_export:
                       } catch (error) {
                         throw 'XIQ-SE engine field: invalid JSON';
                       }
-                      return pickEngineField(payload, '{#ENGINE.IP}', 'connected', 2);
+                      return zabbixItemValue(pickEngineField(payload, '{#ENGINE.IP}', 'connected', 2));
               master_item:
                 key: xiqse.nbi.health
               tags:
@@ -2559,6 +2577,15 @@ zabbix_export:
                 - type: JAVASCRIPT
                   parameters:
                     - |
+                      function zabbixItemValue(value) {
+                        // Cloud 7.0 JS preprocessing treats numeric 0 and '' as empty → item
+                        // unsupported. lastAuthAge 0 (SE clock ahead) and capacity 0 hit this.
+                        if (value === undefined || value === null || value === '') {
+                          return '-';
+                        }
+                        return String(value);
+                      }
+
                       function pickEngineField(payload, ip, field, missing) {
                         var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
                         var i;
@@ -2587,7 +2614,7 @@ zabbix_export:
                       } catch (error) {
                         throw 'XIQ-SE engine field: invalid JSON';
                       }
-                      return pickEngineField(payload, '{#ENGINE.IP}', 'needsEnforce', 2);
+                      return zabbixItemValue(pickEngineField(payload, '{#ENGINE.IP}', 'needsEnforce', 2));
               master_item:
                 key: xiqse.nbi.health
               tags:
@@ -2622,6 +2649,15 @@ zabbix_export:
                 - type: JAVASCRIPT
                   parameters:
                     - |
+                      function zabbixItemValue(value) {
+                        // Cloud 7.0 JS preprocessing treats numeric 0 and '' as empty → item
+                        // unsupported. lastAuthAge 0 (SE clock ahead) and capacity 0 hit this.
+                        if (value === undefined || value === null || value === '') {
+                          return '-';
+                        }
+                        return String(value);
+                      }
+
                       function pickEngineField(payload, ip, field, missing) {
                         var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
                         var i;
@@ -2650,7 +2686,7 @@ zabbix_export:
                       } catch (error) {
                         throw 'XIQ-SE engine field: invalid JSON';
                       }
-                      return pickEngineField(payload, '{#ENGINE.IP}', 'freeRadiusEnabled', 2);
+                      return zabbixItemValue(pickEngineField(payload, '{#ENGINE.IP}', 'freeRadiusEnabled', 2));
               master_item:
                 key: xiqse.nbi.health
               tags:
@@ -2683,6 +2719,15 @@ zabbix_export:
                 - type: JAVASCRIPT
                   parameters:
                     - |
+                      function zabbixItemValue(value) {
+                        // Cloud 7.0 JS preprocessing treats numeric 0 and '' as empty → item
+                        // unsupported. lastAuthAge 0 (SE clock ahead) and capacity 0 hit this.
+                        if (value === undefined || value === null || value === '') {
+                          return '-';
+                        }
+                        return String(value);
+                      }
+
                       function pickEngineField(payload, ip, field, missing) {
                         var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
                         var i;
@@ -2711,7 +2756,7 @@ zabbix_export:
                       } catch (error) {
                         throw 'XIQ-SE engine field: invalid JSON';
                       }
-                      return pickEngineField(payload, '{#ENGINE.IP}', 'capacity', 0);
+                      return zabbixItemValue(pickEngineField(payload, '{#ENGINE.IP}', 'capacity', 0));
               master_item:
                 key: xiqse.nbi.health
               tags:
@@ -2733,6 +2778,15 @@ zabbix_export:
                 - type: JAVASCRIPT
                   parameters:
                     - |
+                      function zabbixItemValue(value) {
+                        // Cloud 7.0 JS preprocessing treats numeric 0 and '' as empty → item
+                        // unsupported. lastAuthAge 0 (SE clock ahead) and capacity 0 hit this.
+                        if (value === undefined || value === null || value === '') {
+                          return '-';
+                        }
+                        return String(value);
+                      }
+
                       function pickEngineField(payload, ip, field, missing) {
                         var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
                         var i;
@@ -2761,7 +2815,7 @@ zabbix_export:
                       } catch (error) {
                         throw 'XIQ-SE engine field: invalid JSON';
                       }
-                      return pickEngineField(payload, '{#ENGINE.IP}', 'version', '');
+                      return zabbixItemValue(pickEngineField(payload, '{#ENGINE.IP}', 'version', ''));
               master_item:
                 key: xiqse.nbi.health
               tags:
@@ -2783,6 +2837,15 @@ zabbix_export:
                 - type: JAVASCRIPT
                   parameters:
                     - |
+                      function zabbixItemValue(value) {
+                        // Cloud 7.0 JS preprocessing treats numeric 0 and '' as empty → item
+                        // unsupported. lastAuthAge 0 (SE clock ahead) and capacity 0 hit this.
+                        if (value === undefined || value === null || value === '') {
+                          return '-';
+                        }
+                        return String(value);
+                      }
+
                       function pickEngineField(payload, ip, field, missing) {
                         var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
                         var i;
@@ -2811,7 +2874,7 @@ zabbix_export:
                       } catch (error) {
                         throw 'XIQ-SE engine license field: invalid JSON';
                       }
-                      return pickLicenseEngineField(payload, '{#ENGINE.IP}', 'used24h', 0);
+                      return zabbixItemValue(pickLicenseEngineField(payload, '{#ENGINE.IP}', 'used24h', 0));
               master_item:
                 key: xiqse.nbi.licenses
               tags:
@@ -2845,6 +2908,15 @@ zabbix_export:
                 - type: JAVASCRIPT
                   parameters:
                     - |
+                      function zabbixItemValue(value) {
+                        // Cloud 7.0 JS preprocessing treats numeric 0 and '' as empty → item
+                        // unsupported. lastAuthAge 0 (SE clock ahead) and capacity 0 hit this.
+                        if (value === undefined || value === null || value === '') {
+                          return '-';
+                        }
+                        return String(value);
+                      }
+
                       function pickEngineField(payload, ip, field, missing) {
                         var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
                         var i;
@@ -2873,7 +2945,7 @@ zabbix_export:
                       } catch (error) {
                         throw 'XIQ-SE engine license field: invalid JSON';
                       }
-                      return pickLicenseEngineField(payload, '{#ENGINE.IP}', 'lastAuthAge', -1);
+                      return zabbixItemValue(pickLicenseEngineField(payload, '{#ENGINE.IP}', 'lastAuthAge', -1));
               master_item:
                 key: xiqse.nbi.licenses
               tags:

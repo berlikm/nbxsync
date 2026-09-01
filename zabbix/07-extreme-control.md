@@ -207,14 +207,15 @@ auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High alr
 
 | Check | Why |
 |---|---|
-| GraphQL nodata | Token expired / SE upgrade / TLS |
+| GraphQL nodata | Token expired / SE upgrade / TLS / 8443. Health silent ≥15m unsports engine Connected / FreeRADIUS / capacity / Licensed / needsEnforce / Version — that is the unsupported-items ticket |
 | Zero engines LLD | Access Control NBI right missing |
 | 24h census truncated | `maxResults` too small — license graph under-counts |
 | NAC census failed | NBI up but `endSystems` SCRIPT failed or timed out — Overview used tiles stay empty |
 | Device license census failed | NBI up but `xiqLicenseState` query failed — Pilot/Navigator remaining unknown |
 | Remaining negative | Leftover CALCULATED remaining item after import (2026-08-29 live: −2175). Re-import or unlink/relink |
 | Heap used % empty / “heap.used is not supported” | Leftover CALCULATED `xiqse.nbi.heap.pct`, or an old health SCRIPT that omitted heap fields on NBI error. Re-import; unlink/relink if the calculated item remains |
-| Unsupported items | Schema field renamed on their SE version; or ENTERASYS-NAC-APPLIANCE-MIB view dropped on an engine |
+| Engine last auth age empty while 24h MACs exist | Age 0 (SE clock ahead). JS preprocessing must stringify 0 |
+| Unsupported items | First check NBI nodata. Then schema rename / SNMP view |
 | Proxy last-seen | already in 01 |
 
 ---

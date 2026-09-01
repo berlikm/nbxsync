@@ -38,7 +38,18 @@ from xiqse_observability import (
     XIQSE_FQDN_JINJA,
     XIQSE_FQDN_MACRO,
     extract_engine_script,
+    extract_license_engine_script,
     health_script,
+    licenses_script,
+    lld_script,
+    load_fixture,
+    network_source,
+    pilot_script,
+    platform_is_xiqse,
+    run_lld,
+    run_metrics_json,
+    run_node,
+    zerotouch_source,
     licenses_script,
     lld_script,
     load_fixture,
@@ -366,6 +377,24 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn(extract_engine_script('licensed', '2').strip(), js)
         self.assertIn('trigger_prototypes', self.se['discovery_rules'][0]['item_prototypes'][1])
         self.assertNotIn('triggers', self.se['discovery_rules'][0]['item_prototypes'][1])
+
+    def test_engine_extract_stringifies_zero(self):
+        lic = extract_license_engine_script('lastAuthAge', '-1')
+        self.assertIn('function zabbixItemValue', lic)
+        self.assertIn("return zabbixItemValue(pickLicenseEngineField", lic)
+        helper = (JS_DIR / 'extract_engine.js').read_text(encoding='utf-8')
+        self.assertEqual(
+            json.loads(run_node(helper + '\nconsole.log(JSON.stringify(zabbixItemValue(0)));\n')),
+            '0',
+        )
+        self.assertEqual(
+            json.loads(run_node(helper + '\nconsole.log(JSON.stringify(zabbixItemValue(-1)));\n')),
+            '-1',
+        )
+        self.assertEqual(
+            json.loads(run_node(helper + "\nconsole.log(JSON.stringify(zabbixItemValue('')));\n")),
+            '-',
+        )
 
     def test_nbi_average_depends_on_8443_not_icmp(self):
         avail = next(item for item in self.se['items'] if item['key'] == 'xiqse.nbi.available')

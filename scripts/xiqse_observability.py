@@ -173,7 +173,7 @@ def extract_engine_script(field: str, missing: str) -> str:
         + "} catch (error) {\n"
         + "  throw 'XIQ-SE engine field: invalid JSON';\n"
         + '}\n'
-        + f"return pickEngineField(payload, '{{#ENGINE.IP}}', '{field}', {missing});\n"
+        + f"return zabbixItemValue(pickEngineField(payload, '{{#ENGINE.IP}}', '{field}', {missing}));\n"
     )
 
 
@@ -187,7 +187,7 @@ def extract_license_engine_script(field: str, missing: str) -> str:
         + "} catch (error) {\n"
         + "  throw 'XIQ-SE engine license field: invalid JSON';\n"
         + '}\n'
-        + f"return pickLicenseEngineField(payload, '{{#ENGINE.IP}}', '{field}', {missing});\n"
+        + f"return zabbixItemValue(pickLicenseEngineField(payload, '{{#ENGINE.IP}}', '{field}', {missing}));\n"
     )
 
 

@@ -1,3 +1,12 @@
+function zabbixItemValue(value) {
+  // Cloud 7.0 JS preprocessing treats numeric 0 and '' as empty → item
+  // unsupported. lastAuthAge 0 (SE clock ahead) and capacity 0 hit this.
+  if (value === undefined || value === null || value === '') {
+    return '-';
+  }
+  return String(value);
+}
+
 function pickEngineField(payload, ip, field, missing) {
   var engines = payload && Array.isArray(payload.engines) ? payload.engines : [];
   var i;
