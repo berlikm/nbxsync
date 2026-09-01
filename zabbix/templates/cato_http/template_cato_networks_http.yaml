@@ -3430,6 +3430,27 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
+        trigger_prototypes:
+        - uuid: 1d08833efc5040e1aad490bf4b0d042f
+          expression: 'min(/Cato Networks by HTTP/cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}],#3)>={$CATO.RTT.WARN}'
+          name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT'
+          priority: WARNING
+          tags:
+          - tag: component
+            value: cato
+          - tag: monitoring_domain
+            value: cato_overlay
+          - tag: scope
+            value: wan_sla
+          - tag: site
+            value: '{#SITE.NAME}'
+          - tag: connection_type
+            value: '{#CONN.TYPE}'
+          - tag: dest_type
+            value: '{#DEST.TYPE}'
+          dependencies:
+          - name: 'Cato site {#SITE.NAME}: Disconnected'
+            expression: 'max(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}],#3)=0'
       - uuid: 13f991e7042f46659f31a85962e1118a
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile loss'
         type: DEPENDENT
@@ -3592,6 +3613,27 @@ zabbix_export:
           value: '{#CONN.TYPE}'
         - tag: dest_type
           value: '{#DEST.TYPE}'
+        trigger_prototypes:
+        - uuid: 59d702547de2427db71c5faffa6630f1
+          expression: 'min(/Cato Networks by HTTP/cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}],#3)>={$CATO.LASTMILE.LATENCY.WARN}'
+          name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile latency'
+          priority: WARNING
+          tags:
+          - tag: component
+            value: cato
+          - tag: monitoring_domain
+            value: cato_overlay
+          - tag: scope
+            value: wan_sla
+          - tag: site
+            value: '{#SITE.NAME}'
+          - tag: connection_type
+            value: '{#CONN.TYPE}'
+          - tag: dest_type
+            value: '{#DEST.TYPE}'
+          dependencies:
+          - name: 'Cato site {#SITE.NAME}: Disconnected'
+            expression: 'max(/Cato Networks by HTTP/cato.site.connected[{#SITE.ID}],#3)=0'
       - uuid: 579751b1fd6c4ded8e246606bfc3daa3
         name: 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX discarded'
         type: DEPENDENT
@@ -4079,7 +4121,9 @@ zabbix_export:
     - macro: '{$CATO.LASTMILE.LOSS.WARN}'
       value: '2'
     - macro: '{$CATO.RTT.WARN}'
-      value: '101'
+      value: '150'
+    - macro: '{$CATO.LASTMILE.LATENCY.WARN}'
+      value: '150'
     - macro: '{$CATO.HA.READINESS.OK}'
       value: 'ready'
     - macro: '{$CATO.HA.VERSION.OK}'

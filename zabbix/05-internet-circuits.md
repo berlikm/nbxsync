@@ -74,7 +74,10 @@ Public schema puts last-mile on **timeseries labels** `lastMilePacketLoss` /
 `lastMileLatency`, not on the scalar `metrics { }` object. The collector reads
 those labels from the existing `accountMetrics` master (`buckets: 1`) and
 averages the latest point across probe endpoints. Do not invent a third HTTP
-master. Last-mile is dashboard-only: Path → Last mile honeycomb, no trigger.
+master. Last-mile **loss** is dashboard-only. Last-mile **latency** tickets
+Warning after three samples at `{$CATO.LASTMILE.LATENCY.WARN}` (default 150 ms,
+honeycomb red). Overlay RTT uses the same duration and red threshold
+(`{$CATO.RTT.WARN}`).
 
 `socketPortMetrics` (physical LAN throughput) rides the existing 5-minute
 `accountMetrics` HTTP master as a sibling root field. Filter
@@ -102,7 +105,7 @@ Do **not** page Cato overlay loss as an ISP cut at Forti sites. At Socket-only s
 |---|---|---|
 | One redundant `UW` / Forti WAN / SD-WAN member down | yes | **Average** — tagged as circuit, not fabric. Forti SD-WAN health-check is the authoritative underlay symptom; Extreme `UW` is the cause signal |
 | Cato-only: active WAN unplugged (`mediaIn=false`) while the site stays connected | yes | **Average** circuit — site Degraded + WAN1 media down. Not site High. Not LAN. Not standby WAN2. |
-| Cato overlay loss / RTT | **no** | Path honeycomb only |
+| Cato overlay RTT / last-mile latency | yes | **Warning** after three 5-minute samples at honeycomb red (150 ms). Overlay **loss** and last-mile **loss** stay Path honeycomb only. |
 | Last usable site underlay path lost | yes | **High** on the path; **Disaster** on the site (later parent) |
 | Flapping | yes | Warning |
 | Errors | yes | Warning |
@@ -110,7 +113,7 @@ Do **not** page Cato overlay loss as an ISP cut at Forti sites. At Socket-only s
 | Util vs commit bandwidth | later | graph; Average only after Circuit bandwidth exists |
 | Speed ≠ label | **no** | handoff speed rarely equals commit |
 
-Do **not** alert on: fabric `USW` uplinks (01), Cato **overlay** loss/RTT (04), Cato last-mile (04, dashboard only), Cato LAN/LAG/HA degraded reasons.
+Do **not** alert on: fabric `USW` uplinks (01), Cato overlay **loss** (04), Cato last-mile **loss** (04), Cato LAN/LAG/HA degraded reasons. Cato overlay **RTT** and last-mile **latency** Warning live on [04](04-cato.md).
 
 ---
 
@@ -145,7 +148,8 @@ No absolute speed-expect on `UW`. Commit rate lives on the NetBox Circuit, not i
 NetBox Providers + Circuits populated; multi-homing modelled vs residual risk; compliance (termination without `UW`, and the reverse).
 
 Cato collector (still two HTTP masters, still `--apply-cato`): last-mile is
-timeseries on the metrics master (average of probe endpoints, no alert); USB
+timeseries on the metrics master (average of probe endpoints); last-mile
+**latency** Warning at 150 ms, last-mile **loss** stays visual. USB
 ports/tunnels are not discovered; ISP provider and other CHAR identity live on
 Network → Tunnels **Details** / Latest, not History. LAN bandwidth is
 `socketPortMetrics` on that same metrics POST (`last.PT5M`, LAN only, ×8 to

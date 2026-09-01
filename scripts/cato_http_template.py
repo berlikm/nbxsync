@@ -2193,6 +2193,15 @@ def render_template() -> str:
             valuemap=None,
             units='ms',
             trends='365d',
+            triggers=[{
+                'uid': 'sla_rtt_tr',
+                'expression': (
+                    f'min(/{TPL}/cato.wan.rtt.ms[{{#SITE.ID}},{{#LINK.ID}}],#3)>={{$CATO.RTT.WARN}}'
+                ),
+                'name': 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT',
+                'priority': 'WARNING',
+                'dependencies': [SITE_DISCONNECTED],
+            }],
         ),
         *proto_item(
             uid_key='sla_lm_loss',
@@ -2206,7 +2215,27 @@ def render_template() -> str:
             units='%',
             trends='365d',
         ),
-        *proto_item(uid_key='sla_lm_lat', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency', key='cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=timeseries_metric_js('lastMileLatency', 'last-mile latency'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='ms', trends='365d'),
+        *proto_item(
+            uid_key='sla_lm_lat',
+            name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: Last-mile latency',
+            key='cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]',
+            master='cato.account.metrics',
+            js=timeseries_metric_js('lastMileLatency', 'last-mile latency'),
+            scope='wan_sla', extra_tags=SLA_TAGS,
+            value_type='FLOAT',
+            valuemap=None,
+            units='ms',
+            trends='365d',
+            triggers=[{
+                'uid': 'sla_lm_lat_tr',
+                'expression': (
+                    f'min(/{TPL}/cato.wan.lastmile.latency.ms[{{#SITE.ID}},{{#LINK.ID}}],#3)>={{$CATO.LASTMILE.LATENCY.WARN}}'
+                ),
+                'name': 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile latency',
+                'priority': 'WARNING',
+                'dependencies': [SITE_DISCONNECTED],
+            }],
+        ),
         *proto_item(uid_key='sla_disc_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX discarded', key='cato.wan.discard.rx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedDownstream', 'RX discarded'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='pps', trends='365d'),
         *proto_item(uid_key='sla_disc_tx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: TX discarded', key='cato.wan.discard.tx.pps[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=metric_js('packetsDiscardedUpstream', 'TX discarded'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='pps', trends='365d'),
         *proto_item(uid_key='sla_util_rx', name='Cato WAN {#SITE.NAME} / {#LINK.NAME}: RX utilization', key='cato.wan.rx.util.pct[{#SITE.ID},{#LINK.ID}]', master='cato.account.metrics', js=util_js('RX', 'downstreamBandwidth', 'bytesDownstream'), scope='wan_sla', extra_tags=SLA_TAGS, value_type='FLOAT', valuemap=None, units='%', trends='365d'),

@@ -354,7 +354,8 @@ class CatoTemplateContractTests(unittest.TestCase):
         macros = {row['macro']: row['value'] for row in self.tpl['macros']}
         self.assertEqual(macros, TEMPLATE_MACROS)
         self.assertEqual(macros['{$CATO.LOSS.WARN}'], '2')
-        self.assertEqual(macros['{$CATO.RTT.WARN}'], '101')
+        self.assertEqual(macros['{$CATO.RTT.WARN}'], '150')
+        self.assertEqual(macros['{$CATO.LASTMILE.LATENCY.WARN}'], '150')
 
     def test_no_icmp_or_nested_service_discovery(self):
         blob = TEMPLATE_PATH.read_text(encoding='utf-8')
@@ -610,10 +611,45 @@ class CatoTemplateContractTests(unittest.TestCase):
             'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay packet loss',
             sla_names,
         )
-        self.assertNotIn(
+        self.assertIn(
             'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT',
             sla_names,
         )
+        self.assertIn(
+            'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile latency',
+            sla_names,
+        )
+
+    def test_overlay_rtt_trigger_uses_warn_macro_and_three_samples(self):
+        sla = next(
+            rule
+            for rule in self.tpl['discovery_rules']
+            if rule['key'] == 'cato.wan.metrics.discovery'
+        )
+        rtt = next(
+            item
+            for item in sla['item_prototypes']
+            if item['key'] == 'cato.wan.rtt.ms[{#SITE.ID},{#LINK.ID}]'
+        )
+        trigger = rtt['trigger_prototypes'][0]
+        self.assertEqual(trigger['priority'], 'WARNING')
+        self.assertEqual(trigger['name'], 'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT')
+        self.assertIn('min(', trigger['expression'])
+        self.assertIn('#3', trigger['expression'])
+        self.assertIn('{$CATO.RTT.WARN}', trigger['expression'])
+        self.assertNotIn('nodata(', trigger['expression'].lower())
+        deps = {row['name'] for row in trigger.get('dependencies') or []}
+        self.assertIn('Cato site {#SITE.NAME}: Disconnected', deps)
+
+        latency = next(
+            item
+            for item in sla['item_prototypes']
+            if item['key'] == 'cato.wan.lastmile.latency.ms[{#SITE.ID},{#LINK.ID}]'
+        )
+        lm = latency['trigger_prototypes'][0]
+        self.assertEqual(lm['priority'], 'WARNING')
+        self.assertIn('{$CATO.LASTMILE.LATENCY.WARN}', lm['expression'])
+        self.assertIn('#3', lm['expression'])
 
     def test_collector_trigger_names(self):
         names = {

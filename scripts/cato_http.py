@@ -179,6 +179,8 @@ EXPECTED_STATE_TRIGGER_PROTOTYPE_NAMES = {
     'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down',
     'Cato lan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: Media down',
     'Cato wan port {#SITE.NAME} / {#SERIAL} / {#PORT.ID}: No tunnel while media is up',
+    'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT',
+    'Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile latency',
 }
 EXPECTED_UNSUPPORTED_TRIGGER_DEPENDENCIES = {
     'Cato API: No snapshot data for 5m',
@@ -256,7 +258,8 @@ TEMPLATE_MACROS = {
     '{$CATO.PORT.TUNNEL.MATCHES}': '^WAN1$',
     '{$CATO.LOSS.WARN}': '2',
     '{$CATO.LASTMILE.LOSS.WARN}': '2',
-    '{$CATO.RTT.WARN}': '101',
+    '{$CATO.RTT.WARN}': '150',
+    '{$CATO.LASTMILE.LATENCY.WARN}': '150',
     '{$CATO.HA.READINESS.OK}': 'ready',
     '{$CATO.HA.VERSION.OK}': 'ok',
 }

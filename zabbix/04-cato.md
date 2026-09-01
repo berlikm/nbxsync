@@ -147,8 +147,12 @@ connectivity state — `connectivityStatus` stays connected|disconnected.
 
 Numeric SLA prototypes keep 30 days of history and 365 days of trends. Overlay
 loss for Path is `max(RX, TX)` so one honeycomb can go yellow at CMA's 2%
-threshold without 51 line graphs. Overlay loss/RTT are **dashboard-only** —
-not triggers. Path quality is a honeycomb, not a ticket.
+threshold without 51 line graphs. Overlay **loss** stays dashboard-only.
+Overlay **RTT** and last-mile **latency** ticket Warning when the last three
+5-minute samples are all at or above the red honeycomb (`{$CATO.RTT.WARN}` /
+`{$CATO.LASTMILE.LATENCY.WARN}`, default 150 ms). Yellow at 80 ms is visual
+only. Raise the host macro on a site that normally sits hot; set it to `99999`
+to mute.
 
 ## Alert model
 
@@ -159,6 +163,8 @@ not triggers. Path quality is a honeycomb, not a ticket.
 | Average | Socket or WAN disconnected while the site is up | Socket- or link-specific overlay failure. |
 | Average | WAN `mediaIn=0` while the site is connected | Physical WAN unplug / SFP out. Circuit class for Socket-only sites. |
 | Average | WAN1 `mediaIn=1` and `hasTunnel=0` (`{$CATO.PORT.TUNNEL.MATCHES}=^WAN1$`) | Active WAN has Ethernet but no DTLS. **WAN2 standby with link and no tunnel does not page.** CMA Degraded still covers unexpected `WAN_TUNNEL_DISCONNECTED`. |
+| Warning | `Cato WAN {#SITE.NAME} / {#LINK.NAME}: High overlay RTT` for three samples `>= {$CATO.RTT.WARN}` | Tunnel round-trip to the PoP. Honeycomb red, not a site outage. Depends on site Disconnected. |
+| Warning | `Cato WAN {#SITE.NAME} / {#LINK.NAME}: High last-mile latency` for three samples `>= {$CATO.LASTMILE.LATENCY.WARN}` | Underlay ICMP average toward public probes. Same 150 ms red as overlay RTT. Depends on site Disconnected. |
 | Warning | LAN `mediaIn=0` while the site is connected | Building LAN, not an ISP circuit. |
 | Average | Site connected, `isHA`, `haStatus.readiness` not `{$CATO.HA.READINESS.OK}` | HA not ready. May coexist with site Degraded when the reason is `HA_NOT_READY_*`. |
 | Warning | HA `socketVersion` not `{$CATO.HA.VERSION.OK}` | Socket software skew. |
@@ -171,11 +177,13 @@ an API outage is better than hiding a real overlay outage. Census fires only
 when `cato.api.snapshot.available=1` (SLA census uses metrics availability).
 `Unsupported items present` depends on both no-data triggers.
 
-Last-mile loss/latency are dashboard-only. Cato probes several public
+Last-mile **loss** stays dashboard-only. Cato probes several public
 endpoints per WAN; the item is the **average** of the latest point on each
 `lastMilePacketLoss` / `lastMileLatency` series, not the worst probe. Path →
-Last mile honeycomb still yellows at 2% so you can see a sick underlay.
-`{$CATO.LASTMILE.LOSS.WARN}` is that visual hint, not a trigger.
+Last mile honeycomb still yellows at 2% loss / 80 ms latency. Last-mile
+**latency** now tickets Warning at the red 150 ms honeycomb
+(`{$CATO.LASTMILE.LATENCY.WARN}`). `{$CATO.LASTMILE.LOSS.WARN}` remains a
+visual hint, not a trigger.
 
 Identity CHAR (ISP provider, POP, dest type, physical port, remote IP,
 connection reason, operational status, HA readiness, degraded reasons) is
@@ -207,7 +215,7 @@ this template (same-template refs are valid) but are not dumped onto Health.
 | **Health → Degraded** | Degraded count, site Degraded honeycomb, numeric navigator plus History, CHAR **Details** (reasons, operational status, POP) plus Latest. Navigators are **site** only. Latest is 14% left-aligned, not bold, so long `WAN_DISCONNECTED,LAN_*` strings fit | CMA yellow, not site High. CHAR is not graphed. Zabbix item-value `value_size` is **percent of widget height** — 28% clipped the reasons. |
 | **Health → API** | GraphQL error and schema-violation tiles, unsupported items, Snapshot/Metrics gauges, error history | Collector failures, not overlay outages |
 | **Path → Overview** | Full-width overlay **loss** honeycomb (yellow at CMA 2%), then RTT and jitter | Overlay quality scan |
-| **Path → Last mile** | Last-mile loss, last-mile latency, RX/TX utilization honeycombs | Underlay toward the Socket, plus WAN fill %. No last-mile trigger. WAN **bits** graphs live on Network → Ports. |
+| **Path → Last mile** | Last-mile loss, last-mile latency, RX/TX utilization honeycombs | Underlay toward the Socket, plus WAN fill %. Last-mile latency tickets Warning at 150 ms; last-mile loss stays visual. WAN **bits** graphs live on Network → Ports. |
 | **Path → Probe** | Navigator grouped by **site → dest_type** (loss / RTT / jitter / last-mile / bps / util / discards) plus selected-metric history | Drill-down for one site's overlay, not a 51-graph gallery |
 | **Network → Overview** | WAN connectivity then Socket honeycomb. WAN hex labels are `site port` (serial dropped so 33 cells stay readable) | Tunnel and Socket up/down. No USB. |
 | **Network → Tunnels** | Numeric navigator (connectivity, tunnel uptime) plus History; CHAR **Details** plus Latest. Grouped **site → serial → dest_type** | Pick a Socket, then its WAN tunnels. CHAR is not graphed. |
