@@ -64,8 +64,8 @@ Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone`
 | 24h unique MACs ≥ `{$XIQ.NAC.TOTAL}` | yes | Average | License violation in progress |
 | 24h unique MACs ≥ `{$XIQ.NAC.USED.WARN}`% of total | yes | Warning | Default 90%. Dayside buy more |
 | 24h census truncated | yes | Average | `count == {$XIQ.NAC.ES.MAXRESULTS}` — number is a lie |
-| Pilot used ≥ `{$XIQ.PILOT.TOTAL}` | yes | Warning | Cannot onboard a switch / engine. `TOTAL=0` silences |
-| Pilot remaining ≤ `{$XIQ.PILOT.REMAIN.WARN}` | yes | Warning | Default 2 |
+| Pilot used ≥ `{$XIQ.PILOT.TOTAL}` | **no** as the billable consume (under-counts APs) | Warning | `xiqse.pilot.used` is SE inventory only. Ticket Cloud available=0 on [08](08-extremecloud-iq.md). Keep this trigger silent (`TOTAL=0`) until 08 |
+| Pilot remaining ≤ `{$XIQ.PILOT.REMAIN.WARN}` | **no** until 08 | Warning | Same: remaining vs SE 320 is a lie. Cloud `available` is the 3 seats |
 | Navigator used ≥ `{$XIQ.NAV.TOTAL}` | yes | Warning | Cannot onboard a Navigator-tier device. `TOTAL=0` silences |
 | Navigator remaining ≤ `{$XIQ.NAV.REMAIN.WARN}` | yes | Warning | Default 2 |
 | Unplanned SE reboot (`upTime`) | yes | Warning | |
@@ -102,7 +102,8 @@ On **Site Engine → Health**:
 | NAC license remaining | SCRIPT: 0 while `{$XIQ.NAC.TOTAL}` is 0, else purchased − used | **Item only** (Health tiles show used). **0 until you set the CG.** That is not “out of seats” and not −2175. NBI cannot read Administration → Licenses |
 | NAC used % of entitlement | % | Warning at 90% |
 | Unique **usernames** 24h | count | Capacity story; **not** the license |
-| Pilot used / remaining | count | Device + engine seats (`XIQ_PILOT`) |
+| Pilot SE inventory (`xiqse.pilot.used`) | count | Switches + engines in SE only. **Not** APs. Billable consume is 08 Cloud `activated` |
+| Pilot remaining | — | Do not graph SE remaining as if it were Portal 3 |
 | Navigator used / remaining | count | `XIQ_NAVIGATOR` |
 | Pending / Platform ONE | count | Graph; no ticket yet |
 | Engine count | count | Census |
