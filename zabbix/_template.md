@@ -3,7 +3,7 @@
 One sentence: what this is, and whether platforms in this domain share the same alerts.
 
 Filled example (now): [01-extreme-switching.md](01-extreme-switching.md), [02-extreme-access-points.md](02-extreme-access-points.md).  
-Filled the same way: [03-fortinet.md](03-fortinet.md). Prepared: [06-network-vms.md](06-network-vms.md), [07-extreme-control.md](07-extreme-control.md).
+Filled the same way: [03-fortinet.md](03-fortinet.md). Prepared: [06-network-vms.md](06-network-vms.md), [07-extreme-control.md](07-extreme-control.md), [08-extremecloud-iq.md](08-extremecloud-iq.md).
 
 Copy this file. Keep it one short page. OID walks and lab notes go in `templates/<name>/` or `notes/`.
 

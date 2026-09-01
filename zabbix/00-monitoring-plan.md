@@ -62,6 +62,9 @@ port-identity (foundation)
     │
     ▼
 07  ExtremeControl / XIQ-SE                   ← YAML built; not live
+    │
+    ▼
+08  ExtremeCloud IQ (VIQ companion on SE)     ← spec; not YAML
 
 post-cutover:  OSPF · VOSS fabric · USW discards/util · label compliance · site synthetic
 ```
@@ -84,6 +87,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 05 | Circuits | n/a | scaffold | no | Cato-only last-mile, Degraded, and WAN `mediaIn` live on 04; Forti Path is the Forti probe |
 | 06 | Network VMs | stock OS templates | scaffold | no | no |
 | 07 | ExtremeControl / XIQ-SE | **built** — [07](07-extreme-control.md) (GraphQL + engine SNMP) | yes | no | no |
+| 08 | ExtremeCloud IQ (VIQ) | none yet — companion on the SE host | yes — [08](08-extremecloud-iq.md) | no | no |
 
 ## Principles
 
@@ -95,7 +99,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 6. Collect first; enable noisy triggers after a quiet pilot.
 7. Macro overrides, not cloned stock templates.
 8. Signal with no trigger and no dashboard → delete it. Device **Health** is a **template** (host) dashboard.
-9. Next domain copies [_template.md](_template.md) — FortiGate (03) and ExtremeControl (07) are written in that shape; VMs stay stubbed.
+9. Next domain copies [_template.md](_template.md) — FortiGate (03), ExtremeControl (07), and ExtremeCloud IQ (08) are written in that shape; VMs stay stubbed.
 10. Use the full Zabbix scale. **Disaster** is site/service only (never on a switch/AP template). Do not park everything on Warning.
 
 ## Lab proof

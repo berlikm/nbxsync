@@ -19,7 +19,7 @@ This page is the **target contract**. YAML lives in `templates/xiqse_observabili
 | Never silent | GraphQL nodata; zero engines discovered; 24h census truncated (`count == maxResults`). SNMP-dead Warning on the engine if the MONITORING profile stops answering |
 | Collect first | Heap / CPU thresholds off until a quiet baseline. Log-forward is elapsed `{$XIQ.NAC.FRESH}` (no wall clock — engines are in CH / CN / HU / KR). SNMP fail-ratio and contact-lost gated (`101` / CONTROL=0) |
 | One `icmpping` | Nested only if the host does not already ping. Do not also assign Network Generic |
-| Host dashboard | **Health** Overview + Licenses: **used** seats. Remaining is an item only — SCRIPT-computed, 0 until you set purchased `{$XIQ.*.TOTAL}` (NBI has no entitlements field) |
+| Host dashboard | **Health** Overview + Licenses: **SE used** seats. Portal purchased / available is [08](08-extremecloud-iq.md) on **this same host**, not mixed into remaining math |
 
 Disaster is campus-wide auth later, on a **service / site** host — not on this template.
 
@@ -41,7 +41,7 @@ Exceeding NAC seats is a four-stage violation (GUI pop-up → events stop for ov
 
 At 0 Pilot you cannot onboard a switch or another engine. At 0 Navigator you cannot onboard another Navigator-tier device. Existing RADIUS still works.
 
-NBI has **no** entitlements field. Used seats we **count**. Purchased totals are macros on CG **XIQ-SE licenses** (`{$XIQ.NAC.TOTAL}`, `{$XIQ.PILOT.TOTAL}`, `{$XIQ.NAV.TOTAL}`), filled from Administration → Licenses. `--apply-xiqse` creates those assignments at 0 if missing and **never overwrites the CG**; it mirrors the CG onto the Site Engine platform so HostSync can push them (HostSync inherits platform macros; it does not expand CG macros at resolve time). Refresh the CG when you buy more, re-apply, then HostSync. Do not scrape the GUI. Do not add a Cloud XIQ tenant host. Do not JDBC the SE database. Do not set these as Zabbix host macros on `ch-sta-p-ensa01`. `{$…TOTAL}=0` means remaining shows 0 (not “out of seats”) and cap tickets stay silent.
+NBI has **no** entitlements field. Used seats we **count**. Purchased totals are macros on CG **XIQ-SE licenses** (`{$XIQ.NAC.TOTAL}`, `{$XIQ.PILOT.TOTAL}`, `{$XIQ.NAV.TOTAL}`), filled from Administration → Licenses until [08](08-extremecloud-iq.md) is live. `--apply-xiqse` creates those assignments at 0 if missing and **never overwrites the CG**; it mirrors the CG onto the Site Engine platform so HostSync can push them (HostSync inherits platform macros; it does not expand CG macros at resolve time). Refresh the CG when you buy more, re-apply, then HostSync. Do not scrape the GUI. Do not JDBC the SE database. Do not put the Cloud REST client inside the NBI SCRIPT. Do not set these as Zabbix host macros on `ch-sta-p-ensa01`. `{$…TOTAL}=0` means remaining shows 0 (not “out of seats”) and cap tickets stay silent. Cloud Portal seats (581 / 3, NAC 3000) are 08 on this host — never `Portal total − SE used`.
 
 Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone` (graph). Tickets stay off until that SKU is in use. Pending onboard is `xiqse.lic.pending` (graph).
 
@@ -88,7 +88,7 @@ Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone`
 | Engine lost SNMP to switches (`contact.lost` > 0) | **no** until opted in | Warning | Canary 2026-08-28 was **0** on all five ENACs. `{$NAC.SNMP.CONTACTLOST.CONTROL}` |
 | Auth fail ratio / drop rate | **no** until baseline | Warning | `{$NAC.SNMP.FAIL.WARN}=101`. Challenges are EAP, not failures |
 
-Do **not** alert on: Cloud XIQ tenant, every end-system MAC as a host, GraphQL mutations, accounting-only storms, Guest/IoT (GIM) until the same 24h pattern is proven.
+Do **not** alert on: Cloud IQ from **this** template (companion is [08](08-extremecloud-iq.md)), every end-system MAC as a host, GraphQL mutations, accounting-only storms, Guest/IoT (GIM) until the same 24h pattern is proven.
 
 ---
 
@@ -135,7 +135,7 @@ On each **Control engine → Health** (SNMP):
 
 | Role / class | In | Out |
 |---|---|---|
-| Site Engine | GraphQL NBI + 8443 + licenses + engine LLD | SNMP walk of the OVA, Cloud XIQ |
+| Site Engine | GraphQL NBI + 8443 + SE used seats + engine LLD | SNMP walk of the OVA, Cloud REST inside NBI JS (Cloud companion is [08](08-extremecloud-iq.md) on this host) |
 | Role **NAC** (Control engine) | ICMP + RADIUS monitor + optional existing Linux agent + **ExtremeControl by SNMP** (`ENTERASYS-NAC-APPLIANCE-MIB`) | GraphQL to the engine, second ping, EXOS/VOSS/IQ templates |
 | Switches / APs already in 01/02 | — | Do not double-ticket `up` from SE inventory |
 
@@ -236,6 +236,6 @@ Macros on the **SE template** (secrets on a nbxSync CG, not in YAML):
 
 ## Later
 
-GIM remaining. Assessment licenses. Platform ONE tickets. Cloud XIQ entitlement API (Connected mode) so macros are not manual. Campus-wide auth **Disaster** on a service host. SE Event Details if GraphQL never exposes E-to-Sav.
+GIM remaining. Assessment licenses. Platform ONE tickets. Auto-fill CG totals from 08 after SKU canary. Campus-wide auth **Disaster** on a service host. SE Event Details if GraphQL never exposes E-to-Sav.
 
-Analysis: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). SNMP OIDs: [templates/extremecontrol_snmp/OID_MAPPING.md](templates/extremecontrol_snmp/OID_MAPPING.md).
+Analysis: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). Cloud VIQ: [08-extremecloud-iq.md](08-extremecloud-iq.md). SNMP OIDs: [templates/extremecontrol_snmp/OID_MAPPING.md](templates/extremecontrol_snmp/OID_MAPPING.md).
