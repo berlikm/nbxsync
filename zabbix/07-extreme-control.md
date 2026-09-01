@@ -19,7 +19,7 @@ This page is the **target contract**. YAML lives in `templates/xiqse_observabili
 | Never silent | GraphQL nodata; zero engines discovered; 24h census truncated (`count == maxResults`). SNMP-dead Warning on the engine if the MONITORING profile stops answering |
 | Collect first | Heap / CPU thresholds off until a quiet baseline. Log-forward is elapsed `{$XIQ.NAC.FRESH}` (no wall clock — engines are in CH / CN / HU / KR). SNMP fail-ratio and contact-lost gated (`101` / CONTROL=0) |
 | One `icmpping` | Nested only if the host does not already ping. Do not also assign Network Generic |
-| Host dashboard | **Health** Overview + Licenses: **SE used** seats. Portal purchased / available is [08](08-extremecloud-iq.md) on **this same host**, not mixed into remaining math |
+| Host dashboard | **Health** Overview + Licenses: NAC **SE used**. Pilot **Cloud consumed** once 08 is linked; until then the 320 tile is SE inventory only |
 
 Disaster is campus-wide auth later, on a **service / site** host — not on this template.
 
@@ -29,11 +29,11 @@ Disaster is campus-wide auth later, on a **service / site** host — not on this
 
 Three subscription pools. Same three the Extreme **XIQ-SE licensing calculation** workflow reports for an XMC → XIQ-SE move ([KB 000098925](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000098925), `.xwf` v116). That workflow is a **one-shot** report: it reads `appdata/license` and the SE database, and needs NMS-ADV / 27001. We do **not** run it from Zabbix. We graph the same pools continuously from NBI.
 
-| Pool | SKU | Counted how | Live item |
+| Pool | SKU | Have (purchased) | Consume (used) |
 |---|---|---|---|
-| Access Control | `XIQ-NAC-S` | Unique **MACs** that **authenticated** in a **rolling 24h**, global. Same MAC on two engines = one seat. Accounting does not count. Usernames are not the license | `xiqse.nac.used24h` |
-| Pilot | `XIQ-PIL-S-C` | `network.devices` with `xiqLicenseState == XIQ_PILOT` (natively managed switches **and** Control engines that are in inventory) | `xiqse.pilot.used` |
-| Navigator | Navigator SKU | `xiqLicenseState == XIQ_NAVIGATOR` | `xiqse.nav.used` |
+| Access Control | `XIQ-NAC-S` | Cloud / CG `{$XIQ.NAC.TOTAL}` (Portal 3000). NBI has no entitlements field | **SE**: unique MACs that authenticated in a rolling 24h (`xiqse.nac.used24h`). Accounting does not count. Usernames are not the license |
+| Pilot | `XIQ-PIL-S-C` | **Cloud** `devices` / Portal 581 | **Cloud** `activated` / Portal 578. Includes IQ Engine **APs**. `xiqse.pilot.used` **320** is only SE `network.devices` with `XIQ_PILOT` (switches + Control engines in SE inventory) — not APs, not the billable used |
+| Navigator | Navigator SKU | **Cloud** | **Cloud** `activated`. SE `xiqse.nav.used` is SE inventory only |
 
 Per-engine **Current Capacity** `1365/3000` is **hardware load** (24h unique on that engine vs engine rating). Changing it does not change the global NAC license.
 
@@ -41,7 +41,7 @@ Exceeding NAC seats is a four-stage violation (GUI pop-up → events stop for ov
 
 At 0 Pilot you cannot onboard a switch or another engine. At 0 Navigator you cannot onboard another Navigator-tier device. Existing RADIUS still works.
 
-NBI has **no** entitlements field. Used seats we **count**. Purchased totals are macros on CG **XIQ-SE licenses** (`{$XIQ.NAC.TOTAL}`, `{$XIQ.PILOT.TOTAL}`, `{$XIQ.NAV.TOTAL}`), filled from Administration → Licenses until [08](08-extremecloud-iq.md) is live. `--apply-xiqse` creates those assignments at 0 if missing and **never overwrites the CG**; it mirrors the CG onto the Site Engine platform so HostSync can push them (HostSync inherits platform macros; it does not expand CG macros at resolve time). Refresh the CG when you buy more, re-apply, then HostSync. Do not scrape the GUI. Do not JDBC the SE database. Do not put the Cloud REST client inside the NBI SCRIPT. Do not set these as Zabbix host macros on `ch-sta-p-ensa01`. `{$…TOTAL}=0` means remaining shows 0 (not “out of seats”) and cap tickets stay silent. Cloud Portal seats (581 / 3, NAC 3000) are 08 on this host — never `Portal total − SE used`.
+NBI has **no** entitlements field. NAC used we **count** on SE. Pilot **consumed** is Cloud (APs are not in SE `network.devices` — that is why 320 ≠ 578). Purchased totals on CG **XIQ-SE licenses** stay the stand-in until [08](08-extremecloud-iq.md) is live. `--apply-xiqse` creates those assignments at 0 if missing and **never overwrites the CG**; it mirrors the CG onto the Site Engine platform so HostSync can push them (HostSync inherits platform macros; it does not expand CG macros at resolve time). Refresh the CG when you buy more, re-apply, then HostSync. Do not scrape the GUI. Do not JDBC the SE database. Do not put the Cloud REST client inside the NBI SCRIPT. Do not set these as Zabbix host macros on `ch-sta-p-ensa01`. `{$…TOTAL}=0` means remaining shows 0 (not “out of seats”) and cap tickets stay silent. Never `581 − 320`.
 
 Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone` (graph). Tickets stay off until that SKU is in use. Pending onboard is `xiqse.lic.pending` (graph).
 
@@ -193,13 +193,14 @@ auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High alr
 
 | Check | Why |
 |---|---|
-| GraphQL nodata | Token expired / SE upgrade / TLS |
+| GraphQL nodata | Token expired / SE upgrade / TLS / 8443. `xiqse.nbi.health` silent ≥15m unsports **every** health dependent — engine Connected / FreeRADIUS / capacity / Licensed / needsEnforce / Version go empty. That is the 42-unsupported ticket, not 42 schema bugs |
 | Zero engines LLD | Access Control NBI right missing |
 | 24h census truncated | `maxResults` too small — license graph under-counts |
 | NAC census failed | NBI up but `endSystems` SCRIPT failed or timed out — Overview used tiles stay empty |
 | Device license census failed | NBI up but `xiqLicenseState` query failed — Pilot/Navigator remaining unknown |
 | Remaining negative | Leftover CALCULATED remaining item after import (2026-08-29 live: −2175). Re-import or unlink/relink |
-| Unsupported items | Schema field renamed on their SE version; or ENTERASYS-NAC-APPLIANCE-MIB view dropped on an engine |
+| Engine last auth age empty while 24h MACs exist | Age **0** (SE clock ahead). Cloud 7.0 JS preprocessing treats numeric `0` as empty — stringify in extract JS |
+| Unsupported items | First check NBI nodata. Then schema rename / SNMP view |
 | Proxy last-seen | already in 01 |
 
 ---

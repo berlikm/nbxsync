@@ -69,10 +69,10 @@ Extreme Portal CUID vs `ch-sta-p-ensa01` NBI:
 
 | Pool | Portal | SE NBI used |
 |---|---|---|
-| Pilot `XIQ-PIL-S-C` | 581 total, 578 used, 3 avail | **320** `XIQ_PILOT` |
-| NAC `XIQ-NAC-S` | 3000 | 24h unique MACs (not 3000) |
+| Pilot `XIQ-PIL-S-C` | 581 total, 578 used, 3 avail | **320** `XIQ_PILOT` in SE `network.devices` only (switches + engines). APs are not on that NBI list — Cloud 578 is consume |
+| NAC `XIQ-NAC-S` | 3000 | 24h unique MACs (this is the real NAC used) |
 
-578 vs 320 is Cloud inventory vs this SE’s inventory (other onboarded devices, engines, pending). `581 − 320 = 261` is not the 3 seats Portal shows.
+578 vs 320 is **APs (and other Cloud-onboarded devices)** vs this SE’s switch/engine inventory. `581 − 320 = 261` is not the 3 seats Portal shows. Pilot remaining is Cloud `available`.
 
 ---
 

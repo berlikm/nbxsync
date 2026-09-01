@@ -15,11 +15,11 @@ This page is the **target contract**. YAML is not built. Refresh later with `con
 | Page **symptoms** | Nothing 03:00. Cloud down does not take RADIUS or switch SNMP with it |
 | **Ticket** (Average) | Cloud API / token dead (ops blind to onboarding and Portal seats). VIQ **expired** or VHM not `ACTIVE`. Last CONFIG backup older than `{$XIQ.CLOUD.BACKUP.MAX}` |
 | **Graph** / next day | Portal purchased / activated / available / expire (Pilot, NAC, Navigator, CoPilot). Cloud managed vs connected census. Token TTL |
-| One incident | Cloud API tickets do not also fire SE NBI. Cloud “disconnected” census does not also fire 01/02 ICMP. License remaining is **Cloud remaining**, never `Portal total − SE used` |
+| One incident | Cloud API tickets do not also fire SE NBI. Cloud “disconnected” census does not also fire 01/02 ICMP. Pilot remaining is Cloud `available`, never `581 − 320` |
 | Never silent | API nodata; zero license rows while `licenses:r` should see the Portal pools; backup grid empty |
 | Collect first | Unmanaged / cloud-disconnected counts. Copilot. HIQ. Per-SKU exhaust until `license_type` is canaried |
 | One `icmpping` | None. SaaS. Do not ping `extremecloudiq.com` |
-| Host dashboard | Same SE **Health**: Licenses tiles show **Cloud available** next to **SE used** (07). Backup age on Overview |
+| Host dashboard | Same SE **Health**: NAC used from 07; Pilot **have / consume / available** from Cloud (APs included). SE 320 is not the Pilot used tile |
 
 Disaster is still campus auth / site — not this template.
 
@@ -48,14 +48,15 @@ Do **not** alert on: floor plans, clients, CoPilot anomalies, HIQ org tree, the 
 
 ## Licenses in one place
 
-Two inventories, one host, **two columns**. Do not merge the numbers.
+One host, **split by pool**. Do not subtract across columns.
 
-| Column | Source | What it is | Live (canary) |
+| Pool | Have | Consume | Why SE 320 is not Pilot used |
 |---|---|---|---|
-| **SE used** | 07 NBI | This Site Engine’s census | Pilot **320** `XIQ_PILOT` devices; NAC **24h unique MACs** |
-| **Cloud pool** | this template | CUID Portal pool (Connected mode, shared by every SE) | Pilot **581 / 578 / 3**; NAC **3000** |
+| **NAC** | Cloud / CG total (Portal **3000**) | **SE** 24h unique MACs | NAC seats are authentications, not Cloud devices |
+| **Pilot** | Cloud `devices` (Portal **581**) | **Cloud** `activated` (Portal **578**) | IQ Engine **APs** consume Pilot in Cloud. SE `network.devices` `XIQ_PILOT` **320** is switches + Control engines in Site Engine only |
+| **Navigator** | Cloud | Cloud `activated` | Same as Pilot: SE inventory is a subset |
 
-Remaining on the Cloud items is `available` from the API (or `devices − activated` if a row omits it). Remaining on 07 stays SCRIPT vs CG totals until this companion is live — then 07 remaining can go item-only / unused for Pilot. Never `{$XIQ.PILOT.TOTAL}=581` minus `xiqse.pilot.used=320`.
+Remaining is Cloud `available` (Pilot **3**). Never `581 − 320`. 07 `xiqse.pilot.used` stays as “SE-managed Pilot devices” (graph), not the billable consume tile once this companion is live.
 
 ---
 
