@@ -4,7 +4,7 @@ The **cloud tenant** (VIQ) for CUID `sApsGq3wp`: entitlements, VIQ backup, tenan
 
 One Site Engine, one CUID → **same Zabbix host as `ch-sta-p-ensa01`**. A second template, not a second host, so Licenses live in one Latest data / one Health board. Do **not** fold `api.extremecloudiq.com` into the NBI SCRIPT. Do **not** invent a Cato-style `xiq-cloud-*` host unless a second Site Engine appears.
 
-This page is the **target contract**. YAML is not built. Refresh later with `configure_nbxsync_network.py --apply-xiq-cloud` (import companion, link on the Site Engine, no HostSync of switches). Analysis: [notes/xiq-cloud.md](notes/xiq-cloud.md).
+This page is the **target contract**. YAML lives in `templates/extremecloud_iq_http/`. Refresh with `configure_nbxsync_network.py --apply-xiq-cloud` (import companion, link on the Site Engine, no HostSync of switches). Analysis: [notes/xiq-cloud.md](notes/xiq-cloud.md).
 
 ---
 
@@ -69,7 +69,7 @@ Remaining is Cloud `available` (Pilot **3**). Never `581 − 320`. 07 `xiqse.pil
 | Switches / APs | Census counts only | Hosts, SNMP, ICMP, Cloud “disconnected” as a page |
 | Control engines | — | 07 |
 
-Auth: long-lived `POST /auth/apitoken` (permission `licenses:r` + account/backup/device read). Secret on nbxSync CG, assigned to the Site Engine platform — not a Zabbix host macro typed on `ch-sta-p-ensa01`, not SE OAuth.
+Auth: long-lived Bearer from `POST /auth/apitoken` (ops creates it once; Zabbix never POSTs a new token). Permission `licenses:r` + account/backup/device read. Secret on nbxSync CG **ExtremeCloud IQ API**, assigned to the Site Engine platform — not a Zabbix host macro typed on `ch-sta-p-ensa01`, not SE OAuth.
 
 ---
 
@@ -78,7 +78,7 @@ Auth: long-lived `POST /auth/apitoken` (permission `licenses:r` + account/backup
 - Connected mode: every Site Engine shares this pool. A second SE later still uses **this** companion (link it there too) — do not clone the CUID.
 - Air-gap SE would not use this template.
 - TLS verify on. Do not `POST` backup from Zabbix.
-- Canary before YAML: one token, dump `GET /account/viq` `license_type` values and whether NAC 3000 is in `licenses[]` or only Platform ONE `/nac-entitlements/stats`.
+- Canary after apply: HostSync the Site Engine, then confirm Pilot have / activated / available vs Portal 581 / 578 / 3 and dump `xiq.cloud.license.types`. NAC 3000 may be absent from `licenses[]`.
 
 ---
 
@@ -110,15 +110,24 @@ Do not clone stock. There is no official ExtremeCloud IQ Zabbix template.
 
 | Template | Where |
 |---|---|
-| **ExtremeCloud IQ by HTTP** | Linked on the **Site Engine** host. SCRIPT HTTPS to `{$XIQ.CLOUD.API.URL}` default `https://api.extremecloudiq.com`. Does not nest ICMP. Does not nest XIQ-SE Observability |
+| **ExtremeCloud IQ by HTTP** | Linked on the **Site Engine** host. SCRIPT HTTPS to `{$XIQ.CLOUD.API.URL}` default `https://api.extremecloudiq.com`. Account snapshot every 5m (`/account/viq`, `/account/vhm/status`, `/auth/apitoken/info`). Ops snapshot every 15m (`/backup/history/grid`, `/devices/stats`). Does not nest ICMP. Does not nest XIQ-SE Observability. Does not POST `/auth/apitoken`. |
 
 ```
 {$XIQ.CLOUD.API.URL}       = https://api.extremecloudiq.com
-{$XIQ.CLOUD.API.TOKEN}     = SECRET_TEXT (CG, not YAML)
+{$XIQ.CLOUD.API.TOKEN}     = SECRET_TEXT (CG ExtremeCloud IQ API, not YAML)
 {$XIQ.CLOUD.BACKUP.MAX}    = 691200   (8d elapsed)
 {$XIQ.CLOUD.TOKEN.WARN}    = 14d
 {$XIQ.CLOUD.EXPIRY.WARN}   = 30d
 ```
+
+Apply:
+
+```
+python3 scripts/configure_nbxsync_network.py --check-xiq-cloud
+python3 scripts/configure_nbxsync_network.py --apply-xiq-cloud
+```
+
+That fail-closes on missing YAML, imports the companion, creates a second soft TemplateRule on Site Engine platforms, and creates CG **ExtremeCloud IQ API** (`{$XIQ.CLOUD.API.TOKEN}` empty SECRET if missing — never overwritten). No HostSync, no Extreme switch import, no NBI import. Put the long-lived token on that CG, re-apply so the platform copy matches, then HostSync `ch-sta-p-ensa01`. Tests: `python3 scripts/test_xiq_cloud.py`.
 
 ---
 

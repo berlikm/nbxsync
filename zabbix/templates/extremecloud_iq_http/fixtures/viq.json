@@ -1,0 +1,65 @@
+{
+  "devices": 581,
+  "standalone": true,
+  "expired": false,
+  "customer_id": "sApsGq3wp",
+  "vhm_id": "VHM-000001",
+  "owner_id": 102,
+  "licenses": [
+    {
+      "id": 1,
+      "status": "VALID",
+      "expire_date": "2026-12-01T00:00:00.000+0000",
+      "entitlement_key": "PIL-ROW-A",
+      "entitlement_type": "PERMANENT",
+      "devices": 400,
+      "activated": 400,
+      "available": 0,
+      "license_type": "XIQ-PIL-S-C"
+    },
+    {
+      "id": 2,
+      "status": "VALID",
+      "expire_date": "2026-11-15T00:00:00.000+0000",
+      "entitlement_key": "PIL-ROW-B",
+      "entitlement_type": "PERMANENT",
+      "devices": 181,
+      "activated": 178,
+      "available": 3,
+      "license_type": "XIQ-PIL-S-C"
+    },
+    {
+      "id": 3,
+      "status": "VALID",
+      "expire_date": "2027-02-01T00:00:00.000+0000",
+      "entitlement_key": "NAV-ROW",
+      "entitlement_type": "PERMANENT",
+      "devices": 0,
+      "activated": 0,
+      "available": 0,
+      "license_type": "XIQ-NAV-S"
+    },
+    {
+      "id": 4,
+      "status": "EVAL",
+      "expire_date": "2026-10-01T00:00:00.000+0000",
+      "entitlement_key": "COP-ROW",
+      "entitlement_type": "EVALUATION",
+      "devices": 50,
+      "activated": 10,
+      "available": 40,
+      "license_type": "XIQ-COPILOT"
+    },
+    {
+      "id": 5,
+      "status": "EVAL",
+      "expire_date": "2027-04-20T18:54:40.000+0000",
+      "entitlement_key": "legacy-row",
+      "entitlement_type": "EVALUATION",
+      "devices": 10,
+      "activated": 10,
+      "available": 100,
+      "license_type": "Legacy"
+    }
+  ]
+}

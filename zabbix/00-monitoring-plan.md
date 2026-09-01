@@ -64,7 +64,7 @@ port-identity (foundation)
 07  ExtremeControl / XIQ-SE                   ← YAML built; not live
     │
     ▼
-08  ExtremeCloud IQ (VIQ companion on SE)     ← spec; not YAML
+08  ExtremeCloud IQ (VIQ companion on SE)     ← YAML built; not live
 
 post-cutover:  OSPF · VOSS fabric · USW discards/util · label compliance · site synthetic
 ```
@@ -87,7 +87,7 @@ Rationale: device health before ports, ports before overlay, overlay before circ
 | 05 | Circuits | n/a | scaffold | no | Cato-only last-mile, Degraded, and WAN `mediaIn` live on 04; Forti Path is the Forti probe |
 | 06 | Network VMs | stock OS templates | scaffold | no | no |
 | 07 | ExtremeControl / XIQ-SE | **built** — [07](07-extreme-control.md) (GraphQL + engine SNMP) | yes | no | no |
-| 08 | ExtremeCloud IQ (VIQ) | none yet — companion on the SE host | yes — [08](08-extremecloud-iq.md) | no | no |
+| 08 | ExtremeCloud IQ (VIQ) | **built** — companion on the SE host | yes — [08](08-extremecloud-iq.md) | no | no |
 
 ## Principles
 

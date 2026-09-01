@@ -1,0 +1,1883 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 36bff6c29af64692839d077febfc7079
+      name: Templates/Network devices
+  templates:
+    - uuid: ad8fa6aebeb2489fab8fa63e4977f173
+      template: ExtremeCloud IQ by HTTP
+      name: ExtremeCloud IQ by HTTP
+      description: |
+        ExtremeCloud IQ VIQ companion on the Site Engine host. SCRIPT HTTPS to
+        {$XIQ.CLOUD.API.URL} (default https://api.extremecloudiq.com). Long-lived
+        Bearer {$XIQ.CLOUD.API.TOKEN}. Does not nest ICMP. Does not nest XIQ-SE
+        Observability. Does not POST /auth/apitoken. Does not fold into NBI.
+
+        Operator page: zabbix/08-extremecloud-iq.md.
+        Refresh with configure_nbxsync_network.py --apply-xiq-cloud.
+      groups:
+        - name: Templates/Network devices
+      macros:
+        - macro: '{$XIQ.CLOUD.API.URL}'
+          value: 'https://api.extremecloudiq.com'
+          description: 'ExtremeCloud IQ REST base. TLS verify stays on.'
+        - macro: '{$XIQ.CLOUD.API.TOKEN}'
+          type: SECRET_TEXT
+          value: ''
+          description: 'Long-lived Bearer from POST /auth/apitoken (ops creates it once). Put on CG ExtremeCloud IQ API, not the host.'
+        - macro: '{$XIQ.CLOUD.DATA.TIMEOUT}'
+          value: '30s'
+          description: 'Account SCRIPT timeout (viq + vhm + token info).'
+        - macro: '{$XIQ.CLOUD.OPS.TIMEOUT}'
+          value: '45s'
+          description: 'Ops SCRIPT timeout (backup grid + device stats).'
+        - macro: '{$XIQ.CLOUD.BACKUP.MAX}'
+          value: '691200'
+          description: 'Ticket last CONFIG backup age at or above this many seconds (8d).'
+        - macro: '{$XIQ.CLOUD.TOKEN.WARN}'
+          value: '14d'
+          description: 'Warning when token TTL is below this.'
+        - macro: '{$XIQ.CLOUD.EXPIRY.WARN}'
+          value: '30d'
+          description: 'Warning when a matched Pilot/Navigator expire_date is within this window.'
+      items:
+        - uuid: 9f5bf4c486894e278ddb2fa4b6c14fd6
+          name: ExtremeCloud IQ account snapshot
+          type: SCRIPT
+          key: xiq.cloud.account
+          delay: 5m
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          params: |
+            function cloudBase(params) {
+              var url = String((params && params.url) || 'https://api.extremecloudiq.com');
+              if (url.charAt(url.length - 1) === '/') {
+                url = url.substring(0, url.length - 1);
+              }
+              return url;
+            }
+
+            function cloudGet(params, path) {
+              var request = new HttpRequest();
+              request.addHeader('Accept: application/json');
+              request.addHeader('Content-Type: application/json');
+              request.addHeader('Authorization: Bearer ' + params.token);
+              var response = request.get(cloudBase(params) + path);
+              var code = request.getStatus();
+              var body;
+              try {
+                body = JSON.parse(response);
+              } catch (error) {
+                return { ok: 0, error: 'HTTP ' + code + ' invalid JSON', status: code, data: null };
+              }
+              if (code !== 200) {
+                return { ok: 0, error: 'HTTP ' + code, status: code, data: body };
+              }
+              return { ok: 1, error: '', status: code, data: body };
+            }
+
+            function parseExpireEpoch(raw) {
+              if (raw === null || raw === undefined || raw === '') {
+                return 0;
+              }
+              if (typeof raw === 'number' && isFinite(raw)) {
+                if (raw > 1e12) {
+                  return Math.floor(raw / 1000);
+                }
+                if (raw > 1e9) {
+                  return Math.floor(raw);
+                }
+                return 0;
+              }
+              var text = String(raw);
+              text = text.replace(/\+0000$/, 'Z');
+              text = text.replace(/([+-])(\d{2})(\d{2})$/, '$1$2:$3');
+              var ms = Date.parse(text);
+              if (isNaN(ms)) {
+                return 0;
+              }
+              return Math.floor(ms / 1000);
+            }
+
+            function classifyLicense(row) {
+              var type = String((row && row.license_type) || '');
+              var key = String((row && row.entitlement_key) || '');
+              var hay = (type + ' ' + key).toUpperCase();
+              if (!hay.replace(/\s/g, '')) {
+                return 'other';
+              }
+              if (hay.indexOf('NAC') !== -1) {
+                return 'nac';
+              }
+              if (hay.indexOf('COPILOT') !== -1 || hay.indexOf('CO-PILOT') !== -1 || hay.indexOf('XIQ-COP') !== -1) {
+                return 'copilot';
+              }
+              if (hay.indexOf('NAV') !== -1) {
+                return 'nav';
+              }
+              if (hay.indexOf('PIL') !== -1) {
+                return 'pilot';
+              }
+              return 'other';
+            }
+
+            function emptyPool() {
+              return {
+                present: 0,
+                have: 0,
+                activated: 0,
+                available: 0,
+                expire: 0,
+                status: '',
+                types: []
+              };
+            }
+
+            function addLicenseToPool(pool, row) {
+              pool.present = 1;
+              pool.have += Number(row.devices) || 0;
+              pool.activated += Number(row.activated) || 0;
+              pool.available += Number(row.available) || 0;
+              var exp = parseExpireEpoch(row.expire_date);
+              if (exp > 0 && (pool.expire === 0 || exp < pool.expire)) {
+                pool.expire = exp;
+              }
+              var st = String(row.status || '');
+              if (st) {
+                pool.status = st;
+              }
+              var lt = String(row.license_type || '');
+              if (lt && pool.types.indexOf(lt) === -1) {
+                pool.types.push(lt);
+              }
+            }
+
+            function aggregateLicenses(rows) {
+              var pools = {
+                pilot: emptyPool(),
+                nav: emptyPool(),
+                copilot: emptyPool(),
+                nac: emptyPool(),
+                other: emptyPool()
+              };
+              var types = [];
+              var i;
+              if (!Array.isArray(rows)) {
+                rows = [];
+              }
+              for (i = 0; i < rows.length; i++) {
+                var row = rows[i] || {};
+                var kind = classifyLicense(row);
+                addLicenseToPool(pools[kind], row);
+                var lt = String(row.license_type || '');
+                if (lt && types.indexOf(lt) === -1) {
+                  types.push(lt);
+                }
+              }
+              return {
+                licenseCount: rows.length,
+                licenseTypes: types.join(','),
+                pools: pools
+              };
+            }
+
+            function vhmIsActive(status) {
+              var text = String(status || '').toUpperCase();
+              return text === 'ACTIVE_STATUS' || text === 'ACTIVE' ? 1 : 0;
+            }
+
+            function flattenPool(prefix, pool, out) {
+              out[prefix + 'Present'] = pool.present;
+              out[prefix + 'Have'] = pool.have;
+              out[prefix + 'Activated'] = pool.activated;
+              out[prefix + 'Available'] = pool.available;
+              out[prefix + 'Expire'] = pool.expire;
+              out[prefix + 'Status'] = pool.status;
+            }
+
+            function emptyAccountSnapshot(error) {
+              var snap = {
+                ok: 0,
+                error: String(error || ''),
+                customerId: '',
+                expired: 0,
+                vhmStatus: '',
+                vhmActive: 2,
+                tokenTtl: 0,
+                tokenKnown: 0,
+                licenseCount: 0,
+                licenseTypes: '',
+                pilotPresent: 0,
+                pilotHave: 0,
+                pilotActivated: 0,
+                pilotAvailable: 0,
+                pilotExpire: 0,
+                pilotStatus: '',
+                navPresent: 0,
+                navHave: 0,
+                navActivated: 0,
+                navAvailable: 0,
+                navExpire: 0,
+                navStatus: '',
+                copilotPresent: 0,
+                copilotHave: 0,
+                copilotActivated: 0,
+                copilotAvailable: 0,
+                copilotExpire: 0,
+                nacPresent: 0,
+                nacHave: 0,
+                nacActivated: 0,
+                nacAvailable: 0,
+                nacExpire: 0,
+                nacStatus: ''
+              };
+              return snap;
+            }
+
+            function emptyOpsSnapshot(error) {
+              return {
+                ok: 0,
+                error: String(error || ''),
+                lastConfigBackup: 0,
+                lastConfigBackupAge: 0,
+                lastConfigBackupName: '',
+                backupCount: 0,
+                deviceTotal: 0,
+                deviceManaged: 0,
+                deviceConnected: 0,
+                deviceDisconnected: 0,
+                deviceUnmanaged: 0
+              };
+            }
+
+            function pickConfigBackup(grid, nowSec) {
+              var rows = (grid && grid.data) || [];
+              var newest = 0;
+              var name = '';
+              var i;
+              if (!Array.isArray(rows)) {
+                rows = [];
+              }
+              for (i = 0; i < rows.length; i++) {
+                var row = rows[i] || {};
+                var units = String(row.backup_units || '').toUpperCase();
+                if (units !== 'CONFIG') {
+                  continue;
+                }
+                var ts = parseExpireEpoch(row.backup_date);
+                if (ts > newest) {
+                  newest = ts;
+                  name = String(row.backup_file_name || '');
+                }
+              }
+              var age = 0;
+              if (newest > 0 && nowSec > newest) {
+                age = nowSec - newest;
+              }
+              return {
+                lastConfigBackup: newest,
+                lastConfigBackupAge: age,
+                lastConfigBackupName: name,
+                backupCount: rows.length
+              };
+            }
+
+            function collectAccount(params, getJson) {
+              getJson = getJson || cloudGet;
+              var snap = emptyAccountSnapshot('missing token');
+              if (!params || !String(params.token || '')) {
+                return snap;
+              }
+              var viq = getJson(params, '/account/viq');
+              if (!viq.ok || !viq.data) {
+                snap.error = viq.error || 'viq failed';
+                return snap;
+              }
+              var body = viq.data;
+              var counted = aggregateLicenses(body.licenses);
+              snap.ok = 1;
+              snap.error = '';
+              snap.customerId = String(body.customer_id || '');
+              snap.expired = body.expired === true || body.expired === 1 || body.expired === 'true' ? 1 : 0;
+              snap.licenseCount = counted.licenseCount;
+              snap.licenseTypes = counted.licenseTypes;
+              flattenPool('pilot', counted.pools.pilot, snap);
+              flattenPool('nav', counted.pools.nav, snap);
+              flattenPool('copilot', counted.pools.copilot, snap);
+              flattenPool('nac', counted.pools.nac, snap);
+
+              var vhm = getJson(params, '/account/vhm/status');
+              if (vhm.ok && vhm.data) {
+                snap.vhmStatus = String(vhm.data.current_status || '');
+                snap.vhmActive = vhmIsActive(snap.vhmStatus);
+              } else {
+                snap.vhmActive = 2;
+                snap.vhmStatus = '';
+                snap.error = vhm.error || 'vhm failed';
+              }
+
+              var token = getJson(params, '/auth/apitoken/info');
+              if (token.ok && token.data) {
+                var ttl = Number(token.data.expires_in);
+                if (!isFinite(ttl) || ttl < 0) {
+                  var exp = parseExpireEpoch(token.data.expiration_time);
+                  ttl = exp > 0 ? exp - Math.floor(Date.now() / 1000) : 0;
+                  if (ttl < 0) {
+                    ttl = 0;
+                  }
+                }
+                snap.tokenTtl = ttl;
+                snap.tokenKnown = 1;
+              } else {
+                snap.tokenKnown = 0;
+                snap.tokenTtl = 0;
+                if (!snap.error) {
+                  snap.error = token.error || 'token info failed';
+                }
+              }
+              return snap;
+            }
+
+            function collectOps(params, getJson, nowSec) {
+              getJson = getJson || cloudGet;
+              nowSec = nowSec || Math.floor(Date.now() / 1000);
+              var snap = emptyOpsSnapshot('missing token');
+              if (!params || !String(params.token || '')) {
+                return snap;
+              }
+              var errors = [];
+              var backup = getJson(params, '/backup/history/grid?page=1&limit=10');
+              if (backup.ok && backup.data) {
+                var picked = pickConfigBackup(backup.data, nowSec);
+                snap.lastConfigBackup = picked.lastConfigBackup;
+                snap.lastConfigBackupAge = picked.lastConfigBackupAge;
+                snap.lastConfigBackupName = picked.lastConfigBackupName;
+                snap.backupCount = picked.backupCount;
+              } else {
+                errors.push(backup.error || 'backup grid failed');
+              }
+              var stats = getJson(params, '/devices/stats');
+              if (stats.ok && stats.data) {
+                snap.deviceTotal = Number(stats.data.total_device_count) || 0;
+                snap.deviceManaged = Number(stats.data.managed_device_count) || 0;
+                snap.deviceConnected = Number(stats.data.connected_device_count) || 0;
+                var basis = snap.deviceManaged > 0 ? snap.deviceManaged : snap.deviceTotal;
+                snap.deviceDisconnected = basis > snap.deviceConnected ? basis - snap.deviceConnected : 0;
+                snap.deviceUnmanaged = snap.deviceTotal > snap.deviceManaged ? snap.deviceTotal - snap.deviceManaged : 0;
+              } else {
+                errors.push(stats.error || 'device stats failed');
+              }
+              snap.ok = errors.length ? 0 : 1;
+              snap.error = errors.join('; ');
+              return snap;
+            }
+
+            var params = JSON.parse(value);
+            return JSON.stringify(collectAccount(params));
+          timeout: '{$XIQ.CLOUD.DATA.TIMEOUT}'
+          parameters:
+            - name: url
+              value: '{$XIQ.CLOUD.API.URL}'
+            - name: token
+              value: '{$XIQ.CLOUD.API.TOKEN}'
+          description: |
+            GET /account/viq + /account/vhm/status + /auth/apitoken/info. Bearer only. Does not POST /auth/apitoken.
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: health
+        - uuid: bf15d2bfcc4b4fda81d7635eb5cee8e7
+          name: ExtremeCloud IQ ops snapshot
+          type: SCRIPT
+          key: xiq.cloud.ops
+          delay: 15m
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          params: |
+            function cloudBase(params) {
+              var url = String((params && params.url) || 'https://api.extremecloudiq.com');
+              if (url.charAt(url.length - 1) === '/') {
+                url = url.substring(0, url.length - 1);
+              }
+              return url;
+            }
+
+            function cloudGet(params, path) {
+              var request = new HttpRequest();
+              request.addHeader('Accept: application/json');
+              request.addHeader('Content-Type: application/json');
+              request.addHeader('Authorization: Bearer ' + params.token);
+              var response = request.get(cloudBase(params) + path);
+              var code = request.getStatus();
+              var body;
+              try {
+                body = JSON.parse(response);
+              } catch (error) {
+                return { ok: 0, error: 'HTTP ' + code + ' invalid JSON', status: code, data: null };
+              }
+              if (code !== 200) {
+                return { ok: 0, error: 'HTTP ' + code, status: code, data: body };
+              }
+              return { ok: 1, error: '', status: code, data: body };
+            }
+
+            function parseExpireEpoch(raw) {
+              if (raw === null || raw === undefined || raw === '') {
+                return 0;
+              }
+              if (typeof raw === 'number' && isFinite(raw)) {
+                if (raw > 1e12) {
+                  return Math.floor(raw / 1000);
+                }
+                if (raw > 1e9) {
+                  return Math.floor(raw);
+                }
+                return 0;
+              }
+              var text = String(raw);
+              text = text.replace(/\+0000$/, 'Z');
+              text = text.replace(/([+-])(\d{2})(\d{2})$/, '$1$2:$3');
+              var ms = Date.parse(text);
+              if (isNaN(ms)) {
+                return 0;
+              }
+              return Math.floor(ms / 1000);
+            }
+
+            function classifyLicense(row) {
+              var type = String((row && row.license_type) || '');
+              var key = String((row && row.entitlement_key) || '');
+              var hay = (type + ' ' + key).toUpperCase();
+              if (!hay.replace(/\s/g, '')) {
+                return 'other';
+              }
+              if (hay.indexOf('NAC') !== -1) {
+                return 'nac';
+              }
+              if (hay.indexOf('COPILOT') !== -1 || hay.indexOf('CO-PILOT') !== -1 || hay.indexOf('XIQ-COP') !== -1) {
+                return 'copilot';
+              }
+              if (hay.indexOf('NAV') !== -1) {
+                return 'nav';
+              }
+              if (hay.indexOf('PIL') !== -1) {
+                return 'pilot';
+              }
+              return 'other';
+            }
+
+            function emptyPool() {
+              return {
+                present: 0,
+                have: 0,
+                activated: 0,
+                available: 0,
+                expire: 0,
+                status: '',
+                types: []
+              };
+            }
+
+            function addLicenseToPool(pool, row) {
+              pool.present = 1;
+              pool.have += Number(row.devices) || 0;
+              pool.activated += Number(row.activated) || 0;
+              pool.available += Number(row.available) || 0;
+              var exp = parseExpireEpoch(row.expire_date);
+              if (exp > 0 && (pool.expire === 0 || exp < pool.expire)) {
+                pool.expire = exp;
+              }
+              var st = String(row.status || '');
+              if (st) {
+                pool.status = st;
+              }
+              var lt = String(row.license_type || '');
+              if (lt && pool.types.indexOf(lt) === -1) {
+                pool.types.push(lt);
+              }
+            }
+
+            function aggregateLicenses(rows) {
+              var pools = {
+                pilot: emptyPool(),
+                nav: emptyPool(),
+                copilot: emptyPool(),
+                nac: emptyPool(),
+                other: emptyPool()
+              };
+              var types = [];
+              var i;
+              if (!Array.isArray(rows)) {
+                rows = [];
+              }
+              for (i = 0; i < rows.length; i++) {
+                var row = rows[i] || {};
+                var kind = classifyLicense(row);
+                addLicenseToPool(pools[kind], row);
+                var lt = String(row.license_type || '');
+                if (lt && types.indexOf(lt) === -1) {
+                  types.push(lt);
+                }
+              }
+              return {
+                licenseCount: rows.length,
+                licenseTypes: types.join(','),
+                pools: pools
+              };
+            }
+
+            function vhmIsActive(status) {
+              var text = String(status || '').toUpperCase();
+              return text === 'ACTIVE_STATUS' || text === 'ACTIVE' ? 1 : 0;
+            }
+
+            function flattenPool(prefix, pool, out) {
+              out[prefix + 'Present'] = pool.present;
+              out[prefix + 'Have'] = pool.have;
+              out[prefix + 'Activated'] = pool.activated;
+              out[prefix + 'Available'] = pool.available;
+              out[prefix + 'Expire'] = pool.expire;
+              out[prefix + 'Status'] = pool.status;
+            }
+
+            function emptyAccountSnapshot(error) {
+              var snap = {
+                ok: 0,
+                error: String(error || ''),
+                customerId: '',
+                expired: 0,
+                vhmStatus: '',
+                vhmActive: 2,
+                tokenTtl: 0,
+                tokenKnown: 0,
+                licenseCount: 0,
+                licenseTypes: '',
+                pilotPresent: 0,
+                pilotHave: 0,
+                pilotActivated: 0,
+                pilotAvailable: 0,
+                pilotExpire: 0,
+                pilotStatus: '',
+                navPresent: 0,
+                navHave: 0,
+                navActivated: 0,
+                navAvailable: 0,
+                navExpire: 0,
+                navStatus: '',
+                copilotPresent: 0,
+                copilotHave: 0,
+                copilotActivated: 0,
+                copilotAvailable: 0,
+                copilotExpire: 0,
+                nacPresent: 0,
+                nacHave: 0,
+                nacActivated: 0,
+                nacAvailable: 0,
+                nacExpire: 0,
+                nacStatus: ''
+              };
+              return snap;
+            }
+
+            function emptyOpsSnapshot(error) {
+              return {
+                ok: 0,
+                error: String(error || ''),
+                lastConfigBackup: 0,
+                lastConfigBackupAge: 0,
+                lastConfigBackupName: '',
+                backupCount: 0,
+                deviceTotal: 0,
+                deviceManaged: 0,
+                deviceConnected: 0,
+                deviceDisconnected: 0,
+                deviceUnmanaged: 0
+              };
+            }
+
+            function pickConfigBackup(grid, nowSec) {
+              var rows = (grid && grid.data) || [];
+              var newest = 0;
+              var name = '';
+              var i;
+              if (!Array.isArray(rows)) {
+                rows = [];
+              }
+              for (i = 0; i < rows.length; i++) {
+                var row = rows[i] || {};
+                var units = String(row.backup_units || '').toUpperCase();
+                if (units !== 'CONFIG') {
+                  continue;
+                }
+                var ts = parseExpireEpoch(row.backup_date);
+                if (ts > newest) {
+                  newest = ts;
+                  name = String(row.backup_file_name || '');
+                }
+              }
+              var age = 0;
+              if (newest > 0 && nowSec > newest) {
+                age = nowSec - newest;
+              }
+              return {
+                lastConfigBackup: newest,
+                lastConfigBackupAge: age,
+                lastConfigBackupName: name,
+                backupCount: rows.length
+              };
+            }
+
+            function collectAccount(params, getJson) {
+              getJson = getJson || cloudGet;
+              var snap = emptyAccountSnapshot('missing token');
+              if (!params || !String(params.token || '')) {
+                return snap;
+              }
+              var viq = getJson(params, '/account/viq');
+              if (!viq.ok || !viq.data) {
+                snap.error = viq.error || 'viq failed';
+                return snap;
+              }
+              var body = viq.data;
+              var counted = aggregateLicenses(body.licenses);
+              snap.ok = 1;
+              snap.error = '';
+              snap.customerId = String(body.customer_id || '');
+              snap.expired = body.expired === true || body.expired === 1 || body.expired === 'true' ? 1 : 0;
+              snap.licenseCount = counted.licenseCount;
+              snap.licenseTypes = counted.licenseTypes;
+              flattenPool('pilot', counted.pools.pilot, snap);
+              flattenPool('nav', counted.pools.nav, snap);
+              flattenPool('copilot', counted.pools.copilot, snap);
+              flattenPool('nac', counted.pools.nac, snap);
+
+              var vhm = getJson(params, '/account/vhm/status');
+              if (vhm.ok && vhm.data) {
+                snap.vhmStatus = String(vhm.data.current_status || '');
+                snap.vhmActive = vhmIsActive(snap.vhmStatus);
+              } else {
+                snap.vhmActive = 2;
+                snap.vhmStatus = '';
+                snap.error = vhm.error || 'vhm failed';
+              }
+
+              var token = getJson(params, '/auth/apitoken/info');
+              if (token.ok && token.data) {
+                var ttl = Number(token.data.expires_in);
+                if (!isFinite(ttl) || ttl < 0) {
+                  var exp = parseExpireEpoch(token.data.expiration_time);
+                  ttl = exp > 0 ? exp - Math.floor(Date.now() / 1000) : 0;
+                  if (ttl < 0) {
+                    ttl = 0;
+                  }
+                }
+                snap.tokenTtl = ttl;
+                snap.tokenKnown = 1;
+              } else {
+                snap.tokenKnown = 0;
+                snap.tokenTtl = 0;
+                if (!snap.error) {
+                  snap.error = token.error || 'token info failed';
+                }
+              }
+              return snap;
+            }
+
+            function collectOps(params, getJson, nowSec) {
+              getJson = getJson || cloudGet;
+              nowSec = nowSec || Math.floor(Date.now() / 1000);
+              var snap = emptyOpsSnapshot('missing token');
+              if (!params || !String(params.token || '')) {
+                return snap;
+              }
+              var errors = [];
+              var backup = getJson(params, '/backup/history/grid?page=1&limit=10');
+              if (backup.ok && backup.data) {
+                var picked = pickConfigBackup(backup.data, nowSec);
+                snap.lastConfigBackup = picked.lastConfigBackup;
+                snap.lastConfigBackupAge = picked.lastConfigBackupAge;
+                snap.lastConfigBackupName = picked.lastConfigBackupName;
+                snap.backupCount = picked.backupCount;
+              } else {
+                errors.push(backup.error || 'backup grid failed');
+              }
+              var stats = getJson(params, '/devices/stats');
+              if (stats.ok && stats.data) {
+                snap.deviceTotal = Number(stats.data.total_device_count) || 0;
+                snap.deviceManaged = Number(stats.data.managed_device_count) || 0;
+                snap.deviceConnected = Number(stats.data.connected_device_count) || 0;
+                var basis = snap.deviceManaged > 0 ? snap.deviceManaged : snap.deviceTotal;
+                snap.deviceDisconnected = basis > snap.deviceConnected ? basis - snap.deviceConnected : 0;
+                snap.deviceUnmanaged = snap.deviceTotal > snap.deviceManaged ? snap.deviceTotal - snap.deviceManaged : 0;
+              } else {
+                errors.push(stats.error || 'device stats failed');
+              }
+              snap.ok = errors.length ? 0 : 1;
+              snap.error = errors.join('; ');
+              return snap;
+            }
+
+            var params = JSON.parse(value);
+            return JSON.stringify(collectOps(params));
+          timeout: '{$XIQ.CLOUD.OPS.TIMEOUT}'
+          parameters:
+            - name: url
+              value: '{$XIQ.CLOUD.API.URL}'
+            - name: token
+              value: '{$XIQ.CLOUD.API.TOKEN}'
+          description: |
+            GET /backup/history/grid and /devices/stats. Census only — no disconnected ticket, query only.
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: ops
+        - uuid: 8262680c7331464fbc3d861133b09dd7
+          name: ExtremeCloud IQ API available
+          type: DEPENDENT
+          key: xiq.cloud.available
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.ok'
+          master_item:
+            key: xiq.cloud.account
+          valuemap:
+            name: ExtremeCloud IQ API
+          triggers:
+            - uuid: 3adb3c4d77ef468a80b4a5cdb0ff4c3c
+              expression: 'min(/ExtremeCloud IQ by HTTP/xiq.cloud.available,15m)=0'
+              name: 'ExtremeCloud IQ: API unexpected response'
+              event_name: 'ExtremeCloud IQ: API unexpected response'
+              priority: AVERAGE
+              description: |
+                Bearer token or api.extremecloudiq.com failed. Onboarding and Portal seats go dark. RADIUS still works. Does not depend on SE NBI.
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: a93206e4776844caa1d7ceb840d83f01
+              expression: 'nodata(/ExtremeCloud IQ by HTTP/xiq.cloud.account,20m)=1'
+              name: 'ExtremeCloud IQ: no API data for 20m'
+              event_name: 'ExtremeCloud IQ: no API data for 20m'
+              priority: AVERAGE
+              description: |
+                Account SCRIPT produced no values. Token, proxy egress, or Extreme outage.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: health
+        - uuid: 6cdf1c9234ee49aa8fee09796a4101d4
+          name: ExtremeCloud IQ last error
+          type: DEPENDENT
+          key: xiq.cloud.error
+          delay: '0'
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.error'
+          master_item:
+            key: xiq.cloud.account
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: health
+        - uuid: f55eba41a0e344fa910bcdd95eddf661
+          name: ExtremeCloud IQ customer id
+          type: DEPENDENT
+          key: xiq.cloud.customer
+          delay: '0'
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.customerId'
+          master_item:
+            key: xiq.cloud.account
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: health
+        - uuid: b4be98e8b1d848cd8d98f9ae71d52315
+          name: ExtremeCloud IQ VIQ expired
+          type: DEPENDENT
+          key: xiq.cloud.expired
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.expired'
+          master_item:
+            key: xiq.cloud.account
+          valuemap:
+            name: ExtremeCloud IQ bool
+          triggers:
+            - uuid: 6691af1eb854461e8af9ca7ba218a17e
+              expression: 'last(/ExtremeCloud IQ by HTTP/xiq.cloud.available)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.expired)=1'
+              name: 'ExtremeCloud IQ: VIQ expired'
+              event_name: 'ExtremeCloud IQ: VIQ expired'
+              priority: AVERAGE
+              description: |
+                GET /account/viq expired=true. Connected-mode devices go unmanaged. Not a switch ICMP.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: health
+        - uuid: af03307a07ec43399120caef9f3809bb
+          name: ExtremeCloud IQ VHM status
+          type: DEPENDENT
+          key: xiq.cloud.vhm.status
+          delay: '0'
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.vhmStatus'
+          master_item:
+            key: xiq.cloud.account
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: health
+        - uuid: ed100683dc734eb39da1b14c1e74fc12
+          name: ExtremeCloud IQ VHM active
+          type: DEPENDENT
+          key: xiq.cloud.vhm.active
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.vhmActive'
+          master_item:
+            key: xiq.cloud.account
+          valuemap:
+            name: ExtremeCloud IQ tri-state
+          triggers:
+            - uuid: 49847026b5cb4e7baa1cb3f613ecf99f
+              expression: 'last(/ExtremeCloud IQ by HTTP/xiq.cloud.available)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.vhm.active)=0'
+              name: 'ExtremeCloud IQ: VHM not ACTIVE'
+              event_name: 'ExtremeCloud IQ: VHM not ACTIVE'
+              priority: AVERAGE
+              description: |
+                GET /account/vhm/status is not ACTIVE_STATUS / ACTIVE. Unknown (2) stays silent.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: health
+        - uuid: 89ccbc2c3f4d4fb49aef9572b4c89026
+          name: ExtremeCloud IQ API token TTL
+          type: DEPENDENT
+          key: xiq.cloud.token.ttl
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          units: 's'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.tokenTtl'
+          master_item:
+            key: xiq.cloud.account
+          triggers:
+            - uuid: 03c7f947346742e0a862bd36e8fb4357
+              expression: 'last(/ExtremeCloud IQ by HTTP/xiq.cloud.available)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.token.known)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.token.ttl)<{$XIQ.CLOUD.TOKEN.WARN}'
+              name: 'ExtremeCloud IQ: API token expires soon'
+              event_name: 'ExtremeCloud IQ: API token expires soon'
+              priority: WARNING
+              description: |
+                GET /auth/apitoken/info TTL below {$XIQ.CLOUD.TOKEN.WARN}. Dayside rotate. Do not POST a new token from Zabbix.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: health
+        - uuid: 7795c8fe986e44738adb14a31ae269c4
+          name: ExtremeCloud IQ API token info ok
+          type: DEPENDENT
+          key: xiq.cloud.token.known
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.tokenKnown'
+          master_item:
+            key: xiq.cloud.account
+          valuemap:
+            name: ExtremeCloud IQ API
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: health
+        - uuid: 15b65a478de941069c63a2bd99cd70cd
+          name: ExtremeCloud IQ license row count
+          type: DEPENDENT
+          key: xiq.cloud.license.count
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.licenseCount'
+          master_item:
+            key: xiq.cloud.account
+          triggers:
+            - uuid: f1c9a41478f849e18b838c7f9dd2a60f
+              expression: 'last(/ExtremeCloud IQ by HTTP/xiq.cloud.available)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.license.count)=0'
+              name: 'ExtremeCloud IQ: no license rows'
+              event_name: 'ExtremeCloud IQ: no license rows'
+              priority: AVERAGE
+              description: |
+                VIQ answered but licenses[] is empty. Token missing licenses:r, or Portal unlink.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 5a9c7d0350d24e3597fad04a937d9614
+          name: ExtremeCloud IQ license_type values
+          type: DEPENDENT
+          key: xiq.cloud.license.types
+          delay: '0'
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.licenseTypes'
+          master_item:
+            key: xiq.cloud.account
+          description: |
+            Joined unique licenses[].license_type for Latest data canary. Do not key LLD on this until the Portal SKUs are proven.
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 009308693c20488bbb2568114b392c09
+          name: Pilot Cloud present
+          type: DEPENDENT
+          key: xiq.cloud.pilot.present
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.pilotPresent'
+          master_item:
+            key: xiq.cloud.account
+          valuemap:
+            name: ExtremeCloud IQ bool
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 5327684014914b1397f4231800ca95cd
+          name: Pilot Cloud have
+          type: DEPENDENT
+          key: xiq.cloud.pilot.have
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.pilotHave'
+          master_item:
+            key: xiq.cloud.account
+          description: |
+            Sum of matching licenses[].devices (Portal 581 class). Not SE network.devices.
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 90b0eca4092e4aeb83d330fbcffdfb35
+          name: Pilot Cloud activated
+          type: DEPENDENT
+          key: xiq.cloud.pilot.activated
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.pilotActivated'
+          master_item:
+            key: xiq.cloud.account
+          description: |
+            Cloud consume including APs. Never subtract SE 320 from this.
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: e3759dd29ec14ce08437c7372361b2b7
+          name: Pilot Cloud available
+          type: DEPENDENT
+          key: xiq.cloud.pilot.available
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.pilotAvailable'
+          master_item:
+            key: xiq.cloud.account
+          description: |
+            Cloud remaining. This is Portal available, not Portal total minus SE used.
+          triggers:
+            - uuid: 018bdbe01ccb4e928c6f4f8b4dc53500
+              expression: 'last(/ExtremeCloud IQ by HTTP/xiq.cloud.available)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.pilot.present)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.pilot.have)>0 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.pilot.available)=0'
+              name: 'ExtremeCloud IQ: Pilot Cloud available is 0'
+              event_name: 'ExtremeCloud IQ: Pilot Cloud available is 0'
+              priority: WARNING
+              description: |
+                Cannot onboard. Cloud available from VIQ licenses[], never SE inventory and never Portal total minus SE used.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: d5dc911bfdb14ec2816ec6e134c7307e
+          name: Pilot Cloud earliest expire
+          type: DEPENDENT
+          key: xiq.cloud.pilot.expire
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          units: 'unixtime'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.pilotExpire'
+          master_item:
+            key: xiq.cloud.account
+          triggers:
+            - uuid: 957bea2ecb504de3bd50997ed7b67114
+              expression: 'last(/ExtremeCloud IQ by HTTP/xiq.cloud.available)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.pilot.present)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.pilot.have)>0 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.pilot.expire)>0 and (last(/ExtremeCloud IQ by HTTP/xiq.cloud.pilot.expire)-now())<{$XIQ.CLOUD.EXPIRY.WARN}'
+              name: 'ExtremeCloud IQ: Pilot SKU expires soon'
+              event_name: 'ExtremeCloud IQ: Pilot SKU expires soon'
+              priority: WARNING
+              description: |
+                Earliest matched Pilot expire_date is within {$XIQ.CLOUD.EXPIRY.WARN}.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 9a99f862adff48bd91f06131bd8986b5
+          name: Navigator Cloud present
+          type: DEPENDENT
+          key: xiq.cloud.nav.present
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.navPresent'
+          master_item:
+            key: xiq.cloud.account
+          valuemap:
+            name: ExtremeCloud IQ bool
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: d0ac704a97a441bbae179b3f05e59090
+          name: Navigator Cloud have
+          type: DEPENDENT
+          key: xiq.cloud.nav.have
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.navHave'
+          master_item:
+            key: xiq.cloud.account
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 44c75ed761df4ef9addfa360faa2af13
+          name: Navigator Cloud activated
+          type: DEPENDENT
+          key: xiq.cloud.nav.activated
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.navActivated'
+          master_item:
+            key: xiq.cloud.account
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: f5a76ab6299c4b3ebc619127b68e27f2
+          name: Navigator Cloud available
+          type: DEPENDENT
+          key: xiq.cloud.nav.available
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.navAvailable'
+          master_item:
+            key: xiq.cloud.account
+          triggers:
+            - uuid: 254756d46274477f81bb5c132f68fdf6
+              expression: 'last(/ExtremeCloud IQ by HTTP/xiq.cloud.available)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.nav.present)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.nav.have)>0 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.nav.available)=0'
+              name: 'ExtremeCloud IQ: Navigator Cloud available is 0'
+              event_name: 'ExtremeCloud IQ: Navigator Cloud available is 0'
+              priority: WARNING
+              description: |
+                Cannot onboard a Navigator-tier device. Cloud available, not SE inventory.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 7080fb1e27184efaa79a9139d5e6b48c
+          name: Navigator Cloud earliest expire
+          type: DEPENDENT
+          key: xiq.cloud.nav.expire
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          units: 'unixtime'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.navExpire'
+          master_item:
+            key: xiq.cloud.account
+          triggers:
+            - uuid: c0e2fefdf2fe4a1eb4b739f597e05016
+              expression: 'last(/ExtremeCloud IQ by HTTP/xiq.cloud.available)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.nav.present)=1 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.nav.have)>0 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.nav.expire)>0 and (last(/ExtremeCloud IQ by HTTP/xiq.cloud.nav.expire)-now())<{$XIQ.CLOUD.EXPIRY.WARN}'
+              name: 'ExtremeCloud IQ: Navigator SKU expires soon'
+              event_name: 'ExtremeCloud IQ: Navigator SKU expires soon'
+              priority: WARNING
+              description: |
+                Earliest matched Navigator expire_date is within {$XIQ.CLOUD.EXPIRY.WARN}.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: ffc00cae09584eedbc681138516251e0
+          name: Copilot Cloud have
+          type: DEPENDENT
+          key: xiq.cloud.copilot.have
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.copilotHave'
+          master_item:
+            key: xiq.cloud.account
+          description: |
+            Collect only. Copilot exhaust stays off until a later canary.
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: edba52989c664cd0b5e714fe3d940413
+          name: Copilot Cloud activated
+          type: DEPENDENT
+          key: xiq.cloud.copilot.activated
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.copilotActivated'
+          master_item:
+            key: xiq.cloud.account
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 5565207f8fb6421c9d187f2ee1ad4aeb
+          name: Copilot Cloud available
+          type: DEPENDENT
+          key: xiq.cloud.copilot.available
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.copilotAvailable'
+          master_item:
+            key: xiq.cloud.account
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 4527d21542224ef597cbaecfc5a55e29
+          name: NAC Cloud present
+          type: DEPENDENT
+          key: xiq.cloud.nac.present
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.nacPresent'
+          master_item:
+            key: xiq.cloud.account
+          description: |
+            1 if a licenses[] row matched NAC. Portal 3000 may live only on /nac-entitlements/stats — do not ticket available=0 from this item.
+          valuemap:
+            name: ExtremeCloud IQ bool
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 533989a97666423e912ba0b657670f90
+          name: NAC Cloud have
+          type: DEPENDENT
+          key: xiq.cloud.nac.have
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.nacHave'
+          master_item:
+            key: xiq.cloud.account
+          description: |
+            Collect only. NAC consume is SE 24h unique MACs, not this column.
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 8e90956d790849e08c85d35e9a31c46a
+          name: NAC Cloud activated
+          type: DEPENDENT
+          key: xiq.cloud.nac.activated
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.nacActivated'
+          master_item:
+            key: xiq.cloud.account
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 2b04d95d198145ecac1f0dee4f438af6
+          name: NAC Cloud available
+          type: DEPENDENT
+          key: xiq.cloud.nac.available
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.nacAvailable'
+          master_item:
+            key: xiq.cloud.account
+          description: |
+            Collect only until /nac-entitlements/stats is canaried. No trigger.
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 2e807ff790594c0a83e517b6cd8889d4
+          name: ExtremeCloud IQ last CONFIG backup
+          type: DEPENDENT
+          key: xiq.cloud.backup.time
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          units: 'unixtime'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.lastConfigBackup'
+          master_item:
+            key: xiq.cloud.ops
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: ops
+        - uuid: eff20879d95c45849c4d6654d74f708f
+          name: ExtremeCloud IQ last CONFIG backup age
+          type: DEPENDENT
+          key: xiq.cloud.backup.age
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          units: 's'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.lastConfigBackupAge'
+          master_item:
+            key: xiq.cloud.ops
+          triggers:
+            - uuid: c092eaa715604aff8591e1efa82a672b
+              expression: 'last(/ExtremeCloud IQ by HTTP/xiq.cloud.backup.time)>0 and last(/ExtremeCloud IQ by HTTP/xiq.cloud.backup.age)>={$XIQ.CLOUD.BACKUP.MAX}'
+              name: 'ExtremeCloud IQ: last CONFIG backup stale'
+              event_name: 'ExtremeCloud IQ: last CONFIG backup stale'
+              priority: AVERAGE
+              description: |
+                Newest CONFIG row on GET /backup/history/grid is older than {$XIQ.CLOUD.BACKUP.MAX}. Empty grid stays silent until a first backup exists.
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: ops
+        - uuid: 547fc20f57244f428e486ab426733bff
+          name: ExtremeCloud IQ last CONFIG backup name
+          type: DEPENDENT
+          key: xiq.cloud.backup.name
+          delay: '0'
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.lastConfigBackupName'
+          master_item:
+            key: xiq.cloud.ops
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: ops
+        - uuid: 29be542eb8de4212b3890ecc4fff0c59
+          name: ExtremeCloud IQ device total
+          type: DEPENDENT
+          key: xiq.cloud.devices.total
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.deviceTotal'
+          master_item:
+            key: xiq.cloud.ops
+          description: |
+            GET /devices/stats census. No disconnected ticket — 01/02 own the box.
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: ops
+        - uuid: 9bef8aaa071842979c32067d9e5222cc
+          name: ExtremeCloud IQ device managed
+          type: DEPENDENT
+          key: xiq.cloud.devices.managed
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.deviceManaged'
+          master_item:
+            key: xiq.cloud.ops
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: ops
+        - uuid: 1eb40a59beab4fe1b1b5c76e55c7d24a
+          name: ExtremeCloud IQ device connected
+          type: DEPENDENT
+          key: xiq.cloud.devices.connected
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.deviceConnected'
+          master_item:
+            key: xiq.cloud.ops
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: ops
+        - uuid: 2fdcba083a5648af966f680f3d550a47
+          name: ExtremeCloud IQ device disconnected
+          type: DEPENDENT
+          key: xiq.cloud.devices.disconnected
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.deviceDisconnected'
+          master_item:
+            key: xiq.cloud.ops
+          description: |
+            Collect only. Do not page — switch/AP ICMP already does.
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: ops
+        - uuid: 1b106016b63343008f8b88aaeefeb548
+          name: ExtremeCloud IQ ops snapshot ok
+          type: DEPENDENT
+          key: xiq.cloud.ops.ok
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.ok'
+          master_item:
+            key: xiq.cloud.ops
+          valuemap:
+            name: ExtremeCloud IQ API
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: ops
+        - uuid: 967ab4a6405348dea9007621150477ad
+          name: ExtremeCloud IQ ops last error
+          type: DEPENDENT
+          key: xiq.cloud.ops.error
+          delay: '0'
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.error'
+          master_item:
+            key: xiq.cloud.ops
+          tags:
+            - tag: component
+              value: xiq-cloud
+            - tag: scope
+              value: ops
+        - uuid: a8b300c439144f03b0d1f3e46e07c74e
+          name: Unsupported items
+          type: INTERNAL
+          key: 'zabbix[host,,items_unsupported]'
+          delay: 15m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          tags:
+            - tag: component
+              value: census
+          triggers:
+            - uuid: 249053fe1a1b4315a1db9c5ebe5a8031
+              expression: 'last(/ExtremeCloud IQ by HTTP/zabbix[host,,items_unsupported])>0'
+              name: 'ExtremeCloud IQ: unsupported items present'
+              event_name: 'ExtremeCloud IQ: unsupported items present'
+              priority: AVERAGE
+              description: |
+                Schema field missing or SCRIPT error. Snapshot always stringifies zeros so Cloud 7.0 dependents stay supported.
+              tags:
+                - tag: scope
+                  value: availability
+      tags:
+        - tag: class
+          value: network
+        - tag: target
+          value: xiq-cloud
+      dashboards:
+        - uuid: 1edf21b1f9384d61a6a709c20a1f5c79
+          name: Health
+          pages:
+            - name: Overview
+              widgets:
+                - type: item
+                  name: API
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeCloud IQ by HTTP
+                        key: xiq.cloud.available
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: CAPI
+                - type: item
+                  name: Pilot available
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeCloud IQ by HTTP
+                        key: xiq.cloud.pilot.available
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: CPAV
+                - type: item
+                  name: Pilot have
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeCloud IQ by HTTP
+                        key: xiq.cloud.pilot.have
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: CPHV
+                - type: item
+                  name: Pilot activated
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeCloud IQ by HTTP
+                        key: xiq.cloud.pilot.activated
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: CPAC
+                - type: problems
+                  name: Problems
+                  y: '4'
+                  width: '72'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: CPROB
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                - type: svggraph
+                  name: Pilot Cloud seats
+                  y: '8'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 2774A4
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: ExtremeCloud IQ by HTTP
+                        key: xiq.cloud.pilot.available
+                    - type: STRING
+                      name: reference
+                      value: CPILG
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                - type: svggraph
+                  name: Last CONFIG backup age
+                  x: '36'
+                  y: '8'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: E68931
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: ExtremeCloud IQ by HTTP
+                        key: xiq.cloud.backup.age
+                    - type: STRING
+                      name: reference
+                      value: CBKUP
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+            - name: Licenses
+              widgets:
+                - type: item
+                  name: Pilot have
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeCloud IQ by HTTP
+                        key: xiq.cloud.pilot.have
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: LPHV
+                - type: item
+                  name: Pilot activated
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeCloud IQ by HTTP
+                        key: xiq.cloud.pilot.activated
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: LPAC
+                - type: item
+                  name: Pilot available
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeCloud IQ by HTTP
+                        key: xiq.cloud.pilot.available
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: LPAV
+                - type: item
+                  name: Navigator available
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeCloud IQ by HTTP
+                        key: xiq.cloud.nav.available
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: LNAV
+
+      valuemaps:
+        - uuid: 4dedf31c9dc04797ac23833e9653c7b1
+          name: ExtremeCloud IQ API
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+        - uuid: 6d390939e8f34570a36f13cb8111b727
+          name: ExtremeCloud IQ bool
+          mappings:
+            - value: '0'
+              newvalue: No
+            - value: '1'
+              newvalue: Yes
+        - uuid: 9f224eff307c44c5aacf80bfc65f4a48
+          name: ExtremeCloud IQ tri-state
+          mappings:
+            - value: '0'
+              newvalue: No
+            - value: '1'
+              newvalue: Yes
+            - value: '2'
+              newvalue: Unknown

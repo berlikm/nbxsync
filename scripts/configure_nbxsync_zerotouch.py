@@ -208,6 +208,9 @@ TPL_NAMES = {
     'xiqse_observability': 'XIQ-SE Observability',
     'extremecontrol_observability': 'ExtremeControl Observability',
     'extremecontrol_snmp': 'ExtremeControl by SNMP',
+    # Companion YAML in zabbix/templates/extremecloud_iq_http/. Soft-resolve
+    # after the network script imports it. Missing is a warning, not an abort.
+    'xiq_cloud_http': 'ExtremeCloud IQ by HTTP',
     'pure_storage_http': 'Pure Storage FlashArray v2 by HTTP',
     'gitlab_http': 'GitLab by HTTP',
     # Created in Zabbix: clone of Network Generic without snmptrap.fallback
@@ -601,6 +604,7 @@ OPTIONAL_TPL_KEYS = frozenset({
     'xiqse_observability',
     'extremecontrol_observability',
     'extremecontrol_snmp',
+    'xiq_cloud_http',
 })
 
 # Alternate Zabbix names tried in order when the primary TPL_NAMES entry is absent.

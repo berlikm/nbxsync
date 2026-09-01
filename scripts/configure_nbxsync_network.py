@@ -74,6 +74,11 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     ``XIQ.?SE|Site Engine|NetSight``, FQDN Jinja on matching platforms, role
     **NAC** (ANY companion + SNMP pack). Fail-closed on missing YAML. No
     HostSync, no Extreme import, no zerotouch.
+  * ExtremeCloud IQ: ``--apply-xiq-cloud`` / ``--check-xiq-cloud`` import
+    **ExtremeCloud IQ by HTTP** on the same Site Engine host (second template,
+    not folded into NBI). Soft TemplateRule ``XIQ.?SE|Site Engine|NetSight``,
+    CG token create-if-absent. Fail-closed on missing YAML. No HostSync, no
+    Extreme import, no XIQ-SE import, no zerotouch.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -92,6 +97,7 @@ Stage matrix (what each flag enables):
   ``--check-fmg-faz`` / ``--apply-fmg-faz`` = FortiManager/FortiAnalyzer SNMP pack without zerotouch: import parent + Observability companions, split platform rules, disable leftover Network Generic rule. No HostSync.
   ``--apply-cato`` / ``--check-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
   ``--apply-xiqse`` / ``--check-xiqse`` = XIQ-SE / ExtremeControl without zerotouch: import GraphQL companions plus ExtremeControl by SNMP, soft Site Engine TemplateRule, role NAC (ANY + SNMP). Fail-closed missing YAML. No HostSync.
+  ``--apply-xiq-cloud`` / ``--check-xiq-cloud`` = ExtremeCloud IQ by HTTP without zerotouch: import companion on the Site Engine host, soft TemplateRule, CG token create-if-absent. Fail-closed missing YAML. No HostSync, no NBI import.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -150,6 +156,10 @@ Usage::
   # XIQ-SE / ExtremeControl Observability (no zerotouch, no Extreme YAML, no HostSync)
   python scripts/configure_nbxsync_network.py --check-xiqse
   python scripts/configure_nbxsync_network.py --apply-xiqse
+
+  # ExtremeCloud IQ by HTTP (same Site Engine host, not NBI, no HostSync)
+  python scripts/configure_nbxsync_network.py --check-xiq-cloud
+  python scripts/configure_nbxsync_network.py --apply-xiq-cloud
 
   # Temporary LM cutover silence only (not the long-term target)
   python scripts/configure_nbxsync_network.py --apply --cutover-silence
@@ -262,6 +272,7 @@ from fortigate_http_zabbix import (
     inspect_http_scripts,
 )
 from extreme_ascii_titles import title_payload as _title_payload
+import xiq_cloud as _xiq_cloud
 import xiqse_observability as _xiqse
 from extreme_health_zabbix import (
     IQ_HEALTH_MACROS,
@@ -2700,12 +2711,22 @@ def _ensure_macro_assignment_if_absent(
     return True
 
 
-def _mirror_license_totals_to_platform(server, platform, cg, macro_name: str, value: str, *, mtype) -> None:
-    """One HostSync-visible copy of a CG license total on the Site Engine platform.
+def _mirror_license_totals_to_platform(
+    server,
+    platform,
+    cg,
+    macro_name: str,
+    value: str,
+    *,
+    mtype,
+    desc_prefix: str = 'nwn:xiqse',
+) -> None:
+    """One HostSync-visible copy of a CG value on the Site Engine platform.
 
     HostSync inherits platform macros. It does not expand CG macros at resolve
-    time, so --apply-xiqse copies CG → platform. Dedupes RQ clones that used
-    the unique-on-value constraint. Delete extras before changing value.
+    time, so --apply-xiqse / --apply-xiq-cloud copies CG → platform. Dedupes RQ
+    clones that used the unique-on-value constraint. Delete extras before
+    changing value.
     """
     zmacro, _ = ensure(
         M.ZabbixMacro,
@@ -2715,7 +2736,7 @@ def _mirror_license_totals_to_platform(server, platform, cg, macro_name: str, va
         defaults={
             'value': '',
             'type': mtype,
-            'description': f'nwn:xiqse:{macro_name}',
+            'description': f'{desc_prefix}:{macro_name}',
         },
         update_fields=['type', 'description'],
     )
@@ -5250,6 +5271,214 @@ def run_apply_xiqse() -> int:
     return 0
 
 
+def _preflight_xiq_cloud() -> list[str]:
+    errors: list[str] = []
+    for name, path in _xiq_cloud.TEMPLATE_FILES.items():
+        if not path.exists() or not path.read_text(encoding='utf-8').strip():
+            errors.append(f'missing YAML for {name}: {path}')
+    return errors
+
+
+def _print_xiq_cloud_plan(server, *, errors: list[str], apply: bool, zbx_names: list[str] | None = None) -> None:
+    logger.info('=' * 60)
+    logger.info(
+        'ExtremeCloud IQ proposed writes (nothing written yet)' if apply else 'ExtremeCloud IQ check (read-only)'
+    )
+    logger.info('=' * 60)
+    for name, path in _xiq_cloud.TEMPLATE_FILES.items():
+        logger.info('  %s ← %s', name, path)
+    if zbx_names:
+        logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
+    platforms = _xiqse_platforms()
+    logger.info(
+        '  TemplateRule %s pattern %s → %s (ANY; second template on the Site Engine host; soft if no platform matches yet)',
+        _xiq_cloud.CLOUD_TEMPLATE_RULE,
+        _xiqse.SE_PLATFORM_PATTERN,
+        _xiq_cloud.CLOUD_TEMPLATE_NAME,
+    )
+    logger.info('  Platforms: %s', ', '.join(p.name for p in platforms) or '(none — rule still created)')
+    logger.info(
+        '  CG %s %s (create-if-absent empty SECRET, never overwrite CG; mirror onto Site Engine platforms for HostSync)',
+        _xiq_cloud.TOKEN_CG_NAME,
+        _xiq_cloud.TOKEN_MACRO,
+    )
+    logger.info('  Default %s = %s (template YAML)', _xiq_cloud.API_URL_MACRO, _xiq_cloud.API_URL_DEFAULT)
+    logger.info('  No HostSync, no Extreme import, no XIQ-SE import, no zerotouch, no ICMP nest, no NBI fold')
+    if errors:
+        logger.info('Preflight errors (%s) — abort, no writes:', len(errors))
+        for err in errors:
+            logger.info('  %s', err)
+
+
+def _require_xiq_cloud_preflight(*, server=None, apply: bool = True):
+    """Fail-closed YAML gate. Does not import YAML or retarget rules."""
+    errors = _preflight_xiq_cloud()
+    if server is None:
+        server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
+        if server is None:
+            raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
+    zbx_names: list[str] = []
+    if not errors:
+        with ZabbixConnection(server) as api:
+            for name in _xiq_cloud.TEMPLATE_FILES:
+                row = _lookup_zabbix_template(api, name)
+                if row is not None:
+                    zbx_names.append(name)
+    _print_xiq_cloud_plan(server, errors=errors, apply=apply, zbx_names=zbx_names)
+    if errors:
+        for error in errors:
+            logger.error('  preflight: %s', error)
+        raise SystemExit('ExtremeCloud IQ preflight failed — no writes:\n  ' + '\n  '.join(errors))
+    return server
+
+
+def import_xiq_cloud_templates(api) -> dict[str, tuple[int, str]]:
+    """Import ExtremeCloud IQ by HTTP. Fail closed. Does not import NBI YAML."""
+    logger.info('Network: import ExtremeCloud IQ by HTTP')
+    out = import_yaml_templates(api, _xiq_cloud.TEMPLATE_FILES, strict=True)
+    missing = [name for name in _xiq_cloud.TEMPLATE_FILES if name not in out]
+    if missing:
+        raise SystemExit('ExtremeCloud IQ templates missing after import: ' + ', '.join(missing))
+    return out
+
+
+def _step_xiq_cloud_token_scope(server, platforms) -> None:
+    """Long-lived Cloud Bearer: CG ExtremeCloud IQ API is the source of truth.
+
+    Apply never overwrites the CG secret. It mirrors CG → Site Engine platforms
+    so HostSync can push them. Do not type the token as a Zabbix host macro.
+    """
+    cg, cg_created = M.ZabbixConfigurationGroup.objects.get_or_create(
+        name=_xiq_cloud.TOKEN_CG_NAME,
+        defaults={
+            'description': (
+                'Long-lived ExtremeCloud IQ API token (POST /auth/apitoken once in the Portal). '
+                'Set {$XIQ.CLOUD.API.TOKEN} here, re-run --apply-xiq-cloud so platforms match, '
+                'then HostSync the Site Engine. Apply never overwrites this CG.'
+            )
+        },
+    )
+    if cg_created:
+        logger.info('  Created CG %s', cg.name)
+    created = _ensure_macro_assignment_if_absent(
+        server,
+        cg,
+        _xiq_cloud.TOKEN_MACRO,
+        '',
+        mtype=ZabbixMacroTypeChoices.SECRET,
+        description=f'nwn:xiq-cloud:{_xiq_cloud.TOKEN_MACRO}',
+    )
+    cg_value = _assignment_value(server, cg, _xiq_cloud.TOKEN_MACRO) or ''
+    logger.info(
+        '  CG %s %s %s%s',
+        cg.name,
+        _xiq_cloud.TOKEN_MACRO,
+        '(set)' if cg_value else '(empty)',
+        ' (created)' if created else '',
+    )
+    for plat in platforms:
+        _mirror_license_totals_to_platform(
+            server,
+            plat,
+            cg,
+            _xiq_cloud.TOKEN_MACRO,
+            cg_value,
+            mtype=ZabbixMacroTypeChoices.SECRET,
+            desc_prefix='nwn:xiq-cloud',
+        )
+        logger.info(
+            '  Platform %s %s ← CG %s',
+            plat.name,
+            _xiq_cloud.TOKEN_MACRO,
+            '(set)' if cg_value else '(empty)',
+        )
+        _asg, assigned = ensure(
+            M.ZabbixConfigurationGroupAssignment,
+            zabbixconfigurationgroup=cg,
+            assigned_object_type=ct(Platform),
+            assigned_object_id=plat.id,
+            defaults={},
+        )
+        logger.info('  Platform %s ← CG %s%s', plat.name, cg.name, ' (new)' if assigned else '')
+    if not platforms:
+        logger.warning(
+            '  No XIQ-SE platforms — CG %s exists; assign it when the platform is named',
+            cg.name,
+        )
+
+
+def _step_xiq_cloud_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
+    """Soft second TemplateRule on Site Engine platforms. No HostSync."""
+    logger.info('=' * 60)
+    logger.info('Network: ExtremeCloud IQ nbxSync levers (no HostSync)')
+    logger.info('=' * 60)
+    cloud = ensure_nbx_template(
+        server,
+        imported[_xiq_cloud.CLOUD_TEMPLATE_NAME][0],
+        imported[_xiq_cloud.CLOUD_TEMPLATE_NAME][1],
+        req=[HostInterfaceRequirementChoices.ANY],
+    )
+    existing = get_template_rule(server, _xiq_cloud.CLOUD_TEMPLATE_RULE)
+    hg = existing.zabbixhostgroup if existing is not None and existing.zabbixhostgroup_id else _os_network_hostgroup(server)
+    rule_defaults = {
+        'pattern': _xiqse.SE_PLATFORM_PATTERN,
+        'zabbixtemplate': cloud,
+        'enabled': True,
+        'priority': 101,
+        'zabbixtag': None,
+        'zabbixhostgroup': hg,
+        'require_tags': '',
+        'role_pattern': '',
+        'manufacturer': None,
+    }
+    update_fields = (
+        ['zabbixtemplate', 'enabled', 'pattern', 'priority']
+        if existing is not None
+        else None
+    )
+    ensure_template_rule(server, _xiq_cloud.CLOUD_TEMPLATE_RULE, rule_defaults, update_fields=update_fields)
+    logger.info(
+        '  TemplateRule %s → %s (ANY; companion next to %s)',
+        simulation_rule_name(server, _xiq_cloud.CLOUD_TEMPLATE_RULE),
+        cloud.name,
+        _xiqse.SE_TEMPLATE_NAME,
+    )
+    _step_xiq_cloud_token_scope(server, _xiqse_platforms())
+
+
+def run_check_xiq_cloud() -> int:
+    """Read-only ExtremeCloud IQ YAML + Zabbix presence check."""
+    _require_xiq_cloud_preflight(apply=False)
+    logger.info('ExtremeCloud IQ preflight OK — check-only mode wrote nothing')
+    return 0
+
+
+def run_apply_xiq_cloud() -> int:
+    """Import ExtremeCloud IQ by HTTP without zerotouch, HostSync, or NBI YAML.
+
+    Fail-closed on missing YAML. Soft TemplateRule on the same Site Engine
+    platforms as XIQ-SE Observability (second template, same host).
+    """
+    server = _require_xiq_cloud_preflight(apply=True)
+    logger.info('Preflight OK — importing ExtremeCloud IQ by HTTP and writing nbxSync levers')
+    with ZabbixConnection(server) as api:
+        imported = import_xiq_cloud_templates(api)
+    _step_xiq_cloud_nbxsync(server, imported)
+    logger.info(
+        'ExtremeCloud IQ pack written in NetBox. No HostSync. '
+        'TemplateRule %s → %s on the same Site Engine platforms as %s. '
+        'Set %s on CG %s, re-run --apply-xiq-cloud so platforms match, then HostSync the Site Engine. '
+        'Do not POST /auth/apitoken from Zabbix. Do not fold this into NBI. '
+        'Do not re-run zerotouch to refresh this pack.',
+        _xiq_cloud.CLOUD_TEMPLATE_RULE,
+        _xiq_cloud.CLOUD_TEMPLATE_NAME,
+        _xiqse.SE_TEMPLATE_NAME,
+        _xiq_cloud.TOKEN_MACRO,
+        _xiq_cloud.TOKEN_CG_NAME,
+    )
+    return 0
+
+
 def run_zabbix_only(*, link_speed_expect: bool = False) -> int:
     """Fallback smoke without NetBox object graph — delegates to run_network_zabbix_sim."""
     from run_network_zabbix_sim import main as sim_main
@@ -5312,6 +5541,16 @@ def main() -> int:
         action='store_true',
         help='Read-only XIQ-SE YAML presence check; no writes',
     )
+    mode.add_argument(
+        '--apply-xiq-cloud',
+        action='store_true',
+        help='ExtremeCloud IQ by HTTP: import companion, soft Site Engine TemplateRule, CG token create-if-absent; no HostSync, no NBI import, no zerotouch',
+    )
+    mode.add_argument(
+        '--check-xiq-cloud',
+        action='store_true',
+        help='Read-only ExtremeCloud IQ YAML presence check; no writes',
+    )
     parser.add_argument('--link-speed-expect', action='store_true', help='Also assign Port Speed Expect on Switch roles (avoid if already nested on VOSS/Observability)')
     parser.add_argument(
         '--cutover-silence',
@@ -5359,6 +5598,14 @@ def main() -> int:
         if args.link_speed_expect or args.cutover_silence:
             raise SystemExit('--apply-xiqse does not take --link-speed-expect or --cutover-silence')
         return run_apply_xiqse()
+    if args.check_xiq_cloud:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--check-xiq-cloud does not take --link-speed-expect or --cutover-silence')
+        return run_check_xiq_cloud()
+    if args.apply_xiq_cloud:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--apply-xiq-cloud does not take --link-speed-expect or --cutover-silence')
+        return run_apply_xiq_cloud()
     return run_apply(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
 
 

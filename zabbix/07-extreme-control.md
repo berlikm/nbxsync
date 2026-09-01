@@ -19,7 +19,7 @@ This page is the **target contract**. YAML lives in `templates/xiqse_observabili
 | Never silent | GraphQL nodata; zero engines discovered; 24h census truncated (`count == maxResults`). SNMP-dead Warning on the engine if the MONITORING profile stops answering |
 | Collect first | Heap / CPU thresholds off until a quiet baseline. Log-forward is elapsed `{$XIQ.NAC.FRESH}` (no wall clock — engines are in CH / CN / HU / KR). SNMP fail-ratio and contact-lost gated (`101` / CONTROL=0) |
 | One `icmpping` | Nested only if the host does not already ping. Do not also assign Network Generic |
-| Host dashboard | **Health** Overview + Licenses: NAC **SE used**. Pilot **Cloud consumed** once 08 is linked; until then the 320 tile is SE inventory only |
+| Host dashboard | **Health** Overview + Licenses: NAC **SE used**. Pilot **Cloud consumed** once 08 is linked (`--apply-xiq-cloud`); until then the 320 tile is SE inventory only |
 
 Disaster is campus-wide auth later, on a **service / site** host — not on this template.
 

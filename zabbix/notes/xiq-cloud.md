@@ -1,7 +1,7 @@
 # ExtremeCloud IQ tenant — analysis
 
 Operator page: [08-extremecloud-iq.md](../08-extremecloud-iq.md).  
-**Do not** treat this as a second policy. YAML is not built.
+**Do not** treat this as a second policy. YAML lives in [`templates/extremecloud_iq_http/`](../templates/extremecloud_iq_http/).
 
 ---
 
