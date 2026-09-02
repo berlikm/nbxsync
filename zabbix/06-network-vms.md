@@ -57,6 +57,8 @@ service port / HTTP  →  host ICMP  →  site
 | Check | Why |
 |---|---|
 | Zabbix proxy last-seen | already in 01; still required here |
+| Proxy poller queue / process busy | SCRIPT/SNMP last-check hours late **while ICMP on the same proxy is fresh** — [notes/swiss-proxy-tuning.md](notes/swiss-proxy-tuning.md) |
+| Every item ~1h stale | clock/TZ; proxy UTC + NTP is not 1h wrong |
 | Zabbix server from **outside** | proxy cannot tell you the cloud UI is dead |
 | NetBox HTTP | inventory + sync stop |
 
