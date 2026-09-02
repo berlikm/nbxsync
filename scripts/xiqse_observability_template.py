@@ -270,7 +270,7 @@ def render_se() -> str:
         f'nodata(/{TPL}/xiqse.nbi.health,15m)=1',
         'XIQ-SE: no NBI data for 15m',
         'AVERAGE',
-        'Health SCRIPT produced no values. Token, proxy, or TLS.',
+        'Health SCRIPT produced no values. Token, proxy, or TLS. If Latest data is still moving but lastclock is ~1h behind, that is zabp02 history clock — not NBI down.',
     )
     trunc_tr = _trigger(
         U['tr_trunc'],

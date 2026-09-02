@@ -194,7 +194,7 @@ auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High alr
 
 | Check | Why |
 |---|---|
-| GraphQL nodata | Token expired / SE upgrade / TLS |
+| GraphQL nodata | Token expired / SE upgrade / TLS. **Exception:** Latest data still moving but `lastclock` ~1h behind — zabp02 history clock, not NBI ([notes/proxy-history-clock.md](notes/proxy-history-clock.md)) |
 | Zero engines LLD | Access Control NBI right missing |
 | 24h census truncated | `maxResults` too small — license graph under-counts |
 | NAC census failed | NBI up but `endSystems` SCRIPT failed or timed out — Overview used tiles stay empty |
@@ -240,4 +240,4 @@ Macros on the **SE template** (secrets on a nbxSync CG, not in YAML):
 
 GIM remaining. Assessment licenses. Platform ONE tickets. Cloud XIQ entitlement API (Connected mode) so macros are not manual. Campus-wide auth **Disaster** on a service host. SE Event Details if GraphQL never exposes E-to-Sav.
 
-Analysis: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). SNMP OIDs: [templates/extremecontrol_snmp/OID_MAPPING.md](templates/extremecontrol_snmp/OID_MAPPING.md).
+Analysis: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). History `lastclock` −1h while payloads refresh: [notes/proxy-history-clock.md](notes/proxy-history-clock.md). SNMP OIDs: [templates/extremecontrol_snmp/OID_MAPPING.md](templates/extremecontrol_snmp/OID_MAPPING.md).

@@ -1353,7 +1353,7 @@ zabbix_export:
               event_name: 'XIQ-SE: no NBI data for 15m'
               priority: AVERAGE
               description: |
-                Health SCRIPT produced no values. Token, proxy, or TLS.
+                Health SCRIPT produced no values. Token, proxy, or TLS. If Latest data is still moving but lastclock is ~1h behind, that is zabp02 history clock — not NBI down.
               tags:
                 - tag: scope
                   value: availability
