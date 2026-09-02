@@ -77,6 +77,8 @@ Zabbix HTTP item + JS:
 
 Interval: 15m is enough for a license graph. Payload risk: `{$XIQ.NAC.ES.MAXRESULTS}` starts at 20000; raise only if truncated. Prefer `endSystemsForEngines` per LLD engine if a single global pull is too large — then unique-union MACs for the global license (same MAC on two engines = 1).
 
+These are Zabbix **SCRIPT** items on the Swiss proxy (not `externalscripts`). They share **synchronous pollers** with legacy SNMP. If Latest data on `ch-sta-p-ensa01` is ~1h stale while NBI curl works, the proxy queue is the fault — [swiss-proxy-tuning.md](swiss-proxy-tuning.md).
+
 Do **not** LLD each MAC as a host or item.
 
 Prefer a native engine “24h unique” field if `schema.idl` has one (GUI already shows it). Then JS paging is a fallback.

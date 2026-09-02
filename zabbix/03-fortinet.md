@@ -249,7 +249,7 @@ Then HostSync **both members of the first cluster** (each unique OOB). Inheritan
 
 ## Ops
 
-Production poller for NL/US/CH is the **Swiss proxy group**. HTTP items run **from that proxy** to Forti HTTPS. A laptop `curl` that works does **not** prove the path. ICMP Up only proves ping.
+Production poller for NL/US/CH is the **Swiss proxy group**. HTTP items run **from that proxy** to Forti HTTPS. A laptop `curl` that works does **not** prove the path. ICMP Up only proves ping. FortiGate **SCRIPT** items share `StartPollers` with XIQ-SE GraphQL and classic SNMP — [notes/swiss-proxy-tuning.md](notes/swiss-proxy-tuning.md).
 
 | Macro | Default | We set |
 |---|---|---|

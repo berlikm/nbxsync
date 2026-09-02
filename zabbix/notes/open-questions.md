@@ -20,7 +20,7 @@
 - [ ] **Memory baseline** — if the fleet normally sits above 90%, the stock trigger fires permanently.
 - [ ] **`{$IF.ERRORS.WARN}`** — stock default 2 pkt/s is a guess. Set from 2 weeks of baseline.
 - [ ] **ICMP sensitivity for remote sites** — 3 consecutive misses over WAN/Cato may be too tight. Consider `#5` per host group.
-- [ ] **Poller sizing** — SNMP timeouts look identical to a sick device.
+- [x] ~~**Poller sizing**~~ **Answered (config review 2026-09-02)** — live `ch-sta-p-zabp02` had `Timeout=30`, `StartSNMPPollers=1`, SQLite + 16M hybrid. That starves sync pollers (classic SNMP + XIQ-SE SCRIPT). Tune: [swiss-proxy-tuning.md](swiss-proxy-tuning.md). Re-measure queue after restart before calling SNMP “down”.
 
 ## Blocking Phase 2 (ports)
 
