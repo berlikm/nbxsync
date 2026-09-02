@@ -53,7 +53,20 @@ Remaining: zabp02 **runtime / history path** (stamp or transport) or Cloud **han
 
 **Not in 7.0.28–7.0.30 release notes.** Latest 7.0 is **7.0.30**. 7.0.27 advertised no functional changes. Later patches do **not** list a proxy `lastclock` −1h fix or “proxy stopped receiving config”. Closest noise: ZBX-27698 (Clock **widget** used browser TZ — frontend only; API `lastclock` would not move) and ZBX-27495 (agent history upload delay). ZBX-27665 is remote commands on a **proxy group**, not history time.
 
-If Cloud UI says a proxy is **outdated** (`configuration update is disabled… only data collection`), that is a **major-version** mismatch (7.0 vs 7.2/7.4), not 7.0.27 vs 7.0.30. Same-minor 7.0.x still gets config. **zabp01 missing ENSA SCRIPT rows is expected** when `assigned_proxyid=2`. Stale config on zabp01 would be: hosts assigned to it whose items never appear after a Cloud change — check `zabbix_proxy -V` on zabp01 and `cannot obtain configuration data` in its log. That is a **second** problem; it does not explain zabp02’s 1h `clock`.
+If Cloud UI says a proxy is **outdated** (`configuration update is disabled… only data collection`), that is a **major-version** mismatch (7.0 vs 7.2/7.4), not 7.0.27 vs 7.0.30. Same-minor 7.0.x still gets config.
+
+**zabp01 completes Execute now for the same ENSA itemids** (sqlite 2026-09-02 on `ch-sta-p-zabp01`). `task.type=6` `status=3` (`done`). `ttl=3600` is the **task expiry**, not the Latest-data 1h floor.
+
+| taskid | clock UTC | itemid |
+|---|---|---|
+| 3344 / 3341 / 3340 | 10:57:28 | 523738 / 519957 / 519956 |
+| 3298 | 10:57:19 | 519957 |
+| 3293 / 3290 / 3289 | 10:57:07 | 523738 / 519957 / 519956 |
+| 3247 / 3246 / 3245 | 10:56:23 | 519956 / 523738 / 519957 |
+| 3243 / 3240 / 3239 | 10:54:53 | 523738 / 519957 / 519956 |
+| 3188 / 3185 / 3184 | 08:15:04 | same three |
+
+Cloud is delivering check-now to **both** group members. That does **not** mean zabp01 is the assigned collector (`assigned_proxyid` is still 2). Re-query `items` on zabp01 for those ids: rows present = group config sync; rows absent + tasks `done` = task fan-out without local items. Dual SCRIPT execution would hit NBI twice; it still does **not** stamp zabp02 history −1h. Compare the same `clock` values on zabp02 `task`/`task_check_now`.
 
 September in CH is **CEST (UTC+2)**. A flat **1h** is UTC vs **CET / UTC+1**, not Zurich vs UTC — but with no `TZ=` on the process, that conversion is not on the box we can see. Take it to Cloud with 7.0.27 + the table above.
 
