@@ -9,6 +9,59 @@ This note is the analysis of the live `/etc/zabbix/zabbix_proxy.conf` on **`ch-s
 
 ---
 
+## First: 1h on *everything* is not the poller queue
+
+If Latest data shows **the same age on every item** — ICMP, SNMP, SCRIPT, 30-second and 15-minute alike — “1h and a couple of seconds ago” — that is a **flat 3600s clock offset**. Collection is still running; the couple of seconds is the last interval. A starved `StartPollers` pool does **not** do that: SCRIPT would lag more than ICMP, and ages would scatter.
+
+Live on `ch-sta-p-zabp02` (2026-09-02 08:30 UTC):
+
+```
+Local time: Wed 2026-09-02 08:30:01 UTC
+Time zone: Etc/UTC (UTC, +0000)
+System clock synchronized: yes
+NTP service: active
+RTC in local TZ: no
+```
+
+That clock is healthy. `time()` on the proxy is Unix UTC. **Timezone does not change item `clock`.** Setting the proxy to `Europe/Zurich` will not move “1h ago”.
+
+| What you see | What it is |
+|---|---|
+| Every item ~1h 2s | Cloud `now` minus stored `clock` is 3600s. Ingest TZ, Cloud instance TZ, or Cloud/PHP clock — not pollers |
+| Swiss wall clock vs this proxy | 2 September is **CEST (UTC+2)**. 08:30 UTC = **10:30** in CH. Zurich vs UTC is **2h**, not 1h |
+| 1h in September | UTC vs **CET / UTC+1** (winter offset, `CET` without DST, UK BST, or a Cloud TZ stuck on +1) |
+| nodata / “no NBI data for 15m” **not** firing | items **are** checking; the 1h is display/clock |
+| Graphs: newest point on the **now** edge | same — live data, shifted label |
+| Graphs: newest point 1h **left** of now | same 3600s offset in history.clock |
+| Only `xiqse.nbi.licenses` / `pilot` hours late, ICMP fresh | then it **is** pollers / SCRIPT timeout — skip this section |
+
+Do **not** disable NTP or set `RTC in local TZ`. Do **not** “fix” the proxy to CET.
+
+### Prove it in one minute
+
+On the proxy:
+
+```bash
+date -u
+date -u +%s
+```
+
+In Cloud Latest data, open any just-collected item and read **Last check** as a datetime (not only “1h ago”).
+
+| Last check (absolute) | Meaning |
+|---|---|
+| Same second as `date -u` | proxy clock is in the payload; Cloud **ago** / server `now` is 1h fast, or the UI TZ is applied twice |
+| Exactly 1h **behind** `date -u` | something subtracted 3600s on ingest (session TZ / CET). Cloud instance timezone and user profile timezone |
+| 2h behind `date -u` | payload compared as Zurich local, or Cloud is UTC+2 vs UTC stored wrong |
+
+Also: **User settings → Time zone** (not “System default” if that is CET). Cloud instance timezone if you have it. A host on this proxy with `system.localtime[utc]` / unixtime should match `date -u +%s` within a few seconds.
+
+Zabbix scheduling intervals (`wd1-5h8-18`) follow the **proxy OS TZ**. UTC on this box means “h8” is 08:00 UTC = 10:00 CEST. That is independent of Latest-data ago. If you want schedules in Swiss civil time, set `Europe/Zurich` **after** the 1h ago question is closed — it will not close it.
+
+The rest of this note is still true: `Timeout=30` is a bad poller default. It is **not** why every last-check is 1h 2s.
+
+---
+
 ## What those “scripts” actually are
 
 | Item | Interval | Item timeout | Work |
@@ -17,7 +70,7 @@ This note is the analysis of the live `/etc/zabbix/zabbix_proxy.conf` on **`ch-s
 | `xiqse.nbi.licenses` | **15m** | `{$XIQSE.LICENSE.TIMEOUT}` = 60s | Page `endSystems` (canary **4055** rows, 500/page) |
 | `xiqse.nbi.pilot` | **15m** | 60s | Count `network.devices` `xiqLicenseState` (canary **563** devices, **320** Pilot) |
 
-A 15-minute item that last ran an hour ago missed **four** cycles. That is not the template interval. It is the proxy **not scheduling the check**.
+A 15-minute item that is **really** not checking for an hour missed four cycles (queue / timeout). If *every* item on the proxy shows the same 1h 2s, that is the clock section above — not this paragraph.
 
 Cloud 7.0 SCRIPT items are executed by **synchronous pollers** (`StartPollers`). One check occupies **one** poller for the whole runtime (OAuth + every GraphQL page). They do **not** use `StartHTTPAgentPollers` or `StartSNMPPollers`.
 
@@ -33,9 +86,12 @@ Async pollers (`StartSNMPPollers`, `StartHTTPAgentPollers`, `StartAgentPollers`)
 
 ## Verdict
 
-The file is a **partial** 7.0 tune (hybrid buffer, extra pollers/pingers, VMware, TLS to Cloud) sitting on defaults that starve SCRIPT items on a Swiss proxy that polls **NL/US/CH** (and NAC engines in KR/CN/HU) over WAN.
+Two separate facts:
 
-The 1h-stale ENSA / Pilot census is the expected outcome of **`Timeout=30` + classic SNMP + SCRIPT sharing 30 sync pollers**, not a GraphQL outage. Confirm on the box with the commands below before blaming NBI.
+1. **Latest data “1h ago” on the whole proxy** (ICMP and SCRIPT the same age) is a **3600s clock/TZ offset**. The box is UTC + NTP. Do not chase GraphQL or `StartPollers` for that.
+2. The conf is still a **partial** 7.0 tune: hybrid buffer, extra pingers, VMware, Cloud TLS, but **`Timeout=30`** with classic SNMP + SCRIPT on the same 30 sync pollers. That *will* starve SCRIPT items when the delayed queue is real (scattered ages, poller busy ~100%). It does not produce a uniform 1h 2s.
+
+Confirm clock first (absolute Last check vs `date -u`). Confirm queue second. Then NBI.
 
 ---
 
@@ -49,7 +105,7 @@ Range is 1–30; default is **3**. 30 is the ceiling.
 
 This timeout is for **legacy SNMP**, agent, simple checks, IPC, talking to Cloud — **not** for SCRIPT item JS (item-level 30s/60s) and **not** for `walk[`/`get[` (frontend / proxy Timeouts tab).
 
-Raising it does **not** make the NAC census more reliable. It makes every slow or dead classic-SNMP target hold a sync poller for up to **30 seconds**. Thirty pollers × 30s ≈ **one check per second** when the estate has timeouts (WAN, SNMPv3, unused iDRACs, closets). SCRIPT items sit in the delayed queue. Latest data on Cloud then shows “last check 1h ago”. SNMP timeouts also look like a sick switch ([reference/extreme-switching-zabbix.md](../reference/extreme-switching-zabbix.md) — poller saturation).
+Raising it does **not** make the NAC census more reliable. It makes every slow or dead classic-SNMP target hold a sync poller for up to **30 seconds**. Thirty pollers × 30s ≈ **one check per second** when the estate has timeouts (WAN, SNMPv3, unused iDRACs, closets). SCRIPT items sit in the delayed queue — ages **scatter**, they do not all freeze at 1h 2s. SNMP timeouts also look like a sick switch ([reference/extreme-switching-zabbix.md](../reference/extreme-switching-zabbix.md) — poller saturation).
 
 **Set 4–5s** on this proxy (WAN, not a LAN-only collector). Do **not** keep 30. Slow walks belong on `walk[` item timeouts / Administration → Timeouts, not here.
 
@@ -82,7 +138,7 @@ Hybrid is the right **mode**. 16M is not a size for this role. When the memory b
 
 Zabbix’s own proxy guidance: SQLite is for small proxies (ballpark NVPS under 1000). This host is the production poller for Extreme SNMP, VMware (`StartVMwareCollectors=5`, `VMwareCacheSize=512M`), XIQ-SE SCRIPT, and Forti HTTP. Measure `zabbix[requiredperformance]` / `zabbix[proxy_buffer,*]` before migrating the DB. First fix timeout + poller split + buffer size. If the buffer sits in **disk** mode or NVPS stays high after that, move the proxy DB to PostgreSQL (or MySQL) — do not grow SQLite.
 
-`ProxyOfflineBuffer` default **1 hour**: if the Cloud session dies, local history older than 1h is dropped. Coincides with “data 1h old” when people look at Latest data during a Cloud blip. Collection `lastcheck` is a different clock — still raise this to **24**.
+`ProxyOfflineBuffer` default **1 hour**: if the Cloud session dies, local history older than 1h is dropped. That is upload retention, not a uniform “1h 2s ago” on live Latest data. Still raise it to **24**.
 
 ### 4. VMware on the same box as the network proxy
 
@@ -129,7 +185,15 @@ Restart in a change window. Hybrid flushes the 16M buffer to SQLite on stop; tha
 
 ## Prove it (on `ch-sta-p-zabp02`)
 
-Internal items need the proxy health template (or `zabbix_get` against a local agent). Stats on port 10051 also work because `StatsAllowedIP` includes localhost.
+Clock first, if every Latest-data age is the same ~1h:
+
+```bash
+date -u
+date -u +%s
+timedatectl
+```
+
+Then queue / process busy. Internal items need the proxy health template (or `zabbix_get` against a local agent). Stats on port 10051 also work because `StatsAllowedIP` includes localhost.
 
 ```bash
 # delayed queue — the 1h SCRIPT symptom in one number
@@ -157,7 +221,8 @@ ps -o pid,pcpu,pmem,comm -C zabbix_proxy
 
 | Reading | Meaning |
 |---|---|
-| `zabbix[queue]` (or delayed more than 10m) large | items not scheduled on time — SCRIPT last-check hours late |
+| every item the same ~1h 2s | clock/TZ offset — see the first section |
+| `zabbix[queue]` (or delayed more than 10m) large | items not scheduled on time — SCRIPT last-check hours late **and ages differ** |
 | poller busy ~100% | `Timeout=30` and/or too much classic SNMP + SCRIPT on sync pollers |
 | snmp poller busy ~100% | raise `StartSNMPPollers` (walk/get only) |
 | `proxy_buffer state` = disk / pused high | 16M too small or Cloud upload slow — raise buffer; if it sticks, SQLite is the next limit |

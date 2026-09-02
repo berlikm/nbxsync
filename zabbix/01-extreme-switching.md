@@ -167,7 +167,8 @@ A site WAN blip is one ICMP High per switch. That is accepted.
 | Switch with **zero** discovered interfaces | IFALIAS regex or LLD broken | Average after SNMP up 1h (`{$NET.IF.DISCOVERY.MIN}=1`). Count item stays **0 (supported)** while empty so it recovers when LLD creates a port — not nodata / Not supported. ICMP down is not this ticket. |
 | SNMP = 0, ICMP = 1 | credentials / proxy cache / UDP 161 — not a forwarding outage | SNMP Warning |
 | Proxy last-seen | hosts go *unknown*, not *down* | Zabbix internal / later |
-| Proxy poller queue | SNMP timeouts look like a sick switch; SCRIPT items (XIQ-SE) stall for hours | `Timeout=30` on `ch-sta-p-zabp02` — [notes/swiss-proxy-tuning.md](notes/swiss-proxy-tuning.md) |
+| Proxy poller queue | SNMP timeouts look like a sick switch; SCRIPT items (XIQ-SE) stall while ICMP stays fresher | `Timeout=30` on `ch-sta-p-zabp02` — [notes/swiss-proxy-tuning.md](notes/swiss-proxy-tuning.md) |
+| Every item ~1h stale | Cloud/UTC vs CET, not pollers. Proxy `timedatectl` is UTC + NTP | same note, clock section |
 
 ---
 

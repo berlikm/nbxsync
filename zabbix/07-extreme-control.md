@@ -152,7 +152,7 @@ NBI lives on **SE only**. Client: Administration → Client API Access; rights *
 - Quiet engines: raise `{$XIQ.NAC.FRESH}` (elapsed seconds) or set `{$XIQ.NAC.FRESH:"<engine-ip>"}` on the SE host. There is **no** 07:00–19:00 clock — Site Engine `time()` is one TZ and the fleet is not.
 - Extreme's `.xwf` license calculator stays a one-shot migration report. Do not schedule it from Zabbix. Do not point the template at `appdata/license`.
 - Production canary 2026-08-29 (`ch-sta-p-ensa01`, 25.5.12.6): NBI up, 4055 end-systems / 2150 24h MACs / 320 Pilot / 0 Navigator. `connected` and RADIUS monitor fields absent. NBI `capacity` is 0. Details: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md).
-- Collection is Zabbix **SCRIPT** on the **Swiss proxy**, not `externalscripts`. Health every **2m**; NAC + Pilot census every **15m** (timeout 60s). If Latest data is an hour old, fix proxy pollers (`Timeout`, `StartSNMPPollers`) before debugging GraphQL — [notes/swiss-proxy-tuning.md](notes/swiss-proxy-tuning.md).
+- Collection is Zabbix **SCRIPT** on the **Swiss proxy**, not `externalscripts`. Health every **2m**; NAC + Pilot census every **15m** (timeout 60s). If *only* those keys are hours late, look at proxy pollers (`Timeout`, `StartSNMPPollers`). If **every** last-check on the proxy is ~1h, that is clock/TZ (box is UTC + NTP) — [notes/swiss-proxy-tuning.md](notes/swiss-proxy-tuning.md).
 
 ---
 
@@ -194,12 +194,12 @@ auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High alr
 
 | Check | Why |
 |---|---|
-| GraphQL nodata | Token expired / SE upgrade / TLS. Also Swiss proxy **poller queue** — SCRIPT last-check hours late is not NBI down ([notes/swiss-proxy-tuning.md](notes/swiss-proxy-tuning.md)) |
+| GraphQL nodata | Token expired / SE upgrade / TLS. Swiss proxy **poller queue** only if SCRIPT is late and ICMP on the same proxy is not — [notes/swiss-proxy-tuning.md](notes/swiss-proxy-tuning.md) |
 | Zero engines LLD | Access Control NBI right missing |
 | 24h census truncated | `maxResults` too small — license graph under-counts |
 | NAC census failed | NBI up but `endSystems` SCRIPT failed or timed out — Overview used tiles stay empty |
 | Device license census failed | NBI up but `xiqLicenseState` query failed — Pilot/Navigator remaining unknown |
-| SCRIPT last-check far past interval | `xiqse.nbi.health` is 2m, licenses/pilot **15m**. An hour stale is `StartPollers` starvation on `ch-sta-p-zabp02` (`Timeout=30`, classic SNMP). Not an external script |
+| SCRIPT last-check far past interval | `xiqse.nbi.health` is 2m, licenses/pilot **15m**. If **every** item on the proxy is 1h 2s, that is Cloud/UTC vs CET — not an external script and not `StartPollers` |
 | Remaining negative | Leftover CALCULATED remaining item after import (2026-08-29 live: −2175). Re-import or unlink/relink |
 | Unsupported items | Schema field renamed on their SE version; or ENTERASYS-NAC-APPLIANCE-MIB view dropped on an engine |
 | Proxy last-seen | already in 01 |
