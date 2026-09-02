@@ -51,6 +51,10 @@ The extra ~5m on zabp02 on top of 1h is in the same ballpark as zabp01’s lag. 
 
 Remaining: zabp02 **runtime / history path** (stamp or transport) or Cloud **handling history from this proxy**. Process TZ is ruled out. Restart is **not** required to conclude that; ops have declined it.
 
+**Not in 7.0.28–7.0.30 release notes.** Latest 7.0 is **7.0.30**. 7.0.27 advertised no functional changes. Later patches do **not** list a proxy `lastclock` −1h fix or “proxy stopped receiving config”. Closest noise: ZBX-27698 (Clock **widget** used browser TZ — frontend only; API `lastclock` would not move) and ZBX-27495 (agent history upload delay). ZBX-27665 is remote commands on a **proxy group**, not history time.
+
+If Cloud UI says a proxy is **outdated** (`configuration update is disabled… only data collection`), that is a **major-version** mismatch (7.0 vs 7.2/7.4), not 7.0.27 vs 7.0.30. Same-minor 7.0.x still gets config. **zabp01 missing ENSA SCRIPT rows is expected** when `assigned_proxyid=2`. Stale config on zabp01 would be: hosts assigned to it whose items never appear after a Cloud change — check `zabbix_proxy -V` on zabp01 and `cannot obtain configuration data` in its log. That is a **second** problem; it does not explain zabp02’s 1h `clock`.
+
 September in CH is **CEST (UTC+2)**. A flat **1h** is UTC vs **CET / UTC+1**, not Zurich vs UTC — but with no `TZ=` on the process, that conversion is not on the box we can see. Take it to Cloud with 7.0.27 + the table above.
 
 ---
