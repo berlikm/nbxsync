@@ -28,6 +28,7 @@ JavaScript cannot set Zabbix history time. Changing the SCRIPT is the wrong firs
 | `DataSenderFrequency` | comment-default 1s; no `zabbix_proxy.d` override |
 | Proxy package | **7.0.27** (`e4b2990bfed`, compiled 2026-06-02). 7.0.27 has no advertised clock/history change |
 | `/etc/default/zabbix-proxy` | **missing**. Unit `EnvironmentFile=-/etc/default/zabbix-proxy` — the `-` means optional; this is normal, not a TZ override |
+| Process environ (MainPID) | **no `TZ=`**. `Environment=CONFFILE=/etc/zabbix/zabbix_proxy.conf` only. `DropInPaths=` empty |
 
 API comparison (production epoch `1788343044` = 2026-09-02 **09:57:24 UTC**):
 
@@ -55,22 +56,11 @@ September in CH is **CEST (UTC+2)**. A flat **1h** is UTC vs **CET / UTC+1**, no
 
 ## Do this on zabp02 (no template change)
 
-**Done 2026-09-02:** `zabbix_proxy -V` → 7.0.27. `/etc/default/zabbix-proxy` does not exist. **Do not restart** the proxy until ops agree — it is not required for the next checks.
+**Done 2026-09-02:** `zabbix_proxy -V` → 7.0.27. `/etc/default/zabbix-proxy` does not exist. MainPID environ has **no `TZ=`**. **Do not restart** the proxy until ops agree — it is not required for the next checks.
 
 ### No restart
 
-Process TZ can differ from `timedatectl`. Empty grep is fine (inherits UTC).
-
-```bash
-# parent proxy PID (not a poller child if pidof returns many)
-P=$(systemctl show -p MainPID --value zabbix-proxy)
-tr '\0' '\n' < /proc/$P/environ | grep -E '^TZ=|^TZDIR=' || echo 'no TZ in environ'
-systemctl show zabbix-proxy -p Environment -p EnvironmentFiles -p DropInPaths
-timedatectl
-date -u +%s
-```
-
-**Split SCRIPT vs the rest** (API or Latest data). Same host `ch-sta-p-ensa01`, same proxy:
+Process TZ is already checked (empty). Next is **SCRIPT vs the rest** (API or Latest data). Same host `ch-sta-p-ensa01`, same proxy:
 
 | Item | If lastclock is ~now | If lastclock is now−1h |
 |---|---|---|
