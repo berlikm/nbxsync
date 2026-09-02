@@ -26,6 +26,8 @@ JavaScript cannot set Zabbix history time. Changing the SCRIPT is the wrong firs
 | Host NTP | zabp02 and zabp01 `Etc/UTC`, synchronized |
 | Hybrid buffer at inspect | `Items:0 values:0` — not a 1h sender backlog |
 | `DataSenderFrequency` | comment-default 1s; no `zabbix_proxy.d` override |
+| Proxy package | **7.0.27** (`e4b2990bfed`, compiled 2026-06-02). 7.0.27 has no advertised clock/history change |
+| `/etc/default/zabbix-proxy` | **missing**. Unit `EnvironmentFile=-/etc/default/zabbix-proxy` — the `-` means optional; this is normal, not a TZ override |
 
 API comparison (production epoch `1788343044` = 2026-09-02 **09:57:24 UTC**):
 
@@ -53,26 +55,50 @@ September in CH is **CEST (UTC+2)**. A flat **1h** is UTC vs **CET / UTC+1**, no
 
 ## Do this on zabp02 (no template change)
 
+**Done 2026-09-02:** `zabbix_proxy -V` → 7.0.27. `/etc/default/zabbix-proxy` does not exist. **Do not restart** the proxy until ops agree — it is not required for the next checks.
+
+### No restart
+
+Process TZ can differ from `timedatectl`. Empty grep is fine (inherits UTC).
+
 ```bash
-zabbix_proxy -V
-rpm -q zabbix-proxy-sqlite3 2>/dev/null || dpkg-query -W zabbix-proxy-sqlite3
-
-sudo cat /etc/default/zabbix-proxy
-# systemd unit EnvironmentFile=-/etc/default/zabbix-proxy — TZ= here would not show in timedatectl
-
-tr '\0' '\n' < /proc/$(pidof zabbix_proxy | awk '{print $1}')/environ | grep -E '^TZ=|^TZDIR='
-
-date -u
+# parent proxy PID (not a poller child if pidof returns many)
+P=$(systemctl show -p MainPID --value zabbix-proxy)
+tr '\0' '\n' < /proc/$P/environ | grep -E '^TZ=|^TZDIR=' || echo 'no TZ in environ'
+systemctl show zabbix-proxy -p Environment -p EnvironmentFiles -p DropInPaths
+timedatectl
 date -u +%s
 ```
 
-If `TZ=` is `CET`, `MET`, or anything other than empty / `UTC` / `Etc/UTC`, that is the first thing to clear, then restart.
+**Split SCRIPT vs the rest** (API or Latest data). Same host `ch-sta-p-ensa01`, same proxy:
 
-A **controlled `systemctl restart zabbix-proxy`** is the local test that the process held a stale clock. Short gap; SQLite config stays. Then compare one Execute-now `lastclock` to `date -u +%s` (must be seconds, not ~3600).
+| Item | If lastclock is ~now | If lastclock is now−1h |
+|---|---|---|
+| `xiqse.nbi.health` / `xiq.cloud.account` | already know: −1h | — |
+| `net.tcp.service[tcp,{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]` (SIMPLE, 1m) | SCRIPT-only stamp | whole host |
+| Any switch ICMP/SNMP on zabp02 | SCRIPT-only | **whole proxy** history stamp |
 
-If after restart + `TZ` clean the API `lastclock` is still `now-3600`, escalate to **Zabbix Cloud** with the epoch table above. Do not raise SCRIPT timeouts or rewrite GraphQL for this.
+Whole-proxy −1h → Cloud ticket with 7.0.27 + the epoch table (heartbeat `lastaccess` correct, history `clock` not). SCRIPT-only → still Cloud/proxy, but the poller/JS path, not SQLite sender.
 
-Do **not** stop the proxy only to `sqlite3` `proxy_history` (it locks). Do **not** widen `nodata(...,15m)` to 75m — that papers over the clock and delays a real NBI death by an hour.
+Optional, still no restart: raise poller + data-sender log for **one** Execute now, then put it back.
+
+```bash
+sudo zabbix_proxy -R log_level_increase=poller
+sudo zabbix_proxy -R log_level_increase=poller
+sudo zabbix_proxy -R 'log_level_increase=data sender'
+sudo zabbix_proxy -R 'log_level_increase=data sender'
+# Execute now on 519957, wait ~30s, grep the log for wall time vs the new lastclock
+sudo zabbix_proxy -R log_level_decrease=poller
+sudo zabbix_proxy -R log_level_decrease=poller
+sudo zabbix_proxy -R 'log_level_decrease=data sender'
+sudo zabbix_proxy -R 'log_level_decrease=data sender'
+```
+
+Do **not** stop the proxy only to `sqlite3` `proxy_history` (it locks). Do **not** widen `nodata(...,15m)` to 75m.
+
+### Restart (deferred)
+
+A restart only tests “stuck process clock”. SQLite config stays. Skip until ops want it. If TZ in `environ` is already empty and SIMPLE/ICMP on zabp02 are also −1h, restart will not teach more than a Cloud ticket.
 
 ---
 
