@@ -194,6 +194,15 @@ class YamlContractTests(unittest.TestCase):
         warn = next(m for m in self.tpl['macros'] if m['macro'] == '{$NAC.SNMP.FAIL.WARN}')
         self.assertEqual(warn['value'], '101')
 
+    def test_fail_ratio_idle_does_not_divide_by_zero(self):
+        item = next(row for row in self.tpl['items'] if row['key'] == 'nac.appl.auth.fail.pct')
+        params = item['params']
+        self.assertIn(
+            '+(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)=0)',
+            params,
+        )
+        self.assertNotIn('>0)*', params)
+
     def test_contact_lost_is_gated(self):
         item = next(row for row in self.tpl['items'] if row['key'] == 'nac.appl.contact.lost')
         trig = item['triggers'][0]

@@ -42,7 +42,10 @@ Base `NAC = 1.3.6.1.4.1.5624.1.2.73.1`.
 
 Rate items `nac.appl.*.rate` are dependents with `CHANGE_PER_SECOND`.
 `nac.appl.auth.fail.pct` is failures / (successes + failures). Challenges are
-excluded. STA decided-fail was ~30% on the canary — threshold stays 101.
+excluded. Both rates 0 (quiet engine, live CH-STA-P-ENAC02) must be **0 %**,
+not Not supported: Cloud 7.0 still evaluates `fail/sum` inside `(sum>0)*…`.
+The denominator adds 1 when the sum is 0. STA decided-fail was ~30% on the
+canary — threshold stays 101.
 
 ## What this MIB is not
 

@@ -759,10 +759,12 @@ zabbix_export:
           trends: 365d
           value_type: FLOAT
           units: '%'
-          params: '(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)>0)*((last(//nac.appl.auth.failures.rate)/(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)))*100)'
+          params: '(last(//nac.appl.auth.failures.rate)*100)/(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)+(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)=0))'
           description: |
             Failures / (successes + failures). Challenges are EAP and are not
-            failures. Collect first — STA canary decided-fail was ~30%.
+            failures. Idle (both rates 0) is 0 %, not unsupported — Cloud 7.0 does
+            not short-circuit (sum>0)*(fail/sum). Collect first — STA canary
+            decided-fail was ~30%.
           tags:
             - tag: component
               value: nac
