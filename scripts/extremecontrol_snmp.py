@@ -507,10 +507,13 @@ object stays a gauge (MIB syntax is Counter64).""",
             doc.add(6, f'key: {item_key}')
             tags(doc, 5, 'nac')
 
+    # Cloud 7.0 evaluates the whole calculated expression. (sum>0)*(fail/sum)
+    # still divides by zero on a quiet engine (live CH-STA-P-ENAC02). Add 1 to
+    # the denominator when sum is 0 so idle is 0 %, not Not supported.
     fail_params = (
-        '(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)>0)'
-        '*((last(//nac.appl.auth.failures.rate)'
-        '/(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)))*100)'
+        '(last(//nac.appl.auth.failures.rate)*100)'
+        '/(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)'
+        '+(last(//nac.appl.auth.successes.rate)+last(//nac.appl.auth.failures.rate)=0))'
     )
     doc.add(4, f'- uuid: {uid("item", "failpct")}')
     doc.add(5, 'name: ExtremeControl decided-auth failure ratio')
@@ -526,7 +529,9 @@ object stays a gauge (MIB syntax is Counter64).""",
     doc.literal(
         6,
         """Failures / (successes + failures). Challenges are EAP and are not
-failures. Collect first — STA canary decided-fail was ~30%.""",
+failures. Idle (both rates 0) is 0 %, not unsupported — Cloud 7.0 does
+not short-circuit (sum>0)*(fail/sum). Collect first — STA canary
+decided-fail was ~30%.""",
     )
     tags(doc, 5, 'nac')
     doc.add(5, 'triggers:')

@@ -124,6 +124,7 @@ On each **Control engine → Health** (SNMP):
 | Graph | Why |
 |---|---|
 | Auth requests / successes / failures per second | Engine is doing RADIUS. Failures going up is **not** RADIUS-dead |
+| Decided-auth failure % | Failures / (success + fail). Idle pair (ENAC02) is **0 %**, not unsupported |
 | RADIUS challenges per second | EAP; large vs successes on the 2026-08-28 canary |
 | Dropped / invalid / duplicate | Error rates |
 | Contact-lost switches | Engine → switch SNMP (the other direction). 0 on all five ENACs |
@@ -200,6 +201,7 @@ auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High alr
 | Device license census failed | NBI up but `xiqLicenseState` query failed — Pilot/Navigator remaining unknown |
 | Remaining negative | Leftover CALCULATED remaining item after import (2026-08-29 live: −2175). Re-import or unlink/relink |
 | Unsupported items | Schema field renamed on their SE version; or ENTERASYS-NAC-APPLIANCE-MIB view dropped on an engine |
+| `nac.appl.auth.fail.pct` division by zero | Quiet engine, both rates 0. Cloud 7.0 does not short-circuit `(sum>0)*(fail/sum)` — re-import ExtremeControl by SNMP after the denom `+(sum=0)` guard |
 | Proxy last-seen | already in 01 |
 
 ---
