@@ -91,7 +91,7 @@ Stage matrix (what each flag enables):
   ``--apply-fortigate-http``      = FortiGate HTTP cutover without zerotouch: lookup Cloud **Zabbix, 7.0-2**, patch ZBX-27082 / WAN state, import Observability companion, FortiOS rule only (not role Firewall). Fail-closed preflight. No HostSync.
   ``--check-fmg-faz`` / ``--apply-fmg-faz`` = FortiManager/FortiAnalyzer SNMP pack without zerotouch: import parent + Observability companions, split platform rules, disable leftover Network Generic rule. No HostSync.
   ``--apply-cato`` / ``--check-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
-  ``--apply-xiqse`` / ``--check-xiqse`` = XIQ-SE / ExtremeControl without zerotouch: import GraphQL companions plus ExtremeControl by SNMP, soft Site Engine TemplateRule, role NAC (ANY + SNMP). Fail-closed missing YAML. No HostSync.
+  ``--apply-xiqse`` / ``--check-xiqse`` = XIQ-SE / ExtremeControl without zerotouch: import GraphQL companions plus ExtremeControl by SNMP, soft Site Engine TemplateRule, role NAC (ANY + SNMP). Drops the leftover Engines host dashboard (now a Health page). Fail-closed missing YAML. No HostSync.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -5061,6 +5061,23 @@ def _require_xiqse_preflight(*, server=None, apply: bool = True):
     return server
 
 
+def drop_leftover_xiqse_engines_dashboard(api, templateid: int) -> str:
+    """YAML deleteMissing=false leaves the old Engines dashboard after the Health merge."""
+    dashes = (
+        api.templatedashboard.get(
+            templateids=[str(templateid)],
+            output=['dashboardid', 'name'],
+        )
+        or []
+    )
+    drop = _xiqse.leftover_dashboard_ids(dashes)
+    if not drop:
+        return 'ok'
+    api.templatedashboard.delete(*drop)
+    logger.info('  %s: dropped leftover Engines dashboard (%s)', _xiqse.SE_TEMPLATE_NAME, drop)
+    return 'dropped'
+
+
 def import_xiqse_templates(api) -> dict[str, tuple[int, str]]:
     """Import Site Engine, the thin NAC companion, then ExtremeControl by SNMP. Fail closed."""
     logger.info('Network: import XIQ-SE / ExtremeControl Observability + SNMP')
@@ -5068,6 +5085,9 @@ def import_xiqse_templates(api) -> dict[str, tuple[int, str]]:
     missing = [name for name in _xiqse.TEMPLATE_FILES if name not in out]
     if missing:
         raise SystemExit('XIQ-SE templates missing after import: ' + ', '.join(missing))
+    se_id = out.get(_xiqse.SE_TEMPLATE_NAME)
+    if se_id:
+        drop_leftover_xiqse_engines_dashboard(api, se_id[0])
     return out
 
 

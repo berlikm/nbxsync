@@ -138,7 +138,14 @@ NAC_TRIGGER_NAMES = {
     'ExtremeControl: portal TCP 8444 down',
 }
 
-DASHBOARD_NAMES = {'Health', 'Engines'}
+DASHBOARD_NAMES = {'Health'}
+HEALTH_PAGES = ('Overview', 'Engines', 'Licenses')
+LEFTOVER_DASHBOARD_NAMES = frozenset({'Engines'})
+
+
+def leftover_dashboard_ids(dashboards: list[dict]) -> list[str]:
+    """Ids of the retired Engines host dashboard (now a Health page)."""
+    return [str(row['dashboardid']) for row in dashboards if row.get('name') in LEFTOVER_DASHBOARD_NAMES]
 
 
 def js_dir(*names: str) -> str:

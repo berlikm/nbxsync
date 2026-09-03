@@ -753,10 +753,18 @@ def _prototypes() -> str:
 {graph}"""
 
 
-def _item_widget(name: str, x: str, key: str, ref: str) -> str:
-    x_l = f"\n                  x: '{x}'" if x and x != '0' else ''
+def _xy(x: str = '0', y: str = '0') -> str:
+    bits = []
+    if x and x != '0':
+        bits.append(f"                  x: '{x}'")
+    if y and y != '0':
+        bits.append(f"                  y: '{y}'")
+    return ('\n' + '\n'.join(bits)) if bits else ''
+
+
+def _item_widget(name: str, x: str, key: str, ref: str, *, y: str = '0') -> str:
     return f"""                - type: item
-                  name: {name}{x_l}
+                  name: {name}{_xy(x, y)}
                   width: '18'
                   height: '4'
                   fields:
@@ -779,212 +787,260 @@ def _item_widget(name: str, x: str, key: str, ref: str) -> str:
                       value: {ref}"""
 
 
-def _se_dashboards() -> str:
-    honeycomb = """                - type: honeycomb
-                  name: Connected
-                  y: '4'
-                  width: '72'
-                  height: '5'
+def _nbi_gauge() -> str:
+    return f"""                - type: gauge
+                  name: NBI
+                  width: '18'
+                  height: '4'
                   fields:
-                    - type: STRING
-                      name: items.0
-                      value: 'Engine *: Connected'
-                    - type: STRING
-                      name: primary_label
-                      value: '{{ITEM.NAME}.regsub("^Engine (.*): Connected$","\\1")}'
                     - type: INTEGER
-                      name: interpolation
+                      name: angle
+                      value: '270'
+                    - type: INTEGER
+                      name: decimal_places
                       value: '0'
                     - type: INTEGER
-                      name: primary_label_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: primary_label_size_type
-                      value: '1'
-                    - type: INTEGER
-                      name: primary_label_size
-                      value: '20'
-                    - type: INTEGER
                       name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: show.1
+                      value: '5'
+                    - type: INTEGER
+                      name: th_arc_size
+                      value: '6'
+                    - type: INTEGER
+                      name: units_size
+                      value: '14'
+                    - type: INTEGER
+                      name: value_arc_size
+                      value: '16'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: {TPL}
+                        key: xiqse.nbi.available
+                    - type: STRING
+                      name: max
                       value: '1'
                     - type: STRING
-                      name: reference
-                      value: XECON
+                      name: min
+                      value: '0'
                     - type: STRING
                       name: thresholds.0.color
-                      value: 'FF465C'
+                      value: FF465C
                     - type: STRING
                       name: thresholds.0.threshold
                       value: '0'
                     - type: STRING
                       name: thresholds.1.color
-                      value: '0EC9AC'
+                      value: 0EC9AC
                     - type: STRING
                       name: thresholds.1.threshold
                       value: '1'
+                    - type: INTEGER
+                      name: th_show_arc
+                      value: '1'
+                    - type: INTEGER
+                      name: th_show_labels
+                      value: '0'
                     - type: STRING
-                      name: thresholds.2.color
-                      value: '878787'
+                      name: reference
+                      value: XNBI"""
+
+
+def _problems(ref: str, *, y: str = '4', height: str = '3') -> str:
+    return f"""                - type: problems
+                  name: Problems
+                  y: '{y}'
+                  width: '72'
+                  height: '{height}'
+                  fields:
                     - type: STRING
-                      name: thresholds.2.threshold
-                      value: '2'"""
-    radius_h = honeycomb.replace('Connected', 'FreeRADIUS').replace('XECON', 'XERAD').replace(
-        'Engine *: Connected', 'Engine *: FreeRADIUS'
-    ).replace('^Engine (.*): Connected$', '^Engine (.*): FreeRADIUS$')
-    radius_h = radius_h.replace("y: '4'", "y: '9'")
+                      name: reference
+                      value: {ref}
+                    - type: INTEGER
+                      name: show
+                      value: '3'"""
+
+
+def _svg_items(
+    name: str,
+    ref: str,
+    items: list[tuple[str, str]],
+    *,
+    x: str = '0',
+    y: str = '0',
+    width: str = '36',
+    height: str = '6',
+    period: str = 'now-7d',
+    show_problems: str = '1',
+    legend: str = '1',
+) -> str:
+    fields = [
+        "                    - type: INTEGER",
+        "                      name: ds.0.dataset_type",
+        "                      value: '0'",
+    ]
+    for index, (color, key) in enumerate(items):
+        fields += [
+            "                    - type: STRING",
+            f"                      name: ds.0.color.{index}",
+            f"                      value: {color}",
+            "                    - type: ITEM",
+            f"                      name: ds.0.itemids.{index}",
+            "                      value:",
+            f"                        host: {TPL}",
+            f"                        key: {key}",
+        ]
+    fields += [
+        "                    - type: STRING",
+        "                      name: reference",
+        f"                      value: {ref}",
+        "                    - type: INTEGER",
+        "                      name: show_problems",
+        f"                      value: '{show_problems}'",
+        "                    - type: INTEGER",
+        "                      name: legend",
+        f"                      value: '{legend}'",
+        "                    - type: STRING",
+        "                      name: time_period.from",
+        f"                      value: {period}",
+        "                    - type: STRING",
+        "                      name: time_period.to",
+        "                      value: now",
+    ]
+    return f"""                - type: svggraph
+                  name: {name}{_xy(x, y)}
+                  width: '{width}'
+                  height: '{height}'
+                  fields:
+{chr(10).join(fields)}"""
+
+
+def _honeycomb(
+    name: str,
+    y: str,
+    items: str,
+    label_re: str,
+    ref: str,
+    thresholds: list[tuple[str, str]],
+    *,
+    x: str = '0',
+    width: str = '72',
+    height: str = '5',
+    interpolation: str = '0',
+    show_value: bool = False,
+) -> str:
+    fields = [
+        "                    - type: STRING",
+        "                      name: items.0",
+        f"                      value: '{items}'",
+        "                    - type: STRING",
+        "                      name: primary_label",
+        f"                      value: '{{{{ITEM.NAME}}.regsub(\"{label_re}\",\"\\1\")}}'",
+        "                    - type: INTEGER",
+        "                      name: interpolation",
+        f"                      value: '{interpolation}'",
+        "                    - type: INTEGER",
+        "                      name: primary_label_bold",
+        "                      value: '1'",
+        "                    - type: INTEGER",
+        "                      name: primary_label_size_type",
+        "                      value: '1'",
+        "                    - type: INTEGER",
+        "                      name: primary_label_size",
+        "                      value: '20'",
+    ]
+    if show_value:
+        fields += [
+            "                    - type: INTEGER",
+            "                      name: secondary_label_decimal_places",
+            "                      value: '0'",
+            "                    - type: INTEGER",
+            "                      name: secondary_label_size_type",
+            "                      value: '1'",
+            "                    - type: INTEGER",
+            "                      name: secondary_label_size",
+            "                      value: '22'",
+            "                    - type: INTEGER",
+            "                      name: secondary_label_type",
+            "                      value: '1'",
+            "                    - type: INTEGER",
+            "                      name: show.0",
+            "                      value: '1'",
+            "                    - type: INTEGER",
+            "                      name: show.1",
+            "                      value: '2'",
+        ]
+    else:
+        fields += [
+            "                    - type: INTEGER",
+            "                      name: show.0",
+            "                      value: '1'",
+        ]
+    fields += [
+        "                    - type: STRING",
+        "                      name: reference",
+        f"                      value: {ref}",
+    ]
+    for index, (color, threshold) in enumerate(thresholds):
+        fields += [
+            "                    - type: STRING",
+            f"                      name: thresholds.{index}.color",
+            f"                      value: {color}",
+            "                    - type: STRING",
+            f"                      name: thresholds.{index}.threshold",
+            f"                      value: '{threshold}'",
+        ]
+    return f"""                - type: honeycomb
+                  name: {name}{_xy(x, y)}
+                  width: '{width}'
+                  height: '{height}'
+                  fields:
+{chr(10).join(fields)}"""
+
+
+def _se_dashboards() -> str:
+    """One Health board. Overview = can we see SE / are users authenticating.
+
+    Engines = fleet colour (RADIUS, stale logs, enforce). Licenses = used +
+    remaining. Heap stays Latest data — collect first, no Overview graph.
+    Connected honeycomb is omitted: 25.5.12.6 leaves that field at unknown.
+    """
+    tri = [('FF465C', '0'), ('0EC9AC', '1'), ('878787', '2')]
+    age = [('878787', '-1'), ('0EC9AC', '0'), ('FF465C', '86400')]
     return f"""      dashboards:
         - uuid: {U['dash_health']}
           name: Health
           pages:
             - name: Overview
               widgets:
-{_item_widget('NBI', '0', 'xiqse.nbi.available', 'XNBI')}
-{_item_widget('NAC 24h MACs', '18', 'xiqse.nac.used24h', 'XNAC')}
-{_item_widget('Pilot used', '36', 'xiqse.pilot.used', 'XPUO')}
-{_item_widget('Navigator used', '54', 'xiqse.nav.used', 'XNUO')}
-                - type: problems
-                  name: Problems
-                  y: '4'
-                  width: '72'
-                  height: '4'
-                  fields:
-                    - type: STRING
-                      name: reference
-                      value: XPROB
-                    - type: INTEGER
-                      name: show
-                      value: '3'
-                - type: svggraph
-                  name: NAC license (24h unique MACs)
-                  y: '8'
-                  width: '36'
-                  height: '6'
-                  fields:
-                    - type: STRING
-                      name: ds.0.color.0
-                      value: 2774A4
-                    - type: INTEGER
-                      name: ds.0.dataset_type
-                      value: '0'
-                    - type: ITEM
-                      name: ds.0.itemids.0
-                      value:
-                        host: {TPL}
-                        key: xiqse.nac.used24h
-                    - type: STRING
-                      name: reference
-                      value: XNACG
-                    - type: INTEGER
-                      name: show_problems
-                      value: '1'
-                    - type: INTEGER
-                      name: legend
-                      value: '1'
-                - type: svggraph
-                  name: Heap
-                  x: '36'
-                  y: '8'
-                  width: '36'
-                  height: '6'
-                  fields:
-                    - type: STRING
-                      name: ds.0.color.0
-                      value: 199C0D
-                    - type: INTEGER
-                      name: ds.0.dataset_type
-                      value: '0'
-                    - type: ITEM
-                      name: ds.0.itemids.0
-                      value:
-                        host: {TPL}
-                        key: xiqse.nbi.heap.pct
-                    - type: STRING
-                      name: lefty_max
-                      value: '100'
-                    - type: STRING
-                      name: lefty_min
-                      value: '0'
-                    - type: STRING
-                      name: reference
-                      value: XHEAP
-                    - type: INTEGER
-                      name: legend
-                      value: '0'
+{_nbi_gauge()}
+{_item_widget('Engines', '18', 'xiqse.engine.count', 'XENG')}
+{_item_widget('NAC 24h MACs', '36', 'xiqse.nac.used24h', 'XNAC')}
+{_item_widget('Uptime', '54', 'xiqse.nbi.uptime', 'XUPT')}
+{_problems('XPROB')}
+{_svg_items('NAC 24h unique MACs', 'XNACG', [('2774A4', 'xiqse.nac.used24h')], y='7', width='72')}
+{_honeycomb('Last auth age', '13', 'Engine *: last auth age', '^Engine (.*): last auth age$', 'XEAGE', age, height='5', show_value=True)}
+            - name: Engines
+              widgets:
+{_honeycomb('FreeRADIUS', '0', 'Engine *: FreeRADIUS', '^Engine (.*): FreeRADIUS$', 'XERAD', tri)}
+{_honeycomb('24h unique MACs', '5', 'Engine *: 24h unique MACs', '^Engine (.*): 24h unique MACs$', 'XEUSE', [('4FC3F7', '0'), ('F2B90D', '1000'), ('FF465C', '2500')], interpolation='1', show_value=True)}
+{_honeycomb('Needs enforce', '10', 'Engine *: Needs enforce', '^Engine (.*): Needs enforce$', 'XEENF', tri)}
             - name: Licenses
               widgets:
 {_item_widget('NAC 24h MACs', '0', 'xiqse.nac.used24h', 'XNAC2')}
-{_item_widget('Pilot used', '18', 'xiqse.pilot.used', 'XPU')}
-{_item_widget('Navigator used', '36', 'xiqse.nav.used', 'XNU')}
-{_item_widget('NAC census', '54', 'xiqse.nac.ok', 'XNOK')}
-                - type: svggraph
-                  name: Pilot used
-                  y: '4'
-                  width: '36'
-                  height: '6'
-                  fields:
-                    - type: STRING
-                      name: ds.0.color.0
-                      value: 2774A4
-                    - type: INTEGER
-                      name: ds.0.dataset_type
-                      value: '0'
-                    - type: ITEM
-                      name: ds.0.itemids.0
-                      value:
-                        host: {TPL}
-                        key: xiqse.pilot.used
-                    - type: STRING
-                      name: reference
-                      value: XPILG
-                    - type: INTEGER
-                      name: legend
-                      value: '1'
-                - type: svggraph
-                  name: Navigator used
-                  x: '36'
-                  y: '4'
-                  width: '36'
-                  height: '6'
-                  fields:
-                    - type: STRING
-                      name: ds.0.color.0
-                      value: E68931
-                    - type: INTEGER
-                      name: ds.0.dataset_type
-                      value: '0'
-                    - type: ITEM
-                      name: ds.0.itemids.0
-                      value:
-                        host: {TPL}
-                        key: xiqse.nav.used
-                    - type: STRING
-                      name: reference
-                      value: XNAVG
-                    - type: INTEGER
-                      name: legend
-                      value: '1'
-        - uuid: {U['dash_engines']}
-          name: Engines
-          pages:
-            - name: Overview
-              widgets:
-{_item_widget('Engines', '0', 'xiqse.engine.count', 'XENG')}
-{_item_widget('Version', '18', 'xiqse.nbi.version', 'XVER')}
-{_item_widget('Uptime', '36', 'xiqse.nbi.uptime', 'XUPT')}
-                - type: problems
-                  name: Problems
-                  x: '54'
-                  width: '18'
-                  height: '4'
-                  fields:
-                    - type: STRING
-                      name: reference
-                      value: XEPRB
-                    - type: INTEGER
-                      name: show
-                      value: '3'
-{honeycomb}
-{radius_h}
+{_item_widget('NAC remaining', '18', 'xiqse.nac.remaining', 'XNREM')}
+{_item_widget('Pilot remaining', '36', 'xiqse.pilot.remaining', 'XPREM')}
+{_item_widget('Navigator remaining', '54', 'xiqse.nav.remaining', 'XNREM2')}
+{_svg_items('NAC 24h unique MACs', 'XNACG2', [('2774A4', 'xiqse.nac.used24h')], y='4')}
+{_svg_items('Pilot / Navigator used', 'XPNUG', [('2774A4', 'xiqse.pilot.used'), ('E68931', 'xiqse.nav.used')], x='36', y='4')}
 """
 
 
