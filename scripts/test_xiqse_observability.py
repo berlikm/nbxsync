@@ -14,6 +14,8 @@ from xiqse_observability import (
     APPLY_FLAG,
     CHECK_FLAG,
     DASHBOARD_NAMES,
+    HEALTH_PAGES,
+    leftover_dashboard_ids,
     FIXTURES,
     FORBIDDEN_SNIPPETS,
     JS_DIR,
@@ -386,37 +388,84 @@ class YamlContractTests(unittest.TestCase):
         graphs = {row['name'] for row in self.se['discovery_rules'][0]['graph_prototypes']}
         self.assertIn('Engine {#ENGINE.NAME}: last auth age', graphs)
 
-    def test_overview_shows_used_not_remaining(self):
-        overview = self.se['dashboards'][0]['pages'][0]
-        self.assertEqual(overview['name'], 'Overview')
-        keys = []
-        for widget in overview['widgets']:
-            for field in widget.get('fields') or []:
-                value = field.get('value')
-                if isinstance(value, dict) and value.get('key'):
-                    keys.append(value['key'])
+    def test_health_dashboard_answers_one_question_per_page(self):
+        self.assertEqual([d['name'] for d in self.se['dashboards']], ['Health'])
+        pages = {page['name']: page for page in self.se['dashboards'][0]['pages']}
+        self.assertEqual(tuple(pages), HEALTH_PAGES)
+
+        def widget_keys(page: dict) -> list[str]:
+            keys = []
+            for widget in page['widgets']:
+                for field in widget.get('fields') or []:
+                    value = field.get('value')
+                    if isinstance(value, dict) and value.get('key'):
+                        keys.append(value['key'])
+            return keys
+
+        def widget_names(page: dict) -> list[str]:
+            return [widget['name'] for widget in page['widgets']]
+
+        def field_map(page: dict) -> dict[str, str]:
+            out = {}
+            for widget in page['widgets']:
+                for field in widget.get('fields') or []:
+                    out[field['name']] = field.get('value')
+            return out
+
+        overview = pages['Overview']
+        self.assertEqual(widget_names(overview)[:4], ['NBI', 'Engines', 'NAC 24h MACs', 'Uptime'])
+        self.assertEqual(overview['widgets'][0]['type'], 'gauge')
         self.assertEqual(
-            keys[:4],
-            ['xiqse.nbi.available', 'xiqse.nac.used24h', 'xiqse.pilot.used', 'xiqse.nav.used'],
+            widget_keys(overview)[:4],
+            ['xiqse.nbi.available', 'xiqse.engine.count', 'xiqse.nac.used24h', 'xiqse.nbi.uptime'],
         )
-        self.assertNotIn('xiqse.nac.remaining', keys)
-        self.assertNotIn('xiqse.pilot.remaining', keys)
-        self.assertNotIn('xiqse.nav.remaining', keys)
-        licenses = self.se['dashboards'][0]['pages'][1]
-        self.assertEqual(licenses['name'], 'Licenses')
-        lic_keys = []
-        for widget in licenses['widgets']:
-            for field in widget.get('fields') or []:
-                value = field.get('value')
-                if isinstance(value, dict) and value.get('key'):
-                    lic_keys.append(value['key'])
+        self.assertNotIn('xiqse.pilot.used', widget_keys(overview))
+        self.assertNotIn('xiqse.nav.used', widget_keys(overview))
+        self.assertNotIn('xiqse.nac.remaining', widget_keys(overview))
+        self.assertNotIn('xiqse.nbi.heap.pct', widget_keys(overview))
+        self.assertIn('Last auth age', widget_names(overview))
+        self.assertNotIn('Connected', widget_names(overview))
+        self.assertNotIn('Heap', widget_names(overview))
+        overview_fields = field_map(overview)
+        self.assertEqual(overview_fields['time_period.from'], 'now-7d')
+        self.assertEqual(overview_fields['time_period.to'], 'now')
+        self.assertEqual(overview_fields['items.0'], 'Engine *: last auth age')
+
+        engines = pages['Engines']
+        self.assertEqual(widget_names(engines), ['FreeRADIUS', '24h unique MACs', 'Needs enforce'])
+        self.assertNotIn('Connected', widget_names(engines))
+        self.assertNotIn('Problems', widget_names(engines))
+        self.assertNotIn('xiqse.nbi.version', widget_keys(engines))
+
+        licenses = pages['Licenses']
         self.assertEqual(
-            lic_keys[:4],
-            ['xiqse.nac.used24h', 'xiqse.pilot.used', 'xiqse.nav.used', 'xiqse.nac.ok'],
+            widget_names(licenses)[:4],
+            ['NAC 24h MACs', 'NAC remaining', 'Pilot remaining', 'Navigator remaining'],
         )
-        self.assertNotIn('xiqse.nac.remaining', lic_keys)
-        self.assertNotIn('xiqse.pilot.remaining', lic_keys)
-        self.assertNotIn('xiqse.nav.remaining', lic_keys)
+        self.assertEqual(
+            widget_keys(licenses)[:4],
+            [
+                'xiqse.nac.used24h',
+                'xiqse.nac.remaining',
+                'xiqse.pilot.remaining',
+                'xiqse.nav.remaining',
+            ],
+        )
+        self.assertIn('xiqse.pilot.used', widget_keys(licenses))
+        self.assertIn('xiqse.nav.used', widget_keys(licenses))
+        self.assertNotIn('xiqse.nac.ok', widget_keys(licenses))
+
+    def test_leftover_engines_dashboard_is_the_retired_host_board(self):
+        self.assertEqual(
+            leftover_dashboard_ids(
+                [
+                    {'dashboardid': 1, 'name': 'Health'},
+                    {'dashboardid': 2, 'name': 'Engines'},
+                ]
+            ),
+            ['2'],
+        )
+        self.assertEqual(leftover_dashboard_ids([{'dashboardid': 1, 'name': 'Health'}]), [])
 
     def test_remaining_is_zero_until_purchased_total_is_set(self):
         remain = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.remaining')
@@ -464,9 +513,15 @@ class YamlContractTests(unittest.TestCase):
 
     def test_dashboards_and_valuemaps_live_on_the_template(self):
         self.assertEqual({d['name'] for d in self.se['dashboards']}, DASHBOARD_NAMES)
+        self.assertEqual(tuple(p['name'] for p in self.se['dashboards'][0]['pages']), HEALTH_PAGES)
         maps = {row['name'] for row in self.se['valuemaps']}
         self.assertTrue({'XIQ-SE NBI', 'XIQ-SE tri-state', 'XIQ-SE truncated', 'Service state'} <= maps)
         self.assertNotIn('valuemaps', self.se_doc['zabbix_export'])
+        for page in self.se['dashboards'][0]['pages']:
+            for widget in page['widgets']:
+                for key in ('x', 'y', 'width', 'height'):
+                    if key in widget:
+                        self.assertIsInstance(widget[key], str, (page['name'], widget['name'], key))
 
     def test_nac_template_is_thin_and_disabled(self):
         keys = _walk_item_keys(self.nac)
@@ -516,6 +571,7 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertNotIn('SyncHostJob', apply_fn)
         self.assertNotIn('configure_nbxsync_zerotouch', apply_fn)
         self.assertIn('strict=True', import_fn)
+        self.assertIn('drop_leftover_xiqse_engines_dashboard', import_fn)
         self.assertIn(SE_TEMPLATE_RULE, src)
         self.assertIn('_xiqse.XIQSE_FQDN_JINJA', src)
         self.assertIn('_xiqse.XIQSE_FQDN_MACRO', src)

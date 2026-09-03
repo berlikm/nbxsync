@@ -34,7 +34,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/fortinet_fortimanager_observability/` | FortiManager Observability | companion; nests FMG-FAZ SNMP; **Devices** board; FGFM connect-down; config drift collect-only — [03](03-fortinet.md) |
 | `templates/fortinet_fortianalyzer_observability/` | FortiAnalyzer Observability | companion; nests FMG-FAZ SNMP; **Logs** board; log lag Average; log-disk High at 95% — [03](03-fortinet.md) |
 | `templates/mssql_observability/` | MSSQL Observability | companion YAML: named-instance LLD, inventories, 7.0 host prototypes (stock on children, fleet group `MSSQL instances` only); **soft** zerotouch assign; import before canary — [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md) |
-| `templates/xiqse_observability/` | XIQ-SE Observability | **built**; GraphQL NBI + 24h unique MAC license + engine LLD; **Health** + **Engines** — [07](07-extreme-control.md) |
+| `templates/xiqse_observability/` | XIQ-SE Observability | **built**; GraphQL NBI + 24h unique MAC license + engine LLD; host **Health** (Overview / Engines / Licenses) — [07](07-extreme-control.md) |
 | `templates/extremecontrol_observability/` | ExtremeControl Observability | **built**; thin role **NAC** companion; portal/cert Warning **DISABLED** — [07](07-extreme-control.md) |
 | `templates/extremecontrol_snmp/` | ExtremeControl by SNMP | **built**; `ENTERASYS-NAC-APPLIANCE-MIB` canary on five ENACs; **Health** — [07](07-extreme-control.md) |
 | `templates/cato_http/` | Cato Networks by HTTP | imported; account collector with **Health** (Census/API) + **Path** (Last mile/Probe) + **Network** (Tunnels/HA/Port); 21/21 Socket ICMP hosts live — [04](04-cato.md) |
