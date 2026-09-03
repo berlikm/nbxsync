@@ -413,47 +413,80 @@ class YamlContractTests(unittest.TestCase):
             return out
 
         overview = pages['Overview']
-        self.assertEqual(widget_names(overview)[:4], ['NBI', 'Engines', 'NAC 24h MACs', 'Uptime'])
+        self.assertEqual(widget_names(overview), ['NBI', 'Engines', 'NAC used', 'Uptime', 'Problems', 'Last auth age'])
         self.assertEqual(overview['widgets'][0]['type'], 'gauge')
         self.assertEqual(
-            widget_keys(overview)[:4],
+            widget_keys(overview),
             ['xiqse.nbi.available', 'xiqse.engine.count', 'xiqse.nac.used24h', 'xiqse.nbi.uptime'],
         )
         self.assertNotIn('xiqse.pilot.used', widget_keys(overview))
         self.assertNotIn('xiqse.nav.used', widget_keys(overview))
         self.assertNotIn('xiqse.nac.remaining', widget_keys(overview))
+        self.assertNotIn('xiqse.pilot.remaining', widget_keys(overview))
+        self.assertNotIn('xiqse.nav.remaining', widget_keys(overview))
         self.assertNotIn('xiqse.nbi.heap.pct', widget_keys(overview))
-        self.assertIn('Last auth age', widget_names(overview))
         self.assertNotIn('Connected', widget_names(overview))
-        self.assertNotIn('Heap', widget_names(overview))
+        self.assertFalse(any(widget['type'] == 'svggraph' for widget in overview['widgets']))
         overview_fields = field_map(overview)
-        self.assertEqual(overview_fields['time_period.from'], 'now-7d')
-        self.assertEqual(overview_fields['time_period.to'], 'now')
         self.assertEqual(overview_fields['items.0'], 'Engine *: last auth age')
 
         engines = pages['Engines']
-        self.assertEqual(widget_names(engines), ['FreeRADIUS', '24h unique MACs', 'Needs enforce'])
+        self.assertEqual(widget_names(engines), ['FreeRADIUS', 'Needs enforce'])
+        self.assertNotIn('24h unique MACs', widget_names(engines))
         self.assertNotIn('Connected', widget_names(engines))
         self.assertNotIn('Problems', widget_names(engines))
         self.assertNotIn('xiqse.nbi.version', widget_keys(engines))
+        self.assertNotIn('xiqse.nac.used24h', widget_keys(engines))
+        self.assertFalse(
+            any(
+                (field.get('value') or '') == 'Engine *: 24h unique MACs'
+                for widget in engines['widgets']
+                for field in widget.get('fields') or []
+            )
+        )
 
         licenses = pages['Licenses']
         self.assertEqual(
-            widget_names(licenses)[:4],
-            ['NAC 24h MACs', 'NAC remaining', 'Pilot remaining', 'Navigator remaining'],
+            widget_names(licenses),
+            [
+                'NAC used',
+                'Pilot used',
+                'Navigator used',
+                'NAC used %',
+                'NAC remaining',
+                'Pilot remaining',
+                'Navigator remaining',
+                'NAC used',
+                'Pilot / Navigator used',
+            ],
         )
         self.assertEqual(
-            widget_keys(licenses)[:4],
+            widget_keys(licenses),
             [
                 'xiqse.nac.used24h',
+                'xiqse.pilot.used',
+                'xiqse.nav.used',
+                'xiqse.nac.used.pct',
                 'xiqse.nac.remaining',
                 'xiqse.pilot.remaining',
                 'xiqse.nav.remaining',
+                'xiqse.nac.used24h',
+                'xiqse.pilot.used',
+                'xiqse.nav.used',
             ],
         )
-        self.assertIn('xiqse.pilot.used', widget_keys(licenses))
-        self.assertIn('xiqse.nav.used', widget_keys(licenses))
+        license_fields = field_map(licenses)
+        self.assertEqual(license_fields['time_period.from'], 'now-7d')
+        self.assertEqual(license_fields['time_period.to'], 'now')
         self.assertNotIn('xiqse.nac.ok', widget_keys(licenses))
+        self.assertEqual(
+            [widget['name'] for widget in licenses['widgets'] if widget['type'] == 'item'][:4],
+            ['NAC used', 'Pilot used', 'Navigator used', 'NAC used %'],
+        )
+        self.assertEqual(
+            [widget['name'] for widget in licenses['widgets'] if widget['type'] == 'item'][4:],
+            ['NAC remaining', 'Pilot remaining', 'Navigator remaining'],
+        )
 
     def test_leftover_engines_dashboard_is_the_retired_host_board(self):
         self.assertEqual(

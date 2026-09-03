@@ -19,7 +19,7 @@ This page is the **target contract**. YAML lives in `templates/xiqse_observabili
 | Never silent | GraphQL nodata; zero engines discovered; 24h census truncated (`count == maxResults`). SNMP-dead Warning on the engine if the MONITORING profile stops answering |
 | Collect first | Heap / CPU thresholds off until a quiet baseline. Log-forward is elapsed `{$XIQ.NAC.FRESH}` (no wall clock — engines are in CH / CN / HU / KR). SNMP fail-ratio and contact-lost gated (`101` / CONTROL=0) |
 | One `icmpping` | Nested only if the host does not already ping. Do not also assign Network Generic |
-| Host dashboard | One **Health** board (Overview / Engines / Licenses). Overview is NBI + engine count + NAC demand + uptime. Licenses shows remaining (0 until CG totals). Heap stays Latest data. |
+| Host dashboard | One **Health** board. **Licenses** is the only seat worksheet (used + remaining for NAC / Pilot / Navigator). Overview **NAC used** is the same global unique-MAC item — not a second count. Engine 24h unique stays Latest data (hardware load; do not add it up). |
 
 Disaster is campus-wide auth later, on a **service / site** host — not on this template.
 
@@ -31,11 +31,11 @@ After the platform template is linked, **Monitoring → Hosts → Site Engine �
 
 | Page | What you see in 5 seconds |
 |---|---|
-| **Overview** | Can we talk to NBI, how many engines, 24h unique MACs (the number Extreme bills), SE uptime. Problems. NAC demand over 7d. Per-engine **last auth age** honeycomb — red at 24h (`{$XIQ.NAC.FRESH}` default). |
-| **Engines** | FreeRADIUS colour (users cannot 802.1X). 24h unique MACs per engine (hardware load, not the global license). `needsEnforce`. No **Connected** map: 25.5.12.6 leaves that field at unknown (grey). |
-| **Licenses** | NAC used + remaining, Pilot remaining, Navigator remaining. Remaining is SCRIPT-computed and **0 until** you set `{$XIQ.*.TOTAL}` on CG **XIQ-SE licenses** — that is not “out of seats”. Pilot / Navigator **used** are the 7d graph, not Overview tiles. |
+| **Overview** | NBI, engine count, **NAC used** (global unique MACs — same item as Licenses), uptime. Problems. Last-auth-age honeycomb (red at 24h). No remaining tiles and no NAC graph here. |
+| **Engines** | FreeRADIUS and `needsEnforce` only. No 24h unique map: per-engine MACs are hardware load (`1365/3000`) and **do not add up** to the NAC seat. No **Connected** map (unknown on 25.5.12.6). |
+| **Licenses** | One worksheet. Row 1 = used (NAC / Pilot / Navigator / NAC %). Row 2 = remaining. Remaining is **0 until** CG `{$XIQ.*.TOTAL}` is set — that is not “out of seats”. 7d graphs of used only. |
 
-There is no second **Engines** dashboard. `--apply-xiqse` drops the leftover host board (`deleteMissing: false` would otherwise keep it). Heap / RAM / threads stay items (collect first). Do not put Pilot / Navigator used on Overview — those are procurement, not “is auth working”.
+There is no second **Engines** dashboard. `--apply-xiqse` drops the leftover host board (`deleteMissing: false` would otherwise keep it). Heap / RAM / threads stay items (collect first). Do not put Pilot / Navigator used on Overview. Do not put remaining on Overview.
 
 ---
 
@@ -113,7 +113,7 @@ On **Site Engine → Health**:
 | Graph | Unit | Why |
 |---|---|---|
 | **NAC license used (24h unique MACs)** | count | The number Extreme bills / enforces |
-| NAC license remaining | SCRIPT: 0 while `{$XIQ.NAC.TOTAL}` is 0, else purchased − used | **Licenses** tiles. **0 until you set the CG.** That is not “out of seats” and not −2175. NBI cannot read Administration → Licenses |
+| NAC license remaining | SCRIPT: 0 while `{$XIQ.NAC.TOTAL}` is 0, else purchased − used | **Licenses** row 2, next to NAC used. **0 until you set the CG.** That is not “out of seats” and not −2175. NBI cannot read Administration → Licenses |
 | NAC used % of entitlement | % | Warning at 90% |
 | Unique **usernames** 24h | count | Capacity story; **not** the license |
 | Pilot used / remaining | count | Device + engine seats (`XIQ_PILOT`) |
@@ -127,9 +127,10 @@ On **Site Engine → Health → Engines** (LLD honeycomb, one hex per engine):
 
 | Map | Why |
 |---|---|
-| 24h unique MACs on **this** engine | Hardware load (`1365/3000`) — not the global XIQ-NAC-S count |
-| Age of newest `lastAuthEventTime` | NAC → SE log-forward gap (also on Overview) |
 | FreeRADIUS / `needsEnforce` | Colour. Connected is omitted (unknown on 25.5.12.6) |
+| Age of newest `lastAuthEventTime` | On **Overview** — NAC → SE log-forward gap |
+
+Per-engine 24h unique MACs stay Latest data / graph prototypes. That number is hardware load. Summing the hexes double-counts a MAC that authenticated on two engines and will **not** match **NAC used**.
 
 Do **not** LLD every laptop. Sample and count on SE.
 

@@ -1007,11 +1007,14 @@ def _honeycomb(
 
 
 def _se_dashboards() -> str:
-    """One Health board. Overview = can we see SE / are users authenticating.
+    """One Health board. License seats live only on Licenses.
 
-    Engines = fleet colour (RADIUS, stale logs, enforce). Licenses = used +
-    remaining. Heap stays Latest data — collect first, no Overview graph.
-    Connected honeycomb is omitted: 25.5.12.6 leaves that field at unknown.
+    Overview is control-plane health (NBI, engine count, uptime, stale logs).
+    NAC used on Overview is the same global unique-MAC item as Licenses —
+    demand, not a second count. Engines must not show 24h unique MACs: that
+    is per-engine hardware load and does not add up to the NAC seat.
+    Remaining sits next to used on Licenses (0 until CG totals). Heap stays
+    Latest data. Connected honeycomb is omitted (unknown on 25.5.12.6).
     """
     tri = [('FF465C', '0'), ('0EC9AC', '1'), ('878787', '2')]
     age = [('878787', '-1'), ('0EC9AC', '0'), ('FF465C', '86400')]
@@ -1023,24 +1026,25 @@ def _se_dashboards() -> str:
               widgets:
 {_nbi_gauge()}
 {_item_widget('Engines', '18', 'xiqse.engine.count', 'XENG')}
-{_item_widget('NAC 24h MACs', '36', 'xiqse.nac.used24h', 'XNAC')}
+{_item_widget('NAC used', '36', 'xiqse.nac.used24h', 'XNAC')}
 {_item_widget('Uptime', '54', 'xiqse.nbi.uptime', 'XUPT')}
 {_problems('XPROB')}
-{_svg_items('NAC 24h unique MACs', 'XNACG', [('2774A4', 'xiqse.nac.used24h')], y='7', width='72')}
-{_honeycomb('Last auth age', '13', 'Engine *: last auth age', '^Engine (.*): last auth age$', 'XEAGE', age, height='5', show_value=True)}
+{_honeycomb('Last auth age', '7', 'Engine *: last auth age', '^Engine (.*): last auth age$', 'XEAGE', age, height='5', show_value=True)}
             - name: Engines
               widgets:
 {_honeycomb('FreeRADIUS', '0', 'Engine *: FreeRADIUS', '^Engine (.*): FreeRADIUS$', 'XERAD', tri)}
-{_honeycomb('24h unique MACs', '5', 'Engine *: 24h unique MACs', '^Engine (.*): 24h unique MACs$', 'XEUSE', [('4FC3F7', '0'), ('F2B90D', '1000'), ('FF465C', '2500')], interpolation='1', show_value=True)}
-{_honeycomb('Needs enforce', '10', 'Engine *: Needs enforce', '^Engine (.*): Needs enforce$', 'XEENF', tri)}
+{_honeycomb('Needs enforce', '5', 'Engine *: Needs enforce', '^Engine (.*): Needs enforce$', 'XEENF', tri)}
             - name: Licenses
               widgets:
-{_item_widget('NAC 24h MACs', '0', 'xiqse.nac.used24h', 'XNAC2')}
-{_item_widget('NAC remaining', '18', 'xiqse.nac.remaining', 'XNREM')}
-{_item_widget('Pilot remaining', '36', 'xiqse.pilot.remaining', 'XPREM')}
-{_item_widget('Navigator remaining', '54', 'xiqse.nav.remaining', 'XNREM2')}
-{_svg_items('NAC 24h unique MACs', 'XNACG2', [('2774A4', 'xiqse.nac.used24h')], y='4')}
-{_svg_items('Pilot / Navigator used', 'XPNUG', [('2774A4', 'xiqse.pilot.used'), ('E68931', 'xiqse.nav.used')], x='36', y='4')}
+{_item_widget('NAC used', '0', 'xiqse.nac.used24h', 'XNAC2')}
+{_item_widget('Pilot used', '18', 'xiqse.pilot.used', 'XPU')}
+{_item_widget('Navigator used', '36', 'xiqse.nav.used', 'XNU')}
+{_item_widget('NAC used %', '54', 'xiqse.nac.used.pct', 'XNPCT')}
+{_item_widget('NAC remaining', '0', 'xiqse.nac.remaining', 'XNREM', y='4')}
+{_item_widget('Pilot remaining', '18', 'xiqse.pilot.remaining', 'XPREM', y='4')}
+{_item_widget('Navigator remaining', '36', 'xiqse.nav.remaining', 'XNREM2', y='4')}
+{_svg_items('NAC used', 'XNACG', [('2774A4', 'xiqse.nac.used24h')], y='8')}
+{_svg_items('Pilot / Navigator used', 'XPNUG', [('2774A4', 'xiqse.pilot.used'), ('E68931', 'xiqse.nav.used')], x='36', y='8')}
 """
 
 
