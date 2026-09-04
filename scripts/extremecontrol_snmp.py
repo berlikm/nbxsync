@@ -331,7 +331,6 @@ if the box is gone. Same SNMPv3 profile as switches (MONITORING).""",
     doc.add(5, 'value_type: CHAR')
     doc.add(5, 'history: 7d')
     doc.add(5, "trends: '0'")
-    doc.add(5, 'inventory_link: NAME')
     doc.add(5, 'preprocessing:')
     doc.add(6, '- type: DISCARD_UNCHANGED_HEARTBEAT')
     doc.add(7, 'parameters:')

@@ -103,7 +103,6 @@ zabbix_export:
           value_type: CHAR
           history: 7d
           trends: '0'
-          inventory_link: NAME
           preprocessing:
             - type: DISCARD_UNCHANGED_HEARTBEAT
               parameters:
