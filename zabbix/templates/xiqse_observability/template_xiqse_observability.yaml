@@ -40,6 +40,9 @@ zabbix_export:
         - macro: '{$XIQSE.LICENSE.TIMEOUT}'
           value: '60s'
           description: 'End-system / device-license SCRIPT timeout.'
+        - macro: '{$XIQSE.TZ}'
+          value: 'Europe/Zurich'
+          description: 'Site Engine local zone for timezone-less lastAuthEventTime. Naive NBI stamps are this zone, not UTC. UTC/+HH:MM override. Not engine TZ.'
         - macro: '{$XIQ.NAC.TOTAL}'
           value: '0'
           description: 'Purchased XIQ-NAC-S. Set on CG XIQ-SE licenses. 0 = remaining forced 0, not out of seats.'
@@ -89,17 +92,105 @@ zabbix_export:
           trends: '0'
           value_type: TEXT
           params: |
-            function parseAuthTime(raw) {
+            function lastSundayDay(year, month) {
+              var date = new Date(Date.UTC(year, month, 0));
+              return date.getUTCDate() - date.getUTCDay();
+            }
+
+            function europeZurichOffsetMinutes(year, month, day, hour) {
+              // EU DST as used by Europe/Zurich: last Sunday March 02:00 local CET → CEST,
+              // last Sunday October 03:00 local CEST → CET. Ambiguous 02:00–02:59 in October
+              // stays on CEST (hour < 3).
+              var startDay = lastSundayDay(year, 3);
+              var endDay = lastSundayDay(year, 10);
+              var dst = false;
+              if (month > 3 && month < 10) {
+                dst = true;
+              } else if (month === 3) {
+                if (day > startDay || (day === startDay && hour >= 2)) {
+                  dst = true;
+                }
+              } else if (month === 10) {
+                if (day < endDay || (day === endDay && hour < 3)) {
+                  dst = true;
+                }
+              }
+              return dst ? 120 : 60;
+            }
+
+            function tzOffsetMinutes(tz, year, month, day, hour) {
+              var zone = String(tz === undefined || tz === null ? 'Europe/Zurich' : tz);
+              zone = zone.replace(/^\s+|\s+$/g, '');
+              if (zone === 'UTC' || zone === 'GMT' || zone === 'Z') {
+                return 0;
+              }
+              var fixed = zone.match(/^([+-])(\d{2}):?(\d{2})$/);
+              if (fixed) {
+                var sign = fixed[1] === '-' ? -1 : 1;
+                return sign * (Number(fixed[2]) * 60 + Number(fixed[3]));
+              }
+              return europeZurichOffsetMinutes(year, month, day, hour);
+            }
+
+            function parseOffsetToken(token) {
+              if (!token || token === 'Z' || token === 'z') {
+                return 0;
+              }
+              var match = String(token).match(/^([+-])(\d{2}):?(\d{2})$/);
+              if (!match) {
+                return null;
+              }
+              var sign = match[1] === '-' ? -1 : 1;
+              return sign * (Number(match[2]) * 60 + Number(match[3]));
+            }
+
+            function parseAuthTime(raw, tz) {
               if (raw === null || raw === undefined || raw === '') {
                 return null;
               }
               if (typeof raw === 'number' && isFinite(raw)) {
                 return raw > 0 && raw < 1e11 ? raw * 1000 : raw;
               }
-              var text = String(raw);
+              var text = String(raw).replace(/^\s+|\s+$/g, '');
               if (/^\d+$/.test(text)) {
                 var numeric = Number(text);
                 return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
+              }
+              var named = '';
+              var namedMatch = text.match(/\s+(CEST|CET)$/i);
+              if (namedMatch) {
+                named = namedMatch[1].toUpperCase();
+                text = text.slice(0, text.length - namedMatch[0].length);
+              }
+              var iso = text.match(
+                /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?(Z|[+-]\d{2}:?\d{2})?$/
+              );
+              if (iso) {
+                var year = Number(iso[1]);
+                var month = Number(iso[2]);
+                var day = Number(iso[3]);
+                var hour = Number(iso[4]);
+                var minute = Number(iso[5]);
+                var second = Number(iso[6]);
+                var millis = iso[7] ? Number((iso[7] + '000').slice(0, 3)) : 0;
+                var offsetMin;
+                if (iso[8]) {
+                  offsetMin = parseOffsetToken(iso[8]);
+                  if (offsetMin === null) {
+                    return null;
+                  }
+                } else if (named === 'CEST') {
+                  offsetMin = 120;
+                } else if (named === 'CET') {
+                  offsetMin = 60;
+                } else {
+                  // NBI 25.5.12.6 emits lastAuthEventTime without a zone, e.g.
+                  // 2026-09-04T08:39:05.366 while the clock is 06:39 UTC (CEST).
+                  // Date.parse() in Zabbix/Duktape treats that as UTC, then the 60s
+                  // future-skew drops current auths (~969 live on 2026-09-04).
+                  offsetMin = tzOffsetMinutes(tz, year, month, day, hour);
+                }
+                return Date.UTC(year, month - 1, day, hour, minute, second, millis) - offsetMin * 60000;
               }
               var parsed = Date.parse(text);
               return isNaN(parsed) ? null : parsed;
@@ -142,7 +233,7 @@ zabbix_export:
               return observed / purchased * 100;
             }
 
-            function countLicenseWindow(rows, nowMs, windowMs) {
+            function countLicenseWindow(rows, nowMs, windowMs, tz) {
               var macs = {};
               var users = {};
               var byEngine = {};
@@ -152,7 +243,7 @@ zabbix_export:
               }
               for (i = 0; i < rows.length; i++) {
                 var row = rows[i] || {};
-                var stamp = parseAuthTime(row.lastAuthEventTime);
+                var stamp = parseAuthTime(row.lastAuthEventTime, tz);
                 if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
                   continue;
                 }
@@ -186,7 +277,8 @@ zabbix_export:
                 engines[engineIp] = {
                   used24h: objectSize(byEngine[engineIp].macs),
                   // -1 = no event in the census. 0 = just now, or SE clock slightly ahead
-                  // of the proxy (25.5.12.6 canary: ENAC01 lastAuthAge was -33s).
+                  // of the proxy. A timezone-less NBI stamp is Site Engine local time,
+                  // not UTC — do not treat CEST "now" as two hours in the future.
                   lastAuthAge: byEngine[engineIp].lastAuth
                     ? Math.max(0, Math.floor((nowMs - byEngine[engineIp].lastAuth) / 1000))
                     : -1
@@ -482,17 +574,105 @@ zabbix_export:
           trends: '0'
           value_type: TEXT
           params: |
-            function parseAuthTime(raw) {
+            function lastSundayDay(year, month) {
+              var date = new Date(Date.UTC(year, month, 0));
+              return date.getUTCDate() - date.getUTCDay();
+            }
+
+            function europeZurichOffsetMinutes(year, month, day, hour) {
+              // EU DST as used by Europe/Zurich: last Sunday March 02:00 local CET → CEST,
+              // last Sunday October 03:00 local CEST → CET. Ambiguous 02:00–02:59 in October
+              // stays on CEST (hour < 3).
+              var startDay = lastSundayDay(year, 3);
+              var endDay = lastSundayDay(year, 10);
+              var dst = false;
+              if (month > 3 && month < 10) {
+                dst = true;
+              } else if (month === 3) {
+                if (day > startDay || (day === startDay && hour >= 2)) {
+                  dst = true;
+                }
+              } else if (month === 10) {
+                if (day < endDay || (day === endDay && hour < 3)) {
+                  dst = true;
+                }
+              }
+              return dst ? 120 : 60;
+            }
+
+            function tzOffsetMinutes(tz, year, month, day, hour) {
+              var zone = String(tz === undefined || tz === null ? 'Europe/Zurich' : tz);
+              zone = zone.replace(/^\s+|\s+$/g, '');
+              if (zone === 'UTC' || zone === 'GMT' || zone === 'Z') {
+                return 0;
+              }
+              var fixed = zone.match(/^([+-])(\d{2}):?(\d{2})$/);
+              if (fixed) {
+                var sign = fixed[1] === '-' ? -1 : 1;
+                return sign * (Number(fixed[2]) * 60 + Number(fixed[3]));
+              }
+              return europeZurichOffsetMinutes(year, month, day, hour);
+            }
+
+            function parseOffsetToken(token) {
+              if (!token || token === 'Z' || token === 'z') {
+                return 0;
+              }
+              var match = String(token).match(/^([+-])(\d{2}):?(\d{2})$/);
+              if (!match) {
+                return null;
+              }
+              var sign = match[1] === '-' ? -1 : 1;
+              return sign * (Number(match[2]) * 60 + Number(match[3]));
+            }
+
+            function parseAuthTime(raw, tz) {
               if (raw === null || raw === undefined || raw === '') {
                 return null;
               }
               if (typeof raw === 'number' && isFinite(raw)) {
                 return raw > 0 && raw < 1e11 ? raw * 1000 : raw;
               }
-              var text = String(raw);
+              var text = String(raw).replace(/^\s+|\s+$/g, '');
               if (/^\d+$/.test(text)) {
                 var numeric = Number(text);
                 return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
+              }
+              var named = '';
+              var namedMatch = text.match(/\s+(CEST|CET)$/i);
+              if (namedMatch) {
+                named = namedMatch[1].toUpperCase();
+                text = text.slice(0, text.length - namedMatch[0].length);
+              }
+              var iso = text.match(
+                /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?(Z|[+-]\d{2}:?\d{2})?$/
+              );
+              if (iso) {
+                var year = Number(iso[1]);
+                var month = Number(iso[2]);
+                var day = Number(iso[3]);
+                var hour = Number(iso[4]);
+                var minute = Number(iso[5]);
+                var second = Number(iso[6]);
+                var millis = iso[7] ? Number((iso[7] + '000').slice(0, 3)) : 0;
+                var offsetMin;
+                if (iso[8]) {
+                  offsetMin = parseOffsetToken(iso[8]);
+                  if (offsetMin === null) {
+                    return null;
+                  }
+                } else if (named === 'CEST') {
+                  offsetMin = 120;
+                } else if (named === 'CET') {
+                  offsetMin = 60;
+                } else {
+                  // NBI 25.5.12.6 emits lastAuthEventTime without a zone, e.g.
+                  // 2026-09-04T08:39:05.366 while the clock is 06:39 UTC (CEST).
+                  // Date.parse() in Zabbix/Duktape treats that as UTC, then the 60s
+                  // future-skew drops current auths (~969 live on 2026-09-04).
+                  offsetMin = tzOffsetMinutes(tz, year, month, day, hour);
+                }
+                return Date.UTC(year, month - 1, day, hour, minute, second, millis) - offsetMin * 60000;
               }
               var parsed = Date.parse(text);
               return isNaN(parsed) ? null : parsed;
@@ -535,7 +715,7 @@ zabbix_export:
               return observed / purchased * 100;
             }
 
-            function countLicenseWindow(rows, nowMs, windowMs) {
+            function countLicenseWindow(rows, nowMs, windowMs, tz) {
               var macs = {};
               var users = {};
               var byEngine = {};
@@ -545,7 +725,7 @@ zabbix_export:
               }
               for (i = 0; i < rows.length; i++) {
                 var row = rows[i] || {};
-                var stamp = parseAuthTime(row.lastAuthEventTime);
+                var stamp = parseAuthTime(row.lastAuthEventTime, tz);
                 if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
                   continue;
                 }
@@ -579,7 +759,8 @@ zabbix_export:
                 engines[engineIp] = {
                   used24h: objectSize(byEngine[engineIp].macs),
                   // -1 = no event in the census. 0 = just now, or SE clock slightly ahead
-                  // of the proxy (25.5.12.6 canary: ENAC01 lastAuthAge was -33s).
+                  // of the proxy. A timezone-less NBI stamp is Site Engine local time,
+                  // not UTC — do not treat CEST "now" as two hours in the future.
                   lastAuthAge: byEngine[engineIp].lastAuth
                     ? Math.max(0, Math.floor((nowMs - byEngine[engineIp].lastAuth) / 1000))
                     : -1
@@ -873,7 +1054,7 @@ zabbix_export:
                 }
                 first += take;
               }
-              var counted = countLicenseWindow(rows, Date.now(), 86400000);
+              var counted = countLicenseWindow(rows, Date.now(), 86400000, params.tz);
               return {
                 ok: 1,
                 error: '',
@@ -907,8 +1088,10 @@ zabbix_export:
               value: '{$XIQ.NAC.ES.PAGE}'
             - name: nac_total
               value: '{$XIQ.NAC.TOTAL}'
+            - name: tz
+              value: '{$XIQSE.TZ}'
           description: |
-            Pages endSystems and counts unique MACs with lastAuthEventTime in 24h. Remaining and used % are computed here from {$XIQ.NAC.TOTAL} so Cloud 7.0 cannot keep an unguarded calculated formula.
+            Pages endSystems and counts unique MACs with lastAuthEventTime in 24h. Timezone-less stamps are {$XIQSE.TZ} (default Europe/Zurich), not UTC. Remaining and used % are computed here from {$XIQ.NAC.TOTAL} so Cloud 7.0 cannot keep an unguarded calculated formula.
           tags:
             - tag: component
               value: license
@@ -923,17 +1106,105 @@ zabbix_export:
           trends: '0'
           value_type: TEXT
           params: |
-            function parseAuthTime(raw) {
+            function lastSundayDay(year, month) {
+              var date = new Date(Date.UTC(year, month, 0));
+              return date.getUTCDate() - date.getUTCDay();
+            }
+
+            function europeZurichOffsetMinutes(year, month, day, hour) {
+              // EU DST as used by Europe/Zurich: last Sunday March 02:00 local CET → CEST,
+              // last Sunday October 03:00 local CEST → CET. Ambiguous 02:00–02:59 in October
+              // stays on CEST (hour < 3).
+              var startDay = lastSundayDay(year, 3);
+              var endDay = lastSundayDay(year, 10);
+              var dst = false;
+              if (month > 3 && month < 10) {
+                dst = true;
+              } else if (month === 3) {
+                if (day > startDay || (day === startDay && hour >= 2)) {
+                  dst = true;
+                }
+              } else if (month === 10) {
+                if (day < endDay || (day === endDay && hour < 3)) {
+                  dst = true;
+                }
+              }
+              return dst ? 120 : 60;
+            }
+
+            function tzOffsetMinutes(tz, year, month, day, hour) {
+              var zone = String(tz === undefined || tz === null ? 'Europe/Zurich' : tz);
+              zone = zone.replace(/^\s+|\s+$/g, '');
+              if (zone === 'UTC' || zone === 'GMT' || zone === 'Z') {
+                return 0;
+              }
+              var fixed = zone.match(/^([+-])(\d{2}):?(\d{2})$/);
+              if (fixed) {
+                var sign = fixed[1] === '-' ? -1 : 1;
+                return sign * (Number(fixed[2]) * 60 + Number(fixed[3]));
+              }
+              return europeZurichOffsetMinutes(year, month, day, hour);
+            }
+
+            function parseOffsetToken(token) {
+              if (!token || token === 'Z' || token === 'z') {
+                return 0;
+              }
+              var match = String(token).match(/^([+-])(\d{2}):?(\d{2})$/);
+              if (!match) {
+                return null;
+              }
+              var sign = match[1] === '-' ? -1 : 1;
+              return sign * (Number(match[2]) * 60 + Number(match[3]));
+            }
+
+            function parseAuthTime(raw, tz) {
               if (raw === null || raw === undefined || raw === '') {
                 return null;
               }
               if (typeof raw === 'number' && isFinite(raw)) {
                 return raw > 0 && raw < 1e11 ? raw * 1000 : raw;
               }
-              var text = String(raw);
+              var text = String(raw).replace(/^\s+|\s+$/g, '');
               if (/^\d+$/.test(text)) {
                 var numeric = Number(text);
                 return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
+              }
+              var named = '';
+              var namedMatch = text.match(/\s+(CEST|CET)$/i);
+              if (namedMatch) {
+                named = namedMatch[1].toUpperCase();
+                text = text.slice(0, text.length - namedMatch[0].length);
+              }
+              var iso = text.match(
+                /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?(Z|[+-]\d{2}:?\d{2})?$/
+              );
+              if (iso) {
+                var year = Number(iso[1]);
+                var month = Number(iso[2]);
+                var day = Number(iso[3]);
+                var hour = Number(iso[4]);
+                var minute = Number(iso[5]);
+                var second = Number(iso[6]);
+                var millis = iso[7] ? Number((iso[7] + '000').slice(0, 3)) : 0;
+                var offsetMin;
+                if (iso[8]) {
+                  offsetMin = parseOffsetToken(iso[8]);
+                  if (offsetMin === null) {
+                    return null;
+                  }
+                } else if (named === 'CEST') {
+                  offsetMin = 120;
+                } else if (named === 'CET') {
+                  offsetMin = 60;
+                } else {
+                  // NBI 25.5.12.6 emits lastAuthEventTime without a zone, e.g.
+                  // 2026-09-04T08:39:05.366 while the clock is 06:39 UTC (CEST).
+                  // Date.parse() in Zabbix/Duktape treats that as UTC, then the 60s
+                  // future-skew drops current auths (~969 live on 2026-09-04).
+                  offsetMin = tzOffsetMinutes(tz, year, month, day, hour);
+                }
+                return Date.UTC(year, month - 1, day, hour, minute, second, millis) - offsetMin * 60000;
               }
               var parsed = Date.parse(text);
               return isNaN(parsed) ? null : parsed;
@@ -976,7 +1247,7 @@ zabbix_export:
               return observed / purchased * 100;
             }
 
-            function countLicenseWindow(rows, nowMs, windowMs) {
+            function countLicenseWindow(rows, nowMs, windowMs, tz) {
               var macs = {};
               var users = {};
               var byEngine = {};
@@ -986,7 +1257,7 @@ zabbix_export:
               }
               for (i = 0; i < rows.length; i++) {
                 var row = rows[i] || {};
-                var stamp = parseAuthTime(row.lastAuthEventTime);
+                var stamp = parseAuthTime(row.lastAuthEventTime, tz);
                 if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
                   continue;
                 }
@@ -1020,7 +1291,8 @@ zabbix_export:
                 engines[engineIp] = {
                   used24h: objectSize(byEngine[engineIp].macs),
                   // -1 = no event in the census. 0 = just now, or SE clock slightly ahead
-                  // of the proxy (25.5.12.6 canary: ENAC01 lastAuthAge was -33s).
+                  // of the proxy. A timezone-less NBI stamp is Site Engine local time,
+                  // not UTC — do not treat CEST "now" as two hours in the future.
                   lastAuthAge: byEngine[engineIp].lastAuth
                     ? Math.max(0, Math.floor((nowMs - byEngine[engineIp].lastAuth) / 1000))
                     : -1
@@ -2056,17 +2328,105 @@ zabbix_export:
             - type: JAVASCRIPT
               parameters:
                 - |
-                  function parseAuthTime(raw) {
+                  function lastSundayDay(year, month) {
+                    var date = new Date(Date.UTC(year, month, 0));
+                    return date.getUTCDate() - date.getUTCDay();
+                  }
+
+                  function europeZurichOffsetMinutes(year, month, day, hour) {
+                    // EU DST as used by Europe/Zurich: last Sunday March 02:00 local CET → CEST,
+                    // last Sunday October 03:00 local CEST → CET. Ambiguous 02:00–02:59 in October
+                    // stays on CEST (hour < 3).
+                    var startDay = lastSundayDay(year, 3);
+                    var endDay = lastSundayDay(year, 10);
+                    var dst = false;
+                    if (month > 3 && month < 10) {
+                      dst = true;
+                    } else if (month === 3) {
+                      if (day > startDay || (day === startDay && hour >= 2)) {
+                        dst = true;
+                      }
+                    } else if (month === 10) {
+                      if (day < endDay || (day === endDay && hour < 3)) {
+                        dst = true;
+                      }
+                    }
+                    return dst ? 120 : 60;
+                  }
+
+                  function tzOffsetMinutes(tz, year, month, day, hour) {
+                    var zone = String(tz === undefined || tz === null ? 'Europe/Zurich' : tz);
+                    zone = zone.replace(/^\s+|\s+$/g, '');
+                    if (zone === 'UTC' || zone === 'GMT' || zone === 'Z') {
+                      return 0;
+                    }
+                    var fixed = zone.match(/^([+-])(\d{2}):?(\d{2})$/);
+                    if (fixed) {
+                      var sign = fixed[1] === '-' ? -1 : 1;
+                      return sign * (Number(fixed[2]) * 60 + Number(fixed[3]));
+                    }
+                    return europeZurichOffsetMinutes(year, month, day, hour);
+                  }
+
+                  function parseOffsetToken(token) {
+                    if (!token || token === 'Z' || token === 'z') {
+                      return 0;
+                    }
+                    var match = String(token).match(/^([+-])(\d{2}):?(\d{2})$/);
+                    if (!match) {
+                      return null;
+                    }
+                    var sign = match[1] === '-' ? -1 : 1;
+                    return sign * (Number(match[2]) * 60 + Number(match[3]));
+                  }
+
+                  function parseAuthTime(raw, tz) {
                     if (raw === null || raw === undefined || raw === '') {
                       return null;
                     }
                     if (typeof raw === 'number' && isFinite(raw)) {
                       return raw > 0 && raw < 1e11 ? raw * 1000 : raw;
                     }
-                    var text = String(raw);
+                    var text = String(raw).replace(/^\s+|\s+$/g, '');
                     if (/^\d+$/.test(text)) {
                       var numeric = Number(text);
                       return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
+                    }
+                    var named = '';
+                    var namedMatch = text.match(/\s+(CEST|CET)$/i);
+                    if (namedMatch) {
+                      named = namedMatch[1].toUpperCase();
+                      text = text.slice(0, text.length - namedMatch[0].length);
+                    }
+                    var iso = text.match(
+                      /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?(Z|[+-]\d{2}:?\d{2})?$/
+                    );
+                    if (iso) {
+                      var year = Number(iso[1]);
+                      var month = Number(iso[2]);
+                      var day = Number(iso[3]);
+                      var hour = Number(iso[4]);
+                      var minute = Number(iso[5]);
+                      var second = Number(iso[6]);
+                      var millis = iso[7] ? Number((iso[7] + '000').slice(0, 3)) : 0;
+                      var offsetMin;
+                      if (iso[8]) {
+                        offsetMin = parseOffsetToken(iso[8]);
+                        if (offsetMin === null) {
+                          return null;
+                        }
+                      } else if (named === 'CEST') {
+                        offsetMin = 120;
+                      } else if (named === 'CET') {
+                        offsetMin = 60;
+                      } else {
+                        // NBI 25.5.12.6 emits lastAuthEventTime without a zone, e.g.
+                        // 2026-09-04T08:39:05.366 while the clock is 06:39 UTC (CEST).
+                        // Date.parse() in Zabbix/Duktape treats that as UTC, then the 60s
+                        // future-skew drops current auths (~969 live on 2026-09-04).
+                        offsetMin = tzOffsetMinutes(tz, year, month, day, hour);
+                      }
+                      return Date.UTC(year, month - 1, day, hour, minute, second, millis) - offsetMin * 60000;
                     }
                     var parsed = Date.parse(text);
                     return isNaN(parsed) ? null : parsed;
@@ -2109,7 +2469,7 @@ zabbix_export:
                     return observed / purchased * 100;
                   }
 
-                  function countLicenseWindow(rows, nowMs, windowMs) {
+                  function countLicenseWindow(rows, nowMs, windowMs, tz) {
                     var macs = {};
                     var users = {};
                     var byEngine = {};
@@ -2119,7 +2479,7 @@ zabbix_export:
                     }
                     for (i = 0; i < rows.length; i++) {
                       var row = rows[i] || {};
-                      var stamp = parseAuthTime(row.lastAuthEventTime);
+                      var stamp = parseAuthTime(row.lastAuthEventTime, tz);
                       if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
                         continue;
                       }
@@ -2153,7 +2513,8 @@ zabbix_export:
                       engines[engineIp] = {
                         used24h: objectSize(byEngine[engineIp].macs),
                         // -1 = no event in the census. 0 = just now, or SE clock slightly ahead
-                        // of the proxy (25.5.12.6 canary: ENAC01 lastAuthAge was -33s).
+                        // of the proxy. A timezone-less NBI stamp is Site Engine local time,
+                        // not UTC — do not treat CEST "now" as two hours in the future.
                         lastAuthAge: byEngine[engineIp].lastAuth
                           ? Math.max(0, Math.floor((nowMs - byEngine[engineIp].lastAuth) / 1000))
                           : -1

@@ -144,11 +144,13 @@ def _params(names: tuple[str, ...]) -> str:
             lines += ["        - name: pilot_total", "          value: '{$XIQ.PILOT.TOTAL}'"]
         elif name == 'nav_total':
             lines += ["        - name: nav_total", "          value: '{$XIQ.NAV.TOTAL}'"]
+        elif name == 'tz':
+            lines += ["        - name: tz", "          value: '{$XIQSE.TZ}'"]
     return '\n'.join(lines)
 
 
 AUTH_PARAMS = ('fqdn', 'port', 'scheme', 'client_id', 'client_secret')
-LICENSE_PARAMS = AUTH_PARAMS + ('max_results', 'page_size', 'nac_total')
+LICENSE_PARAMS = AUTH_PARAMS + ('max_results', 'page_size', 'nac_total', 'tz')
 PILOT_PARAMS = AUTH_PARAMS + ('pilot_total', 'nav_total')
 
 
@@ -239,7 +241,7 @@ def render_se() -> str:
         '{$XIQSE.LICENSE.TIMEOUT}',
         licenses_script(),
         LICENSE_PARAMS,
-        extra="      description: |\n        Pages endSystems and counts unique MACs with lastAuthEventTime in 24h. Remaining and used % are computed here from {$XIQ.NAC.TOTAL} so Cloud 7.0 cannot keep an unguarded calculated formula.\n",
+        extra="      description: |\n        Pages endSystems and counts unique MACs with lastAuthEventTime in 24h. Timezone-less stamps are {$XIQSE.TZ} (default Europe/Zurich), not UTC. Remaining and used % are computed here from {$XIQ.NAC.TOTAL} so Cloud 7.0 cannot keep an unguarded calculated formula.\n",
     )
     licenses = licenses.replace(TAGS_NBI, TAGS_LIC)
     pilot = _script_item(
@@ -614,6 +616,7 @@ def _se_macros() -> str:
         ('{$XIQSE.API.CLIENT.SECRET}', '', 'Client API Access secret.', 'SECRET_TEXT'),
         ('{$XIQSE.DATA.TIMEOUT}', '30s', 'Health SCRIPT timeout.'),
         ('{$XIQSE.LICENSE.TIMEOUT}', '60s', 'End-system / device-license SCRIPT timeout.'),
+        ('{$XIQSE.TZ}', 'Europe/Zurich', 'Site Engine local zone for timezone-less lastAuthEventTime. Naive NBI stamps are this zone, not UTC. UTC/+HH:MM override. Not engine TZ.'),
         ('{$XIQ.NAC.TOTAL}', '0', 'Purchased XIQ-NAC-S. Set on CG XIQ-SE licenses. 0 = remaining forced 0, not out of seats.'),
         ('{$XIQ.NAC.USED.WARN}', '90', 'Warning percent of {$XIQ.NAC.TOTAL}.'),
         ('{$XIQ.NAC.ES.MAXRESULTS}', '20000', 'Stop paging at this many end-system rows.'),

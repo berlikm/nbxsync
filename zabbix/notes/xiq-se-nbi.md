@@ -70,10 +70,9 @@ accessControl {
 Zabbix HTTP item + JS:
 
 1. Request `macAddress`, `lastAuthEventTime`, `username`, `nacApplianceIP` only.
-2. Count unique MAC where `lastAuthEventTime` is within 24h (epoch ms — confirm on canary).
-3. Count unique `username` the same way (graph only).
-4. Bucket by `nacApplianceIP` for per-engine LLD (hardware load).
-5. If `count == maxResults`, fire truncated census — do not pretend remaining is correct.
+2. Count unique MAC where `lastAuthEventTime` is within 24h. **Timezone-less** ISO (live `2026-09-04T08:39:05.366`) is **Site Engine local time** (`{$XIQSE.TZ}` default `Europe/Zurich`), not UTC. Zabbix `Date.parse()` treated those as UTC, then the 60s future-skew dropped current CEST auths (2026-09-04 live: stored ~2052 vs ~2841 with CEST→UTC). Epoch and `Z`/`+HH:MM` stamps stay instants. Then unique `username` the same way (graph only).
+3. Bucket by `nacApplianceIP` for per-engine LLD (hardware load).
+4. If `count == maxResults`, fire truncated census — do not pretend remaining is correct.
 
 Interval: 15m is enough for a license graph. Payload risk: `{$XIQ.NAC.ES.MAXRESULTS}` starts at 20000; raise only if truncated. Prefer `endSystemsForEngines` per LLD engine if a single global pull is too large — then unique-union MACs for the global license (same MAC on two engines = 1).
 

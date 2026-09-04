@@ -66,7 +66,7 @@ function collectLicenses(params) {
     }
     first += take;
   }
-  var counted = countLicenseWindow(rows, Date.now(), 86400000);
+  var counted = countLicenseWindow(rows, Date.now(), 86400000, params.tz);
   return {
     ok: 1,
     error: '',

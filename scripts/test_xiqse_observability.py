@@ -148,6 +148,59 @@ class LicenseWindowTests(unittest.TestCase):
         self.assertEqual(counted['nacUsed24h'], 1)
         self.assertEqual(counted['engines']['10.0.104.43']['lastAuthAge'], 0)
 
+    def test_naive_last_auth_is_site_engine_local_not_utc(self):
+        prelude = """
+var nowMs = Date.parse('2026-09-04T06:39:05.366Z');
+var rows = [{
+  macAddress: 'aa:aa:aa:aa:aa:aa',
+  lastAuthEventTime: '2026-09-04T08:39:05.366',
+  nacApplianceIP: '10.0.104.43'
+}];
+"""
+        counted = run_metrics_json('countLicenseWindow(rows, nowMs, 86400000)', prelude=prelude)
+        self.assertEqual(counted['nacUsed24h'], 1)
+        self.assertEqual(counted['engines']['10.0.104.43']['lastAuthAge'], 0)
+        utc = run_metrics_json(
+            'countLicenseWindow(rows, nowMs, 86400000, "UTC")',
+            prelude=prelude,
+        )
+        self.assertEqual(utc['nacUsed24h'], 0)
+
+    def test_explicit_offset_last_auth_is_not_rebased(self):
+        prelude = """
+var nowMs = Date.parse('2026-09-04T06:39:05.366Z');
+var cest = [{macAddress: 'aa:aa:aa:aa:aa:aa', lastAuthEventTime: '2026-09-04T08:39:05.366+02:00', nacApplianceIP: '10.0.104.43'}];
+var asUtc = [{macAddress: 'bb:bb:bb:bb:bb:bb', lastAuthEventTime: '2026-09-04T08:39:05.366Z', nacApplianceIP: '10.0.104.43'}];
+"""
+        self.assertEqual(
+            run_metrics_json('countLicenseWindow(cest, nowMs, 86400000)', prelude=prelude)['nacUsed24h'],
+            1,
+        )
+        self.assertEqual(
+            run_metrics_json('countLicenseWindow(asUtc, nowMs, 86400000)', prelude=prelude)['nacUsed24h'],
+            0,
+        )
+
+    def test_winter_naive_last_auth_uses_cet(self):
+        prelude = """
+var nowMs = Date.parse('2026-01-15T07:39:05.366Z');
+var rows = [{
+  macAddress: 'aa:aa:aa:aa:aa:aa',
+  lastAuthEventTime: '2026-01-15T08:39:05.366',
+  nacApplianceIP: '10.0.104.43'
+}];
+"""
+        counted = run_metrics_json('countLicenseWindow(rows, nowMs, 86400000)', prelude=prelude)
+        self.assertEqual(counted['nacUsed24h'], 1)
+        utc = run_metrics_json('countLicenseWindow(rows, nowMs, 86400000, "UTC")', prelude=prelude)
+        self.assertEqual(utc['nacUsed24h'], 0)
+
+    def test_cest_suffix_on_last_auth_is_plus_two(self):
+        self.assertEqual(
+            run_metrics_json("parseAuthTime('2026-03-29 09:00:52,025 CEST')"),
+            run_metrics_json("Date.parse('2026-03-29T07:00:52.025Z')"),
+        )
+
     def test_missing_engine_auth_age_stays_absent(self):
         counted = run_metrics_json(
             'countLicenseWindow(rows, Date.now(), 86400000)',
@@ -324,6 +377,7 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn('endSystems(maxResults: ', licenses)
         self.assertNotIn('$maxResults', licenses)
         self.assertIn('rows.length >= maxResults', licenses)
+        self.assertIn('params.tz', licenses)
 
     def test_engines_query_tries_connected_then_falls_back(self):
         health = health_script()
@@ -521,6 +575,8 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(macros['{$XIQ.NAC.TOTAL}']['value'], '0')
         self.assertEqual(macros['{$XIQ.PILOT.TOTAL}']['value'], '0')
         self.assertEqual(macros['{$XIQ.NAV.TOTAL}']['value'], '0')
+        self.assertEqual(macros['{$XIQSE.TZ}']['value'], 'Europe/Zurich')
+        self.assertIn('timezone-less', macros['{$XIQSE.TZ}']['description'])
         self.assertIn('XIQ-SE licenses', macros['{$XIQ.NAC.TOTAL}']['description'])
         self.assertNotIn('{$XIQ.NAC.FRESH.TIME.START}', macros)
         self.assertNotIn('{$XIQ.NAC.FRESH.TIME.END}', macros)

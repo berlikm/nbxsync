@@ -72,7 +72,7 @@ Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone`
 | GraphQL nodata | yes | Average | Token, TLS, or SE down |
 | Zero Control engines discovered | yes | Average | Filter / rights / template wrong |
 | Engine disconnected from SE | yes | Average | LLD on SE. Auth may still work locally. `connected` is **not** on 25.5.12.6 `NacAppliance` — item stays `2` (silent) |
-| NAC not forwarding auth logs to SE | yes | Average | Per engine: newest `lastAuthEventTime` older than `{$XIQ.NAC.FRESH}` (default 24h elapsed, **any time zone**). Override a quiet engine with `{$XIQ.NAC.FRESH:"<engine-ip>"}`. `{$XIQ.NAC.FRESH.CONTROL}` still gates the ticket. Age `-1` = no event in the census (silent). Age `0` = just now, or SE clock slightly ahead of the proxy. Not syslog to a SIEM |
+| NAC not forwarding auth logs to SE | yes | Average | Per engine: newest `lastAuthEventTime` older than `{$XIQ.NAC.FRESH}` (default 24h elapsed). Naive NBI stamps are `{$XIQSE.TZ}` (Europe/Zurich), not UTC. Override a quiet engine with `{$XIQ.NAC.FRESH:"<engine-ip>"}`. `{$XIQ.NAC.FRESH.CONTROL}` still gates the ticket. Age `-1` = no event in the census (silent). Age `0` = just now, or SE clock slightly ahead of the proxy. Not syslog to a SIEM |
 | SE ingest jam (E-to-Sav / drops) | **no** until the field exists | Average | One SE ticket if GraphQL exposes it on canary |
 | Engine `needsEnforce` stuck | yes | Average | Config never pushed |
 | 24h unique MACs ≥ `{$XIQ.NAC.TOTAL}` | yes | Average | License violation in progress |
@@ -211,7 +211,7 @@ auth-log-forward Average  →  engine ICMP (and does not fire if RADIUS High alr
 |---|---|
 | GraphQL nodata | Token expired / SE upgrade / TLS. **Exception:** zabp02 `lastclock` ~1h behind on SCRIPT **and** ICMP/SNMP/SIMPLE — not NBI ([notes/proxy-history-clock.md](notes/proxy-history-clock.md)) |
 | Zero engines LLD | Access Control NBI right missing |
-| 24h census truncated | `maxResults` too small — license graph under-counts |
+| 24h unique MACs ≪ GUI entitlement used | Timezone-less `lastAuthEventTime` parsed as UTC (fixed: `{$XIQSE.TZ}`). 2026-09-04: ~2052 stored vs ~2841 CEST vs GUI 2915 |
 | NAC census failed | NBI up but `endSystems` SCRIPT failed or timed out — Overview used tiles stay empty |
 | Device license census failed | NBI up but `xiqLicenseState` query failed — Pilot/Navigator remaining unknown |
 | Remaining negative | Leftover CALCULATED remaining item after import (2026-08-29 live: −2175). Re-import or unlink/relink |
@@ -236,6 +236,7 @@ Macros on the **SE template** (secrets on a nbxSync CG, not in YAML):
 
 ```
 {$XIQSE.API.FQDN}          = Site Engine mgmt FQDN / IP
+{$XIQSE.TZ}                = Europe/Zurich (naive lastAuthEventTime)
 {$XIQ.NAC.TOTAL}           = purchased Access Control (CG XIQ-SE licenses; 0 until set)
 {$XIQ.NAC.USED.WARN}       = 90
 {$XIQ.NAC.ES.MAXRESULTS}   = 20000
