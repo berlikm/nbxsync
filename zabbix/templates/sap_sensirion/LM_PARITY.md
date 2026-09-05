@@ -1,5 +1,24 @@
 # SAP — what LogicMonitor actually monitored
 
+Goal: **replicate what LM applied on each host**. Improve only where we
+already have the Collection script. Do not invent Promonitor / `Z_*` /
+`hdbsql`.
+
+| Host | What LM actually applied | Zabbix (replicate / better) |
+|---|---|---|
+| `ch-sta-p-me05` (Windows ME) | OS + SSL + Ping + NoData. No SAP app DS | Windows by agent + ICMP + cert/port **50001**. sapcontrol + jstart are **better than LM**, not parity |
+| `ch-sta-p-as02` / `ch-sta-d-as01` | Windows OS + jstart process DS | Same OS path + `proc.num[jstart.exe]` |
+| `CH-STA-P-SH01` (openSUSE HANA) | Linux OS + Ping + Port + SSL + NoData + **`ABAPRuntimeErrorsCount_LMS`** | Linux by agent + UCD SNMP + cert/port **443** + **`Z_GET_ST22` count** |
+
+ST22 “better”: LM also discovered every dump (user / program / time).
+We keep the **count** (`sap.app.abap.errors`) and a threshold. That is
+the same SOAP, less noise. Per-dump LLD is optional later — same
+`ET_INFOTAB`, no new RFC.
+
+The other `sap.app.*` names (IDoc, qRFC, jobs, …) stay sapcontrol CCMS
+until someone exports those Collection scripts. On HANA-only and ME
+Java they are 0. That is honest, not a hidden Promonitor clone.
+
 There is **no item-level LM export** in this repo. Sources: the Aug 2026
 account export in [`../../logicmonitor-assessment.md`](../../logicmonitor-assessment.md),
 the operator datasource list (2026-09-05), and the SH01 walk in
