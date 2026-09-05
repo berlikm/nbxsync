@@ -33,11 +33,11 @@ Live schema for **their** version: Diagnostics → Server Utilities → **NBI Sc
 |---|---|---|---|
 | Access Control (the RADIUS / NAC license) | `XIQ-NAC-S` | Unique **MACs** that **authenticated** in a **rolling 24h**, global across engines | **Not** a pool field. Count `EndSystemDTO` with `lastAuthEventTime` in window |
 | Guest / IoT | second number in Licenses Quantity `100/50` | GIM end-systems | later |
-| Pilot | `XIQ-PIL-S-C` | `network.devices` with `xiqLicenseState == XIQ_PILOT` (switches + Control engines in inventory) | Count + remaining vs `{$XIQ.PILOT.TOTAL}` |
-| Navigator | Navigator SKU | `xiqLicenseState == XIQ_NAVIGATOR` | Count + remaining vs `{$XIQ.NAV.TOTAL}` |
-| Platform ONE / Advanced / Standard | various | `XIQ_ADVANCED*` / `XIQ_STANDARD*` | graph `xiqse.lic.platformone`; tickets later |
+| Pilot | `XIQ-PIL-S-C` | Stock ExtremeCloud IQ template provides purchased / activated / available / expiry; NBI `XIQ_PILOT` count is informational | `xiqse.pilot.cloud.*` + `xiqse.pilot.devices` |
+| Navigator | Navigator SKU | `xiqLicenseState == XIQ_NAVIGATOR`; no purchased-total API field | informational `xiqse.nav.devices` only |
+| Platform ONE / Advanced / Standard | not purchased | not collected | none |
 
-The Extreme **XIQ-SE licensing calculation** OneView workflow ([ExtremeScripting `oneview_workflows`](https://github.com/extremenetworks/ExtremeScripting/tree/master/XMC_XIQ-SE/oneview_workflows), `XIQ-SE_Licensing_calculation-v116.xwf`, [KB 000098925](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000098925)) is the official **one-shot** XMC → XIQ-SE buy-list. It reads `appdata/license` and JDBC to the SE database, and needs NMS-ADV / 27001 (or EVAL). Do **not** import or schedule that `.xwf` from Zabbix. Do **not** JDBC. Live monitoring is the same three pools from GraphQL.
+The Extreme **XIQ-SE licensing calculation** OneView workflow ([ExtremeScripting `oneview_workflows`](https://github.com/extremenetworks/ExtremeScripting/tree/master/XMC_XIQ-SE/oneview_workflows), `XIQ-SE_Licensing_calculation-v116.xwf`, [KB 000098925](https://extreme-networks.my.site.com/ExtrArticleDetail?an=000098925)) is the official **one-shot** XMC → XIQ-SE buy-list. It reads `appdata/license` and JDBC to the SE database, and needs NMS-ADV / 27001 (or EVAL). Do **not** import or schedule that `.xwf` from Zabbix and do **not** query JDBC. Live NAC monitoring uses GraphQL; live Pilot entitlement monitoring reuses the stock ExtremeCloud IQ template already linked to the Site Engine.
 
 Accounting packets do **not** consume NAC seats. Unique **usernames** are a useful graph and are **not** the license.
 
@@ -60,7 +60,7 @@ accessControl {
     currentBatchPosition
     success
     errorMessage
-    endSystems { macAddress lastAuthEventTime username nacApplianceIP }
+    endSystems { macAddress lastAuthEventTime lastSeenTime username nacApplianceIP }
   }
 }
 ```
@@ -69,16 +69,27 @@ accessControl {
 
 Zabbix HTTP item + JS:
 
-1. Request `macAddress`, `lastAuthEventTime`, `username`, `nacApplianceIP` only.
-2. Count unique MAC where `lastAuthEventTime` is within 24h. **Timezone-less** ISO (live `2026-09-04T08:39:05.366`) is **Site Engine local time** (`{$XIQSE.TZ}` default `Europe/Zurich`), not UTC. Zabbix `Date.parse()` treated those as UTC, then the 60s future-skew dropped current CEST auths (2026-09-04 live: stored ~2052 vs ~2841 with CEST→UTC). Epoch and `Z`/`+HH:MM` stamps stay instants. Then unique `username` the same way (graph only).
-3. Bucket by `nacApplianceIP` for per-engine LLD (hardware load).
-4. If `count == maxResults`, fire truncated census — do not pretend remaining is correct.
+1. Request `macAddress`, `lastAuthEventTime`, `lastSeenTime`, `username`, `nacApplianceIP` from `accessControl.endSystems`.
+2. Request `baseMac`, `deviceData.xiqLicenseState` from `network.devices`.
+3. Deduplicate the rolling-24h end-system MACs with `XIQ_PENDING` device base MACs for the NAC seat count; graph the authentication-only count and pending-device count separately.
+4. Count unique `username` from end systems the same way (graph only).
+5. Bucket authenticated end-system MACs by `nacApplianceIP` for per-engine LLD (hardware load).
+6. If the end-system count == maxResults, fire truncated census — do not pretend remaining is correct.
 
-Interval: 15m is enough for a license graph. Payload risk: `{$XIQ.NAC.ES.MAXRESULTS}` starts at 20000; raise only if truncated. Prefer `endSystemsForEngines` per LLD engine if a single global pull is too large — then unique-union MACs for the global license (same MAC on two engines = 1).
+`lastAuthEventTime` and `lastSeenTime` are ISO local wall-clock values without a
+timezone suffix (for example `2026-09-05T14:07:36.186` while UTC is 12:07).
+Parsing them as UTC shortened the effective license window and produced 1909
+against a Site Engine value around 2283. The collector infers the current
+15-minute timezone offset from the newest `lastSeenTime`, applies it to naive
+timestamps, and exports `sourceTimeOffsetMinutes` in the master JSON. The
+production correction reported `120`, then 2273 seats; an independent source
+query moments later returned 2270 as identities aged out of the rolling window.
+
+Interval: 15m is enough for a license graph. Payload risk: `{$XIQ.NAC.ES.MAXRESULTS}` starts at 20000; raise only if truncated. Prefer `endSystemsForEngines` per LLD engine if a single global pull is too large — then unique-union end-system MACs before unioning pending-device base MACs.
 
 Do **not** LLD each MAC as a host or item.
 
-Prefer a native engine “24h unique” field if `schema.idl` has one (GUI already shows it). Then JS paging is a fallback.
+Prefer a native engine “24h unique” field if `schema.idl` has one (GUI already shows it). Then JS paging is a fallback for the authentication component.
 
 Pilot used:
 
@@ -86,7 +97,7 @@ Pilot used:
 network { devices { deviceData { xiqLicenseState xiqLicenseCount } } }
 ```
 
-`DeviceXIQLicenseState` includes `XIQ_PILOT`, `XIQ_NAVIGATOR`, `XIQ_UNMANAGED`, `NOT_LICENSED`, `XIQ_PENDING`, Platform ONE `XIQ_ADVANCED*` / `XIQ_STANDARD*`, … Purchased totals (`{$XIQ.PILOT.TOTAL}`, `{$XIQ.NAV.TOTAL}`, `{$XIQ.NAC.TOTAL}`) live on nbxSync CG **XIQ-SE licenses**, assigned to Site Engine platforms. Remaining is computed in the census SCRIPT (`if purchased <= 0: 0 else purchased − used`) and exported as a DEPENDENT item. Calculated remaining was rejected or left unguarded on Cloud 7.0 (live `−2175` on 2026-08-29). `0` remaining means the CG is still 0, not that the pool is empty. `--apply-xiqse` never overwrites the CG; it mirrors CG → platform (HostSync does not expand CG macros at resolve time). After editing the CG, re-apply then HostSync the SE. Do not set Zabbix host macros on `ch-sta-p-ensa01`.
+`DeviceXIQLicenseState` includes `XIQ_PILOT`, `XIQ_NAVIGATOR`, `XIQ_UNMANAGED`, `NOT_LICENSED`, `XIQ_PENDING`, Platform ONE `XIQ_ADVANCED*` / `XIQ_STANDARD*`, … Purchased-total macros (`{$XIQ.PILOT.TOTAL}`, `{$XIQ.NAV.TOTAL}`, `{$XIQ.NAC.TOTAL}`) remain at their template default of `0`; no nbxSync configuration group supplies entitlement values. Remaining is computed in the census SCRIPT (`if purchased <= 0: 0 else purchased − used`) and exported as a DEPENDENT item. Calculated remaining was rejected or left unguarded on Cloud 7.0 (live `−2175` on 2026-08-29). `0` remaining means entitlement is unknown, not that the pool is empty.
 
 ---
 
@@ -169,7 +180,7 @@ Five engines, same version, licensed, `needsEnforce=no`, FreeRADIUS enabled, lic
 
 `connected` is **not** on `NacAppliance`. `capacity` is **0** for all five through NBI (GUI Current Capacity is a different number). `administration.eventStats` does not exist. `NacAppliance.radiusMonitorClients` does not exist.
 
-`accessControl.endSystems`: count **4055**, success=true, not truncated. Sample auth: EAP-PEAP / EAP-TLS, states ACCEPT / REJECT. Zabbix `xiqse.nac.used24h` = **2150** (rolling 24h unique MACs — not the 4055 inventory).
+`accessControl.endSystems`: count **4055**, success=true, not truncated. Sample auth: EAP-PEAP / EAP-TLS, states ACCEPT / REJECT. The authentication component was **2150** rolling-24h unique MACs — not the 4055 inventory.
 
 Devices: **563** total — **320** `XIQ_PILOT`, **243** `XIQ_PENDING`, **0** Navigator.
 
@@ -183,13 +194,15 @@ Zabbix on `ch-sta-p-ensa01` (all queried items supported, inherited totals still
 | `xiqse.nac.fetched` | 4055 |
 | `xiqse.nac.ok` | 1 |
 | `xiqse.nac.truncated` | 0 |
-| `xiqse.nac.used24h` | 2150 |
+| Authenticated MACs (24h) | 2150 |
+| Pending device MACs | 243 |
+| NAC license identities | not recorded by this pre-union snapshot |
 | `xiqse.pilot.used` | 320 |
 | `xiqse.pilot.ok` | 1 |
 | `xiqse.nav.used` | 0 |
 | `xiqse.nac.remaining` | **−2175** |
 
-That remaining value is the live **unguarded calculated** formula `{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)` with TOTAL=0. Repo later used a multiply-guard; Cloud 7.0 did not apply it to calculated `params`. Remaining is now computed in the SCRIPT and must stay **0** until the CG totals are set.
+That remaining value was the live **unguarded calculated** `TOTAL-used` formula with TOTAL=0. Repo later used a multiply-guard; Cloud 7.0 did not apply it to calculated `params`. Remaining is now computed in the SCRIPT and must stay **0** until the CG totals are set.
 
 ### 2026-08-29 — Latest data after SCRIPT remaining import
 
@@ -197,7 +210,7 @@ Template re-import is live on `ch-sta-p-ensa01`. Snapshot JSON includes `nacRema
 
 | Item | Value |
 |---|---|
-| `xiqse.nac.used24h` | **1815** (Saturday; was 2150 earlier) |
+| Authenticated MACs (24h) | **1815** (Saturday; was 2150 earlier) |
 | `xiqse.nac.users24h` | 992 |
 | `xiqse.nac.fetched` | 4055, not truncated |
 | `xiqse.pilot.used` | 320 |
@@ -221,7 +234,7 @@ Per-engine 24h unique MACs sum to the global seat count (no cross-engine overlap
 
 1. Native 24h-unique / entitlement field in `schema.idl` or `licenseData` — not present; keep paging MACs.
 2. RADIUS Monitor Clients field on `NacAppliance` — still absent; RADIUS High stays DISABLED.
-3. Purchased seat integers from Administration → Licenses — fill CG **XIQ-SE licenses** by hand.
+3. Purchased seat integers from Administration → Licenses have no supported API source; purchased-total macros remain at their template default of `0`.
 
 ---
 

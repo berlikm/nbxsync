@@ -22,16 +22,37 @@ SE_TEMPLATE_NAME = 'XIQ-SE Observability'
 NAC_TEMPLATE_NAME = 'ExtremeControl Observability'
 TEMPLATE_GROUP = 'Templates/Network devices'
 SE_TEMPLATE_RULE = 'XIQ-SE'
-SE_PLATFORM_PATTERN = r'XIQ.?SE|Site Engine|NetSight'
+SE_PLATFORM_PATTERN = r'^ExtremeCloud IQ Site Engine$'
+SE_PLATFORM_NAME = 'ExtremeCloud IQ Site Engine'
+NAC_PLATFORM_NAME = 'ExtremeControl Engine'
+CLOUD_TEMPLATE_NAME = 'ExtremeCloud IQ by HTTP'
+SNMP_CONFIGURATION_GROUP = 'SNMP Monitoring'
+STALE_AGENT_CONFIGURATION_GROUPS = ('Agent+SNMP', 'XIQ-SE Client API + Agent')
+TLS_EXTERNAL_SCRIPT = 'tls_certificate_expiry.sh'
+XIQSE_PORT_MACRO = '{$XIQSE.API.PORT}'
+XIQSE_CLIENT_ID_MACRO = '{$XIQSE.API.CLIENT.ID}'
+XIQSE_CLIENT_SECRET_MACRO = '{$XIQSE.API.CLIENT.SECRET}'
+XIQSE_CREDENTIAL_MACROS = (
+    XIQSE_PORT_MACRO,
+    XIQSE_CLIENT_ID_MACRO,
+    XIQSE_CLIENT_SECRET_MACRO,
+)
+STALE_SE_ITEM_KEYS = (
+    'xiqse.pilot.remaining',
+    'xiqse.nav.remaining',
+    'xiqse.lic.platformone',
+)
 XIQSE_FQDN_MACRO = '{$XIQSE.API.FQDN}'
 XIQSE_FQDN_JINJA = '{{ object.primary_ip4.address.ip }}'
 NAC_PORTAL_FQDN_MACRO = '{$NAC.PORTAL.FQDN}'
 NAC_ROLE = 'NAC'
-LICENSE_CG_NAME = 'XIQ-SE licenses'
-LICENSE_TOTAL_MACROS = (
-    ('{$XIQ.NAC.TOTAL}', 'Purchased XIQ-NAC-S end-systems from Administration → Licenses. Set on CG XIQ-SE licenses.'),
-    ('{$XIQ.PILOT.TOTAL}', 'Purchased Pilot seats from Administration → Licenses. Set on CG XIQ-SE licenses.'),
-    ('{$XIQ.NAV.TOTAL}', 'Purchased Navigator seats from Administration → Licenses. Set on CG XIQ-SE licenses.'),
+SE_VM_NAME = 'ch-sta-p-ensa01'
+NAC_VM_NAMES = (
+    'CH-STA-P-ENAC01',
+    'CH-STA-P-ENAC02',
+    'cn-sha-p-enac01',
+    'hu-deb-p-enac01',
+    'kr-sel-p-enac01',
 )
 APPLY_FLAG = '--apply-xiqse'
 CHECK_FLAG = '--check-xiqse'
@@ -56,7 +77,7 @@ FORBIDDEN_SNIPPETS = (
     'icmpping',
     '{HOST.HOST}',
     '{HOST.CONN}',
-    '{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)',
+    '{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used)',
     '{$XIQ.PILOT.TOTAL}-last(//xiqse.pilot.used)',
     '{$XIQ.NAV.TOTAL}-last(//xiqse.nav.used)',
 )
@@ -76,7 +97,9 @@ SE_ITEM_KEYS = {
     'xiqse.nbi.ram.total',
     'xiqse.nbi.threads',
     'xiqse.engine.count',
-    'xiqse.nac.used24h',
+    'xiqse.nac.used',
+    'xiqse.nac.authenticated24h',
+    'xiqse.nac.pending.devices',
     'xiqse.nac.users24h',
     'xiqse.nac.remaining',
     'xiqse.nac.used.pct',
@@ -84,14 +107,15 @@ SE_ITEM_KEYS = {
     'xiqse.nac.truncated',
     'xiqse.nac.ok',
     'xiqse.nac.error',
-    'xiqse.pilot.used',
-    'xiqse.pilot.remaining',
+    'xiqse.pilot.devices',
+    'xiqse.pilot.cloud.activated',
+    'xiqse.pilot.cloud.available',
+    'xiqse.pilot.cloud.expire',
     'xiqse.pilot.ok',
-    'xiqse.nav.used',
-    'xiqse.nav.remaining',
+    'xiqse.nav.devices',
     'xiqse.lic.pending',
-    'xiqse.lic.platformone',
     'net.tcp.service[tcp,{$XIQSE.API.FQDN},{$XIQSE.API.PORT}]',
+    'tls_certificate_expiry.sh[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}]',
     'zabbix[host,,items_unsupported]',
 }
 
@@ -115,10 +139,8 @@ SE_TRIGGER_NAMES = {
     'XIQ-SE: NAC census failed',
     'XIQ-SE: NAC license seats exhausted',
     'XIQ-SE: NAC license seats high',
-    'XIQ-SE: Pilot licenses exhausted',
-    'XIQ-SE: few Pilot licenses remaining',
-    'XIQ-SE: Navigator licenses exhausted',
-    'XIQ-SE: few Navigator licenses remaining',
+    'XIQ-SE: TLS certificate expired',
+    'XIQ-SE: TLS certificate expires soon',
     'XIQ-SE: unplanned reboot',
     'XIQ-SE: version has changed',
     'XIQ-SE: unsupported items present',
@@ -133,9 +155,12 @@ SE_TRIGGER_PROTOTYPE_NAMES = {
 }
 NAC_ITEM_KEYS = {
     'net.tcp.service[tcp,,{$NAC.PORTAL.PORT}]',
+    'tls_certificate_expiry.sh[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT},{$NAC.PORTAL.FQDN}]',
 }
 NAC_TRIGGER_NAMES = {
     'ExtremeControl: portal TCP 8444 down',
+    'ExtremeControl: TLS certificate expired',
+    'ExtremeControl: TLS certificate expires soon',
 }
 
 DASHBOARD_NAMES = {'Health'}

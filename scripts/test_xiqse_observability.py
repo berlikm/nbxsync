@@ -14,27 +14,29 @@ from xiqse_observability import (
     APPLY_FLAG,
     CHECK_FLAG,
     DASHBOARD_NAMES,
+    CLOUD_TEMPLATE_NAME,
     HEALTH_PAGES,
-    leftover_dashboard_ids,
     FIXTURES,
     FORBIDDEN_SNIPPETS,
     JS_DIR,
-    LICENSE_CG_NAME,
-    LICENSE_TOTAL_MACROS,
     NAC_ITEM_KEYS,
     NAC_PORTAL_FQDN_MACRO,
     NAC_ROLE,
     NAC_TEMPLATE_NAME,
     NAC_TRIGGER_NAMES,
+    NAC_PLATFORM_NAME,
+    NAC_VM_NAMES,
     NAC_YAML,
     SE_DISCOVERY_KEYS,
     SE_ITEM_KEYS,
     SE_ITEM_PROTOTYPE_KEYS,
     SE_PLATFORM_PATTERN,
+    SE_PLATFORM_NAME,
     SE_TEMPLATE_NAME,
     SE_TEMPLATE_RULE,
     SE_TRIGGER_NAMES,
     SE_TRIGGER_PROTOTYPE_NAMES,
+    SE_VM_NAME,
     SE_YAML,
     TEMPLATE_FILES,
     XIQSE_FQDN_JINJA,
@@ -49,6 +51,7 @@ from xiqse_observability import (
     platform_is_xiqse,
     run_lld,
     run_metrics_json,
+    run_node,
     zerotouch_source,
 )
 from xiqse_observability_template import render_nac, render_se, write_yaml
@@ -98,38 +101,38 @@ def _fresh_endsystems() -> list[dict]:
 class LicenseWindowTests(unittest.TestCase):
     def test_same_mac_on_two_engines_is_one_seat(self):
         counted = run_metrics_json(
-            'countLicenseWindow(rows, Date.now(), 86400000)',
+            'countAuthenticatedWindow(rows, Date.now(), 86400000)',
             prelude=f'var rows = {json.dumps(_fresh_endsystems())};',
         )
-        self.assertEqual(counted['nacUsed24h'], 2)
+        self.assertEqual(counted['authenticated24h'], 2)
         self.assertEqual(counted['users24h'], 1)
         self.assertEqual(counted['engines']['10.0.50.11']['used24h'], 2)
         self.assertEqual(counted['engines']['10.0.50.12']['used24h'], 1)
 
     def test_stale_auth_is_not_a_license_seat(self):
         counted = run_metrics_json(
-            'countLicenseWindow(rows, Date.now(), 86400000)',
+            'countAuthenticatedWindow(rows, Date.now(), 86400000)',
             prelude=f'var rows = {json.dumps(_fresh_endsystems())};',
         )
         self.assertNotIn('stale', json.dumps(counted))
-        self.assertEqual(counted['nacUsed24h'], 2)
+        self.assertEqual(counted['authenticated24h'], 2)
 
     def test_usernames_are_not_the_license(self):
         counted = run_metrics_json(
-            'countLicenseWindow(rows, Date.now(), 86400000)',
+            'countAuthenticatedWindow(rows, Date.now(), 86400000)',
             prelude=f'var rows = {json.dumps(_fresh_endsystems())};',
         )
-        self.assertNotEqual(counted['nacUsed24h'], counted['users24h'])
+        self.assertNotEqual(counted['authenticated24h'], counted['users24h'])
         self.assertEqual(counted['users24h'], 1)
 
     def test_epoch_seconds_are_promoted_to_ms(self):
         now_s = int(time.time())
         rows = [{'macAddress': 'aa:aa:aa:aa:aa:aa', 'lastAuthEventTime': now_s, 'username': 'bob', 'nacApplianceIP': '10.0.0.1'}]
         counted = run_metrics_json(
-            'countLicenseWindow(rows, Date.now(), 86400000)',
+            'countAuthenticatedWindow(rows, Date.now(), 86400000)',
             prelude=f'var rows = {json.dumps(rows)};',
         )
-        self.assertEqual(counted['nacUsed24h'], 1)
+        self.assertEqual(counted['authenticated24h'], 1)
 
     def test_future_auth_within_skew_window_counts_and_age_is_zero(self):
         now_ms = int(time.time() * 1000)
@@ -142,71 +145,85 @@ class LicenseWindowTests(unittest.TestCase):
             }
         ]
         counted = run_metrics_json(
-            f'countLicenseWindow(rows, {now_ms}, 86400000)',
+            f'countAuthenticatedWindow(rows, {now_ms}, 86400000)',
             prelude=f'var rows = {json.dumps(rows)};',
         )
-        self.assertEqual(counted['nacUsed24h'], 1)
+        self.assertEqual(counted['authenticated24h'], 1)
         self.assertEqual(counted['engines']['10.0.104.43']['lastAuthAge'], 0)
 
-    def test_naive_last_auth_is_site_engine_local_not_utc(self):
-        prelude = """
-var nowMs = Date.parse('2026-09-04T06:39:05.366Z');
-var rows = [{
-  macAddress: 'aa:aa:aa:aa:aa:aa',
-  lastAuthEventTime: '2026-09-04T08:39:05.366',
-  nacApplianceIP: '10.0.104.43'
-}];
-"""
-        counted = run_metrics_json('countLicenseWindow(rows, nowMs, 86400000)', prelude=prelude)
-        self.assertEqual(counted['nacUsed24h'], 1)
-        self.assertEqual(counted['engines']['10.0.104.43']['lastAuthAge'], 0)
-        utc = run_metrics_json(
-            'countLicenseWindow(rows, nowMs, 86400000, "UTC")',
-            prelude=prelude,
+    def test_timezone_naive_site_engine_timestamps_use_fresh_seen_clock(self):
+        now_ms = 1788609600000  # 2026-09-05 12:00:00 UTC
+        rows = [
+            {
+                'macAddress': 'aa:aa:aa:aa:aa:aa',
+                'lastAuthEventTime': '2026-09-05T14:00:00.000',
+                'lastSeenTime': '2026-09-05T14:00:00.000',
+            },
+            {
+                'macAddress': 'bb:bb:bb:bb:bb:bb',
+                'lastAuthEventTime': '2026-09-04T13:30:00.000',
+                'lastSeenTime': '2026-09-04T13:30:00.000',
+            },
+        ]
+        counted = run_metrics_json(
+            f'countAuthenticatedWindow(rows, {now_ms}, 86400000)',
+            prelude=f'var rows = {json.dumps(rows)};',
         )
-        self.assertEqual(utc['nacUsed24h'], 0)
-
-    def test_explicit_offset_last_auth_is_not_rebased(self):
-        prelude = """
-var nowMs = Date.parse('2026-09-04T06:39:05.366Z');
-var cest = [{macAddress: 'aa:aa:aa:aa:aa:aa', lastAuthEventTime: '2026-09-04T08:39:05.366+02:00', nacApplianceIP: '10.0.104.43'}];
-var asUtc = [{macAddress: 'bb:bb:bb:bb:bb:bb', lastAuthEventTime: '2026-09-04T08:39:05.366Z', nacApplianceIP: '10.0.104.43'}];
-"""
-        self.assertEqual(
-            run_metrics_json('countLicenseWindow(cest, nowMs, 86400000)', prelude=prelude)['nacUsed24h'],
-            1,
-        )
-        self.assertEqual(
-            run_metrics_json('countLicenseWindow(asUtc, nowMs, 86400000)', prelude=prelude)['nacUsed24h'],
-            0,
-        )
-
-    def test_winter_naive_last_auth_uses_cet(self):
-        prelude = """
-var nowMs = Date.parse('2026-01-15T07:39:05.366Z');
-var rows = [{
-  macAddress: 'aa:aa:aa:aa:aa:aa',
-  lastAuthEventTime: '2026-01-15T08:39:05.366',
-  nacApplianceIP: '10.0.104.43'
-}];
-"""
-        counted = run_metrics_json('countLicenseWindow(rows, nowMs, 86400000)', prelude=prelude)
-        self.assertEqual(counted['nacUsed24h'], 1)
-        utc = run_metrics_json('countLicenseWindow(rows, nowMs, 86400000, "UTC")', prelude=prelude)
-        self.assertEqual(utc['nacUsed24h'], 0)
-
-    def test_cest_suffix_on_last_auth_is_plus_two(self):
-        self.assertEqual(
-            run_metrics_json("parseAuthTime('2026-03-29 09:00:52,025 CEST')"),
-            run_metrics_json("Date.parse('2026-03-29T07:00:52.025Z')"),
-        )
+        self.assertEqual(counted['sourceTimeOffsetMinutes'], 120)
+        self.assertEqual(counted['authenticated24h'], 1)
 
     def test_missing_engine_auth_age_stays_absent(self):
         counted = run_metrics_json(
-            'countLicenseWindow(rows, Date.now(), 86400000)',
+            'countAuthenticatedWindow(rows, Date.now(), 86400000)',
             prelude='var rows = [];',
         )
         self.assertEqual(counted['engines'], {})
+
+    def test_pending_device_base_macs_join_authenticated_nac_identities(self):
+        now_ms = int(time.time() * 1000)
+        rows = [
+            {'macAddress': 'AA:AA:AA:AA:AA:AA', 'lastAuthEventTime': now_ms, 'username': 'bob'},
+        ]
+        devices = [
+            {'baseMac': 'aa-aa-aa-aa-aa-aa', 'deviceData': {'xiqLicenseState': 'XIQ_PENDING'}},
+            {'baseMac': 'bb:bb:bb:bb:bb:bb', 'deviceData': {'xiqLicenseState': 'XIQ_PENDING'}},
+            {'baseMac': 'cc:cc:cc:cc:cc:cc', 'deviceData': {'xiqLicenseState': 'XIQ_PILOT'}},
+        ]
+        counted = run_metrics_json(
+            f'countNacLicenseUsage(rows, devices, {now_ms}, 86400000)',
+            prelude=f'var rows = {json.dumps(rows)}; var devices = {json.dumps(devices)};',
+        )
+        self.assertEqual(counted['nacAuthenticated24h'], 1)
+        self.assertEqual(counted['nacPendingDevices'], 2)
+        self.assertEqual(counted['nacUsed'], 2)
+
+    def test_collector_unions_live_authentication_and_pending_device_payloads(self):
+        source = licenses_script()
+        body = source[:source.rfind('\nvar params = JSON.parse(value);')]
+        output = run_node(
+            body
+            + """
+function fetchToken() { return {ok: true, token: 'token'}; }
+function graphql(params, token, query) {
+  if (query.indexOf('endSystems') >= 0) {
+    return {ok: true, data: {accessControl: {endSystems: {success: true, endSystems: [
+      {macAddress: 'aa:aa:aa:aa:aa:aa', lastAuthEventTime: Date.now(), username: 'alice'}
+    ]}}}};
+  }
+  return {ok: true, data: {network: {devices: [
+    {baseMac: 'AA-AA-AA-AA-AA-AA', deviceData: {xiqLicenseState: 'XIQ_PENDING'}},
+    {baseMac: 'bb:bb:bb:bb:bb:bb', deviceData: {xiqLicenseState: 'XIQ_PENDING'}},
+    {baseMac: 'cc:cc:cc:cc:cc:cc', deviceData: {xiqLicenseState: 'XIQ_PILOT'}}
+  ]}}};
+}
+console.log(JSON.stringify(collectLicenses({max_results: 20, page_size: 20, nac_total: 3000})));
+"""
+        )
+        counted = json.loads(output)
+        self.assertEqual(counted['nacAuthenticated24h'], 1)
+        self.assertEqual(counted['nacPendingDevices'], 2)
+        self.assertEqual(counted['nacUsed'], 2)
+        self.assertEqual(counted['nacRemaining'], 2998)
 
     def test_remaining_is_zero_when_purchased_total_is_unset(self):
         self.assertEqual(run_metrics_json('remainingSeats(0, 2150)'), 0)
@@ -348,9 +365,13 @@ class YamlContractTests(unittest.TestCase):
         for snippet in FORBIDDEN_SNIPPETS:
             self.assertNotIn(snippet, blob, snippet)
 
-    def test_templates_stay_agentless(self):
+    def test_templates_use_proxy_external_certificate_checks_not_agents(self):
+        all_items = [*self.se['items'], *self.nac['items']]
+        cert_items = [item for item in all_items if item['key'].startswith('tls_certificate_expiry.sh[')]
+        self.assertEqual(len(cert_items), 2)
+        self.assertTrue(all(item['type'] == 'EXTERNAL' for item in cert_items))
+        self.assertFalse({'ZABBIX_PASSIVE', 'ZABBIX_ACTIVE'} & {item['type'] for item in all_items})
         self.assertNotIn('web.certificate.get[', self.se_text + self.nac_text)
-
     def test_calculated_item_formulas_avoid_unsupported_ternaries(self):
         for item in self.se['items']:
             if item['type'] == 'CALCULATED':
@@ -377,7 +398,7 @@ class YamlContractTests(unittest.TestCase):
         self.assertIn('endSystems(maxResults: ', licenses)
         self.assertNotIn('$maxResults', licenses)
         self.assertIn('rows.length >= maxResults', licenses)
-        self.assertIn('params.tz', licenses)
+        self.assertIn('lastSeenTime', licenses)
 
     def test_engines_query_tries_connected_then_falls_back(self):
         health = health_script()
@@ -394,7 +415,7 @@ class YamlContractTests(unittest.TestCase):
         )
         js = proto['preprocessing'][0]['parameters'][0]
         self.assertIn('function pickEngineField', js)
-        self.assertNotIn('countLicenseWindow', js)
+        self.assertNotIn('countAuthenticatedWindow', js)
         self.assertNotIn('new HttpRequest', js)
         self.assertIn(extract_engine_script('licensed', '2').strip(), js)
         self.assertIn('trigger_prototypes', self.se['discovery_rules'][0]['item_prototypes'][1])
@@ -413,18 +434,20 @@ class YamlContractTests(unittest.TestCase):
         self.assertEqual(heap['units'], '%')
 
     def test_nac_cap_requires_purchased_total(self):
-        used = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used24h')
+        used = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used')
         names = {tr['name']: tr for tr in used['triggers']}
         self.assertIn('{$XIQ.NAC.TOTAL}>0', names['XIQ-SE: NAC license seats exhausted']['expression'])
         self.assertIn('{$XIQ.NAC.TOTAL}>0', names['XIQ-SE: NAC license seats high']['expression'])
 
-    def test_navigator_cap_requires_purchased_total(self):
-        used = next(item for item in self.se['items'] if item['key'] == 'xiqse.nav.used')
-        names = {tr['name']: tr for tr in used['triggers']}
-        self.assertIn('{$XIQ.NAV.TOTAL}>0', names['XIQ-SE: Navigator licenses exhausted']['expression'])
-        remain = next(item for item in self.se['items'] if item['key'] == 'xiqse.nav.remaining')
-        low = next(tr for tr in remain['triggers'] if tr['name'] == 'XIQ-SE: few Navigator licenses remaining')
-        self.assertIn('{$XIQ.NAV.TOTAL}>0', low['expression'])
+    def test_nbi_device_classes_are_not_presented_as_entitlements(self):
+        items = {item['key']: item for item in self.se['items']}
+        self.assertIn('xiqse.pilot.devices', items)
+        self.assertIn('xiqse.nav.devices', items)
+        self.assertNotIn('xiqse.pilot.remaining', items)
+        self.assertNotIn('xiqse.nav.remaining', items)
+        self.assertNotIn('xiqse.lic.platformone', items)
+        self.assertFalse(items['xiqse.pilot.devices'].get('triggers'))
+        self.assertFalse(items['xiqse.nav.devices'].get('triggers'))
 
     def test_log_forward_trigger_is_elapsed_not_clock_and_has_age_graph(self):
         proto = next(
@@ -442,149 +465,71 @@ class YamlContractTests(unittest.TestCase):
         graphs = {row['name'] for row in self.se['discovery_rules'][0]['graph_prototypes']}
         self.assertIn('Engine {#ENGINE.NAME}: last auth age', graphs)
 
-    def test_health_dashboard_answers_one_question_per_page(self):
-        self.assertEqual([d['name'] for d in self.se['dashboards']], ['Health'])
-        pages = {page['name']: page for page in self.se['dashboards'][0]['pages']}
-        self.assertEqual(tuple(pages), HEALTH_PAGES)
-
-        def widget_keys(page: dict) -> list[str]:
-            keys = []
-            for widget in page['widgets']:
-                for field in widget.get('fields') or []:
-                    value = field.get('value')
-                    if isinstance(value, dict) and value.get('key'):
-                        keys.append(value['key'])
-            return keys
-
-        def widget_names(page: dict) -> list[str]:
-            return [widget['name'] for widget in page['widgets']]
-
-        def field_map(page: dict) -> dict[str, str]:
-            out = {}
-            for widget in page['widgets']:
-                for field in widget.get('fields') or []:
-                    out[field['name']] = field.get('value')
-            return out
-
-        overview = pages['Overview']
-        self.assertEqual(widget_names(overview), ['NBI', 'Engines', 'NAC used', 'Uptime', 'Problems', 'Last auth age'])
-        self.assertEqual(overview['widgets'][0]['type'], 'gauge')
+    def test_dashboards_show_authoritative_cloud_and_per_host_certificate_data(self):
+        overview = self.se['dashboards'][0]['pages'][0]
+        self.assertEqual(overview['name'], 'Overview')
+        keys = []
+        for widget in overview['widgets']:
+            for field in widget.get('fields') or []:
+                value = field.get('value')
+                if isinstance(value, dict) and value.get('key'):
+                    keys.append(value['key'])
         self.assertEqual(
-            widget_keys(overview),
-            ['xiqse.nbi.available', 'xiqse.engine.count', 'xiqse.nac.used24h', 'xiqse.nbi.uptime'],
-        )
-        self.assertNotIn('xiqse.pilot.used', widget_keys(overview))
-        self.assertNotIn('xiqse.nav.used', widget_keys(overview))
-        self.assertNotIn('xiqse.nac.remaining', widget_keys(overview))
-        self.assertNotIn('xiqse.pilot.remaining', widget_keys(overview))
-        self.assertNotIn('xiqse.nav.remaining', widget_keys(overview))
-        self.assertNotIn('xiqse.nbi.heap.pct', widget_keys(overview))
-        self.assertNotIn('Connected', widget_names(overview))
-        self.assertFalse(any(widget['type'] == 'svggraph' for widget in overview['widgets']))
-        overview_fields = field_map(overview)
-        self.assertEqual(overview_fields['items.0'], 'Engine *: last auth age')
-
-        engines = pages['Engines']
-        self.assertEqual(widget_names(engines), ['FreeRADIUS', 'Needs enforce'])
-        self.assertNotIn('24h unique MACs', widget_names(engines))
-        self.assertNotIn('Connected', widget_names(engines))
-        self.assertNotIn('Problems', widget_names(engines))
-        self.assertNotIn('xiqse.nbi.version', widget_keys(engines))
-        self.assertNotIn('xiqse.nac.used24h', widget_keys(engines))
-        self.assertFalse(
-            any(
-                (field.get('value') or '') == 'Engine *: 24h unique MACs'
-                for widget in engines['widgets']
-                for field in widget.get('fields') or []
-            )
-        )
-
-        licenses = pages['Licenses']
-        self.assertEqual(
-            widget_names(licenses),
+            keys[:4],
             [
-                'NAC used',
-                'Pilot used',
-                'Navigator used',
-                'NAC used %',
-                'NAC remaining',
-                'Pilot remaining',
-                'Navigator remaining',
-                'NAC used',
-                'Pilot / Navigator used',
+                'xiqse.nbi.available',
+                'tls_certificate_expiry.sh[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}]',
+                'xiqse.engine.count',
+                'xiqse.pilot.cloud.available',
             ],
         )
+        licenses = next(page for page in self.se['dashboards'][0]['pages'] if page['name'] == 'Licenses')
+        self.assertEqual(licenses['name'], 'Licenses')
+        lic_keys = []
+        for widget in licenses['widgets']:
+            for field in widget.get('fields') or []:
+                value = field.get('value')
+                if isinstance(value, dict) and value.get('key'):
+                    lic_keys.append(value['key'])
         self.assertEqual(
-            widget_keys(licenses),
+            lic_keys[:4],
             [
-                'xiqse.nac.used24h',
-                'xiqse.pilot.used',
-                'xiqse.nav.used',
-                'xiqse.nac.used.pct',
-                'xiqse.nac.remaining',
-                'xiqse.pilot.remaining',
-                'xiqse.nav.remaining',
-                'xiqse.nac.used24h',
-                'xiqse.pilot.used',
-                'xiqse.nav.used',
+                'xiqse.nac.used',
+                'xiqse.pilot.cloud.activated',
+                'xiqse.pilot.cloud.available',
+                'xiqse.pilot.cloud.expire',
             ],
         )
-        license_fields = field_map(licenses)
-        self.assertEqual(license_fields['time_period.from'], 'now-7d')
-        self.assertEqual(license_fields['time_period.to'], 'now')
-        self.assertNotIn('xiqse.nac.ok', widget_keys(licenses))
-        self.assertEqual(
-            [widget['name'] for widget in licenses['widgets'] if widget['type'] == 'item'][:4],
-            ['NAC used', 'Pilot used', 'Navigator used', 'NAC used %'],
-        )
-        self.assertEqual(
-            [widget['name'] for widget in licenses['widgets'] if widget['type'] == 'item'][4:],
-            ['NAC remaining', 'Pilot remaining', 'Navigator remaining'],
-        )
+        self.assertNotIn('xiqse.pilot.remaining', lic_keys)
+        self.assertNotIn('xiqse.nav.remaining', lic_keys)
 
-    def test_leftover_engines_dashboard_is_the_retired_host_board(self):
-        self.assertEqual(
-            leftover_dashboard_ids(
-                [
-                    {'dashboardid': 1, 'name': 'Health'},
-                    {'dashboardid': 2, 'name': 'Engines'},
-                ]
-            ),
-            ['2'],
-        )
-        self.assertEqual(leftover_dashboard_ids([{'dashboardid': 1, 'name': 'Health'}]), [])
-
-    def test_remaining_is_zero_until_purchased_total_is_set(self):
+    def test_nac_remaining_and_cloud_license_reuse_are_explicit(self):
         remain = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.remaining')
         self.assertEqual(remain['type'], 'DEPENDENT')
         self.assertEqual(remain['preprocessing'][0]['parameters'][0], '$.nacRemaining')
         self.assertNotIn('params', remain)
         self.assertIn('Not out of seats', remain.get('description') or '')
-        self.assertIn('census SCRIPT', remain.get('description') or '')
         licenses = next(item for item in self.se['items'] if item['key'] == 'xiqse.nbi.licenses')
         self.assertIn('{$XIQ.NAC.TOTAL}', json.dumps(licenses.get('parameters') or licenses))
-        self.assertIn('nac_total', licenses_script() + render_se())
-        self.assertNotIn('{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)', render_se())
-        pilot = next(item for item in self.se['items'] if item['key'] == 'xiqse.pilot.remaining')
-        self.assertEqual(pilot['type'], 'DEPENDENT')
-        self.assertEqual(pilot['preprocessing'][0]['parameters'][0], '$.pilotRemaining')
-        nav = next(item for item in self.se['items'] if item['key'] == 'xiqse.nav.remaining')
-        self.assertEqual(nav['type'], 'DEPENDENT')
-        self.assertEqual(nav['preprocessing'][0]['parameters'][0], '$.navRemaining')
         macros = {row['macro']: row for row in self.se['macros']}
         self.assertEqual(macros['{$XIQ.NAC.TOTAL}']['value'], '0')
-        self.assertEqual(macros['{$XIQ.PILOT.TOTAL}']['value'], '0')
-        self.assertEqual(macros['{$XIQ.NAV.TOTAL}']['value'], '0')
-        self.assertEqual(macros['{$XIQSE.TZ}']['value'], 'Europe/Zurich')
-        self.assertIn('timezone-less', macros['{$XIQSE.TZ}']['description'])
-        self.assertIn('XIQ-SE licenses', macros['{$XIQ.NAC.TOTAL}']['description'])
-        self.assertNotIn('{$XIQ.NAC.FRESH.TIME.START}', macros)
-        self.assertNotIn('{$XIQ.NAC.FRESH.TIME.END}', macros)
-        used_pct = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.used.pct')
-        self.assertEqual(used_pct['type'], 'DEPENDENT')
-        self.assertEqual(used_pct['preprocessing'][0]['parameters'][0], '$.nacUsedPct')
+        self.assertNotIn('{$XIQ.PILOT.TOTAL}', macros)
+        self.assertNotIn('{$XIQ.NAV.TOTAL}', macros)
+        items = {item['key']: item for item in self.se['items']}
+        self.assertEqual(items['xiqse.pilot.cloud.activated']['params'], 'last(//xiq.cloud.pilot.activated)')
+        self.assertEqual(items['xiqse.pilot.cloud.available']['params'], 'last(//xiq.cloud.pilot.available)')
+        self.assertEqual(items['xiqse.pilot.cloud.expire']['params'], 'last(//xiq.cloud.pilot.expire)')
+        self.assertEqual(items['xiqse.pilot.cloud.expire']['units'], 'unixtime')
         calculated = [item['key'] for item in self.se['items'] if item['type'] == 'CALCULATED']
-        self.assertEqual(calculated, ['xiqse.nbi.heap.pct'])
+        self.assertEqual(
+            calculated,
+            [
+                'xiqse.nbi.heap.pct',
+                'xiqse.pilot.cloud.activated',
+                'xiqse.pilot.cloud.available',
+                'xiqse.pilot.cloud.expire',
+            ],
+        )
 
     def test_hardware_capacity_trigger_stays_silent_when_api_capacity_is_zero(self):
         proto = next(
@@ -612,13 +557,13 @@ class YamlContractTests(unittest.TestCase):
                     if key in widget:
                         self.assertIsInstance(widget[key], str, (page['name'], widget['name'], key))
 
-    def test_nac_template_is_thin_and_disabled(self):
+    def test_nac_template_is_agentless_snmp_companion_with_live_certificate_alerts(self):
         keys = _walk_item_keys(self.nac)
         self.assertTrue(NAC_ITEM_KEYS <= keys)
-        for item in self.nac['items']:
-            for tr in item.get('triggers') or []:
-                if tr['name'] in NAC_TRIGGER_NAMES:
-                    self.assertEqual(tr['status'], 'DISABLED')
+        portal = next(item for item in self.nac['items'] if item['key'].startswith('net.tcp.service['))
+        self.assertEqual(portal['triggers'][0]['status'], 'DISABLED')
+        cert = next(item for item in self.nac['items'] if item['key'].startswith('tls_certificate_expiry.sh['))
+        self.assertTrue(all('status' not in trigger for trigger in cert['triggers']))
         self.assertNotIn('net.udp.service', self.nac_text)
         self.assertNotIn('icmpping', self.nac_text)
 
@@ -639,59 +584,62 @@ class ApplyWiringTests(unittest.TestCase):
         for path in TEMPLATE_FILES.values():
             self.assertTrue(path.exists(), path)
 
-    def test_platform_pattern_matches_site_engine_names(self):
-        self.assertTrue(platform_is_xiqse('XIQ-SE'))
-        self.assertTrue(platform_is_xiqse('XIQSE'))
-        self.assertTrue(platform_is_xiqse('ExtremeCloud IQ Site Engine'))
-        self.assertTrue(platform_is_xiqse('NetSight'))
+    def test_platform_pattern_matches_only_the_dedicated_site_engine_platform(self):
+        self.assertTrue(platform_is_xiqse(SE_PLATFORM_NAME))
+        self.assertFalse(platform_is_xiqse('XIQ-SE'))
+        self.assertFalse(platform_is_xiqse('XIQSE'))
+        self.assertFalse(platform_is_xiqse('NetSight'))
         self.assertFalse(platform_is_xiqse('EXOS'))
-        self.assertIn('XIQ.?SE', SE_PLATFORM_PATTERN)
+        self.assertEqual(SE_PLATFORM_PATTERN, f'^{SE_PLATFORM_NAME}$')
 
-    def test_network_script_owns_apply_and_skips_hostsync(self):
+    def test_network_script_owns_agentless_cutover_and_targeted_hostsync(self):
         src = network_source()
         self.assertIn(APPLY_FLAG, src)
         self.assertIn(CHECK_FLAG, src)
-        self.assertIn('run_apply_xiqse', src)
         apply_fn = _function_source(src, 'run_apply_xiqse')
+        step_fn = _function_source(src, '_step_xiqse_nbxsync')
         import_fn = _function_source(src, 'import_xiqse_templates')
+        cleanup_fn = _function_source(src, '_unlink_xiqse_agent_templates')
+        secret_fn = _function_source(src, '_write_xiqse_host_secret')
         self.assertIsNotNone(apply_fn)
+        self.assertIsNotNone(step_fn)
         self.assertIsNotNone(import_fn)
+        self.assertIsNotNone(cleanup_fn)
+        self.assertIsNotNone(secret_fn)
         self.assertNotIn('import_extreme_templates', apply_fn)
-        self.assertNotIn('SyncHostJob', apply_fn)
+        self.assertIn('SyncHostJob(instance=vm).run()', apply_fn)
+        self.assertIn('_unlink_xiqse_agent_templates(api, targets)', apply_fn)
+        self.assertLess(
+            apply_fn.index('_unlink_xiqse_agent_templates(api, targets)'),
+            apply_fn.index('SyncHostJob(instance=vm).run()'),
+        )
+        self.assertIn('_write_xiqse_host_secret(', apply_fn)
+        self.assertLess(
+            apply_fn.index('SyncHostJob(instance=vm).run()'),
+            apply_fn.index('_write_xiqse_host_secret('),
+        )
         self.assertNotIn('configure_nbxsync_zerotouch', apply_fn)
         self.assertIn('strict=True', import_fn)
-        self.assertIn('drop_leftover_xiqse_engines_dashboard', import_fn)
+        self.assertIn('_xiqse.STALE_SE_ITEM_KEYS', import_fn)
+        self.assertIn('api.item.delete', import_fn)
+        self.assertIn("filter={'type': '1'}", cleanup_fn)
+        self.assertIn("search={'key_': _xiqse.TLS_EXTERNAL_SCRIPT}", cleanup_fn)
+        self.assertNotIn('api.hostinterface.delete', cleanup_fn)
+        self.assertIn('api.usermacro.update', secret_fn)
+        self.assertIn('api.usermacro.create', secret_fn)
         self.assertIn(SE_TEMPLATE_RULE, src)
-        self.assertIn('_xiqse.XIQSE_FQDN_JINJA', src)
-        self.assertIn('_xiqse.XIQSE_FQDN_MACRO', src)
-        self.assertIn('_xiqse.NAC_PORTAL_FQDN_MACRO', src)
+        self.assertIn('_xiqse.SE_VM_NAME', src)
+        self.assertIn('_xiqse.NAC_PLATFORM_NAME', src)
+        self.assertIn('_xiqse.NAC_VM_NAMES', src)
+        self.assertIn('_xiqse.XIQSE_CREDENTIAL_MACROS', src)
+        self.assertIn('ZabbixMacroTypeChoices.SECRET', step_fn)
+        self.assertIn('_xiqse.CLOUD_TEMPLATE_NAME', src)
+        self.assertIn('_xiqse.STALE_AGENT_CONFIGURATION_GROUPS', step_fn)
+        self.assertIn('ZabbixHostInterfaceTypeChoices.AGENT', step_fn)
+        self.assertIn('_xiqse.SNMP_CONFIGURATION_GROUP', step_fn)
         self.assertIn("'deleteMissing': False", src)
-        self.assertIn('LICENSE_CG_NAME', src)
-        self.assertIn('_step_xiqse_license_scope', src)
-        self.assertIn('_ensure_macro_assignment_if_absent', src)
-        self.assertIn('_mirror_license_totals_to_platform', src)
-        license_fn = _function_source(src, '_step_xiqse_license_scope')
-        self.assertIsNotNone(license_fn)
-        self.assertIn('_ensure_macro_assignment_if_absent', license_fn)
-        self.assertIn('_mirror_license_totals_to_platform', license_fn)
-        self.assertIn('LICENSE_TOTAL_MACROS', license_fn)
-        self.assertNotIn('SyncHostJob', license_fn)
-        ensure_fn = _function_source(src, '_ensure_macro_assignment_if_absent')
-        self.assertIsNotNone(ensure_fn)
-        self.assertIn('if ma is not None', ensure_fn)
-        self.assertNotIn('ma.value = value', ensure_fn)
-        mirror_fn = _function_source(src, '_mirror_license_totals_to_platform')
-        self.assertIsNotNone(mirror_fn)
-        self.assertIn('keeper.value = value', mirror_fn)
-        self.assertIn('extras', mirror_fn)
-        self.assertIn('LICENSE_CG_NAME', apply_fn)
-        self.assertEqual(
-            [row[0] for row in LICENSE_TOTAL_MACROS],
-            ['{$XIQ.NAC.TOTAL}', '{$XIQ.PILOT.TOTAL}', '{$XIQ.NAV.TOTAL}'],
-        )
-        self.assertEqual(LICENSE_CG_NAME, 'XIQ-SE licenses')
 
-    def test_zerotouch_soft_assigns_nac_with_any(self):
+    def test_zerotouch_soft_assigns_nac_without_agent_requirement(self):
         src = zerotouch_source()
         self.assertNotIn(APPLY_FLAG, src)
         self.assertIn("'extremecontrol_observability': 'ExtremeControl Observability'", src)
@@ -700,11 +648,10 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertIsNotNone(optional)
         self.assertIn("'extremecontrol_observability'", optional.group(1))
         self.assertIn("'xiqse_observability'", optional.group(1))
-        self.assertIn("'extremecontrol_snmp'", optional.group(1))
         self.assertNotIn('template_xiqse_observability.yaml', src)
         self.assertNotIn('import_yaml_templates', src)
         self.assertIn(f"'{NAC_PORTAL_FQDN_MACRO}', '{XIQSE_FQDN_JINJA}', '{NAC_ROLE}'", src)
-        self.assertIn("'extremecontrol_observability': [HostInterfaceRequirementChoices.ANY]", src)
+        self.assertIn("'extremecontrol_observability': [HostInterfaceRequirementChoices.NONE]", src)
         self.assertIn("'extremecontrol_snmp': 'ExtremeControl by SNMP'", src)
         self.assertIn("'extremecontrol_snmp': [HostInterfaceRequirementChoices.SNMP]", src)
 

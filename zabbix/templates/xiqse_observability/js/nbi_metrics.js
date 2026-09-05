@@ -1,56 +1,8 @@
-function lastSundayDay(year, month) {
-  var date = new Date(Date.UTC(year, month, 0));
-  return date.getUTCDate() - date.getUTCDay();
+function isNaiveIsoTime(text) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text);
 }
 
-function europeZurichOffsetMinutes(year, month, day, hour) {
-  // EU DST as used by Europe/Zurich: last Sunday March 02:00 local CET → CEST,
-  // last Sunday October 03:00 local CEST → CET. Ambiguous 02:00–02:59 in October
-  // stays on CEST (hour < 3).
-  var startDay = lastSundayDay(year, 3);
-  var endDay = lastSundayDay(year, 10);
-  var dst = false;
-  if (month > 3 && month < 10) {
-    dst = true;
-  } else if (month === 3) {
-    if (day > startDay || (day === startDay && hour >= 2)) {
-      dst = true;
-    }
-  } else if (month === 10) {
-    if (day < endDay || (day === endDay && hour < 3)) {
-      dst = true;
-    }
-  }
-  return dst ? 120 : 60;
-}
-
-function tzOffsetMinutes(tz, year, month, day, hour) {
-  var zone = String(tz === undefined || tz === null ? 'Europe/Zurich' : tz);
-  zone = zone.replace(/^\s+|\s+$/g, '');
-  if (zone === 'UTC' || zone === 'GMT' || zone === 'Z') {
-    return 0;
-  }
-  var fixed = zone.match(/^([+-])(\d{2}):?(\d{2})$/);
-  if (fixed) {
-    var sign = fixed[1] === '-' ? -1 : 1;
-    return sign * (Number(fixed[2]) * 60 + Number(fixed[3]));
-  }
-  return europeZurichOffsetMinutes(year, month, day, hour);
-}
-
-function parseOffsetToken(token) {
-  if (!token || token === 'Z' || token === 'z') {
-    return 0;
-  }
-  var match = String(token).match(/^([+-])(\d{2}):?(\d{2})$/);
-  if (!match) {
-    return null;
-  }
-  var sign = match[1] === '-' ? -1 : 1;
-  return sign * (Number(match[2]) * 60 + Number(match[3]));
-}
-
-function parseAuthTime(raw, tz) {
+function parseAuthTime(raw, naiveOffsetMs) {
   if (raw === null || raw === undefined || raw === '') {
     return null;
   }
@@ -62,44 +14,37 @@ function parseAuthTime(raw, tz) {
     var numeric = Number(text);
     return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
   }
-  var named = '';
-  var namedMatch = text.match(/\s+(CEST|CET)$/i);
-  if (namedMatch) {
-    named = namedMatch[1].toUpperCase();
-    text = text.slice(0, text.length - namedMatch[0].length);
+  var parsed = Date.parse(isNaiveIsoTime(text) ? text + 'Z' : text);
+  if (isNaN(parsed)) {
+    return null;
   }
-  var iso = text.match(
-    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?(Z|[+-]\d{2}:?\d{2})?$/
-  );
-  if (iso) {
-    var year = Number(iso[1]);
-    var month = Number(iso[2]);
-    var day = Number(iso[3]);
-    var hour = Number(iso[4]);
-    var minute = Number(iso[5]);
-    var second = Number(iso[6]);
-    var millis = iso[7] ? Number((iso[7] + '000').slice(0, 3)) : 0;
-    var offsetMin;
-    if (iso[8]) {
-      offsetMin = parseOffsetToken(iso[8]);
-      if (offsetMin === null) {
-        return null;
-      }
-    } else if (named === 'CEST') {
-      offsetMin = 120;
-    } else if (named === 'CET') {
-      offsetMin = 60;
-    } else {
-      // NBI 25.5.12.6 emits lastAuthEventTime without a zone, e.g.
-      // 2026-09-04T08:39:05.366 while the clock is 06:39 UTC (CEST).
-      // Date.parse() in Zabbix/Duktape treats that as UTC, then the 60s
-      // future-skew drops current auths (~969 live on 2026-09-04).
-      offsetMin = tzOffsetMinutes(tz, year, month, day, hour);
+  return parsed - (isNaiveIsoTime(text) ? Number(naiveOffsetMs || 0) : 0);
+}
+
+function inferNaiveTimeOffset(rows, nowMs) {
+  var newestWallTime = 0;
+  var i;
+  if (!Array.isArray(rows)) {
+    return 0;
+  }
+  for (i = 0; i < rows.length; i++) {
+    var row = rows[i] || {};
+    var text = String(row.lastSeenTime || row.lastAuthEventTime || '');
+    if (!isNaiveIsoTime(text)) {
+      continue;
     }
-    return Date.UTC(year, month - 1, day, hour, minute, second, millis) - offsetMin * 60000;
+    var wallTime = Date.parse(text + 'Z');
+    if (!isNaN(wallTime) && wallTime > newestWallTime) {
+      newestWallTime = wallTime;
+    }
   }
-  var parsed = Date.parse(text);
-  return isNaN(parsed) ? null : parsed;
+  if (!newestWallTime) {
+    return 0;
+  }
+  // Site Engine emits local wall-clock timestamps without a zone. The newest
+  // lastSeenTime is normally seconds old, so round its skew to a real 15m zone.
+  var offset = Math.round((newestWallTime - nowMs) / 900000) * 900000;
+  return Math.abs(offset) <= 50400000 ? offset : 0;
 }
 
 function objectSize(obj) {
@@ -139,7 +84,12 @@ function usedSeatPercent(total, used) {
   return observed / purchased * 100;
 }
 
-function countLicenseWindow(rows, nowMs, windowMs, tz) {
+function normalizeMac(raw) {
+  var mac = String(raw || '').toLowerCase().replace(/[^0-9a-f]/g, '');
+  return /^[0-9a-f]{12}$/.test(mac) ? mac : '';
+}
+
+function countAuthenticatedWindow(rows, nowMs, windowMs) {
   var macs = {};
   var users = {};
   var byEngine = {};
@@ -147,13 +97,14 @@ function countLicenseWindow(rows, nowMs, windowMs, tz) {
   if (!Array.isArray(rows)) {
     rows = [];
   }
+  var sourceOffsetMs = inferNaiveTimeOffset(rows, nowMs);
   for (i = 0; i < rows.length; i++) {
     var row = rows[i] || {};
-    var stamp = parseAuthTime(row.lastAuthEventTime, tz);
+    var stamp = parseAuthTime(row.lastAuthEventTime, sourceOffsetMs);
     if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
       continue;
     }
-    var mac = String(row.macAddress || '').toLowerCase();
+    var mac = normalizeMac(row.macAddress);
     if (!mac) {
       continue;
     }
@@ -191,9 +142,42 @@ function countLicenseWindow(rows, nowMs, windowMs, tz) {
     };
   }
   return {
-    nacUsed24h: objectSize(macs),
+    macs: macs,
+    authenticated24h: objectSize(macs),
     users24h: objectSize(users),
+    sourceTimeOffsetMinutes: sourceOffsetMs / 60000,
     engines: engines
+  };
+}
+
+function countNacLicenseUsage(rows, devices, nowMs, windowMs) {
+  var authenticated = countAuthenticatedWindow(rows, nowMs, windowMs);
+  var macs = authenticated.macs;
+  var pending = {};
+  var i;
+  if (!Array.isArray(devices)) {
+    devices = [];
+  }
+  for (i = 0; i < devices.length; i++) {
+    var device = devices[i] || {};
+    var state = String(((device.deviceData || {}).xiqLicenseState) || '');
+    if (state !== 'XIQ_PENDING') {
+      continue;
+    }
+    var mac = normalizeMac(device.baseMac);
+    if (!mac) {
+      continue;
+    }
+    pending[mac] = 1;
+    macs[mac] = 1;
+  }
+  return {
+    nacUsed: objectSize(macs),
+    nacAuthenticated24h: authenticated.authenticated24h,
+    nacPendingDevices: objectSize(pending),
+    users24h: authenticated.users24h,
+    sourceTimeOffsetMinutes: authenticated.sourceTimeOffsetMinutes,
+    engines: authenticated.engines
   };
 }
 

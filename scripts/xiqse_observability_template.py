@@ -16,6 +16,7 @@ from xiqse_observability import (
     licenses_script,
     lld_script,
     pilot_script,
+    TLS_EXTERNAL_SCRIPT,
     yaml_literal,
 )
 
@@ -43,6 +44,8 @@ U = {
     'item_threads': 'b083b3fd64b34c31b76e8f1aae7ff956',
     'item_engine_count': 'd78c94ad24b8400a90640848802268c8',
     'item_nac_used': '42078351037e4a66a77525e8918d919a',
+    'item_nac_authenticated': 'ceb0628a22e3423fad9c11a47e38b3cb',
+    'item_nac_pending': 'a74a968c46694f0b908c216db5fe7517',
     'item_nac_users': '7e7ca72601224d15a000bc81a5900db7',
     'item_nac_remain': '3fc85bb75873448a8f3b9e8db848f99f',
     'item_nac_pct': '6d891b6cf37f4276bc1beb250ade16ed',
@@ -56,12 +59,17 @@ U = {
     'item_nav_used': 'e739b887216f410da53afafe4294db58',
     'item_nav_remain': '679fe8d3980e4691a0c11a8be3d16ff0',
     'item_lic_pending': 'f152560225304bcd8adec843d76c532d',
-    'item_lic_platformone': '6ad9ed0651a249578dbb63a07b0be9e7',
     'item_tcp8443': '1f2a9aae5987421e837ec9d3d21b4839',
+    'item_cert': 'ba9f75ab81284032bb8cda0473b4499a',
+    'item_cloud_pilot_activated': 'bfa48a19fde64b05998200ad67a569a7',
+    'item_cloud_pilot_available': '2a1750d5ee60487b95b87bcac060a09d',
+    'item_cloud_pilot_expire': '99781129025e429e8646be5bfa42d712',
     'item_unsupported': '35962793d7484596bee1d20ad9067757',
     'tr_avail': '97921d61a0b34d7286b85c77180bf3ce',
     'tr_nodata': '40dd971c943f4a01b7927b5f1afcf575',
     'tr_tcp': '810c1bc3b2a24f1b8fa47e29d2c21b1e',
+    'tr_cert_expired': 'e5f951c69d2c4f858199f145a2cb0921',
+    'tr_cert_warn': '01a288a02ecf49088dc9c248362b19b7',
     'tr_zero_eng': '9c7efefa14934d78a059dbfdebe249be',
     'tr_trunc': '9319f3e3d55b47b59a93b801857c846f',
     'tr_nac_fail': 'e05cce6447474716b449f0057a058756',
@@ -93,10 +101,12 @@ U = {
     'proto_graph_used': 'b7babf7574ee45d08def304b49563f01',
     'proto_graph_age': '519df3a273054e78864b380573f02769',
     'dash_health': 'af01ea155ec841d68ff2c118f17f0040',
-    'dash_engines': 'f22e74659b754873bc9958176cb81951',
     'vm_svc': 'c8f1a0b24d6e4c9f8a7b6c5d4e3f2a1b',
     'nac_template': '36b575ac588e4b7aa053ab032b3c6ac3',
     'nac_tcp': '12acf3f8703d49368e9c54f5d0898ef1',
+    'nac_cert': 'a3d1644319f04fce91c53b0f0d98036d',
+    'nac_cert_expired': 'ca56632b9e8e4b189fd5f68b8352b604',
+    'nac_cert_warn': 'e572845d1e584991bc631b20ac52ae7c',
     'nac_tr_tcp': 'd5155205a96c41d090036cf608fc9bb9',
     'nac_dash': '1c957a19146f46ef94da5522bdea4fc9',
     'nac_vm_svc': 'b9e0d1c24a3f4e5d8c7b6a5948372615',
@@ -150,8 +160,8 @@ def _params(names: tuple[str, ...]) -> str:
 
 
 AUTH_PARAMS = ('fqdn', 'port', 'scheme', 'client_id', 'client_secret')
-LICENSE_PARAMS = AUTH_PARAMS + ('max_results', 'page_size', 'nac_total', 'tz')
-PILOT_PARAMS = AUTH_PARAMS + ('pilot_total', 'nav_total')
+LICENSE_PARAMS = AUTH_PARAMS + ('max_results', 'page_size', 'nac_total')
+PILOT_PARAMS = AUTH_PARAMS
 
 
 def bump(text: str, spaces: int = 4) -> str:
@@ -195,18 +205,84 @@ def _dep(uuid: str, name: str, key: str, master: str, jpath: str, value_type: st
 {extra}{tags}"""
 
 
-def _calc(uuid: str, name: str, key: str, params: str, units: str = '', extra: str = '', tags: str = TAGS_LIC) -> str:
+def _calc(
+    uuid: str,
+    name: str,
+    key: str,
+    params: str,
+    units: str = '',
+    extra: str = '',
+    tags: str = TAGS_LIC,
+    *,
+    value_type: str = 'FLOAT',
+    delay: str = '1m',
+) -> str:
     units_l = ("\n      units: '" + units + "'") if units else ''
     return f"""    - uuid: {uuid}
       name: {name}
       type: CALCULATED
       key: {key}
-      delay: 1m
+      delay: {delay}
       history: 7d
       trends: 365d
-      value_type: FLOAT{units_l}
+      value_type: {value_type}{units_l}
       params: '{params}'
 {extra}{tags}"""
+
+
+def _certificate_item(
+    uuid: str,
+    *,
+    template: str,
+    key: str,
+    expired_uuid: str,
+    warning_uuid: str,
+    label: str,
+) -> str:
+    expired_name = f'{label}: TLS certificate expired'
+    warning_name = f'{label}: TLS certificate expires soon'
+    expired_expression = f'last(/{template}/{key})<=now()'
+    return f"""    - uuid: {uuid}
+      name: TLS certificate expiration
+      type: EXTERNAL
+      key: '{key}'
+      delay: 1h
+      history: 30d
+      trends: 365d
+      value_type: UNSIGNED
+      units: unixtime
+      description: Leaf certificate expiry collected by the assigned Zabbix proxy.
+      preprocessing:
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+            - 1d
+      triggers:
+        - uuid: {expired_uuid}
+          expression: '{expired_expression}'
+          name: '{expired_name}'
+          event_name: '{expired_name}'
+          priority: AVERAGE
+          description: The management/API TLS certificate is expired. Authentication traffic may continue, but HTTPS clients cannot validate the endpoint.
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: {warning_uuid}
+          expression: 'last(/{template}/{key})-now()<{{$TLS.CERT.WARN}} and last(/{template}/{key})>now()'
+          name: '{warning_name}'
+          event_name: '{warning_name}'
+          priority: WARNING
+          description: Renew the management/API TLS certificate before {{$TLS.CERT.WARN}} elapses.
+          dependencies:
+            - name: '{expired_name}'
+              expression: '{expired_expression}'
+          tags:
+            - tag: scope
+              value: availability
+      tags:
+        - tag: component
+          value: certificate
+        - tag: scope
+          value: availability"""
 
 
 def _trigger(uuid: str, expression: str, name: str, priority: str, description: str, extra: str = '') -> str:
@@ -252,7 +328,7 @@ def render_se() -> str:
         '{$XIQSE.LICENSE.TIMEOUT}',
         pilot_script(),
         PILOT_PARAMS,
-        extra="      description: |\n        Counts network.devices xiqLicenseState: Pilot, Navigator, pending, Platform ONE.\n",
+        extra="      description: |\n        Counts network.devices license states: Pilot, Navigator, and pending; unpurchased classes remain diagnostic-only.\n",
     )
     pilot = pilot.replace(TAGS_NBI, TAGS_LIC)
 
@@ -290,20 +366,20 @@ def render_se() -> str:
     )
     nac_cap = _trigger(
         U['tr_nac_cap'],
-        f'{{$XIQ.NAC.TOTAL}}>0 and last(/{TPL}/xiqse.nac.used24h)>={{$XIQ.NAC.TOTAL}}',
+        f'{{$XIQ.NAC.TOTAL}}>0 and last(/{TPL}/xiqse.nac.used)>={{$XIQ.NAC.TOTAL}}',
         'XIQ-SE: NAC license seats exhausted',
         'AVERAGE',
-        'Unique MACs authenticated in 24h reached {$XIQ.NAC.TOTAL} (XIQ-NAC-S).',
+        'Authenticated end-system MACs plus pending-device base MACs reached {$XIQ.NAC.TOTAL} (XIQ-NAC-S).',
     )
     nac_warn = _trigger(
         U['tr_nac_warn'],
-        f'{{$XIQ.NAC.TOTAL}}>0 and last(/{TPL}/xiqse.nac.used24h)*100>={{$XIQ.NAC.TOTAL}}*{{$XIQ.NAC.USED.WARN}}',
+        f'{{$XIQ.NAC.TOTAL}}>0 and last(/{TPL}/xiqse.nac.used)*100>={{$XIQ.NAC.TOTAL}}*{{$XIQ.NAC.USED.WARN}}',
         'XIQ-SE: NAC license seats high',
         'WARNING',
-        '24h unique MACs at or above {$XIQ.NAC.USED.WARN}% of {$XIQ.NAC.TOTAL}.',
+        'NAC license identities are at or above {$XIQ.NAC.USED.WARN}% of {$XIQ.NAC.TOTAL}.',
         extra=f"""          dependencies:
             - name: 'XIQ-SE: NAC license seats exhausted'
-              expression: '{{$XIQ.NAC.TOTAL}}>0 and last(/{TPL}/xiqse.nac.used24h)>={{$XIQ.NAC.TOTAL}}'
+              expression: '{{$XIQ.NAC.TOTAL}}>0 and last(/{TPL}/xiqse.nac.used)>={{$XIQ.NAC.TOTAL}}'
 """,
     )
     pilot_fail = _trigger(
@@ -311,43 +387,7 @@ def render_se() -> str:
         f'last(/{TPL}/xiqse.pilot.ok)=0 and last(/{TPL}/xiqse.nbi.available)=1',
         'XIQ-SE: Pilot census failed',
         'AVERAGE',
-        'NBI is up but the devices xiqLicenseState query failed. Pilot and Navigator remaining are unknown.',
-    )
-    pilot_cap = _trigger(
-        U['tr_pilot_cap'],
-        f'{{$XIQ.PILOT.TOTAL}}>0 and last(/{TPL}/xiqse.pilot.ok)=1 and last(/{TPL}/xiqse.pilot.used)>={{$XIQ.PILOT.TOTAL}}',
-        'XIQ-SE: Pilot licenses exhausted',
-        'WARNING',
-        'Cannot onboard another switch or Control engine.',
-    )
-    pilot_low = _trigger(
-        U['tr_pilot_low'],
-        f'{{$XIQ.PILOT.TOTAL}}>0 and last(/{TPL}/xiqse.pilot.ok)=1 and last(/{TPL}/xiqse.pilot.remaining)<={{$XIQ.PILOT.REMAIN.WARN}}',
-        'XIQ-SE: few Pilot licenses remaining',
-        'WARNING',
-        'Pilot remaining at or below {$XIQ.PILOT.REMAIN.WARN}.',
-        extra=f"""          dependencies:
-            - name: 'XIQ-SE: Pilot licenses exhausted'
-              expression: '{{$XIQ.PILOT.TOTAL}}>0 and last(/{TPL}/xiqse.pilot.ok)=1 and last(/{TPL}/xiqse.pilot.used)>={{$XIQ.PILOT.TOTAL}}'
-""",
-    )
-    nav_cap = _trigger(
-        U['tr_nav_cap'],
-        f'{{$XIQ.NAV.TOTAL}}>0 and last(/{TPL}/xiqse.pilot.ok)=1 and last(/{TPL}/xiqse.nav.used)>={{$XIQ.NAV.TOTAL}}',
-        'XIQ-SE: Navigator licenses exhausted',
-        'WARNING',
-        'Cannot onboard another Navigator-tier device.',
-    )
-    nav_low = _trigger(
-        U['tr_nav_low'],
-        f'{{$XIQ.NAV.TOTAL}}>0 and last(/{TPL}/xiqse.pilot.ok)=1 and last(/{TPL}/xiqse.nav.remaining)<={{$XIQ.NAV.REMAIN.WARN}}',
-        'XIQ-SE: few Navigator licenses remaining',
-        'WARNING',
-        'Navigator remaining at or below {$XIQ.NAV.REMAIN.WARN}.',
-        extra=f"""          dependencies:
-            - name: 'XIQ-SE: Navigator licenses exhausted'
-              expression: '{{$XIQ.NAV.TOTAL}}>0 and last(/{TPL}/xiqse.pilot.ok)=1 and last(/{TPL}/xiqse.nav.used)>={{$XIQ.NAV.TOTAL}}'
-""",
+        'NBI is up but the device-license-state inventory query failed.',
     )
     reboot = _trigger(
         U['tr_reboot'],
@@ -428,7 +468,9 @@ def render_se() -> str:
         'UNSIGNED',
         extra=f'      triggers:\n{zero}\n',
     )
-    nac_used = _dep(U['item_nac_used'], 'NAC license used (24h unique MACs)', 'xiqse.nac.used24h', 'xiqse.nbi.licenses', '$.nacUsed24h', 'UNSIGNED', extra=f'      triggers:\n{nac_cap}\n{nac_warn}\n', tags=TAGS_LIC)
+    nac_used = _dep(U['item_nac_used'], 'NAC license used', 'xiqse.nac.used', 'xiqse.nbi.licenses', '$.nacUsed', 'UNSIGNED', extra=f'      triggers:\n{nac_cap}\n{nac_warn}\n', tags=TAGS_LIC)
+    nac_authenticated = _dep(U['item_nac_authenticated'], 'NAC authenticated MACs (24h)', 'xiqse.nac.authenticated24h', 'xiqse.nbi.licenses', '$.nacAuthenticated24h', 'UNSIGNED', tags=TAGS_LIC)
+    nac_pending = _dep(U['item_nac_pending'], 'NAC pending device MACs', 'xiqse.nac.pending.devices', 'xiqse.nbi.licenses', '$.nacPendingDevices', 'UNSIGNED', tags=TAGS_LIC)
     nac_users = _dep(U['item_nac_users'], 'NAC unique usernames (24h)', 'xiqse.nac.users24h', 'xiqse.nbi.licenses', '$.users24h', 'UNSIGNED', tags=TAGS_LIC)
     nac_fetched = _dep(U['item_nac_fetched'], 'NAC end-systems fetched', 'xiqse.nac.fetched', 'xiqse.nbi.licenses', '$.fetched', 'UNSIGNED', tags=TAGS_LIC)
     nac_trunc = _dep(
@@ -452,12 +494,23 @@ def render_se() -> str:
         tags=TAGS_LIC,
     )
     nac_err = _dep(U['item_nac_error'], 'NAC census last error', 'xiqse.nac.error', 'xiqse.nbi.licenses', '$.error', 'TEXT', tags=TAGS_LIC)
-    pilot_used = _dep(U['item_pilot_used'], 'Pilot licenses used', 'xiqse.pilot.used', 'xiqse.nbi.pilot', '$.pilotUsed', 'UNSIGNED', extra=f'      triggers:\n{pilot_cap}\n', tags=TAGS_LIC)
-    nav_used = _dep(U['item_nav_used'], 'Navigator licenses used', 'xiqse.nav.used', 'xiqse.nbi.pilot', '$.navigatorUsed', 'UNSIGNED', extra=f'      triggers:\n{nav_cap}\n', tags=TAGS_LIC)
+    pilot_devices = _dep(U['item_pilot_used'], 'Pilot-class devices in NBI', 'xiqse.pilot.devices', 'xiqse.nbi.pilot', '$.pilotUsed', 'UNSIGNED', tags=TAGS_LIC)
+    nav_devices = _dep(U['item_nav_used'], 'Navigator-class devices in NBI', 'xiqse.nav.devices', 'xiqse.nbi.pilot', '$.navigatorUsed', 'UNSIGNED', tags=TAGS_LIC)
     lic_pending = _dep(U['item_lic_pending'], 'Device licenses pending', 'xiqse.lic.pending', 'xiqse.nbi.pilot', '$.pending', 'UNSIGNED', tags=TAGS_LIC)
-    lic_pone = _dep(U['item_lic_platformone'], 'Platform ONE / Advanced / Standard used', 'xiqse.lic.platformone', 'xiqse.nbi.pilot', '$.platformOne', 'UNSIGNED', tags=TAGS_LIC)
-    pilot_ok = _dep(U['item_pilot_ok'], 'Pilot census ok', 'xiqse.pilot.ok', 'xiqse.nbi.pilot', '$.ok', 'UNSIGNED', extra=f'      valuemap:\n        name: XIQ-SE NBI\n      triggers:\n{pilot_fail}\n', tags=TAGS_LIC)
+    pilot_ok = _dep(U['item_pilot_ok'], 'Device license-state census ok', 'xiqse.pilot.ok', 'xiqse.nbi.pilot', '$.ok', 'UNSIGNED', extra=f'      valuemap:\n        name: XIQ-SE NBI\n      triggers:\n{pilot_fail}\n', tags=TAGS_LIC)
     heap_pct = _calc(U['item_heap_pct'], 'XIQ-SE heap used %', 'xiqse.nbi.heap.pct', 'last(//xiqse.nbi.heap.used)/(last(//xiqse.nbi.heap.max)+(last(//xiqse.nbi.heap.max)=0))*100', '%', tags=TAGS_NBI)
+    pilot_cloud_activated = _calc(U['item_cloud_pilot_activated'], 'Pilot Cloud licenses used', 'xiqse.pilot.cloud.activated', 'last(//xiq.cloud.pilot.activated)', tags=TAGS_LIC, value_type='UNSIGNED', delay='5m')
+    pilot_cloud_available = _calc(U['item_cloud_pilot_available'], 'Pilot Cloud licenses available', 'xiqse.pilot.cloud.available', 'last(//xiq.cloud.pilot.available)', tags=TAGS_LIC, value_type='UNSIGNED', delay='5m')
+    pilot_cloud_expire = _calc(U['item_cloud_pilot_expire'], 'Pilot Cloud earliest expiration', 'xiqse.pilot.cloud.expire', 'last(//xiq.cloud.pilot.expire)', 'unixtime', tags=TAGS_LIC, value_type='UNSIGNED', delay='1h')
+    cert_key = TLS_EXTERNAL_SCRIPT + '[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}]'
+    cert_item = _certificate_item(
+        U['item_cert'],
+        template=TPL,
+        key=cert_key,
+        expired_uuid=U['tr_cert_expired'],
+        warning_uuid=U['tr_cert_warn'],
+        label='XIQ-SE',
+    )
     nac_remain = _dep(
         U['item_nac_remain'],
         'NAC license remaining',
@@ -465,7 +518,7 @@ def render_se() -> str:
         'xiqse.nbi.licenses',
         '$.nacRemaining',
         'FLOAT',
-        extra="      description: |\n        Purchased {$XIQ.NAC.TOTAL} minus 24h unique MACs, computed in the census SCRIPT. Stays 0 while that macro is 0 — NBI cannot read Administration → Licenses. Not out of seats. Not a calculated item (those kept the unguarded TOTAL-used formula on Cloud 7.0).\n",
+        extra="      description: |\n        Purchased {$XIQ.NAC.TOTAL} minus the deduplicated union of 24h authenticated end-system MACs and XIQ_PENDING device base MACs, computed in the census SCRIPT. Stays 0 while that macro is 0 — NBI does not expose purchased-seat entitlements. Not out of seats. Not a calculated item (those kept the unguarded TOTAL-used formula on Cloud 7.0).\n",
         tags=TAGS_LIC,
     )
     nac_pct = _dep(
@@ -476,28 +529,6 @@ def render_se() -> str:
         '$.nacUsedPct',
         'FLOAT',
         '%',
-        tags=TAGS_LIC,
-    )
-    pilot_remain = _dep(
-        U['item_pilot_remain'],
-        'Pilot licenses remaining',
-        'xiqse.pilot.remaining',
-        'xiqse.nbi.pilot',
-        '$.pilotRemaining',
-        'FLOAT',
-        extra="      description: |\n        Purchased {$XIQ.PILOT.TOTAL} minus XIQ_PILOT devices, computed in the census SCRIPT. Stays 0 while that macro is 0. Not out of seats.\n      triggers:\n"
-        + f'{pilot_low}\n',
-        tags=TAGS_LIC,
-    )
-    nav_remain = _dep(
-        U['item_nav_remain'],
-        'Navigator licenses remaining',
-        'xiqse.nav.remaining',
-        'xiqse.nbi.pilot',
-        '$.navRemaining',
-        'FLOAT',
-        extra="      description: |\n        Purchased {$XIQ.NAV.TOTAL} minus XIQ_NAVIGATOR devices, computed in the census SCRIPT. Stays 0 while that macro is 0. Not out of seats.\n      triggers:\n"
-        + f'{nav_low}\n',
         tags=TAGS_LIC,
     )
     unsup_item = f"""    - uuid: {U['item_unsupported']}
@@ -525,9 +556,8 @@ def render_se() -> str:
       name: {TPL}
       description: |
         ExtremeCloud IQ Site Engine companion. HTTPS GraphQL (OAuth client
-        credentials) from the proxy. Does not nest ICMP Ping — OS/ICMP stay on
-        the VM / Agent Monitoring path. Do not GraphQL Control engines. Do not
-        install an agent on the OVA for this pack.
+        credentials) and proxy-side TLS certificate expiry monitoring. Does
+        not nest ICMP Ping or require a Zabbix agent on the appliance.
 
         Operator page: zabbix/07-extreme-control.md.
         Refresh with configure_nbxsync_network.py --apply-xiqse.
@@ -550,6 +580,8 @@ def render_se() -> str:
 {bump(threads)}
 {bump(eng_count)}
 {bump(nac_used)}
+{bump(nac_authenticated)}
+{bump(nac_pending)}
 {bump(nac_users)}
 {bump(nac_remain)}
 {bump(nac_pct)}
@@ -557,14 +589,15 @@ def render_se() -> str:
 {bump(nac_trunc)}
 {bump(nac_ok)}
 {bump(nac_err)}
-{bump(pilot_used)}
-{bump(pilot_remain)}
-{bump(nav_used)}
-{bump(nav_remain)}
+{bump(pilot_devices)}
+{bump(nav_devices)}
 {bump(lic_pending)}
-{bump(lic_pone)}
 {bump(pilot_ok)}
+{bump(pilot_cloud_activated)}
+{bump(pilot_cloud_available)}
+{bump(pilot_cloud_expire)}
 {bump(tcp_item)}
+{bump(cert_item)}
 {bump(unsup_item)}
 {_prototypes()}
       tags:
@@ -612,21 +645,17 @@ def _se_macros() -> str:
         ('{$XIQSE.API.FQDN}', '', 'Site Engine FQDN or IP. Platform Jinja on primary_ip4.'),
         ('{$XIQSE.API.PORT}', '8443', 'NBI HTTPS port.'),
         ('{$XIQSE.SCHEME}', 'https', 'http only for a lab break-glass.'),
-        ('{$XIQSE.API.CLIENT.ID}', '', 'Client API Access id. Prefer a secret CG over YAML.'),
+        ('{$XIQSE.API.CLIENT.ID}', '', 'Client API Access id. Supply through NetBox platform inheritance, not YAML.'),
         ('{$XIQSE.API.CLIENT.SECRET}', '', 'Client API Access secret.', 'SECRET_TEXT'),
         ('{$XIQSE.DATA.TIMEOUT}', '30s', 'Health SCRIPT timeout.'),
         ('{$XIQSE.LICENSE.TIMEOUT}', '60s', 'End-system / device-license SCRIPT timeout.'),
-        ('{$XIQSE.TZ}', 'Europe/Zurich', 'Site Engine local zone for timezone-less lastAuthEventTime. Naive NBI stamps are this zone, not UTC. UTC/+HH:MM override. Not engine TZ.'),
-        ('{$XIQ.NAC.TOTAL}', '0', 'Purchased XIQ-NAC-S. Set on CG XIQ-SE licenses. 0 = remaining forced 0, not out of seats.'),
+        ('{$XIQ.NAC.TOTAL}', '0', 'Purchased XIQ-NAC-S. 0 keeps remaining at 0; NBI does not expose purchased-seat entitlements.'),
         ('{$XIQ.NAC.USED.WARN}', '90', 'Warning percent of {$XIQ.NAC.TOTAL}.'),
         ('{$XIQ.NAC.ES.MAXRESULTS}', '20000', 'Stop paging at this many end-system rows.'),
         ('{$XIQ.NAC.ES.PAGE}', '500', 'endSystems page size.'),
         ('{$XIQ.NAC.FRESH}', '86400', 'Auth-event stale after this many seconds. Per engine: {$XIQ.NAC.FRESH:"<engine-ip>"}.'),
         ('{$XIQ.NAC.FRESH.CONTROL}', '1', 'Ticket stale auth events. No clock window — engines are in different time zones.'),
-        ('{$XIQ.PILOT.TOTAL}', '0', 'Purchased Pilot seats. Set on CG XIQ-SE licenses. 0 = remaining forced 0.'),
-        ('{$XIQ.PILOT.REMAIN.WARN}', '2', 'Warning when remaining Pilot seats at or below this.'),
-        ('{$XIQ.NAV.TOTAL}', '0', 'Purchased Navigator seats. Set on CG XIQ-SE licenses. 0 = remaining forced 0.'),
-        ('{$XIQ.NAV.REMAIN.WARN}', '2', 'Warning when remaining Navigator seats at or below this.'),
+        ('{$TLS.CERT.WARN}', '30d', 'Warn before the Site Engine TLS certificate expires.'),
         ('{$XIQ.ENGINE.CONNECTED.CONTROL}', '1', 'Ticket engines with connected=0. 25.5.12.6 has no connected field — item stays 2 (silent).'),
         ('{$XIQ.ENGINE.ENFORCE.CONTROL}', '1', 'Ticket needsEnforce=1.'),
         ('{$XIQ.ENGINE.RADIUSD.CONTROL}', '1', 'Page FreeRADIUS disabled on an engine.'),
@@ -765,7 +794,7 @@ def _xy(x: str = '0', y: str = '0') -> str:
     return ('\n' + '\n'.join(bits)) if bits else ''
 
 
-def _item_widget(name: str, x: str, key: str, ref: str, *, y: str = '0') -> str:
+def _item_widget(name: str, x: str, key: str, ref: str, *, y: str = '0', host: str = TPL) -> str:
     return f"""                - type: item
                   name: {name}{_xy(x, y)}
                   width: '18'
@@ -774,7 +803,7 @@ def _item_widget(name: str, x: str, key: str, ref: str, *, y: str = '0') -> str:
                     - type: ITEM
                       name: itemid.0
                       value:
-                        host: {TPL}
+                        host: {host}
                         key: {key}
                     - type: INTEGER
                       name: show.0
@@ -790,71 +819,6 @@ def _item_widget(name: str, x: str, key: str, ref: str, *, y: str = '0') -> str:
                       value: {ref}"""
 
 
-def _nbi_gauge() -> str:
-    return f"""                - type: gauge
-                  name: NBI
-                  width: '18'
-                  height: '4'
-                  fields:
-                    - type: INTEGER
-                      name: angle
-                      value: '270'
-                    - type: INTEGER
-                      name: decimal_places
-                      value: '0'
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: show.1
-                      value: '5'
-                    - type: INTEGER
-                      name: th_arc_size
-                      value: '6'
-                    - type: INTEGER
-                      name: units_size
-                      value: '14'
-                    - type: INTEGER
-                      name: value_arc_size
-                      value: '16'
-                    - type: INTEGER
-                      name: value_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: {TPL}
-                        key: xiqse.nbi.available
-                    - type: STRING
-                      name: max
-                      value: '1'
-                    - type: STRING
-                      name: min
-                      value: '0'
-                    - type: STRING
-                      name: thresholds.0.color
-                      value: FF465C
-                    - type: STRING
-                      name: thresholds.0.threshold
-                      value: '0'
-                    - type: STRING
-                      name: thresholds.1.color
-                      value: 0EC9AC
-                    - type: STRING
-                      name: thresholds.1.threshold
-                      value: '1'
-                    - type: INTEGER
-                      name: th_show_arc
-                      value: '1'
-                    - type: INTEGER
-                      name: th_show_labels
-                      value: '0'
-                    - type: STRING
-                      name: reference
-                      value: XNBI"""
 
 
 def _problems(ref: str, *, y: str = '4', height: str = '3') -> str:
@@ -1019,39 +983,192 @@ def _se_dashboards() -> str:
     Remaining sits next to used on Licenses (0 until CG totals). Heap stays
     Latest data. Connected honeycomb is omitted (unknown on 25.5.12.6).
     """
+    cert_key = TLS_EXTERNAL_SCRIPT + '[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}]'
     tri = [('FF465C', '0'), ('0EC9AC', '1'), ('878787', '2')]
-    age = [('878787', '-1'), ('0EC9AC', '0'), ('FF465C', '86400')]
     return f"""      dashboards:
         - uuid: {U['dash_health']}
           name: Health
           pages:
             - name: Overview
               widgets:
-{_nbi_gauge()}
-{_item_widget('Engines', '18', 'xiqse.engine.count', 'XENG')}
-{_item_widget('NAC used', '36', 'xiqse.nac.used24h', 'XNAC')}
-{_item_widget('Uptime', '54', 'xiqse.nbi.uptime', 'XUPT')}
-{_problems('XPROB')}
-{_honeycomb('Last auth age', '7', 'Engine *: last auth age', '^Engine (.*): last auth age$', 'XEAGE', age, height='5', show_value=True)}
+{_item_widget('NBI', '0', 'xiqse.nbi.available', 'XNBI')}
+{_item_widget('Certificate expires', '18', cert_key, 'XCERT')}
+{_item_widget('Engines', '36', 'xiqse.engine.count', 'XENGH')}
+{_item_widget('Pilot Cloud available', '54', 'xiqse.pilot.cloud.available', 'XPCAV')}
+                - type: problems
+                  name: Problems
+                  y: '4'
+                  width: '72'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: XPROB
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                - type: svggraph
+                  name: NAC license identities
+                  y: '8'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 2774A4
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: {TPL}
+                        key: xiqse.nac.used
+                    - type: STRING
+                      name: reference
+                      value: XNACG
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                - type: svggraph
+                  name: Heap
+                  x: '36'
+                  y: '8'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 199C0D
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: {TPL}
+                        key: xiqse.nbi.heap.pct
+                    - type: STRING
+                      name: lefty_max
+                      value: '100'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: STRING
+                      name: reference
+                      value: XHEAP
+                    - type: INTEGER
+                      name: legend
+                      value: '0'
             - name: Engines
               widgets:
 {_honeycomb('FreeRADIUS', '0', 'Engine *: FreeRADIUS', '^Engine (.*): FreeRADIUS$', 'XERAD', tri)}
 {_honeycomb('Needs enforce', '5', 'Engine *: Needs enforce', '^Engine (.*): Needs enforce$', 'XEENF', tri)}
             - name: Licenses
               widgets:
-{_item_widget('NAC used', '0', 'xiqse.nac.used24h', 'XNAC2')}
-{_item_widget('Pilot used', '18', 'xiqse.pilot.used', 'XPU')}
-{_item_widget('Navigator used', '36', 'xiqse.nav.used', 'XNU')}
-{_item_widget('NAC used %', '54', 'xiqse.nac.used.pct', 'XNPCT')}
-{_item_widget('NAC remaining', '0', 'xiqse.nac.remaining', 'XNREM', y='4')}
-{_item_widget('Pilot remaining', '18', 'xiqse.pilot.remaining', 'XPREM', y='4')}
-{_item_widget('Navigator remaining', '36', 'xiqse.nav.remaining', 'XNREM2', y='4')}
-{_svg_items('NAC used', 'XNACG', [('2774A4', 'xiqse.nac.used24h')], y='8')}
-{_svg_items('Pilot / Navigator used', 'XPNUG', [('2774A4', 'xiqse.pilot.used'), ('E68931', 'xiqse.nav.used')], x='36', y='8')}
+{_item_widget('NAC license identities', '0', 'xiqse.nac.used', 'XNAC2')}
+{_item_widget('Pilot Cloud used', '18', 'xiqse.pilot.cloud.activated', 'XPCU')}
+{_item_widget('Pilot Cloud available', '36', 'xiqse.pilot.cloud.available', 'XPCA')}
+{_item_widget('Pilot Cloud expires', '54', 'xiqse.pilot.cloud.expire', 'XPCE')}
+                - type: svggraph
+                  name: NAC license identities
+                  y: '4'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 2774A4
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: {TPL}
+                        key: xiqse.nac.used
+                    - type: STRING
+                      name: ds.1.color.0
+                      value: 0EC9AC
+                    - type: INTEGER
+                      name: ds.1.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.1.itemids.0
+                      value:
+                        host: {TPL}
+                        key: xiqse.nac.authenticated24h
+                    - type: STRING
+                      name: ds.2.color.0
+                      value: E68931
+                    - type: INTEGER
+                      name: ds.2.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.2.itemids.0
+                      value:
+                        host: {TPL}
+                        key: xiqse.nac.pending.devices
+                    - type: STRING
+                      name: reference
+                      value: XNACG
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                - type: svggraph
+                  name: Pilot Cloud licenses
+                  x: '36'
+                  y: '4'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 2774A4
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: {TPL}
+                        key: xiqse.pilot.cloud.activated
+                    - type: STRING
+                      name: ds.1.color.0
+                      value: 0EC9AC
+                    - type: INTEGER
+                      name: ds.1.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.1.itemids.0
+                      value:
+                        host: {TPL}
+                        key: xiqse.pilot.cloud.available
+                    - type: STRING
+                      name: reference
+                      value: XPILG
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
 """
 
 
 def render_nac() -> str:
+    cert_key = TLS_EXTERNAL_SCRIPT + '[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT},{$NAC.PORTAL.FQDN}]'
+    cert_item = _certificate_item(
+        U['nac_cert'],
+        template=NAC,
+        key=cert_key,
+        expired_uuid=U['nac_cert_expired'],
+        warning_uuid=U['nac_cert_warn'],
+        label='ExtremeControl',
+    )
     return f"""zabbix_export:
   version: '7.0'
   template_groups:
@@ -1062,10 +1179,11 @@ def render_nac() -> str:
       template: {NAC}
       name: {NAC}
       description: |
-        ExtremeControl engine companion. ICMP and Linux agent stay on the VM
-        path — this template does not nest ICMP Ping and does not speak RADIUS.
-        FreeRADIUS down is ticketed from XIQ-SE Observability engine LLD.
-        Portal TCP 8444 stays disabled until opted in.
+        ExtremeControl engine companion. Agentless SNMP, portal reachability,
+        and proxy-side TLS certificate expiry monitoring. This template does
+        not nest ICMP Ping and does not speak RADIUS. FreeRADIUS down is
+        ticketed from XIQ-SE Observability engine LLD. Portal TCP 8444 alerting
+        stays disabled until opted in.
 
         Operator page: zabbix/07-extreme-control.md.
         Refresh with configure_nbxsync_network.py --apply-xiqse.
@@ -1078,6 +1196,12 @@ def render_nac() -> str:
         - macro: '{{$NAC.PORTAL.CONTROL}}'
           value: '0'
           description: Ticket portal TCP down. Default off — not auth.
+        - macro: '{{$NAC.PORTAL.FQDN}}'
+          value: ''
+          description: Control engine management FQDN or IP. Platform Jinja on primary_ip4.
+        - macro: '{{$TLS.CERT.WARN}}'
+          value: '30d'
+          description: Warn before the Control engine TLS certificate expires.
       items:
         - uuid: {U['nac_tcp']}
           name: ExtremeControl portal TCP
@@ -1104,6 +1228,7 @@ def render_nac() -> str:
               tags:
                 - tag: scope
                   value: availability
+{bump(cert_item)}
       tags:
         - tag: class
           value: network
@@ -1115,29 +1240,12 @@ def render_nac() -> str:
           pages:
             - name: Overview
               widgets:
-                - type: item
-                  name: Portal TCP
-                  width: '24'
-                  height: '4'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: {NAC}
-                        key: 'net.tcp.service[tcp,,{{$NAC.PORTAL.PORT}}]'
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: value_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: value_size
-                      value: '28'
+{_item_widget('Portal TCP', '0', 'net.tcp.service[tcp,,{$NAC.PORTAL.PORT}]', 'NPORT', host=NAC)}
+{_item_widget('Certificate expires', '18', cert_key, 'NCERT', host=NAC)}
                 - type: problems
                   name: Problems
-                  x: '24'
-                  width: '48'
+                  x: '36'
+                  width: '36'
                   height: '4'
                   fields:
                     - type: STRING

@@ -9,9 +9,8 @@ zabbix_export:
       name: XIQ-SE Observability
       description: |
         ExtremeCloud IQ Site Engine companion. HTTPS GraphQL (OAuth client
-        credentials) from the proxy. Does not nest ICMP Ping — OS/ICMP stay on
-        the VM / Agent Monitoring path. Do not GraphQL Control engines. Do not
-        install an agent on the OVA for this pack.
+        credentials) and proxy-side TLS certificate expiry monitoring. Does
+        not nest ICMP Ping or require a Zabbix agent on the appliance.
 
         Operator page: zabbix/07-extreme-control.md.
         Refresh with configure_nbxsync_network.py --apply-xiqse.
@@ -29,7 +28,7 @@ zabbix_export:
           description: 'http only for a lab break-glass.'
         - macro: '{$XIQSE.API.CLIENT.ID}'
           value: ''
-          description: 'Client API Access id. Prefer a secret CG over YAML.'
+          description: 'Client API Access id. Supply through NetBox platform inheritance, not YAML.'
         - macro: '{$XIQSE.API.CLIENT.SECRET}'
           type: SECRET_TEXT
           value: ''
@@ -40,12 +39,9 @@ zabbix_export:
         - macro: '{$XIQSE.LICENSE.TIMEOUT}'
           value: '60s'
           description: 'End-system / device-license SCRIPT timeout.'
-        - macro: '{$XIQSE.TZ}'
-          value: 'Europe/Zurich'
-          description: 'Site Engine local zone for timezone-less lastAuthEventTime. Naive NBI stamps are this zone, not UTC. UTC/+HH:MM override. Not engine TZ.'
         - macro: '{$XIQ.NAC.TOTAL}'
           value: '0'
-          description: 'Purchased XIQ-NAC-S. Set on CG XIQ-SE licenses. 0 = remaining forced 0, not out of seats.'
+          description: 'Purchased XIQ-NAC-S. 0 keeps remaining at 0; NBI does not expose purchased-seat entitlements.'
         - macro: '{$XIQ.NAC.USED.WARN}'
           value: '90'
           description: 'Warning percent of {$XIQ.NAC.TOTAL}.'
@@ -61,18 +57,9 @@ zabbix_export:
         - macro: '{$XIQ.NAC.FRESH.CONTROL}'
           value: '1'
           description: 'Ticket stale auth events. No clock window — engines are in different time zones.'
-        - macro: '{$XIQ.PILOT.TOTAL}'
-          value: '0'
-          description: 'Purchased Pilot seats. Set on CG XIQ-SE licenses. 0 = remaining forced 0.'
-        - macro: '{$XIQ.PILOT.REMAIN.WARN}'
-          value: '2'
-          description: 'Warning when remaining Pilot seats at or below this.'
-        - macro: '{$XIQ.NAV.TOTAL}'
-          value: '0'
-          description: 'Purchased Navigator seats. Set on CG XIQ-SE licenses. 0 = remaining forced 0.'
-        - macro: '{$XIQ.NAV.REMAIN.WARN}'
-          value: '2'
-          description: 'Warning when remaining Navigator seats at or below this.'
+        - macro: '{$TLS.CERT.WARN}'
+          value: '30d'
+          description: 'Warn before the Site Engine TLS certificate expires.'
         - macro: '{$XIQ.ENGINE.CONNECTED.CONTROL}'
           value: '1'
           description: 'Ticket engines with connected=0. 25.5.12.6 has no connected field — item stays 2 (silent).'
@@ -92,59 +79,11 @@ zabbix_export:
           trends: '0'
           value_type: TEXT
           params: |
-            function lastSundayDay(year, month) {
-              var date = new Date(Date.UTC(year, month, 0));
-              return date.getUTCDate() - date.getUTCDay();
+            function isNaiveIsoTime(text) {
+              return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text);
             }
 
-            function europeZurichOffsetMinutes(year, month, day, hour) {
-              // EU DST as used by Europe/Zurich: last Sunday March 02:00 local CET → CEST,
-              // last Sunday October 03:00 local CEST → CET. Ambiguous 02:00–02:59 in October
-              // stays on CEST (hour < 3).
-              var startDay = lastSundayDay(year, 3);
-              var endDay = lastSundayDay(year, 10);
-              var dst = false;
-              if (month > 3 && month < 10) {
-                dst = true;
-              } else if (month === 3) {
-                if (day > startDay || (day === startDay && hour >= 2)) {
-                  dst = true;
-                }
-              } else if (month === 10) {
-                if (day < endDay || (day === endDay && hour < 3)) {
-                  dst = true;
-                }
-              }
-              return dst ? 120 : 60;
-            }
-
-            function tzOffsetMinutes(tz, year, month, day, hour) {
-              var zone = String(tz === undefined || tz === null ? 'Europe/Zurich' : tz);
-              zone = zone.replace(/^\s+|\s+$/g, '');
-              if (zone === 'UTC' || zone === 'GMT' || zone === 'Z') {
-                return 0;
-              }
-              var fixed = zone.match(/^([+-])(\d{2}):?(\d{2})$/);
-              if (fixed) {
-                var sign = fixed[1] === '-' ? -1 : 1;
-                return sign * (Number(fixed[2]) * 60 + Number(fixed[3]));
-              }
-              return europeZurichOffsetMinutes(year, month, day, hour);
-            }
-
-            function parseOffsetToken(token) {
-              if (!token || token === 'Z' || token === 'z') {
-                return 0;
-              }
-              var match = String(token).match(/^([+-])(\d{2}):?(\d{2})$/);
-              if (!match) {
-                return null;
-              }
-              var sign = match[1] === '-' ? -1 : 1;
-              return sign * (Number(match[2]) * 60 + Number(match[3]));
-            }
-
-            function parseAuthTime(raw, tz) {
+            function parseAuthTime(raw, naiveOffsetMs) {
               if (raw === null || raw === undefined || raw === '') {
                 return null;
               }
@@ -156,44 +95,37 @@ zabbix_export:
                 var numeric = Number(text);
                 return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
               }
-              var named = '';
-              var namedMatch = text.match(/\s+(CEST|CET)$/i);
-              if (namedMatch) {
-                named = namedMatch[1].toUpperCase();
-                text = text.slice(0, text.length - namedMatch[0].length);
+              var parsed = Date.parse(isNaiveIsoTime(text) ? text + 'Z' : text);
+              if (isNaN(parsed)) {
+                return null;
               }
-              var iso = text.match(
-                /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?(Z|[+-]\d{2}:?\d{2})?$/
-              );
-              if (iso) {
-                var year = Number(iso[1]);
-                var month = Number(iso[2]);
-                var day = Number(iso[3]);
-                var hour = Number(iso[4]);
-                var minute = Number(iso[5]);
-                var second = Number(iso[6]);
-                var millis = iso[7] ? Number((iso[7] + '000').slice(0, 3)) : 0;
-                var offsetMin;
-                if (iso[8]) {
-                  offsetMin = parseOffsetToken(iso[8]);
-                  if (offsetMin === null) {
-                    return null;
-                  }
-                } else if (named === 'CEST') {
-                  offsetMin = 120;
-                } else if (named === 'CET') {
-                  offsetMin = 60;
-                } else {
-                  // NBI 25.5.12.6 emits lastAuthEventTime without a zone, e.g.
-                  // 2026-09-04T08:39:05.366 while the clock is 06:39 UTC (CEST).
-                  // Date.parse() in Zabbix/Duktape treats that as UTC, then the 60s
-                  // future-skew drops current auths (~969 live on 2026-09-04).
-                  offsetMin = tzOffsetMinutes(tz, year, month, day, hour);
+              return parsed - (isNaiveIsoTime(text) ? Number(naiveOffsetMs || 0) : 0);
+            }
+
+            function inferNaiveTimeOffset(rows, nowMs) {
+              var newestWallTime = 0;
+              var i;
+              if (!Array.isArray(rows)) {
+                return 0;
+              }
+              for (i = 0; i < rows.length; i++) {
+                var row = rows[i] || {};
+                var text = String(row.lastSeenTime || row.lastAuthEventTime || '');
+                if (!isNaiveIsoTime(text)) {
+                  continue;
                 }
-                return Date.UTC(year, month - 1, day, hour, minute, second, millis) - offsetMin * 60000;
+                var wallTime = Date.parse(text + 'Z');
+                if (!isNaN(wallTime) && wallTime > newestWallTime) {
+                  newestWallTime = wallTime;
+                }
               }
-              var parsed = Date.parse(text);
-              return isNaN(parsed) ? null : parsed;
+              if (!newestWallTime) {
+                return 0;
+              }
+              // Site Engine emits local wall-clock timestamps without a zone. The newest
+              // lastSeenTime is normally seconds old, so round its skew to a real 15m zone.
+              var offset = Math.round((newestWallTime - nowMs) / 900000) * 900000;
+              return Math.abs(offset) <= 50400000 ? offset : 0;
             }
 
             function objectSize(obj) {
@@ -233,7 +165,12 @@ zabbix_export:
               return observed / purchased * 100;
             }
 
-            function countLicenseWindow(rows, nowMs, windowMs, tz) {
+            function normalizeMac(raw) {
+              var mac = String(raw || '').toLowerCase().replace(/[^0-9a-f]/g, '');
+              return /^[0-9a-f]{12}$/.test(mac) ? mac : '';
+            }
+
+            function countAuthenticatedWindow(rows, nowMs, windowMs) {
               var macs = {};
               var users = {};
               var byEngine = {};
@@ -241,13 +178,14 @@ zabbix_export:
               if (!Array.isArray(rows)) {
                 rows = [];
               }
+              var sourceOffsetMs = inferNaiveTimeOffset(rows, nowMs);
               for (i = 0; i < rows.length; i++) {
                 var row = rows[i] || {};
-                var stamp = parseAuthTime(row.lastAuthEventTime, tz);
+                var stamp = parseAuthTime(row.lastAuthEventTime, sourceOffsetMs);
                 if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
                   continue;
                 }
-                var mac = String(row.macAddress || '').toLowerCase();
+                var mac = normalizeMac(row.macAddress);
                 if (!mac) {
                   continue;
                 }
@@ -285,9 +223,42 @@ zabbix_export:
                 };
               }
               return {
-                nacUsed24h: objectSize(macs),
+                macs: macs,
+                authenticated24h: objectSize(macs),
                 users24h: objectSize(users),
+                sourceTimeOffsetMinutes: sourceOffsetMs / 60000,
                 engines: engines
+              };
+            }
+
+            function countNacLicenseUsage(rows, devices, nowMs, windowMs) {
+              var authenticated = countAuthenticatedWindow(rows, nowMs, windowMs);
+              var macs = authenticated.macs;
+              var pending = {};
+              var i;
+              if (!Array.isArray(devices)) {
+                devices = [];
+              }
+              for (i = 0; i < devices.length; i++) {
+                var device = devices[i] || {};
+                var state = String(((device.deviceData || {}).xiqLicenseState) || '');
+                if (state !== 'XIQ_PENDING') {
+                  continue;
+                }
+                var mac = normalizeMac(device.baseMac);
+                if (!mac) {
+                  continue;
+                }
+                pending[mac] = 1;
+                macs[mac] = 1;
+              }
+              return {
+                nacUsed: objectSize(macs),
+                nacAuthenticated24h: authenticated.authenticated24h,
+                nacPendingDevices: objectSize(pending),
+                users24h: authenticated.users24h,
+                sourceTimeOffsetMinutes: authenticated.sourceTimeOffsetMinutes,
+                engines: authenticated.engines
               };
             }
 
@@ -574,59 +545,11 @@ zabbix_export:
           trends: '0'
           value_type: TEXT
           params: |
-            function lastSundayDay(year, month) {
-              var date = new Date(Date.UTC(year, month, 0));
-              return date.getUTCDate() - date.getUTCDay();
+            function isNaiveIsoTime(text) {
+              return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text);
             }
 
-            function europeZurichOffsetMinutes(year, month, day, hour) {
-              // EU DST as used by Europe/Zurich: last Sunday March 02:00 local CET → CEST,
-              // last Sunday October 03:00 local CEST → CET. Ambiguous 02:00–02:59 in October
-              // stays on CEST (hour < 3).
-              var startDay = lastSundayDay(year, 3);
-              var endDay = lastSundayDay(year, 10);
-              var dst = false;
-              if (month > 3 && month < 10) {
-                dst = true;
-              } else if (month === 3) {
-                if (day > startDay || (day === startDay && hour >= 2)) {
-                  dst = true;
-                }
-              } else if (month === 10) {
-                if (day < endDay || (day === endDay && hour < 3)) {
-                  dst = true;
-                }
-              }
-              return dst ? 120 : 60;
-            }
-
-            function tzOffsetMinutes(tz, year, month, day, hour) {
-              var zone = String(tz === undefined || tz === null ? 'Europe/Zurich' : tz);
-              zone = zone.replace(/^\s+|\s+$/g, '');
-              if (zone === 'UTC' || zone === 'GMT' || zone === 'Z') {
-                return 0;
-              }
-              var fixed = zone.match(/^([+-])(\d{2}):?(\d{2})$/);
-              if (fixed) {
-                var sign = fixed[1] === '-' ? -1 : 1;
-                return sign * (Number(fixed[2]) * 60 + Number(fixed[3]));
-              }
-              return europeZurichOffsetMinutes(year, month, day, hour);
-            }
-
-            function parseOffsetToken(token) {
-              if (!token || token === 'Z' || token === 'z') {
-                return 0;
-              }
-              var match = String(token).match(/^([+-])(\d{2}):?(\d{2})$/);
-              if (!match) {
-                return null;
-              }
-              var sign = match[1] === '-' ? -1 : 1;
-              return sign * (Number(match[2]) * 60 + Number(match[3]));
-            }
-
-            function parseAuthTime(raw, tz) {
+            function parseAuthTime(raw, naiveOffsetMs) {
               if (raw === null || raw === undefined || raw === '') {
                 return null;
               }
@@ -638,44 +561,37 @@ zabbix_export:
                 var numeric = Number(text);
                 return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
               }
-              var named = '';
-              var namedMatch = text.match(/\s+(CEST|CET)$/i);
-              if (namedMatch) {
-                named = namedMatch[1].toUpperCase();
-                text = text.slice(0, text.length - namedMatch[0].length);
+              var parsed = Date.parse(isNaiveIsoTime(text) ? text + 'Z' : text);
+              if (isNaN(parsed)) {
+                return null;
               }
-              var iso = text.match(
-                /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?(Z|[+-]\d{2}:?\d{2})?$/
-              );
-              if (iso) {
-                var year = Number(iso[1]);
-                var month = Number(iso[2]);
-                var day = Number(iso[3]);
-                var hour = Number(iso[4]);
-                var minute = Number(iso[5]);
-                var second = Number(iso[6]);
-                var millis = iso[7] ? Number((iso[7] + '000').slice(0, 3)) : 0;
-                var offsetMin;
-                if (iso[8]) {
-                  offsetMin = parseOffsetToken(iso[8]);
-                  if (offsetMin === null) {
-                    return null;
-                  }
-                } else if (named === 'CEST') {
-                  offsetMin = 120;
-                } else if (named === 'CET') {
-                  offsetMin = 60;
-                } else {
-                  // NBI 25.5.12.6 emits lastAuthEventTime without a zone, e.g.
-                  // 2026-09-04T08:39:05.366 while the clock is 06:39 UTC (CEST).
-                  // Date.parse() in Zabbix/Duktape treats that as UTC, then the 60s
-                  // future-skew drops current auths (~969 live on 2026-09-04).
-                  offsetMin = tzOffsetMinutes(tz, year, month, day, hour);
+              return parsed - (isNaiveIsoTime(text) ? Number(naiveOffsetMs || 0) : 0);
+            }
+
+            function inferNaiveTimeOffset(rows, nowMs) {
+              var newestWallTime = 0;
+              var i;
+              if (!Array.isArray(rows)) {
+                return 0;
+              }
+              for (i = 0; i < rows.length; i++) {
+                var row = rows[i] || {};
+                var text = String(row.lastSeenTime || row.lastAuthEventTime || '');
+                if (!isNaiveIsoTime(text)) {
+                  continue;
                 }
-                return Date.UTC(year, month - 1, day, hour, minute, second, millis) - offsetMin * 60000;
+                var wallTime = Date.parse(text + 'Z');
+                if (!isNaN(wallTime) && wallTime > newestWallTime) {
+                  newestWallTime = wallTime;
+                }
               }
-              var parsed = Date.parse(text);
-              return isNaN(parsed) ? null : parsed;
+              if (!newestWallTime) {
+                return 0;
+              }
+              // Site Engine emits local wall-clock timestamps without a zone. The newest
+              // lastSeenTime is normally seconds old, so round its skew to a real 15m zone.
+              var offset = Math.round((newestWallTime - nowMs) / 900000) * 900000;
+              return Math.abs(offset) <= 50400000 ? offset : 0;
             }
 
             function objectSize(obj) {
@@ -715,7 +631,12 @@ zabbix_export:
               return observed / purchased * 100;
             }
 
-            function countLicenseWindow(rows, nowMs, windowMs, tz) {
+            function normalizeMac(raw) {
+              var mac = String(raw || '').toLowerCase().replace(/[^0-9a-f]/g, '');
+              return /^[0-9a-f]{12}$/.test(mac) ? mac : '';
+            }
+
+            function countAuthenticatedWindow(rows, nowMs, windowMs) {
               var macs = {};
               var users = {};
               var byEngine = {};
@@ -723,13 +644,14 @@ zabbix_export:
               if (!Array.isArray(rows)) {
                 rows = [];
               }
+              var sourceOffsetMs = inferNaiveTimeOffset(rows, nowMs);
               for (i = 0; i < rows.length; i++) {
                 var row = rows[i] || {};
-                var stamp = parseAuthTime(row.lastAuthEventTime, tz);
+                var stamp = parseAuthTime(row.lastAuthEventTime, sourceOffsetMs);
                 if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
                   continue;
                 }
-                var mac = String(row.macAddress || '').toLowerCase();
+                var mac = normalizeMac(row.macAddress);
                 if (!mac) {
                   continue;
                 }
@@ -767,9 +689,42 @@ zabbix_export:
                 };
               }
               return {
-                nacUsed24h: objectSize(macs),
+                macs: macs,
+                authenticated24h: objectSize(macs),
                 users24h: objectSize(users),
+                sourceTimeOffsetMinutes: sourceOffsetMs / 60000,
                 engines: engines
+              };
+            }
+
+            function countNacLicenseUsage(rows, devices, nowMs, windowMs) {
+              var authenticated = countAuthenticatedWindow(rows, nowMs, windowMs);
+              var macs = authenticated.macs;
+              var pending = {};
+              var i;
+              if (!Array.isArray(devices)) {
+                devices = [];
+              }
+              for (i = 0; i < devices.length; i++) {
+                var device = devices[i] || {};
+                var state = String(((device.deviceData || {}).xiqLicenseState) || '');
+                if (state !== 'XIQ_PENDING') {
+                  continue;
+                }
+                var mac = normalizeMac(device.baseMac);
+                if (!mac) {
+                  continue;
+                }
+                pending[mac] = 1;
+                macs[mac] = 1;
+              }
+              return {
+                nacUsed: objectSize(macs),
+                nacAuthenticated24h: authenticated.authenticated24h,
+                nacPendingDevices: objectSize(pending),
+                users24h: authenticated.users24h,
+                sourceTimeOffsetMinutes: authenticated.sourceTimeOffsetMinutes,
+                engines: authenticated.engines
               };
             }
 
@@ -987,7 +942,11 @@ zabbix_export:
             }
 
             function endSystemQuery(maxResults, firstResult) {
-              return '{ accessControl { endSystems(maxResults: ' + maxResults + ', firstResult: ' + firstResult + ') { count success errorMessage endSystems { macAddress lastAuthEventTime username nacApplianceIP } } } }';
+              return '{ accessControl { endSystems(maxResults: ' + maxResults + ', firstResult: ' + firstResult + ') { count success errorMessage endSystems { macAddress lastAuthEventTime lastSeenTime username nacApplianceIP } } } }';
+            }
+
+            function pendingDeviceQuery() {
+              return '{ network { devices { baseMac deviceData { xiqLicenseState } } } }';
             }
 
             function emptyLicenseSnapshot(error) {
@@ -996,7 +955,10 @@ zabbix_export:
                 error: error,
                 truncated: 0,
                 fetched: 0,
-                nacUsed24h: 0,
+                nacUsed: 0,
+                nacAuthenticated24h: 0,
+                nacPendingDevices: 0,
+                sourceTimeOffsetMinutes: 0,
                 users24h: 0,
                 nacRemaining: 0,
                 nacUsedPct: 0,
@@ -1054,16 +1016,27 @@ zabbix_export:
                 }
                 first += take;
               }
-              var counted = countLicenseWindow(rows, Date.now(), 86400000, params.tz);
+              var devicesResult = graphql(params, auth.token, pendingDeviceQuery());
+              if (!devicesResult.ok) {
+                var deviceFailed = emptyLicenseSnapshot(devicesResult.error);
+                deviceFailed.truncated = truncated;
+                deviceFailed.fetched = rows.length;
+                return deviceFailed;
+              }
+              var devices = (((devicesResult.data || {}).network) || {}).devices;
+              var counted = countNacLicenseUsage(rows, devices, Date.now(), 86400000);
               return {
                 ok: 1,
                 error: '',
                 truncated: truncated,
                 fetched: rows.length,
-                nacUsed24h: counted.nacUsed24h,
+                nacUsed: counted.nacUsed,
+                nacAuthenticated24h: counted.nacAuthenticated24h,
+                nacPendingDevices: counted.nacPendingDevices,
                 users24h: counted.users24h,
-                nacRemaining: remainingSeats(nacTotal, counted.nacUsed24h),
-                nacUsedPct: usedSeatPercent(nacTotal, counted.nacUsed24h),
+                sourceTimeOffsetMinutes: counted.sourceTimeOffsetMinutes,
+                nacRemaining: remainingSeats(nacTotal, counted.nacUsed),
+                nacUsedPct: usedSeatPercent(nacTotal, counted.nacUsed),
                 engines: counted.engines
               };
             }
@@ -1088,8 +1061,6 @@ zabbix_export:
               value: '{$XIQ.NAC.ES.PAGE}'
             - name: nac_total
               value: '{$XIQ.NAC.TOTAL}'
-            - name: tz
-              value: '{$XIQSE.TZ}'
           description: |
             Pages endSystems and counts unique MACs with lastAuthEventTime in 24h. Timezone-less stamps are {$XIQSE.TZ} (default Europe/Zurich), not UTC. Remaining and used % are computed here from {$XIQ.NAC.TOTAL} so Cloud 7.0 cannot keep an unguarded calculated formula.
           tags:
@@ -1106,59 +1077,11 @@ zabbix_export:
           trends: '0'
           value_type: TEXT
           params: |
-            function lastSundayDay(year, month) {
-              var date = new Date(Date.UTC(year, month, 0));
-              return date.getUTCDate() - date.getUTCDay();
+            function isNaiveIsoTime(text) {
+              return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text);
             }
 
-            function europeZurichOffsetMinutes(year, month, day, hour) {
-              // EU DST as used by Europe/Zurich: last Sunday March 02:00 local CET → CEST,
-              // last Sunday October 03:00 local CEST → CET. Ambiguous 02:00–02:59 in October
-              // stays on CEST (hour < 3).
-              var startDay = lastSundayDay(year, 3);
-              var endDay = lastSundayDay(year, 10);
-              var dst = false;
-              if (month > 3 && month < 10) {
-                dst = true;
-              } else if (month === 3) {
-                if (day > startDay || (day === startDay && hour >= 2)) {
-                  dst = true;
-                }
-              } else if (month === 10) {
-                if (day < endDay || (day === endDay && hour < 3)) {
-                  dst = true;
-                }
-              }
-              return dst ? 120 : 60;
-            }
-
-            function tzOffsetMinutes(tz, year, month, day, hour) {
-              var zone = String(tz === undefined || tz === null ? 'Europe/Zurich' : tz);
-              zone = zone.replace(/^\s+|\s+$/g, '');
-              if (zone === 'UTC' || zone === 'GMT' || zone === 'Z') {
-                return 0;
-              }
-              var fixed = zone.match(/^([+-])(\d{2}):?(\d{2})$/);
-              if (fixed) {
-                var sign = fixed[1] === '-' ? -1 : 1;
-                return sign * (Number(fixed[2]) * 60 + Number(fixed[3]));
-              }
-              return europeZurichOffsetMinutes(year, month, day, hour);
-            }
-
-            function parseOffsetToken(token) {
-              if (!token || token === 'Z' || token === 'z') {
-                return 0;
-              }
-              var match = String(token).match(/^([+-])(\d{2}):?(\d{2})$/);
-              if (!match) {
-                return null;
-              }
-              var sign = match[1] === '-' ? -1 : 1;
-              return sign * (Number(match[2]) * 60 + Number(match[3]));
-            }
-
-            function parseAuthTime(raw, tz) {
+            function parseAuthTime(raw, naiveOffsetMs) {
               if (raw === null || raw === undefined || raw === '') {
                 return null;
               }
@@ -1170,44 +1093,37 @@ zabbix_export:
                 var numeric = Number(text);
                 return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
               }
-              var named = '';
-              var namedMatch = text.match(/\s+(CEST|CET)$/i);
-              if (namedMatch) {
-                named = namedMatch[1].toUpperCase();
-                text = text.slice(0, text.length - namedMatch[0].length);
+              var parsed = Date.parse(isNaiveIsoTime(text) ? text + 'Z' : text);
+              if (isNaN(parsed)) {
+                return null;
               }
-              var iso = text.match(
-                /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?(Z|[+-]\d{2}:?\d{2})?$/
-              );
-              if (iso) {
-                var year = Number(iso[1]);
-                var month = Number(iso[2]);
-                var day = Number(iso[3]);
-                var hour = Number(iso[4]);
-                var minute = Number(iso[5]);
-                var second = Number(iso[6]);
-                var millis = iso[7] ? Number((iso[7] + '000').slice(0, 3)) : 0;
-                var offsetMin;
-                if (iso[8]) {
-                  offsetMin = parseOffsetToken(iso[8]);
-                  if (offsetMin === null) {
-                    return null;
-                  }
-                } else if (named === 'CEST') {
-                  offsetMin = 120;
-                } else if (named === 'CET') {
-                  offsetMin = 60;
-                } else {
-                  // NBI 25.5.12.6 emits lastAuthEventTime without a zone, e.g.
-                  // 2026-09-04T08:39:05.366 while the clock is 06:39 UTC (CEST).
-                  // Date.parse() in Zabbix/Duktape treats that as UTC, then the 60s
-                  // future-skew drops current auths (~969 live on 2026-09-04).
-                  offsetMin = tzOffsetMinutes(tz, year, month, day, hour);
+              return parsed - (isNaiveIsoTime(text) ? Number(naiveOffsetMs || 0) : 0);
+            }
+
+            function inferNaiveTimeOffset(rows, nowMs) {
+              var newestWallTime = 0;
+              var i;
+              if (!Array.isArray(rows)) {
+                return 0;
+              }
+              for (i = 0; i < rows.length; i++) {
+                var row = rows[i] || {};
+                var text = String(row.lastSeenTime || row.lastAuthEventTime || '');
+                if (!isNaiveIsoTime(text)) {
+                  continue;
                 }
-                return Date.UTC(year, month - 1, day, hour, minute, second, millis) - offsetMin * 60000;
+                var wallTime = Date.parse(text + 'Z');
+                if (!isNaN(wallTime) && wallTime > newestWallTime) {
+                  newestWallTime = wallTime;
+                }
               }
-              var parsed = Date.parse(text);
-              return isNaN(parsed) ? null : parsed;
+              if (!newestWallTime) {
+                return 0;
+              }
+              // Site Engine emits local wall-clock timestamps without a zone. The newest
+              // lastSeenTime is normally seconds old, so round its skew to a real 15m zone.
+              var offset = Math.round((newestWallTime - nowMs) / 900000) * 900000;
+              return Math.abs(offset) <= 50400000 ? offset : 0;
             }
 
             function objectSize(obj) {
@@ -1247,7 +1163,12 @@ zabbix_export:
               return observed / purchased * 100;
             }
 
-            function countLicenseWindow(rows, nowMs, windowMs, tz) {
+            function normalizeMac(raw) {
+              var mac = String(raw || '').toLowerCase().replace(/[^0-9a-f]/g, '');
+              return /^[0-9a-f]{12}$/.test(mac) ? mac : '';
+            }
+
+            function countAuthenticatedWindow(rows, nowMs, windowMs) {
               var macs = {};
               var users = {};
               var byEngine = {};
@@ -1255,13 +1176,14 @@ zabbix_export:
               if (!Array.isArray(rows)) {
                 rows = [];
               }
+              var sourceOffsetMs = inferNaiveTimeOffset(rows, nowMs);
               for (i = 0; i < rows.length; i++) {
                 var row = rows[i] || {};
-                var stamp = parseAuthTime(row.lastAuthEventTime, tz);
+                var stamp = parseAuthTime(row.lastAuthEventTime, sourceOffsetMs);
                 if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
                   continue;
                 }
-                var mac = String(row.macAddress || '').toLowerCase();
+                var mac = normalizeMac(row.macAddress);
                 if (!mac) {
                   continue;
                 }
@@ -1299,9 +1221,42 @@ zabbix_export:
                 };
               }
               return {
-                nacUsed24h: objectSize(macs),
+                macs: macs,
+                authenticated24h: objectSize(macs),
                 users24h: objectSize(users),
+                sourceTimeOffsetMinutes: sourceOffsetMs / 60000,
                 engines: engines
+              };
+            }
+
+            function countNacLicenseUsage(rows, devices, nowMs, windowMs) {
+              var authenticated = countAuthenticatedWindow(rows, nowMs, windowMs);
+              var macs = authenticated.macs;
+              var pending = {};
+              var i;
+              if (!Array.isArray(devices)) {
+                devices = [];
+              }
+              for (i = 0; i < devices.length; i++) {
+                var device = devices[i] || {};
+                var state = String(((device.deviceData || {}).xiqLicenseState) || '');
+                if (state !== 'XIQ_PENDING') {
+                  continue;
+                }
+                var mac = normalizeMac(device.baseMac);
+                if (!mac) {
+                  continue;
+                }
+                pending[mac] = 1;
+                macs[mac] = 1;
+              }
+              return {
+                nacUsed: objectSize(macs),
+                nacAuthenticated24h: authenticated.authenticated24h,
+                nacPendingDevices: objectSize(pending),
+                users24h: authenticated.users24h,
+                sourceTimeOffsetMinutes: authenticated.sourceTimeOffsetMinutes,
+                engines: authenticated.engines
               };
             }
 
@@ -1532,10 +1487,7 @@ zabbix_export:
                 navigatorUsed: counted.navigatorUsed,
                 pending: counted.pending,
                 unmanaged: counted.unmanaged,
-                platformOne: counted.platformOne,
-                other: counted.other,
-                pilotRemaining: 0,
-                navRemaining: 0
+                other: counted.other
               };
             }
 
@@ -1557,10 +1509,7 @@ zabbix_export:
                 navigatorUsed: counted.navigatorUsed,
                 pending: counted.pending,
                 unmanaged: counted.unmanaged,
-                platformOne: counted.platformOne,
-                other: counted.other,
-                pilotRemaining: remainingSeats(params.pilot_total, counted.pilotUsed),
-                navRemaining: remainingSeats(params.nav_total, counted.navigatorUsed)
+                other: counted.other
               };
             }
 
@@ -1578,12 +1527,8 @@ zabbix_export:
               value: '{$XIQSE.API.CLIENT.ID}'
             - name: client_secret
               value: '{$XIQSE.API.CLIENT.SECRET}'
-            - name: pilot_total
-              value: '{$XIQ.PILOT.TOTAL}'
-            - name: nav_total
-              value: '{$XIQ.NAV.TOTAL}'
           description: |
-            Counts network.devices xiqLicenseState: Pilot, Navigator, pending, Platform ONE.
+            Counts network.devices license states: Pilot, Navigator, and pending; unpurchased classes remain diagnostic-only.
           tags:
             - tag: component
               value: license
@@ -1860,9 +1805,9 @@ zabbix_export:
             - tag: scope
               value: health
         - uuid: 42078351037e4a66a77525e8918d919a
-          name: NAC license used (24h unique MACs)
+          name: NAC license used
           type: DEPENDENT
-          key: xiqse.nac.used24h
+          key: xiqse.nac.used
           delay: '0'
           history: 7d
           trends: 365d
@@ -1870,33 +1815,71 @@ zabbix_export:
           preprocessing:
             - type: JSONPATH
               parameters:
-                - '$.nacUsed24h'
+                - '$.nacUsed'
           master_item:
             key: xiqse.nbi.licenses
           triggers:
             - uuid: 12118b420e464f0ba5b63869fba1fb90
-              expression: '{$XIQ.NAC.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.nac.used24h)>={$XIQ.NAC.TOTAL}'
+              expression: '{$XIQ.NAC.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.nac.used)>={$XIQ.NAC.TOTAL}'
               name: 'XIQ-SE: NAC license seats exhausted'
               event_name: 'XIQ-SE: NAC license seats exhausted'
               priority: AVERAGE
               description: |
-                Unique MACs authenticated in 24h reached {$XIQ.NAC.TOTAL} (XIQ-NAC-S).
+                Authenticated end-system MACs plus pending-device base MACs reached {$XIQ.NAC.TOTAL} (XIQ-NAC-S).
               tags:
                 - tag: scope
                   value: availability
             - uuid: 5f355368b3ca4adc9ad31652151e2270
-              expression: '{$XIQ.NAC.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.nac.used24h)*100>={$XIQ.NAC.TOTAL}*{$XIQ.NAC.USED.WARN}'
+              expression: '{$XIQ.NAC.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.nac.used)*100>={$XIQ.NAC.TOTAL}*{$XIQ.NAC.USED.WARN}'
               name: 'XIQ-SE: NAC license seats high'
               event_name: 'XIQ-SE: NAC license seats high'
               priority: WARNING
               description: |
-                24h unique MACs at or above {$XIQ.NAC.USED.WARN}% of {$XIQ.NAC.TOTAL}.
+                NAC license identities are at or above {$XIQ.NAC.USED.WARN}% of {$XIQ.NAC.TOTAL}.
               dependencies:
                 - name: 'XIQ-SE: NAC license seats exhausted'
-                  expression: '{$XIQ.NAC.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.nac.used24h)>={$XIQ.NAC.TOTAL}'
+                  expression: '{$XIQ.NAC.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.nac.used)>={$XIQ.NAC.TOTAL}'
               tags:
                 - tag: scope
                   value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: ceb0628a22e3423fad9c11a47e38b3cb
+          name: NAC authenticated MACs (24h)
+          type: DEPENDENT
+          key: xiqse.nac.authenticated24h
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.nacAuthenticated24h'
+          master_item:
+            key: xiqse.nbi.licenses
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: a74a968c46694f0b908c216db5fe7517
+          name: NAC pending device MACs
+          type: DEPENDENT
+          key: xiqse.nac.pending.devices
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.nacPendingDevices'
+          master_item:
+            key: xiqse.nbi.licenses
           tags:
             - tag: component
               value: license
@@ -1936,7 +1919,7 @@ zabbix_export:
           master_item:
             key: xiqse.nbi.licenses
           description: |
-            Purchased {$XIQ.NAC.TOTAL} minus 24h unique MACs, computed in the census SCRIPT. Stays 0 while that macro is 0 — NBI cannot read Administration → Licenses. Not out of seats. Not a calculated item (those kept the unguarded TOTAL-used formula on Cloud 7.0).
+            Purchased {$XIQ.NAC.TOTAL} minus the deduplicated union of 24h authenticated end-system MACs and XIQ_PENDING device base MACs, computed in the census SCRIPT. Stays 0 while that macro is 0 — NBI does not expose purchased-seat entitlements. Not out of seats. Not a calculated item (those kept the unguarded TOTAL-used formula on Cloud 7.0).
           tags:
             - tag: component
               value: license
@@ -2065,9 +2048,9 @@ zabbix_export:
             - tag: scope
               value: health
         - uuid: 9f94cfa9e6434a3288713564107fdbfb
-          name: Pilot licenses used
+          name: Pilot-class devices in NBI
           type: DEPENDENT
-          key: xiqse.pilot.used
+          key: xiqse.pilot.devices
           delay: '0'
           history: 7d
           trends: 365d
@@ -2078,61 +2061,15 @@ zabbix_export:
                 - '$.pilotUsed'
           master_item:
             key: xiqse.nbi.pilot
-          triggers:
-            - uuid: 158689830fc5407b8522bedc7012ada8
-              expression: '{$XIQ.PILOT.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.pilot.used)>={$XIQ.PILOT.TOTAL}'
-              name: 'XIQ-SE: Pilot licenses exhausted'
-              event_name: 'XIQ-SE: Pilot licenses exhausted'
-              priority: WARNING
-              description: |
-                Cannot onboard another switch or Control engine.
-              tags:
-                - tag: scope
-                  value: availability
-          tags:
-            - tag: component
-              value: license
-            - tag: scope
-              value: health
-        - uuid: 63a299d472f740c39b5d1bb7cced92fe
-          name: Pilot licenses remaining
-          type: DEPENDENT
-          key: xiqse.pilot.remaining
-          delay: '0'
-          history: 7d
-          trends: 365d
-          value_type: FLOAT
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - '$.pilotRemaining'
-          master_item:
-            key: xiqse.nbi.pilot
-          description: |
-            Purchased {$XIQ.PILOT.TOTAL} minus XIQ_PILOT devices, computed in the census SCRIPT. Stays 0 while that macro is 0. Not out of seats.
-          triggers:
-            - uuid: 36805c7666e4437e9b083b4c9b58ee3f
-              expression: '{$XIQ.PILOT.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.pilot.remaining)<={$XIQ.PILOT.REMAIN.WARN}'
-              name: 'XIQ-SE: few Pilot licenses remaining'
-              event_name: 'XIQ-SE: few Pilot licenses remaining'
-              priority: WARNING
-              description: |
-                Pilot remaining at or below {$XIQ.PILOT.REMAIN.WARN}.
-              dependencies:
-                - name: 'XIQ-SE: Pilot licenses exhausted'
-                  expression: '{$XIQ.PILOT.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.pilot.used)>={$XIQ.PILOT.TOTAL}'
-              tags:
-                - tag: scope
-                  value: availability
           tags:
             - tag: component
               value: license
             - tag: scope
               value: health
         - uuid: e739b887216f410da53afafe4294db58
-          name: Navigator licenses used
+          name: Navigator-class devices in NBI
           type: DEPENDENT
-          key: xiqse.nav.used
+          key: xiqse.nav.devices
           delay: '0'
           history: 7d
           trends: 365d
@@ -2143,52 +2080,6 @@ zabbix_export:
                 - '$.navigatorUsed'
           master_item:
             key: xiqse.nbi.pilot
-          triggers:
-            - uuid: b2c7a454475e4636b8199a4c08fb1340
-              expression: '{$XIQ.NAV.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.nav.used)>={$XIQ.NAV.TOTAL}'
-              name: 'XIQ-SE: Navigator licenses exhausted'
-              event_name: 'XIQ-SE: Navigator licenses exhausted'
-              priority: WARNING
-              description: |
-                Cannot onboard another Navigator-tier device.
-              tags:
-                - tag: scope
-                  value: availability
-          tags:
-            - tag: component
-              value: license
-            - tag: scope
-              value: health
-        - uuid: 679fe8d3980e4691a0c11a8be3d16ff0
-          name: Navigator licenses remaining
-          type: DEPENDENT
-          key: xiqse.nav.remaining
-          delay: '0'
-          history: 7d
-          trends: 365d
-          value_type: FLOAT
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - '$.navRemaining'
-          master_item:
-            key: xiqse.nbi.pilot
-          description: |
-            Purchased {$XIQ.NAV.TOTAL} minus XIQ_NAVIGATOR devices, computed in the census SCRIPT. Stays 0 while that macro is 0. Not out of seats.
-          triggers:
-            - uuid: ce3614948ed94048983e6268e8651d27
-              expression: '{$XIQ.NAV.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.nav.remaining)<={$XIQ.NAV.REMAIN.WARN}'
-              name: 'XIQ-SE: few Navigator licenses remaining'
-              event_name: 'XIQ-SE: few Navigator licenses remaining'
-              priority: WARNING
-              description: |
-                Navigator remaining at or below {$XIQ.NAV.REMAIN.WARN}.
-              dependencies:
-                - name: 'XIQ-SE: Navigator licenses exhausted'
-                  expression: '{$XIQ.NAV.TOTAL}>0 and last(/XIQ-SE Observability/xiqse.pilot.ok)=1 and last(/XIQ-SE Observability/xiqse.nav.used)>={$XIQ.NAV.TOTAL}'
-              tags:
-                - tag: scope
-                  value: availability
           tags:
             - tag: component
               value: license
@@ -2213,27 +2104,8 @@ zabbix_export:
               value: license
             - tag: scope
               value: health
-        - uuid: 6ad9ed0651a249578dbb63a07b0be9e7
-          name: Platform ONE / Advanced / Standard used
-          type: DEPENDENT
-          key: xiqse.lic.platformone
-          delay: '0'
-          history: 7d
-          trends: 365d
-          value_type: UNSIGNED
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - '$.platformOne'
-          master_item:
-            key: xiqse.nbi.pilot
-          tags:
-            - tag: component
-              value: license
-            - tag: scope
-              value: health
         - uuid: 03b45dacb57f42c2aacc1556bc8369e2
-          name: Pilot census ok
+          name: Device license-state census ok
           type: DEPENDENT
           key: xiqse.pilot.ok
           delay: '0'
@@ -2255,10 +2127,53 @@ zabbix_export:
               event_name: 'XIQ-SE: Pilot census failed'
               priority: AVERAGE
               description: |
-                NBI is up but the devices xiqLicenseState query failed. Pilot and Navigator remaining are unknown.
+                NBI is up but the device-license-state inventory query failed.
               tags:
                 - tag: scope
                   value: availability
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: bfa48a19fde64b05998200ad67a569a7
+          name: Pilot Cloud licenses used
+          type: CALCULATED
+          key: xiqse.pilot.cloud.activated
+          delay: 5m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          params: 'last(//xiq.cloud.pilot.activated)'
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 2a1750d5ee60487b95b87bcac060a09d
+          name: Pilot Cloud licenses available
+          type: CALCULATED
+          key: xiqse.pilot.cloud.available
+          delay: 5m
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          params: 'last(//xiq.cloud.pilot.available)'
+          tags:
+            - tag: component
+              value: license
+            - tag: scope
+              value: health
+        - uuid: 99781129025e429e8646be5bfa42d712
+          name: Pilot Cloud earliest expiration
+          type: CALCULATED
+          key: xiqse.pilot.cloud.expire
+          delay: 1h
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          units: 'unixtime'
+          params: 'last(//xiq.cloud.pilot.expire)'
           tags:
             - tag: component
               value: license
@@ -2290,6 +2205,47 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: availability
+        - uuid: ba9f75ab81284032bb8cda0473b4499a
+          name: TLS certificate expiration
+          type: EXTERNAL
+          key: 'tls_certificate_expiry.sh[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}]'
+          delay: 1h
+          history: 30d
+          trends: 365d
+          value_type: UNSIGNED
+          units: unixtime
+          description: Leaf certificate expiry collected by the assigned Zabbix proxy.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          triggers:
+            - uuid: e5f951c69d2c4f858199f145a2cb0921
+              expression: 'last(/XIQ-SE Observability/tls_certificate_expiry.sh[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}])<=now()'
+              name: 'XIQ-SE: TLS certificate expired'
+              event_name: 'XIQ-SE: TLS certificate expired'
+              priority: AVERAGE
+              description: The management/API TLS certificate is expired. Authentication traffic may continue, but HTTPS clients cannot validate the endpoint.
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: 01a288a02ecf49088dc9c248362b19b7
+              expression: 'last(/XIQ-SE Observability/tls_certificate_expiry.sh[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}])-now()<{$TLS.CERT.WARN} and last(/XIQ-SE Observability/tls_certificate_expiry.sh[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}])>now()'
+              name: 'XIQ-SE: TLS certificate expires soon'
+              event_name: 'XIQ-SE: TLS certificate expires soon'
+              priority: WARNING
+              description: Renew the management/API TLS certificate before {$TLS.CERT.WARN} elapses.
+              dependencies:
+                - name: 'XIQ-SE: TLS certificate expired'
+                  expression: 'last(/XIQ-SE Observability/tls_certificate_expiry.sh[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}])<=now()'
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: certificate
+            - tag: scope
+              value: availability
         - uuid: 35962793d7484596bee1d20ad9067757
           name: Unsupported items
           type: INTERNAL
@@ -2328,59 +2284,11 @@ zabbix_export:
             - type: JAVASCRIPT
               parameters:
                 - |
-                  function lastSundayDay(year, month) {
-                    var date = new Date(Date.UTC(year, month, 0));
-                    return date.getUTCDate() - date.getUTCDay();
+                  function isNaiveIsoTime(text) {
+                    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text);
                   }
 
-                  function europeZurichOffsetMinutes(year, month, day, hour) {
-                    // EU DST as used by Europe/Zurich: last Sunday March 02:00 local CET → CEST,
-                    // last Sunday October 03:00 local CEST → CET. Ambiguous 02:00–02:59 in October
-                    // stays on CEST (hour < 3).
-                    var startDay = lastSundayDay(year, 3);
-                    var endDay = lastSundayDay(year, 10);
-                    var dst = false;
-                    if (month > 3 && month < 10) {
-                      dst = true;
-                    } else if (month === 3) {
-                      if (day > startDay || (day === startDay && hour >= 2)) {
-                        dst = true;
-                      }
-                    } else if (month === 10) {
-                      if (day < endDay || (day === endDay && hour < 3)) {
-                        dst = true;
-                      }
-                    }
-                    return dst ? 120 : 60;
-                  }
-
-                  function tzOffsetMinutes(tz, year, month, day, hour) {
-                    var zone = String(tz === undefined || tz === null ? 'Europe/Zurich' : tz);
-                    zone = zone.replace(/^\s+|\s+$/g, '');
-                    if (zone === 'UTC' || zone === 'GMT' || zone === 'Z') {
-                      return 0;
-                    }
-                    var fixed = zone.match(/^([+-])(\d{2}):?(\d{2})$/);
-                    if (fixed) {
-                      var sign = fixed[1] === '-' ? -1 : 1;
-                      return sign * (Number(fixed[2]) * 60 + Number(fixed[3]));
-                    }
-                    return europeZurichOffsetMinutes(year, month, day, hour);
-                  }
-
-                  function parseOffsetToken(token) {
-                    if (!token || token === 'Z' || token === 'z') {
-                      return 0;
-                    }
-                    var match = String(token).match(/^([+-])(\d{2}):?(\d{2})$/);
-                    if (!match) {
-                      return null;
-                    }
-                    var sign = match[1] === '-' ? -1 : 1;
-                    return sign * (Number(match[2]) * 60 + Number(match[3]));
-                  }
-
-                  function parseAuthTime(raw, tz) {
+                  function parseAuthTime(raw, naiveOffsetMs) {
                     if (raw === null || raw === undefined || raw === '') {
                       return null;
                     }
@@ -2392,44 +2300,37 @@ zabbix_export:
                       var numeric = Number(text);
                       return numeric > 0 && numeric < 1e11 ? numeric * 1000 : numeric;
                     }
-                    var named = '';
-                    var namedMatch = text.match(/\s+(CEST|CET)$/i);
-                    if (namedMatch) {
-                      named = namedMatch[1].toUpperCase();
-                      text = text.slice(0, text.length - namedMatch[0].length);
+                    var parsed = Date.parse(isNaiveIsoTime(text) ? text + 'Z' : text);
+                    if (isNaN(parsed)) {
+                      return null;
                     }
-                    var iso = text.match(
-                      /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?(Z|[+-]\d{2}:?\d{2})?$/
-                    );
-                    if (iso) {
-                      var year = Number(iso[1]);
-                      var month = Number(iso[2]);
-                      var day = Number(iso[3]);
-                      var hour = Number(iso[4]);
-                      var minute = Number(iso[5]);
-                      var second = Number(iso[6]);
-                      var millis = iso[7] ? Number((iso[7] + '000').slice(0, 3)) : 0;
-                      var offsetMin;
-                      if (iso[8]) {
-                        offsetMin = parseOffsetToken(iso[8]);
-                        if (offsetMin === null) {
-                          return null;
-                        }
-                      } else if (named === 'CEST') {
-                        offsetMin = 120;
-                      } else if (named === 'CET') {
-                        offsetMin = 60;
-                      } else {
-                        // NBI 25.5.12.6 emits lastAuthEventTime without a zone, e.g.
-                        // 2026-09-04T08:39:05.366 while the clock is 06:39 UTC (CEST).
-                        // Date.parse() in Zabbix/Duktape treats that as UTC, then the 60s
-                        // future-skew drops current auths (~969 live on 2026-09-04).
-                        offsetMin = tzOffsetMinutes(tz, year, month, day, hour);
+                    return parsed - (isNaiveIsoTime(text) ? Number(naiveOffsetMs || 0) : 0);
+                  }
+
+                  function inferNaiveTimeOffset(rows, nowMs) {
+                    var newestWallTime = 0;
+                    var i;
+                    if (!Array.isArray(rows)) {
+                      return 0;
+                    }
+                    for (i = 0; i < rows.length; i++) {
+                      var row = rows[i] || {};
+                      var text = String(row.lastSeenTime || row.lastAuthEventTime || '');
+                      if (!isNaiveIsoTime(text)) {
+                        continue;
                       }
-                      return Date.UTC(year, month - 1, day, hour, minute, second, millis) - offsetMin * 60000;
+                      var wallTime = Date.parse(text + 'Z');
+                      if (!isNaN(wallTime) && wallTime > newestWallTime) {
+                        newestWallTime = wallTime;
+                      }
                     }
-                    var parsed = Date.parse(text);
-                    return isNaN(parsed) ? null : parsed;
+                    if (!newestWallTime) {
+                      return 0;
+                    }
+                    // Site Engine emits local wall-clock timestamps without a zone. The newest
+                    // lastSeenTime is normally seconds old, so round its skew to a real 15m zone.
+                    var offset = Math.round((newestWallTime - nowMs) / 900000) * 900000;
+                    return Math.abs(offset) <= 50400000 ? offset : 0;
                   }
 
                   function objectSize(obj) {
@@ -2469,7 +2370,12 @@ zabbix_export:
                     return observed / purchased * 100;
                   }
 
-                  function countLicenseWindow(rows, nowMs, windowMs, tz) {
+                  function normalizeMac(raw) {
+                    var mac = String(raw || '').toLowerCase().replace(/[^0-9a-f]/g, '');
+                    return /^[0-9a-f]{12}$/.test(mac) ? mac : '';
+                  }
+
+                  function countAuthenticatedWindow(rows, nowMs, windowMs) {
                     var macs = {};
                     var users = {};
                     var byEngine = {};
@@ -2477,13 +2383,14 @@ zabbix_export:
                     if (!Array.isArray(rows)) {
                       rows = [];
                     }
+                    var sourceOffsetMs = inferNaiveTimeOffset(rows, nowMs);
                     for (i = 0; i < rows.length; i++) {
                       var row = rows[i] || {};
-                      var stamp = parseAuthTime(row.lastAuthEventTime, tz);
+                      var stamp = parseAuthTime(row.lastAuthEventTime, sourceOffsetMs);
                       if (stamp === null || nowMs - stamp > windowMs || stamp > nowMs + 60000) {
                         continue;
                       }
-                      var mac = String(row.macAddress || '').toLowerCase();
+                      var mac = normalizeMac(row.macAddress);
                       if (!mac) {
                         continue;
                       }
@@ -2521,9 +2428,42 @@ zabbix_export:
                       };
                     }
                     return {
-                      nacUsed24h: objectSize(macs),
+                      macs: macs,
+                      authenticated24h: objectSize(macs),
                       users24h: objectSize(users),
+                      sourceTimeOffsetMinutes: sourceOffsetMs / 60000,
                       engines: engines
+                    };
+                  }
+
+                  function countNacLicenseUsage(rows, devices, nowMs, windowMs) {
+                    var authenticated = countAuthenticatedWindow(rows, nowMs, windowMs);
+                    var macs = authenticated.macs;
+                    var pending = {};
+                    var i;
+                    if (!Array.isArray(devices)) {
+                      devices = [];
+                    }
+                    for (i = 0; i < devices.length; i++) {
+                      var device = devices[i] || {};
+                      var state = String(((device.deviceData || {}).xiqLicenseState) || '');
+                      if (state !== 'XIQ_PENDING') {
+                        continue;
+                      }
+                      var mac = normalizeMac(device.baseMac);
+                      if (!mac) {
+                        continue;
+                      }
+                      pending[mac] = 1;
+                      macs[mac] = 1;
+                    }
+                    return {
+                      nacUsed: objectSize(macs),
+                      nacAuthenticated24h: authenticated.authenticated24h,
+                      nacPendingDevices: objectSize(pending),
+                      users24h: authenticated.users24h,
+                      sourceTimeOffsetMinutes: authenticated.sourceTimeOffsetMinutes,
+                      engines: authenticated.engines
                     };
                   }
 
@@ -3166,73 +3106,54 @@ zabbix_export:
           pages:
             - name: Overview
               widgets:
-                - type: gauge
+                - type: item
                   name: NBI
                   width: '18'
                   height: '4'
                   fields:
-                    - type: INTEGER
-                      name: angle
-                      value: '270'
-                    - type: INTEGER
-                      name: decimal_places
-                      value: '0'
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: show.1
-                      value: '5'
-                    - type: INTEGER
-                      name: th_arc_size
-                      value: '6'
-                    - type: INTEGER
-                      name: units_size
-                      value: '14'
-                    - type: INTEGER
-                      name: value_arc_size
-                      value: '16'
-                    - type: INTEGER
-                      name: value_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
                     - type: ITEM
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
                         key: xiqse.nbi.available
-                    - type: STRING
-                      name: max
-                      value: '1'
-                    - type: STRING
-                      name: min
-                      value: '0'
-                    - type: STRING
-                      name: thresholds.0.color
-                      value: FF465C
-                    - type: STRING
-                      name: thresholds.0.threshold
-                      value: '0'
-                    - type: STRING
-                      name: thresholds.1.color
-                      value: 0EC9AC
-                    - type: STRING
-                      name: thresholds.1.threshold
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
                       value: '1'
                     - type: INTEGER
-                      name: th_show_arc
-                      value: '1'
-                    - type: INTEGER
-                      name: th_show_labels
-                      value: '0'
+                      name: value_size
+                      value: '28'
                     - type: STRING
                       name: reference
                       value: XNBI
                 - type: item
-                  name: Engines
+                  name: Certificate expires
                   x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: tls_certificate_expiry.sh[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}]
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: XCERT
+                - type: item
+                  name: Engines
+                  x: '36'
                   width: '18'
                   height: '4'
                   fields:
@@ -3252,32 +3173,9 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XENG
+                      value: XENGH
                 - type: item
-                  name: NAC used
-                  x: '36'
-                  width: '18'
-                  height: '4'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: XIQ-SE Observability
-                        key: xiqse.nac.used24h
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: value_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: value_size
-                      value: '28'
-                    - type: STRING
-                      name: reference
-                      value: XNAC
-                - type: item
-                  name: Uptime
+                  name: Pilot Cloud available
                   x: '54'
                   width: '18'
                   height: '4'
@@ -3286,7 +3184,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nbi.uptime
+                        key: xiqse.pilot.cloud.available
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -3298,12 +3196,12 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XUPT
+                      value: XPCAV
                 - type: problems
                   name: Problems
                   y: '4'
                   width: '72'
-                  height: '3'
+                  height: '4'
                   fields:
                     - type: STRING
                       name: reference
@@ -3311,69 +3209,62 @@ zabbix_export:
                     - type: INTEGER
                       name: show
                       value: '3'
-                - type: honeycomb
-                  name: Last auth age
-                  y: '7'
-                  width: '72'
-                  height: '5'
+                - type: svggraph
+                  name: NAC license identities
+                  y: '8'
+                  width: '36'
+                  height: '6'
                   fields:
                     - type: STRING
-                      name: items.0
-                      value: 'Engine *: last auth age'
-                    - type: STRING
-                      name: primary_label
-                      value: '{{ITEM.NAME}.regsub("^Engine (.*): last auth age$","\1")}'
+                      name: ds.0.color.0
+                      value: 2774A4
                     - type: INTEGER
-                      name: interpolation
+                      name: ds.0.dataset_type
                       value: '0'
-                    - type: INTEGER
-                      name: primary_label_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: primary_label_size_type
-                      value: '1'
-                    - type: INTEGER
-                      name: primary_label_size
-                      value: '20'
-                    - type: INTEGER
-                      name: secondary_label_decimal_places
-                      value: '0'
-                    - type: INTEGER
-                      name: secondary_label_size_type
-                      value: '1'
-                    - type: INTEGER
-                      name: secondary_label_size
-                      value: '22'
-                    - type: INTEGER
-                      name: secondary_label_type
-                      value: '1'
-                    - type: INTEGER
-                      name: show.0
-                      value: '1'
-                    - type: INTEGER
-                      name: show.1
-                      value: '2'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nac.used
                     - type: STRING
                       name: reference
-                      value: XEAGE
+                      value: XNACG
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                - type: svggraph
+                  name: Heap
+                  x: '36'
+                  y: '8'
+                  width: '36'
+                  height: '6'
+                  fields:
                     - type: STRING
-                      name: thresholds.0.color
-                      value: 878787
+                      name: ds.0.color.0
+                      value: 199C0D
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nbi.heap.pct
                     - type: STRING
-                      name: thresholds.0.threshold
-                      value: '-1'
+                      name: lefty_max
+                      value: '100'
                     - type: STRING
-                      name: thresholds.1.color
-                      value: 0EC9AC
-                    - type: STRING
-                      name: thresholds.1.threshold
+                      name: lefty_min
                       value: '0'
                     - type: STRING
-                      name: thresholds.2.color
-                      value: FF465C
-                    - type: STRING
-                      name: thresholds.2.threshold
-                      value: '86400'
+                      name: reference
+                      value: XHEAP
+                    - type: INTEGER
+                      name: legend
+                      value: '0'
             - name: Engines
               widgets:
                 - type: honeycomb
@@ -3474,7 +3365,7 @@ zabbix_export:
             - name: Licenses
               widgets:
                 - type: item
-                  name: NAC used
+                  name: NAC license identities
                   width: '18'
                   height: '4'
                   fields:
@@ -3482,7 +3373,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nac.used24h
+                        key: xiqse.nac.used
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -3496,7 +3387,7 @@ zabbix_export:
                       name: reference
                       value: XNAC2
                 - type: item
-                  name: Pilot used
+                  name: Pilot Cloud used
                   x: '18'
                   width: '18'
                   height: '4'
@@ -3505,7 +3396,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.pilot.used
+                        key: xiqse.pilot.cloud.activated
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -3517,9 +3408,9 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XPU
+                      value: XPCU
                 - type: item
-                  name: Navigator used
+                  name: Pilot Cloud available
                   x: '36'
                   width: '18'
                   height: '4'
@@ -3528,7 +3419,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nav.used
+                        key: xiqse.pilot.cloud.available
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -3540,9 +3431,9 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XNU
+                      value: XPCA
                 - type: item
-                  name: NAC used %
+                  name: Pilot Cloud expires
                   x: '54'
                   width: '18'
                   height: '4'
@@ -3551,7 +3442,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nac.used.pct
+                        key: xiqse.pilot.cloud.expire
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -3563,95 +3454,46 @@ zabbix_export:
                       value: '28'
                     - type: STRING
                       name: reference
-                      value: XNPCT
-                - type: item
-                  name: NAC remaining
-                  y: '4'
-                  width: '18'
-                  height: '4'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: XIQ-SE Observability
-                        key: xiqse.nac.remaining
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: value_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: value_size
-                      value: '28'
-                    - type: STRING
-                      name: reference
-                      value: XNREM
-                - type: item
-                  name: Pilot remaining
-                  x: '18'
-                  y: '4'
-                  width: '18'
-                  height: '4'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: XIQ-SE Observability
-                        key: xiqse.pilot.remaining
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: value_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: value_size
-                      value: '28'
-                    - type: STRING
-                      name: reference
-                      value: XPREM
-                - type: item
-                  name: Navigator remaining
-                  x: '36'
-                  y: '4'
-                  width: '18'
-                  height: '4'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: XIQ-SE Observability
-                        key: xiqse.nav.remaining
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: value_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: value_size
-                      value: '28'
-                    - type: STRING
-                      name: reference
-                      value: XNREM2
+                      value: XPCE
                 - type: svggraph
-                  name: NAC used
-                  y: '8'
+                  name: NAC license identities
+                  y: '4'
                   width: '36'
                   height: '6'
                   fields:
-                    - type: INTEGER
-                      name: ds.0.dataset_type
-                      value: '0'
                     - type: STRING
                       name: ds.0.color.0
                       value: 2774A4
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
                     - type: ITEM
                       name: ds.0.itemids.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nac.used24h
+                        key: xiqse.nac.used
+                    - type: STRING
+                      name: ds.1.color.0
+                      value: 0EC9AC
+                    - type: INTEGER
+                      name: ds.1.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.1.itemids.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nac.authenticated24h
+                    - type: STRING
+                      name: ds.2.color.0
+                      value: E68931
+                    - type: INTEGER
+                      name: ds.2.dataset_type
+                      value: '0'
+                    - type: ITEM
+                      name: ds.2.itemids.0
+                      value:
+                        host: XIQ-SE Observability
+                        key: xiqse.nac.pending.devices
                     - type: STRING
                       name: reference
                       value: XNACG
@@ -3661,53 +3503,41 @@ zabbix_export:
                     - type: INTEGER
                       name: legend
                       value: '1'
-                    - type: STRING
-                      name: time_period.from
-                      value: now-7d
-                    - type: STRING
-                      name: time_period.to
-                      value: now
                 - type: svggraph
-                  name: Pilot / Navigator used
+                  name: Pilot Cloud licenses
                   x: '36'
-                  y: '8'
+                  y: '4'
                   width: '36'
                   height: '6'
                   fields:
-                    - type: INTEGER
-                      name: ds.0.dataset_type
-                      value: '0'
                     - type: STRING
                       name: ds.0.color.0
                       value: 2774A4
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
                     - type: ITEM
                       name: ds.0.itemids.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.pilot.used
+                        key: xiqse.pilot.cloud.activated
                     - type: STRING
-                      name: ds.0.color.1
-                      value: E68931
+                      name: ds.1.color.0
+                      value: 0EC9AC
+                    - type: INTEGER
+                      name: ds.1.dataset_type
+                      value: '0'
                     - type: ITEM
-                      name: ds.0.itemids.1
+                      name: ds.1.itemids.0
                       value:
                         host: XIQ-SE Observability
-                        key: xiqse.nav.used
+                        key: xiqse.pilot.cloud.available
                     - type: STRING
                       name: reference
-                      value: XPNUG
-                    - type: INTEGER
-                      name: show_problems
-                      value: '1'
+                      value: XPILG
                     - type: INTEGER
                       name: legend
                       value: '1'
-                    - type: STRING
-                      name: time_period.from
-                      value: now-7d
-                    - type: STRING
-                      name: time_period.to
-                      value: now
 
       valuemaps:
         - uuid: 3a97b114a68e416c97f5ab67825b74c3

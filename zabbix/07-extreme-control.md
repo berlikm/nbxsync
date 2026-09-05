@@ -45,9 +45,9 @@ Three subscription pools. Same three the Extreme **XIQ-SE licensing calculation*
 
 | Pool | SKU | Counted how | Live item |
 |---|---|---|---|
-| Access Control | `XIQ-NAC-S` | Unique **MACs** that **authenticated** in a **rolling 24h**, global. Same MAC on two engines = one seat. Accounting does not count. Usernames are not the license | `xiqse.nac.used24h` |
-| Pilot | `XIQ-PIL-S-C` | `network.devices` with `xiqLicenseState == XIQ_PILOT` (natively managed switches **and** Control engines that are in inventory) | `xiqse.pilot.used` |
-| Navigator | Navigator SKU | `xiqLicenseState == XIQ_NAVIGATOR` | `xiqse.nav.used` |
+| Access Control | `XIQ-NAC-S` | Deduplicated union of end-system MACs authenticated in a rolling 24h and `XIQ_PENDING` network-device base MACs. Same identity in both sets = one seat. Usernames and accounting do not count. | `xiqse.nac.used` |
+| Pilot | `XIQ-PIL-S-C` | Authoritative purchased / activated / available / expiry values from the already-linked stock **ExtremeCloud IQ by HTTP** template; NBI device-class count is informational | `xiqse.pilot.cloud.*`, `xiqse.pilot.devices` |
+| Navigator | Navigator SKU | NBI `xiqLicenseState == XIQ_NAVIGATOR`; informational because no purchased-total API field exists | `xiqse.nav.devices` |
 
 Per-engine **Current Capacity** `1365/3000` is **hardware load** (24h unique on that engine vs engine rating). Changing it does not change the global NAC license.
 
@@ -55,9 +55,9 @@ Exceeding NAC seats is a four-stage violation (GUI pop-up → events stop for ov
 
 At 0 Pilot you cannot onboard a switch or another engine. At 0 Navigator you cannot onboard another Navigator-tier device. Existing RADIUS still works.
 
-NBI has **no** entitlements field. Used seats we **count**. Purchased totals are macros on CG **XIQ-SE licenses** (`{$XIQ.NAC.TOTAL}`, `{$XIQ.PILOT.TOTAL}`, `{$XIQ.NAV.TOTAL}`), filled from Administration → Licenses. `--apply-xiqse` creates those assignments at 0 if missing and **never overwrites the CG**; it mirrors the CG onto the Site Engine platform so HostSync can push them (HostSync inherits platform macros; it does not expand CG macros at resolve time). Refresh the CG when you buy more, re-apply, then HostSync. Do not scrape the GUI. Do not add a Cloud XIQ tenant host. Do not JDBC the SE database. Do not set these as Zabbix host macros on `ch-sta-p-ensa01`. `{$…TOTAL}=0` means remaining shows 0 (not “out of seats”) and cap tickets stay silent.
+NBI has **no** entitlements field. NAC used seats are counted; `{$XIQ.NAC.TOTAL}` remains at the template default `0` because the purchased total is unavailable. `0` means remaining shows 0 (not “out of seats”) and NAC cap tickets stay silent. Pilot purchased values come from the linked stock Cloud template. Do not scrape the GUI, add a separate Cloud tenant host, or query the SE database.
 
-Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone` (graph). Tickets stay off until that SKU is in use. Pending onboard is `xiqse.lic.pending` (graph).
+Platform ONE / Advanced / Standard is not purchased and is not collected. Pending onboarding remains `xiqse.lic.pending` (graph).
 
 ---
 
@@ -75,8 +75,8 @@ Platform ONE / Advanced / Standard states are counted on `xiqse.lic.platformone`
 | NAC not forwarding auth logs to SE | yes | Average | Per engine: newest `lastAuthEventTime` older than `{$XIQ.NAC.FRESH}` (default 24h elapsed). Naive NBI stamps are `{$XIQSE.TZ}` (Europe/Zurich), not UTC. Override a quiet engine with `{$XIQ.NAC.FRESH:"<engine-ip>"}`. `{$XIQ.NAC.FRESH.CONTROL}` still gates the ticket. Age `-1` = no event in the census (silent). Age `0` = just now, or SE clock slightly ahead of the proxy. Not syslog to a SIEM |
 | SE ingest jam (E-to-Sav / drops) | **no** until the field exists | Average | One SE ticket if GraphQL exposes it on canary |
 | Engine `needsEnforce` stuck | yes | Average | Config never pushed |
-| 24h unique MACs ≥ `{$XIQ.NAC.TOTAL}` | yes | Average | License violation in progress |
-| 24h unique MACs ≥ `{$XIQ.NAC.USED.WARN}`% of total | yes | Warning | Default 90%. Dayside buy more |
+| NAC license identities ≥ `{$XIQ.NAC.TOTAL}` | yes | Average | Authenticated end systems plus pending-device identities reach entitlement |
+| NAC license identities ≥ `{$XIQ.NAC.USED.WARN}`% of total | yes | Warning | Default 90%. Dayside buy more |
 | 24h census truncated | yes | Average | `count == {$XIQ.NAC.ES.MAXRESULTS}` — number is a lie |
 | Pilot used ≥ `{$XIQ.PILOT.TOTAL}` | yes | Warning | Cannot onboard a switch / engine. `TOTAL=0` silences |
 | Pilot remaining ≤ `{$XIQ.PILOT.REMAIN.WARN}` | yes | Warning | Default 2 |
@@ -112,10 +112,10 @@ On **Site Engine → Health**:
 
 | Graph | Unit | Why |
 |---|---|---|
-| **NAC license used (24h unique MACs)** | count | The number Extreme bills / enforces |
-| NAC license remaining | SCRIPT: 0 while `{$XIQ.NAC.TOTAL}` is 0, else purchased − used | **Licenses** row 2, next to NAC used. **0 until you set the CG.** That is not “out of seats” and not −2175. NBI cannot read Administration → Licenses |
+| **NAC license identities** | count | The deduplicated authenticated-MAC plus pending-device-MAC count Extreme bills / enforces |
+| NAC license remaining | SCRIPT: 0 while `{$XIQ.NAC.TOTAL}` is 0, else purchased − used | **Item only** (Health tiles show used). The template default is **0**, so remaining is 0 rather than “out of seats” or −2175. NBI has no entitlement field |
 | NAC used % of entitlement | % | Warning at 90% |
-| Unique **usernames** 24h | count | Capacity story; **not** the license |
+| Authenticated MACs / unique usernames 24h | count | Authentication capacity story; not the complete license count |
 | Pilot used / remaining | count | Device + engine seats (`XIQ_PILOT`) |
 | Navigator used / remaining | count | `XIQ_NAVIGATOR` |
 | Pending / Platform ONE | count | Graph; no ticket yet |
@@ -167,7 +167,7 @@ NBI lives on **SE only**. Client: Administration → Client API Access; rights *
 - TLS: verify the SE cert. Do not copy vendor samples that set `verify=False`.
 - Quiet engines: raise `{$XIQ.NAC.FRESH}` (elapsed seconds) or set `{$XIQ.NAC.FRESH:"<engine-ip>"}` on the SE host. There is **no** 07:00–19:00 clock — Site Engine `time()` is one TZ and the fleet is not.
 - Extreme's `.xwf` license calculator stays a one-shot migration report. Do not schedule it from Zabbix. Do not point the template at `appdata/license`.
-- Production canary 2026-08-29 (`ch-sta-p-ensa01`, 25.5.12.6): NBI up, 4055 end-systems / 2150 24h MACs / 320 Pilot / 0 Navigator. `connected` and RADIUS monitor fields absent. NBI `capacity` is 0. Details: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md).
+- Production canary 2026-08-29 (`ch-sta-p-ensa01`, 25.5.12.6): NBI up, 4055 end-systems / 2150 authenticated 24h MACs / 243 pending-device MACs / 320 Pilot / 0 Navigator. `connected` and RADIUS monitor fields absent. NBI `capacity` is 0. Details: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md).
 
 ---
 
@@ -175,23 +175,13 @@ NBI lives on **SE only**. Client: Administration → Client API Access; rights *
 
 `ch-sta-p-ensa01` is linked to **XIQ-SE Observability** with no host-level macro overrides. Template defaults are `{$XIQ.NAC.TOTAL}=0`, `{$XIQ.PILOT.TOTAL}=0`, `{$XIQ.NAV.TOTAL}=0`.
 
-Remaining is computed **inside the census SCRIPT** (NAC from `{$XIQ.NAC.TOTAL}`, Pilot / Navigator from their macros) and stored as a DEPENDENT item. It is not a calculated item. Cloud 7.0 kept the unguarded live formula `{$XIQ.NAC.TOTAL}-last(//xiqse.nac.used24h)` — that produced **−2175** on 2026-08-29 (`TOTAL=0`, `used24h=2150`). SCRIPT-side remaining stays **0** while TOTAL is 0.
+Remaining is computed **inside the census SCRIPT** (NAC from `{$XIQ.NAC.TOTAL}`, Pilot / Navigator from their macros) and stored as a DEPENDENT item. It is not a calculated item. Cloud 7.0 kept the unguarded live formula `TOTAL-used` — that produced **−2175** on 2026-08-29 (`TOTAL=0`, auth-only count=2150). SCRIPT-side remaining stays **0** while TOTAL is 0.
 
 While a purchased total is 0, remaining is forced to **0**. That is “unknown entitlement”, not “out of seats” and not a negative. Cap tickets stay silent until the total is set.
 
 After this template change: `--apply-xiqse` (re-import) then HostSync `ch-sta-p-ensa01`. If remaining stays negative, the leftover CALCULATED item was not replaced — delete that item or unlink/relink the template.
 
-NBI has no entitlements field. Set the three counts on nbxSync CG **XIQ-SE licenses**, not as Zabbix host macros.
-
-1. `configure_nbxsync_network.py --apply-xiqse` creates the CG (totals 0 if missing), assigns it to Site Engine platforms, and mirrors CG → platform. It never overwrites CG values. It does not HostSync.
-2. NetBox → Plugins → nbxSync → Configuration Groups → **XIQ-SE licenses** → Zabbix Macros. Copy integers from Administration → Licenses on the SE:
-   - `{$XIQ.NAC.TOTAL}` = Access Control quantity (the **first** number in `100/50` = NAC / GIM). GIM is not this graph.
-   - `{$XIQ.PILOT.TOTAL}` = Pilot quantity
-   - `{$XIQ.NAV.TOTAL}` = Navigator quantity
-3. Re-run `--apply-xiqse` so the platform copies match the CG. HostSync inherits platform macros; it does not expand CG macros at resolve time.
-4. HostSync `ch-sta-p-ensa01`.
-
-If numbers were already typed as Zabbix host macros, copy them onto the CG **before** HostSync, or HostSync will replace them with the platform copy (0 until the CG is set).
+NBI has no entitlements field. The three purchased-total macros remain at their template defaults of `0`; they are not configured through an nbxSync configuration group or Zabbix host macros. Remaining therefore stays 0 and capacity tickets remain silent.
 
 ---
 
@@ -236,15 +226,14 @@ Macros on the **SE template** (secrets on a nbxSync CG, not in YAML):
 
 ```
 {$XIQSE.API.FQDN}          = Site Engine mgmt FQDN / IP
-{$XIQSE.TZ}                = Europe/Zurich (naive lastAuthEventTime)
-{$XIQ.NAC.TOTAL}           = purchased Access Control (CG XIQ-SE licenses; 0 until set)
+{$XIQ.NAC.TOTAL}           = template default 0; no entitlement source is configured
 {$XIQ.NAC.USED.WARN}       = 90
 {$XIQ.NAC.ES.MAXRESULTS}   = 20000
 {$XIQ.NAC.FRESH}           = 86400 elapsed seconds (any TZ)
 {$XIQ.NAC.FRESH.CONTROL}   = 1
-{$XIQ.PILOT.TOTAL}         = purchased Pilot seats (same CG; 0 until set)
+{$XIQ.PILOT.TOTAL}         = template default 0; no entitlement source is configured
 {$XIQ.PILOT.REMAIN.WARN}   = 2
-{$XIQ.NAV.TOTAL}           = purchased Navigator seats (same CG; 0 until set)
+{$XIQ.NAV.TOTAL}           = template default 0; no entitlement source is configured
 {$XIQ.NAV.REMAIN.WARN}     = 2
 ```
 

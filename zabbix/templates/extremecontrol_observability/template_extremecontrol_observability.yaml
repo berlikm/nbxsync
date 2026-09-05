@@ -8,10 +8,11 @@ zabbix_export:
       template: ExtremeControl Observability
       name: ExtremeControl Observability
       description: |
-        ExtremeControl engine companion. ICMP and Linux agent stay on the VM
-        path — this template does not nest ICMP Ping and does not speak RADIUS.
-        FreeRADIUS down is ticketed from XIQ-SE Observability engine LLD.
-        Portal TCP 8444 stays disabled until opted in.
+        ExtremeControl engine companion. Agentless SNMP, portal reachability,
+        and proxy-side TLS certificate expiry monitoring. This template does
+        not nest ICMP Ping and does not speak RADIUS. FreeRADIUS down is
+        ticketed from XIQ-SE Observability engine LLD. Portal TCP 8444 alerting
+        stays disabled until opted in.
 
         Operator page: zabbix/07-extreme-control.md.
         Refresh with configure_nbxsync_network.py --apply-xiqse.
@@ -24,6 +25,12 @@ zabbix_export:
         - macro: '{$NAC.PORTAL.CONTROL}'
           value: '0'
           description: Ticket portal TCP down. Default off — not auth.
+        - macro: '{$NAC.PORTAL.FQDN}'
+          value: ''
+          description: Control engine management FQDN or IP. Platform Jinja on primary_ip4.
+        - macro: '{$TLS.CERT.WARN}'
+          value: '30d'
+          description: Warn before the Control engine TLS certificate expires.
       items:
         - uuid: 12acf3f8703d49368e9c54f5d0898ef1
           name: ExtremeControl portal TCP
@@ -50,6 +57,47 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: availability
+        - uuid: a3d1644319f04fce91c53b0f0d98036d
+          name: TLS certificate expiration
+          type: EXTERNAL
+          key: 'tls_certificate_expiry.sh[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT},{$NAC.PORTAL.FQDN}]'
+          delay: 1h
+          history: 30d
+          trends: 365d
+          value_type: UNSIGNED
+          units: unixtime
+          description: Leaf certificate expiry collected by the assigned Zabbix proxy.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          triggers:
+            - uuid: ca56632b9e8e4b189fd5f68b8352b604
+              expression: 'last(/ExtremeControl Observability/tls_certificate_expiry.sh[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT},{$NAC.PORTAL.FQDN}])<=now()'
+              name: 'ExtremeControl: TLS certificate expired'
+              event_name: 'ExtremeControl: TLS certificate expired'
+              priority: AVERAGE
+              description: The management/API TLS certificate is expired. Authentication traffic may continue, but HTTPS clients cannot validate the endpoint.
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: e572845d1e584991bc631b20ac52ae7c
+              expression: 'last(/ExtremeControl Observability/tls_certificate_expiry.sh[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT},{$NAC.PORTAL.FQDN}])-now()<{$TLS.CERT.WARN} and last(/ExtremeControl Observability/tls_certificate_expiry.sh[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT},{$NAC.PORTAL.FQDN}])>now()'
+              name: 'ExtremeControl: TLS certificate expires soon'
+              event_name: 'ExtremeControl: TLS certificate expires soon'
+              priority: WARNING
+              description: Renew the management/API TLS certificate before {$TLS.CERT.WARN} elapses.
+              dependencies:
+                - name: 'ExtremeControl: TLS certificate expired'
+                  expression: 'last(/ExtremeControl Observability/tls_certificate_expiry.sh[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT},{$NAC.PORTAL.FQDN}])<=now()'
+              tags:
+                - tag: scope
+                  value: availability
+          tags:
+            - tag: component
+              value: certificate
+            - tag: scope
+              value: availability
       tags:
         - tag: class
           value: network
@@ -63,14 +111,14 @@ zabbix_export:
               widgets:
                 - type: item
                   name: Portal TCP
-                  width: '24'
+                  width: '18'
                   height: '4'
                   fields:
                     - type: ITEM
                       name: itemid.0
                       value:
                         host: ExtremeControl Observability
-                        key: 'net.tcp.service[tcp,,{$NAC.PORTAL.PORT}]'
+                        key: net.tcp.service[tcp,,{$NAC.PORTAL.PORT}]
                     - type: INTEGER
                       name: show.0
                       value: '2'
@@ -80,10 +128,36 @@ zabbix_export:
                     - type: INTEGER
                       name: value_size
                       value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NPORT
+                - type: item
+                  name: Certificate expires
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: ExtremeControl Observability
+                        key: tls_certificate_expiry.sh[{$NAC.PORTAL.FQDN},{$NAC.PORTAL.PORT},{$NAC.PORTAL.FQDN}]
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: NCERT
                 - type: problems
                   name: Problems
-                  x: '24'
-                  width: '48'
+                  x: '36'
+                  width: '36'
                   height: '4'
                   fields:
                     - type: STRING

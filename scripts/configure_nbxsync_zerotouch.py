@@ -1947,7 +1947,7 @@ def step7_template_assignments(server):
         ('extremecontrol_snmp', 'NAC'),
     ]
     stub_req = {
-        'extremecontrol_observability': [HostInterfaceRequirementChoices.ANY],
+        'extremecontrol_observability': [HostInterfaceRequirementChoices.NONE],
         'extremecontrol_snmp': [HostInterfaceRequirementChoices.SNMP],
     }
     for tpl_key, role_name in stub_assignments:

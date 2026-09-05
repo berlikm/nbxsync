@@ -462,12 +462,15 @@ def main() -> int:
         'run_apply_xiqse',
     )
     record(
-        'network_xiqse_apply_skips_extreme_and_hostsync',
+        'network_xiqse_apply_uses_targeted_hostsync_only',
         bool(xiqse)
         and 'import_extreme_templates' not in xiqse
-        and 'SyncHostJob' not in xiqse
+        and 'for vm in targets' in xiqse
+        and 'SyncHostJob(instance=vm).run()' in xiqse
+        and '_unlink_xiqse_agent_templates(api, targets)' in xiqse
+        and xiqse.index('_unlink_xiqse_agent_templates(api, targets)') < xiqse.index('SyncHostJob(instance=vm).run()')
         and 'configure_nbxsync_zerotouch' not in xiqse,
-        'no Extreme import / HostSync / zerotouch in --apply-xiqse',
+        'no Extreme import / zerotouch; HostSync only the explicit XIQ-SE and Control-engine targets',
     )
     xiqse_preflight = _function_source(net_src, net_tree, '_require_xiqse_preflight') or ''
     record(
@@ -486,21 +489,21 @@ def main() -> int:
     )
     xiqse_step = _function_source(net_src, net_tree, '_step_xiqse_nbxsync') or ''
     record(
-        'network_xiqse_assigns_control_snmp',
+        'network_xiqse_assigns_control_snmp_without_agent',
         'SNMP_TEMPLATE_NAME' in xiqse_step
         and 'HostInterfaceRequirementChoices.SNMP' in xiqse_step
+        and 'SNMP_CONFIGURATION_GROUP' in xiqse_step
+        and 'ZabbixHostInterfaceTypeChoices.AGENT' in xiqse_step
         and 'icmpping' not in xiqse_step,
-        'role NAC gets ExtremeControl by SNMP (SNMP interface), no icmpping nest',
+        'role NAC gets the SNMP configuration group; explicit agent interfaces are removed',
     )
     record(
-        'network_xiqse_license_cg_never_overwrites_totals',
-        '_step_xiqse_license_scope' in (xiqse_step)
-        and '_ensure_macro_assignment_if_absent' in net_src
-        and '_mirror_license_totals_to_platform' in net_src
-        and 'LICENSE_CG_NAME' in net_src
-        and 'ma.value = value' not in (_function_source(net_src, net_tree, '_ensure_macro_assignment_if_absent') or '')
-        and 'keeper.value = value' in (_function_source(net_src, net_tree, '_mirror_license_totals_to_platform') or ''),
-        'XIQ-SE license CG totals are create-if-absent; apply mirrors onto platforms',
+        'network_xiqse_has_no_license_configuration_group',
+        '_step_xiqse_license_scope' not in xiqse_step
+        and '_ensure_macro_assignment_if_absent' not in net_src
+        and '_mirror_license_totals_to_platform' not in net_src
+        and 'LICENSE_CG_NAME' not in net_src,
+        'XIQ-SE leaves seat-total macros at template defaults; it creates no license configuration group',
     )
     record(
         'zerotouch_no_xiqse_cutover',

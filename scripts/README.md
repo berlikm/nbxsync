@@ -120,14 +120,16 @@ python3 scripts/configure_nbxsync_network.py --check-xiqse
 python3 scripts/configure_nbxsync_network.py --apply-xiqse
 ```
 
-That fail-closes on missing YAML, imports **XIQ-SE Observability**,
-**ExtremeControl Observability**, and **ExtremeControl by SNMP**, creates a
-soft platform TemplateRule (`XIQ.?SE|Site Engine|NetSight`), writes FQDN Jinja
-on matching platforms, and assigns role **NAC** (ANY companion + SNMP pack).
-No HostSync, no Extreme import. Put Client API Access secrets on a nbxSync CG,
-not in YAML. Engine SNMP uses the switch MONITORING SNMPv3 profile (canary:
-five ENACs, `1.3.6.1.4.1.5624.1.2.73`). Then HostSync the Site Engine and each
-Control engine. If zerotouch is re-run by mistake, run `--apply-xiqse` again.
+That fail-closes on missing YAML, stock Cloud Pilot items, credentials, or the
+shared SNMP interface. It imports **XIQ-SE Observability**,
+**ExtremeControl Observability**, and **ExtremeControl by SNMP**. The Site
+Engine uses exact platform **ExtremeCloud IQ Site Engine**, receives its NBI
+credentials and FQDN through platform inheritance, and keeps an address
+interface only for inherited ICMP (no Linux agent checks). Role **NAC** gets
+the no-interface companion plus the SNMP pack and shared SNMPv3 configuration;
+the five Control engines retain only SNMP interfaces. Apply runs HostSync only
+for those six VMs. It never imports the general Extreme pack or runs zerotouch.
+If zerotouch is re-run by mistake, run `--apply-xiqse` again.
 Tests: `python3 scripts/test_xiqse_observability.py` and
 `python3 scripts/test_extremecontrol_snmp.py`.
 

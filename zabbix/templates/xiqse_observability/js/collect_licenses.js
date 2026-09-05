@@ -1,5 +1,9 @@
 function endSystemQuery(maxResults, firstResult) {
-  return '{ accessControl { endSystems(maxResults: ' + maxResults + ', firstResult: ' + firstResult + ') { count success errorMessage endSystems { macAddress lastAuthEventTime username nacApplianceIP } } } }';
+  return '{ accessControl { endSystems(maxResults: ' + maxResults + ', firstResult: ' + firstResult + ') { count success errorMessage endSystems { macAddress lastAuthEventTime lastSeenTime username nacApplianceIP } } } }';
+}
+
+function pendingDeviceQuery() {
+  return '{ network { devices { baseMac deviceData { xiqLicenseState } } } }';
 }
 
 function emptyLicenseSnapshot(error) {
@@ -8,7 +12,10 @@ function emptyLicenseSnapshot(error) {
     error: error,
     truncated: 0,
     fetched: 0,
-    nacUsed24h: 0,
+    nacUsed: 0,
+    nacAuthenticated24h: 0,
+    nacPendingDevices: 0,
+    sourceTimeOffsetMinutes: 0,
     users24h: 0,
     nacRemaining: 0,
     nacUsedPct: 0,
@@ -66,16 +73,27 @@ function collectLicenses(params) {
     }
     first += take;
   }
-  var counted = countLicenseWindow(rows, Date.now(), 86400000, params.tz);
+  var devicesResult = graphql(params, auth.token, pendingDeviceQuery());
+  if (!devicesResult.ok) {
+    var deviceFailed = emptyLicenseSnapshot(devicesResult.error);
+    deviceFailed.truncated = truncated;
+    deviceFailed.fetched = rows.length;
+    return deviceFailed;
+  }
+  var devices = (((devicesResult.data || {}).network) || {}).devices;
+  var counted = countNacLicenseUsage(rows, devices, Date.now(), 86400000);
   return {
     ok: 1,
     error: '',
     truncated: truncated,
     fetched: rows.length,
-    nacUsed24h: counted.nacUsed24h,
+    nacUsed: counted.nacUsed,
+    nacAuthenticated24h: counted.nacAuthenticated24h,
+    nacPendingDevices: counted.nacPendingDevices,
     users24h: counted.users24h,
-    nacRemaining: remainingSeats(nacTotal, counted.nacUsed24h),
-    nacUsedPct: usedSeatPercent(nacTotal, counted.nacUsed24h),
+    sourceTimeOffsetMinutes: counted.sourceTimeOffsetMinutes,
+    nacRemaining: remainingSeats(nacTotal, counted.nacUsed),
+    nacUsedPct: usedSeatPercent(nacTotal, counted.nacUsed),
     engines: counted.engines
   };
 }

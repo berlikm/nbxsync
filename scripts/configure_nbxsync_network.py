@@ -70,10 +70,10 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     Socket role mutation. Do **not** re-run zerotouch to refresh the collector.
   * XIQ-SE / ExtremeControl: ``--apply-xiqse`` / ``--check-xiqse`` import
     **XIQ-SE Observability**, **ExtremeControl Observability**, and
-    **ExtremeControl by SNMP**, soft platform TemplateRule
-    ``XIQ.?SE|Site Engine|NetSight``, FQDN Jinja on matching platforms, role
-    **NAC** (ANY companion + SNMP pack). Fail-closed on missing YAML. No
-    HostSync, no Extreme import, no zerotouch.
+    **ExtremeControl by SNMP**; classify the one Site Engine and five Control
+    engine VMs; remove inherited Linux-agent monitoring; and HostSync only
+    those six targets. Certificate expiry is collected per appliance by the
+    assigned proxy. No Extreme import or zerotouch.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -91,7 +91,7 @@ Stage matrix (what each flag enables):
   ``--apply-fortigate-http``      = FortiGate HTTP cutover without zerotouch: lookup Cloud **Zabbix, 7.0-2**, patch ZBX-27082 / WAN state, import Observability companion, FortiOS rule only (not role Firewall). Fail-closed preflight. No HostSync.
   ``--check-fmg-faz`` / ``--apply-fmg-faz`` = FortiManager/FortiAnalyzer SNMP pack without zerotouch: import parent + Observability companions, split platform rules, disable leftover Network Generic rule. No HostSync.
   ``--apply-cato`` / ``--check-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
-  ``--apply-xiqse`` / ``--check-xiqse`` = XIQ-SE / ExtremeControl without zerotouch: import GraphQL companions plus ExtremeControl by SNMP, soft Site Engine TemplateRule, role NAC (ANY + SNMP). Drops the leftover Engines host dashboard (now a Health page). Fail-closed missing YAML. No HostSync.
+  ``--apply-xiqse`` / ``--check-xiqse`` = agentless XIQ-SE / ExtremeControl cutover: GraphQL + stock XIQ Cloud on the Site Engine; SNMP on five Control engines; per-host certificate expiry; one Health dashboard; targeted six-host HostSync.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -147,7 +147,7 @@ Usage::
   python scripts/configure_nbxsync_network.py --check-cato   # GraphQL preflight + collector shape
   python scripts/configure_nbxsync_network.py --apply-cato
 
-  # XIQ-SE / ExtremeControl Observability (no zerotouch, no Extreme YAML, no HostSync)
+  # Agentless XIQ-SE / ExtremeControl cutover (six named VMs; targeted HostSync)
   python scripts/configure_nbxsync_network.py --check-xiqse
   python scripts/configure_nbxsync_network.py --apply-xiqse
 
@@ -187,6 +187,7 @@ from django.contrib.contenttypes.models import ContentType
 from dcim.models import Device, DeviceRole, DeviceType, Interface, Manufacturer, Platform, Site, SiteGroup
 from extras.models import Tag
 from ipam.models import IPAddress
+from virtualization.models import VirtualMachine
 
 from nbxsync import models as M
 from nbxsync.choices import (
@@ -2657,114 +2658,6 @@ def _upsert_object_macro_assignment(
         ma.save(update_fields=['value'])
 
 
-def _ensure_macro_assignment_if_absent(
-    server,
-    obj,
-    macro_name: str,
-    value: str,
-    *,
-    mtype,
-    description: str,
-    context: str = '',
-) -> bool:
-    """Create the assignment only when missing. Never overwrite an operator-set value."""
-    zmacro, _ = ensure(
-        M.ZabbixMacro,
-        macro=macro_name,
-        assigned_object_type=ct(M.ZabbixServer),
-        assigned_object_id=server.id,
-        defaults={
-            'value': '',
-            'type': mtype,
-            'description': description,
-        },
-        update_fields=['type', 'description'],
-    )
-    ma = M.ZabbixMacroAssignment.objects.filter(
-        zabbixmacro=zmacro,
-        assigned_object_type=ct(type(obj)),
-        assigned_object_id=obj.id,
-        context=context,
-        is_regex=False,
-    ).first()
-    if ma is not None:
-        return False
-    M.ZabbixMacroAssignment.objects.create(
-        zabbixmacro=zmacro,
-        assigned_object_type=ct(type(obj)),
-        assigned_object_id=obj.id,
-        value=value,
-        context=context,
-        is_regex=False,
-    )
-    return True
-
-
-def _mirror_license_totals_to_platform(server, platform, cg, macro_name: str, value: str, *, mtype) -> None:
-    """One HostSync-visible copy of a CG license total on the Site Engine platform.
-
-    HostSync inherits platform macros. It does not expand CG macros at resolve
-    time, so --apply-xiqse copies CG → platform. Dedupes RQ clones that used
-    the unique-on-value constraint. Delete extras before changing value.
-    """
-    zmacro, _ = ensure(
-        M.ZabbixMacro,
-        macro=macro_name,
-        assigned_object_type=ct(M.ZabbixServer),
-        assigned_object_id=server.id,
-        defaults={
-            'value': '',
-            'type': mtype,
-            'description': f'nwn:xiqse:{macro_name}',
-        },
-        update_fields=['type', 'description'],
-    )
-    parent = M.ZabbixMacroAssignment.objects.filter(
-        zabbixmacro=zmacro,
-        assigned_object_type=ct(type(cg)),
-        assigned_object_id=cg.id,
-        context='',
-        is_regex=False,
-    ).first()
-    rows = list(
-        M.ZabbixMacroAssignment.objects.filter(
-            zabbixmacro=zmacro,
-            assigned_object_type=ct(type(platform)),
-            assigned_object_id=platform.id,
-            context='',
-            is_regex=False,
-        ).order_by('pk')
-    )
-    if not rows:
-        M.ZabbixMacroAssignment.objects.create(
-            zabbixmacro=zmacro,
-            assigned_object_type=ct(type(platform)),
-            assigned_object_id=platform.id,
-            value=value,
-            context='',
-            is_regex=False,
-            zabbixconfigurationgroup=cg,
-            parent=parent,
-        )
-        return
-    keeper = next((row for row in rows if row.value == value), None)
-    if keeper is None:
-        keeper = next((row for row in rows if row.zabbixconfigurationgroup_id == cg.id), rows[0])
-    extras = [row for row in rows if row.pk != keeper.pk]
-    if extras:
-        M.ZabbixMacroAssignment.objects.filter(pk__in=[row.pk for row in extras]).delete()
-    dirty = []
-    if keeper.value != value:
-        keeper.value = value
-        dirty.append('value')
-    if keeper.zabbixconfigurationgroup_id != cg.id:
-        keeper.zabbixconfigurationgroup = cg
-        dirty.append('zabbixconfigurationgroup')
-    if parent is not None and keeper.parent_id != parent.id:
-        keeper.parent = parent
-        dirty.append('parent')
-    if dirty:
-        keeper.save(update_fields=dirty)
 
 
 def _assignment_value(server, obj, macro_name: str) -> str:
@@ -4995,44 +4888,121 @@ def run_apply_cato() -> int:
 
 
 def _xiqse_platforms() -> list:
-    return [p for p in Platform.objects.all() if _xiqse.platform_is_xiqse(p.name)]
+    return list(Platform.objects.filter(name=_xiqse.SE_PLATFORM_NAME))
 
 
-def _preflight_xiqse() -> list[str]:
+def _xiqse_target_vms() -> dict[str, VirtualMachine]:
+    names = (_xiqse.SE_VM_NAME, *_xiqse.NAC_VM_NAMES)
+    rows = VirtualMachine.objects.filter(name__in=names).select_related('role', 'platform')
+    return {vm.name: vm for vm in rows}
+
+def _xiqse_credential_values(server) -> dict[str, str]:
+    """Resolve credentials from the agentless platform, then the retired agent group."""
+    sources = list(Platform.objects.filter(name=_xiqse.SE_PLATFORM_NAME))
+    sources.extend(
+        M.ZabbixConfigurationGroup.objects.filter(name__in=_xiqse.STALE_AGENT_CONFIGURATION_GROUPS).order_by('name')
+    )
+    values: dict[str, str] = {}
+    for macro_name in _xiqse.XIQSE_CREDENTIAL_MACROS:
+        values[macro_name] = next(
+            (value for source in sources if (value := _assignment_value(server, source, macro_name))),
+            '',
+        )
+    return values
+
+
+def _preflight_xiqse(server) -> tuple[list[str], dict[str, tuple[int, str]]]:
     errors: list[str] = []
+    existing: dict[str, tuple[int, str]] = {}
     for name, path in _xiqse.TEMPLATE_FILES.items():
         if not path.exists() or not path.read_text(encoding='utf-8').strip():
             errors.append(f'missing YAML for {name}: {path}')
-    return errors
+    if not (_xiqse.ROOT / 'zabbix/externalscripts' / _xiqse.TLS_EXTERNAL_SCRIPT).is_file():
+        errors.append(f'missing proxy external script: {_xiqse.TLS_EXTERNAL_SCRIPT}')
+    if not DeviceRole.objects.filter(name=_xiqse.NAC_ROLE).exists():
+        errors.append(f'missing NetBox role: {_xiqse.NAC_ROLE}')
+    targets = _xiqse_target_vms()
+    for name in (_xiqse.SE_VM_NAME, *_xiqse.NAC_VM_NAMES):
+        if name not in targets:
+            errors.append(f'missing NetBox virtual machine: {name}')
+    for name in _xiqse.NAC_VM_NAMES:
+        vm = targets.get(name)
+        if vm is not None and (vm.role is None or vm.role.name != _xiqse.NAC_ROLE):
+            errors.append(f'{name} is not role {_xiqse.NAC_ROLE}')
+    snmp_group = M.ZabbixConfigurationGroup.objects.filter(name=_xiqse.SNMP_CONFIGURATION_GROUP).first()
+    if snmp_group is None:
+        errors.append(f'missing NetBox configuration group: {_xiqse.SNMP_CONFIGURATION_GROUP}')
+    elif not M.ZabbixHostInterface.objects.filter(
+        zabbixconfigurationgroup=snmp_group,
+        type=ZabbixHostInterfaceTypeChoices.SNMP,
+    ).exists():
+        errors.append(f'{_xiqse.SNMP_CONFIGURATION_GROUP} has no SNMP interface')
+    missing_credentials = [
+        macro_name
+        for macro_name, value in _xiqse_credential_values(server).items()
+        if not value
+    ]
+    if missing_credentials:
+        errors.append('missing XIQ-SE credential values: ' + ', '.join(missing_credentials))
+    with ZabbixConnection(server) as api:
+        cloud = _lookup_zabbix_template(api, _xiqse.CLOUD_TEMPLATE_NAME)
+        if cloud is None:
+            errors.append(f'missing stock Zabbix template: {_xiqse.CLOUD_TEMPLATE_NAME}')
+        else:
+            cloud_id = int(cloud[0])
+            existing[_xiqse.CLOUD_TEMPLATE_NAME] = (cloud_id, cloud[1])
+            keys = {
+                row['key_']
+                for row in api.item.get(templateids=[cloud_id], output=['key_']) or []
+            }
+            missing_keys = {
+                'xiq.cloud.pilot.activated',
+                'xiq.cloud.pilot.available',
+                'xiq.cloud.pilot.expire',
+            } - keys
+            if missing_keys:
+                errors.append(
+                    f'{_xiqse.CLOUD_TEMPLATE_NAME} missing Pilot Cloud item keys: '
+                    + ', '.join(sorted(missing_keys))
+                )
+        for name in _xiqse.TEMPLATE_FILES:
+            row = _lookup_zabbix_template(api, name)
+            if row is not None:
+                existing[name] = row
+    return errors, existing
 
 
-def _print_xiqse_plan(server, *, errors: list[str], apply: bool, zbx_names: list[str] | None = None) -> None:
+def _print_xiqse_plan(
+    server,
+    *,
+    errors: list[str],
+    apply: bool,
+    existing: dict[str, tuple[int, str]],
+) -> None:
     logger.info('=' * 60)
     logger.info('XIQ-SE / ExtremeControl proposed writes (nothing written yet)' if apply else 'XIQ-SE / ExtremeControl check (read-only)')
     logger.info('=' * 60)
     for name, path in _xiqse.TEMPLATE_FILES.items():
         logger.info('  %s ← %s', name, path)
-    if zbx_names:
-        logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
-    platforms = _xiqse_platforms()
+    logger.info('Already in Zabbix: %s', ', '.join(sorted(existing)) or 'none')
     logger.info(
-        '  TemplateRule %s pattern %s → %s (ANY; soft if no platform matches yet)',
-        _xiqse.SE_TEMPLATE_RULE,
-        _xiqse.SE_PLATFORM_PATTERN,
+        '  VM %s → platform %s → %s + %s (agentless)',
+        _xiqse.SE_VM_NAME,
+        _xiqse.SE_PLATFORM_NAME,
         _xiqse.SE_TEMPLATE_NAME,
+        _xiqse.CLOUD_TEMPLATE_NAME,
     )
-    logger.info('  Platforms: %s', ', '.join(p.name for p in platforms) or '(none — rule still created)')
-    logger.info('  %s Jinja %s on matching platforms', _xiqse.XIQSE_FQDN_MACRO, _xiqse.XIQSE_FQDN_JINJA)
     logger.info(
-        '  CG %s %s / %s / %s (create-if-absent, never overwrite CG; mirror onto Site Engine platforms for HostSync)',
-        _xiqse.LICENSE_CG_NAME,
-        _xiqse.LICENSE_TOTAL_MACROS[0][0],
-        _xiqse.LICENSE_TOTAL_MACROS[1][0],
-        _xiqse.LICENSE_TOTAL_MACROS[2][0],
+        '  VMs %s → platform %s; role %s → %s (no interface) + %s via %s (SNMP only)',
+        ', '.join(_xiqse.NAC_VM_NAMES),
+        _xiqse.NAC_PLATFORM_NAME,
+        _xiqse.NAC_ROLE,
+        _xiqse.NAC_TEMPLATE_NAME,
+        _xiqse.SNMP_TEMPLATE_NAME,
+        _xiqse.SNMP_CONFIGURATION_GROUP,
     )
-    logger.info('  Role %s → %s (ANY) + %s (SNMP)', _xiqse.NAC_ROLE, _xiqse.NAC_TEMPLATE_NAME, _xiqse.SNMP_TEMPLATE_NAME)
-    logger.info('  %s Jinja on role %s', _xiqse.NAC_PORTAL_FQDN_MACRO, _xiqse.NAC_ROLE)
-    logger.info('  No HostSync, no Extreme import, no zerotouch, no ICMP nest')
+    logger.info('  TLS certificate expiry is per Site Engine and per Control engine, collected by each assigned proxy')
+    logger.info('  HostSync only the six named VMs; no zerotouch')
     if errors:
         logger.info('Preflight errors (%s) — abort, no writes:', len(errors))
         for err in errors:
@@ -5040,25 +5010,18 @@ def _print_xiqse_plan(server, *, errors: list[str], apply: bool, zbx_names: list
 
 
 def _require_xiqse_preflight(*, server=None, apply: bool = True):
-    """Fail-closed YAML gate. Does not import YAML or retarget rules."""
-    errors = _preflight_xiqse()
+    """Fail closed before importing templates or changing NetBox."""
     if server is None:
         server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
         if server is None:
             raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
-    zbx_names: list[str] = []
-    if not errors:
-        with ZabbixConnection(server) as api:
-            for name in _xiqse.TEMPLATE_FILES:
-                row = _lookup_zabbix_template(api, name)
-                if row is not None:
-                    zbx_names.append(name)
-    _print_xiqse_plan(server, errors=errors, apply=apply, zbx_names=zbx_names)
+    errors, existing = _preflight_xiqse(server)
+    _print_xiqse_plan(server, errors=errors, apply=apply, existing=existing)
     if errors:
         for error in errors:
             logger.error('  preflight: %s', error)
         raise SystemExit('XIQ-SE preflight failed — no writes:\n  ' + '\n  '.join(errors))
-    return server
+    return server, existing
 
 
 def drop_leftover_xiqse_engines_dashboard(api, templateid: int) -> str:
@@ -5088,25 +5051,36 @@ def import_xiqse_templates(api) -> dict[str, tuple[int, str]]:
     se_id = out.get(_xiqse.SE_TEMPLATE_NAME)
     if se_id:
         drop_leftover_xiqse_engines_dashboard(api, se_id[0])
+    stale = api.item.get(
+        templateids=[out[_xiqse.SE_TEMPLATE_NAME][0]],
+        filter={'key_': list(_xiqse.STALE_SE_ITEM_KEYS)},
+        output=['itemid', 'key_'],
+    ) or []
+    if stale:
+        api.item.delete(*(item['itemid'] for item in stale))
+        logger.info('  Deleted obsolete XIQ-SE items: %s', ', '.join(sorted(item['key_'] for item in stale)))
     return out
 
 
-def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
-    """Soft Site Engine TemplateRule + role NAC. No HostSync."""
+def _step_xiqse_nbxsync(
+    server,
+    imported: dict[str, tuple[int, str]],
+) -> list[VirtualMachine]:
+    """Converge the one Site Engine and five Control engines without agents."""
     logger.info('=' * 60)
-    logger.info('Network: XIQ-SE / ExtremeControl nbxSync levers (no HostSync)')
+    logger.info('Network: XIQ-SE / ExtremeControl agentless nbxSync cutover')
     logger.info('=' * 60)
     se = ensure_nbx_template(
         server,
         imported[_xiqse.SE_TEMPLATE_NAME][0],
         imported[_xiqse.SE_TEMPLATE_NAME][1],
-        req=[HostInterfaceRequirementChoices.ANY],
+        req=[HostInterfaceRequirementChoices.NONE],
     )
     nac = ensure_nbx_template(
         server,
         imported[_xiqse.NAC_TEMPLATE_NAME][0],
         imported[_xiqse.NAC_TEMPLATE_NAME][1],
-        req=[HostInterfaceRequirementChoices.ANY],
+        req=[HostInterfaceRequirementChoices.NONE],
     )
     snmp = ensure_nbx_template(
         server,
@@ -5114,158 +5088,281 @@ def _step_xiqse_nbxsync(server, imported: dict[str, tuple[int, str]]) -> None:
         imported[_xiqse.SNMP_TEMPLATE_NAME][1],
         req=[HostInterfaceRequirementChoices.SNMP],
     )
-    existing = get_template_rule(server, _xiqse.SE_TEMPLATE_RULE)
-    hg = existing.zabbixhostgroup if existing is not None and existing.zabbixhostgroup_id else _os_network_hostgroup(server)
-    rule_defaults = {
-        'pattern': _xiqse.SE_PLATFORM_PATTERN,
-        'zabbixtemplate': se,
-        'enabled': True,
-        'priority': 100,
-        'zabbixtag': None,
-        'zabbixhostgroup': hg,
-        'require_tags': '',
-        'role_pattern': '',
-        'manufacturer': None,
-    }
-    update_fields = (
-        ['zabbixtemplate', 'enabled', 'pattern', 'priority']
-        if existing is not None
-        else None
+    cloud = ensure_nbx_template(
+        server,
+        imported[_xiqse.CLOUD_TEMPLATE_NAME][0],
+        imported[_xiqse.CLOUD_TEMPLATE_NAME][1],
+        req=[HostInterfaceRequirementChoices.NONE],
     )
-    ensure_template_rule(server, _xiqse.SE_TEMPLATE_RULE, rule_defaults, update_fields=update_fields)
-    logger.info(
-        '  TemplateRule %s → %s (ANY)',
-        simulation_rule_name(server, _xiqse.SE_TEMPLATE_RULE),
-        se.name,
+
+    targets = _xiqse_target_vms()
+    se_vm = targets[_xiqse.SE_VM_NAME]
+    nac_vms = [targets[name] for name in _xiqse.NAC_VM_NAMES]
+    nac_role = DeviceRole.objects.get(name=_xiqse.NAC_ROLE)
+    se_platform, _ = Platform.objects.get_or_create(
+        name=_xiqse.SE_PLATFORM_NAME,
+        defaults={'slug': slugify(_xiqse.SE_PLATFORM_NAME)},
     )
-    platforms = _xiqse_platforms()
-    for plat in platforms:
-        _upsert_object_macro_assignment(
-            server,
-            plat,
-            _xiqse.XIQSE_FQDN_MACRO,
-            _xiqse.XIQSE_FQDN_JINJA,
-            mtype=ZabbixMacroTypeChoices.TEXT,
-            description=f'nwn:xiqse:{_xiqse.XIQSE_FQDN_MACRO}',
-        )
-        logger.info('  Platform %s %s Jinja (no HostSync)', plat.name, _xiqse.XIQSE_FQDN_MACRO)
-    _step_xiqse_license_scope(server, platforms)
-    try:
-        role = get_role(_xiqse.NAC_ROLE)
-    except DeviceRole.DoesNotExist:
-        logger.warning('  Role %s not found — skip ExtremeControl assignment', _xiqse.NAC_ROLE)
-        return
+    nac_platform, _ = Platform.objects.get_or_create(
+        name=_xiqse.NAC_PLATFORM_NAME,
+        defaults={'slug': slugify(_xiqse.NAC_PLATFORM_NAME)},
+    )
+    if se_vm.platform_id != se_platform.id:
+        se_vm.platform = se_platform
+        se_vm.save(update_fields=['platform'])
+    for vm in nac_vms:
+        if vm.platform_id != nac_platform.id:
+            vm.platform = nac_platform
+            vm.save(update_fields=['platform'])
+
+    existing_rule = get_template_rule(server, _xiqse.SE_TEMPLATE_RULE)
+    hg = (
+        existing_rule.zabbixhostgroup
+        if existing_rule is not None and existing_rule.zabbixhostgroup_id
+        else _os_network_hostgroup(server)
+    )
+    ensure_template_rule(
+        server,
+        _xiqse.SE_TEMPLATE_RULE,
+        {
+            'pattern': _xiqse.SE_PLATFORM_PATTERN,
+            'zabbixtemplate': se,
+            'enabled': True,
+            'priority': 100,
+            'zabbixtag': None,
+            'zabbixhostgroup': hg,
+            'require_tags': '',
+            'role_pattern': '',
+            'manufacturer': None,
+        },
+        update_fields=(
+            ['zabbixtemplate', 'enabled', 'pattern', 'priority']
+            if existing_rule is not None
+            else None
+        ),
+    )
+    ensure(
+        M.ZabbixTemplateAssignment,
+        zabbixtemplate=cloud,
+        assigned_object_type=ct(Platform),
+        assigned_object_id=se_platform.id,
+        defaults={},
+    )
     ensure(
         M.ZabbixTemplateAssignment,
         zabbixtemplate=nac,
         assigned_object_type=ct(DeviceRole),
-        assigned_object_id=role.id,
+        assigned_object_id=nac_role.id,
         defaults={},
     )
     ensure(
         M.ZabbixTemplateAssignment,
         zabbixtemplate=snmp,
         assigned_object_type=ct(DeviceRole),
-        assigned_object_id=role.id,
+        assigned_object_id=nac_role.id,
         defaults={},
     )
+    snmp_group = M.ZabbixConfigurationGroup.objects.get(name=_xiqse.SNMP_CONFIGURATION_GROUP)
+    ensure(
+        M.ZabbixConfigurationGroupAssignment,
+        zabbixconfigurationgroup=snmp_group,
+        assigned_object_type=ct(DeviceRole),
+        assigned_object_id=nac_role.id,
+        defaults={},
+    )
+
     _upsert_object_macro_assignment(
         server,
-        role,
+        se_platform,
+        _xiqse.XIQSE_FQDN_MACRO,
+        _xiqse.XIQSE_FQDN_JINJA,
+        mtype=ZabbixMacroTypeChoices.TEXT,
+        description=f'nwn:xiqse:{_xiqse.XIQSE_FQDN_MACRO}',
+    )
+    credential_values = _xiqse_credential_values(server)
+    for macro_name, macro_type in (
+        (_xiqse.XIQSE_PORT_MACRO, ZabbixMacroTypeChoices.TEXT),
+        (_xiqse.XIQSE_CLIENT_ID_MACRO, ZabbixMacroTypeChoices.TEXT),
+        (_xiqse.XIQSE_CLIENT_SECRET_MACRO, ZabbixMacroTypeChoices.SECRET),
+    ):
+        _upsert_object_macro_assignment(
+            server,
+            se_platform,
+            macro_name,
+            credential_values[macro_name],
+            mtype=macro_type,
+            description=f'nwn:xiqse:{macro_name}',
+        )
+    _upsert_object_macro_assignment(
+        server,
+        nac_platform,
         _xiqse.NAC_PORTAL_FQDN_MACRO,
         _xiqse.XIQSE_FQDN_JINJA,
         mtype=ZabbixMacroTypeChoices.TEXT,
         description=f'nwn:xiqse:{_xiqse.NAC_PORTAL_FQDN_MACRO}',
     )
-    logger.info('  Role %s → %s (ANY) + %s (SNMP)', role.name, nac.name, snmp.name)
 
+    linux_templates = {'Linux by Zabbix agent', 'Linux by Zabbix agent active'}
+    scoped_objects = [se_vm, nac_role, *nac_vms, se_platform, nac_platform]
+    for obj in scoped_objects:
+        object_type = ct(type(obj))
+        M.ZabbixConfigurationGroupAssignment.objects.filter(
+            zabbixconfigurationgroup__name__in=_xiqse.STALE_AGENT_CONFIGURATION_GROUPS,
+            assigned_object_type=object_type,
+            assigned_object_id=obj.id,
+        ).delete()
+        M.ZabbixTemplateAssignment.objects.filter(
+            zabbixtemplate__name__in=linux_templates,
+            assigned_object_type=object_type,
+            assigned_object_id=obj.id,
+        ).delete()
+        M.ZabbixHostInterface.objects.filter(
+            type=ZabbixHostInterfaceTypeChoices.AGENT,
+            assigned_object_type=object_type,
+            assigned_object_id=obj.id,
+        ).delete()
 
-def _step_xiqse_license_scope(server, platforms) -> None:
-    """Purchased seat totals: CG XIQ-SE licenses is the source of truth.
-
-    Remaining stays 0 until an operator types Administration → Licenses
-    numbers onto that CG. Re-apply never overwrites the CG; it mirrors the
-    CG onto Site Engine platforms so HostSync can push them. No HostSync here.
-    """
-    cg, cg_created = M.ZabbixConfigurationGroup.objects.get_or_create(
-        name=_xiqse.LICENSE_CG_NAME,
-        defaults={
-            'description': (
-                'Purchased XIQ-NAC-S / Pilot / Navigator seats for XIQ-SE Observability. '
-                'Set the three TOTAL macros here from Administration → Licenses, then '
-                're-run --apply-xiqse and HostSync the Site Engine. Apply never overwrites this CG.'
-            )
+    M.ZabbixMacroAssignment.objects.filter(
+        zabbixmacro__macro=_xiqse.NAC_PORTAL_FQDN_MACRO,
+        assigned_object_type=ct(DeviceRole),
+        assigned_object_id=nac_role.id,
+    ).delete()
+    M.ZabbixTemplateAssignment.objects.filter(
+        zabbixtemplate__name__in={
+            _xiqse.SE_TEMPLATE_NAME,
+            _xiqse.CLOUD_TEMPLATE_NAME,
         },
+        assigned_object_type=ct(VirtualMachine),
+        assigned_object_id=se_vm.id,
+    ).delete()
+    M.ZabbixTemplateAssignment.objects.filter(
+        zabbixtemplate__name__in={
+            _xiqse.NAC_TEMPLATE_NAME,
+            _xiqse.SNMP_TEMPLATE_NAME,
+        },
+        assigned_object_type=ct(VirtualMachine),
+        assigned_object_id__in=[vm.id for vm in nac_vms],
+    ).delete()
+
+    logger.info(
+        '  %s → %s; templates %s + %s; ICMP address interface only (no agent checks)',
+        se_vm.name,
+        se_platform.name,
+        se.name,
+        cloud.name,
     )
-    if cg_created:
-        logger.info('  Created CG %s', cg.name)
-    for macro, _desc in _xiqse.LICENSE_TOTAL_MACROS:
-        created = _ensure_macro_assignment_if_absent(
-            server,
-            cg,
-            macro,
-            '0',
-            mtype=ZabbixMacroTypeChoices.TEXT,
-            description=f'nwn:xiqse:{macro}',
+    logger.info(
+        '  %s → %s; role %s → %s + %s via %s; SNMP interface only',
+        ', '.join(vm.name for vm in nac_vms),
+        nac_platform.name,
+        nac_role.name,
+        nac.name,
+        snmp.name,
+        snmp_group.name,
+    )
+    return [se_vm, *nac_vms]
+
+
+def _unlink_xiqse_agent_templates(api, targets: list[VirtualMachine]) -> None:
+    """Unlink Linux parents and detach external checks from obsolete agent bindings."""
+    linux_templates = {'Linux by Zabbix agent', 'Linux by Zabbix agent active'}
+    names = [vm.name for vm in targets]
+    hosts = api.host.get(
+        filter={'host': names},
+        output=['hostid', 'host'],
+        selectParentTemplates=['templateid', 'name'],
+    ) or []
+    found = {host['host'] for host in hosts}
+    missing = set(names) - found
+    if missing:
+        raise SystemExit('XIQ-SE HostSync targets missing in Zabbix: ' + ', '.join(sorted(missing)))
+    for host in hosts:
+        remove = [
+            {'templateid': row['templateid']}
+            for row in host.get('parentTemplates') or []
+            if row.get('name') in linux_templates
+        ]
+        if remove:
+            api.host.update(hostid=host['hostid'], templates_clear=remove)
+            logger.info('  Unlinked Linux agent template(s) from %s before interface removal', host['host'])
+
+        agent_interfaces = api.hostinterface.get(
+            hostids=[host['hostid']],
+            filter={'type': '1'},
+            output=['interfaceid'],
+        ) or []
+        agent_ids = {str(row['interfaceid']) for row in agent_interfaces}
+        if not agent_ids:
+            continue
+        external_items = api.item.get(
+            hostids=[host['hostid']],
+            search={'key_': _xiqse.TLS_EXTERNAL_SCRIPT},
+            output=['itemid', 'key_', 'interfaceid', 'type'],
+        ) or []
+        for item in external_items:
+            if str(item.get('type')) != '10' or str(item.get('interfaceid') or '0') not in agent_ids:
+                continue
+            api.item.update(itemid=item['itemid'], interfaceid='0')
+            logger.info('  Detached %s from the obsolete agent interface on %s', item['key_'], host['host'])
+
+def _write_xiqse_host_secret(api, vm: VirtualMachine, value: str) -> None:
+    """Write the secret explicitly because Zabbix masks existing secret values on host reads."""
+    hosts = api.host.get(filter={'host': [vm.name]}, output=['hostid']) or []
+    if not hosts:
+        raise SystemExit(f'XIQ-SE host missing in Zabbix after HostSync: {vm.name}')
+    hostid = hosts[0]['hostid']
+    rows = api.usermacro.get(
+        hostids=[hostid],
+        filter={'macro': [_xiqse.XIQSE_CLIENT_SECRET_MACRO]},
+        output=['hostmacroid'],
+    ) or []
+    if rows:
+        api.usermacro.update(
+            hostmacroid=rows[0]['hostmacroid'],
+            value=value,
+            type=1,
         )
-        cg_value = _assignment_value(server, cg, macro) or '0'
-        logger.info('  CG %s %s = %s%s', cg.name, macro, cg_value, ' (created)' if created else '')
-        for plat in platforms:
-            _mirror_license_totals_to_platform(
-                server,
-                plat,
-                cg,
-                macro,
-                cg_value,
-                mtype=ZabbixMacroTypeChoices.TEXT,
-            )
-            logger.info('  Platform %s %s ← CG %s', plat.name, macro, cg_value)
-    if not platforms:
-        logger.warning('  No XIQ-SE platforms — CG %s exists; assign it when the platform is named', cg.name)
         return
-    for plat in platforms:
-        _asg, assigned = ensure(
-            M.ZabbixConfigurationGroupAssignment,
-            zabbixconfigurationgroup=cg,
-            assigned_object_type=ct(Platform),
-            assigned_object_id=plat.id,
-            defaults={},
-        )
-        logger.info('  Platform %s ← CG %s%s', plat.name, cg.name, ' (new)' if assigned else '')
+    api.usermacro.create(
+        hostid=hostid,
+        macro=_xiqse.XIQSE_CLIENT_SECRET_MACRO,
+        value=value,
+        type=1,
+        description=f'nwn:xiqse:{_xiqse.XIQSE_CLIENT_SECRET_MACRO}',
+    )
 
 
 def run_check_xiqse() -> int:
-    """Read-only XIQ-SE YAML + Zabbix presence check."""
+    """Read-only XIQ-SE YAML, target inventory, and Zabbix dependency check."""
     _require_xiqse_preflight(apply=False)
     logger.info('XIQ-SE preflight OK — check-only mode wrote nothing')
     return 0
 
 
 def run_apply_xiqse() -> int:
-    """Import XIQ-SE / ExtremeControl Observability without zerotouch or Extreme YAML.
-
-    Fail-closed on missing YAML. Soft TemplateRule for Site Engine platforms.
-    Role NAC gets the thin companion (ANY) plus ExtremeControl by SNMP.
-    No HostSync.
-    """
-    server = _require_xiqse_preflight(apply=True)
-    logger.info('Preflight OK — importing XIQ-SE templates and writing nbxSync levers')
+    """Import the agentless XIQ-SE / ExtremeControl pack and sync six named VMs."""
+    server, existing = _require_xiqse_preflight(apply=True)
+    logger.info('Preflight OK — importing templates and converging the six monitoring hosts')
     with ZabbixConnection(server) as api:
         imported = import_xiqse_templates(api)
-    _step_xiqse_nbxsync(server, imported)
+    imported[_xiqse.CLOUD_TEMPLATE_NAME] = existing[_xiqse.CLOUD_TEMPLATE_NAME]
+    targets = _step_xiqse_nbxsync(server, imported)
+    with ZabbixConnection(server) as api:
+        _unlink_xiqse_agent_templates(api, targets)
+    for vm in targets:
+        logger.info('HostSync %s', vm.name)
+        SyncHostJob(instance=vm).run()
+    with ZabbixConnection(server) as api:
+        _write_xiqse_host_secret(
+            api,
+            next(vm for vm in targets if vm.name == _xiqse.SE_VM_NAME),
+            _xiqse_credential_values(server)[_xiqse.XIQSE_CLIENT_SECRET_MACRO],
+        )
     logger.info(
-        'XIQ-SE / ExtremeControl pack written in NetBox. No HostSync. '
-        'TemplateRule %s → %s. Role %s → %s (ANY) + %s (SNMP). '
-        'Set purchased {$XIQ.NAC.TOTAL} / {$XIQ.PILOT.TOTAL} / {$XIQ.NAV.TOTAL} '
-        'on CG %s, re-run --apply-xiqse so platforms match, then HostSync the Site Engine. '
-        'Put Client API Access secrets on a nbxSync CG, not in YAML. '
-        'Do not re-run zerotouch to refresh this pack.',
-        _xiqse.SE_TEMPLATE_RULE,
-        _xiqse.SE_TEMPLATE_NAME,
-        _xiqse.NAC_ROLE,
-        _xiqse.NAC_TEMPLATE_NAME,
-        _xiqse.SNMP_TEMPLATE_NAME,
-        _xiqse.LICENSE_CG_NAME,
+        'XIQ-SE / ExtremeControl pack written and six VMs synchronized. '
+        'Site Engine keeps NBI credentials, inherited ICMP, and the stock XIQ Cloud template; '
+        'Control engines use SNMP only. No Linux agent templates or agent checks remain. '
+        'Do not re-run zerotouch to refresh this pack.'
     )
     return 0
 
@@ -5325,7 +5422,7 @@ def main() -> int:
     mode.add_argument(
         '--apply-xiqse',
         action='store_true',
-        help='XIQ-SE / ExtremeControl: import GraphQL companions plus ExtremeControl by SNMP, soft Site Engine TemplateRule, role NAC (ANY + SNMP); no HostSync, no zerotouch',
+        help='Agentless XIQ-SE / ExtremeControl: Site Engine GraphQL + stock XIQ Cloud, Control engine SNMP, per-host certificate expiry, and six-target HostSync; no zerotouch',
     )
     mode.add_argument(
         '--check-xiqse',

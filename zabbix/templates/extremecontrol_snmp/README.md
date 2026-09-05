@@ -19,7 +19,7 @@ Host dashboard **Health** (pages Overview / Auth) ships in this YAML.
 
 | NetBox | Effect |
 |---|---|
-| Role NAC | this template (SNMP) **and** ExtremeControl Observability (ANY) |
-| ICMP / Linux agent | stay on 06 — this template does not nest `icmpping` |
+| Role NAC | this template (SNMP) **and** ExtremeControl Observability (no interface requirement) |
+| ICMP / Linux agent | not assigned to the five Control engines; SNMP is the only interface |
 
 OIDs: [OID_MAPPING.md](OID_MAPPING.md).
