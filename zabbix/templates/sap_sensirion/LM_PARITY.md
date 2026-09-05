@@ -7,11 +7,20 @@ the operator datasource list (2026-09-05), and the SH01 walk in
 
 ## Application (Promonitor names, sapcontrol collection)
 
-These were SAP-side datasources. DNUS / `C_PROMONITOR` is gone. The same
-names are now dependents of one Zabbix-agent sapcontrol snapshot (SAP Host
-Agent / sapstartsrv — already on every HANA and ME host). See
+These were SAP-side datasources. The account name `C_PROMONITOR` still
+exists; the Collection script that used it has not been found in LM (the
+`!tlist` Groovy is collector NoData, not this). The same names are now
+dependents of one Zabbix-agent sapcontrol snapshot (SAP Host Agent /
+sapstartsrv — already on every HANA and ME host). See
 [`SAPCONTROL.md`](SAPCONTROL.md). `{$SAP.APP.CONTROL}=0` until that
 UserParameter is installed and Latest data is quiet.
+
+A username and password are **not** an API. Do not probe ICM / 50001 /
+guessed REST paths / guessed RFC function modules with that account.
+`C_PROMONITOR` looks like an SAP ABAP user; the contract is whatever
+SU01 roles and last-logon show (RFC vs HTTP), not something we invent
+from the name. sapcontrol does **not** need this account — it is a local
+OS call to Host Agent. Do not paste the password into chat or git.
 
 | LM datasource | Item key | Kind | What sapcontrol actually is |
 |---|---|---|---|
@@ -150,8 +159,8 @@ What to open next in LM (a **different** DataSource):
 
 ## What we still do not have
 
-- A least-privilege SAP RFC / HANA SQL account (the name `C_PROMONITOR` is
-  not a contract)
+- A least-privilege SAP RFC / HANA SQL **contract** (the name
+  `C_PROMONITOR` is not one; do not discover an API by probing)
 - A host list beyond “11 SAP hosts” + HANA canary `CH-STA-P-SH01` + ME
   `ch-sta-p-as02` / `ch-sta-d-as01` / `ch-sta-p-me05`
 - SAP enterprise SNMP — probe found none

@@ -68,7 +68,10 @@ instances **00** and **10**. Template defaults `{$SAP.CERT.PORT}` and
 ListInstances covers both. Override the TCP/TLS macros per host if you
 need sapstartsrv instead of ICM; do not ticket 51014 on single-instance
 ME boxes. `system.categories` also had `PCoIP` — ignore that for this
-pack. `C_PROMONITOR` is not on that host card.
+pack. `C_PROMONITOR` is not on that host card. The name plus a
+password is not a Promonitor API — do not probe ICM or guess RFC
+modules. Identify the user in SU01 (type, roles, last logon) if you
+need to know what LM used. sapcontrol does not use that account.
 
 The Groovy pair that reads `auto.taskTypesList` and calls
 `TlistTask('!tlist h=… summary=true')` is LM **collector** NoData /
