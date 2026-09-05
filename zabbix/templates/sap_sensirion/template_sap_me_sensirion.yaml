@@ -44,10 +44,9 @@ zabbix_export:
         me05 LM Alerting tree (Windows + SSL + NoData only):
         CPU, CPU Cores, Disks, DotNet, File Server, Host Status, Interfaces, Memory and Processes, Memory Stats, Microsoft_Defender_for_Endpoint_2019, NoDataMonitoring, Ping, SSL Certificate Expiration, TCP stats, Terminal Services, Time Offset, UDP stats.
         NoDataMonitoring is the !tlist Groovy. Do not hunt Promonitor /
-        C_PROMONITOR on this host card. Look at SH01 / as02 if a SAP
-        Collection script is still needed. Do not add Defender / DotNet /
-        File Server / Terminal Services here (Windows by agent or a later
-        estate pack).
+        C_PROMONITOR on this host card. Look at as02 / as01 (Windows
+        ME), not SH01 (Linux HANA). Do not add Defender / DotNet / File Server
+        / Terminal Services here (Windows by agent or a later estate pack).
 
         SNMP SAPUSER on the CG is unused here until a Windows SNMP walk
         proves it. Do not poll Linux Net-SNMP OIDs on these hosts.

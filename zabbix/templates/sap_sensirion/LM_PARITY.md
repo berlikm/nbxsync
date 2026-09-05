@@ -105,8 +105,8 @@ IDoc, Instance Status, or `WinProcessStats_jstart`.
 
 ssl.ports still prove sapstartsrv is on the box (instances 00 and 10).
 sapcontrol + `proc.num[jstart.exe]` on the ME template are **additive**
-for me05, not LM parity. If a Promonitor Collection script still exists,
-it is on another host (SH01 / as02), not this tree.
+for me05, not LM parity. If a Windows ME Collection script still exists,
+it is on **as02 / as01**, not SH01 (Linux HANA) and not this tree.
 
 ## SSL certificate — Zabbix agent, not Promonitor
 
@@ -181,17 +181,24 @@ is not in that tree.
 
 ### Where to open the SAP Collection script
 
-Leave `ch-sta-p-me05`. Open a host that actually had SAP application
-rows in the Aug 2026 export:
+Do not mix OS. **SH01 is Linux SAP HANA. SAP ME is Windows.** A script
+from SH01 is the wrong collector and the wrong pack for me05 / as02.
 
-1. **CH-STA-P-SH01** (openSUSE HANA — custom SAP DS in that export).
-2. **ch-sta-p-as02** or **ch-sta-d-as01** (Windows ME — jstart DS).
-3. Resources search: category `SAP`, or the group that holds the other
-   ~11 SAP hosts. Skip anyone whose Alerting tree looks like me05
-   (CPU / Disks / NoData / SSL only).
+**Windows SAP ME** (this hunt — same collector family as me05,
+`CH-STA-P-LMCO02`):
 
-On that host, from the **Alerting / datasource tree** (not Manage
-Resource properties):
+1. Leave `ch-sta-p-me05` (Windows + SSL + NoData only).
+2. Open **ch-sta-p-as02** or **ch-sta-d-as01** (jstart DS in the Aug
+   2026 export).
+3. Skip any other Windows SAP box whose Alerting tree looks like me05.
+
+**Linux SAP HANA** (separate hunt, only if you want the HANA Groovy):
+
+1. Open **CH-STA-P-SH01**. Different OS, different LM collector, maps
+   to **SAP template from Sensirion**, not the ME pack.
+
+On the Windows ME host, from the **Alerting / datasource tree** (not
+Manage Resource properties):
 
 1. Open a row whose **name** is Promonitor, Application Server Instance
    Status, ABAP, IDoc, qRFC, Job Alerts, or similar.

@@ -658,10 +658,9 @@ No UCD-SNMP, no Linux UserParameter, no host IF/FS LLD.
 me05 LM Alerting tree (Windows + SSL + NoData only):
 {', '.join(ME05_LM_DATASOURCES)}.
 NoDataMonitoring is the !tlist Groovy. Do not hunt Promonitor /
-{LM_PROMONITOR_USER} on this host card. Look at SH01 / as02 if a SAP
-Collection script is still needed. Do not add Defender / DotNet /
-File Server / Terminal Services here (Windows by agent or a later
-estate pack).
+{LM_PROMONITOR_USER} on this host card. Look at as02 / as01 (Windows
+ME), not SH01 (Linux HANA). Do not add Defender / DotNet / File Server
+/ Terminal Services here (Windows by agent or a later estate pack).
 
 SNMP {LM_SNMP_USER} on the CG is unused here until a Windows SNMP walk
 proves it. Do not poll Linux Net-SNMP OIDs on these hosts.
