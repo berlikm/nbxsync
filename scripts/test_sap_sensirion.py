@@ -41,6 +41,9 @@ from sap_sensirion import (
     ME_TRIGGER_NAMES,
     SH01_LM_DATASOURCES,
     SH01_LM_SAP_DS,
+    ST22_DEFAULT_PATH,
+    ST22_DEFAULT_PORT,
+    ST22_FM,
     PORT_ITEM_KEY,
     PORT_TRIGGER_NAMES,
     ROLE_TEMPLATES,
@@ -145,6 +148,15 @@ class SapSensirionTests(unittest.TestCase):
     def test_lm_application_sapcontrol(self):
         self.assertTrue(APP_ITEM_KEYS.issubset(self.keys))
         self.assertIn(APP_MASTER_KEY, self.keys)
+        self.assertIn('{$SAP.API.HOST}', APP_MASTER_KEY)
+        self.assertIn('{$SAP.API.PASS}', APP_MASTER_KEY)
+        self.assertEqual(ST22_FM, 'Z_GET_ST22')
+        self.assertEqual(ST22_DEFAULT_PORT, '44301')
+        self.assertEqual(ST22_DEFAULT_PATH, '/abapruntimeerror')
+        self.assertIn(ST22_FM, self.yaml_text)
+        self.assertIn(ST22_DEFAULT_PORT, self.yaml_text)
+        self.assertIn(ST22_DEFAULT_PATH, self.yaml_text)
+        self.assertNotIn('santaba/rest', self.yaml_text)
         trap_keys = {item['key'] for item in self.template['items'] if item.get('type') == 'TRAP'}
         self.assertEqual(trap_keys, set())
         master = next(item for item in self.template['items'] if item['key'] == APP_MASTER_KEY)
@@ -180,7 +192,8 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn(ME_TEMPLATE_NAME, self.template['description'])
         self.assertIn(SH01_LM_SAP_DS, self.template['description'])
         self.assertEqual(SH01_LM_DATASOURCES[0], SH01_LM_SAP_DS)
-        self.assertNotIn(SH01_LM_SAP_DS, ME_TEMPLATE_YAML.read_text(encoding='utf-8'))
+        me_desc = yaml.safe_load(ME_TEMPLATE_YAML.read_text(encoding='utf-8'))['zabbix_export']['templates'][0]['description']
+        self.assertNotIn(SH01_LM_SAP_DS, me_desc)
         self.assertIn('UserParameter', self.yaml_text)
         self.assertNotIn(JSTART_ITEM_KEY, self.keys)
         self.assertIn('{$SAP.INSTANCE}', self.yaml_text)

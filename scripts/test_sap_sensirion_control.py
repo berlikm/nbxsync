@@ -147,6 +147,16 @@ class SapControlCollectorTests(unittest.TestCase):
         self.assertNotIn('RFC_READ_TABLE', src)
         self.assertNotIn('hdbsql', src.lower())
         self.assertNotIn('-pwd', src)
+        self.assertIn('Z_GET_ST22', src)
+        self.assertIn('44301', src)
+        self.assertIn('/abapruntimeerror', src)
+        self.assertNotIn('santaba/rest', src)
+        self.assertNotIn('yD3d6J72TKMJW847d8TI', src)
+        win_src = COLLECTOR_WIN.read_text(encoding='utf-8')
+        self.assertIn('Z_GET_ST22', win_src)
+        self.assertNotIn('santaba/rest', win_src)
+        self.assertIn('"$9"', conf)
+        self.assertIn('"$9"', win)
 
     def test_hana_process_list_up(self):
         procs = self.c.parse_process_list(HANA_CLI)
@@ -230,6 +240,44 @@ class SapControlCollectorTests(unittest.TestCase):
         self.assertIsNone(self.c._validate('00', 'HDB', '127.0.0.1;id'))
         self.assertEqual(self.c._validate('0', 'hdb', ''), ('0', 'hdb', ''))
         self.assertEqual(self.c._validate('{$SAP.INSTANCE}', '{$SAP.SID}', ''), ('', '', ''))
+
+    def test_st22_count_and_api_validate(self):
+        xml_text = """<?xml version="1.0"?>
+        <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+          <soapenv:Body>
+            <n0:Z_GET_ST22Response xmlns:n0="urn:sap-com:document:sap:rfc:functions">
+              <ET_INFOTAB>
+                <item><PROGRAMNAME>ZTEST</PROGRAMNAME><DUMPID>TIME_OUT</DUMPID></item>
+                <item><PROGRAMNAME></PROGRAMNAME></item>
+                <item><PROGRAMNAME>SAPMSSY1</PROGRAMNAME></item>
+              </ET_INFOTAB>
+            </n0:Z_GET_ST22Response>
+          </soapenv:Body>
+        </soapenv:Envelope>"""
+        self.assertEqual(self.c.count_st22_dumps(xml_text), 2)
+        self.assertIsNone(self.c.st22_call('', '44301', '/abapruntimeerror', 'USER', 'x'))
+        self.assertIsNone(self.c.st22_call('host', '44301', '/abapruntimeerror', '', 'x'))
+        self.assertIsNone(self.c._validate_api('bad;host', '44301', '/abapruntimeerror', 'USER'))
+        api = self.c._validate_api('ch-sta-p-sh01', '', '', 'C_PROMONITOR')
+        self.assertEqual(api['port'], '44301')
+        self.assertEqual(api['path'], '/abapruntimeerror')
+        self.assertEqual(api['user'], 'C_PROMONITOR')
+
+    def test_st22_overrides_ccms_when_soap_returns(self):
+        snap = self.c.metrics_from_snapshot(self.c.parse_process_list(HANA_CLI), self.c.parse_alerts(ALERTS_CLI))
+        self.assertEqual(snap['abap_errors'], 3)
+
+        def fake_st22(*_args, **_kwargs):
+            return '<x><item><PROGRAMNAME>ZTEST</PROGRAMNAME></item></x>'
+
+        self.c.st22_call = fake_st22
+        data = self.c.merge_metrics([snap])
+        data['abap_source'] = 'ccms'
+        xml_text = fake_st22()
+        data['abap_errors'] = self.c.count_st22_dumps(xml_text)
+        data['abap_source'] = 'st22'
+        self.assertEqual(data['abap_errors'], 1)
+        self.assertEqual(data['abap_source'], 'st22')
 
     def test_main_unknown_metric(self):
         from io import StringIO

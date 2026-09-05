@@ -35,6 +35,13 @@ zabbix ALL=(sapadm) NOPASSWD: /usr/sap/hostctrl/exe/sapcontrol, /usr/sap/hostctr
 
 `zabbix_agentd -t 'sap.sensirion[json,,]'` — JSON `kind` should be `hana`.
 
+SH01 LM row `ABAPRuntimeErrorsCount_LMS` Collection is HTTPS SOAP
+`Z_GET_ST22` to `:44301/abapruntimeerror` (property keys `sap.api.user`
+/ `sap.api.pass`). Set host macros `{$SAP.API.HOST}` (ICM FQDN),
+`{$SAP.API.USER}`, and secret `{$SAP.API.PASS}`. Empty host keeps CCMS.
+The Groovy that counts LogicMonitor alerts is not installed. Rotate any
+LM API keys that were pasted with that Groovy.
+
 ## SAP ME — Windows AS Java
 
 `ch-sta-p-as02` / `ch-sta-d-as01` are the LM Windows `jstart` hosts.
@@ -87,15 +94,20 @@ named SAP row → Collection. See [`LM_PARITY.md`](LM_PARITY.md).
 
 ## Macros
 
-Same application / cert / port macro *names* on both templates. HANA
-defaults TLS/TCP **443**. ME defaults **50001**. HANA also has the UCD /
-IF / FS macros. `{$SAP.APP.CONTROL}=0` until Latest data is quiet.
+Same application / cert / port / ST22 macro *names* on both templates.
+HANA defaults TLS/TCP **443**. ME defaults **50001**. ST22 defaults
+`{$SAP.API.PORT}`=**44301** and `{$SAP.API.PATH}`=`/abapruntimeerror`.
+HANA also has the UCD / IF / FS macros. `{$SAP.APP.CONTROL}=0` until
+Latest data is quiet.
 
 ## Operator order
 
 1. HANA canary: install the Linux UserParameter on `CH-STA-P-SH01`.
 2. `--apply-sap` (no zerotouch, no fleet HostSync).
-3. Confirm HANA Latest data; set `{$SAP.CERT.HOST}`; then `{$SAP.APP.CONTROL}=1` on HANA only.
+3. Confirm HANA Latest data; set `{$SAP.CERT.HOST}`; set ST22
+   `{$SAP.API.HOST}` / `{$SAP.API.USER}` / secret `{$SAP.API.PASS}` if
+   `:44301/abapruntimeerror` answers; then `{$SAP.APP.CONTROL}=1` on
+   HANA only.
 4. ME: install the PowerShell snippet on as02/as01/me05, HostSync those
    hosts separately, set `{$SAP.CERT.HOST}` (e.g.
    `ch-sta-p-me05.sensirion.lokal`), then enable CONTROL on ME.

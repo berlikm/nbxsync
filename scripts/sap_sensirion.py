@@ -211,7 +211,13 @@ CERT_ITEM_KEYS = {
 }
 
 PORT_ITEM_KEY = 'net.tcp.service[tcp,,{$SAP.PORT.TCP}]'
-APP_MASTER_KEY = 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+APP_MASTER_KEY = (
+    'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},'
+    '{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
+)
+ST22_FM = 'Z_GET_ST22'
+ST22_DEFAULT_PORT = '44301'
+ST22_DEFAULT_PATH = '/abapruntimeerror'
 JSTART_ITEM_KEY = 'proc.num[jstart.exe]'
 
 SNMP_LLD_KEYS = {
@@ -303,7 +309,7 @@ LM_APP_METRICS = (
         '{$SAP.APP.ABAP.MAX}',
         APP_ABAP,
         'abap_errors',
-        'LM ABAP Runtime Errors. CCMS GetAlerts (Shortdumps), not ST22 RFC. 0 on a HANA-only host.',
+        'LM ABAPRuntimeErrorsCount_LMS / Z_GET_ST22 when {$SAP.API.HOST} is set; else CCMS GetAlerts. 0 on HANA-only without ICF.',
     ),
     (
         'sap.app.idoc.errors',
@@ -440,6 +446,32 @@ MACROS = (
         '{$SAP.CONTROL.HOST}',
         '',
         'sapcontrol -host / SOAP peer. Empty = localhost (the agent box). Do not put a Zabbix host macro here.',
+    ),
+    (
+        '{$SAP.API.HOST}',
+        '',
+        'ICM FQDN for HTTPS SOAP Z_GET_ST22. Empty skips ST22 and keeps CCMS. '
+        'LM used system.displayname. Do not put a Zabbix host macro here.',
+    ),
+    (
+        '{$SAP.API.PORT}',
+        ST22_DEFAULT_PORT,
+        'LM SAP Monitoring Interface HTTPS port (44301).',
+    ),
+    (
+        '{$SAP.API.PATH}',
+        ST22_DEFAULT_PATH,
+        'LM ICF path /abapruntimeerror.',
+    ),
+    (
+        '{$SAP.API.USER}',
+        '',
+        'LM property sap.api.user (often C_PROMONITOR). Empty skips ST22.',
+    ),
+    (
+        '{$SAP.API.PASS}',
+        '',
+        'LM property sap.api.pass. Use a Zabbix secret macro. Never commit the value.',
     ),
     ('{$SAP.APP.ABAP.MAX}', '0', 'ABAP runtime-error count Warning when CONTROL=1.'),
     ('{$SAP.APP.IDOC.MAX}', '0', 'IDoc error count Warning when CONTROL=1.'),
@@ -625,9 +657,11 @@ Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
    GetProcessList = hdb* GREEN/YELLOW.
    GetAlerts CCMS counts stay 0 on a HANA-only box (not ST22 RFC, not HANA SQL).
    {{$SAP.APP.CONTROL}}=0 until the UserParameter is installed.
-   SH01 Alerting tree has one SAP row: {SH01_LM_SAP_DS}. That is Linux
-   HANA, not Windows ME. Open Collection on that row. Do not port it
-   onto {ME_TEMPLATE_NAME}.
+   SH01 Alerting tree has one SAP row: {SH01_LM_SAP_DS}. Collection is
+   HTTPS SOAP {ST22_FM} to :{ST22_DEFAULT_PORT}{ST22_DEFAULT_PATH}
+   (sap.api.user / sap.api.pass). The LMS Groovy that counts
+   LogicMonitor alerts is not ported. Do not copy this onto
+   {ME_TEMPLATE_NAME} unless that host has the ICF service.
 
 3. Certificate — agent web.certificate.get. Set {{$SAP.CERT.HOST}}.
 

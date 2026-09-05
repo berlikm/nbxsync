@@ -7,26 +7,31 @@ the operator datasource list (2026-09-05), and the SH01 walk in
 
 ## Application (Promonitor names, sapcontrol collection)
 
-These were SAP-side datasources. The account name `C_PROMONITOR` still
-exists; the Collection script that used it has not been found in LM (the
-`!tlist` Groovy is collector NoData, not this). The same names are now
-dependents of one Zabbix-agent sapcontrol snapshot (SAP Host Agent /
-sapstartsrv — already on every HANA and ME host). See
-[`SAPCONTROL.md`](SAPCONTROL.md). `{$SAP.APP.CONTROL}=0` until that
-UserParameter is installed and Latest data is quiet.
+These were SAP-side datasources. `ABAPRuntimeErrorsCount_LMS` on SH01
+exported as two scripts (2026-09-05):
 
-A username and password are **not** an API. Do not probe ICM / 50001 /
-guessed REST paths / guessed RFC function modules with that account.
-`C_PROMONITOR` looks like an SAP ABAP user; the contract is whatever
-SU01 roles and last-logon show (RFC vs HTTP), not something we invent
-from the name. sapcontrol does **not** need this account — it is a local
-OS call to Host Agent. Do not paste the password into chat or git.
+1. **Do not port:** Groovy HMAC to `https://sensirion.logicmonitor.com/santaba/rest/alert/alerts`
+   that counts LM alerts named “ABAP Runtime Errors”. That is LM-on-LM.
+   The accessId / accessKey pasted with it are **live** — rotate them.
+   They are not in this repo.
+2. **Ported:** PowerShell “SAP Monitoring Interface”
+   (`david.nussboeck@sensirion.com`). HTTPS SOAP `Z_GET_ST22`
+   (`urn:sap-com:document:sap:rfc:functions`) to
+   `https://<system.displayname>:44301/abapruntimeerror` with Basic
+   auth from **property keys** `sap.api.user` / `sap.api.pass`
+   (`IV_TYPE=0`, count `ET_INFOTAB` rows with `PROGRAMNAME`). That is
+   the only extra RFC. Do not invent other `Z_*` modules.
+
+Zabbix: same SOAP from the **host agent** when `{$SAP.API.HOST}` and
+`{$SAP.API.USER}` are set (`{$SAP.API.PASS}` = secret macro). Empty
+host keeps CCMS `GetAlerts` for `sap.app.abap.errors`. sapcontrol
+does not use this account. Do not paste passwords into git.
 
 | LM datasource | Item key | Kind | What sapcontrol actually is |
 |---|---|---|---|
 | SAP / Promonitor (`C_PROMONITOR`, 11 hosts) | `sap.app.promonitor` | heartbeat | 1 when sapcontrol answers |
 | Application Server Instance Status | `sap.app.instance.status` | 1=up / 0=down | `GetProcessList` (HANA hdb* / ABAP disp+work / ME jstart) |
-| ABAP Runtime Errors (`ABAPRuntimeErrorsCount_LMS` on SH01) | `sap.app.abap.errors` | count | Live LM name on Linux HANA. sapcontrol CCMS until Collection is pasted. 0 on HANA-only if it is really ST22 |
+| ABAP Runtime Errors (`ABAPRuntimeErrorsCount_LMS` on SH01) | `sap.app.abap.errors` | count | `Z_GET_ST22` when API macros are set; else CCMS. ICF may be missing on HANA-only |
 | IDoc Errors | `sap.app.idoc.errors` | count | CCMS, not EDIDS |
 | Job Alerts | `sap.app.job.alerts` | count | CCMS, not SM37 |
 | Lock Entries | `sap.app.locks` | count | CCMS / enqueue, not SM12 |
@@ -201,8 +206,10 @@ Everything else is Linux OS + Ping + Port + SSL + NoData
 `Network Interfaces`, `NoDataMonitoring`, `Ping`, `Port`,
 `SSL Certificate Expiration`, `System Level IP Stats`, `TCP UDP stats`).
 
-Open **`ABAPRuntimeErrorsCount_LMS` → Manage → Collection**. That
-script is HANA/Linux only. Do not apply it to Windows ME.
+Open **`ABAPRuntimeErrorsCount_LMS` → Manage → Collection** is done.
+The PowerShell SOAP is ported. The Groovy LM-alert counter is not.
+Do not apply `Z_GET_ST22` to Windows ME unless that host has
+`:44301/abapruntimeerror`.
 
 On the Windows ME host, from the **Alerting / datasource tree** (not
 Manage Resource properties):
@@ -227,14 +234,13 @@ time, property **keys** only. Do not paste passwords.
 
 ## What we still do not have
 
-- A least-privilege SAP RFC / HANA SQL **contract** (the name
-  `C_PROMONITOR` is not one; do not discover an API by probing)
+- Other SAP RFC contracts (IDoc / qRFC / SM13 / SM37 / …). Only
+  `Z_GET_ST22` was exported. Do not invent sibling `Z_*` modules
 - A host list beyond “11 SAP hosts” + HANA canary `CH-STA-P-SH01` + ME
   `ch-sta-p-as02` / `ch-sta-d-as01` / `ch-sta-p-me05`
 - SAP enterprise SNMP — probe found none
-- The live LM **SAP application** Collection script (me05 has none
-  applied; `!tlist` is NoDataMonitoring)
-- ST22 / IDoc / qRFC / SM13 as RFC tables — CCMS only, 0 on HANA-only
-  and typically on ME Java
+- Whether SH01 actually serves `:44301/abapruntimeerror` (HANA-only
+  boxes often do not; then ST22 stays unused and CCMS stays 0)
+- me05 has no SAP application DS (`!tlist` is NoDataMonitoring)
 
 Do not treat UCD CPU/memory as HANA or ABAP health.

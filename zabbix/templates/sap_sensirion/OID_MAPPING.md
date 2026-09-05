@@ -51,7 +51,7 @@ See [`SAPCONTROL.md`](SAPCONTROL.md).
 |---|---|---|---|
 | `sap.app.promonitor` | SAP / API `C_PROMONITOR` (11 hosts) | `$.promonitor` | sapcontrol answers |
 | `sap.app.instance.status` | Application Server Instance Status | `$.instance_status` | `GetProcessList` |
-| `sap.app.abap.errors` | ABAP Runtime Errors | `$.abap_errors` | `GetAlerts` CCMS |
+| `sap.app.abap.errors` | ABAP Runtime Errors (`ABAPRuntimeErrorsCount_LMS`) | `$.abap_errors` | `Z_GET_ST22` when API macros set; else `GetAlerts` CCMS |
 | `sap.app.idoc.errors` | IDoc Errors | `$.idoc_errors` | `GetAlerts` CCMS |
 | `sap.app.job.alerts` | Job Alerts | `$.job_alerts` | `GetAlerts` CCMS |
 | `sap.app.locks` | Lock Entries | `$.locks` | `GetAlerts` CCMS |
