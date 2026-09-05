@@ -28,6 +28,8 @@ from sap_sensirion import (
     LINUX_AGENT_ROLE_PATTERN,
     LINUX_AGENT_TEMPLATE_NAMES,
     LINUX_NETSNMP_SYSOBJECTID,
+    LINUX_SNMP_ICMP_KEYS,
+    LINUX_SNMP_TEMPLATE_NAME,
     LINUX_TEMPLATE_RULE,
     LM_APP_METRICS,
     LM_ME_WINDOWS_COLLECTOR,
@@ -142,16 +144,20 @@ class SapSensirionTests(unittest.TestCase):
         for value in uuids:
             self.assertRegex(value, UUID_RE)
 
-    def test_host_snmp_keys_from_probe(self):
-        self.assertTrue(SNMP_ITEM_KEYS.issubset(self.keys))
-        self.assertTrue(SNMP_LLD_KEYS.issubset(self.keys))
-        self.assertTrue(SNMP_PROTOTYPE_KEYS.issubset(self.keys))
+    def test_hana_yaml_has_no_os_snmp(self):
+        self.assertTrue(SNMP_ITEM_KEYS.isdisjoint(self.keys))
+        self.assertTrue(SNMP_LLD_KEYS.isdisjoint(self.keys))
+        self.assertTrue(SNMP_PROTOTYPE_KEYS.isdisjoint(self.keys))
+        self.assertNotIn('discovery_rules', self.template)
+        snmp_items = [item for item in self.template['items'] if item.get('type') == 'SNMP_AGENT']
+        self.assertEqual(snmp_items, [])
         self.assertIn(LINUX_NETSNMP_SYSOBJECTID, self.yaml_text)
-        self.assertIn('1.3.6.1.4.1.2021.10.1.3', self.yaml_text)
-        self.assertIn('1.3.6.1.4.1.2021.4.5.0', self.yaml_text)
-        self.assertIn('1.3.6.1.2.1.31.1.1.1.6', self.yaml_text)
-        self.assertIn('1.3.6.1.2.1.31.1.1.1.10', self.yaml_text)
+        self.assertNotIn('1.3.6.1.4.1.2021', self.yaml_text)
+        self.assertNotIn('ifHCInOctets', self.yaml_text)
         self.assertNotIn('ifInOctets', self.yaml_text)
+        self.assertNotIn('sap.host.cpu.util', self.yaml_text)
+        self.assertNotIn('sap.host.vfs.fs', self.yaml_text)
+        self.assertNotIn('zabbix[host,snmp,available]', self.yaml_text)
 
     def test_lm_application_sapcontrol(self):
         self.assertTrue(APP_ITEM_KEYS.issubset(self.keys))
@@ -205,8 +211,10 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn('ch-sta-p-sh01', self.template['description'].lower())
         self.assertIn('sapcontrol', self.template['description'])
         self.assertIn('openSUSE', self.template['description'])
-        self.assertIn('no official openSUSE template', self.template['description'])
+        self.assertIn('official openSUSE template', self.template['description'])
         self.assertIn('attach Linux by Zabbix agent', self.template['description'])
+        self.assertIn('stock Linux SNMP OS template', self.template['description'])
+        self.assertIn('ST22', self.template['description'])
         self.assertNotIn('openSUSE matches the Linux platform rule', self.template['description'])
         self.assertNotIn('Agent-only OS extras', self.template['description'])
         self.assertIn('Linux SNMP', self.template['description'])
@@ -271,12 +279,14 @@ class SapSensirionTests(unittest.TestCase):
         self.assertEqual(hana_macros['{$SAP.PORT.TCP}'], HANA_TLS_PORT)
         self.assertNotEqual(HANA_TLS_PORT, ME_ASJAVA_HTTPS_PORT)
 
-    def test_host_triggers_present(self):
-        self.assertTrue(SNMP_TRIGGER_NAMES.issubset(self.triggers))
-        self.assertTrue(SNMP_TRIGGER_PROTOTYPE_NAMES.issubset(self.trigger_prototypes))
-        self.assertIn('{$UNSUPPORTED.CONTROL}=1', self.yaml_text)
-        hana_macros = {row[0]: row[1] for row in macros_for('hana')}
-        self.assertEqual(hana_macros['{$UNSUPPORTED.CONTROL}'], '0')
+    def test_host_os_triggers_stripped(self):
+        self.assertTrue(SNMP_TRIGGER_NAMES.isdisjoint(self.triggers))
+        self.assertTrue(SNMP_TRIGGER_PROTOTYPE_NAMES.isdisjoint(self.trigger_prototypes))
+        self.assertNotIn('{$UNSUPPORTED.CONTROL}', self.yaml_text)
+        hana_macros = {row[0] for row in macros_for('hana')}
+        self.assertNotIn('{$UNSUPPORTED.CONTROL}', hana_macros)
+        self.assertNotIn('{$SAP.CPU.UTIL.MAX}', hana_macros)
+        self.assertIn('{$SAP.API.HOST}', hana_macros)
 
     def test_forbidden_and_no_fake_sap_snmp(self):
         for snippet in FORBIDDEN_SNIPPETS:
@@ -289,11 +299,12 @@ class SapSensirionTests(unittest.TestCase):
 
     def test_health_pages(self):
         pages = {page['name'] for page in self.template['dashboards'][0]['pages']}
-        self.assertEqual(pages, {'Overview', 'Application', 'Interfaces'})
+        self.assertEqual(pages, {'Overview', 'Application'})
+        self.assertNotIn('Interfaces', pages)
 
-    def test_divzero_guards(self):
-        self.assertIn('+(last(//sap.host.memory.total)=0)', self.yaml_text)
-        self.assertIn('+(last(//sap.host.swap.total)=0)', self.yaml_text)
+    def test_no_os_calculated_items(self):
+        self.assertNotIn('sap.host.memory.total', self.yaml_text)
+        self.assertNotIn('sap.host.swap.total', self.yaml_text)
 
     def test_zerotouch_soft_assigns_os_specific(self):
         src = (ROOT / 'scripts/configure_nbxsync_zerotouch.py').read_text(encoding='utf-8')
@@ -301,8 +312,12 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn(f"'{ME_TEMPLATE_NAME}'", src)
         self.assertIn("('sap_me', 'SAP ME')", src)
         self.assertIn("('sap_hana', 'SAP HANA')", src)
-        self.assertIn("'sap_hana': [HostInterfaceRequirementChoices.SNMP]", src)
+        self.assertIn("'sap_hana': [HostInterfaceRequirementChoices.AGENT]", src)
         self.assertIn("'sap_me': [HostInterfaceRequirementChoices.AGENT]", src)
+        self.assertIn(
+            "make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'SAP HANA'",
+            src,
+        )
         optional = re.search(r'OPTIONAL_TPL_KEYS = frozenset\(\{([^}]+)\}\)', src, re.S)
         self.assertIsNotNone(optional)
         self.assertIn("'sap_hana'", optional.group(1))
@@ -334,17 +349,27 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn("name__iexact=_sap.CANARY_HOST", apply_fn)
         assign_fn = _function_source(src, '_step_sap_nbxsync') or ''
         exclude_fn = _function_source(src, '_exclude_linux_os_agent_from_hana') or ''
+        assign_os = _function_source(src, '_assign_linux_snmp_os_to_hana') or ''
+        disable_fn = _function_source(src, '_disable_linux_snmp_icmpping') or ''
         for role in SAP_ROLES:
             self.assertIn(role, assign_fn)
-        self.assertIn('HostInterfaceRequirementChoices.SNMP', assign_fn)
+        self.assertIn('HostInterfaceRequirementChoices.SNMP', assign_os)
         self.assertIn('HostInterfaceRequirementChoices.AGENT', assign_fn)
         self.assertIn('ME_TEMPLATE_NAME', assign_fn)
         self.assertIn('_exclude_linux_os_agent_from_hana', assign_fn)
+        self.assertIn('_assign_linux_snmp_os_to_hana', assign_fn)
+        self.assertIn('_disable_linux_snmp_icmpping', assign_fn)
         self.assertIn('LINUX_AGENT_ROLE_PATTERN', exclude_fn)
         self.assertIn('LINUX_TEMPLATE_RULE', exclude_fn)
         self.assertIn('OS_LINUX_HOSTGROUP', exclude_fn)
         self.assertIn('LINUX_AGENT_TEMPLATE_NAMES', assign_fn)
         self.assertTrue(LINUX_AGENT_TEMPLATE_NAMES)
+        self.assertEqual(LINUX_SNMP_TEMPLATE_NAME, 'Linux by SNMP')
+        self.assertEqual(LINUX_SNMP_ICMP_KEYS, ('icmpping', 'icmppingloss', 'icmppingsec'))
+        self.assertIn('LINUX_SNMP_TEMPLATE_NAME', assign_os)
+        self.assertIn('LINUX_SNMP_ICMP_KEYS', disable_fn)
+        self.assertIn('item.update', disable_fn)
+        self.assertIn('trigger.update', disable_fn)
         st22_fn = _function_source(src, '_assign_st22_macros_on_sh01_only') or ''
         self.assertIn('_assign_st22_macros_on_sh01_only', assign_fn)
         self.assertIn('ST22_HOST_MACROS', st22_fn)

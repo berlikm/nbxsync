@@ -1635,8 +1635,9 @@ def step6_template_rules(server, country_slugs=None):
     # Photon is in the Linux pattern (platform name has "Linux" substring).
     # Every matching rule MERGES — priority is not an override.
     # vCenter (platform Photon OS/Linux) must NOT get Linux agent — only VMware FQDN.
-    # SAP HANA (openSUSE) OS is the Sensirion SNMP pack, not Linux by agent
-    # (the appliance may not take a Zabbix agent) and not stock Linux by SNMP.
+    # SAP HANA (openSUSE) OS is stock Linux by SNMP on the role (not Linux by
+    # agent — the appliance may not take a Zabbix agent). The snmp-tag Linux
+    # rule stays excluded (wrong CG).
     rules = [
         ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 100, ''),
         ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100, r'^(?!vCenter$|SAP HANA$).*'),
@@ -1729,7 +1730,7 @@ def step6_template_rules(server, country_slugs=None):
             assigned_object_id=hana_role.id,
             defaults={},
         )
-        logger.info('  OS/Linux → Device Role SAP HANA (Sensirion SNMP OS, not Linux by agent)')
+        logger.info('  OS/Linux → Device Role SAP HANA (Linux by SNMP OS, not Linux by agent)')
 
     # Oracle: tag-gated TemplateRule — tag any VM/Device with 'oracle' tag to get
     # Oracle by Zabbix agent 2. Merges with OS template from platform rule (Linux/Windows).
@@ -1949,6 +1950,7 @@ def step7_template_assignments(server):
         # Pure Storage: no role assignment — HTTP template is manufacturer TemplateRule (step 6).
         (make_template(*TPL['gitlab_http'], req=[HostInterfaceRequirementChoices.ANY]), 'GitLab'),
         (make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Virtual Appliance'),
+        (make_template(*TPL['linux_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'SAP HANA'),
         # Network Generic only on Network Device (no platform / no regex match).
         # Switch*/AP must NOT get this floor — EXOS (etc.) TemplateRules already attach
         # specialized templates; pairing both yields duplicate icmpping item keys.
@@ -1977,7 +1979,7 @@ def step7_template_assignments(server):
     stub_req = {
         'extremecontrol_observability': [HostInterfaceRequirementChoices.NONE],
         'extremecontrol_snmp': [HostInterfaceRequirementChoices.SNMP],
-        'sap_hana': [HostInterfaceRequirementChoices.SNMP],
+        'sap_hana': [HostInterfaceRequirementChoices.AGENT],
         'sap_me': [HostInterfaceRequirementChoices.AGENT],
     }
     for tpl_key, role_name in stub_assignments:
@@ -3272,10 +3274,10 @@ def run_simulate() -> int:
         objects['win_snmp'] = win_snmp
 
         # Role SAP HANA must win over Site Group Agent so HostSync gets both
-        # planes. OS is the Sensirion SNMP pack (not Linux by agent — the
-        # appliance may not take an agent). Lab ensure_t creates the HANA + ME
-        # templates so resolve can assert openSUSE HANA ≠ Windows ME
-        # (not Linux by SNMP on either).
+        # planes. OS is stock Linux by SNMP on the role (not Linux by agent —
+        # the appliance may not take an agent). SAP YAML is ST22 only.
+        # Lab ensure_t creates the HANA + ME templates so resolve can assert
+        # openSUSE HANA ≠ Windows ME.
         sap = Device.objects.create(
             name=f'{PREFIX}sap-hana-01',
             device_type=dtype,
@@ -3452,8 +3454,8 @@ def run_simulate() -> int:
         record(
             'sap_host_infra_templates_only',
             any('SAP template from Sensirion' in n for n in sap_tpls)
+            and any('Linux by SNMP' in n for n in sap_tpls)
             and not any('Linux by Agent' in n or 'Linux by Zabbix agent' in n for n in sap_tpls)
-            and not any('Linux by SNMP' in n for n in sap_tpls)
             and not any('SAP ME from Sensirion' in n for n in sap_tpls),
             str(sap_tpls),
             group='resolve',

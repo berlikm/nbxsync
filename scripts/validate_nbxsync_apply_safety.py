@@ -535,25 +535,27 @@ def main() -> int:
     )
     sap_step = _function_source(net_src, net_tree, '_step_sap_nbxsync') or ''
     sap_exclude = _function_source(net_src, net_tree, '_exclude_linux_os_agent_from_hana') or ''
+    sap_os = _function_source(net_src, net_tree, '_assign_linux_snmp_os_to_hana') or ''
     record(
         'network_sap_assigns_os_specific_packs',
-        'HostInterfaceRequirementChoices.SNMP' in sap_step
+        'HostInterfaceRequirementChoices.SNMP' in sap_os
         and 'HostInterfaceRequirementChoices.AGENT' in sap_step
         and 'SAP HANA' in sap_step
         and 'SAP ME' in sap_step
         and 'ME_TEMPLATE_NAME' in sap_step
-        and 'icmpping' not in sap_step,
-        'SAP HANA gets the SNMP pack; SAP ME gets the AGENT pack',
+        and '_disable_linux_snmp_icmpping' in sap_step,
+        'SAP HANA gets ST22 + Linux by SNMP; SAP ME gets the AGENT pack',
     )
     record(
-        'network_sap_hana_os_is_snmp_not_linux_agent',
+        'network_sap_hana_os_is_linux_snmp_not_agent',
         bool(sap_exclude)
         and 'LINUX_AGENT_ROLE_PATTERN' in sap_exclude
         and 'LINUX_TEMPLATE_RULE' in sap_exclude
         and '_exclude_linux_os_agent_from_hana' in sap_step
+        and '_assign_linux_snmp_os_to_hana' in sap_step
         and 'LINUX_AGENT_TEMPLATE_NAMES' in sap_step
-        and 'Linux by SNMP' in sap_step,
-        'apply-sap excludes Linux by agent / stock Linux by SNMP from SAP HANA',
+        and 'LINUX_SNMP_TEMPLATE_NAME' in sap_step,
+        'apply-sap assigns Linux by SNMP on HANA and keeps Linux by agent off',
     )
     sap_st22 = _function_source(net_src, net_tree, '_assign_st22_macros_on_sh01_only') or ''
     record(

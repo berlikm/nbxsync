@@ -3,30 +3,30 @@
 Canary: `CH-STA-P-SH01` / `10.0.105.112`, SNMPv3 `SAPUSER` authPriv MD5/DES,
 2026-09-05. See [`../../notes/sap-snmp-walk.md`](../../notes/sap-snmp-walk.md).
 
-Host SNMP below is the **openSUSE HANA OS plane** (LM `SAPUSER`, not a
-host agent). There is no official openSUSE template; do not link stock
-Linux by SNMP (these OIDs already live here). Windows ME uses
+Host SNMP is the **openSUSE HANA OS plane** (LM `SAPUSER`, not a host
+agent). There is no official openSUSE template. Role SAP HANA links
+stock **Linux by SNMP** for those OIDs. This YAML has **no** UCD / IF /
+FS items (duplicate keys). Windows ME uses
 [`template_sap_me_sensirion.yaml`](template_sap_me_sensirion.yaml) (agent
 sapcontrol + `proc.num[jstart.exe]`, no UCD).
 
-## Host SNMP (live, HANA / openSUSE)
+## Host SNMP (stock Linux by SNMP, HANA / openSUSE)
 
-| Item key | Object | OID |
-|---|---|---|
-| `system.name` | sysName | `1.3.6.1.2.1.1.5.0` |
-| `system.descr` | sysDescr | `1.3.6.1.2.1.1.1.0` |
-| `system.objectid[sysObjectID.0]` | sysObjectID | `1.3.6.1.2.1.1.2.0` (Linux Net-SNMP `1.3.6.1.4.1.8072.3.2.10`) |
-| `system.net.uptime[sysUpTime.0]` | sysUpTime | `1.3.6.1.2.1.1.3.0` ×0.01 |
-| `sap.host.load[1m\|5m\|15m]` | laLoad | `1.3.6.1.4.1.2021.10.1.3.{1,2,3}` |
-| `sap.host.cpu.idle` | ssCpuIdle | `1.3.6.1.4.1.2021.11.11.0` |
-| `sap.host.memory.total` / `.avail` | memTotalReal / memAvailReal | `2021.4.5.0` / `2021.4.6.0` ×1024 |
-| `sap.host.swap.total` / `.avail` | memTotalSwap / memAvailSwap | `2021.4.3.0` / `2021.4.4.0` ×1024 |
-| `sap.host.processes` | hrSystemProcesses | `1.3.6.1.2.1.25.1.6.0` |
-| `sap.host.net.if.in/out` | ifXTable 64-bit | `1.3.6.1.2.1.31.1.1.1.{6,10}.{#SNMPINDEX}` |
-| `sap.host.net.if.*.errors` | ifTable | `1.3.6.1.2.1.2.2.1.{14,20}.{#SNMPINDEX}` |
-| `sap.host.vfs.fs.*` | hrStorage | `1.3.6.1.2.1.25.2.3.1.{3,5,6}` |
+SH01 probe (2026-09-05) proved Linux Net-SNMP
+`1.3.6.1.4.1.8072.3.2.10`. The official template already covers:
+
+| LM title | Official Linux by SNMP |
+|---|---|
+| CPU / load / RAM / swap | UCD + HOST-RESOURCES |
+| CPU Cores | `system.cpu.num[snmp]` / `hrProcessorTable` |
+| Disks (IO) | UCD-DISKIO `vfs.dev.walk` |
+| Filesystems | `vfs.fs.*` |
+| Interfaces (64 bit) | IF-MIB / ifXTable |
+| Ping | **Disabled** — ICMP stays on CG SAP Agent+SNMP |
+| System Level IP Stats / TCP UDP stats | **Omitted** — no official SNMP overlay; add an agent later |
 
 Do not walk `1.3.6.1.4.1` unbounded. Do not poll the SAP enterprise tree.
+Do not invent IP-MIB / TCP-MIB / UDP-MIB items.
 
 ## Agent / SIMPLE (LM SSL + Port)
 

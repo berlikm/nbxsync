@@ -8,7 +8,7 @@ already have the Collection script. Do not invent Promonitor / `Z_*` /
 |---|---|---|
 | `ch-sta-p-me05` (Windows ME) | OS + SSL + Ping + NoData. No SAP app DS | Windows by agent + ICMP + cert/port **50001**. sapcontrol + jstart are **better than LM**, not parity |
 | `ch-sta-p-as02` / `ch-sta-d-as01` | Windows OS + jstart process DS | Same OS path + `proc.num[jstart.exe]` |
-| `CH-STA-P-SH01` (openSUSE HANA) | Linux OS + Ping + Port + SSL + NoData + **`ABAPRuntimeErrorsCount_LMS`** | **UCD SNMP in this pack** (not Linux by agent) + cert/port **443** + **`Z_GET_ST22` count** |
+| `CH-STA-P-SH01` (openSUSE HANA) | Linux OS + Ping + Port + SSL + NoData + **`ABAPRuntimeErrorsCount_LMS`** | **Linux by SNMP** (CPU cores / disk IO / FS / RAM / NICs; ping disabled) + this pack **ST22 only** + cert/port **443** |
 
 ST22 “better”: LM also discovered every dump (user / program / time).
 We keep the **count** (`sap.app.abap.errors`) and a threshold. That is
@@ -71,13 +71,17 @@ SQL contract. Host RAM/CPU is not HANA allocation.
 
 ## Host / OS
 
-**SAP HANA** (openSUSE) OS is **this pack’s SNMP** (`SAPUSER` UCD / IF-MIB /
-HOST-RESOURCES from the SH01 probe). There is no official openSUSE template.
-Stock **Linux by SNMP** is the generic Net-SNMP pack — do not link it (duplicate
-OIDs). **Linux by Zabbix agent** is excluded for role SAP HANA: the appliance
-may not take an agent. **SAP ME** (Windows) stays on **Windows by Zabbix
-agent**. Both roles get **ICMP Ping** from CG SAP Agent+SNMP. The ME template
-does not poll Linux OIDs.
+**SAP HANA** (openSUSE) OS is stock **Linux by SNMP** on role SAP HANA
+(CPU cores, disk IO, filesystems, RAM, NICs). There is no official
+openSUSE template. This YAML is **ST22 / sapcontrol only** — UCD / IF /
+FS keys would collide with the OS template. `--apply-sap` disables
+`icmpping` / loss / RTT on Linux by SNMP so ping stays on CG
+**SAP Agent+SNMP**. **Linux by Zabbix agent** stays excluded: the
+appliance may not take an agent. The snmp-tag Linux rule also stays
+excluded (wrong CG: `MONITORING-LINUX` SHA/AES). **SAP ME** (Windows)
+stays on **Windows by Zabbix agent**. IP / TCP-UDP are omitted until
+an agent exists — there is no official SNMP overlay. Do not invent
+IP-MIB / TCP-MIB / UDP-MIB items.
 
 SH01 OS in LM was **Linux SNMP** (`SAPUSER`), not a host agent. ABAP was
 only `ABAPRuntimeErrorsCount_LMS` on that one host. The names below are
@@ -85,20 +89,20 @@ LM datasource titles from the SH01 Alerting tree.
 
 | LM datasource | Where it lives | Notes |
 |---|---|---|
-| CPU Cores | not in this pack | LM Linux SNMP title. Probe did not walk `hrProcessorTable`. Do not invent it |
-| CPU Overview | `sap.host.cpu.util` (UCD `ssCpuIdle`) | Host CPU, not ST06. Walked `2021.11` |
-| Disks | not in this pack | LM Linux SNMP title (disk IO). Walked storage as filesystems, not UCD diskIO |
-| Filesystems | `sap.host.vfs.fs.*` (hrStorageFixedDisk) | |
-| Host Status | `zabbix[host,snmp,available]` | SNMP plane. `{$UNSUPPORTED.CONTROL}=0` |
-| Interfaces (64 bit) | `sap.host.net.if.in/out[ifHC*]` | ifXTable 64-bit counters |
-| Memory Usage | `sap.host.memory.*` / `sap.host.swap.*` | UCD; not HANA allocation. Walked `2021.4` |
-| Network Interfaces | same IF-MIB LLD + oper-status / errors | Drops `lo` |
-| NoDataMonitoring | unsupported-item count (gated) + sapcontrol heartbeat | LM vehicle was collector `!tlist`. Not SAP SM37 |
-| Ping | SAP Agent+SNMP CG `icmpping` | **Not** nested here |
+| CPU Cores | Linux by SNMP `system.cpu.num` / `hrProcessorTable` | Official template. Not this pack |
+| CPU Overview | Linux by SNMP CPU / load | Host CPU, not ST06 |
+| Disks | Linux by SNMP `vfs.dev.walk` (UCD-DISKIO) | Official template. Not this pack |
+| Filesystems | Linux by SNMP `vfs.fs.*` | Official template. Not this pack |
+| Host Status | Linux by SNMP `zabbix[host,snmp,available]` | SNMP plane |
+| Interfaces (64 bit) | Linux by SNMP IF-MIB LLD | Official template. Not this pack |
+| Memory Usage | Linux by SNMP memory / swap | Not HANA allocation |
+| Network Interfaces | same Linux by SNMP IF-MIB | Drops `lo` |
+| NoDataMonitoring | sapcontrol heartbeat (this pack) | LM vehicle was collector `!tlist`. Not SAP SM37 |
+| Ping | SAP Agent+SNMP CG `icmpping` | **Not** nested here. OS-template ping is disabled |
 | Port | `net.tcp.service[tcp,,{$SAP.PORT.TCP}]` SIMPLE | HANA default 443; ME default **50001**. `{$SAP.PORT.CONTROL}=0` |
 | SSL Certificate Expiration | Zabbix agent `web.certificate.get` | Optional cert check. Not SNMP. `{$SAP.CERT.CONTROL}=0` |
-| System Level IP Stats | not in this pack | LM Linux SNMP title (IP-MIB). Not walked |
-| TCP UDP stats | not in this pack | LM Linux SNMP title (TCP-MIB / UDP-MIB). Not walked |
+| System Level IP Stats | omitted | LM Linux SNMP title (IP-MIB). No official Zabbix SNMP overlay. Add an agent later for `net.tcp.*` / `net.udp.*` |
+| TCP UDP stats | omitted | Same — drop until an agent exists |
 
 `WinProcessStats_jstart` on ch-sta-p-as02 / ch-sta-d-as01 **is SAP ME**
 (Windows AS Java). It lives on **SAP ME from Sensirion** as
@@ -167,7 +171,7 @@ that method. Do not clone Groovy/PowerShell into Zabbix.
 | LM collector DataSource | What it was | Zabbix |
 |---|---|---|
 | `DataSource_ping` | Collector ICMP | ICMP Ping on CG **SAP Agent+SNMP**. Not nested in this template |
-| `DataSource_snmp.v3` | Collector SNMPv3 | `SAPUSER` MD5/DES on that CG + host SNMP items here |
+| `DataSource_snmp.v3` | Collector SNMPv3 | `SAPUSER` MD5/DES on that CG + stock Linux by SNMP |
 | `DataSource_script.groovy` | Groovy script from the collector | Was the Promonitor/DNUS vehicle. Replaced by local sapcontrol |
 | `DataSource_batchscript.groovy` | Groovy batch (multi-instance) | Same. `{$SAP.INSTANCE}` / ListInstances. Do not add agent remote commands |
 | `DataSource_script.others` | Other collector scripts | Same sapcontrol path |
@@ -273,4 +277,4 @@ time, property **keys** only. Do not paste passwords.
   boxes often do not; then ST22 stays unused and CCMS stays 0)
 - me05 has no SAP application DS (`!tlist` is NoDataMonitoring)
 
-Do not treat UCD CPU/memory as HANA or ABAP health.
+Do not treat Linux by SNMP CPU/memory as HANA or ABAP health.

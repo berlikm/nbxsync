@@ -75,8 +75,9 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     those six targets. Certificate expiry is collected per appliance by the
     assigned proxy. No Extreme import or zerotouch.
   * SAP: ``--apply-sap`` / ``--check-sap`` import **SAP template from Sensirion**
-    (openSUSE HANA, SNMP OS) and **SAP ME from Sensirion** (Windows), assign each
-    on its role, exclude Linux by agent from role SAP HANA, and HostSync only
+    (openSUSE HANA, ST22 / sapcontrol) and **SAP ME from Sensirion** (Windows),
+    assign Linux by SNMP on role SAP HANA (disable its ``icmpping`` so ping stays
+    on the CG), exclude Linux by agent from that role, and HostSync only
     ``CH-STA-P-SH01`` when that device exists and is not onboarding. No Extreme
     import, no fleet HostSync, no zerotouch.
   * Global **destination** macros on the Zabbix server object (production end-state).
@@ -97,7 +98,7 @@ Stage matrix (what each flag enables):
   ``--check-fmg-faz`` / ``--apply-fmg-faz`` = FortiManager/FortiAnalyzer SNMP pack without zerotouch: import parent + Observability companions, split platform rules, disable leftover Network Generic rule. No HostSync.
   ``--apply-cato`` / ``--check-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
   ``--apply-xiqse`` / ``--check-xiqse`` = agentless XIQ-SE / ExtremeControl cutover: GraphQL + stock XIQ Cloud on the Site Engine; SNMP on five Control engines; per-host certificate expiry; one Health dashboard; targeted six-host HostSync.
-  ``--apply-sap`` / ``--check-sap`` = SAP LM-parity pack: import **SAP template from Sensirion** (openSUSE HANA, SNMP OS; no Linux by agent) and **SAP ME from Sensirion** (Windows, AGENT req), HostSync only ``CH-STA-P-SH01`` if present and not onboarding. No Extreme import, no fleet sync, no zerotouch.
+  ``--apply-sap`` / ``--check-sap`` = SAP LM-parity pack: import **SAP template from Sensirion** (openSUSE HANA, ST22 only) and **SAP ME from Sensirion** (Windows, AGENT req), assign Linux by SNMP on SAP HANA (disable its ping), exclude Linux by agent, HostSync only ``CH-STA-P-SH01`` if present and not onboarding. No Extreme import, no fleet sync, no zerotouch.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -5422,10 +5423,16 @@ def _print_sap_plan(server, *, errors: list[str], apply: bool, zbx_names: list[s
         logger.info('  %s ← %s', name, path)
     if zbx_names:
         logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
-    logger.info('  SAP HANA → %s (SNMP OS; no Linux by agent / no stock Linux by SNMP)', _sap.TEMPLATE_NAME)
-    logger.info('  SAP ME → %s (AGENT)', _sap.ME_TEMPLATE_NAME)
-    logger.info('  Linux TemplateRule excludes role SAP HANA (openSUSE OS = this pack SNMP)')
-    logger.info('  Prune leftover Linux by SNMP / Linux by agent and the wrong SAP pack from those roles')
+    logger.info(
+        '  SAP HANA → %s (ST22) + %s (OS). No Linux by agent. IP/TCP-UDP omitted',
+        _sap.TEMPLATE_NAME,
+        _sap.LINUX_SNMP_TEMPLATE_NAME,
+    )
+    logger.info('  SAP ME → %s (AGENT). OS stays Windows by agent', _sap.ME_TEMPLATE_NAME)
+    logger.info('  Linux TemplateRule excludes role SAP HANA (OS is role-assigned Linux SNMP)')
+    logger.info('  SNMP Linux (tag) still excludes SAP HANA (wrong CG)')
+    logger.info('  Disable ping items on Linux by SNMP so ICMP stays on CG SAP Agent+SNMP')
+    logger.info('  Prune leftover Linux by agent and the wrong SAP pack from those roles')
     logger.info('  Application triggers stay off until {$SAP.APP.CONTROL}=1')
     logger.info(
         '  Z_GET_ST22 URL macros on device %s only (not role SAP HANA). No user/pass writes',
@@ -5452,11 +5459,18 @@ def _require_sap_preflight(*, server=None, apply: bool = True):
         if server is None:
             raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
     zbx_names: list[str] = []
+    linux_snmp = None
     with ZabbixConnection(server) as api:
         for name in _sap.TEMPLATE_FILES:
             if _lookup_zabbix_template(api, name) is not None:
                 zbx_names.append(name)
+        linux_snmp = _lookup_zabbix_template(api, _sap.LINUX_SNMP_TEMPLATE_NAME)
     errors = _preflight_sap(server)
+    if linux_snmp is None:
+        errors.append(
+            f'{_sap.LINUX_SNMP_TEMPLATE_NAME} missing in Zabbix — HANA OS plane '
+            '(CPU / disk / FS / RAM / NICs). Import the stock template first'
+        )
     _print_sap_plan(server, errors=errors, apply=apply, zbx_names=zbx_names)
     if errors:
         for error in errors:
@@ -5466,7 +5480,11 @@ def _require_sap_preflight(*, server=None, apply: bool = True):
 
 
 def _exclude_linux_os_agent_from_hana(server) -> None:
-    """HANA OS is the Sensirion SNMP pack. Do not attach Linux by agent or stock Linux by SNMP."""
+    """Keep Linux by agent and the snmp-tag Linux rule off SAP HANA.
+
+    OS is role-assigned Linux by SNMP on CG SAP Agent+SNMP. The tag rule
+    would attach the wrong CG (MONITORING-LINUX SHA/AES).
+    """
     if ztc is None:
         logger.warning('  zerotouch helpers missing — cannot retarget the Linux TemplateRule')
     else:
@@ -5499,6 +5517,83 @@ def _exclude_linux_os_agent_from_hana(server) -> None:
     logger.info('  %s → role SAP HANA', _sap.OS_LINUX_HOSTGROUP)
 
 
+_ITEM_DISABLED = 1
+
+
+def _assign_linux_snmp_os_to_hana(server, api) -> None:
+    """Role SAP HANA gets stock Linux by SNMP. Fail closed if it is missing."""
+    row = _lookup_zabbix_template(api, _sap.LINUX_SNMP_TEMPLATE_NAME)
+    if row is None:
+        raise SystemExit(
+            f'{_sap.LINUX_SNMP_TEMPLATE_NAME} missing in Zabbix — cannot assign HANA OS'
+        )
+    tpl = ensure_nbx_template(
+        server,
+        row[0],
+        row[1],
+        req=[HostInterfaceRequirementChoices.SNMP],
+    )
+    role = DeviceRole.objects.get(name='SAP HANA')
+    ensure(
+        M.ZabbixTemplateAssignment,
+        zabbixtemplate=tpl,
+        assigned_object_type=ct(DeviceRole),
+        assigned_object_id=role.id,
+        defaults={},
+    )
+    logger.info('  %s → role SAP HANA', tpl.name)
+
+
+def _disable_linux_snmp_icmpping(api) -> None:
+    """Turn off ping items on Linux by SNMP so ICMP stays on the SAP CG."""
+    row = _lookup_zabbix_template(api, _sap.LINUX_SNMP_TEMPLATE_NAME)
+    if row is None:
+        raise SystemExit(
+            f'{_sap.LINUX_SNMP_TEMPLATE_NAME} missing in Zabbix — cannot disable ping items'
+        )
+    tid = row[0]
+    items = (
+        api.item.get(
+            hostids=tid,
+            filter={'key_': list(_sap.LINUX_SNMP_ICMP_KEYS)},
+            output=['itemid', 'key_', 'status'],
+        )
+        or []
+    )
+    if not items:
+        logger.warning(
+            '  %s has no ping items — skip disable (already removed or stub)',
+            _sap.LINUX_SNMP_TEMPLATE_NAME,
+        )
+        return
+    patched = already = 0
+    for item in items:
+        if str(item.get('status')) == str(_ITEM_DISABLED):
+            already += 1
+            continue
+        api.item.update(itemid=item['itemid'], status=_ITEM_DISABLED)
+        patched += 1
+    itemids = [item['itemid'] for item in items]
+    triggers = (
+        api.trigger.get(itemids=itemids, output=['triggerid', 'status', 'description']) or []
+    )
+    trig_patched = trig_already = 0
+    for trig in triggers:
+        if str(trig.get('status')) == str(_ITEM_DISABLED):
+            trig_already += 1
+            continue
+        api.trigger.update(triggerid=trig['triggerid'], status=_ITEM_DISABLED)
+        trig_patched += 1
+    logger.info(
+        '  %s ping items disabled (items patched=%s already=%s; triggers patched=%s already=%s)',
+        _sap.LINUX_SNMP_TEMPLATE_NAME,
+        patched,
+        already,
+        trig_patched,
+        trig_already,
+    )
+
+
 def _assign_st22_macros_on_sh01_only(server) -> None:
     """Z_GET_ST22 URL lives on CH-STA-P-SH01. Never on role SAP HANA / ME. No secrets."""
     for role_name in _sap.SAP_ROLES:
@@ -5529,8 +5624,8 @@ def _assign_st22_macros_on_sh01_only(server) -> None:
     logger.info('  ST22 user/pass stay unset — operator secret on %s only', canary.name)
 
 
-def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
-    """Assign HANA template on SAP HANA (SNMP) and ME template on SAP ME (AGENT)."""
+def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]], api):
+    """Assign ST22 pack + Linux by SNMP on SAP HANA; ME pack on SAP ME."""
     logger.info('=' * 60)
     logger.info('Network: SAP LM-parity nbxSync assignment')
     logger.info('=' * 60)
@@ -5538,7 +5633,7 @@ def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
         server,
         imported[_sap.TEMPLATE_NAME][0],
         imported[_sap.TEMPLATE_NAME][1],
-        req=[HostInterfaceRequirementChoices.SNMP],
+        req=[HostInterfaceRequirementChoices.AGENT],
     )
     me = ensure_nbx_template(
         server,
@@ -5547,7 +5642,7 @@ def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
         req=[HostInterfaceRequirementChoices.AGENT],
     )
     assignments = (
-        ('SAP HANA', hana, [HostInterfaceRequirementChoices.SNMP], _sap.ME_TEMPLATE_NAME),
+        ('SAP HANA', hana, [HostInterfaceRequirementChoices.AGENT], _sap.ME_TEMPLATE_NAME),
         ('SAP ME', me, [HostInterfaceRequirementChoices.AGENT], _sap.TEMPLATE_NAME),
     )
     last = hana
@@ -5561,9 +5656,9 @@ def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
             defaults={},
         )
         pruned = 0
-        leftovers = ['Linux by SNMP', other_name]
-        if role_name == 'SAP HANA':
-            leftovers.extend(_sap.LINUX_AGENT_TEMPLATE_NAMES)
+        leftovers = [other_name, *_sap.LINUX_AGENT_TEMPLATE_NAMES]
+        if role_name == 'SAP ME':
+            leftovers.append(_sap.LINUX_SNMP_TEMPLATE_NAME)
         for leftover in leftovers:
             deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
                 zabbixtemplate__name=leftover,
@@ -5575,6 +5670,8 @@ def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
             logger.info('  PRUNED: leftover Linux OS / wrong SAP pack from role %s', role.name)
         logger.info('  %s → role %s', tpl.name, role.name)
         last = tpl
+    _assign_linux_snmp_os_to_hana(server, api)
+    _disable_linux_snmp_icmpping(api)
     _exclude_linux_os_agent_from_hana(server)
     _assign_st22_macros_on_sh01_only(server)
     return last
@@ -5596,7 +5693,7 @@ def run_apply_sap() -> int:
     logger.info('Preflight OK — importing SAP template and assigning SAP roles')
     with ZabbixConnection(server) as api:
         imported = import_sap_templates(api)
-    _step_sap_nbxsync(server, imported)
+        _step_sap_nbxsync(server, imported, api)
     canary = Device.objects.filter(name__iexact=_sap.CANARY_HOST).first()
     if canary is None:
         logger.info('Canary %s not in NetBox — skipped HostSync', _sap.CANARY_HOST)
@@ -5606,11 +5703,12 @@ def run_apply_sap() -> int:
         logger.info('HostSync %s', canary.name)
         SyncHostJob(instance=canary).run()
     logger.info(
-        'SAP pack written. %s on SAP HANA (SNMP OS, Linux by agent excluded), %s on SAP ME. '
-        'Z_GET_ST22 URL macros are on %s only. '
+        'SAP pack written. %s + %s on SAP HANA (ST22 + Linux SNMP OS; ping on CG; Linux by agent excluded), '
+        '%s on SAP ME. Z_GET_ST22 URL macros are on %s only. '
         'Application sapcontrol items stay silent until {$SAP.APP.CONTROL}=1 after an optional Host Agent UserParameter. '
         'HostSync was only %s (or skipped). Do not re-run zerotouch to refresh this pack.',
         _sap.TEMPLATE_NAME,
+        _sap.LINUX_SNMP_TEMPLATE_NAME,
         _sap.ME_TEMPLATE_NAME,
         _sap.CANARY_HOST,
         _sap.CANARY_HOST,

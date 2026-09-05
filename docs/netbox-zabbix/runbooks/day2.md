@@ -47,8 +47,9 @@ Stages: *[Extreme switching — Confluence TBD]*. nbxSync: configuration §7 (ca
 3. Assign on the Device Role (§7).
 
 SAP is not a new stub: `--apply-sap` imports **SAP template from Sensirion**
-(openSUSE HANA) and **SAP ME from Sensirion** (Windows), assigns each on
-its role, and HostSyncs only `CH-STA-P-SH01` if that device exists and is
+(openSUSE HANA, ST22 only) and **SAP ME from Sensirion** (Windows), assigns
+Linux by SNMP on role SAP HANA (disables its ping), excludes Linux by
+agent, and HostSyncs only `CH-STA-P-SH01` if that device exists and is
 not onboarding. Do not re-run zerotouch for that. ME needs the PowerShell
 UserParameter on the Windows host before CONTROL=1.
 

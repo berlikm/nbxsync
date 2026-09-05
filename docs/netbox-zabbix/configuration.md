@@ -296,7 +296,7 @@ First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and valu
 
 - role **Server** / … + Linux-like platform → Linux by agent
 - role **vCenter** + Photon OS/Linux → Linux rule does **not** apply → VMware FQDN + ICMP Ping from the Agent CG only
-- role **SAP HANA** + SUSE/Linux → Linux rule does **not** apply → **SAP template from Sensirion** SNMP OS (`SAPUSER`). No stock Linux by SNMP. OS/Linux hostgroup is assigned on the role. `--apply-sap` writes this exclusion so zerotouch is not required.
+- role **SAP HANA** + SUSE/Linux → Linux rule does **not** apply → **Linux by SNMP** (role assignment, `SAPUSER` via CG SAP Agent+SNMP) + **SAP template from Sensirion** (ST22 only). No Linux by agent. OS/Linux hostgroup is assigned on the role. `--apply-sap` writes this exclusion and disables ping on Linux by SNMP so ICMP stays on the CG.
 
 ### 6.2 Tag overlays
 
@@ -308,7 +308,7 @@ Use together with the matching configuration group for transport.
 | SNMP Windows (tag) | `Windows` | Windows by SNMP | OS/Windows | `snmp` |
 | Oracle (tag) | `.*` | Oracle by Zabbix agent 2 | — | `oracle` |
 
-Tag `snmp` also selects CG **SNMP Monitoring (by tag)** (§5b). The agent OS rule still matches on non-SAP Linux; HostSync **drops** the agent template because the host has only an SNMP interface. Role **SAP HANA** is excluded from both the Linux agent rule and this SNMP Linux tag rule — OS stays on **SAP template from Sensirion**.
+Tag `snmp` also selects CG **SNMP Monitoring (by tag)** (§5b). The agent OS rule still matches on non-SAP Linux; HostSync **drops** the agent template because the host has only an SNMP interface. Role **SAP HANA** is excluded from both the Linux agent rule and this SNMP Linux tag rule (wrong CG). HANA OS is **Linux by SNMP** assigned on the role, riding CG **SAP Agent+SNMP**.
 
 Tag `oracle` does **not** change transport. Pattern `.*` + require tag `oracle` → **Oracle by Zabbix agent 2** on that Device/VM, merged with whatever OS template the platform rule already attached. Windows with Oracle: tag the host `oracle` (keeps Windows by agent). Space Server with Oracle: same — tag the Device/VM; it stays on **Agent Monitoring (SPACE)** (:10060). The Oracle template needs an **Agent** interface (SPACE has one). SNMP-only hosts drop it. Dedicated DB servers also get Oracle from role **Database** (§7) — the tag is the overlay for any other role.
 
@@ -367,12 +367,13 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 | VMware FQDN | Device Role vCenter | **Only** on vCenter — not on ESXi platforms. Secrets via §11.3 |
 | GitLab by HTTP | Device Role GitLab | |
 | Linux by SNMP | Device Role Virtual Appliance | Baseline if no platform rule matches |
+| Linux by SNMP | Device Role SAP HANA | HANA OS (CPU cores, disk IO, FS, RAM, NICs). `--apply-sap` disables its `icmpping` so ping stays on CG SAP Agent+SNMP. Do not use the snmp-tag rule (wrong CG). |
 | Network Generic Device by SNMP | Device Role Network Device | Fallback only |
 | FortiGate by SNMP | Device Role Firewall | Also via FortiOS platform rule |
 | Tableau Bridge by Zabbix agent `(stub)` | Device Role Tableau | Assign if the template exists on the Zabbix server |
 | CellMap by Zabbix agent `(stub)` | Device Role CellMap | Assign if the template exists |
 | Oracle by Zabbix agent 2 | Device Role Database | Also tag rule §6.2 |
-| SAP template from Sensirion | Device Role SAP HANA (openSUSE) | Import with `--apply-sap`. **OS is this pack’s SNMP** (UCD/IF/FS). Do not assign Linux by agent or Linux by SNMP. `Z_GET_ST22` URL macros go on device **CH-STA-P-SH01** only (not this role). sapcontrol UserParameter + `web.certificate.get` stay optional until an agent exists. Interface req SNMP. |
+| SAP template from Sensirion | Device Role SAP HANA (openSUSE) | Import with `--apply-sap`. **ST22 / sapcontrol only**. OS is Linux by SNMP on this role. Do not assign Linux by agent. `Z_GET_ST22` URL macros go on device **CH-STA-P-SH01** only (not this role). sapcontrol UserParameter + `web.certificate.get` stay optional until an agent exists. Interface req AGENT. |
 | SAP ME from Sensirion | Device Role SAP ME (Windows) | Same `--apply-sap`. No UCD SNMP. PowerShell sapcontrol + `proc.num[jstart.exe]` + cert/port default **50001** (LM `ssl.ports` on ch-sta-p-me05). Interface req AGENT. OS stays on Windows by agent. |
 | Acronis Cyber Protect Cloud by HTTP | Device Role Acronis Management | Assign if the template exists |
 | SCCM by Zabbix agent `(stub)` | Device Role SCCM | Assign if the template exists |
@@ -689,7 +690,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 |---|---|---|---|---|
 | Linux server (role Server) | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping (+ Dell iDRAC by SNMP if Dell w/ oob_ip) | Agent :10050 @ primary | Sites/CH/…, Roles/Server, OS/Linux |
 | Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) + ICMP Ping | Agent :10050 | Sites/CH/…, Roles/…, OS/… |
-| SAP HANA (openSUSE) | **SAP Agent+SNMP** | **SAP template from Sensirion** (SNMP OS) + ICMP Ping. **No** Linux by agent. `Z_GET_ST22` macros on **CH-STA-P-SH01** only | SNMP `SAPUSER` MD5/DES (agent IF unused until an agent is installed) | Sites/…, Roles/SAP HANA, OS/Linux |
+| SAP HANA (openSUSE) | **SAP Agent+SNMP** | **Linux by SNMP** (ping disabled) + **SAP template from Sensirion** (ST22) + ICMP Ping on the CG. **No** Linux by agent. `Z_GET_ST22` macros on **CH-STA-P-SH01** only | SNMP `SAPUSER` MD5/DES + Agent :10050 (unused until an agent is installed) | Sites/…, Roles/SAP HANA, OS/Linux |
 | SAP ME (Windows) | **SAP Agent+SNMP** | Windows by agent + **SAP ME from Sensirion** + ICMP Ping | Agent :10050 + SNMP IF unused until walked | Sites/…, Roles/SAP ME, OS/Windows |
 | Host with tag `snmp` only | SNMP Monitoring (by tag) via tag | Linux or Windows by SNMP + ICMP Ping | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
 | EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP (+ role IFALIAS macros) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |

@@ -28,9 +28,15 @@ ROLE_TEMPLATES = {
     'SAP HANA': TEMPLATE_NAME,
     'SAP ME': ME_TEMPLATE_NAME,
 }
-# There is no official openSUSE template. Stock Linux by SNMP is the generic
-# Net-SNMP pack and must not be linked — this YAML already has those OIDs.
-# Linux by agent is excluded: the HANA appliance may not take a Zabbix agent.
+# There is no official openSUSE template. Role SAP HANA links stock
+# Linux by SNMP (CPU cores, disk IO, FS, RAM, NICs). This YAML is
+# ST22 / sapcontrol only — UCD / IF / FS keys would collide with that
+# OS template. Linux by agent stays excluded. The snmp-tag Linux rule
+# stays excluded (wrong CG: MONITORING-LINUX SHA/AES). IP / TCP-UDP
+# stay omitted until an agent exists. --apply-sap disables icmpping on
+# the OS template so ping stays on CG SAP Agent+SNMP.
+LINUX_SNMP_TEMPLATE_NAME = 'Linux by SNMP'
+LINUX_SNMP_ICMP_KEYS = ('icmpping', 'icmppingloss', 'icmppingsec')
 LINUX_TEMPLATE_RULE = 'Linux'
 LINUX_AGENT_ROLE_PATTERN = r'^(?!vCenter$|SAP HANA$).*'
 SNMP_LINUX_TAG_RULE = 'SNMP Linux (tag)'
@@ -179,6 +185,7 @@ CERT_EXPIRED = 'SAP host: TLS certificate expired'
 CERT_SOON = 'SAP host: TLS certificate expires soon'
 PORT_DOWN = 'SAP host: TCP port is down'
 
+# Stripped from this YAML — stock Linux by SNMP owns these keys.
 SNMP_ITEM_KEYS = {
     'zabbix[host,snmp,available]',
     'zabbix[host,,items_unsupported]',
@@ -432,36 +439,6 @@ LM_APP_METRICS = (
 )
 
 MACROS = (
-    ('{$SNMP.TIMEOUT}', '5m', 'SNMP availability trigger window.'),
-    (
-        '{$UNSUPPORTED.CONTROL}',
-        '0',
-        '1 tickets leftover unsupported items. 0 while the optional Linux '
-        'agent/UserParameter is absent (those items are CHECK_NOT_SUPPORTED). '
-        'SNMP down stays on zabbix[host,snmp,available].',
-    ),
-    ('{$UNSUPPORTED.MAX}', '1', 'Average when unsupported SNMP items stay above this for 30m.'),
-    ('{$SAP.MEMORY.UTIL.MAX}', '101', 'Host RAM used % Warning. 101 collects first.'),
-    ('{$SAP.CPU.UTIL.MAX}', '101', 'Host CPU used % Warning. 101 collects first.'),
-    ('{$SAP.CPU.LOAD.MAX}', '101', '15-minute load Warning. 101 collects first.'),
-    ('{$SAP.SWAP.UTIL.MAX}', '101', 'Swap used % Warning. 101 collects first.'),
-    ('{$SAP.VFS.FS.PUSED.MAX}', '101', 'Filesystem used % Warning. 101 collects first.'),
-    ('{$SAP.NET.IF.ERRORS.WARN}', '2', 'IF-MIB in+out errors/s Warning.'),
-    ('{$IFCONTROL}', '1', '1 tickets admin-up link-down. {$IFCONTROL:"eth0"}=0 mutes one NIC.'),
-    ('{$NET.IF.IFDESCR.MATCHES}', '^.+$', 'Interface LLD include.'),
-    ('{$NET.IF.IFDESCR.NOT_MATCHES}', '^(?i)(lo|loopback)(.*)$', 'Drop loopback. SH01 probe saw lo + eth0.'),
-    ('{$NET.IF.IFTYPE.NOT_MATCHES}', '^24$', 'Drop softwareLoopback(24).'),
-    ('{$VFS.FS.FSNAME.MATCHES}', '^.+$', 'Filesystem LLD include.'),
-    (
-        '{$VFS.FS.FSNAME.NOT_MATCHES}',
-        '^(?i)(physical memory|virtual memory|memory buffers|cached memory|swap|/dev|/sys|/run|/proc).*$',
-        'Keep mounted disks; UCD memory is scalars, not this LLD.',
-    ),
-    (
-        '{$VFS.FS.FSTYPE.MATCHES}',
-        r'^(\.iso\.org\.dod\.internet\.mgmt\.mib-2\.host\.hrStorage\.hrStorageTypes\.hrStorageFixedDisk|1\.3\.6\.1\.2\.1\.25\.2\.1\.4)$',
-        'hrStorageFixedDisk only.',
-    ),
     (
         '{$SAP.APP.CONTROL}',
         '0',
@@ -568,22 +545,6 @@ def macros_for(flavor: str) -> list[tuple[str, str, str]]:
 
 HANA_ONLY_MACROS = frozenset(
     {
-        '{$SNMP.TIMEOUT}',
-        '{$UNSUPPORTED.CONTROL}',
-        '{$UNSUPPORTED.MAX}',
-        '{$SAP.MEMORY.UTIL.MAX}',
-        '{$SAP.CPU.UTIL.MAX}',
-        '{$SAP.CPU.LOAD.MAX}',
-        '{$SAP.SWAP.UTIL.MAX}',
-        '{$SAP.VFS.FS.PUSED.MAX}',
-        '{$SAP.NET.IF.ERRORS.WARN}',
-        '{$IFCONTROL}',
-        '{$NET.IF.IFDESCR.MATCHES}',
-        '{$NET.IF.IFDESCR.NOT_MATCHES}',
-        '{$NET.IF.IFTYPE.NOT_MATCHES}',
-        '{$VFS.FS.FSNAME.MATCHES}',
-        '{$VFS.FS.FSNAME.NOT_MATCHES}',
-        '{$VFS.FS.FSTYPE.MATCHES}',
         '{$SAP.API.HOST}',
         '{$SAP.API.PORT}',
         '{$SAP.API.PATH}',
@@ -591,12 +552,6 @@ HANA_ONLY_MACROS = frozenset(
         '{$SAP.API.PASS}',
     }
 )
-
-
-def dep_snmp(doc: Doc, indent: int) -> None:
-    doc.add(indent, 'dependencies:')
-    doc.add(indent + 1, f'- name: {q(SNMP_DOWN)}')
-    doc.add(indent + 2, f'expression: max(/{TPL}/zabbix[host,snmp,available],' + '{$SNMP.TIMEOUT})=0')
 
 
 def item_tile(doc: Doc, indent: int, key: str, x: int | None, y: int | None, width: int, ref: str, name: str) -> None:
@@ -628,45 +583,6 @@ def item_tile(doc: Doc, indent: int, key: str, x: int | None, y: int | None, wid
     doc.add(indent + 3, f'value: {ref}')
 
 
-def svg_graph(doc: Doc, indent: int, name: str, series: list[tuple[str, str]], *, x: int = 0, y: int = 0, width: int = 36, ref: str) -> None:
-    doc.add(indent, '- type: svggraph')
-    doc.add(indent + 1, f'name: {name}')
-    if x:
-        doc.add(indent + 1, f"x: '{x}'")
-    if y:
-        doc.add(indent + 1, f"y: '{y}'")
-    doc.add(indent + 1, f"width: '{width}'")
-    doc.add(indent + 1, "height: '6'")
-    doc.add(indent + 1, 'fields:')
-    doc.add(indent + 2, '- type: INTEGER')
-    doc.add(indent + 3, 'name: ds.0.dataset_type')
-    doc.add(indent + 3, "value: '0'")
-    for idx, (color, key) in enumerate(series):
-        doc.add(indent + 2, '- type: STRING')
-        doc.add(indent + 3, f'name: ds.0.color.{idx}')
-        doc.add(indent + 3, f'value: {color}')
-        doc.add(indent + 2, '- type: ITEM')
-        doc.add(indent + 3, f'name: ds.0.itemids.{idx}')
-        doc.add(indent + 3, 'value:')
-        doc.add(indent + 4, f'host: {TPL}')
-        doc.add(indent + 4, f'key: {q(key)}')
-    doc.add(indent + 2, '- type: STRING')
-    doc.add(indent + 3, 'name: reference')
-    doc.add(indent + 3, f'value: {ref}')
-    doc.add(indent + 2, '- type: INTEGER')
-    doc.add(indent + 3, 'name: show_problems')
-    doc.add(indent + 3, "value: '1'")
-    doc.add(indent + 2, '- type: INTEGER')
-    doc.add(indent + 3, 'name: legend')
-    doc.add(indent + 3, "value: '1'")
-    doc.add(indent + 2, '- type: STRING')
-    doc.add(indent + 3, 'name: time_period.from')
-    doc.add(indent + 3, 'value: now-1d')
-    doc.add(indent + 2, '- type: STRING')
-    doc.add(indent + 3, 'name: time_period.to')
-    doc.add(indent + 3, 'value: now')
-
-
 def render(flavor: str = 'hana') -> str:
     global TPL, _UID_PREFIX
     if flavor not in ('hana', 'me'):
@@ -685,23 +601,26 @@ def _hana_description() -> str:
     return f"""Sensirion SAP HANA pack (openSUSE). LogicMonitor parity from
 zabbix/logicmonitor-assessment.md plus the 2026-09-05 SNMP probe of {CANARY_HOST}.
 
-This template is SAP HANA only ({LM_SAP_HOSTS} LM SAP hosts included HANA +
-ME). SAP ME is Windows — see {ME_TEMPLATE_NAME}.
-Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
+This template is SAP HANA application only ({LM_SAP_HOSTS} LM SAP hosts
+included HANA + ME). SAP ME is Windows — see {ME_TEMPLATE_NAME}.
+Do not link this YAML on role SAP ME.
 
-1. Host / SNMP — this is the OS plane. LM {LM_SNMP_USER} MD5/DES. There is
-   no official openSUSE template. Do not link the stock Linux SNMP template
-   (generic Net-SNMP; duplicates IF-MIB / UCD / HOST-RESOURCES already here).
-   Do not attach Linux by Zabbix agent — the HANA appliance may not take an agent.
-   Probe of {CANARY_HOST} (10.0.105.112) proved Linux Net-SNMP only
-   ({LINUX_NETSNMP_SYSOBJECTID}). Host CPU/RAM, not HANA allocation.
+1. Host / OS — stock Linux SNMP OS template on role SAP HANA (CPU cores,
+   disk IO, filesystems, RAM, NICs). Transport is CG SAP Agent+SNMP
+   ({LM_SNMP_USER} MD5/DES), not the snmp-tag Linux CG. There is no
+   official openSUSE template. Do not attach Linux by Zabbix agent —
+   the HANA appliance may not take an agent. This YAML does not poll
+   UCD / IF-MIB / HOST-RESOURCES (those keys live on the OS template).
+   IP-MIB / TCP-UDP stay omitted until an agent exists. Probe of
+   {CANARY_HOST} (10.0.105.112) proved Linux Net-SNMP only
+   ({LINUX_NETSNMP_SYSOBJECTID}). Host CPU/RAM is not HANA allocation.
 
-2. Application — optional. The LM {LM_PROMONITOR_USER} names via local
-   sapcontrol (Linux Zabbix agent UserParameter, Host Agent /usr/sap/hostctrl)
-   only if an agent is installed later. GetProcessList = hdb* GREEN/YELLOW.
-   GetAlerts CCMS counts stay 0 on a HANA-only box (not ST22 RFC, not HANA SQL).
-   {{$SAP.APP.CONTROL}}=0 until the UserParameter is installed.
-   SH01 Alerting tree has one SAP row: {SH01_LM_SAP_DS}. LM
+2. Application — ST22 / sapcontrol. The LM {LM_PROMONITOR_USER} names
+   via local sapcontrol (Linux Zabbix agent UserParameter, Host Agent
+   /usr/sap/hostctrl) only if an agent is installed later. GetProcessList
+   = hdb* GREEN/YELLOW. GetAlerts CCMS counts stay 0 on a HANA-only box
+   (not HANA SQL). {{$SAP.APP.CONTROL}}=0 until the UserParameter is
+   installed. SH01 Alerting tree has one SAP row: {SH01_LM_SAP_DS}. LM
    system.displayname is {CANARY_FQDN} (openSUSE). The PowerShell ran
    on an LM collector *against* that Linux FQDN
    https://{CANARY_FQDN}:{ST22_DEFAULT_PORT}{ST22_DEFAULT_PATH}
@@ -713,16 +632,16 @@ Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
 3. Certificate — agent web.certificate.get when an agent exists. Set
    {{$SAP.CERT.HOST}}. {{$SAP.CERT.CONTROL}}=0 until then.
 
-Ping stays on SAP Agent+SNMP ICMP. LM OS rows on SH01 were Linux SNMP
-(SAPUSER), not a host agent. This pack has UCD CPU/RAM, IF-MIB, and
-hrStorage. It does not add IP-MIB / TCP-UDP-MIB / disk-IO tables unless
-those OIDs are walked. ABAP is {SH01_LM_SAP_DS} on {CANARY_HOST} only.
+Ping stays on SAP Agent+SNMP ICMP. --apply-sap turns off ping items on
+the OS template so they do not collide with the CG. LM OS rows on SH01
+were Linux SNMP ({LM_SNMP_USER}), not a host agent. ABAP is
+{SH01_LM_SAP_DS} on {CANARY_HOST} only.
 
 Ungrouped LM DataSource_* are collector methods. Groovy/batch is retired.
 Do not execute collector scripts on the Zabbix proxy.
 
 jstart lives on the Windows ME template ({', '.join(ME_CANARY_HOSTS)}).
-Does not link the stock Linux SNMP template. Does not invent a Promonitor API.
+Does not invent a Promonitor API.
 
 Operator notes: zabbix/notes/sap-snmp-walk.md,
 zabbix/templates/sap_sensirion/SAPCONTROL.md.
@@ -802,271 +721,11 @@ def _render(flavor: str) -> str:
         doc.add(5, f'value: {q(value)}')
         doc.add(5, f'description: {q(descr)}')
     doc.add(3, 'items:')
-    if flavor == 'hana':
-        _host_items(doc)
     _app_items(doc, flavor=flavor)
     _agent_items(doc, flavor=flavor)
-    if flavor == 'hana':
-        _discovery(doc)
     _dashboard(doc, flavor=flavor)
     _valuemaps(doc, flavor=flavor)
     return doc.dumps()
-
-
-def _host_items(doc: Doc) -> None:
-    doc.add(4, f'- uuid: {uid("item", "snmp")}')
-    doc.add(5, 'name: SNMP agent availability')
-    doc.add(5, 'type: INTERNAL')
-    doc.add(5, "key: 'zabbix[host,snmp,available]'")
-    doc.add(5, 'description: |')
-    doc.literal(6, f'LM {LM_SNMP_USER} plane. 0/1/2. ICMP High from the SAP Agent+SNMP CG pages if the box is gone.')
-    doc.add(5, 'valuemap:')
-    doc.add(6, 'name: zabbix.host.available')
-    tags(doc, 5, 'health')
-    doc.add(5, 'triggers:')
-    doc.add(6, f'- uuid: {uid("tr", "snmp")}')
-    doc.add(7, f'expression: max(/{TPL}/zabbix[host,snmp,available],' + '{$SNMP.TIMEOUT})=0')
-    doc.add(7, f'name: {q(SNMP_DOWN)}')
-    doc.add(7, f'event_name: {q(SNMP_DOWN)}')
-    doc.add(7, 'priority: WARNING')
-    doc.add(7, 'description: |')
-    doc.literal(8, f'SNMP {LM_SNMP_USER} MD5/DES failed from the assigned proxy. Host infra, not an ABAP dump. Canary {CANARY_HOST}.')
-    scope(doc, 7, 'availability')
-
-    doc.add(4, f'- uuid: {uid("item", "unsup")}')
-    doc.add(5, 'name: Unsupported item count')
-    doc.add(5, 'type: INTERNAL')
-    doc.add(5, "key: 'zabbix[host,,items_unsupported]'")
-    doc.add(5, 'delay: 15m')
-    doc.add(5, 'description: Watch the watcher for the SNMP plane only. Application sapcontrol items use CHECK_NOT_SUPPORTED.')
-    tags(doc, 5, 'health')
-    doc.add(5, 'triggers:')
-    doc.add(6, f'- uuid: {uid("tr", "unsup")}')
-    doc.add(7, 'expression: ' + q(f'{{$UNSUPPORTED.CONTROL}}=1 and min(/{TPL}/zabbix[host,,items_unsupported],30m)>{{$UNSUPPORTED.MAX}}'))
-    doc.add(7, f'name: {q(UNSUPPORTED)}')
-    doc.add(7, f'event_name: {q(UNSUPPORTED)}')
-    doc.add(7, 'priority: AVERAGE')
-    doc.add(7, 'description: |')
-    doc.literal(8, 'Off until {$UNSUPPORTED.CONTROL}=1. Optional agent/UserParameter items are CHECK_NOT_SUPPORTED without an agent. SNMP down stays on zabbix[host,snmp,available].')
-    dep_snmp(doc, 7)
-    scope(doc, 7, 'availability')
-
-    doc.add(4, f'- uuid: {uid("item", "snmp.hl")}')
-    doc.add(5, 'name: SNMP')
-    doc.add(5, 'type: CALCULATED')
-    doc.add(5, 'key: sap.host.snmp.available')
-    doc.add(5, 'delay: 1m')
-    doc.add(5, 'value_type: FLOAT')
-    doc.add(5, "params: 'last(//zabbix[host,snmp,available])'")
-    doc.add(5, 'valuemap:')
-    doc.add(6, 'name: zabbix.host.available')
-    tags(doc, 5, 'health')
-
-    _char_item(doc, 'system.name', 'System name', '1.3.6.1.2.1.1.5.0')
-    doc.add(5, 'triggers:')
-    doc.add(6, f'- uuid: {uid("tr", "sysname")}')
-    doc.add(7, f'expression: last(/{TPL}/system.name,#1)<>last(/{TPL}/system.name,#2) and length(last(/{TPL}/system.name))>0')
-    doc.add(7, f'name: {q(SYSNAME)}')
-    doc.add(7, f'event_name: {q(SYSNAME)}')
-    doc.add(7, 'priority: INFO')
-    doc.add(7, "manual_close: 'YES'")
-    scope(doc, 7, 'notice')
-
-    _char_item(doc, 'system.descr', 'System description', '1.3.6.1.2.1.1.1.0', inventory='TYPE')
-    _char_item(
-        doc,
-        'system.objectid[sysObjectID.0]',
-        'System object ID',
-        '1.3.6.1.2.1.1.2.0',
-        description=f'{CANARY_HOST} is Linux Net-SNMP {LINUX_NETSNMP_SYSOBJECTID}.',
-    )
-
-    doc.add(4, f'- uuid: {uid("item", "netsnmp")}')
-    doc.add(5, 'name: Linux Net-SNMP identity')
-    doc.add(5, 'type: DEPENDENT')
-    doc.add(5, 'key: sap.host.netsnmp')
-    doc.add(5, "delay: '0'")
-    doc.add(5, 'history: 7d')
-    doc.add(5, 'trends: 365d')
-    doc.add(5, 'value_type: UNSIGNED')
-    doc.add(5, 'valuemap:')
-    doc.add(6, 'name: SAP host identity')
-    doc.add(5, 'preprocessing:')
-    doc.add(6, '- type: JAVASCRIPT')
-    doc.add(7, 'parameters:')
-    doc.add(8, '- |')
-    doc.literal(
-        10,
-        "var oid = String(value || '').replace(/^\\\\.+/, '');\n"
-        f"var expect = '{LINUX_NETSNMP_SYSOBJECTID}';\n"
-        'return oid === expect || oid === "." + expect ? 1 : 0;\n',
-    )
-    doc.add(5, 'master_item:')
-    doc.add(6, "key: 'system.objectid[sysObjectID.0]'")
-    tags(doc, 5, 'system')
-
-    doc.add(4, f'- uuid: {uid("item", "uptime")}')
-    doc.add(5, 'name: Uptime')
-    doc.add(5, 'type: SNMP_AGENT')
-    doc.add(5, 'snmp_oid: 1.3.6.1.2.1.1.3.0')
-    doc.add(5, "key: 'system.net.uptime[sysUpTime.0]'")
-    doc.add(5, 'delay: 1m')
-    doc.add(5, 'units: uptime')
-    doc.add(5, 'preprocessing:')
-    doc.add(6, '- type: MULTIPLIER')
-    doc.add(7, 'parameters:')
-    doc.add(8, "- '0.01'")
-    tags(doc, 5, 'system')
-    doc.add(5, 'triggers:')
-    doc.add(6, f'- uuid: {uid("tr", "restart")}')
-    doc.add(7, f'expression: last(/{TPL}/system.net.uptime[sysUpTime.0])>0 and last(/{TPL}/system.net.uptime[sysUpTime.0])<10m')
-    doc.add(7, f'name: {q(RESTARTED)}')
-    doc.add(7, f'event_name: {q(RESTARTED)}')
-    doc.add(7, 'priority: INFO')
-    doc.add(7, "manual_close: 'YES'")
-    dep_snmp(doc, 7)
-    scope(doc, 7, 'notice')
-
-    for minutes, idx, trig in (('1m', 1, False), ('5m', 2, False), ('15m', 3, True)):
-        doc.add(4, f'- uuid: {uid("item", f"load.{minutes}")}')
-        doc.add(5, f'name: Load average ({minutes})')
-        doc.add(5, 'type: SNMP_AGENT')
-        doc.add(5, f'snmp_oid: 1.3.6.1.4.1.2021.10.1.3.{idx}')
-        doc.add(5, f'key: {q(f"sap.host.load[{minutes}]")}')
-        doc.add(5, 'delay: 1m')
-        doc.add(5, 'value_type: FLOAT')
-        doc.add(5, 'description: UCD laLoad. Host infra, not SAP dialog response time.')
-        tags(doc, 5, 'os')
-        if trig:
-            doc.add(5, 'triggers:')
-            doc.add(6, f'- uuid: {uid("tr", "load")}')
-            doc.add(7, f'expression: min(/{TPL}/sap.host.load[15m],15m)>' + '{$SAP.CPU.LOAD.MAX}')
-            doc.add(7, f'name: {q(LOAD_WARN)}')
-            doc.add(7, f'event_name: {q(LOAD_WARN)}')
-            doc.add(7, 'priority: WARNING')
-            dep_snmp(doc, 7)
-            scope(doc, 7, 'performance')
-
-    doc.add(4, f'- uuid: {uid("item", "cpu.idle")}')
-    doc.add(5, 'name: CPU idle')
-    doc.add(5, 'type: SNMP_AGENT')
-    doc.add(5, 'snmp_oid: 1.3.6.1.4.1.2021.11.11.0')
-    doc.add(5, 'key: sap.host.cpu.idle')
-    doc.add(5, 'delay: 1m')
-    doc.add(5, 'units: "%"')
-    tags(doc, 5, 'os')
-
-    doc.add(4, f'- uuid: {uid("item", "cpu.util")}')
-    doc.add(5, 'name: CPU utilization')
-    doc.add(5, 'type: CALCULATED')
-    doc.add(5, 'key: sap.host.cpu.util')
-    doc.add(5, 'delay: 1m')
-    doc.add(5, 'value_type: FLOAT')
-    doc.add(5, 'units: "%"')
-    doc.add(5, "params: '100-last(//sap.host.cpu.idle)'")
-    doc.add(5, 'description: 100 − UCD ssCpuIdle. Not ST06 SAP CPU.')
-    tags(doc, 5, 'os')
-    doc.add(5, 'triggers:')
-    doc.add(6, f'- uuid: {uid("tr", "cpu")}')
-    doc.add(7, f'expression: min(/{TPL}/sap.host.cpu.util,15m)>' + '{$SAP.CPU.UTIL.MAX}')
-    doc.add(7, f'name: {q(CPU_WARN)}')
-    doc.add(7, f'event_name: {q(CPU_WARN)}')
-    doc.add(7, 'priority: WARNING')
-    dep_snmp(doc, 7)
-    scope(doc, 7, 'performance')
-
-    for key, name, oid in (
-        ('sap.host.memory.total', 'Memory total', '1.3.6.1.4.1.2021.4.5.0'),
-        ('sap.host.memory.avail', 'Memory available', '1.3.6.1.4.1.2021.4.6.0'),
-        ('sap.host.swap.total', 'Swap total', '1.3.6.1.4.1.2021.4.3.0'),
-        ('sap.host.swap.avail', 'Swap available', '1.3.6.1.4.1.2021.4.4.0'),
-    ):
-        doc.add(4, f'- uuid: {uid("item", key)}')
-        doc.add(5, f'name: {name}')
-        doc.add(5, 'type: SNMP_AGENT')
-        doc.add(5, f'snmp_oid: {oid}')
-        doc.add(5, f'key: {key}')
-        doc.add(5, 'delay: 1m')
-        doc.add(5, 'units: B')
-        doc.add(5, 'preprocessing:')
-        doc.add(6, '- type: MULTIPLIER')
-        doc.add(7, 'parameters:')
-        doc.add(8, "- '1024'")
-        tags(doc, 5, 'os')
-
-    _pused(
-        doc,
-        key='sap.host.memory.pused',
-        name='Memory utilization',
-        total='sap.host.memory.total',
-        avail='sap.host.memory.avail',
-        trigger=MEM_WARN,
-        macro='{$SAP.MEMORY.UTIL.MAX}',
-        uid_key='mem',
-        descr='Host RAM (total−avail)/total. Not HANA allocation.',
-    )
-    _pused(
-        doc,
-        key='sap.host.swap.pused',
-        name='Swap utilization',
-        total='sap.host.swap.total',
-        avail='sap.host.swap.avail',
-        trigger=SWAP_WARN,
-        macro='{$SAP.SWAP.UTIL.MAX}',
-        uid_key='swap',
-        descr='0 when the host has no swap.',
-    )
-
-    doc.add(4, f'- uuid: {uid("item", "procs")}')
-    doc.add(5, 'name: Process count')
-    doc.add(5, 'type: SNMP_AGENT')
-    doc.add(5, 'snmp_oid: 1.3.6.1.2.1.25.1.6.0')
-    doc.add(5, 'key: sap.host.processes')
-    doc.add(5, 'delay: 5m')
-    doc.add(5, 'description: hrSystemProcesses. Does not LLD disp+work or treat process names as SAP health.')
-    tags(doc, 5, 'os')
-
-
-def _pused(doc: Doc, *, key: str, name: str, total: str, avail: str, trigger: str, macro: str, uid_key: str, descr: str) -> None:
-    doc.add(4, f'- uuid: {uid("item", key)}')
-    doc.add(5, f'name: {name}')
-    doc.add(5, 'type: CALCULATED')
-    doc.add(5, f'key: {key}')
-    doc.add(5, 'delay: 1m')
-    doc.add(5, 'value_type: FLOAT')
-    doc.add(5, 'units: "%"')
-    doc.add(5, f"params: '(last(//{total})>0)*100*(last(//{total})-last(//{avail}))/(last(//{total})+(last(//{total})=0))'")
-    doc.add(5, f'description: {descr}')
-    tags(doc, 5, 'os')
-    doc.add(5, 'triggers:')
-    doc.add(6, f'- uuid: {uid("tr", uid_key)}')
-    doc.add(7, f'expression: min(/{TPL}/{key},15m)>{macro}')
-    doc.add(7, f'name: {q(trigger)}')
-    doc.add(7, f'event_name: {q(trigger)}')
-    doc.add(7, 'priority: WARNING')
-    dep_snmp(doc, 7)
-    scope(doc, 7, 'performance')
-
-
-def _char_item(doc: Doc, key: str, name: str, oid: str, *, inventory: str | None = None, description: str | None = None) -> None:
-    doc.add(4, f'- uuid: {uid("item", key)}')
-    doc.add(5, f'name: {name}')
-    doc.add(5, 'type: SNMP_AGENT')
-    doc.add(5, f'snmp_oid: {oid}')
-    doc.add(5, f'key: {q(key)}')
-    doc.add(5, 'delay: 1h')
-    doc.add(5, 'value_type: CHAR')
-    doc.add(5, 'history: 7d')
-    doc.add(5, "trends: '0'")
-    if description:
-        doc.add(5, f'description: {description}')
-    if inventory:
-        doc.add(5, f'inventory_link: {inventory}')
-    doc.add(5, 'preprocessing:')
-    doc.add(6, '- type: DISCARD_UNCHANGED_HEARTBEAT')
-    doc.add(7, 'parameters:')
-    doc.add(8, '- 6h')
-    tags(doc, 5, 'system')
 
 
 def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
@@ -1307,168 +966,6 @@ def _agent_items(doc: Doc, *, flavor: str = 'hana') -> None:
     scope(doc, 7, 'availability')
 
 
-def _discovery(doc: Doc) -> None:
-    doc.add(3, 'discovery_rules:')
-    doc.add(4, f'- uuid: {uid("lld", "if")}')
-    doc.add(5, 'name: Network interfaces')
-    doc.add(5, 'type: SNMP_AGENT')
-    doc.add(5, "snmp_oid: 'discovery[{#IFDESCR},1.3.6.1.2.1.2.2.1.2,{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFTYPE},1.3.6.1.2.1.2.2.1.3]'")
-    doc.add(5, 'key: sap.host.net.if.discovery')
-    doc.add(5, 'delay: 1h')
-    doc.add(5, 'description: IF-MIB ifTable from the SH01 probe. 64-bit ifXTable octet counters (LM Interfaces 64 bit). Drops lo.')
-    doc.add(5, 'filter:')
-    doc.add(6, 'evaltype: AND')
-    doc.add(6, 'conditions:')
-    doc.add(7, "- macro: '{#IFDESCR}'")
-    doc.add(8, "value: '{$NET.IF.IFDESCR.MATCHES}'")
-    doc.add(8, 'formulaid: A')
-    doc.add(7, "- macro: '{#IFDESCR}'")
-    doc.add(8, "value: '{$NET.IF.IFDESCR.NOT_MATCHES}'")
-    doc.add(8, 'operator: NOT_MATCHES_REGEX')
-    doc.add(8, 'formulaid: B')
-    doc.add(7, "- macro: '{#IFTYPE}'")
-    doc.add(8, "value: '{$NET.IF.IFTYPE.NOT_MATCHES}'")
-    doc.add(8, 'operator: NOT_MATCHES_REGEX')
-    doc.add(8, 'formulaid: C')
-    doc.add(5, 'item_prototypes:')
-
-    doc.add(6, f'- uuid: {uid("proto", "if.status")}')
-    doc.add(7, "name: 'Interface {#IFDESCR}: Operational status'")
-    doc.add(7, 'type: SNMP_AGENT')
-    doc.add(7, "snmp_oid: '1.3.6.1.2.1.2.2.1.8.{#SNMPINDEX}'")
-    doc.add(7, "key: 'sap.host.net.if.status[ifOperStatus.{#SNMPINDEX}]'")
-    doc.add(7, 'delay: 1m')
-    doc.add(7, 'history: 7d')
-    doc.add(7, "trends: '0'")
-    doc.add(7, 'valuemap:')
-    doc.add(8, 'name: IF-MIB::ifStatus')
-    tags(doc, 7, 'network', (('interface', '{#IFDESCR}'),))
-    doc.add(7, 'trigger_prototypes:')
-    doc.add(8, f'- uuid: {uid("trp", "if.down")}')
-    doc.add(9, 'expression: ' + q(f'{{$IFCONTROL:"{{#IFDESCR}}"}}=1 and min(/{TPL}/sap.host.net.if.status[ifOperStatus.{{#SNMPINDEX}}],#3)<>1'))
-    doc.add(9, 'recovery_mode: RECOVERY_EXPRESSION')
-    doc.add(9, 'recovery_expression: ' + q(f'last(/{TPL}/sap.host.net.if.status[ifOperStatus.{{#SNMPINDEX}}])=1 or {{$IFCONTROL:"{{#IFDESCR}}"}}=0'))
-    doc.add(9, f'name: {q(IF_DOWN)}')
-    doc.add(9, 'priority: AVERAGE')
-    doc.add(9, 'description: Host NIC, not SAP RFC. Mute with {$IFCONTROL:"eth0"}=0.')
-    dep_snmp(doc, 9)
-    scope(doc, 9, 'availability')
-
-    for key, name, oid, units, extra_mult in (
-        ('sap.host.net.if.in[ifHCInOctets.{#SNMPINDEX}]', 'Interface {#IFDESCR}: Bits received', '1.3.6.1.2.1.31.1.1.1.6.{#SNMPINDEX}', 'bps', True),
-        ('sap.host.net.if.out[ifHCOutOctets.{#SNMPINDEX}]', 'Interface {#IFDESCR}: Bits sent', '1.3.6.1.2.1.31.1.1.1.10.{#SNMPINDEX}', 'bps', True),
-        ('sap.host.net.if.in.errors[ifInErrors.{#SNMPINDEX}]', 'Interface {#IFDESCR}: In errors', '1.3.6.1.2.1.2.2.1.14.{#SNMPINDEX}', 'eps', False),
-        ('sap.host.net.if.out.errors[ifOutErrors.{#SNMPINDEX}]', 'Interface {#IFDESCR}: Out errors', '1.3.6.1.2.1.2.2.1.20.{#SNMPINDEX}', 'eps', False),
-    ):
-        doc.add(6, f'- uuid: {uid("proto", key)}')
-        doc.add(7, f'name: {q(name)}')
-        doc.add(7, 'type: SNMP_AGENT')
-        doc.add(7, f'snmp_oid: {q(oid)}')
-        doc.add(7, f'key: {q(key)}')
-        doc.add(7, 'delay: 1m')
-        doc.add(7, 'value_type: FLOAT')
-        doc.add(7, f'units: {units}')
-        doc.add(7, 'preprocessing:')
-        doc.add(8, '- type: CHANGE_PER_SECOND')
-        if extra_mult:
-            doc.add(8, '- type: MULTIPLIER')
-            doc.add(9, 'parameters:')
-            doc.add(10, "- '8'")
-        tags(doc, 7, 'network', (('interface', '{#IFDESCR}'),))
-        if 'ifInErrors' in key:
-            doc.add(7, 'trigger_prototypes:')
-            doc.add(8, f'- uuid: {uid("trp", "if.err")}')
-            doc.add(
-                9,
-                'expression: '
-                + q(
-                    f'min(/{TPL}/sap.host.net.if.in.errors[ifInErrors.{{#SNMPINDEX}}],5m)'
-                    f'+min(/{TPL}/sap.host.net.if.out.errors[ifOutErrors.{{#SNMPINDEX}}],5m)'
-                    '>{$SAP.NET.IF.ERRORS.WARN}'
-                ),
-            )
-            doc.add(9, f'name: {q(IF_ERR)}')
-            doc.add(9, 'priority: WARNING')
-            dep_snmp(doc, 9)
-            scope(doc, 9, 'performance')
-
-    doc.add(5, 'graph_prototypes:')
-    doc.add(6, f'- uuid: {uid("gproto", "if")}')
-    doc.add(7, "name: 'Interface {#IFDESCR}: Traffic'")
-    doc.add(7, 'graph_items:')
-    doc.add(8, '- drawtype: GRADIENT_LINE')
-    doc.add(9, 'color: 199C0D')
-    doc.add(9, 'item:')
-    doc.add(10, f'host: {TPL}')
-    doc.add(10, "key: 'sap.host.net.if.in[ifHCInOctets.{#SNMPINDEX}]'")
-    doc.add(8, "- sortorder: '1'")
-    doc.add(9, 'drawtype: BOLD_LINE')
-    doc.add(9, 'color: F63100')
-    doc.add(9, 'item:')
-    doc.add(10, f'host: {TPL}')
-    doc.add(10, "key: 'sap.host.net.if.out[ifHCOutOctets.{#SNMPINDEX}]'")
-
-    doc.add(4, f'- uuid: {uid("lld", "fs")}')
-    doc.add(5, 'name: Filesystems')
-    doc.add(5, 'type: SNMP_AGENT')
-    doc.add(5, "snmp_oid: 'discovery[{#FSNAME},1.3.6.1.2.1.25.2.3.1.3,{#FSTYPE},1.3.6.1.2.1.25.2.3.1.2]'")
-    doc.add(5, 'key: sap.host.vfs.fs.discovery')
-    doc.add(5, 'delay: 1h')
-    doc.add(5, 'description: HOST-RESOURCES fixed disks. Memory/swap stay on UCD scalars.')
-    doc.add(5, 'filter:')
-    doc.add(6, 'evaltype: AND')
-    doc.add(6, 'conditions:')
-    doc.add(7, "- macro: '{#FSNAME}'")
-    doc.add(8, "value: '{$VFS.FS.FSNAME.MATCHES}'")
-    doc.add(8, 'formulaid: A')
-    doc.add(7, "- macro: '{#FSNAME}'")
-    doc.add(8, "value: '{$VFS.FS.FSNAME.NOT_MATCHES}'")
-    doc.add(8, 'operator: NOT_MATCHES_REGEX')
-    doc.add(8, 'formulaid: B')
-    doc.add(7, "- macro: '{#FSTYPE}'")
-    doc.add(8, "value: '{$VFS.FS.FSTYPE.MATCHES}'")
-    doc.add(8, 'formulaid: C')
-    doc.add(5, 'item_prototypes:')
-    doc.add(6, f'- uuid: {uid("proto", "fs.total")}')
-    doc.add(7, "name: 'Filesystem {#FSNAME}: Total blocks'")
-    doc.add(7, 'type: SNMP_AGENT')
-    doc.add(7, "snmp_oid: '1.3.6.1.2.1.25.2.3.1.5.{#SNMPINDEX}'")
-    doc.add(7, "key: 'sap.host.vfs.fs.size[{#SNMPINDEX},total]'")
-    doc.add(7, 'delay: 5m')
-    tags(doc, 7, 'storage', (('filesystem', '{#FSNAME}'),))
-    doc.add(6, f'- uuid: {uid("proto", "fs.used")}')
-    doc.add(7, "name: 'Filesystem {#FSNAME}: Used blocks'")
-    doc.add(7, 'type: SNMP_AGENT')
-    doc.add(7, "snmp_oid: '1.3.6.1.2.1.25.2.3.1.6.{#SNMPINDEX}'")
-    doc.add(7, "key: 'sap.host.vfs.fs.size[{#SNMPINDEX},used]'")
-    doc.add(7, 'delay: 5m')
-    tags(doc, 7, 'storage', (('filesystem', '{#FSNAME}'),))
-    doc.add(6, f'- uuid: {uid("proto", "fs.pused")}')
-    doc.add(7, "name: 'Filesystem {#FSNAME}: Used %'")
-    doc.add(7, 'type: CALCULATED')
-    doc.add(7, "key: 'sap.host.vfs.fs.pused[{#SNMPINDEX}]'")
-    doc.add(7, 'delay: 5m')
-    doc.add(7, 'value_type: FLOAT')
-    doc.add(7, 'units: "%"')
-    doc.add(7, "params: '(last(//sap.host.vfs.fs.size[{#SNMPINDEX},total])>0)*100*last(//sap.host.vfs.fs.size[{#SNMPINDEX},used])/(last(//sap.host.vfs.fs.size[{#SNMPINDEX},total])+(last(//sap.host.vfs.fs.size[{#SNMPINDEX},total])=0))'")
-    tags(doc, 7, 'storage', (('filesystem', '{#FSNAME}'),))
-    doc.add(7, 'trigger_prototypes:')
-    doc.add(8, f'- uuid: {uid("trp", "fs")}')
-    doc.add(9, f'expression: min(/{TPL}/sap.host.vfs.fs.pused[{{#SNMPINDEX}}],15m)>' + '{$SAP.VFS.FS.PUSED.MAX}')
-    doc.add(9, f'name: {q(FS_WARN)}')
-    doc.add(9, 'priority: WARNING')
-    dep_snmp(doc, 9)
-    scope(doc, 9, 'capacity')
-    doc.add(5, 'graph_prototypes:')
-    doc.add(6, f'- uuid: {uid("gproto", "fs")}')
-    doc.add(7, "name: 'Filesystem {#FSNAME}: Used %'")
-    doc.add(7, 'graph_items:')
-    doc.add(8, '- color: 2774A4')
-    doc.add(9, 'item:')
-    doc.add(10, f'host: {TPL}')
-    doc.add(10, "key: 'sap.host.vfs.fs.pused[{#SNMPINDEX}]'")
-
-
 def _dashboard(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(3, 'dashboards:')
     doc.add(4, f'- uuid: {uid("dash", "health")}')
@@ -1476,20 +973,16 @@ def _dashboard(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(5, 'pages:')
     doc.add(6, '- name: Overview')
     doc.add(7, 'widgets:')
+    item_tile(doc, 8, 'sap.app.promonitor', None, None, 12, 'SSNMP', 'SAP Control')
+    item_tile(doc, 8, 'sap.app.instance.status', 12, None, 12, 'SCPU', 'Instance')
     if flavor == 'me':
-        item_tile(doc, 8, 'sap.app.promonitor', None, None, 12, 'SSNMP', 'SAP Control')
-        item_tile(doc, 8, 'sap.app.instance.status', 12, None, 12, 'SCPU', 'Instance')
         item_tile(doc, 8, JSTART_ITEM_KEY, 24, None, 12, 'SMEM', 'jstart')
         item_tile(doc, 8, 'sap.app.rfc.status', 36, None, 12, 'SLOAD', 'RFC')
-        item_tile(doc, 8, 'sap.host.cert.days', 48, None, 12, 'SCERT', 'Cert days')
-        item_tile(doc, 8, PORT_ITEM_KEY, 60, None, 12, 'SPORT', 'TCP port')
     else:
-        item_tile(doc, 8, 'sap.host.snmp.available', None, None, 12, 'SSNMP', 'SNMP')
-        item_tile(doc, 8, 'sap.host.cpu.util', 12, None, 12, 'SCPU', 'CPU')
-        item_tile(doc, 8, 'sap.host.memory.pused', 24, None, 12, 'SMEM', 'Memory')
-        item_tile(doc, 8, 'sap.host.load[15m]', 36, None, 12, 'SLOAD', 'Load 15m')
-        item_tile(doc, 8, 'sap.host.cert.days', 48, None, 12, 'SCERT', 'Cert days')
-        item_tile(doc, 8, PORT_ITEM_KEY, 60, None, 12, 'SPORT', 'TCP port')
+        item_tile(doc, 8, 'sap.app.abap.errors', 24, None, 12, 'SMEM', 'ABAP errors')
+        item_tile(doc, 8, 'sap.app.rfc.status', 36, None, 12, 'SLOAD', 'RFC')
+    item_tile(doc, 8, 'sap.host.cert.days', 48, None, 12, 'SCERT', 'Cert days')
+    item_tile(doc, 8, PORT_ITEM_KEY, 60, None, 12, 'SPORT', 'TCP port')
     doc.add(8, '- type: problems')
     doc.add(9, 'name: Problems')
     doc.add(9, "y: '4'")
@@ -1502,9 +995,6 @@ def _dashboard(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(10, '- type: INTEGER')
     doc.add(11, 'name: show')
     doc.add(11, "value: '3'")
-    if flavor == 'hana':
-        svg_graph(doc, 8, 'CPU / load', [('2774A4', 'sap.host.cpu.util'), ('F2B90D', 'sap.host.load[15m]')], y=7, ref='SCPUG')
-        svg_graph(doc, 8, 'Memory / swap', [('199C0D', 'sap.host.memory.pused'), ('E97659', 'sap.host.swap.pused')], x=36, y=7, ref='SMEMG')
 
     doc.add(6, '- name: Application')
     doc.add(7, 'widgets:')
@@ -1543,24 +1033,6 @@ def _dashboard(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(11, 'name: tags.0.value')
     doc.add(11, 'value: sap-application')
 
-    if flavor != 'hana':
-        return
-    doc.add(6, '- name: Interfaces')
-    doc.add(7, 'widgets:')
-    doc.add(8, '- type: graphprototype')
-    doc.add(9, 'name: Interface traffic')
-    doc.add(9, "width: '72'")
-    doc.add(9, "height: '5'")
-    doc.add(9, 'fields:')
-    doc.add(10, '- type: GRAPH_PROTOTYPE')
-    doc.add(11, 'name: graphid.0')
-    doc.add(11, 'value:')
-    doc.add(12, f'host: {TPL}')
-    doc.add(12, "name: 'Interface {#IFDESCR}: Traffic'")
-    doc.add(10, '- type: STRING')
-    doc.add(11, 'name: reference')
-    doc.add(11, 'value: SIFG')
-
 
 def _valuemaps(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(3, 'valuemaps:')
@@ -1571,35 +1043,6 @@ def _valuemaps(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(7, 'newvalue: Down')
     doc.add(6, "- value: '1'")
     doc.add(7, 'newvalue: Up')
-    if flavor != 'hana':
-        return
-    doc.add(4, f'- uuid: {uid("vm", "avail")}')
-    doc.add(5, 'name: zabbix.host.available')
-    doc.add(5, 'mappings:')
-    for value, label in (('0', 'Down'), ('1', 'Up'), ('2', 'Unknown')):
-        doc.add(6, f"- value: '{value}'")
-        doc.add(7, f'newvalue: {label}')
-    doc.add(4, f'- uuid: {uid("vm", "ident")}')
-    doc.add(5, 'name: SAP host identity')
-    doc.add(5, 'mappings:')
-    doc.add(6, "- value: '0'")
-    doc.add(7, 'newvalue: Other SNMP agent')
-    doc.add(6, "- value: '1'")
-    doc.add(7, 'newvalue: Linux Net-SNMP')
-    doc.add(4, f'- uuid: {uid("vm", "if")}')
-    doc.add(5, 'name: IF-MIB::ifStatus')
-    doc.add(5, 'mappings:')
-    for value, label in (
-        ('1', 'up'),
-        ('2', 'down'),
-        ('3', 'testing'),
-        ('4', 'unknown'),
-        ('5', 'dormant'),
-        ('6', 'notPresent'),
-        ('7', 'lowerLayerDown'),
-    ):
-        doc.add(6, f"- value: '{value}'")
-        doc.add(7, f'newvalue: {label}')
 
 
 def write_yaml() -> Path:

@@ -10,7 +10,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 |---|---|---|---|---|
 | `MONITORING` (global) | MD5/DES | Switches, APs, firewalls, network | `SNMP Monitoring` CG → MONITORING/MD5/DES | ✅ Covered |
 | `MONITORING-LINUX` (group override) | SHA/AES | Linux servers (SNMP) | `SNMP Monitoring (Linux)` CG → MONITORING-LINUX/SHA/AES | ✅ CG built (hosts need tag `snmp`) |
-| `SAPUSER` (group override) | MD5/DES | SAP systems | CG **SAP Agent+SNMP** on SAP HANA / SAP ME. Host SNMP items are **HANA/openSUSE only** (SH01 probe). ME is Windows — no UCD | ⚠️ HANA transport validated; ME Windows SNMP not walked — [probe](notes/sap-snmp-walk.md), [sapcontrol](templates/sap_sensirion/SAPCONTROL.md) |
+| `SAPUSER` (group override) | MD5/DES | SAP systems | CG **SAP Agent+SNMP** on SAP HANA / SAP ME. HANA OS is stock Linux by SNMP (SH01 probe). ME is Windows — no UCD | ⚠️ HANA transport validated; ME Windows SNMP not walked — [probe](notes/sap-snmp-walk.md), [sapcontrol](templates/sap_sensirion/SAPCONTROL.md) |
 | `MONITORING-DELL` (resource override) | SHA/AES | CN-SHA-P-STOD (Dell storage) | HPE MSA 2060 Storage by HTTP template (REST API, not SNMP); Device Type macros `{$HPE.MSA.API.HOST/USERNAME/PASSWORD}` (§11.3) | ✅ Covered |
 | `LogicMonitor` (resource override) | SHA/AES | hu-deb-san01 (Huawei storage) | Huawei OceanStor Dorado by SNMP on `SNMP Monitoring (Huawei)` CG with LogicMonitor SHA/AES on CG Host Interface (§5.6b) | ✅ Covered |
 | v2c community (resource override) | — | CH-STA-P-ENSA01 | `snmp_v2_if()` helper exists in zerotouch (SNMPv2 + `snmp_community`/`snmp_pushcommunity`); unused since ESXi iDRACs moved to SNMPv3. Not a model gap — just not configured. | ⚠️ Not configured (not a gap) |

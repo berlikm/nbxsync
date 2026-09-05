@@ -28,6 +28,11 @@ Authenticated walks completed without SNMP errors.
 
 ## Monitoring decision
 
+OS collection is stock **Linux by SNMP** on role SAP HANA (not custom
+UCD/IF/FS items in the SAP YAML). The SAP pack is ST22 / sapcontrol
+only. Ping stays on CG SAP Agent+SNMP (`icmpping` on Linux by SNMP is
+disabled). IP / TCP-UDP stay omitted until an agent exists.
+
 SNMP can supply host/infrastructure monitoring only:
 
 - availability, uptime, interface traffic and interface errors;
@@ -47,8 +52,8 @@ The live probe proves the SAP profile is **MD5/DES**, not SHA1/AES128. The repos
 No fleet zerotouch was run. `CH-STA-P-SH01` is still not a Zabbix Production host.
 
 The HANA (openSUSE) template **SAP template from Sensirion** is in
-[`../templates/sap_sensirion/`](../templates/sap_sensirion/). Host SNMP items
-match this probe (64-bit ifXTable for LM Interfaces 64 bit). SAP ME is
+[`../templates/sap_sensirion/`](../templates/sap_sensirion/). Host SNMP is
+stock **Linux by SNMP** (this probe). The SAP YAML is ST22 only. SAP ME is
 Windows — **SAP ME from Sensirion** has no UCD items. Application items keep
 the Promonitor names and collect via local sapcontrol — see
 [`../templates/sap_sensirion/SAPCONTROL.md`](../templates/sap_sensirion/SAPCONTROL.md).

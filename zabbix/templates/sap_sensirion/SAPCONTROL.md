@@ -6,7 +6,7 @@ openSUSE HANA.
 
 | Role | OS | Template | OS plane | Application |
 |---|---|---|---|---|
-| **SAP HANA** | openSUSE | `SAP template from Sensirion` | SNMP in this pack (`SAPUSER`). No Linux by agent. No stock Linux by SNMP | `sapcontrol` via Python UserParameter **if** an agent is installed later |
+| **SAP HANA** | openSUSE | `SAP template from Sensirion` | Stock **Linux by SNMP** on the role (`SAPUSER` via CG). No Linux by agent. This pack is ST22 only | `sapcontrol` via Python UserParameter **if** an agent is installed later |
 | **SAP ME** | Windows | `SAP ME from Sensirion` | Windows by Zabbix agent | `sapcontrol.exe` via PowerShell + `proc.num[jstart.exe]` |
 
 CG **SAP Agent+SNMP** stays one dual-plane CG (Agent :10050 + `SAPUSER`
@@ -18,11 +18,14 @@ ME is unused until someone walks a Windows ME box — do not poll UCD there.
 ## SAP HANA — openSUSE
 
 Canary `CH-STA-P-SH01` is Linux Net-SNMP (`1.3.6.1.4.1.8072.3.2.10`). Host
-IF / UCD / filesystems belong on the HANA template — that **is** the OS
-plane. There is no official openSUSE template; do not link stock Linux by
-SNMP. Host RAM/CPU is **not** HANA allocation. No `hdbsql`. The Linux
-TemplateRule excludes role SAP HANA so HostSync does not attach Linux by
-agent. sapcontrol / ST22 / cert below need an agent only if you install one
+CPU cores / disk IO / filesystems / RAM / NICs belong on stock **Linux by
+SNMP** (role assignment). This YAML is ST22 / sapcontrol only. There is
+no official openSUSE template. Host RAM/CPU is **not** HANA allocation.
+No `hdbsql`. The Linux TemplateRule excludes role SAP HANA so HostSync
+does not attach Linux by agent. The snmp-tag Linux rule stays excluded
+(wrong CG). `--apply-sap` disables ping items on Linux by SNMP so ICMP
+stays on the CG. IP / TCP-UDP stay omitted until an agent exists.
+sapcontrol / ST22 / cert below need an agent only if you install one
 later; leave `{$SAP.APP.CONTROL}` and `{$SAP.CERT.CONTROL}` at 0 until then.
 
 | File | Install on the HANA host |
@@ -105,13 +108,13 @@ named SAP row → Collection. See [`LM_PARITY.md`](LM_PARITY.md).
 Same application / cert / port / ST22 macro *names* on both templates.
 HANA defaults TLS/TCP **443**. ME defaults **50001**. ST22 defaults
 `{$SAP.API.PORT}`=**44301** and `{$SAP.API.PATH}`=`/abapruntimeerror`.
-HANA also has the UCD / IF / FS macros. ST22 URL macros are host-level
+HANA has ST22 macros (empty on the template). ST22 URL macros are host-level
 on `CH-STA-P-SH01` only. `{$SAP.APP.CONTROL}=0` until Latest data is quiet.
 
 ## Operator order
 
 1. HANA canary: install the Linux UserParameter on `CH-STA-P-SH01` only
-   if you want sapcontrol / ST22 (OS is SNMP and does not need it).
+   if you want sapcontrol / ST22 (OS is Linux by SNMP and does not need it).
 2. `--apply-sap` (no zerotouch, no fleet HostSync). Writes ST22 URL
    macros on `CH-STA-P-SH01` only.
 3. Confirm HANA Latest data; set `{$SAP.CERT.HOST}` if an agent exists;
