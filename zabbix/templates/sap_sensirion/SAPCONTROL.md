@@ -80,8 +80,9 @@ The Groovy pair that reads `auto.taskTypesList` and calls
 `TlistTask('!tlist h=… summary=true')` is me05 **NoDataMonitoring**.
 It is not Promonitor, sapcontrol, or SM37. See [`LM_PARITY.md`](LM_PARITY.md).
 Do not port `!tlist`. Do not open another me05 datasource for SAP
-application collection — that tree has none. If a Promonitor script
-still exists, look at SH01 / as02.
+application collection — that tree has none. Click path for the SAP
+script: [`LM_PARITY.md`](LM_PARITY.md) (SH01 / as02 Alerting tree →
+named SAP row → Collection, or Settings → LogicModules).
 
 ## Macros
 

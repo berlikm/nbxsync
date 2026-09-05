@@ -177,10 +177,39 @@ LM collector in the Zabbix path. The equivalent is already
 `zabbix[host,,items_unsupported]` + `sap.app.promonitor` nodata.
 
 Do not open another datasource on **me05** looking for Promonitor — it
-is not in that tree. If a SAP Collection script still exists, open
-**CH-STA-P-SH01** or **ch-sta-p-as02** (hosts that had Promonitor /
-jstart in the Aug 2026 export), or Settings → LogicModules search SAP
-on an LM user who can see modules.
+is not in that tree.
+
+### Where to open the SAP Collection script
+
+Leave `ch-sta-p-me05`. Open a host that actually had SAP application
+rows in the Aug 2026 export:
+
+1. **CH-STA-P-SH01** (openSUSE HANA — custom SAP DS in that export).
+2. **ch-sta-p-as02** or **ch-sta-d-as01** (Windows ME — jstart DS).
+3. Resources search: category `SAP`, or the group that holds the other
+   ~11 SAP hosts. Skip anyone whose Alerting tree looks like me05
+   (CPU / Disks / NoData / SSL only).
+
+On that host, from the **Alerting / datasource tree** (not Manage
+Resource properties):
+
+1. Open a row whose **name** is Promonitor, Application Server Instance
+   Status, ABAP, IDoc, qRFC, Job Alerts, or similar.
+2. Manage / Open DataSource → **Collection** (the poll script).
+   Active Discovery is a different tab — that is how we got `!tlist`.
+3. If the tree has no such row, **Settings → LogicModules →
+   DataSources** (and PropertySources). Search SAP / ABAP / Promonitor /
+   IDoc. Try **My Modules** and **Exchange**. If that menu is missing,
+   the LM user cannot see modules — someone with Manage must export.
+
+You have the right script when it talks to SAP (RFC / JCo / sapcontrol /
+a Promonitor URL / ST22 / IDoc). You have the wrong one when you see
+`TlistTask`, `!tlist`, `auto.taskTypesList`, `taskCount`, or
+`taskNoData`.
+
+Safe to send: DataSource name, Collection method, AppliesTo, script with
+secrets stripped (keep URLs, RFC names, sapcontrol, ports), last collect
+time, property **keys** only. Do not paste passwords.
 
 ## What we still do not have
 
