@@ -5,7 +5,7 @@
 **Live collector:** [04 Cato](04-cato.md) account monitoring and all 21 NetBox-backed Socket ICMP hosts.
 Copy [_template.md](_template.md) for the next domain. Same observability bar everywhere.
 
-**Rules:** one short page per domain; one data path per doc; OID/lab notes in `templates/<name>/` or `notes/`. Extreme alerting + host **Health**: [notes/alerting-and-health.md](notes/alerting-and-health.md). FortiGate API + Health: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md). XIQ-SE NBI + NAC license count: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). zabp02 history `lastclock` −1h / false `nodata`: [notes/proxy-history-clock.md](notes/proxy-history-clock.md). MSSQL named instances (Agent 2 companion): [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md).
+**Rules:** one short page per domain; one data path per doc; OID/lab notes in `templates/<name>/` or `notes/`. Extreme alerting + host **Health**: [notes/alerting-and-health.md](notes/alerting-and-health.md). FortiGate API + Health: [notes/fortigate-api-and-health.md](notes/fortigate-api-and-health.md). XIQ-SE NBI + NAC license count: [notes/xiq-se-nbi.md](notes/xiq-se-nbi.md). zabp02 history `lastclock` −1h / false `nodata`: [notes/proxy-history-clock.md](notes/proxy-history-clock.md). MSSQL named instances (Agent 2 companion): [notes/mssql-agent2-instances.md](notes/mssql-agent2-instances.md). SAP SNMPv3 probe + LM parity: [notes/sap-snmp-walk.md](notes/sap-snmp-walk.md).
 
 ## Doc set
 
@@ -38,6 +38,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/extremecontrol_observability/` | ExtremeControl Observability | **built**; thin role **NAC** companion; portal/cert Warning **DISABLED** — [07](07-extreme-control.md) |
 | `templates/extremecontrol_snmp/` | ExtremeControl by SNMP | **built**; `ENTERASYS-NAC-APPLIANCE-MIB` canary on five ENACs; **Health** — [07](07-extreme-control.md) |
 | `templates/cato_http/` | Cato Networks by HTTP | imported; account collector with **Health** (Census/API) + **Path** (Last mile/Probe) + **Network** (Tunnels/HA/Port); 21/21 Socket ICMP hosts live — [04](04-cato.md) |
+| `templates/sap_sensirion/` | SAP template from Sensirion | **built**; LM host SNMP (SH01 probe) + Promonitor/DNUS trappers; `--apply-sap` — [notes/sap-snmp-walk.md](notes/sap-snmp-walk.md), [LM parity](templates/sap_sensirion/LM_PARITY.md) |
 
 ## Related
 

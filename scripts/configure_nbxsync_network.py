@@ -74,6 +74,10 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     engine VMs; remove inherited Linux-agent monitoring; and HostSync only
     those six targets. Certificate expiry is collected per appliance by the
     assigned proxy. No Extreme import or zerotouch.
+  * SAP: ``--apply-sap`` / ``--check-sap`` import **SAP template from Sensirion**
+    (LM host SNMP + Promonitor/DNUS trappers), assign it on roles SAP HANA /
+    SAP ME, and HostSync only ``CH-STA-P-SH01`` when that device exists and is
+    not onboarding. No Extreme import, no fleet HostSync, no zerotouch.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -92,6 +96,7 @@ Stage matrix (what each flag enables):
   ``--check-fmg-faz`` / ``--apply-fmg-faz`` = FortiManager/FortiAnalyzer SNMP pack without zerotouch: import parent + Observability companions, split platform rules, disable leftover Network Generic rule. No HostSync.
   ``--apply-cato`` / ``--check-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
   ``--apply-xiqse`` / ``--check-xiqse`` = agentless XIQ-SE / ExtremeControl cutover: GraphQL + stock XIQ Cloud on the Site Engine; SNMP on five Control engines; per-host certificate expiry; one Health dashboard; targeted six-host HostSync.
+  ``--apply-sap`` / ``--check-sap`` = SAP LM-parity pack: import **SAP template from Sensirion**, assign on SAP HANA / SAP ME (SNMP req), HostSync only ``CH-STA-P-SH01`` if present and not onboarding. No Extreme import, no fleet sync, no zerotouch.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -150,6 +155,10 @@ Usage::
   # Agentless XIQ-SE / ExtremeControl cutover (six named VMs; targeted HostSync)
   python scripts/configure_nbxsync_network.py --check-xiqse
   python scripts/configure_nbxsync_network.py --apply-xiqse
+
+  # SAP LM-parity pack (no zerotouch, no Extreme YAML, no fleet HostSync)
+  python scripts/configure_nbxsync_network.py --check-sap
+  python scripts/configure_nbxsync_network.py --apply-sap
 
   # Temporary LM cutover silence only (not the long-term target)
   python scripts/configure_nbxsync_network.py --apply --cutover-silence
@@ -263,6 +272,7 @@ from fortigate_http_zabbix import (
     inspect_http_scripts,
 )
 from extreme_ascii_titles import title_payload as _title_payload
+import sap_sensirion as _sap
 import xiqse_observability as _xiqse
 from extreme_health_zabbix import (
     IQ_HEALTH_MACROS,
@@ -5367,6 +5377,151 @@ def run_apply_xiqse() -> int:
     return 0
 
 
+def import_sap_templates(api) -> dict[str, tuple[int, str]]:
+    """Import SAP template from Sensirion. Fail closed."""
+    logger.info('Network: import %s', _sap.TEMPLATE_NAME)
+    _sap.write_yaml()
+    out = import_yaml_templates(api, _sap.TEMPLATE_FILES, strict=True)
+    if _sap.TEMPLATE_NAME not in out:
+        raise SystemExit(f'SAP template missing after import: {_sap.TEMPLATE_NAME}')
+    return out
+
+
+def _sap_roles() -> dict[str, DeviceRole]:
+    found: dict[str, DeviceRole] = {}
+    for name in _sap.SAP_ROLES:
+        role = DeviceRole.objects.filter(name=name).first()
+        if role is not None:
+            found[name] = role
+    return found
+
+
+def _preflight_sap(server) -> list[str]:
+    errors: list[str] = []
+    if not _sap.TEMPLATE_YAML.exists() or not _sap.TEMPLATE_YAML.read_text(encoding='utf-8').strip():
+        _sap.write_yaml()
+    if not _sap.TEMPLATE_YAML.exists() or not _sap.TEMPLATE_YAML.read_text(encoding='utf-8').strip():
+        errors.append(f'missing YAML for {_sap.TEMPLATE_NAME}: {_sap.TEMPLATE_YAML}')
+    roles = _sap_roles()
+    for name in _sap.SAP_ROLES:
+        if name not in roles:
+            errors.append(f'missing NetBox role: {name}')
+    if server is None:
+        errors.append(f'No ZabbixServer named {PROD_SERVER_NAME!r}')
+    return errors
+
+
+def _print_sap_plan(server, *, errors: list[str], apply: bool, zbx_names: list[str] | None = None) -> None:
+    logger.info('=' * 60)
+    logger.info('SAP pack proposed writes (nothing written yet)' if apply else 'SAP pack check (read-only)')
+    logger.info('=' * 60)
+    logger.info('Import %s (LM host SNMP + Promonitor/DNUS trappers)', _sap.TEMPLATE_NAME)
+    logger.info('  %s ← %s', _sap.TEMPLATE_NAME, _sap.TEMPLATE_YAML)
+    if zbx_names:
+        logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
+    logger.info('  Assign on roles %s (interface req SNMP)', ', '.join(_sap.SAP_ROLES))
+    logger.info('  Prune leftover Linux by SNMP from those roles')
+    logger.info('  Application triggers stay off until {$SAP.APP.CONTROL}=1')
+    canary = Device.objects.filter(name__iexact=_sap.CANARY_HOST).first()
+    if canary is None:
+        logger.info('  Canary %s: not in NetBox — HostSync will be skipped', _sap.CANARY_HOST)
+    elif canary.tags.filter(slug='onboarding').exists():
+        logger.info('  Canary %s: onboarding tag — HostSync will be skipped', canary.name)
+    else:
+        logger.info('  Canary %s: HostSync this device only (no fleet)', canary.name)
+    logger.info('  No Extreme import, no zerotouch, no fleet HostSync')
+    if errors:
+        logger.info('Preflight errors (%s) — abort, no writes:', len(errors))
+        for err in errors:
+            logger.info('  %s', err)
+
+
+def _require_sap_preflight(*, server=None, apply: bool = True):
+    """Fail closed before importing the SAP template or changing NetBox."""
+    if server is None:
+        server = M.ZabbixServer.objects.filter(name=PROD_SERVER_NAME).first()
+        if server is None:
+            raise SystemExit(f'No ZabbixServer named {PROD_SERVER_NAME!r} configured in NetBox')
+    zbx_names: list[str] = []
+    with ZabbixConnection(server) as api:
+        if _lookup_zabbix_template(api, _sap.TEMPLATE_NAME) is not None:
+            zbx_names.append(_sap.TEMPLATE_NAME)
+    errors = _preflight_sap(server)
+    _print_sap_plan(server, errors=errors, apply=apply, zbx_names=zbx_names)
+    if errors:
+        for error in errors:
+            logger.error('  preflight: %s', error)
+        raise SystemExit('SAP pack preflight failed — no writes:\n  ' + '\n  '.join(errors))
+    return server
+
+
+def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
+    """Assign SAP template from Sensirion on SAP HANA / SAP ME. SNMP req."""
+    logger.info('=' * 60)
+    logger.info('Network: SAP LM-parity nbxSync assignment')
+    logger.info('=' * 60)
+    tpl = ensure_nbx_template(
+        server,
+        imported[_sap.TEMPLATE_NAME][0],
+        imported[_sap.TEMPLATE_NAME][1],
+        req=[HostInterfaceRequirementChoices.SNMP],
+    )
+    for role_name in _sap.SAP_ROLES:
+        role = DeviceRole.objects.get(name=role_name)
+        ensure(
+            M.ZabbixTemplateAssignment,
+            zabbixtemplate=tpl,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=role.id,
+            defaults={},
+        )
+        deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
+            zabbixtemplate__name='Linux by SNMP',
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=role.id,
+        ).delete()
+        if deleted:
+            logger.info('  PRUNED: leftover Linux by SNMP from role %s', role.name)
+        logger.info('  %s → role %s (SNMP)', _sap.TEMPLATE_NAME, role.name)
+    return tpl
+
+
+def run_check_sap() -> int:
+    """Read-only SAP YAML, role, and Zabbix presence check."""
+    _require_sap_preflight(apply=False)
+    logger.info('SAP preflight OK — check-only mode wrote nothing')
+    return 0
+
+
+def run_apply_sap() -> int:
+    """Import the SAP LM-parity pack and HostSync only CH-STA-P-SH01.
+
+    No Extreme import, no zerotouch, no fleet SyncHostJob.
+    """
+    server = _require_sap_preflight(apply=True)
+    logger.info('Preflight OK — importing SAP template and assigning SAP roles')
+    with ZabbixConnection(server) as api:
+        imported = import_sap_templates(api)
+    _step_sap_nbxsync(server, imported)
+    canary = Device.objects.filter(name__iexact=_sap.CANARY_HOST).first()
+    if canary is None:
+        logger.info('Canary %s not in NetBox — skipped HostSync', _sap.CANARY_HOST)
+    elif canary.tags.filter(slug='onboarding').exists():
+        logger.info('Canary %s has onboarding tag — skipped HostSync', canary.name)
+    else:
+        logger.info('HostSync %s', canary.name)
+        SyncHostJob(instance=canary).run()
+    logger.info(
+        'SAP pack written. %s is on roles %s. '
+        'Application trappers stay silent until {$SAP.APP.CONTROL}=1 after DNUS. '
+        'HostSync was only %s (or skipped). Do not re-run zerotouch to refresh this pack.',
+        _sap.TEMPLATE_NAME,
+        ', '.join(_sap.SAP_ROLES),
+        _sap.CANARY_HOST,
+    )
+    return 0
+
+
 def run_zabbix_only(*, link_speed_expect: bool = False) -> int:
     """Fallback smoke without NetBox object graph — delegates to run_network_zabbix_sim."""
     from run_network_zabbix_sim import main as sim_main
@@ -5429,6 +5584,16 @@ def main() -> int:
         action='store_true',
         help='Read-only XIQ-SE YAML presence check; no writes',
     )
+    mode.add_argument(
+        '--apply-sap',
+        action='store_true',
+        help='SAP LM-parity pack: import SAP template from Sensirion, assign on SAP HANA / SAP ME, HostSync only CH-STA-P-SH01 if present and not onboarding; no zerotouch',
+    )
+    mode.add_argument(
+        '--check-sap',
+        action='store_true',
+        help='Read-only SAP YAML + role presence check; no writes',
+    )
     parser.add_argument('--link-speed-expect', action='store_true', help='Also assign Port Speed Expect on Switch roles (avoid if already nested on VOSS/Observability)')
     parser.add_argument(
         '--cutover-silence',
@@ -5476,6 +5641,14 @@ def main() -> int:
         if args.link_speed_expect or args.cutover_silence:
             raise SystemExit('--apply-xiqse does not take --link-speed-expect or --cutover-silence')
         return run_apply_xiqse()
+    if args.check_sap:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--check-sap does not take --link-speed-expect or --cutover-silence')
+        return run_check_sap()
+    if args.apply_sap:
+        if args.link_speed_expect or args.cutover_silence:
+            raise SystemExit('--apply-sap does not take --link-speed-expect or --cutover-silence')
+        return run_apply_sap()
     return run_apply(link_speed_expect=args.link_speed_expect, cutover_silence=args.cutover_silence)
 
 

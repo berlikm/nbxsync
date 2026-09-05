@@ -53,7 +53,10 @@ Usage::
   export NBX_ZABBIX_TOKEN=...
   export NBX_SNMP_AUTHPASS_MON=... NBX_SNMP_PRIVPASS_MON=...
   export NBX_SNMP_AUTHPASS_LINUX=... NBX_SNMP_PRIVPASS_LINUX=...
-  # optional SAP (after Robert confirms auth/priv):
+  # SAP SNMPv3 is proven authPriv MD5/DES (CH-STA-P-SH01, 2026-09-05).
+  # Set these for first apply or to overwrite CG passphrases; empty env
+  # leaves existing secrets untouched. Do not re-run fleet zerotouch for
+  # a HostSync of SH01 — see zabbix/notes/sap-snmp-walk.md.
   # export NBX_SNMP_AUTHPASS_SAP=... NBX_SNMP_PRIVPASS_SAP=...
   # Huawei (LogicMonitor user, non-fleet):
   # export NBX_SNMP_AUTHPASS_HUAWEI=... NBX_SNMP_PRIVPASS_HUAWEI=...
@@ -225,6 +228,9 @@ TPL_NAMES = {
     'tableau_bridge_agent': 'Tableau Bridge by Zabbix agent (stub)',
     'cellmap_agent': 'CellMap by Zabbix agent (stub)',
     'oracle_agent2': 'Oracle by Zabbix agent 2',
+    # Imported by the network SAP pack. Soft-resolve so HostSync of
+    # SAP HANA / SAP ME still succeeds before that import.
+    # Do not treat Linux SNMP as SAP health — zabbix/notes/sap-snmp-walk.md.
     'sap_agent': 'SAP template from Sensirion',
     'acronis_agent': 'Acronis Cyber Protect Cloud by HTTP',
     'sccm_agent': 'SCCM by Zabbix agent (stub)',
@@ -270,6 +276,8 @@ ICMP_PING_CG_NAMES = (
 )
 FORTIGATE_HTTP_CG = 'FortiGate HTTP'
 FORTIOS_PLATFORM_RE = r'FORTIOS|FortiOS'
+
+SAP_ROLE_NAMES = frozenset({'SAP HANA', 'SAP ME'})
 
 # Network SNMP only — Storage is HTTP/TBD (not MONITORING MD5/DES).
 SNMP_ROLES = [
@@ -1927,11 +1935,12 @@ def step7_template_assignments(server):
         # specialized templates; pairing both yields duplicate icmpping item keys.
         (make_template(*TPL['network_generic_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Network Device'),
         (make_template(*TPL['fortigate_snmp'], req=[HostInterfaceRequirementChoices.SNMP]), 'Firewall'),
-        # Placeholder application templates — LM parity. Items built post-cutover,
-        # but the template is linked so hosts are discoverable in Zabbix.
+        # Placeholder application templates — LM parity. Items built post-cutover.
         # Only assign when the template was resolved (soft-resolve may skip if absent).
     ]
     # Stub template assignments — guarded so missing templates don't KeyError.
+    # sap_agent is imported by the network SAP pack; assignment is a no-op until then.
+    # HostSync of SAP roles does not wait for it.
     stub_assignments = [
         ('tableau_bridge_agent', 'Tableau'),
         ('cellmap_agent', 'CellMap'),
@@ -1949,6 +1958,7 @@ def step7_template_assignments(server):
     stub_req = {
         'extremecontrol_observability': [HostInterfaceRequirementChoices.NONE],
         'extremecontrol_snmp': [HostInterfaceRequirementChoices.SNMP],
+        'sap_agent': [HostInterfaceRequirementChoices.SNMP],
     }
     for tpl_key, role_name in stub_assignments:
         if tpl_key in TPL:
@@ -2708,6 +2718,7 @@ def run_verify(*, limit: int | None = None) -> int:
     active_no_primary = 0
     no_template = 0
     snmp_role_on_agent_cg = 0
+    sap_role_not_on_sap_cg = 0
     snmp_tag_ifs = M.ZabbixHostInterface.objects.filter(assigned_object_type=ct(Tag)).count()
     os_family_tags_remaining = M.ZabbixTag.objects.filter(tag='os_family').count()
     cato_sockets = Device.objects.filter(role__slug='sd-wan-socket')
@@ -2776,6 +2787,8 @@ def run_verify(*, limit: int | None = None) -> int:
         cg_name = cg.zabbixconfigurationgroup.name
         if role_name in SNMP_ROLE_NAMES and cg_name == agent_cg_name:
             snmp_role_on_agent_cg += 1
+        if role_name in SAP_ROLE_NAMES and not cg_name.endswith('SAP Agent+SNMP'):
+            sap_role_not_on_sap_cg += 1
         if cg_name == agent_cg_name or cg_name.endswith('Agent Monitoring'):
             if not AGENT_PLATFORM_HINT.search(plat):
                 agent_without_platform_fact += 1
@@ -2788,6 +2801,7 @@ def run_verify(*, limit: int | None = None) -> int:
                 'no_template': no_template,
                 'agent_cg_without_agent_platform_fact': agent_without_platform_fact,
                 'snmp_role_resolved_to_agent_cg': snmp_role_on_agent_cg,
+                'sap_role_not_on_sap_agent_snmp_cg': sap_role_not_on_sap_cg,
                 'active_without_primary_or_oob_ip': active_no_primary,
                 'os_family_tags_remaining': os_family_tags_remaining,
                 'tag_targeted_host_interfaces_remaining': snmp_tag_ifs,
@@ -3084,6 +3098,10 @@ def run_simulate() -> int:
             TPL['huawei_storage_snmp'] = (int(ensure_t(f'{PREFIX}huawei.storage', f'{PREFIX}Huawei OceanStor Dorado by SNMP')), f'{PREFIX}Huawei OceanStor Dorado by SNMP')
             TPL['synology_storage_snmp'] = (int(ensure_t(f'{PREFIX}synology.nas', f'{PREFIX}Synology DiskStation SNMPv3')), f'{PREFIX}Synology DiskStation SNMPv3')
             TPL['icmp_ping'] = (int(ensure_t(f'{PREFIX}icmp', f'{PREFIX}ICMP Ping')), f'{PREFIX}ICMP Ping')
+            TPL['sap_agent'] = (
+                int(ensure_t(f'{PREFIX}sap.agent', f'{PREFIX}SAP template from Sensirion')),
+                f'{PREFIX}SAP template from Sensirion',
+            )
 
         step6_template_rules(server, country_slugs=country_slugs)
         # Prefixed Dell — never create a second Manufacturer named 'Dell'
@@ -3228,6 +3246,20 @@ def run_simulate() -> int:
         attach_vm(win_snmp, next_ip())
         win_snmp.tags.add(snmp_tag)
         objects['win_snmp'] = win_snmp
+
+        # Role SAP HANA must win over Site Group Agent so HostSync gets both
+        # planes. Lab ensure_t creates SAP template from Sensirion so resolve
+        # can assert the LM-parity assignment (not Linux by SNMP).
+        sap = Device.objects.create(
+            name=f'{PREFIX}sap-hana-01',
+            device_type=dtype,
+            role=roles['SAP HANA'],
+            site=site,
+            platform=plat_linux,
+            status='active',
+        )
+        attach_dev(sap, next_ip())
+        objects['sap'] = sap
         # Cato starts with both legacy holds. Exercise the production migration's
         # exact role-slug query without touching any real Socket records that may
         # share the development database behind this simulation.
@@ -3336,6 +3368,59 @@ def run_simulate() -> int:
         record('new_role_sitegroup_agent', cg_name(objects['new_role']) == agent_group.name, cg_name(objects['new_role']), group='resolve')
         record('dc_sitegroup_agent', cg_name(objects['dc']) == agent_group.name, cg_name(objects['dc']), group='resolve')
         record('vm_snmp_via_tag', cg_name(objects['vm_snmp']) == linux_snmp_group.name, cg_name(objects['vm_snmp']), group='resolve')
+        sap_assigned = get_assigned_zabbixobjects(objects['sap'])
+        sap_cg = sap_assigned.get('configurationgroup')
+        sap_cg_ok = bool(sap_cg and sap_cg.zabbixconfigurationgroup_id == cg_groups['sap_snmp'].id)
+        record(
+            'sap_cg_role_dual_plane',
+            sap_cg_ok,
+            sap_cg.zabbixconfigurationgroup.name if sap_cg else None,
+            group='resolve',
+        )
+        sap_ifs = sap_assigned.get('hostinterfaces') or []
+        sap_types = {int(hi.type) for hi in sap_ifs}
+        sap_snmp_hi = next(
+            (hi for hi in sap_ifs if int(hi.type) == int(ZabbixHostInterfaceTypeChoices.SNMP)),
+            None,
+        )
+        record(
+            'sap_dual_plane_interfaces',
+            {
+                int(ZabbixHostInterfaceTypeChoices.AGENT),
+                int(ZabbixHostInterfaceTypeChoices.SNMP),
+            }.issubset(sap_types),
+            str(sorted(sap_types)),
+            group='resolve',
+        )
+        record(
+            'sap_snmp_md5_des',
+            bool(
+                sap_snmp_hi
+                and sap_snmp_hi.snmp_pushcommunity
+                and sap_snmp_hi.snmpv3_security_name == 'SAPUSER'
+                and sap_snmp_hi.snmpv3_authentication_protocol == ZabbixInterfaceSNMPV3AuthProtoChoices.MD5
+                and sap_snmp_hi.snmpv3_privacy_protocol == ZabbixInterfaceSNMPV3PrivProtoChoices.DES
+            ),
+            str(
+                (
+                    getattr(sap_snmp_hi, 'snmpv3_security_name', None),
+                    getattr(sap_snmp_hi, 'snmpv3_authentication_protocol', None),
+                    getattr(sap_snmp_hi, 'snmpv3_privacy_protocol', None),
+                )
+                if sap_snmp_hi
+                else None
+            ),
+            group='resolve',
+        )
+        sap_tpls = tpl_names(objects['sap'])
+        record(
+            'sap_host_infra_templates_only',
+            any('Linux by Agent' in n or 'Linux by Zabbix agent' in n for n in sap_tpls)
+            and any('SAP template from Sensirion' in n for n in sap_tpls)
+            and not any('Linux by SNMP' in n for n in sap_tpls),
+            str(sap_tpls),
+            group='resolve',
+        )
         record(
             'linux_snmp_template_rule',
             any('Linux by SNMP' in n for n in tpl_names(objects['vm_snmp'])),
@@ -3381,7 +3466,7 @@ def run_simulate() -> int:
         record('no_manufacturer_transport_cg', mfr_cg == 0, f'count={mfr_cg}', group='resolve')
 
         with ZabbixConnection(server) as api:
-            for key in ('server', 'switch', 'storage', 'firewall', 'access_point', 'win_vm', 'new_role', 'dc', 'vm_snmp', 'win_snmp'):
+            for key in ('server', 'switch', 'storage', 'firewall', 'access_point', 'win_vm', 'new_role', 'dc', 'vm_snmp', 'win_snmp', 'sap'):
                 try:
                     SyncHostJob(instance=objects[key]).run()
                     record(f'sync_{key}', True, objects[key].name, group='sync')
@@ -3651,6 +3736,61 @@ def run_simulate() -> int:
                 str((linux_if.snmpv3_security_name, linux_if.snmpv3_authentication_protocol, linux_if.snmpv3_privacy_protocol) if linux_if else None),
                 group='hygiene',
             )
+            sap_snmp_group = cg_groups['sap_snmp']
+            sap_if = _snmp_if(sap_snmp_group)
+            record(
+                'snmp_sap_md5_des',
+                bool(
+                    sap_if
+                    and sap_if.snmp_pushcommunity
+                    and sap_if.snmpv3_security_name == 'SAPUSER'
+                    and sap_if.snmpv3_authentication_protocol == ZabbixInterfaceSNMPV3AuthProtoChoices.MD5
+                    and sap_if.snmpv3_privacy_protocol == ZabbixInterfaceSNMPV3PrivProtoChoices.DES
+                ),
+                str(
+                    (
+                        sap_if.snmpv3_security_name,
+                        sap_if.snmpv3_authentication_protocol,
+                        sap_if.snmpv3_privacy_protocol,
+                    )
+                    if sap_if
+                    else None
+                ),
+                group='hygiene',
+            )
+            sap_agent_if = M.ZabbixHostInterface.objects.filter(
+                assigned_object_type=ct(M.ZabbixConfigurationGroup),
+                assigned_object_id=sap_snmp_group.id,
+                type=ZabbixHostInterfaceTypeChoices.AGENT,
+            ).first()
+            record(
+                'sap_dual_plane_agent_if',
+                bool(sap_agent_if and int(sap_agent_if.port) == 10050),
+                str(sap_agent_if.port if sap_agent_if else None),
+                group='hygiene',
+            )
+            sap_role_ok = True
+            sap_role_detail = []
+            for role_name in SAP_ROLE_NAMES:
+                try:
+                    role = get_role(role_name)
+                except DeviceRole.DoesNotExist:
+                    sap_role_ok = False
+                    sap_role_detail.append(f'{role_name}=missing')
+                    continue
+                assigned = M.ZabbixConfigurationGroupAssignment.objects.filter(
+                    zabbixconfigurationgroup=sap_snmp_group,
+                    assigned_object_type=ct(DeviceRole),
+                    assigned_object_id=role.id,
+                ).exists()
+                stale_agent = M.ZabbixConfigurationGroupAssignment.objects.filter(
+                    zabbixconfigurationgroup=agent_group,
+                    assigned_object_type=ct(DeviceRole),
+                    assigned_object_id=role.id,
+                ).exists()
+                sap_role_ok = sap_role_ok and assigned and not stale_agent
+                sap_role_detail.append(f'{role_name}=cg:{assigned} stale_agent:{stale_agent}')
+            record('sap_roles_on_dual_plane_cg', sap_role_ok, ', '.join(sap_role_detail), group='hygiene')
             # Dell iDRAC SNMP CG: SNMPv3 SHA384/AES256 @ oob (no Agent IF on the CG).
             dell_snmp = _snmp_if(dell_idrac_group)
             record(

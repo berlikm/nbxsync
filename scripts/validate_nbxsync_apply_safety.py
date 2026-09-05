@@ -511,6 +511,43 @@ def main() -> int:
         'XIQ-SE pack is network --apply-xiqse, not zerotouch',
     )
 
+    sap = _function_source(net_src, net_tree, 'run_apply_sap') or ''
+    record(
+        'network_sap_apply_exists',
+        bool(sap),
+        'run_apply_sap',
+    )
+    record(
+        'network_sap_apply_skips_extreme_and_fleet_sync',
+        bool(sap)
+        and 'import_extreme_templates' not in sap
+        and 'configure_nbxsync_zerotouch' not in sap
+        and 'SyncHostJob' in sap
+        and 'CANARY_HOST' in sap
+        and 'name__iexact=_sap.CANARY_HOST' in sap,
+        'no Extreme import / zerotouch; HostSync only CH-STA-P-SH01',
+    )
+    sap_import = _function_source(net_src, net_tree, 'import_sap_templates') or ''
+    record(
+        'network_sap_import_is_strict',
+        'strict=True' in sap_import,
+        'SAP YAML import is mandatory and fail-closed',
+    )
+    sap_step = _function_source(net_src, net_tree, '_step_sap_nbxsync') or ''
+    record(
+        'network_sap_assigns_snmp_on_sap_roles',
+        'HostInterfaceRequirementChoices.SNMP' in sap_step
+        and 'SAP HANA' in sap_step
+        and 'SAP ME' in sap_step
+        and 'icmpping' not in sap_step,
+        'roles SAP HANA / SAP ME get the SAP template with SNMP req',
+    )
+    record(
+        'zerotouch_no_sap_cutover',
+        'apply-sap' not in ztc_src and 'import_sap_templates' not in ztc_src,
+        'SAP pack is network --apply-sap, not zerotouch',
+    )
+
     failed = sum(1 for _, ok, _ in RESULTS if not ok)
     print(f'\n{len(RESULTS) - failed}/{len(RESULTS)} apply-safety checks passed')
     return 1 if failed else 0

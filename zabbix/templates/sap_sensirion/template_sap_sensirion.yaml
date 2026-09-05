@@ -1,0 +1,1233 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 7c4e2b91a06f4d8e9b15c3a8d0e4f217
+      name: Templates/Applications
+  templates:
+    - uuid: 9544cd1cb6824e23950e991bd9cb593c
+      template: SAP template from Sensirion
+      name: SAP template from Sensirion
+      description: |
+        Sensirion SAP pack. LogicMonitor parity from zabbix/logicmonitor-assessment.md
+        (LM account export Aug 2026) plus the 2026-09-05 SNMP probe of CH-STA-P-SH01.
+
+        LM had two planes — this template covers both, without inventing a Promonitor API:
+
+        1. Host / SNMP — LM group credential SAPUSER (MD5/DES) on SAP systems.
+           Probe of CH-STA-P-SH01 (10.0.105.112) proved Linux Net-SNMP only
+           (1.3.6.1.4.1.8072.3.2.10). The SAP enterprise tree and
+           Net-SNMP extend were empty. Items here are IF-MIB / UCD / HOST-RESOURCES.
+
+        2. Application — LM API account C_PROMONITOR on 11 SAP hosts,
+           plus the custom datasource on ch-sta-p-sh01 (ABAP runtime/errors, IDoc,
+           qRFC, job alerts, syslog). DNUS scripts (Robert) own that contract. This
+           template exposes trapper keys for those exact LM rows. {$SAP.APP.CONTROL}=0
+           keeps application triggers off until DNUS pushes values.
+
+        Not in this template: AS Java jstart process stats (ch-sta-p-as02 /
+        ch-sta-d-as01) — that is the AS Java agent stub, not SAP HANA / SAP ME.
+        Does not nest ICMP (SAP Agent+SNMP CG). Does not link the stock Linux SNMP
+        template. Does not walk the enterprise tree unbounded.
+
+        Operator notes: zabbix/notes/sap-snmp-walk.md,
+        zabbix/templates/sap_sensirion/LM_PARITY.md.
+        Refresh with configure_nbxsync_network.py --apply-sap.
+      groups:
+        - name: Templates/Applications
+      macros:
+        - macro: '{$SNMP.TIMEOUT}'
+          value: 5m
+          description: SNMP availability trigger window.
+        - macro: '{$UNSUPPORTED.MAX}'
+          value: 1
+          description: Average when unsupported SNMP items stay above this for 30m.
+        - macro: '{$SAP.MEMORY.UTIL.MAX}'
+          value: 101
+          description: Host RAM used % Warning. 101 collects first.
+        - macro: '{$SAP.CPU.UTIL.MAX}'
+          value: 101
+          description: Host CPU used % Warning. 101 collects first.
+        - macro: '{$SAP.CPU.LOAD.MAX}'
+          value: 101
+          description: 15-minute load Warning. 101 collects first.
+        - macro: '{$SAP.SWAP.UTIL.MAX}'
+          value: 101
+          description: Swap used % Warning. 101 collects first.
+        - macro: '{$SAP.VFS.FS.PUSED.MAX}'
+          value: 101
+          description: Filesystem used % Warning. 101 collects first.
+        - macro: '{$SAP.NET.IF.ERRORS.WARN}'
+          value: 2
+          description: IF-MIB in+out errors/s Warning.
+        - macro: '{$IFCONTROL}'
+          value: 1
+          description: 1 tickets admin-up link-down. {$IFCONTROL:"eth0"}=0 mutes one NIC.
+        - macro: '{$NET.IF.IFDESCR.MATCHES}'
+          value: ^.+$
+          description: Interface LLD include.
+        - macro: '{$NET.IF.IFDESCR.NOT_MATCHES}'
+          value: '^(?i)(lo|loopback)(.*)$'
+          description: Drop loopback. SH01 probe saw lo + eth0.
+        - macro: '{$NET.IF.IFTYPE.NOT_MATCHES}'
+          value: ^24$
+          description: Drop softwareLoopback(24).
+        - macro: '{$VFS.FS.FSNAME.MATCHES}'
+          value: ^.+$
+          description: Filesystem LLD include.
+        - macro: '{$VFS.FS.FSNAME.NOT_MATCHES}'
+          value: '^(?i)(physical memory|virtual memory|memory buffers|cached memory|swap|/dev|/sys|/run|/proc).*$'
+          description: Keep mounted disks; UCD memory is scalars, not this LLD.
+        - macro: '{$VFS.FS.FSTYPE.MATCHES}'
+          value: '^(\.iso\.org\.dod\.internet\.mgmt\.mib-2\.host\.hrStorage\.hrStorageTypes\.hrStorageFixedDisk|1\.3\.6\.1\.2\.1\.25\.2\.1\.4)$'
+          description: hrStorageFixedDisk only.
+        - macro: '{$SAP.APP.CONTROL}'
+          value: 0
+          description: 1 enables Promonitor/DNUS nodata and threshold triggers. 0 = collect-first (LM application gap).
+        - macro: '{$SAP.APP.ABAP.MAX}'
+          value: 0
+          description: ABAP dump/runtime-error count Warning when CONTROL=1.
+        - macro: '{$SAP.APP.IDOC.MAX}'
+          value: 0
+          description: IDoc error count Warning when CONTROL=1.
+        - macro: '{$SAP.APP.QRFC.MAX}'
+          value: 0
+          description: qRFC error count Warning when CONTROL=1.
+        - macro: '{$SAP.APP.JOB.MAX}'
+          value: 0
+          description: Job alert count Warning when CONTROL=1.
+        - macro: '{$SAP.APP.SYSLOG.MAX}'
+          value: 0
+          description: Syslog alert count Warning when CONTROL=1.
+      items:
+        - uuid: 1506a7f0938d4c10bf852ce79b75e318
+          name: SNMP agent availability
+          type: INTERNAL
+          key: 'zabbix[host,snmp,available]'
+          description: |
+            LM SAPUSER plane. 0/1/2. ICMP High from the SAP Agent+SNMP CG pages if the box is gone.
+          valuemap:
+            name: zabbix.host.available
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: f1fc151e23514db3a887f559bcf29046
+              expression: max(/SAP template from Sensirion/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              name: 'SAP host: No SNMP data collection'
+              event_name: 'SAP host: No SNMP data collection'
+              priority: WARNING
+              description: |
+                SNMP SAPUSER MD5/DES failed from the assigned proxy. Host infra, not an ABAP dump. Canary CH-STA-P-SH01.
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 33f768c932e84f62b492dfeb2b85e419
+          name: Unsupported item count
+          type: INTERNAL
+          key: 'zabbix[host,,items_unsupported]'
+          delay: 15m
+          description: Watch the watcher for the SNMP plane only. Trapper application items do not go unsupported.
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: 8c535db7246e43e9b56521f85e86a1fe
+              expression: min(/SAP template from Sensirion/zabbix[host,,items_unsupported],30m)>{$UNSUPPORTED.MAX}
+              name: 'SAP host: Too many unsupported items'
+              event_name: 'SAP host: Too many unsupported items'
+              priority: AVERAGE
+              description: SNMP=1 but host items unsupported — OID/view mismatch.
+              dependencies:
+                - name: 'SAP host: No SNMP data collection'
+                  expression: max(/SAP template from Sensirion/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 700c48e0f2d5466d849c6e3a13235a96
+          name: SNMP
+          type: CALCULATED
+          key: sap.host.snmp.available
+          delay: 1m
+          value_type: FLOAT
+          params: 'last(//zabbix[host,snmp,available])'
+          valuemap:
+            name: zabbix.host.available
+          tags:
+            - tag: component
+              value: health
+        - uuid: 39c333f619e64062a9339f0a22c58796
+          name: System name
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.5.0
+          key: system.name
+          delay: 1h
+          value_type: CHAR
+          history: 7d
+          trends: '0'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 6h
+          tags:
+            - tag: component
+              value: system
+          triggers:
+            - uuid: 3ee1550ab88d430b8affbde3a2cfabb3
+              expression: last(/SAP template from Sensirion/system.name,#1)<>last(/SAP template from Sensirion/system.name,#2) and length(last(/SAP template from Sensirion/system.name))>0
+              name: 'SAP host: System name has changed'
+              event_name: 'SAP host: System name has changed'
+              priority: INFO
+              manual_close: 'YES'
+              tags:
+                - tag: scope
+                  value: notice
+        - uuid: 3eacdb1840804374bd72ad59e3a2807a
+          name: System description
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.1.0
+          key: system.descr
+          delay: 1h
+          value_type: CHAR
+          history: 7d
+          trends: '0'
+          inventory_link: TYPE
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 6h
+          tags:
+            - tag: component
+              value: system
+        - uuid: db9da0e48f374500a096ad2dc31fb1a1
+          name: System object ID
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.2.0
+          key: 'system.objectid[sysObjectID.0]'
+          delay: 1h
+          value_type: CHAR
+          history: 7d
+          trends: '0'
+          description: CH-STA-P-SH01 is Linux Net-SNMP 1.3.6.1.4.1.8072.3.2.10.
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 6h
+          tags:
+            - tag: component
+              value: system
+        - uuid: 537d8d26e7ef4b7794ad08f1902f708a
+          name: Linux Net-SNMP identity
+          type: DEPENDENT
+          key: sap.host.netsnmp
+          delay: '0'
+          history: 7d
+          trends: 365d
+          value_type: UNSIGNED
+          valuemap:
+            name: SAP host identity
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                    var oid = String(value || '').replace(/^\\.+/, '');
+                    var expect = '1.3.6.1.4.1.8072.3.2.10';
+                    return oid === expect || oid === "." + expect ? 1 : 0;
+
+          master_item:
+            key: 'system.objectid[sysObjectID.0]'
+          tags:
+            - tag: component
+              value: system
+        - uuid: 6cc011530a7b41ea975435adce362b2f
+          name: Uptime
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.3.0
+          key: 'system.net.uptime[sysUpTime.0]'
+          delay: 1m
+          units: uptime
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '0.01'
+          tags:
+            - tag: component
+              value: system
+          triggers:
+            - uuid: 484890c3aae3408e9eba43fe5665d53d
+              expression: last(/SAP template from Sensirion/system.net.uptime[sysUpTime.0])>0 and last(/SAP template from Sensirion/system.net.uptime[sysUpTime.0])<10m
+              name: 'SAP host: Host has been restarted'
+              event_name: 'SAP host: Host has been restarted'
+              priority: INFO
+              manual_close: 'YES'
+              dependencies:
+                - name: 'SAP host: No SNMP data collection'
+                  expression: max(/SAP template from Sensirion/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              tags:
+                - tag: scope
+                  value: notice
+        - uuid: 67b2d8ef6bf240fd85d7285d23c88030
+          name: Load average (1m)
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.2021.10.1.3.1
+          key: 'sap.host.load[1m]'
+          delay: 1m
+          value_type: FLOAT
+          description: UCD laLoad. Host infra, not SAP dialog response time.
+          tags:
+            - tag: component
+              value: os
+        - uuid: d8d4c740db924a11ba22465bca96a761
+          name: Load average (5m)
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.2021.10.1.3.2
+          key: 'sap.host.load[5m]'
+          delay: 1m
+          value_type: FLOAT
+          description: UCD laLoad. Host infra, not SAP dialog response time.
+          tags:
+            - tag: component
+              value: os
+        - uuid: 2da2bc19070542bca382a92d91a0485f
+          name: Load average (15m)
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.2021.10.1.3.3
+          key: 'sap.host.load[15m]'
+          delay: 1m
+          value_type: FLOAT
+          description: UCD laLoad. Host infra, not SAP dialog response time.
+          tags:
+            - tag: component
+              value: os
+          triggers:
+            - uuid: 0c38ed623b2442a58c0217d7dd022ac4
+              expression: min(/SAP template from Sensirion/sap.host.load[15m],15m)>{$SAP.CPU.LOAD.MAX}
+              name: 'SAP host: Load average is high'
+              event_name: 'SAP host: Load average is high'
+              priority: WARNING
+              dependencies:
+                - name: 'SAP host: No SNMP data collection'
+                  expression: max(/SAP template from Sensirion/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              tags:
+                - tag: scope
+                  value: performance
+        - uuid: 7971cbead7e94afaa31399c9d5692d91
+          name: CPU idle
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.2021.11.11.0
+          key: sap.host.cpu.idle
+          delay: 1m
+          units: "%"
+          tags:
+            - tag: component
+              value: os
+        - uuid: 7e742c1e0ae94d3599ff0177fc1f58ec
+          name: CPU utilization
+          type: CALCULATED
+          key: sap.host.cpu.util
+          delay: 1m
+          value_type: FLOAT
+          units: "%"
+          params: '100-last(//sap.host.cpu.idle)'
+          description: 100 − UCD ssCpuIdle. Not ST06 SAP CPU.
+          tags:
+            - tag: component
+              value: os
+          triggers:
+            - uuid: b9aface2a1bb4a808b1789b06e535f68
+              expression: min(/SAP template from Sensirion/sap.host.cpu.util,15m)>{$SAP.CPU.UTIL.MAX}
+              name: 'SAP host: CPU utilization is high'
+              event_name: 'SAP host: CPU utilization is high'
+              priority: WARNING
+              dependencies:
+                - name: 'SAP host: No SNMP data collection'
+                  expression: max(/SAP template from Sensirion/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              tags:
+                - tag: scope
+                  value: performance
+        - uuid: 63eb31232f0c4064b60391ce28b4676f
+          name: Memory total
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.2021.4.5.0
+          key: sap.host.memory.total
+          delay: 1m
+          units: B
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1024'
+          tags:
+            - tag: component
+              value: os
+        - uuid: caabe8efbf584f108ada503bcee75ea7
+          name: Memory available
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.2021.4.6.0
+          key: sap.host.memory.avail
+          delay: 1m
+          units: B
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1024'
+          tags:
+            - tag: component
+              value: os
+        - uuid: eda055318dd94cc9b01db60978acb5d4
+          name: Swap total
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.2021.4.3.0
+          key: sap.host.swap.total
+          delay: 1m
+          units: B
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1024'
+          tags:
+            - tag: component
+              value: os
+        - uuid: 3a8f1414be084c1fb451a6777fe16419
+          name: Swap available
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.2021.4.4.0
+          key: sap.host.swap.avail
+          delay: 1m
+          units: B
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1024'
+          tags:
+            - tag: component
+              value: os
+        - uuid: b26a41b7c2a2439e8e1c113402b2f2c4
+          name: Memory utilization
+          type: CALCULATED
+          key: sap.host.memory.pused
+          delay: 1m
+          value_type: FLOAT
+          units: "%"
+          params: '(last(//sap.host.memory.total)>0)*100*(last(//sap.host.memory.total)-last(//sap.host.memory.avail))/(last(//sap.host.memory.total)+(last(//sap.host.memory.total)=0))'
+          description: Host RAM (total−avail)/total. Not HANA allocation.
+          tags:
+            - tag: component
+              value: os
+          triggers:
+            - uuid: 3180022d06fc43a486f54781b1e99f97
+              expression: min(/SAP template from Sensirion/sap.host.memory.pused,15m)>{$SAP.MEMORY.UTIL.MAX}
+              name: 'SAP host: Memory utilization is high'
+              event_name: 'SAP host: Memory utilization is high'
+              priority: WARNING
+              dependencies:
+                - name: 'SAP host: No SNMP data collection'
+                  expression: max(/SAP template from Sensirion/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              tags:
+                - tag: scope
+                  value: performance
+        - uuid: 5176d22144bb438db713e484ac175b31
+          name: Swap utilization
+          type: CALCULATED
+          key: sap.host.swap.pused
+          delay: 1m
+          value_type: FLOAT
+          units: "%"
+          params: '(last(//sap.host.swap.total)>0)*100*(last(//sap.host.swap.total)-last(//sap.host.swap.avail))/(last(//sap.host.swap.total)+(last(//sap.host.swap.total)=0))'
+          description: 0 when the host has no swap.
+          tags:
+            - tag: component
+              value: os
+          triggers:
+            - uuid: 3ac3a0e980794bbba3f2534919482ddd
+              expression: min(/SAP template from Sensirion/sap.host.swap.pused,15m)>{$SAP.SWAP.UTIL.MAX}
+              name: 'SAP host: Swap utilization is high'
+              event_name: 'SAP host: Swap utilization is high'
+              priority: WARNING
+              dependencies:
+                - name: 'SAP host: No SNMP data collection'
+                  expression: max(/SAP template from Sensirion/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+              tags:
+                - tag: scope
+                  value: performance
+        - uuid: 1a924d0f022e42808f3ca29973673df6
+          name: Process count
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.25.1.6.0
+          key: sap.host.processes
+          delay: 5m
+          description: hrSystemProcesses. Does not LLD disp+work or treat process names as SAP health.
+          tags:
+            - tag: component
+              value: os
+        - uuid: 347c6efd3ef144bd9990e2053f5c1e9c
+          name: Promonitor / C_PROMONITOR
+          type: TRAP
+          key: sap.app.promonitor
+          delay: 1m
+          description: |
+            1 when DNUS reports the Promonitor session is up. LM API account C_PROMONITOR on 11 SAP hosts.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          valuemap:
+            name: Service state
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 51e0cbed287042689e513c5af1194cd9
+              expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              name: 'SAP application: No Promonitor/DNUS data for 30m'
+              event_name: 'SAP application: No Promonitor/DNUS data for 30m'
+              priority: WARNING
+              description: |
+                CONTROL=1 after DNUS ships. Default 0 so an empty trapper does not page.
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: d1b44708d416473a87688c061012e6a0
+          name: ABAP dumps / runtime errors
+          type: TRAP
+          key: sap.app.abap.errors
+          delay: 1m
+          description: |
+            LM custom datasource on ch-sta-p-sh01: SAP ABAP runtime/errors. Count in the last poll.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: de8df13630c840788682aa05f23f440c
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.abap.errors,15m)>{$SAP.APP.ABAP.MAX}'
+              name: 'SAP application: ABAP dumps or runtime errors'
+              event_name: 'SAP application: ABAP dumps or runtime errors'
+              priority: AVERAGE
+              description: |
+                LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 5131a5f3e134440e8fcc2a49a5847061
+          name: IDoc errors
+          type: TRAP
+          key: sap.app.idoc.errors
+          delay: 1m
+          description: |
+            LM custom datasource on ch-sta-p-sh01: IDoc.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: f58461bccf724880ab96434924ee6303
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.idoc.errors,15m)>{$SAP.APP.IDOC.MAX}'
+              name: 'SAP application: IDoc errors'
+              event_name: 'SAP application: IDoc errors'
+              priority: AVERAGE
+              description: |
+                LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 7cb0d313f2d4451da0dd7685937433c9
+          name: qRFC errors
+          type: TRAP
+          key: sap.app.qrfc.errors
+          delay: 1m
+          description: |
+            LM custom datasource on ch-sta-p-sh01: qRFC.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 0142b888360241d5a8a5841118185943
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.qrfc.errors,15m)>{$SAP.APP.QRFC.MAX}'
+              name: 'SAP application: qRFC errors'
+              event_name: 'SAP application: qRFC errors'
+              priority: AVERAGE
+              description: |
+                LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: d79a5664f704488e9f9b46f0913e2c95
+          name: Job alerts
+          type: TRAP
+          key: sap.app.job.alerts
+          delay: 1m
+          description: |
+            LM custom datasource on ch-sta-p-sh01: job alerts.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 3d98ea80011d498b8042016502e14014
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.job.alerts,15m)>{$SAP.APP.JOB.MAX}'
+              name: 'SAP application: Job alerts'
+              event_name: 'SAP application: Job alerts'
+              priority: AVERAGE
+              description: |
+                LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 9314e383d6e746a2b486ad906aa824ac
+          name: SAP syslog alerts
+          type: TRAP
+          key: sap.app.syslog.alerts
+          delay: 1m
+          description: |
+            LM custom datasource on ch-sta-p-sh01: syslog.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 2aa6c83be21e499d98d63a31751345e7
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.syslog.alerts,15m)>{$SAP.APP.SYSLOG.MAX}'
+              name: 'SAP application: Syslog alerts'
+              event_name: 'SAP application: Syslog alerts'
+              priority: AVERAGE
+              description: |
+                LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+      discovery_rules:
+        - uuid: 53957a36a6a740e88f9b8d7273d959b6
+          name: Network interfaces
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#IFDESCR},1.3.6.1.2.1.2.2.1.2,{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFTYPE},1.3.6.1.2.1.2.2.1.3]'
+          key: sap.host.net.if.discovery
+          delay: 1h
+          description: IF-MIB ifTable from the SH01 probe. 32-bit octet counters. Drops lo.
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#IFDESCR}'
+                value: '{$NET.IF.IFDESCR.MATCHES}'
+                formulaid: A
+              - macro: '{#IFDESCR}'
+                value: '{$NET.IF.IFDESCR.NOT_MATCHES}'
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+              - macro: '{#IFTYPE}'
+                value: '{$NET.IF.IFTYPE.NOT_MATCHES}'
+                operator: NOT_MATCHES_REGEX
+                formulaid: C
+          item_prototypes:
+            - uuid: 9be2bc3f3c1a4928b3f512557ee9a5f5
+              name: 'Interface {#IFDESCR}: Operational status'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.2.2.1.8.{#SNMPINDEX}'
+              key: 'sap.host.net.if.status[ifOperStatus.{#SNMPINDEX}]'
+              delay: 1m
+              history: 7d
+              trends: '0'
+              valuemap:
+                name: IF-MIB::ifStatus
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFDESCR}'
+              trigger_prototypes:
+                - uuid: 5be24f4f90774562a613e2d99fd00a4a
+                  expression: '{$IFCONTROL:"{#IFDESCR}"}=1 and min(/SAP template from Sensirion/sap.host.net.if.status[ifOperStatus.{#SNMPINDEX}],#3)<>1'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/SAP template from Sensirion/sap.host.net.if.status[ifOperStatus.{#SNMPINDEX}])=1 or {$IFCONTROL:"{#IFDESCR}"}=0'
+                  name: 'SAP host: Interface {#IFDESCR}: Link down'
+                  priority: AVERAGE
+                  description: Host NIC, not SAP RFC. Mute with {$IFCONTROL:"eth0"}=0.
+                  dependencies:
+                    - name: 'SAP host: No SNMP data collection'
+                      expression: max(/SAP template from Sensirion/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: 30cb4886d6f241e285e8624f23737cb5
+              name: 'Interface {#IFDESCR}: Bits received'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.2.2.1.10.{#SNMPINDEX}'
+              key: 'sap.host.net.if.in[ifInOctets.{#SNMPINDEX}]'
+              delay: 1m
+              value_type: FLOAT
+              units: bps
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+                - type: MULTIPLIER
+                  parameters:
+                    - '8'
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFDESCR}'
+            - uuid: ea904ebfa57b4411a4847d6502012843
+              name: 'Interface {#IFDESCR}: Bits sent'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.2.2.1.16.{#SNMPINDEX}'
+              key: 'sap.host.net.if.out[ifOutOctets.{#SNMPINDEX}]'
+              delay: 1m
+              value_type: FLOAT
+              units: bps
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+                - type: MULTIPLIER
+                  parameters:
+                    - '8'
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFDESCR}'
+            - uuid: 82bf52936bde4f77b74c7a21e28b363d
+              name: 'Interface {#IFDESCR}: In errors'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.2.2.1.14.{#SNMPINDEX}'
+              key: 'sap.host.net.if.in.errors[ifInErrors.{#SNMPINDEX}]'
+              delay: 1m
+              value_type: FLOAT
+              units: eps
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFDESCR}'
+              trigger_prototypes:
+                - uuid: 5d7eb2aa3a9e4bf6bb92b2d68a550c59
+                  expression: 'min(/SAP template from Sensirion/sap.host.net.if.in.errors[ifInErrors.{#SNMPINDEX}],5m)+min(/SAP template from Sensirion/sap.host.net.if.out.errors[ifOutErrors.{#SNMPINDEX}],5m)>{$SAP.NET.IF.ERRORS.WARN}'
+                  name: 'SAP host: Interface {#IFDESCR}: High error rate'
+                  priority: WARNING
+                  dependencies:
+                    - name: 'SAP host: No SNMP data collection'
+                      expression: max(/SAP template from Sensirion/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+                  tags:
+                    - tag: scope
+                      value: performance
+            - uuid: eb64aac77ba04059ba02862dd1211791
+              name: 'Interface {#IFDESCR}: Out errors'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.2.2.1.20.{#SNMPINDEX}'
+              key: 'sap.host.net.if.out.errors[ifOutErrors.{#SNMPINDEX}]'
+              delay: 1m
+              value_type: FLOAT
+              units: eps
+              preprocessing:
+                - type: CHANGE_PER_SECOND
+              tags:
+                - tag: component
+                  value: network
+                - tag: interface
+                  value: '{#IFDESCR}'
+          graph_prototypes:
+            - uuid: 6adabcd43534448aa4541fcbba1dc31b
+              name: 'Interface {#IFDESCR}: Traffic'
+              graph_items:
+                - drawtype: GRADIENT_LINE
+                  color: 199C0D
+                  item:
+                    host: SAP template from Sensirion
+                    key: 'sap.host.net.if.in[ifInOctets.{#SNMPINDEX}]'
+                - sortorder: '1'
+                  drawtype: BOLD_LINE
+                  color: F63100
+                  item:
+                    host: SAP template from Sensirion
+                    key: 'sap.host.net.if.out[ifOutOctets.{#SNMPINDEX}]'
+        - uuid: 464baba7ba83485a938e28e211416ad8
+          name: Filesystems
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#FSNAME},1.3.6.1.2.1.25.2.3.1.3,{#FSTYPE},1.3.6.1.2.1.25.2.3.1.2]'
+          key: sap.host.vfs.fs.discovery
+          delay: 1h
+          description: HOST-RESOURCES fixed disks. Memory/swap stay on UCD scalars.
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#FSNAME}'
+                value: '{$VFS.FS.FSNAME.MATCHES}'
+                formulaid: A
+              - macro: '{#FSNAME}'
+                value: '{$VFS.FS.FSNAME.NOT_MATCHES}'
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+              - macro: '{#FSTYPE}'
+                value: '{$VFS.FS.FSTYPE.MATCHES}'
+                formulaid: C
+          item_prototypes:
+            - uuid: 5cbbfecda9d541368352f1c5ff6aa55d
+              name: 'Filesystem {#FSNAME}: Total blocks'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.25.2.3.1.5.{#SNMPINDEX}'
+              key: 'sap.host.vfs.fs.size[{#SNMPINDEX},total]'
+              delay: 5m
+              tags:
+                - tag: component
+                  value: storage
+                - tag: filesystem
+                  value: '{#FSNAME}'
+            - uuid: 600188b6082a42e290763729743c7cb3
+              name: 'Filesystem {#FSNAME}: Used blocks'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.25.2.3.1.6.{#SNMPINDEX}'
+              key: 'sap.host.vfs.fs.size[{#SNMPINDEX},used]'
+              delay: 5m
+              tags:
+                - tag: component
+                  value: storage
+                - tag: filesystem
+                  value: '{#FSNAME}'
+            - uuid: d718ae629d01410abcba45ec3b4e77f7
+              name: 'Filesystem {#FSNAME}: Used %'
+              type: CALCULATED
+              key: 'sap.host.vfs.fs.pused[{#SNMPINDEX}]'
+              delay: 5m
+              value_type: FLOAT
+              units: "%"
+              params: '(last(//sap.host.vfs.fs.size[{#SNMPINDEX},total])>0)*100*last(//sap.host.vfs.fs.size[{#SNMPINDEX},used])/(last(//sap.host.vfs.fs.size[{#SNMPINDEX},total])+(last(//sap.host.vfs.fs.size[{#SNMPINDEX},total])=0))'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: filesystem
+                  value: '{#FSNAME}'
+              trigger_prototypes:
+                - uuid: a1c4eb5a25cc446ba719f791b6d8e963
+                  expression: min(/SAP template from Sensirion/sap.host.vfs.fs.pused[{#SNMPINDEX}],15m)>{$SAP.VFS.FS.PUSED.MAX}
+                  name: 'SAP host: File system {#FSNAME}: Disk space is low'
+                  priority: WARNING
+                  dependencies:
+                    - name: 'SAP host: No SNMP data collection'
+                      expression: max(/SAP template from Sensirion/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0
+                  tags:
+                    - tag: scope
+                      value: capacity
+          graph_prototypes:
+            - uuid: b5babe45c30047f5b49232c4c77750dc
+              name: 'Filesystem {#FSNAME}: Used %'
+              graph_items:
+                - color: 2774A4
+                  item:
+                    host: SAP template from Sensirion
+                    key: 'sap.host.vfs.fs.pused[{#SNMPINDEX}]'
+      dashboards:
+        - uuid: 045e236b7d32409e8fe913bb3ae22fbb
+          name: Health
+          pages:
+            - name: Overview
+              widgets:
+                - type: item
+                  name: SNMP
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.host.snmp.available
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SSNMP
+                - type: item
+                  name: CPU
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.host.cpu.util
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SCPU
+                - type: item
+                  name: Memory
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.host.memory.pused
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SMEM
+                - type: item
+                  name: Load 15m
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: 'sap.host.load[15m]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SLOAD
+                - type: problems
+                  name: Problems
+                  y: '4'
+                  width: '72'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: SPROB
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                - type: svggraph
+                  name: CPU / load
+                  y: '7'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 2774A4
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.host.cpu.util
+                    - type: STRING
+                      name: ds.0.color.1
+                      value: F2B90D
+                    - type: ITEM
+                      name: ds.0.itemids.1
+                      value:
+                        host: SAP template from Sensirion
+                        key: 'sap.host.load[15m]'
+                    - type: STRING
+                      name: reference
+                      value: SCPUG
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                    - type: STRING
+                      name: time_period.from
+                      value: now-1d
+                    - type: STRING
+                      name: time_period.to
+                      value: now
+                - type: svggraph
+                  name: Memory / swap
+                  x: '36'
+                  y: '7'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: INTEGER
+                      name: ds.0.dataset_type
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.color.0
+                      value: 199C0D
+                    - type: ITEM
+                      name: ds.0.itemids.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.host.memory.pused
+                    - type: STRING
+                      name: ds.0.color.1
+                      value: E97659
+                    - type: ITEM
+                      name: ds.0.itemids.1
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.host.swap.pused
+                    - type: STRING
+                      name: reference
+                      value: SMEMG
+                    - type: INTEGER
+                      name: show_problems
+                      value: '1'
+                    - type: INTEGER
+                      name: legend
+                      value: '1'
+                    - type: STRING
+                      name: time_period.from
+                      value: now-1d
+                    - type: STRING
+                      name: time_period.to
+                      value: now
+            - name: Application
+              widgets:
+                - type: item
+                  name: Promonitor
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.promonitor
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SPROMO
+                - type: item
+                  name: ABAP errors
+                  x: '18'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.abap.errors
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SABAP
+                - type: item
+                  name: IDoc errors
+                  x: '36'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.idoc.errors
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SIDOC
+                - type: item
+                  name: qRFC errors
+                  x: '54'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.qrfc.errors
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SQRFC
+                - type: item
+                  name: Job alerts
+                  y: '4'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.job.alerts
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SJOB
+                - type: item
+                  name: Syslog
+                  x: '18'
+                  y: '4'
+                  width: '18'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.syslog.alerts
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SLOG
+                - type: problems
+                  name: Application problems
+                  x: '36'
+                  y: '4'
+                  width: '36'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: SAPPROB
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                    - type: STRING
+                      name: tags.0.tag
+                      value: component
+                    - type: STRING
+                      name: tags.0.value
+                      value: sap-application
+            - name: Interfaces
+              widgets:
+                - type: graphprototype
+                  name: Interface traffic
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid.0
+                      value:
+                        host: SAP template from Sensirion
+                        name: 'Interface {#IFDESCR}: Traffic'
+                    - type: STRING
+                      name: reference
+                      value: SIFG
+      valuemaps:
+        - uuid: 751d4c71b0744e1881b732782928bb41
+          name: zabbix.host.available
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+            - value: '2'
+              newvalue: Unknown
+        - uuid: 56b69681500e4e35bba573354a6fa880
+          name: Service state
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+        - uuid: f9e590eac9ba4aec9a387751c9ab90c0
+          name: SAP host identity
+          mappings:
+            - value: '0'
+              newvalue: Other SNMP agent
+            - value: '1'
+              newvalue: Linux Net-SNMP
+        - uuid: 6aff0f25cab54395820b4ec261bd7d3a
+          name: IF-MIB::ifStatus
+          mappings:
+            - value: '1'
+              newvalue: up
+            - value: '2'
+              newvalue: down
+            - value: '3'
+              newvalue: testing
+            - value: '4'
+              newvalue: unknown
+            - value: '5'
+              newvalue: dormant
+            - value: '6'
+              newvalue: notPresent
+            - value: '7'
+              newvalue: lowerLayerDown

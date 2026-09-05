@@ -46,6 +46,11 @@ Stages: *[Extreme switching — Confluence TBD]*. nbxSync: configuration §7 (ca
 2. Set interface requirements (Agent / SNMP / ANY).
 3. Assign on the Device Role (§7).
 
+SAP is not a new stub: `--apply-sap` imports **SAP template from Sensirion**
+and HostSyncs only `CH-STA-P-SH01` if that device exists and is not
+onboarding. Do not re-run zerotouch for that. Application values still wait
+on DNUS.
+
 ---
 
 ## 6. Host not monitored / wrong templates

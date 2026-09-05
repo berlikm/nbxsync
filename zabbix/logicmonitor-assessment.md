@@ -10,7 +10,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 |---|---|---|---|---|
 | `MONITORING` (global) | MD5/DES | Switches, APs, firewalls, network | `SNMP Monitoring` CG → MONITORING/MD5/DES | ✅ Covered |
 | `MONITORING-LINUX` (group override) | SHA/AES | Linux servers (SNMP) | `SNMP Monitoring (Linux)` CG → MONITORING-LINUX/SHA/AES | ✅ CG built (hosts need tag `snmp`) |
-| `SAPUSER` (group override) | MD5/DES | SAP systems | CG **SAP Agent+SNMP** → Agent + SAPUSER/MD5/DES on roles SAP HANA / SAP ME | ⚠️ Transport validated and CG credentials stored; targeted HostSync and SAP application template still pending — [probe](notes/sap-snmp-walk.md) |
+| `SAPUSER` (group override) | MD5/DES | SAP systems | CG **SAP Agent+SNMP** → Agent + SAPUSER/MD5/DES on roles SAP HANA / SAP ME; **SAP template from Sensirion** host SNMP | ⚠️ Transport validated; template built — [probe](notes/sap-snmp-walk.md), [template](templates/sap_sensirion/LM_PARITY.md). Operator: `--apply-sap` then targeted HostSync of `CH-STA-P-SH01` |
 | `MONITORING-DELL` (resource override) | SHA/AES | CN-SHA-P-STOD (Dell storage) | HPE MSA 2060 Storage by HTTP template (REST API, not SNMP); Device Type macros `{$HPE.MSA.API.HOST/USERNAME/PASSWORD}` (§11.3) | ✅ Covered |
 | `LogicMonitor` (resource override) | SHA/AES | hu-deb-san01 (Huawei storage) | Huawei OceanStor Dorado by SNMP on `SNMP Monitoring (Huawei)` CG with LogicMonitor SHA/AES on CG Host Interface (§5.6b) | ✅ Covered |
 | v2c community (resource override) | — | CH-STA-P-ENSA01 | `snmp_v2_if()` helper exists in zerotouch (SNMPv2 + `snmp_community`/`snmp_pushcommunity`); unused since ESXi iDRACs moved to SNMPv3. Not a model gap — just not configured. | ⚠️ Not configured (not a gap) |
@@ -30,7 +30,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 | LM API | Scope | Zabbix equivalent | Status |
 |---|---|---|---|
 | **Pure Storage** (per-array token) | 7 SAN arrays | `Pure Storage FlashArray v2 by HTTP` via manufacturer TemplateRule; per-array `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` macros (old `{$PURESTORAGE.TOKEN}` pruned) | ✅ Covered (per-array macros via §11.4) |
-| **SAP** (`C_PROMONITOR`) | 11 SAP hosts | Not yet — SAP scripts from DNUS, integrated by Robert | ❌ Gap (post-cutover) |
+| **SAP** (`C_PROMONITOR`) | 11 SAP hosts | Trapper `sap.app.promonitor` on **SAP template from Sensirion**; empty until DNUS/`zabbix_sender` | ⚠️ Keys exist; values post-cutover |
 | **CATO SD-WAN** (account 964) | Cato sockets | `Cato Networks by HTTP` account collector plus 21 NetBox-backed Socket ICMP hosts | ✅ Live — collector and 21/21 Socket ICMP hosts |
 
 ## 4. Website monitoring (webcheck)
@@ -45,7 +45,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 
 | LM custom datasource | Scope | Zabbix equivalent | Status |
 |---|---|---|---|
-| SAP ABAP runtime/errors, IDoc, qRFC, job alerts, syslog | ch-sta-p-sh01 | DNUS scripts → Robert integrates | ❌ Post-cutover |
+| SAP ABAP runtime/errors, IDoc, qRFC, job alerts, syslog | ch-sta-p-sh01 | Trappers on **SAP template from Sensirion**; DNUS/`zabbix_sender` still required. `{$SAP.APP.CONTROL}=0` until then | ⚠️ Keys exist; values post-cutover |
 | WinProcessStats_jstart (AS Java) | ch-sta-p-as02, ch-sta-d-as01 | Agent process monitoring | ❌ Not built |
 | tableauBridgeWorker_service | 15 Tableau servers | Agent service check | ❌ Not built |
 | WinProcessStats_cellmap | ch-sta-p-cmap03 | Agent process monitoring | ❌ Not built |
@@ -75,7 +75,7 @@ All 38 ConfigSources in LM are standard Exchange content. Zabbix doesn't have a 
 | MSSQL | ~30 | ✅ 2 synced (Agent 2) | 0 | `MSSQL by Zabbix agent 2` on MSSQL role |
 | Pure Storage | 7 arrays | ✅ 7 synced | 0 | `Pure Storage FlashArray v2 by HTTP`; `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` per array (§11.4) |
 | Dell/Huawei storage | 2 devices | ✅ 2 synced | 0 | HPE MSA HTTP (Dell); Huawei OceanStor SNMP (Huawei CG) |
-| SAP | 11 hosts | ⚠️ transport validated; 0 synced | 11 application coverage | `CH-STA-P-SH01` SNMPv3 MD5/DES proves Linux host metrics only; DNUS/SAP integration remains post-cutover — [probe](notes/sap-snmp-walk.md) |
+| SAP | 11 hosts | ⚠️ template built; 0 synced | 11 application values | Host SNMP (UCD/IF-MIB) is in **SAP template from Sensirion**; Promonitor/ABAP/IDoc/qRFC/job/syslog stay empty until DNUS — [probe](notes/sap-snmp-walk.md), [LM parity](templates/sap_sensirion/LM_PARITY.md) |
 | CATO SD-WAN | (API) | ✅ collector live | 21/21 Socket ICMP | Cato by HTTP plus stock ICMP Ping on NetBox-backed Socket hosts |
 | Website checks | 11 | ❌ | 11 | Zabbix web scenarios |
 | Custom process/service checks | ~5 datasources | ❌ | 5 | Agent-based, post-cutover |

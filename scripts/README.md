@@ -9,7 +9,7 @@ If a script and that document disagree, **fix the script or the document so they
 | Order | Script | Applies |
 |---|---|---|
 | 1 | `configure_nbxsync_zerotouch.py` | Configuration §§1–11. Sets proxy `tls_accept=Certificate` only — not proxy PEM / Cloud portal TLS. |
-| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-fmg-faz` / `--check-fmg-faz` import **Fortinet FMG-FAZ by SNMP** plus Observability companions, split FortiManager / FortiAnalyzer platform rules, and disable leftover Network Generic — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. `--apply-xiqse` / `--check-xiqse` import **XIQ-SE Observability**, **ExtremeControl Observability**, and **ExtremeControl by SNMP**, soft Site Engine TemplateRule, role **NAC** (ANY + SNMP) — **do not re-run zerotouch** for that. None of those flags HostSync. |
+| 2 | `configure_nbxsync_network.py` | Extreme YAML import, companion EXOS Observability, Switch* IFALIAS, Access host `{$LINKDOWN.IFALIAS}` grammar gate, destination globals, stock EXOS LLD + TEMP_* + ICMP-noise + interface grid + PSU check-now cleanup. `--apply-firewall-macros` writes **Platform FortiOS** FortiGate HTTP defaults (Jinja `{$FGATE.API.FQDN}` on `primary_ip4`, not role Firewall). `--apply-fortigate-http` is the Forti HTTP cutover (FortiOS Observability companion, prune Forti leftovers **and SNMP Monitoring** from role Firewall, keep SNMP Monitoring on FMG/FAZ **platforms**) — **do not re-run zerotouch** for that. `--apply-fmg-faz` / `--check-fmg-faz` import **Fortinet FMG-FAZ by SNMP** plus Observability companions, split FortiManager / FortiAnalyzer platform rules, and disable leftover Network Generic — **do not re-run zerotouch** for that. `--apply-cato` / `--check-cato` refresh the Cato account collector (GraphQL preflight, import **Cato Networks by HTTP**, converge `cato-account-*`) — **do not re-run zerotouch** for that. `--apply-xiqse` / `--check-xiqse` import **XIQ-SE Observability**, **ExtremeControl Observability**, and **ExtremeControl by SNMP**, soft Site Engine TemplateRule, role **NAC** (ANY + SNMP) — **do not re-run zerotouch** for that. `--apply-sap` / `--check-sap` import **SAP template from Sensirion**, assign on SAP HANA / SAP ME, and HostSync only `CH-STA-P-SH01` if present and not onboarding — **do not re-run zerotouch** for that. |
 | — | `create_dashboards.py` | Country/role hostgroup boards — **not** part of `--apply`; host **Health** and **Network interfaces** ship from platform templates/runtime patch |
 | — | `setup_zabbix.sh` | Podman Zabbix 7 lab bootstrap |
 | — | `run_network_zabbix_sim.py` | Zabbix-API-only smoke (no NetBox) |
@@ -17,6 +17,7 @@ If a script and that document disagree, **fix the script or the document so they
 | — | `test_mssql_observability.py` | MSSQL Observability named-instance LLD, host-prototype YAML contract, and database/backup-inventory fixtures (no live SQL) |
 | — | `test_xiqse_observability.py` | XIQ-SE / ExtremeControl Observability: 24h unique MAC license count, engine LLD, YAML contract (no live NBI) |
 | — | `test_extremecontrol_snmp.py` | ExtremeControl by SNMP: live ENAC canary counters, ENTERASYS-NAC-APPLIANCE-MIB OIDs, YAML contract |
+| — | `test_sap_sensirion.py` | SAP template from Sensirion: LM-parity host SNMP + Promonitor/DNUS trapper contract (no live Promonitor / SNMP) |
 | — | `zabbix_api.py` | Shared JSON-RPC helper |
 | — | `configure_cato_zabbix.py` | Zabbix-API implementation for the Cato collector (lab `--simulate`, used by `--apply-cato`). Never manages NetBox Socket hosts |
 
@@ -134,6 +135,25 @@ Tests: `python3 scripts/test_xiqse_observability.py` and
 `python3 scripts/test_extremecontrol_snmp.py`.
 
 
+## SAP template from Sensirion
+
+LogicMonitor watched two planes: host SNMP (`SAPUSER` MD5/DES) and Promonitor /
+custom ABAP-IDoc-qRFC-job-syslog on `C_PROMONITOR` / `ch-sta-p-sh01`. There is
+no item-level LM export. The SH01 walk proved Linux Net-SNMP only.
+
+```bash
+python3 scripts/configure_nbxsync_network.py --check-sap
+python3 scripts/configure_nbxsync_network.py --apply-sap
+```
+
+That imports **SAP template from Sensirion**, assigns it on SAP HANA / SAP ME
+(SNMP interface requirement), and HostSyncs only `CH-STA-P-SH01` when that
+device exists and is not onboarding. It never imports the Extreme pack, never
+runs zerotouch, and never fleet-syncs. Application triggers stay off until
+`{$SAP.APP.CONTROL}=1` after DNUS/`zabbix_sender`. Tests:
+`python3 scripts/test_sap_sensirion.py`.
+
+
 ## Re-syncing a single host (testing)
 
 To test a configuration change on **one host** without wiping all Zabbix Cloud hosts:
@@ -182,5 +202,6 @@ Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **
 | FortiOS → FortiGate Observability (nests Cloud **Zabbix, 7.0-2**, never import 7.0-3), ZBX-27082 patch, prune Forti/ICMP **and SNMP Monitoring** from role Firewall, CG **FortiGate HTTP** on Platform FortiOS, SNMP Monitoring on FMG/FAZ platforms, Zabbix monitoring TOKEN + FQDN Jinja on Platform FortiOS | **do not re-run** (still SNMP on role Firewall) | `--apply-fortigate-http` (fail-closed preflight, no Extreme YAML, no HostSync) |
 | Cato account collector (`Cato Networks by HTTP`, GraphQL preflight, `cato-account-*`) | **do not re-run** | `--apply-cato` / `--check-cato` (no HostSync, no Socket role mutation) |
 | XIQ-SE / ExtremeControl Observability (GraphQL NBI, 24h unique MAC license, engine LLD; thin role NAC companion) | soft-assign ExtremeControl on role **NAC** if the template exists | `--apply-xiqse` / `--check-xiqse` (no HostSync, no Extreme import) |
+| SAP template from Sensirion (LM host SNMP + Promonitor/DNUS trappers) | soft-assign on SAP HANA / SAP ME if the template exists | `--apply-sap` / `--check-sap` (HostSync only `CH-STA-P-SH01` if present and not onboarding; no Extreme import) |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |

@@ -44,17 +44,28 @@ The live probe proves the SAP profile is **MD5/DES**, not SHA1/AES128. The repos
 - `snmp_pushcommunity = true`;
 - both passphrase fields populated; values are not recorded here.
 
-No zerotouch or HostSync was run. `CH-STA-P-SH01` is still not a Zabbix Production host.
+No fleet zerotouch was run. `CH-STA-P-SH01` is still not a Zabbix Production host.
+
+The LM-parity template **SAP template from Sensirion** is in
+[`../templates/sap_sensirion/`](../templates/sap_sensirion/). Host SNMP items
+match this probe. Application items are trappers for the LM rows
+(`C_PROMONITOR`, ABAP/IDoc/qRFC/job/syslog). `{$SAP.APP.CONTROL}=0` until DNUS
+pushes values. Do not invent a Promonitor API.
 
 Next:
 
-1. Targeted-HostSync `CH-STA-P-SH01`; do not run zerotouch.
-2. Verify SNMP availability from the assigned Zabbix proxy, not only from the NetBox execution point.
-3. Deploy the SAP application template only after the DNUS/API contract is available.
+1. `configure_nbxsync_network.py --apply-sap` — import the template, assign it
+   on SAP HANA / SAP ME, and HostSync only `CH-STA-P-SH01` if that device
+   exists and is not onboarding. Do not run zerotouch.
+2. Verify SNMP availability from the assigned Zabbix proxy, not only from the
+   NetBox execution point.
+3. Leave application triggers off until the DNUS/`zabbix_sender` contract
+   exists. Then set `{$SAP.APP.CONTROL}=1`.
 
 ## Handoff questions
 
 1. Obtain the DNUS script/API contract and determine its least-privilege SAP account requirements.
-2. Decide whether DNUS runs as Zabbix agent UserParameters or as a proxy-side external script.
-3. Create a separate SAP application template only for documented DNUS/API metrics. Do not treat the generic Linux SNMP data as SAP health.
-4. Add a narrow SNMP companion template only if agent monitoring cannot provide the host-level metrics above.
+2. Decide whether DNUS runs as `zabbix_sender` into the trapper keys, or as
+   agent UserParameters later. Do not add UserParameters until that contract exists.
+3. Do not treat the generic Linux SNMP data as HANA or ABAP health.
+4. Do not walk `1.3.6.1.4.1` unbounded or poll the empty SAP enterprise tree.
