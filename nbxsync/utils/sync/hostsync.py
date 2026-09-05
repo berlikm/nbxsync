@@ -800,6 +800,14 @@ class HostSync(ZabbixSyncBase):
             if not nb_id:
                 return
 
+        # An inherited interface clone has no durable interfaceid. Once it is
+        # bound to the already-default remote interface, no host.update is
+        # needed. Calling it before the remaining interface types are bound
+        # omits those interfaces and Zabbix rejects the replacement when SNMP
+        # items still reference them.
+        if nb_id == zbx_default_id:
+            return
+
         self._flip_default_interfaces(netbox_hostinterfaces, hostid, instance)
 
     def check_default_hostinterface(self):
