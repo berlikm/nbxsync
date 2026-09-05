@@ -107,6 +107,30 @@ So: ping + SNMPv3 are live on the dual-plane CG. Groovy/batch is retired;
 sapcontrol on the existing agent is the application path. Webpage/DNS are
 not SAP KPIs and are not added here.
 
+## LM Groovy seen 2026-09-05 — Active Discovery only
+
+An operator paste from a live LogicModule is **not** Promonitor collection.
+It is Active Discovery for the batchscript instance list:
+
+- Reads host property `auto.taskTypesList` (comma-separated).
+- Prints `name##name` (LM wildvalue / wildalias).
+- Comment in the script: instances for batchscript collection and for
+  comparison in an “all tasks” DataSource. The list itself was written by
+  a **PropertySource**.
+- Imports `com.santaba.agent.debugger.TlistTask` and does not call it.
+
+Do not clone this Groovy onto the Zabbix proxy. Zabbix already expands
+instances with sapcontrol `ListInstances` / empty `{$SAP.INSTANCE}`.
+
+What to open next in LM (Collection, not Discovery):
+
+1. The **PropertySource** that **sets** `auto.taskTypesList` (that is where
+   task / SID / instance names are discovered).
+2. The batchscript / “all tasks” DataSource **Collection** tab (the script
+   that polls each instance).
+3. Property **keys** only — `auto.taskTypesList` values are instance names,
+   not passwords. Still strip secrets from any Collection script.
+
 ## What we still do not have
 
 - A least-privilege SAP RFC / HANA SQL account (the name `C_PROMONITOR` is
@@ -114,8 +138,8 @@ not SAP KPIs and are not added here.
 - A host list beyond “11 SAP hosts” + HANA canary `CH-STA-P-SH01` + ME
   `ch-sta-p-as02` / `ch-sta-d-as01` / `ch-sta-p-me05`
 - SAP enterprise SNMP — probe found none
-- The live LM Collection script (the me05 Manage Resource page is the
-  host card; `C_PROMONITOR` is not a property there)
+- The live LM **Collection** script (host card + this AD Groovy are not it)
+- The PropertySource that writes `auto.taskTypesList`
 - ST22 / IDoc / qRFC / SM13 as RFC tables — CCMS only, 0 on HANA-only
   and typically on ME Java
 

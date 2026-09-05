@@ -70,6 +70,12 @@ need sapstartsrv instead of ICM; do not ticket 51014 on single-instance
 ME boxes. `system.categories` also had `PCoIP` — ignore that for this
 pack. `C_PROMONITOR` is not on that host card.
 
+A Groovy paste that reads `auto.taskTypesList` and prints `name##name`
+is Active Discovery for the LM batchscript instance list, not collection.
+See [`LM_PARITY.md`](LM_PARITY.md). Do not port it. Next LM pages: the
+PropertySource that **sets** `auto.taskTypesList`, and the Collection
+tab of the batchscript / “all tasks” DataSource.
+
 ## Macros
 
 Same application / cert / port macro *names* on both templates. HANA
