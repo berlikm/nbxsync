@@ -713,8 +713,10 @@ Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
 3. Certificate — agent web.certificate.get when an agent exists. Set
    {{$SAP.CERT.HOST}}. {{$SAP.CERT.CONTROL}}=0 until then.
 
-Ping stays on SAP Agent+SNMP ICMP. Agent-only OS extras (CPU cores, disk
-IO, IP/TCP-UDP) are omitted until an agent is installed.
+Ping stays on SAP Agent+SNMP ICMP. LM OS rows on SH01 were Linux SNMP
+(SAPUSER), not a host agent. This pack has UCD CPU/RAM, IF-MIB, and
+hrStorage. It does not add IP-MIB / TCP-UDP-MIB / disk-IO tables unless
+those OIDs are walked. ABAP is {SH01_LM_SAP_DS} on {CANARY_HOST} only.
 
 Ungrouped LM DataSource_* are collector methods. Groovy/batch is retired.
 Do not execute collector scripts on the Zabbix proxy.

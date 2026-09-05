@@ -79,22 +79,26 @@ may not take an agent. **SAP ME** (Windows) stays on **Windows by Zabbix
 agent**. Both roles get **ICMP Ping** from CG SAP Agent+SNMP. The ME template
 does not poll Linux OIDs.
 
+SH01 OS in LM was **Linux SNMP** (`SAPUSER`), not a host agent. ABAP was
+only `ABAPRuntimeErrorsCount_LMS` on that one host. The names below are
+LM datasource titles from the SH01 Alerting tree.
+
 | LM datasource | Where it lives | Notes |
 |---|---|---|
-| CPU Cores | omitted on HANA until an agent exists | Do not invent `hrDeviceProcessor` |
-| CPU Overview | `sap.host.cpu.util` (UCD `ssCpuIdle`) | Host CPU, not ST06 |
-| Disks | omitted on HANA (disk IO needs an agent) | This pack does filesystems (space), not disk IO |
+| CPU Cores | not in this pack | LM Linux SNMP title. Probe did not walk `hrProcessorTable`. Do not invent it |
+| CPU Overview | `sap.host.cpu.util` (UCD `ssCpuIdle`) | Host CPU, not ST06. Walked `2021.11` |
+| Disks | not in this pack | LM Linux SNMP title (disk IO). Walked storage as filesystems, not UCD diskIO |
 | Filesystems | `sap.host.vfs.fs.*` (hrStorageFixedDisk) | |
-| Host Status | `zabbix[host,snmp,available]` | SNMP plane only. `{$UNSUPPORTED.CONTROL}=0` so missing agent items do not ticket |
+| Host Status | `zabbix[host,snmp,available]` | SNMP plane. `{$UNSUPPORTED.CONTROL}=0` |
 | Interfaces (64 bit) | `sap.host.net.if.in/out[ifHC*]` | ifXTable 64-bit counters |
-| Memory Usage | `sap.host.memory.*` / `sap.host.swap.*` | UCD; not HANA allocation |
+| Memory Usage | `sap.host.memory.*` / `sap.host.swap.*` | UCD; not HANA allocation. Walked `2021.4` |
 | Network Interfaces | same IF-MIB LLD + oper-status / errors | Drops `lo` |
-| NoDataMonitoring | unsupported-item count (gated) + sapcontrol heartbeat | LM vehicle was collector `!tlist` (see Groovy below). Not SAP SM37 |
+| NoDataMonitoring | unsupported-item count (gated) + sapcontrol heartbeat | LM vehicle was collector `!tlist`. Not SAP SM37 |
 | Ping | SAP Agent+SNMP CG `icmpping` | **Not** nested here |
-| Port | `net.tcp.service[tcp,,{$SAP.PORT.TCP}]` SIMPLE | HANA default 443; ME default **50001** (LM `ssl.ports` on `ch-sta-p-me05`). `{$SAP.PORT.CONTROL}=0` |
-| SSL Certificate Expiration | Zabbix agent `web.certificate.get` | Optional. Needs an agent. `{$SAP.CERT.CONTROL}=0` |
-| System Level IP Stats | omitted on HANA until an agent exists | Not duplicated |
-| TCP UDP stats | omitted on HANA until an agent exists | Not duplicated |
+| Port | `net.tcp.service[tcp,,{$SAP.PORT.TCP}]` SIMPLE | HANA default 443; ME default **50001**. `{$SAP.PORT.CONTROL}=0` |
+| SSL Certificate Expiration | Zabbix agent `web.certificate.get` | Optional cert check. Not SNMP. `{$SAP.CERT.CONTROL}=0` |
+| System Level IP Stats | not in this pack | LM Linux SNMP title (IP-MIB). Not walked |
+| TCP UDP stats | not in this pack | LM Linux SNMP title (TCP-MIB / UDP-MIB). Not walked |
 
 `WinProcessStats_jstart` on ch-sta-p-as02 / ch-sta-d-as01 **is SAP ME**
 (Windows AS Java). It lives on **SAP ME from Sensirion** as

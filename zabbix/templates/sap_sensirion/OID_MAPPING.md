@@ -3,9 +3,9 @@
 Canary: `CH-STA-P-SH01` / `10.0.105.112`, SNMPv3 `SAPUSER` authPriv MD5/DES,
 2026-09-05. See [`../../notes/sap-snmp-walk.md`](../../notes/sap-snmp-walk.md).
 
-Host SNMP below is the **openSUSE HANA OS plane**. There is no official
-openSUSE template; do not link stock Linux by SNMP (these OIDs already live
-here). Windows ME uses
+Host SNMP below is the **openSUSE HANA OS plane** (LM `SAPUSER`, not a
+host agent). There is no official openSUSE template; do not link stock
+Linux by SNMP (these OIDs already live here). Windows ME uses
 [`template_sap_me_sensirion.yaml`](template_sap_me_sensirion.yaml) (agent
 sapcontrol + `proc.num[jstart.exe]`, no UCD).
 

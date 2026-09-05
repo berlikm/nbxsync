@@ -208,6 +208,8 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn('no official openSUSE template', self.template['description'])
         self.assertIn('attach Linux by Zabbix agent', self.template['description'])
         self.assertNotIn('openSUSE matches the Linux platform rule', self.template['description'])
+        self.assertNotIn('Agent-only OS extras', self.template['description'])
+        self.assertIn('Linux SNMP', self.template['description'])
         self.assertIn(ME_TEMPLATE_NAME, self.template['description'])
         self.assertIn(SH01_LM_SAP_DS, self.template['description'])
         self.assertEqual(SH01_LM_DATASOURCES[0], SH01_LM_SAP_DS)
