@@ -11,18 +11,22 @@ zabbix_export:
         Sensirion SAP pack. LogicMonitor parity from zabbix/logicmonitor-assessment.md
         (LM account export Aug 2026) plus the 2026-09-05 SNMP probe of CH-STA-P-SH01.
 
-        LM had two planes — this template covers both, without inventing a Promonitor API:
+        LM had two planes — this template covers both with what is already on the box:
 
         1. Host / SNMP — LM group credential SAPUSER (MD5/DES) on SAP systems.
            Probe of CH-STA-P-SH01 (10.0.105.112) proved Linux Net-SNMP only
            (1.3.6.1.4.1.8072.3.2.10). The SAP enterprise tree and
            Net-SNMP extend were empty. Items here are IF-MIB / UCD / HOST-RESOURCES.
 
-        2. Application — LM Promonitor / C_PROMONITOR on 11 SAP
-           hosts: ABAP runtime errors, AS instance status, IDoc, job alerts, lock
+        2. Application — the same 11 LM Promonitor / C_PROMONITOR
+           names (ABAP runtime errors, AS instance status, IDoc, job alerts, lock
            entries, qRFC in/out, RFC status, spool, syslog, transactional RFC,
-           update requests. DNUS scripts (Robert) own that contract. Trapper keys
-           only. {$SAP.APP.CONTROL}=0 until DNUS pushes values.
+           update requests). DNUS is gone. Collection is local sapcontrol /
+           sapstartsrv via the Zabbix agent UserParameter (SAP Host Agent
+           /usr/sap/hostctrl). GetProcessList is instance health (HANA hdb*,
+           ABAP disp+work, ME jstart). GetAlerts is CCMS counts, not ST22/SM13
+           RFC and not HANA SQL. {$SAP.APP.CONTROL}=0 until the UserParameter
+           is installed and Latest data is quiet.
 
         3. Certificate — LM SSL Certificate Expiration via the Zabbix agent already
            on SAP Agent+SNMP (not a proxy external script). Set {$SAP.CERT.HOST}
@@ -33,16 +37,18 @@ zabbix_export:
         nest ICMP or duplicate those agent keys.
 
         Ungrouped LM DataSource_ping / snmp.v3 / script.groovy / batchscript /
-        webpage / dns are collector methods, not more SAP counters. Groovy/batch is
-        the DNUS trapper path. Do not execute collector scripts on the host.
+        webpage / dns are collector methods, not more SAP counters. Groovy/batch
+        was the old DNUS vehicle; sapcontrol replaces it. Do not execute collector
+        scripts on the Zabbix proxy.
 
         Not in this template: AS Java jstart process stats (ch-sta-p-as02 /
         ch-sta-d-as01) — that is the AS Java agent stub, not SAP HANA / SAP ME.
         Does not link the stock Linux SNMP template. Does not walk the enterprise
-        tree unbounded.
+        tree unbounded. Does not invent a Promonitor API or HANA SQL logon.
 
         Operator notes: zabbix/notes/sap-snmp-walk.md,
-        zabbix/templates/sap_sensirion/LM_PARITY.md.
+        zabbix/templates/sap_sensirion/LM_PARITY.md,
+        zabbix/templates/sap_sensirion/SAPCONTROL.md.
         Refresh with configure_nbxsync_network.py --apply-sap.
       groups:
         - name: Templates/Applications
@@ -94,7 +100,16 @@ zabbix_export:
           description: 'hrStorageFixedDisk only.'
         - macro: '{$SAP.APP.CONTROL}'
           value: 0
-          description: '1 enables Promonitor/DNUS nodata and threshold triggers. 0 = collect-first (LM application gap).'
+          description: '1 enables sapcontrol heartbeat and threshold triggers. 0 = collect-first until the Host Agent UserParameter is installed and quiet.'
+        - macro: '{$SAP.INSTANCE}'
+          value: ''
+          description: 'sapstartsrv instance number (00). Empty = saphostctrl ListInstances, then 00/01/02.'
+        - macro: '{$SAP.SID}'
+          value: ''
+          description: 'SAP SID filter for ListInstances (HDB, MEP). Empty = every instance on the host.'
+        - macro: '{$SAP.CONTROL.HOST}'
+          value: ''
+          description: 'sapcontrol -host / SOAP peer. Empty = localhost (the agent box). Do not put a Zabbix host macro here.'
         - macro: '{$SAP.APP.ABAP.MAX}'
           value: 0
           description: 'ABAP runtime-error count Warning when CONTROL=1.'
@@ -174,7 +189,7 @@ zabbix_export:
           type: INTERNAL
           key: 'zabbix[host,,items_unsupported]'
           delay: 15m
-          description: Watch the watcher for the SNMP plane only. Trapper application items do not go unsupported.
+          description: Watch the watcher for the SNMP plane only. Application sapcontrol items use CHECK_NOT_SUPPORTED.
           tags:
             - tag: component
               value: health
@@ -506,14 +521,41 @@ zabbix_export:
           tags:
             - tag: component
               value: os
-        - uuid: 347c6efd3ef144bd9990e2053f5c1e9c
-          name: Promonitor / C_PROMONITOR
-          type: TRAP
-          key: sap.app.promonitor
+        - uuid: 16daa2a2d41a4dd89254fa610a853ae8
+          name: SAP Control JSON
+          type: ZABBIX_PASSIVE
+          key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           delay: 1m
+          value_type: TEXT
+          history: 7d
+          trends: '0'
           description: |
-            LM SAP / C_PROMONITOR session. 1 when DNUS reports Promonitor is up on the 11 SAP hosts.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            One sapcontrol snapshot from the Zabbix agent already on SAP Agent+SNMP. UserParameter sap.sensirion[*] runs zabbix/externalscripts/sap_sensirion.py on the SAP host (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). Empty {$SAP.INSTANCE} / {$SAP.SID} is fine on a single-instance HANA box. Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '{}'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '{}'
+          tags:
+            - tag: component
+              value: sap-application
+        - uuid: 347c6efd3ef144bd9990e2053f5c1e9c
+          name: SAP Control heartbeat
+          type: DEPENDENT
+          key: sap.app.promonitor
+          delay: '0'
+          description: |
+            LM SAP / C_PROMONITOR session replacement. 1 when local sapcontrol answers. Not a Promonitor API.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.promonitor'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           valuemap:
             name: Service state
           tags:
@@ -521,23 +563,31 @@ zabbix_export:
               value: sap-application
           triggers:
             - uuid: 51e0cbed287042689e513c5af1194cd9
-              expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
-              name: 'SAP application: No Promonitor/DNUS data for 30m'
-              event_name: 'SAP application: No Promonitor/DNUS data for 30m'
+              expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
+              name: 'SAP application: sapcontrol is down'
+              event_name: 'SAP application: sapcontrol is down'
               priority: WARNING
               description: |
-                CONTROL=1 after DNUS ships. Default 0 so an empty trapper does not page.
+                CONTROL=1 after the Host Agent UserParameter works. Default 0 so a missing script does not page. last=0 covers CHECK_NOT_SUPPORTED; nodata covers a dead agent.
               tags:
                 - tag: scope
                   value: availability
         - uuid: c83515ef4cc84a0fa38511994113f975
           name: Application server instance status
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.instance.status
-          delay: 1m
+          delay: '0'
           description: |
-            LM Application Server Instance Status. 1=up 0=down.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM Application Server Instance Status. sapcontrol GetProcessList: HANA hdb* / ABAP disp+work / ME jstart GREEN or YELLOW = 1.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.instance_status'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           valuemap:
             name: Service state
           tags:
@@ -550,21 +600,29 @@ zabbix_export:
               event_name: 'SAP application: Application server instance is down'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: d1b44708d416473a87688c061012e6a0
           name: ABAP runtime errors
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.abap.errors
-          delay: 1m
+          delay: '0'
           description: |
-            LM ABAP Runtime Errors. Count in the last poll.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM ABAP Runtime Errors. CCMS GetAlerts (Shortdumps), not ST22 RFC. 0 on a HANA-only host.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.abap_errors'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           tags:
             - tag: component
               value: sap-application
@@ -575,21 +633,29 @@ zabbix_export:
               event_name: 'SAP application: ABAP runtime errors'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: 5131a5f3e134440e8fcc2a49a5847061
           name: IDoc errors
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.idoc.errors
-          delay: 1m
+          delay: '0'
           description: |
-            LM IDoc Errors.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM IDoc Errors. CCMS GetAlerts, not EDIDS.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.idoc_errors'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           tags:
             - tag: component
               value: sap-application
@@ -600,21 +666,29 @@ zabbix_export:
               event_name: 'SAP application: IDoc errors'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: d79a5664f704488e9f9b46f0913e2c95
           name: Job alerts
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.job.alerts
-          delay: 1m
+          delay: '0'
           description: |
-            LM Job Alerts.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM Job Alerts. CCMS GetAlerts, not SM37 RFC.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.job_alerts'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           tags:
             - tag: component
               value: sap-application
@@ -625,21 +699,29 @@ zabbix_export:
               event_name: 'SAP application: Job alerts'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: 643ebe66100044a58291d40226e3c931
           name: Lock entries
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.locks
-          delay: 1m
+          delay: '0'
           description: |
-            LM Lock Entries (SM12).
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM Lock Entries. CCMS GetAlerts / enqueue, not SM12 RFC.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.locks'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           tags:
             - tag: component
               value: sap-application
@@ -650,21 +732,29 @@ zabbix_export:
               event_name: 'SAP application: Lock entries'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: 656b0921f5654c88806a3079919942dc
           name: qRFC inbound queue
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.qrfc.in
-          delay: 1m
+          delay: '0'
           description: |
-            LM qRFC Monitor Inbound Queue.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM qRFC Monitor Inbound Queue. CCMS GetAlerts, not SMQ2.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.qrfc_in'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           tags:
             - tag: component
               value: sap-application
@@ -675,21 +765,29 @@ zabbix_export:
               event_name: 'SAP application: qRFC inbound queue'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: 0fad094468d94ab4be6e9e2f400cc701
           name: qRFC outbound queue
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.qrfc.out
-          delay: 1m
+          delay: '0'
           description: |
-            LM qRFC Monitor Outbound Queue.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM qRFC Monitor Outbound Queue. CCMS GetAlerts, not SMQ1.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.qrfc_out'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           tags:
             - tag: component
               value: sap-application
@@ -700,21 +798,29 @@ zabbix_export:
               event_name: 'SAP application: qRFC outbound queue'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: 30795d785df94a639709cb93f62d7e2b
           name: RFC status
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.rfc.status
-          delay: 1m
+          delay: '0'
           description: |
-            LM RFC Status. 1=up 0=down.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM RFC Status. gwrd GREEN/YELLOW on ABAP. HANA/Java have no gateway — 1 when the instance is up. Not SM59.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.rfc_status'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           valuemap:
             name: Service state
           tags:
@@ -727,21 +833,29 @@ zabbix_export:
               event_name: 'SAP application: RFC is down'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: 22c19d6cd4c6458fb845c26dd7f78ee6
           name: Spool errors
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.spool.errors
-          delay: 1m
+          delay: '0'
           description: |
-            LM Spool Errors.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM Spool Errors. CCMS GetAlerts, not SP01.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.spool_errors'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           tags:
             - tag: component
               value: sap-application
@@ -752,21 +866,29 @@ zabbix_export:
               event_name: 'SAP application: Spool errors'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: 9314e383d6e746a2b486ad906aa824ac
           name: SAP syslog alerts
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.syslog.alerts
-          delay: 1m
+          delay: '0'
           description: |
-            LM Syslog.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM Syslog. CCMS GetAlerts, not SM21 RFC.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.syslog_alerts'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           tags:
             - tag: component
               value: sap-application
@@ -777,21 +899,29 @@ zabbix_export:
               event_name: 'SAP application: Syslog alerts'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: 321ef21441a7445e841697a9cac8feba
           name: Transactional RFC errors
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.trfc.errors
-          delay: 1m
+          delay: '0'
           description: |
-            LM Transactional RFC (tRFC / SM58).
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM Transactional RFC. CCMS GetAlerts, not SM58.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.trfc_errors'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           tags:
             - tag: component
               value: sap-application
@@ -802,21 +932,29 @@ zabbix_export:
               event_name: 'SAP application: Transactional RFC errors'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
         - uuid: 240a0c0a2f6948f49b31ad9522eba267
           name: Update requests
-          type: TRAP
+          type: DEPENDENT
           key: sap.app.update.requests
-          delay: 1m
+          delay: '0'
           description: |
-            LM Update Requests (SM13).
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+            LM Update Requests. CCMS GetAlerts, not SM13.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.update_requests'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
           tags:
             - tag: component
               value: sap-application
@@ -827,10 +965,10 @@ zabbix_export:
               event_name: 'SAP application: Update requests'
               priority: AVERAGE
               description: |
-                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP template from Sensirion/sap.app.promonitor)=0)'
               tags:
                 - tag: scope
                   value: sap-application
@@ -1389,7 +1527,7 @@ zabbix_export:
             - name: Application
               widgets:
                 - type: item
-                  name: Promonitor
+                  name: SAP Control
                   width: '12'
                   height: '4'
                   fields:

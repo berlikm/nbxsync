@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract tests for SAP template from Sensirion (no live Promonitor / SNMP)."""
+"""Contract tests for SAP template from Sensirion (no live sapcontrol / SNMP)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import yaml
 
 from sap_sensirion import (
     APP_ITEM_KEYS,
+    APP_MASTER_KEY,
     APP_TRIGGER_NAMES,
     APPLY_FLAG,
     CANARY_HOST,
@@ -118,15 +119,43 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn('1.3.6.1.2.1.31.1.1.1.10', self.yaml_text)
         self.assertNotIn('ifInOctets', self.yaml_text)
 
-    def test_lm_application_trappers(self):
+    def test_lm_application_sapcontrol(self):
         self.assertTrue(APP_ITEM_KEYS.issubset(self.keys))
+        self.assertIn(APP_MASTER_KEY, self.keys)
         trap_keys = {item['key'] for item in self.template['items'] if item.get('type') == 'TRAP'}
-        self.assertEqual(trap_keys, APP_ITEM_KEYS)
+        self.assertEqual(trap_keys, set())
+        master = next(item for item in self.template['items'] if item['key'] == APP_MASTER_KEY)
+        self.assertEqual(master['type'], 'ZABBIX_PASSIVE')
+        dependents = {
+            item['key']
+            for item in self.template['items']
+            if item.get('type') == 'DEPENDENT' and item.get('key') in APP_ITEM_KEYS
+        }
+        self.assertEqual(dependents, APP_ITEM_KEYS)
         self.assertEqual({row[0] for row in LM_APP_METRICS}, APP_ITEM_KEYS)
+        self.assertEqual({row[5] for row in LM_APP_METRICS}, {
+            'promonitor',
+            'instance_status',
+            'abap_errors',
+            'idoc_errors',
+            'job_alerts',
+            'locks',
+            'qrfc_in',
+            'qrfc_out',
+            'rfc_status',
+            'spool_errors',
+            'syslog_alerts',
+            'trfc_errors',
+            'update_requests',
+        })
         self.assertIn(LM_PROMONITOR_USER, self.yaml_text)
         self.assertIn(LM_SNMP_USER, self.yaml_text)
         self.assertIn(str(LM_SAP_HOSTS), self.template['description'])
         self.assertIn('ch-sta-p-sh01', self.template['description'].lower())
+        self.assertIn('sapcontrol', self.template['description'])
+        self.assertIn('UserParameter', self.yaml_text)
+        self.assertIn('{$SAP.INSTANCE}', self.yaml_text)
+        self.assertNotIn('zabbix_sender', self.yaml_text)
         for needle in (
             'ABAP runtime errors',
             'Application server instance',

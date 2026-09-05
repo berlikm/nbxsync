@@ -34,7 +34,7 @@ SNMP can supply host/infrastructure monitoring only:
 - load, CPU, memory and swap;
 - standard host-resource process and storage inventory.
 
-It does not currently expose SAP operational signals: ABAP runtime/errors, HANA health, IDoc, qRFC, job alerts or SAP syslog. Those require the DNUS/SAP integration, SAP API, or explicit agent UserParameters.
+It does not currently expose SAP operational signals: ABAP runtime/errors, HANA health, IDoc, qRFC, job alerts or SAP syslog. Those come from local sapcontrol (SAP Host Agent / sapstartsrv) via the Zabbix agent UserParameter — not from this SNMP tree.
 
 ## nbxsync status
 
@@ -49,35 +49,39 @@ No fleet zerotouch was run. `CH-STA-P-SH01` is still not a Zabbix Production hos
 The LM-parity template **SAP template from Sensirion** is in
 [`../templates/sap_sensirion/`](../templates/sap_sensirion/). Host SNMP items
 match this probe (64-bit ifXTable for LM Interfaces 64 bit). Application
-items are trappers for the full Promonitor list (ABAP, instance, IDoc, jobs,
-locks, qRFC in/out, RFC, spool, syslog, tRFC, updates). SSL Certificate
-Expiration is the Zabbix agent `web.certificate.get` (SAP hosts already have
-Agent :10050). `{$SAP.APP.CONTROL}=0` and `{$SAP.CERT.CONTROL}=0` until DNUS
-and the ICM name are set. Do not invent a Promonitor API.
+items keep the Promonitor names and collect via local sapcontrol (Host Agent
+`/usr/sap/hostctrl`) — see
+[`../templates/sap_sensirion/SAPCONTROL.md`](../templates/sap_sensirion/SAPCONTROL.md).
+SSL Certificate Expiration is the Zabbix agent `web.certificate.get` (SAP
+hosts already have Agent :10050). `{$SAP.APP.CONTROL}=0` and
+`{$SAP.CERT.CONTROL}=0` until the UserParameter is installed and the ICM
+name is set. Do not invent a Promonitor API.
 
 Ungrouped LM rows `DataSource_ping` / `DataSource_snmp.v3` /
 `DataSource_script.groovy` / `DataSource_batchscript.*` / `DataSource_webpage`
 / `DataSource_dns` are collector **methods** (the collector could ping, SNMP,
-run Groovy, hit HTTP). They are not more SAP counters. Groovy/batch is the
-DNUS vehicle for the trappers above. Do not add `system.run`.
+run Groovy, hit HTTP). They are not more SAP counters. Groovy/batch is
+retired; sapcontrol replaces it. Do not add agent remote commands.
 
 Next:
 
-1. `configure_nbxsync_network.py --apply-sap` — import the template, assign it
+1. Install the Host Agent UserParameter on the canary (script +
+   `zabbix/userparameters/sap_sensirion.conf`). `--apply-sap` cannot push it.
+2. `configure_nbxsync_network.py --apply-sap` — import the template, assign it
    on SAP HANA / SAP ME, and HostSync only `CH-STA-P-SH01` if that device
    exists and is not onboarding. Do not run zerotouch.
-2. Verify SNMP availability from the assigned Zabbix proxy, not only from the
+3. Verify SNMP availability from the assigned Zabbix proxy, not only from the
    NetBox execution point.
-3. Leave application triggers off until the DNUS/`zabbix_sender` contract
-   exists. Then set `{$SAP.APP.CONTROL}=1`.
-4. Set `{$SAP.CERT.HOST}` to the ICM/HTTPS name on the canary, confirm
+4. Confirm Latest data `sap.app.promonitor`=1, then set `{$SAP.APP.CONTROL}=1`.
+5. Set `{$SAP.CERT.HOST}` to the ICM/HTTPS name on the canary, confirm
    Latest data, then `{$SAP.CERT.CONTROL}=1`. Port stays collect-first
    (`{$SAP.PORT.CONTROL}=0`) unless LM “Port” was actually in use.
 
 ## Handoff questions
 
-1. Obtain the DNUS script/API contract and determine its least-privilege SAP account requirements.
-2. Decide whether DNUS runs as `zabbix_sender` into the trapper keys, or as
-   agent UserParameters later. Do not add UserParameters until that contract exists.
+1. Instance number / SID on SH01 if `saphostctrl ListInstances` is ambiguous.
+2. Whether any non-HANA SAP ME host needs `{$SAP.SID}` so ListInstances does
+   not mix stacks.
 3. Do not treat the generic Linux SNMP data as HANA or ABAP health.
 4. Do not walk `1.3.6.1.4.1` unbounded or poll the empty SAP enterprise tree.
+   ST22/IDoc/qRFC as RFC tables still need a real SAP account — out of scope.

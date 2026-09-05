@@ -38,7 +38,7 @@ Copy [_template.md](_template.md) for the next domain. Same observability bar ev
 | `templates/extremecontrol_observability/` | ExtremeControl Observability | **built**; thin role **NAC** companion; portal/cert Warning **DISABLED** — [07](07-extreme-control.md) |
 | `templates/extremecontrol_snmp/` | ExtremeControl by SNMP | **built**; `ENTERASYS-NAC-APPLIANCE-MIB` canary on five ENACs; **Health** — [07](07-extreme-control.md) |
 | `templates/cato_http/` | Cato Networks by HTTP | imported; account collector with **Health** (Census/API) + **Path** (Last mile/Probe) + **Network** (Tunnels/HA/Port); 21/21 Socket ICMP hosts live — [04](04-cato.md) |
-| `templates/sap_sensirion/` | SAP template from Sensirion | **built**; LM host SNMP (64-bit IF) + agent cert + full Promonitor trapper list; `--apply-sap` — [notes/sap-snmp-walk.md](notes/sap-snmp-walk.md), [LM parity](templates/sap_sensirion/LM_PARITY.md) |
+| `templates/sap_sensirion/` | SAP template from Sensirion | **built**; LM host SNMP (64-bit IF) + agent cert + sapcontrol (Host Agent); `--apply-sap` — [notes/sap-snmp-walk.md](notes/sap-snmp-walk.md), [sapcontrol](templates/sap_sensirion/SAPCONTROL.md) |
 
 ## Related
 

@@ -371,7 +371,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 | Tableau Bridge by Zabbix agent `(stub)` | Device Role Tableau | Assign if the template exists on the Zabbix server |
 | CellMap by Zabbix agent `(stub)` | Device Role CellMap | Assign if the template exists |
 | Oracle by Zabbix agent 2 | Device Role Database | Also tag rule §6.2 |
-| SAP template from Sensirion | Device Role SAP ME, SAP HANA | Import with `--apply-sap`. Host SNMP + 64-bit IF + agent `web.certificate.get` (set `{$SAP.CERT.HOST}` per host). Promonitor application rows are trappers until DNUS. Interface req SNMP (agent IF already from Linux by agent + CG). Do not also assign Linux by SNMP. |
+| SAP template from Sensirion | Device Role SAP ME, SAP HANA | Import with `--apply-sap`. Host SNMP + 64-bit IF + agent `web.certificate.get` (set `{$SAP.CERT.HOST}` per host). Application rows are sapcontrol dependents (install Host Agent UserParameter on the SAP host; `--apply-sap` cannot push it). Interface req SNMP (agent IF already from Linux by agent + CG). Do not also assign Linux by SNMP. |
 | Acronis Cyber Protect Cloud by HTTP | Device Role Acronis Management | Assign if the template exists |
 | SCCM by Zabbix agent `(stub)` | Device Role SCCM | Assign if the template exists |
 | Remote Zabbix proxy health | Device Role Zabbix Proxy | ICMP comes from the Agent Monitoring CG (§6.4) |

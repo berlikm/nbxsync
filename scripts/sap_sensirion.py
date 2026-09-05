@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SAP template from Sensirion — LM-parity host SNMP + agent cert + DNUS trappers."""
+"""SAP template from Sensirion — LM-parity host SNMP + agent cert + sapcontrol."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ SWAP_WARN = 'SAP host: Swap utilization is high'
 FS_WARN = 'SAP host: File system {#FSNAME}: Disk space is low'
 IF_DOWN = 'SAP host: Interface {#IFDESCR}: Link down'
 IF_ERR = 'SAP host: Interface {#IFDESCR}: High error rate'
-APP_NODATA = 'SAP application: No Promonitor/DNUS data for 30m'
+APP_NODATA = 'SAP application: sapcontrol is down'
 APP_INSTANCE = 'SAP application: Application server instance is down'
 APP_ABAP = 'SAP application: ABAP runtime errors'
 APP_IDOC = 'SAP application: IDoc errors'
@@ -142,6 +142,7 @@ CERT_ITEM_KEYS = {
 }
 
 PORT_ITEM_KEY = 'net.tcp.service[tcp,,{$SAP.PORT.TCP}]'
+APP_MASTER_KEY = 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
 
 SNMP_LLD_KEYS = {
     'sap.host.net.if.discovery',
@@ -204,21 +205,125 @@ FORBIDDEN_SNIPPETS = (
     'WinProcessStats_jstart',
 )
 
-# kind: heartbeat | status | count
+# kind: heartbeat | status | count. json_field is the collector payload key.
 LM_APP_METRICS = (
-    ('sap.app.promonitor', 'Promonitor / C_PROMONITOR', 'heartbeat', None, None, 'LM SAP / C_PROMONITOR session. 1 when DNUS reports Promonitor is up on the 11 SAP hosts.'),
-    ('sap.app.instance.status', 'Application server instance status', 'status', None, APP_INSTANCE, 'LM Application Server Instance Status. 1=up 0=down.'),
-    ('sap.app.abap.errors', 'ABAP runtime errors', 'count', '{$SAP.APP.ABAP.MAX}', APP_ABAP, 'LM ABAP Runtime Errors. Count in the last poll.'),
-    ('sap.app.idoc.errors', 'IDoc errors', 'count', '{$SAP.APP.IDOC.MAX}', APP_IDOC, 'LM IDoc Errors.'),
-    ('sap.app.job.alerts', 'Job alerts', 'count', '{$SAP.APP.JOB.MAX}', APP_JOB, 'LM Job Alerts.'),
-    ('sap.app.locks', 'Lock entries', 'count', '{$SAP.APP.LOCKS.MAX}', APP_LOCKS, 'LM Lock Entries (SM12).'),
-    ('sap.app.qrfc.in', 'qRFC inbound queue', 'count', '{$SAP.APP.QRFC.IN.MAX}', APP_QRFC_IN, 'LM qRFC Monitor Inbound Queue.'),
-    ('sap.app.qrfc.out', 'qRFC outbound queue', 'count', '{$SAP.APP.QRFC.OUT.MAX}', APP_QRFC_OUT, 'LM qRFC Monitor Outbound Queue.'),
-    ('sap.app.rfc.status', 'RFC status', 'status', None, APP_RFC, 'LM RFC Status. 1=up 0=down.'),
-    ('sap.app.spool.errors', 'Spool errors', 'count', '{$SAP.APP.SPOOL.MAX}', APP_SPOOL, 'LM Spool Errors.'),
-    ('sap.app.syslog.alerts', 'SAP syslog alerts', 'count', '{$SAP.APP.SYSLOG.MAX}', APP_SYSLOG, 'LM Syslog.'),
-    ('sap.app.trfc.errors', 'Transactional RFC errors', 'count', '{$SAP.APP.TRFC.MAX}', APP_TRFC, 'LM Transactional RFC (tRFC / SM58).'),
-    ('sap.app.update.requests', 'Update requests', 'count', '{$SAP.APP.UPDATE.MAX}', APP_UPDATE, 'LM Update Requests (SM13).'),
+    (
+        'sap.app.promonitor',
+        'SAP Control heartbeat',
+        'heartbeat',
+        None,
+        None,
+        'promonitor',
+        'LM SAP / C_PROMONITOR session replacement. 1 when local sapcontrol answers. Not a Promonitor API.',
+    ),
+    (
+        'sap.app.instance.status',
+        'Application server instance status',
+        'status',
+        None,
+        APP_INSTANCE,
+        'instance_status',
+        'LM Application Server Instance Status. sapcontrol GetProcessList: HANA hdb* / ABAP disp+work / ME jstart GREEN or YELLOW = 1.',
+    ),
+    (
+        'sap.app.abap.errors',
+        'ABAP runtime errors',
+        'count',
+        '{$SAP.APP.ABAP.MAX}',
+        APP_ABAP,
+        'abap_errors',
+        'LM ABAP Runtime Errors. CCMS GetAlerts (Shortdumps), not ST22 RFC. 0 on a HANA-only host.',
+    ),
+    (
+        'sap.app.idoc.errors',
+        'IDoc errors',
+        'count',
+        '{$SAP.APP.IDOC.MAX}',
+        APP_IDOC,
+        'idoc_errors',
+        'LM IDoc Errors. CCMS GetAlerts, not EDIDS.',
+    ),
+    (
+        'sap.app.job.alerts',
+        'Job alerts',
+        'count',
+        '{$SAP.APP.JOB.MAX}',
+        APP_JOB,
+        'job_alerts',
+        'LM Job Alerts. CCMS GetAlerts, not SM37 RFC.',
+    ),
+    (
+        'sap.app.locks',
+        'Lock entries',
+        'count',
+        '{$SAP.APP.LOCKS.MAX}',
+        APP_LOCKS,
+        'locks',
+        'LM Lock Entries. CCMS GetAlerts / enqueue, not SM12 RFC.',
+    ),
+    (
+        'sap.app.qrfc.in',
+        'qRFC inbound queue',
+        'count',
+        '{$SAP.APP.QRFC.IN.MAX}',
+        APP_QRFC_IN,
+        'qrfc_in',
+        'LM qRFC Monitor Inbound Queue. CCMS GetAlerts, not SMQ2.',
+    ),
+    (
+        'sap.app.qrfc.out',
+        'qRFC outbound queue',
+        'count',
+        '{$SAP.APP.QRFC.OUT.MAX}',
+        APP_QRFC_OUT,
+        'qrfc_out',
+        'LM qRFC Monitor Outbound Queue. CCMS GetAlerts, not SMQ1.',
+    ),
+    (
+        'sap.app.rfc.status',
+        'RFC status',
+        'status',
+        None,
+        APP_RFC,
+        'rfc_status',
+        'LM RFC Status. gwrd GREEN/YELLOW on ABAP. HANA/Java have no gateway — 1 when the instance is up. Not SM59.',
+    ),
+    (
+        'sap.app.spool.errors',
+        'Spool errors',
+        'count',
+        '{$SAP.APP.SPOOL.MAX}',
+        APP_SPOOL,
+        'spool_errors',
+        'LM Spool Errors. CCMS GetAlerts, not SP01.',
+    ),
+    (
+        'sap.app.syslog.alerts',
+        'SAP syslog alerts',
+        'count',
+        '{$SAP.APP.SYSLOG.MAX}',
+        APP_SYSLOG,
+        'syslog_alerts',
+        'LM Syslog. CCMS GetAlerts, not SM21 RFC.',
+    ),
+    (
+        'sap.app.trfc.errors',
+        'Transactional RFC errors',
+        'count',
+        '{$SAP.APP.TRFC.MAX}',
+        APP_TRFC,
+        'trfc_errors',
+        'LM Transactional RFC. CCMS GetAlerts, not SM58.',
+    ),
+    (
+        'sap.app.update.requests',
+        'Update requests',
+        'count',
+        '{$SAP.APP.UPDATE.MAX}',
+        APP_UPDATE,
+        'update_requests',
+        'LM Update Requests. CCMS GetAlerts, not SM13.',
+    ),
 )
 
 MACROS = (
@@ -248,7 +353,22 @@ MACROS = (
     (
         '{$SAP.APP.CONTROL}',
         '0',
-        '1 enables Promonitor/DNUS nodata and threshold triggers. 0 = collect-first (LM application gap).',
+        '1 enables sapcontrol heartbeat and threshold triggers. 0 = collect-first until the Host Agent UserParameter is installed and quiet.',
+    ),
+    (
+        '{$SAP.INSTANCE}',
+        '',
+        'sapstartsrv instance number (00). Empty = saphostctrl ListInstances, then 00/01/02.',
+    ),
+    (
+        '{$SAP.SID}',
+        '',
+        'SAP SID filter for ListInstances (HDB, MEP). Empty = every instance on the host.',
+    ),
+    (
+        '{$SAP.CONTROL.HOST}',
+        '',
+        'sapcontrol -host / SOAP peer. Empty = localhost (the agent box). Do not put a Zabbix host macro here.',
     ),
     ('{$SAP.APP.ABAP.MAX}', '0', 'ABAP runtime-error count Warning when CONTROL=1.'),
     ('{$SAP.APP.IDOC.MAX}', '0', 'IDoc error count Warning when CONTROL=1.'),
@@ -373,18 +493,22 @@ def render() -> str:
         f"""Sensirion SAP pack. LogicMonitor parity from zabbix/logicmonitor-assessment.md
 (LM account export Aug 2026) plus the 2026-09-05 SNMP probe of {CANARY_HOST}.
 
-LM had two planes — this template covers both, without inventing a Promonitor API:
+LM had two planes — this template covers both with what is already on the box:
 
 1. Host / SNMP — LM group credential {LM_SNMP_USER} (MD5/DES) on SAP systems.
    Probe of {CANARY_HOST} (10.0.105.112) proved Linux Net-SNMP only
    ({LINUX_NETSNMP_SYSOBJECTID}). The SAP enterprise tree and
    Net-SNMP extend were empty. Items here are IF-MIB / UCD / HOST-RESOURCES.
 
-2. Application — LM Promonitor / {LM_PROMONITOR_USER} on {LM_SAP_HOSTS} SAP
-   hosts: ABAP runtime errors, AS instance status, IDoc, job alerts, lock
+2. Application — the same {LM_SAP_HOSTS} LM Promonitor / {LM_PROMONITOR_USER}
+   names (ABAP runtime errors, AS instance status, IDoc, job alerts, lock
    entries, qRFC in/out, RFC status, spool, syslog, transactional RFC,
-   update requests. DNUS scripts (Robert) own that contract. Trapper keys
-   only. {{$SAP.APP.CONTROL}}=0 until DNUS pushes values.
+   update requests). DNUS is gone. Collection is local sapcontrol /
+   sapstartsrv via the Zabbix agent UserParameter (SAP Host Agent
+   /usr/sap/hostctrl). GetProcessList is instance health (HANA hdb*,
+   ABAP disp+work, ME jstart). GetAlerts is CCMS counts, not ST22/SM13
+   RFC and not HANA SQL. {{$SAP.APP.CONTROL}}=0 until the UserParameter
+   is installed and Latest data is quiet.
 
 3. Certificate — LM SSL Certificate Expiration via the Zabbix agent already
    on SAP Agent+SNMP (not a proxy external script). Set {{$SAP.CERT.HOST}}
@@ -395,16 +519,18 @@ stay on Linux by agent + the SAP Agent+SNMP ICMP item. This pack does not
 nest ICMP or duplicate those agent keys.
 
 Ungrouped LM DataSource_ping / snmp.v3 / script.groovy / batchscript /
-webpage / dns are collector methods, not more SAP counters. Groovy/batch is
-the DNUS trapper path. Do not execute collector scripts on the host.
+webpage / dns are collector methods, not more SAP counters. Groovy/batch
+was the old DNUS vehicle; sapcontrol replaces it. Do not execute collector
+scripts on the Zabbix proxy.
 
 Not in this template: AS Java jstart process stats (ch-sta-p-as02 /
 ch-sta-d-as01) — that is the AS Java agent stub, not SAP HANA / SAP ME.
 Does not link the stock Linux SNMP template. Does not walk the enterprise
-tree unbounded.
+tree unbounded. Does not invent a Promonitor API or HANA SQL logon.
 
 Operator notes: zabbix/notes/sap-snmp-walk.md,
-zabbix/templates/sap_sensirion/LM_PARITY.md.
+zabbix/templates/sap_sensirion/LM_PARITY.md,
+zabbix/templates/sap_sensirion/SAPCONTROL.md.
 Refresh with configure_nbxsync_network.py {APPLY_FLAG}.""",
     )
     doc.add(3, 'groups:')
@@ -449,7 +575,7 @@ def _host_items(doc: Doc) -> None:
     doc.add(5, 'type: INTERNAL')
     doc.add(5, "key: 'zabbix[host,,items_unsupported]'")
     doc.add(5, 'delay: 15m')
-    doc.add(5, 'description: Watch the watcher for the SNMP plane only. Trapper application items do not go unsupported.')
+    doc.add(5, 'description: Watch the watcher for the SNMP plane only. Application sapcontrol items use CHECK_NOT_SUPPORTED.')
     tags(doc, 5, 'health')
     doc.add(5, 'triggers:')
     doc.add(6, f'- uuid: {uid("tr", "unsup")}')
@@ -680,19 +806,51 @@ def _char_item(doc: Doc, key: str, name: str, oid: str, *, inventory: str | None
 
 
 def _app_items(doc: Doc) -> None:
-    nodata_expr = f'{{$SAP.APP.CONTROL}}=1 and nodata(/{TPL}/sap.app.promonitor,30m)=1'
-    for key, name, kind, macro, trig, descr in LM_APP_METRICS:
+    heartbeat_expr = (
+        f'{{$SAP.APP.CONTROL}}=1 and '
+        f'(nodata(/{TPL}/sap.app.promonitor,30m)=1 or last(/{TPL}/sap.app.promonitor)=0)'
+    )
+    doc.add(4, f'- uuid: {uid("item", "sap.sensirion.json")}')
+    doc.add(5, 'name: SAP Control JSON')
+    doc.add(5, 'type: ZABBIX_PASSIVE')
+    doc.add(5, f'key: {q(APP_MASTER_KEY)}')
+    doc.add(5, 'delay: 1m')
+    doc.add(5, 'value_type: TEXT')
+    doc.add(5, 'history: 7d')
+    doc.add(5, "trends: '0'")
+    doc.add(5, 'description: |')
+    doc.literal(
+        6,
+        'One sapcontrol snapshot from the Zabbix agent already on SAP Agent+SNMP. '
+        'UserParameter sap.sensirion[*] runs zabbix/externalscripts/sap_sensirion.py '
+        'on the SAP host (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). '
+        'Empty {$SAP.INSTANCE} / {$SAP.SID} is fine on a single-instance HANA box. '
+        'Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).',
+    )
+    doc.add(5, 'preprocessing:')
+    doc.add(6, '- type: CHECK_NOT_SUPPORTED')
+    doc.add(7, 'parameters:')
+    doc.add(8, "- '{}'")
+    doc.add(7, 'error_handler: CUSTOM_VALUE')
+    doc.add(7, "error_handler_params: '{}'")
+    tags(doc, 5, 'sap-application')
+
+    for key, name, kind, macro, trig, field, descr in LM_APP_METRICS:
         doc.add(4, f'- uuid: {uid("item", key)}')
         doc.add(5, f'name: {name}')
-        doc.add(5, 'type: TRAP')
+        doc.add(5, 'type: DEPENDENT')
         doc.add(5, f'key: {key}')
-        doc.add(5, 'delay: 1m')
+        doc.add(5, "delay: '0'")
         doc.add(5, 'description: |')
-        doc.literal(
-            6,
-            descr
-            + '\nDNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.',
-        )
+        doc.literal(6, descr + '\nJSONPath from the sapcontrol master. Not SNMP.')
+        doc.add(5, 'preprocessing:')
+        doc.add(6, '- type: JSONPATH')
+        doc.add(7, 'parameters:')
+        doc.add(8, f"- '$.{field}'")
+        doc.add(7, 'error_handler: CUSTOM_VALUE')
+        doc.add(7, "error_handler_params: '0'")
+        doc.add(5, 'master_item:')
+        doc.add(6, f'key: {q(APP_MASTER_KEY)}')
         if kind in ('heartbeat', 'status'):
             doc.add(5, 'valuemap:')
             doc.add(6, 'name: Service state')
@@ -700,12 +858,16 @@ def _app_items(doc: Doc) -> None:
         doc.add(5, 'triggers:')
         if kind == 'heartbeat':
             doc.add(6, f'- uuid: {uid("tr", "app.nodata")}')
-            doc.add(7, 'expression: ' + q(nodata_expr))
+            doc.add(7, 'expression: ' + q(heartbeat_expr))
             doc.add(7, f'name: {q(APP_NODATA)}')
             doc.add(7, f'event_name: {q(APP_NODATA)}')
             doc.add(7, 'priority: WARNING')
             doc.add(7, 'description: |')
-            doc.literal(8, 'CONTROL=1 after DNUS ships. Default 0 so an empty trapper does not page.')
+            doc.literal(
+                8,
+                'CONTROL=1 after the Host Agent UserParameter works. Default 0 so a missing '
+                'script does not page. last=0 covers CHECK_NOT_SUPPORTED; nodata covers a dead agent.',
+            )
             scope(doc, 7, 'availability')
             continue
         doc.add(6, f'- uuid: {uid("tr", key)}')
@@ -717,10 +879,10 @@ def _app_items(doc: Doc) -> None:
         doc.add(7, f'event_name: {q(trig)}')
         doc.add(7, 'priority: AVERAGE')
         doc.add(7, 'description: |')
-        doc.literal(8, 'LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.')
+        doc.literal(8, 'LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.')
         doc.add(7, 'dependencies:')
         doc.add(8, f'- name: {q(APP_NODATA)}')
-        doc.add(9, 'expression: ' + q(nodata_expr))
+        doc.add(9, 'expression: ' + q(heartbeat_expr))
         scope(doc, 7, 'sap-application')
 
 
@@ -1023,7 +1185,7 @@ def _dashboard(doc: Doc) -> None:
 
     doc.add(6, '- name: Application')
     doc.add(7, 'widgets:')
-    item_tile(doc, 8, 'sap.app.promonitor', None, None, 12, 'SPROMO', 'Promonitor')
+    item_tile(doc, 8, 'sap.app.promonitor', None, None, 12, 'SPROMO', 'SAP Control')
     item_tile(doc, 8, 'sap.app.instance.status', 12, None, 12, 'SINST', 'Instance')
     item_tile(doc, 8, 'sap.app.rfc.status', 24, None, 12, 'SRFC', 'RFC')
     item_tile(doc, 8, 'sap.app.abap.errors', 36, None, 12, 'SABAP', 'ABAP errors')

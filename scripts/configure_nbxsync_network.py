@@ -75,7 +75,7 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     those six targets. Certificate expiry is collected per appliance by the
     assigned proxy. No Extreme import or zerotouch.
   * SAP: ``--apply-sap`` / ``--check-sap`` import **SAP template from Sensirion**
-    (LM host SNMP + Promonitor/DNUS trappers), assign it on roles SAP HANA /
+    (LM host SNMP + sapcontrol via the host agent), assign it on roles SAP HANA /
     SAP ME, and HostSync only ``CH-STA-P-SH01`` when that device exists and is
     not onboarding. No Extreme import, no fleet HostSync, no zerotouch.
   * Global **destination** macros on the Zabbix server object (production end-state).
@@ -5415,7 +5415,7 @@ def _print_sap_plan(server, *, errors: list[str], apply: bool, zbx_names: list[s
     logger.info('=' * 60)
     logger.info('SAP pack proposed writes (nothing written yet)' if apply else 'SAP pack check (read-only)')
     logger.info('=' * 60)
-    logger.info('Import %s (LM host SNMP + Promonitor/DNUS trappers)', _sap.TEMPLATE_NAME)
+    logger.info('Import %s (LM host SNMP + sapcontrol)', _sap.TEMPLATE_NAME)
     logger.info('  %s ← %s', _sap.TEMPLATE_NAME, _sap.TEMPLATE_YAML)
     if zbx_names:
         logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
@@ -5513,7 +5513,7 @@ def run_apply_sap() -> int:
         SyncHostJob(instance=canary).run()
     logger.info(
         'SAP pack written. %s is on roles %s. '
-        'Application trappers stay silent until {$SAP.APP.CONTROL}=1 after DNUS. '
+        'Application sapcontrol items stay silent until {$SAP.APP.CONTROL}=1 after the Host Agent UserParameter. '
         'HostSync was only %s (or skipped). Do not re-run zerotouch to refresh this pack.',
         _sap.TEMPLATE_NAME,
         ', '.join(_sap.SAP_ROLES),

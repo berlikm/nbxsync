@@ -1,4 +1,4 @@
-# SAP template from Sensirion — OID, agent, and trapper map
+# SAP template from Sensirion — OID, agent, and sapcontrol map
 
 Canary: `CH-STA-P-SH01` / `10.0.105.112`, SNMPv3 `SAPUSER` authPriv MD5/DES,
 2026-09-05. See [`../../notes/sap-snmp-walk.md`](../../notes/sap-snmp-walk.md).
@@ -34,22 +34,26 @@ Do not walk `1.3.6.1.4.1` unbounded. Do not poll the SAP enterprise tree.
 `{$SAP.CERT.CONTROL}=0` and `{$SAP.PORT.CONTROL}=0` until the hostname / port
 are confirmed. Empty cert host is `CHECK_NOT_SUPPORTED` → `{}`.
 
-## Application trappers (LM / DNUS)
+## Application (LM names, sapcontrol)
 
-| Item key | LM row | How it gets data |
-|---|---|---|
-| `sap.app.promonitor` | SAP / API `C_PROMONITOR` (11 hosts) | `zabbix_sender` from DNUS |
-| `sap.app.instance.status` | Application Server Instance Status | same |
-| `sap.app.abap.errors` | ABAP Runtime Errors | same |
-| `sap.app.idoc.errors` | IDoc Errors | same |
-| `sap.app.job.alerts` | Job Alerts | same |
-| `sap.app.locks` | Lock Entries | same |
-| `sap.app.qrfc.in` | qRFC Monitor Inbound Queue | same |
-| `sap.app.qrfc.out` | qRFC Monitor Outbound Queue | same |
-| `sap.app.rfc.status` | RFC Status | same |
-| `sap.app.spool.errors` | Spool Errors | same |
-| `sap.app.syslog.alerts` | Syslog | same |
-| `sap.app.trfc.errors` | Transactional RFC | same |
-| `sap.app.update.requests` | Update Requests | same |
+Master: `sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]`
+(Zabbix agent UserParameter → `zabbix/externalscripts/sap_sensirion.py`).
+See [`SAPCONTROL.md`](SAPCONTROL.md).
 
-`{$SAP.APP.CONTROL}=0` until those scripts exist.
+| Item key | LM row | JSONPath | How it gets data |
+|---|---|---|---|
+| `sap.app.promonitor` | SAP / API `C_PROMONITOR` (11 hosts) | `$.promonitor` | sapcontrol answers |
+| `sap.app.instance.status` | Application Server Instance Status | `$.instance_status` | `GetProcessList` |
+| `sap.app.abap.errors` | ABAP Runtime Errors | `$.abap_errors` | `GetAlerts` CCMS |
+| `sap.app.idoc.errors` | IDoc Errors | `$.idoc_errors` | `GetAlerts` CCMS |
+| `sap.app.job.alerts` | Job Alerts | `$.job_alerts` | `GetAlerts` CCMS |
+| `sap.app.locks` | Lock Entries | `$.locks` | `GetAlerts` CCMS |
+| `sap.app.qrfc.in` | qRFC Monitor Inbound Queue | `$.qrfc_in` | `GetAlerts` CCMS |
+| `sap.app.qrfc.out` | qRFC Monitor Outbound Queue | `$.qrfc_out` | `GetAlerts` CCMS |
+| `sap.app.rfc.status` | RFC Status | `$.rfc_status` | `gwrd`, or instance-up on HANA/Java |
+| `sap.app.spool.errors` | Spool Errors | `$.spool_errors` | `GetAlerts` CCMS |
+| `sap.app.syslog.alerts` | Syslog | `$.syslog_alerts` | `GetAlerts` CCMS |
+| `sap.app.trfc.errors` | Transactional RFC | `$.trfc_errors` | `GetAlerts` CCMS |
+| `sap.app.update.requests` | Update Requests | `$.update_requests` | `GetAlerts` CCMS |
+
+`{$SAP.APP.CONTROL}=0` until the Host Agent UserParameter is installed.

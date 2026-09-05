@@ -30,7 +30,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 | LM API | Scope | Zabbix equivalent | Status |
 |---|---|---|---|
 | **Pure Storage** (per-array token) | 7 SAN arrays | `Pure Storage FlashArray v2 by HTTP` via manufacturer TemplateRule; per-array `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` macros (old `{$PURESTORAGE.TOKEN}` pruned) | ✅ Covered (per-array macros via §11.4) |
-| **SAP** (`C_PROMONITOR`) | 11 SAP hosts | Trapper `sap.app.promonitor` on **SAP template from Sensirion**; empty until DNUS/`zabbix_sender` | ⚠️ Keys exist; values post-cutover |
+| **SAP** (`C_PROMONITOR`) | 11 SAP hosts | Agent sapcontrol → `sap.app.promonitor` on **SAP template from Sensirion**; install Host Agent UserParameter | ⚠️ Template built; UserParameter not pushed |
 | **CATO SD-WAN** (account 964) | Cato sockets | `Cato Networks by HTTP` account collector plus 21 NetBox-backed Socket ICMP hosts | ✅ Live — collector and 21/21 Socket ICMP hosts |
 
 ## 4. Website monitoring (webcheck)
@@ -45,9 +45,9 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 
 | LM custom datasource | Scope | Zabbix equivalent | Status |
 |---|---|---|---|
-| SAP ABAP / instance / IDoc / jobs / locks / qRFC in+out / RFC / spool / syslog / tRFC / updates | Promonitor / `C_PROMONITOR` (11 hosts; SH01 custom DS) | Trappers on **SAP template from Sensirion**; DNUS/`zabbix_sender` still required. `{$SAP.APP.CONTROL}=0` until then | ⚠️ Keys exist; values post-cutover |
+| SAP ABAP / instance / IDoc / jobs / locks / qRFC in+out / RFC / spool / syslog / tRFC / updates | Promonitor / `C_PROMONITOR` (11 hosts; SH01 custom DS) | sapcontrol dependents on **SAP template from Sensirion** (Host Agent). `{$SAP.APP.CONTROL}=0` until the UserParameter is installed | ⚠️ Template built; install UserParameter on the host |
 | SSL Certificate Expiration + Port | SAP hosts | Agent `web.certificate.get` + SIMPLE TCP; `{$SAP.CERT.CONTROL}` / `{$SAP.PORT.CONTROL}=0` until the ICM name is set | ⚠️ Built; host macros pending |
-| Ungrouped `DataSource_*` (ping, snmp.v3, groovy/batch, powershell, webpage, dns) | LM **collector methods**, not SAP KPIs | Ping + SNMPv3 = SAP CG. Groovy/batch = DNUS trappers. Do not import Groovy/PowerShell. Webpage/DNS are collector self-tests / estate webchecks (§4) | ⚠️ Documented — [LM parity](templates/sap_sensirion/LM_PARITY.md) |
+| Ungrouped `DataSource_*` (ping, snmp.v3, groovy/batch, powershell, webpage, dns) | LM **collector methods**, not SAP KPIs | Ping + SNMPv3 = SAP CG. Groovy/batch retired; local sapcontrol replaces it. Do not import Groovy/PowerShell. Webpage/DNS are collector self-tests / estate webchecks (§4) | ⚠️ Documented — [LM parity](templates/sap_sensirion/LM_PARITY.md) |
 | WinProcessStats_jstart (AS Java) | ch-sta-p-as02, ch-sta-d-as01 | Agent process monitoring | ❌ Not built |
 | tableauBridgeWorker_service | 15 Tableau servers | Agent service check | ❌ Not built |
 | WinProcessStats_cellmap | ch-sta-p-cmap03 | Agent process monitoring | ❌ Not built |
@@ -77,7 +77,7 @@ All 38 ConfigSources in LM are standard Exchange content. Zabbix doesn't have a 
 | MSSQL | ~30 | ✅ 2 synced (Agent 2) | 0 | `MSSQL by Zabbix agent 2` on MSSQL role |
 | Pure Storage | 7 arrays | ✅ 7 synced | 0 | `Pure Storage FlashArray v2 by HTTP`; `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` per array (§11.4) |
 | Dell/Huawei storage | 2 devices | ✅ 2 synced | 0 | HPE MSA HTTP (Dell); Huawei OceanStor SNMP (Huawei CG) |
-| SAP | 11 hosts | ⚠️ template built; 0 synced | 11 application values | Host SNMP (UCD + 64-bit ifXTable) + agent cert + full Promonitor trapper list; values wait on DNUS — [probe](notes/sap-snmp-walk.md), [LM parity](templates/sap_sensirion/LM_PARITY.md) |
+| SAP | 11 hosts | ⚠️ template built; 0 synced | 11 application values | Host SNMP (UCD + 64-bit ifXTable) + agent cert + sapcontrol (Host Agent); install UserParameter then HostSync SH01 — [probe](notes/sap-snmp-walk.md), [sapcontrol](templates/sap_sensirion/SAPCONTROL.md) |
 | CATO SD-WAN | (API) | ✅ collector live | 21/21 Socket ICMP | Cato by HTTP plus stock ICMP Ping on NetBox-backed Socket hosts |
 | Website checks | 11 | ❌ | 11 | Zabbix web scenarios |
 | Custom process/service checks | ~5 datasources | ❌ | 5 | Agent-based, post-cutover |
