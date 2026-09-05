@@ -64,6 +64,27 @@ ME05_LM_ABSENT_SAP_DS = (
     'ABAP',
     'IDoc',
 )
+# LM Alerting tree on CH-STA-P-SH01 (Linux HANA, 2026-09-05).
+# One SAP application row. Do not copy onto Windows ME.
+SH01_LM_SAP_DS = 'ABAPRuntimeErrorsCount_LMS'
+SH01_LM_DATASOURCES = (
+    SH01_LM_SAP_DS,
+    'CPU Cores',
+    'CPU Overview',
+    'Disks',
+    'Filesystems',
+    'Host Status',
+    'Interfaces (64 bit)',
+    'Memory Usage',
+    'Monitored Processes',
+    'Network Interfaces',
+    'NoDataMonitoring',
+    'Ping',
+    'Port',
+    'SSL Certificate Expiration',
+    'System Level IP Stats',
+    'TCP UDP stats',
+)
 _UID_PREFIX = ''
 LINUX_NETSNMP_SYSOBJECTID = '1.3.6.1.4.1.8072.3.2.10'
 SAP_ENTERPRISE_OID = '1.3.6.1.4.1.2312'
@@ -604,6 +625,9 @@ Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
    GetProcessList = hdb* GREEN/YELLOW.
    GetAlerts CCMS counts stay 0 on a HANA-only box (not ST22 RFC, not HANA SQL).
    {{$SAP.APP.CONTROL}}=0 until the UserParameter is installed.
+   SH01 Alerting tree has one SAP row: {SH01_LM_SAP_DS}. That is Linux
+   HANA, not Windows ME. Open Collection on that row. Do not port it
+   onto {ME_TEMPLATE_NAME}.
 
 3. Certificate — agent web.certificate.get. Set {{$SAP.CERT.HOST}}.
 

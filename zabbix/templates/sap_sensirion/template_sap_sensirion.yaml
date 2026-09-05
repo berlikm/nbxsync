@@ -24,6 +24,9 @@ zabbix_export:
            GetProcessList = hdb* GREEN/YELLOW.
            GetAlerts CCMS counts stay 0 on a HANA-only box (not ST22 RFC, not HANA SQL).
            {$SAP.APP.CONTROL}=0 until the UserParameter is installed.
+           SH01 Alerting tree has one SAP row: ABAPRuntimeErrorsCount_LMS. That is Linux
+           HANA, not Windows ME. Open Collection on that row. Do not port it
+           onto SAP ME from Sensirion.
 
         3. Certificate — agent web.certificate.get. Set {$SAP.CERT.HOST}.
 

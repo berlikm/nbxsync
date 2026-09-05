@@ -26,7 +26,7 @@ OS call to Host Agent. Do not paste the password into chat or git.
 |---|---|---|---|
 | SAP / Promonitor (`C_PROMONITOR`, 11 hosts) | `sap.app.promonitor` | heartbeat | 1 when sapcontrol answers |
 | Application Server Instance Status | `sap.app.instance.status` | 1=up / 0=down | `GetProcessList` (HANA hdb* / ABAP disp+work / ME jstart) |
-| ABAP Runtime Errors | `sap.app.abap.errors` | count | CCMS `GetAlerts` (Shortdumps), not ST22 RFC. 0 on HANA-only |
+| ABAP Runtime Errors (`ABAPRuntimeErrorsCount_LMS` on SH01) | `sap.app.abap.errors` | count | Live LM name on Linux HANA. sapcontrol CCMS until Collection is pasted. 0 on HANA-only if it is really ST22 |
 | IDoc Errors | `sap.app.idoc.errors` | count | CCMS, not EDIDS |
 | Job Alerts | `sap.app.job.alerts` | count | CCMS, not SM37 |
 | Lock Entries | `sap.app.locks` | count | CCMS / enqueue, not SM12 |
@@ -192,10 +192,17 @@ from SH01 is the wrong collector and the wrong pack for me05 / as02.
    2026 export).
 3. Skip any other Windows SAP box whose Alerting tree looks like me05.
 
-**Linux SAP HANA** (separate hunt, only if you want the HANA Groovy):
+**Linux SAP HANA** (SH01 Alerting tree, 2026-09-05):
 
-1. Open **CH-STA-P-SH01**. Different OS, different LM collector, maps
-   to **SAP template from Sensirion**, not the ME pack.
+The only SAP application row is **`ABAPRuntimeErrorsCount_LMS`**.
+Everything else is Linux OS + Ping + Port + SSL + NoData
+(`CPU Cores`, `CPU Overview`, `Disks`, `Filesystems`, `Host Status`,
+`Interfaces (64 bit)`, `Memory Usage`, `Monitored Processes`,
+`Network Interfaces`, `NoDataMonitoring`, `Ping`, `Port`,
+`SSL Certificate Expiration`, `System Level IP Stats`, `TCP UDP stats`).
+
+Open **`ABAPRuntimeErrorsCount_LMS` → Manage → Collection**. That
+script is HANA/Linux only. Do not apply it to Windows ME.
 
 On the Windows ME host, from the **Alerting / datasource tree** (not
 Manage Resource properties):

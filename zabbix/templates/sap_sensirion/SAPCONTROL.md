@@ -81,8 +81,9 @@ The Groovy pair that reads `auto.taskTypesList` and calls
 It is not Promonitor, sapcontrol, or SM37. See [`LM_PARITY.md`](LM_PARITY.md).
 Do not port `!tlist`. Do not open another me05 datasource for SAP
 application collection — that tree has none. SH01 is Linux HANA, not
-ME. Windows ME script: as02 / as01 Alerting tree → named SAP row →
-Collection. See [`LM_PARITY.md`](LM_PARITY.md).
+ME. Its one SAP row is `ABAPRuntimeErrorsCount_LMS` → Collection
+(HANA pack only). Windows ME script: as02 / as01 Alerting tree →
+named SAP row → Collection. See [`LM_PARITY.md`](LM_PARITY.md).
 
 ## Macros
 

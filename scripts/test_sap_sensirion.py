@@ -39,6 +39,8 @@ from sap_sensirion import (
     ME_TEMPLATE_NAME,
     ME_TEMPLATE_YAML,
     ME_TRIGGER_NAMES,
+    SH01_LM_DATASOURCES,
+    SH01_LM_SAP_DS,
     PORT_ITEM_KEY,
     PORT_TRIGGER_NAMES,
     ROLE_TEMPLATES,
@@ -176,6 +178,9 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn('sapcontrol', self.template['description'])
         self.assertIn('openSUSE', self.template['description'])
         self.assertIn(ME_TEMPLATE_NAME, self.template['description'])
+        self.assertIn(SH01_LM_SAP_DS, self.template['description'])
+        self.assertEqual(SH01_LM_DATASOURCES[0], SH01_LM_SAP_DS)
+        self.assertNotIn(SH01_LM_SAP_DS, ME_TEMPLATE_YAML.read_text(encoding='utf-8'))
         self.assertIn('UserParameter', self.yaml_text)
         self.assertNotIn(JSTART_ITEM_KEY, self.keys)
         self.assertIn('{$SAP.INSTANCE}', self.yaml_text)
