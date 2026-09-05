@@ -155,7 +155,7 @@ class SapControlCollectorTests(unittest.TestCase):
         self.assertIn('Z_GET_ST22', win_src)
         self.assertNotIn('santaba/rest', win_src)
         self.assertIn('"$9"', conf)
-        self.assertIn('"$9"', win)
+        self.assertNotIn('"$9"', win)
 
     def test_hana_process_list_up(self):
         procs = self.c.parse_process_list(HANA_CLI)

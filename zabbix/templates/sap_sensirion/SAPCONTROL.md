@@ -36,11 +36,13 @@ zabbix ALL=(sapadm) NOPASSWD: /usr/sap/hostctrl/exe/sapcontrol, /usr/sap/hostctr
 `zabbix_agentd -t 'sap.sensirion[json,,]'` — JSON `kind` should be `hana`.
 
 SH01 LM row `ABAPRuntimeErrorsCount_LMS` Collection is HTTPS SOAP
-`Z_GET_ST22` to `:44301/abapruntimeerror` (property keys `sap.api.user`
-/ `sap.api.pass`). Set host macros `{$SAP.API.HOST}` (ICM FQDN),
-`{$SAP.API.USER}`, and secret `{$SAP.API.PASS}`. Empty host keeps CCMS.
-The Groovy that counts LogicMonitor alerts is not installed. Rotate any
-LM API keys that were pasted with that Groovy.
+`Z_GET_ST22` to `https://ch-sta-p-sh01.sensirion.lokal:44301/abapruntimeerror`.
+LM `system.displayname` is that **openSUSE** FQDN. The PowerShell ran
+on a collector against Linux, not on Windows ME. Set host macros
+`{$SAP.API.HOST}`=`ch-sta-p-sh01.sensirion.lokal`, `{$SAP.API.USER}`,
+and secret `{$SAP.API.PASS}` on the HANA template only. Empty host
+keeps CCMS. The Groovy that counts LogicMonitor alerts is not
+installed. Rotate any LM API keys that were pasted with that Groovy.
 
 ## SAP ME — Windows AS Java
 
@@ -105,9 +107,9 @@ Latest data is quiet.
 1. HANA canary: install the Linux UserParameter on `CH-STA-P-SH01`.
 2. `--apply-sap` (no zerotouch, no fleet HostSync).
 3. Confirm HANA Latest data; set `{$SAP.CERT.HOST}`; set ST22
-   `{$SAP.API.HOST}` / `{$SAP.API.USER}` / secret `{$SAP.API.PASS}` if
-   `:44301/abapruntimeerror` answers; then `{$SAP.APP.CONTROL}=1` on
-   HANA only.
+   `{$SAP.API.HOST}`=`ch-sta-p-sh01.sensirion.lokal` /
+   `{$SAP.API.USER}` / secret `{$SAP.API.PASS}` if that openSUSE ICF
+   answers; then `{$SAP.APP.CONTROL}=1` on HANA only. Not on ME.
 4. ME: install the PowerShell snippet on as02/as01/me05, HostSync those
    hosts separately, set `{$SAP.CERT.HOST}` (e.g.
    `ch-sta-p-me05.sensirion.lokal`), then enable CONTROL on ME.

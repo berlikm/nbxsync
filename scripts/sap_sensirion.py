@@ -29,6 +29,7 @@ ROLE_TEMPLATES = {
     'SAP ME': ME_TEMPLATE_NAME,
 }
 CANARY_HOST = 'CH-STA-P-SH01'
+CANARY_FQDN = 'ch-sta-p-sh01.sensirion.lokal'
 ME_CANARY_HOSTS = ('ch-sta-p-as02', 'ch-sta-d-as01', 'ch-sta-p-me05')
 ME_CANARY_FQDN = 'ch-sta-p-me05.sensirion.lokal'
 LM_ME_WINDOWS_COLLECTOR = 'CH-STA-P-LMCO02'
@@ -215,9 +216,14 @@ APP_MASTER_KEY = (
     'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},'
     '{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
 )
+ME_APP_MASTER_KEY = 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
 ST22_FM = 'Z_GET_ST22'
 ST22_DEFAULT_PORT = '44301'
 ST22_DEFAULT_PATH = '/abapruntimeerror'
+
+
+def app_master_key(flavor: str) -> str:
+    return APP_MASTER_KEY if flavor == 'hana' else ME_APP_MASTER_KEY
 JSTART_ITEM_KEY = 'proc.num[jstart.exe]'
 
 SNMP_LLD_KEYS = {
@@ -309,7 +315,8 @@ LM_APP_METRICS = (
         '{$SAP.APP.ABAP.MAX}',
         APP_ABAP,
         'abap_errors',
-        'LM ABAPRuntimeErrorsCount_LMS / Z_GET_ST22 when {$SAP.API.HOST} is set; else CCMS GetAlerts. 0 on HANA-only without ICF.',
+        'LM ABAPRuntimeErrorsCount_LMS on openSUSE SH01 (system.displayname '
+        'ch-sta-p-sh01.sensirion.lokal). Z_GET_ST22 when {$SAP.API.HOST} is set; else CCMS.',
     ),
     (
         'sap.app.idoc.errors',
@@ -450,8 +457,8 @@ MACROS = (
     (
         '{$SAP.API.HOST}',
         '',
-        'ICM FQDN for HTTPS SOAP Z_GET_ST22. Empty skips ST22 and keeps CCMS. '
-        'LM used system.displayname. Do not put a Zabbix host macro here.',
+        'LM system.displayname for Z_GET_ST22: ch-sta-p-sh01.sensirion.lokal '
+        '(openSUSE HANA). Empty skips ST22. Do not put a Zabbix host macro here.',
     ),
     (
         '{$SAP.API.PORT}',
@@ -548,6 +555,11 @@ HANA_ONLY_MACROS = frozenset(
         '{$VFS.FS.FSNAME.MATCHES}',
         '{$VFS.FS.FSNAME.NOT_MATCHES}',
         '{$VFS.FS.FSTYPE.MATCHES}',
+        '{$SAP.API.HOST}',
+        '{$SAP.API.PORT}',
+        '{$SAP.API.PATH}',
+        '{$SAP.API.USER}',
+        '{$SAP.API.PASS}',
     }
 )
 
@@ -657,11 +669,13 @@ Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
    GetProcessList = hdb* GREEN/YELLOW.
    GetAlerts CCMS counts stay 0 on a HANA-only box (not ST22 RFC, not HANA SQL).
    {{$SAP.APP.CONTROL}}=0 until the UserParameter is installed.
-   SH01 Alerting tree has one SAP row: {SH01_LM_SAP_DS}. Collection is
-   HTTPS SOAP {ST22_FM} to :{ST22_DEFAULT_PORT}{ST22_DEFAULT_PATH}
-   (sap.api.user / sap.api.pass). The LMS Groovy that counts
-   LogicMonitor alerts is not ported. Do not copy this onto
-   {ME_TEMPLATE_NAME} unless that host has the ICF service.
+   SH01 Alerting tree has one SAP row: {SH01_LM_SAP_DS}. LM
+   system.displayname is {CANARY_FQDN} (openSUSE). The PowerShell ran
+   on an LM collector *against* that Linux FQDN
+   https://{CANARY_FQDN}:{ST22_DEFAULT_PORT}{ST22_DEFAULT_PATH}
+   ({ST22_FM}, sap.api.user / sap.api.pass). Zabbix calls it from the
+   Linux agent on SH01 — not from Windows ME. The LMS Groovy that
+   counts LogicMonitor alerts is not ported.
 
 3. Certificate — agent web.certificate.get. Set {{$SAP.CERT.HOST}}.
 
@@ -1026,7 +1040,7 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(4, f'- uuid: {uid("item", "sap.sensirion.json")}')
     doc.add(5, 'name: SAP Control JSON')
     doc.add(5, 'type: ZABBIX_PASSIVE')
-    doc.add(5, f'key: {q(APP_MASTER_KEY)}')
+    doc.add(5, f'key: {q(app_master_key(flavor))}')
     doc.add(5, 'delay: 1m')
     doc.add(5, 'value_type: TEXT')
     doc.add(5, 'history: 7d')
@@ -1044,8 +1058,9 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
         master_descr = (
             'One sapcontrol snapshot from the Linux Zabbix agent already on SAP Agent+SNMP. '
             'UserParameter sap.sensirion[*] runs zabbix/externalscripts/sap_sensirion.py '
-            'on the openSUSE HANA host (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). '
+            f'on the openSUSE HANA host {CANARY_FQDN} (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). '
             'Empty {$SAP.INSTANCE} / {$SAP.SID} is fine on a single-instance HANA box. '
+            f'Z_GET_ST22 uses LM system.displayname {CANARY_FQDN}:44301/abapruntimeerror when API macros are set. '
             'Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).'
         )
     doc.literal(6, master_descr)
@@ -1064,6 +1079,11 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
         doc.add(5, f'key: {key}')
         doc.add(5, "delay: '0'")
         doc.add(5, 'description: |')
+        if flavor == 'me' and key == 'sap.app.abap.errors':
+            descr = (
+                'CCMS GetAlerts only on Windows ME. Z_GET_ST22 is the Linux HANA '
+                f'ICF on {CANARY_FQDN}, not this pack.'
+            )
         doc.literal(6, descr + '\nJSONPath from the sapcontrol master. Not SNMP.')
         doc.add(5, 'preprocessing:')
         doc.add(6, '- type: JSONPATH')
@@ -1072,7 +1092,7 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
         doc.add(7, 'error_handler: CUSTOM_VALUE')
         doc.add(7, "error_handler_params: '0'")
         doc.add(5, 'master_item:')
-        doc.add(6, f'key: {q(APP_MASTER_KEY)}')
+        doc.add(6, f'key: {q(app_master_key(flavor))}')
         if kind in ('heartbeat', 'status'):
             doc.add(5, 'valuemap:')
             doc.add(6, 'name: Service state')

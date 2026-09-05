@@ -14,17 +14,20 @@ exported as two scripts (2026-09-05):
    that counts LM alerts named “ABAP Runtime Errors”. That is LM-on-LM.
    The accessId / accessKey pasted with it are **live** — rotate them.
    They are not in this repo.
-2. **Ported:** PowerShell “SAP Monitoring Interface”
+2. **Ported on Linux HANA only:** PowerShell “SAP Monitoring Interface”
    (`david.nussboeck@sensirion.com`). HTTPS SOAP `Z_GET_ST22`
    (`urn:sap-com:document:sap:rfc:functions`) to
-   `https://<system.displayname>:44301/abapruntimeerror` with Basic
-   auth from **property keys** `sap.api.user` / `sap.api.pass`
-   (`IV_TYPE=0`, count `ET_INFOTAB` rows with `PROGRAMNAME`). That is
-   the only extra RFC. Do not invent other `Z_*` modules.
+   `https://ch-sta-p-sh01.sensirion.lokal:44301/abapruntimeerror`
+   — LM `system.displayname` **is that openSUSE host**, not Windows ME.
+   The script ran on an LM collector *against* SH01. Basic auth from
+   **property keys** `sap.api.user` / `sap.api.pass` (`IV_TYPE=0`,
+   count `ET_INFOTAB` rows with `PROGRAMNAME`). That is the only extra
+   RFC. Do not invent other `Z_*` modules.
 
-Zabbix: same SOAP from the **host agent** when `{$SAP.API.HOST}` and
-`{$SAP.API.USER}` are set (`{$SAP.API.PASS}` = secret macro). Empty
-host keeps CCMS `GetAlerts` for `sap.app.abap.errors`. sapcontrol
+Zabbix: the **openSUSE agent on SH01** calls the same URL when
+`{$SAP.API.HOST}`=`ch-sta-p-sh01.sensirion.lokal` and `{$SAP.API.USER}`
+are set (`{$SAP.API.PASS}` = secret macro). Empty host keeps CCMS.
+**SAP ME from Sensirion** does not carry these macros. sapcontrol
 does not use this account. Do not paste passwords into git.
 
 | LM datasource | Item key | Kind | What sapcontrol actually is |

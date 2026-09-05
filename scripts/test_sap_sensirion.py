@@ -14,6 +14,8 @@ from sap_sensirion import (
     APP_ITEM_KEYS,
     APP_JSTART,
     APP_MASTER_KEY,
+    CANARY_FQDN,
+    ME_APP_MASTER_KEY,
     APP_TRIGGER_NAMES,
     APPLY_FLAG,
     CANARY_HOST,
@@ -156,7 +158,10 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn(ST22_FM, self.yaml_text)
         self.assertIn(ST22_DEFAULT_PORT, self.yaml_text)
         self.assertIn(ST22_DEFAULT_PATH, self.yaml_text)
+        self.assertIn(CANARY_FQDN, self.yaml_text)
         self.assertNotIn('santaba/rest', self.yaml_text)
+        hana_macros = {row['macro'] for row in self.template['macros']}
+        self.assertIn('{$SAP.API.HOST}', hana_macros)
         trap_keys = {item['key'] for item in self.template['items'] if item.get('type') == 'TRAP'}
         self.assertEqual(trap_keys, set())
         master = next(item for item in self.template['items'] if item['key'] == APP_MASTER_KEY)
@@ -330,7 +335,8 @@ class SapMeSensirionTests(unittest.TestCase):
 
     def test_me_application_and_jstart(self):
         self.assertTrue(APP_ITEM_KEYS.issubset(self.keys))
-        self.assertIn(APP_MASTER_KEY, self.keys)
+        self.assertIn(ME_APP_MASTER_KEY, self.keys)
+        self.assertNotIn(APP_MASTER_KEY, self.keys)
         self.assertIn(JSTART_ITEM_KEY, self.keys)
         self.assertTrue(APP_TRIGGER_NAMES.issubset(self.triggers))
         self.assertTrue(ME_TRIGGER_NAMES.issubset(self.triggers))
@@ -340,6 +346,11 @@ class SapMeSensirionTests(unittest.TestCase):
         pages = {page['name'] for page in self.template['dashboards'][0]['pages']}
         self.assertEqual(pages, {'Overview', 'Application'})
         self.assertNotIn('Interfaces', pages)
+        self.assertIn(ME_APP_MASTER_KEY, self.keys)
+        self.assertNotIn(APP_MASTER_KEY, self.keys)
+        me_macros = {row['macro'] for row in self.template['macros']}
+        self.assertNotIn('{$SAP.API.HOST}', me_macros)
+        self.assertNotIn('{$SAP.API.PASS}', me_macros)
         self.assertIn(PORT_ITEM_KEY, self.keys)
         self.assertTrue(CERT_ITEM_KEYS.issubset(self.keys))
 
