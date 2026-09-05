@@ -985,6 +985,7 @@ def _se_dashboards() -> str:
     """
     cert_key = TLS_EXTERNAL_SCRIPT + '[{$XIQSE.API.FQDN},{$XIQSE.API.PORT},{$XIQSE.API.FQDN}]'
     tri = [('FF465C', '0'), ('0EC9AC', '1'), ('878787', '2')]
+    needs_enforce = [('0EC9AC', '0'), ('FF465C', '1'), ('878787', '2')]
     return f"""      dashboards:
         - uuid: {U['dash_health']}
           name: Health
@@ -1066,7 +1067,7 @@ def _se_dashboards() -> str:
             - name: Engines
               widgets:
 {_honeycomb('FreeRADIUS', '0', 'Engine *: FreeRADIUS', '^Engine (.*): FreeRADIUS$', 'XERAD', tri)}
-{_honeycomb('Needs enforce', '5', 'Engine *: Needs enforce', '^Engine (.*): Needs enforce$', 'XEENF', tri)}
+{_honeycomb('Needs enforce', '5', 'Engine *: Needs enforce', '^Engine (.*): Needs enforce$', 'XEENF', needs_enforce)}
             - name: Licenses
               widgets:
 {_item_widget('NAC license identities', '0', 'xiqse.nac.used', 'XNAC2')}

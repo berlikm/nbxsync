@@ -3346,13 +3346,13 @@ zabbix_export:
                       value: XEENF
                     - type: STRING
                       name: thresholds.0.color
-                      value: 'FF465C'
+                      value: '0EC9AC'
                     - type: STRING
                       name: thresholds.0.threshold
                       value: '0'
                     - type: STRING
                       name: thresholds.1.color
-                      value: '0EC9AC'
+                      value: 'FF465C'
                     - type: STRING
                       name: thresholds.1.threshold
                       value: '1'

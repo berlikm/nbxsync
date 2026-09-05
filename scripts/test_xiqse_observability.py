@@ -503,6 +503,21 @@ class YamlContractTests(unittest.TestCase):
         self.assertNotIn('xiqse.pilot.remaining', lic_keys)
         self.assertNotIn('xiqse.nav.remaining', lic_keys)
 
+    def test_engine_dashboard_uses_distinct_boolean_color_semantics(self):
+        engines = next(page for page in self.se['dashboards'][0]['pages'] if page['name'] == 'Engines')
+        free_radius = next(widget for widget in engines['widgets'] if widget['name'] == 'FreeRADIUS')
+        needs_enforce = next(widget for widget in engines['widgets'] if widget['name'] == 'Needs enforce')
+
+        def threshold_colors(widget):
+            fields = {field['name']: field['value'] for field in widget['fields']}
+            return {
+                fields[f'thresholds.{index}.threshold']: fields[f'thresholds.{index}.color']
+                for index in range(3)
+            }
+
+        self.assertEqual(threshold_colors(free_radius), {'0': 'FF465C', '1': '0EC9AC', '2': '878787'})
+        self.assertEqual(threshold_colors(needs_enforce), {'0': '0EC9AC', '1': 'FF465C', '2': '878787'})
+
     def test_nac_remaining_and_cloud_license_reuse_are_explicit(self):
         remain = next(item for item in self.se['items'] if item['key'] == 'xiqse.nac.remaining')
         self.assertEqual(remain['type'], 'DEPENDENT')
