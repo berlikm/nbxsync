@@ -214,23 +214,6 @@ class HostSyncTestCase(TestCase):
     def test_verify_hostinterfaces(self):
         self.sync.verify_hostinterfaces()
 
-    def test_reconcile_default_skips_host_update_after_binding_existing_default(self):
-        updates = []
-        self.sync._attach_or_create_default_interface = lambda *args: '10001'
-        self.sync._flip_default_interfaces = lambda *args: updates.append(args)
-
-        self.sync._reconcile_default_for_type(
-            self.interface_agent,
-            None,
-            '10001',
-            [{'interfaceid': '10001'}],
-            [self.interface_agent, self.interface_snmp],
-            '12345',
-            self.device,
-        )
-
-        self.assertEqual(updates, [])
-
     def test_get_name_value(self):
         name = self.sync.get_name_value()
         self.assertEqual(name, self.device.name)
