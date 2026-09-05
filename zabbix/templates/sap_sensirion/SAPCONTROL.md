@@ -70,11 +70,12 @@ need sapstartsrv instead of ICM; do not ticket 51014 on single-instance
 ME boxes. `system.categories` also had `PCoIP` — ignore that for this
 pack. `C_PROMONITOR` is not on that host card.
 
-A Groovy paste that reads `auto.taskTypesList` and prints `name##name`
-is Active Discovery for the LM batchscript instance list, not collection.
-See [`LM_PARITY.md`](LM_PARITY.md). Do not port it. Next LM pages: the
-PropertySource that **sets** `auto.taskTypesList`, and the Collection
-tab of the batchscript / “all tasks” DataSource.
+The Groovy pair that reads `auto.taskTypesList` and calls
+`TlistTask('!tlist h=… summary=true')` is LM **collector** NoData /
+“all tasks” (`taskCount`, `taskNoData` per `sourceType_sourceCollector`).
+It is not Promonitor, sapcontrol, or SM37. See [`LM_PARITY.md`](LM_PARITY.md).
+Do not port `!tlist`. Next LM page: Collection on **Application Server
+Instance Status** / ABAP / IDoc / Promonitor — not the all-tasks DS.
 
 ## Macros
 

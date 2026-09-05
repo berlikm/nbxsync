@@ -49,7 +49,7 @@ SNMP plane (SH01 probe). The ME template does not poll Linux OIDs.
 | Interfaces (64 bit) | `sap.host.net.if.in/out[ifHC*]` | ifXTable 64-bit counters |
 | Memory Usage | `sap.host.memory.*` / `sap.host.swap.*` | UCD; not HANA allocation |
 | Network Interfaces | same IF-MIB LLD + oper-status / errors | Drops `lo` |
-| NoDataMonitoring | unsupported-item count + sapcontrol heartbeat | |
+| NoDataMonitoring | unsupported-item count + sapcontrol heartbeat | LM vehicle was collector `!tlist` (see Groovy below). Not SAP SM37 |
 | Ping | SAP Agent+SNMP CG `icmpping` | **Not** nested here |
 | Port | `net.tcp.service[tcp,,{$SAP.PORT.TCP}]` SIMPLE | HANA default 443; ME default **50001** (LM `ssl.ports` on `ch-sta-p-me05`). `{$SAP.PORT.CONTROL}=0` |
 | SSL Certificate Expiration | Zabbix agent `web.certificate.get` | See below |
@@ -107,29 +107,46 @@ So: ping + SNMPv3 are live on the dual-plane CG. Groovy/batch is retired;
 sapcontrol on the existing agent is the application path. Webpage/DNS are
 not SAP KPIs and are not added here.
 
-## LM Groovy seen 2026-09-05 — Active Discovery only
+## LM Groovy seen 2026-09-05 — collector `!tlist`, not SAP
 
-An operator paste from a live LogicModule is **not** Promonitor collection.
-It is Active Discovery for the batchscript instance list:
+Two operator pastes from the same LogicModule pair. Neither is Promonitor,
+RFC, sapcontrol, or SM37.
 
-- Reads host property `auto.taskTypesList` (comma-separated).
-- Prints `name##name` (LM wildvalue / wildalias).
-- Comment in the script: instances for batchscript collection and for
-  comparison in an “all tasks” DataSource. The list itself was written by
-  a **PropertySource**.
-- Imports `com.santaba.agent.debugger.TlistTask` and does not call it.
+**Active Discovery** — expands `auto.taskTypesList` (comma-separated,
+written by a PropertySource) as `name##name`. The AD script imports
+`com.santaba.agent.debugger.TlistTask` and does not call it (the comment
+says `TlistTask` does not work in AD).
 
-Do not clone this Groovy onto the Zabbix proxy. Zabbix already expands
-instances with sapcontrol `ListInstances` / empty `{$SAP.INSTANCE}`.
+**Collection** — LM collector debugger, not the SAP host:
 
-What to open next in LM (Collection, not Discovery):
+```
+!tlist h=<system.hostname> summary=true
+!tlist h=<system.hostname> status=NaN summary=true
+```
 
-1. The **PropertySource** that **sets** `auto.taskTypesList` (that is where
-   task / SID / instance names are discovered).
-2. The batchscript / “all tasks” DataSource **Collection** tab (the script
-   that polls each instance).
-3. Property **keys** only — `auto.taskTypesList` values are instance names,
-   not passwords. Still strip secrets from any Collection script.
+via `new TlistTask(...)`. Parsed lines are
+`sourceType sourceCollector count`. Instance key is
+`sourceType_sourceCollector`. Metrics: `taskCount`, `taskNoData`.
+Types missing from `!tlist` but still in `auto.taskTypesList` are
+forced to 0 so they do not inflate NaN / NoData.
+
+`com.santaba.agent` is LogicMonitor (Santaba). `!tlist` lists **collector
+poll tasks** for that resource (groovy / snmp / webpage / …), and how
+many returned NaN. It is NoDataMonitoring / “all tasks”, not ABAP
+jobs.
+
+Do not clone `TlistTask` / `!tlist` onto the Zabbix proxy. There is no
+LM collector in the Zabbix path. The equivalent is already
+`zabbix[host,,items_unsupported]` + `sap.app.promonitor` nodata.
+
+What to open next in LM (a **different** DataSource):
+
+1. Host tree → **Application Server Instance Status**, **ABAP Runtime
+   Errors**, **IDoc**, **Promonitor**, or anything named SAP — **Collection**
+   tab (not Discovery, not “all tasks” / NoData / Collector Task).
+2. **Settings → LogicModules → DataSources** search SAP / ABAP /
+   Promonitor / IDoc.
+3. Strip secrets; keep URLs, RFC names, sapcontrol, ports, property keys.
 
 ## What we still do not have
 
@@ -138,8 +155,8 @@ What to open next in LM (Collection, not Discovery):
 - A host list beyond “11 SAP hosts” + HANA canary `CH-STA-P-SH01` + ME
   `ch-sta-p-as02` / `ch-sta-d-as01` / `ch-sta-p-me05`
 - SAP enterprise SNMP — probe found none
-- The live LM **Collection** script (host card + this AD Groovy are not it)
-- The PropertySource that writes `auto.taskTypesList`
+- The live LM **SAP application** Collection script (host card + `!tlist`
+  Groovy are not it)
 - ST22 / IDoc / qRFC / SM13 as RFC tables — CCMS only, 0 on HANA-only
   and typically on ME Java
 
