@@ -47,6 +47,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 |---|---|---|---|
 | SAP ABAP / instance / IDoc / jobs / locks / qRFC in+out / RFC / spool / syslog / tRFC / updates | Promonitor / `C_PROMONITOR` (11 hosts; SH01 custom DS) | Trappers on **SAP template from Sensirion**; DNUS/`zabbix_sender` still required. `{$SAP.APP.CONTROL}=0` until then | ⚠️ Keys exist; values post-cutover |
 | SSL Certificate Expiration + Port | SAP hosts | Agent `web.certificate.get` + SIMPLE TCP; `{$SAP.CERT.CONTROL}` / `{$SAP.PORT.CONTROL}=0` until the ICM name is set | ⚠️ Built; host macros pending |
+| Ungrouped `DataSource_*` (ping, snmp.v3, groovy/batch, powershell, webpage, dns) | LM **collector methods**, not SAP KPIs | Ping + SNMPv3 = SAP CG. Groovy/batch = DNUS trappers. Do not import Groovy/PowerShell. Webpage/DNS are collector self-tests / estate webchecks (§4) | ⚠️ Documented — [LM parity](templates/sap_sensirion/LM_PARITY.md) |
 | WinProcessStats_jstart (AS Java) | ch-sta-p-as02, ch-sta-d-as01 | Agent process monitoring | ❌ Not built |
 | tableauBridgeWorker_service | 15 Tableau servers | Agent service check | ❌ Not built |
 | WinProcessStats_cellmap | ch-sta-p-cmap03 | Agent process monitoring | ❌ Not built |

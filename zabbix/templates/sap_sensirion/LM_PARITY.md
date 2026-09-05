@@ -68,6 +68,27 @@ SAP Agent+SNMP already has Agent :10050. Use the agent on the box
 Empty `{$SAP.CERT.HOST}` is caught with `CHECK_NOT_SUPPORTED` so it does not
 trip “too many unsupported items”.
 
+## LM collector methods (Ungrouped `DataSource_*`)
+
+These are **how the LogicMonitor collector collected**, not extra SAP
+counters. They show up Ungrouped with `true` because the collector could run
+that method. Do not clone Groovy/PowerShell into Zabbix.
+
+| LM collector DataSource | What it was | Zabbix |
+|---|---|---|
+| `DataSource_ping` | Collector ICMP | ICMP Ping on CG **SAP Agent+SNMP**. Not nested in this template |
+| `DataSource_snmp.v3` | Collector SNMPv3 | `SAPUSER` MD5/DES on that CG + host SNMP items here |
+| `DataSource_script.groovy` | Groovy script from the collector | Promonitor/DNUS vehicle. Values land on the **trappers** above |
+| `DataSource_batchscript.groovy` | Groovy batch (multi-instance) | Same DNUS/trapper path. Do not add `system.run` |
+| `DataSource_script.others` | Other collector scripts | Same. Output format still unknown |
+| `DataSource_batchscript.powershell` | PowerShell batch | Windows **collector** capability. SH01 is Linux Net-SNMP; not a SAP HANA/ME item |
+| `DataSource_webpage` | Collector HTTP GET | Estate website checks are still a gap (`logicmonitor-assessment.md` §4). SAP ICM reachability is the agent cert + SIMPLE port, not a invented URL |
+| `DataSource_dns` | Collector DNS lookup | Collector self-test. Not a SAP application metric. Linux/resolver stays on the OS agent if needed |
+
+So: ping + SNMPv3 are live on the dual-plane CG. Groovy/batch scripts **are**
+the missing DNUS contract (`{$SAP.APP.CONTROL}=0`). Webpage/DNS are not SAP
+KPIs and are not added here.
+
 ## What we still do not have
 
 - Promonitor / DNUS script output format

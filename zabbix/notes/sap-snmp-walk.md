@@ -55,6 +55,12 @@ Expiration is the Zabbix agent `web.certificate.get` (SAP hosts already have
 Agent :10050). `{$SAP.APP.CONTROL}=0` and `{$SAP.CERT.CONTROL}=0` until DNUS
 and the ICM name are set. Do not invent a Promonitor API.
 
+Ungrouped LM rows `DataSource_ping` / `DataSource_snmp.v3` /
+`DataSource_script.groovy` / `DataSource_batchscript.*` / `DataSource_webpage`
+/ `DataSource_dns` are collector **methods** (the collector could ping, SNMP,
+run Groovy, hit HTTP). They are not more SAP counters. Groovy/batch is the
+DNUS vehicle for the trappers above. Do not add `system.run`.
+
 Next:
 
 1. `configure_nbxsync_network.py --apply-sap` — import the template, assign it

@@ -186,6 +186,7 @@ class SapSensirionTests(unittest.TestCase):
         self.assertNotIn('icmpping', self.yaml_text)
         self.assertNotIn('Linux by SNMP', self.yaml_text)
         self.assertNotIn('tls_certificate_expiry.sh', self.yaml_text)
+        self.assertIn('collector methods', self.yaml_text)
 
     def test_health_pages(self):
         pages = {page['name'] for page in self.template['dashboards'][0]['pages']}

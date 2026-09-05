@@ -394,6 +394,10 @@ Host OS extras LM also had (CPU cores, disks IO, IP/TCP/UDP stats, ping)
 stay on Linux by agent + the SAP Agent+SNMP ICMP item. This pack does not
 nest ICMP or duplicate those agent keys.
 
+Ungrouped LM DataSource_ping / snmp.v3 / script.groovy / batchscript /
+webpage / dns are collector methods, not more SAP counters. Groovy/batch is
+the DNUS trapper path. Do not execute collector scripts on the host.
+
 Not in this template: AS Java jstart process stats (ch-sta-p-as02 /
 ch-sta-d-as01) — that is the AS Java agent stub, not SAP HANA / SAP ME.
 Does not link the stock Linux SNMP template. Does not walk the enterprise
