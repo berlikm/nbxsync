@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SAP template from Sensirion — LM-parity host SNMP + Promonitor/DNUS contract."""
+"""SAP template from Sensirion — LM-parity host SNMP + agent cert + DNUS trappers."""
 
 from __future__ import annotations
 
@@ -80,11 +80,21 @@ FS_WARN = 'SAP host: File system {#FSNAME}: Disk space is low'
 IF_DOWN = 'SAP host: Interface {#IFDESCR}: Link down'
 IF_ERR = 'SAP host: Interface {#IFDESCR}: High error rate'
 APP_NODATA = 'SAP application: No Promonitor/DNUS data for 30m'
-APP_ABAP = 'SAP application: ABAP dumps or runtime errors'
+APP_INSTANCE = 'SAP application: Application server instance is down'
+APP_ABAP = 'SAP application: ABAP runtime errors'
 APP_IDOC = 'SAP application: IDoc errors'
-APP_QRFC = 'SAP application: qRFC errors'
 APP_JOB = 'SAP application: Job alerts'
+APP_LOCKS = 'SAP application: Lock entries'
+APP_QRFC_IN = 'SAP application: qRFC inbound queue'
+APP_QRFC_OUT = 'SAP application: qRFC outbound queue'
+APP_RFC = 'SAP application: RFC is down'
+APP_SPOOL = 'SAP application: Spool errors'
 APP_SYSLOG = 'SAP application: Syslog alerts'
+APP_TRFC = 'SAP application: Transactional RFC errors'
+APP_UPDATE = 'SAP application: Update requests'
+CERT_EXPIRED = 'SAP host: TLS certificate expired'
+CERT_SOON = 'SAP host: TLS certificate expires soon'
+PORT_DOWN = 'SAP host: TCP port is down'
 
 SNMP_ITEM_KEYS = {
     'zabbix[host,snmp,available]',
@@ -111,12 +121,27 @@ SNMP_ITEM_KEYS = {
 
 APP_ITEM_KEYS = {
     'sap.app.promonitor',
+    'sap.app.instance.status',
     'sap.app.abap.errors',
     'sap.app.idoc.errors',
-    'sap.app.qrfc.errors',
     'sap.app.job.alerts',
+    'sap.app.locks',
+    'sap.app.qrfc.in',
+    'sap.app.qrfc.out',
+    'sap.app.rfc.status',
+    'sap.app.spool.errors',
     'sap.app.syslog.alerts',
+    'sap.app.trfc.errors',
+    'sap.app.update.requests',
 }
+
+CERT_ITEM_KEYS = {
+    'web.certificate.get[{$SAP.CERT.HOST},{$SAP.CERT.PORT},{$SAP.CERT.SNI}]',
+    'sap.host.cert.not_after',
+    'sap.host.cert.days',
+}
+
+PORT_ITEM_KEY = 'net.tcp.service[tcp,,{$SAP.PORT.TCP}]'
 
 SNMP_LLD_KEYS = {
     'sap.host.net.if.discovery',
@@ -125,8 +150,8 @@ SNMP_LLD_KEYS = {
 
 SNMP_PROTOTYPE_KEYS = {
     'sap.host.net.if.status[ifOperStatus.{#SNMPINDEX}]',
-    'sap.host.net.if.in[ifInOctets.{#SNMPINDEX}]',
-    'sap.host.net.if.out[ifOutOctets.{#SNMPINDEX}]',
+    'sap.host.net.if.in[ifHCInOctets.{#SNMPINDEX}]',
+    'sap.host.net.if.out[ifHCOutOctets.{#SNMPINDEX}]',
     'sap.host.net.if.in.errors[ifInErrors.{#SNMPINDEX}]',
     'sap.host.net.if.out.errors[ifOutErrors.{#SNMPINDEX}]',
     'sap.host.vfs.fs.size[{#SNMPINDEX},total]',
@@ -147,12 +172,22 @@ SNMP_TRIGGER_NAMES = {
 
 APP_TRIGGER_NAMES = {
     APP_NODATA,
+    APP_INSTANCE,
     APP_ABAP,
     APP_IDOC,
-    APP_QRFC,
     APP_JOB,
+    APP_LOCKS,
+    APP_QRFC_IN,
+    APP_QRFC_OUT,
+    APP_RFC,
+    APP_SPOOL,
     APP_SYSLOG,
+    APP_TRFC,
+    APP_UPDATE,
 }
+
+CERT_TRIGGER_NAMES = {CERT_EXPIRED, CERT_SOON}
+PORT_TRIGGER_NAMES = {PORT_DOWN}
 
 SNMP_TRIGGER_PROTOTYPE_NAMES = {IF_DOWN, IF_ERR, FS_WARN}
 
@@ -169,13 +204,21 @@ FORBIDDEN_SNIPPETS = (
     'WinProcessStats_jstart',
 )
 
+# kind: heartbeat | status | count
 LM_APP_METRICS = (
-    ('sap.app.promonitor', 'Promonitor / C_PROMONITOR', '1 when DNUS reports the Promonitor session is up. LM API account C_PROMONITOR on 11 SAP hosts.'),
-    ('sap.app.abap.errors', 'ABAP dumps / runtime errors', 'LM custom datasource on ch-sta-p-sh01: SAP ABAP runtime/errors. Count in the last poll.'),
-    ('sap.app.idoc.errors', 'IDoc errors', 'LM custom datasource on ch-sta-p-sh01: IDoc.'),
-    ('sap.app.qrfc.errors', 'qRFC errors', 'LM custom datasource on ch-sta-p-sh01: qRFC.'),
-    ('sap.app.job.alerts', 'Job alerts', 'LM custom datasource on ch-sta-p-sh01: job alerts.'),
-    ('sap.app.syslog.alerts', 'SAP syslog alerts', 'LM custom datasource on ch-sta-p-sh01: syslog.'),
+    ('sap.app.promonitor', 'Promonitor / C_PROMONITOR', 'heartbeat', None, None, 'LM SAP / C_PROMONITOR session. 1 when DNUS reports Promonitor is up on the 11 SAP hosts.'),
+    ('sap.app.instance.status', 'Application server instance status', 'status', None, APP_INSTANCE, 'LM Application Server Instance Status. 1=up 0=down.'),
+    ('sap.app.abap.errors', 'ABAP runtime errors', 'count', '{$SAP.APP.ABAP.MAX}', APP_ABAP, 'LM ABAP Runtime Errors. Count in the last poll.'),
+    ('sap.app.idoc.errors', 'IDoc errors', 'count', '{$SAP.APP.IDOC.MAX}', APP_IDOC, 'LM IDoc Errors.'),
+    ('sap.app.job.alerts', 'Job alerts', 'count', '{$SAP.APP.JOB.MAX}', APP_JOB, 'LM Job Alerts.'),
+    ('sap.app.locks', 'Lock entries', 'count', '{$SAP.APP.LOCKS.MAX}', APP_LOCKS, 'LM Lock Entries (SM12).'),
+    ('sap.app.qrfc.in', 'qRFC inbound queue', 'count', '{$SAP.APP.QRFC.IN.MAX}', APP_QRFC_IN, 'LM qRFC Monitor Inbound Queue.'),
+    ('sap.app.qrfc.out', 'qRFC outbound queue', 'count', '{$SAP.APP.QRFC.OUT.MAX}', APP_QRFC_OUT, 'LM qRFC Monitor Outbound Queue.'),
+    ('sap.app.rfc.status', 'RFC status', 'status', None, APP_RFC, 'LM RFC Status. 1=up 0=down.'),
+    ('sap.app.spool.errors', 'Spool errors', 'count', '{$SAP.APP.SPOOL.MAX}', APP_SPOOL, 'LM Spool Errors.'),
+    ('sap.app.syslog.alerts', 'SAP syslog alerts', 'count', '{$SAP.APP.SYSLOG.MAX}', APP_SYSLOG, 'LM Syslog.'),
+    ('sap.app.trfc.errors', 'Transactional RFC errors', 'count', '{$SAP.APP.TRFC.MAX}', APP_TRFC, 'LM Transactional RFC (tRFC / SM58).'),
+    ('sap.app.update.requests', 'Update requests', 'count', '{$SAP.APP.UPDATE.MAX}', APP_UPDATE, 'LM Update Requests (SM13).'),
 )
 
 MACROS = (
@@ -207,11 +250,35 @@ MACROS = (
         '0',
         '1 enables Promonitor/DNUS nodata and threshold triggers. 0 = collect-first (LM application gap).',
     ),
-    ('{$SAP.APP.ABAP.MAX}', '0', 'ABAP dump/runtime-error count Warning when CONTROL=1.'),
+    ('{$SAP.APP.ABAP.MAX}', '0', 'ABAP runtime-error count Warning when CONTROL=1.'),
     ('{$SAP.APP.IDOC.MAX}', '0', 'IDoc error count Warning when CONTROL=1.'),
-    ('{$SAP.APP.QRFC.MAX}', '0', 'qRFC error count Warning when CONTROL=1.'),
     ('{$SAP.APP.JOB.MAX}', '0', 'Job alert count Warning when CONTROL=1.'),
+    ('{$SAP.APP.LOCKS.MAX}', '0', 'Lock-entry count Warning when CONTROL=1.'),
+    ('{$SAP.APP.QRFC.IN.MAX}', '0', 'qRFC inbound queue Warning when CONTROL=1.'),
+    ('{$SAP.APP.QRFC.OUT.MAX}', '0', 'qRFC outbound queue Warning when CONTROL=1.'),
+    ('{$SAP.APP.SPOOL.MAX}', '0', 'Spool error count Warning when CONTROL=1.'),
     ('{$SAP.APP.SYSLOG.MAX}', '0', 'Syslog alert count Warning when CONTROL=1.'),
+    ('{$SAP.APP.TRFC.MAX}', '0', 'Transactional RFC error count Warning when CONTROL=1.'),
+    ('{$SAP.APP.UPDATE.MAX}', '0', 'Update-request count Warning when CONTROL=1.'),
+    (
+        '{$SAP.CERT.HOST}',
+        '',
+        'TLS peer the Zabbix agent dials. Empty stays silent (CHECK_NOT_SUPPORTED). Set per host, e.g. the ICM FQDN.',
+    ),
+    ('{$SAP.CERT.PORT}', '443', 'TLS port for web.certificate.get. LM SSL Certificate Expiration.'),
+    ('{$SAP.CERT.SNI}', '', 'SNI. Leave empty to send {$SAP.CERT.HOST}.'),
+    (
+        '{$SAP.CERT.CONTROL}',
+        '0',
+        '1 enables certificate expiry triggers after {$SAP.CERT.HOST} is set. 0 = collect-first.',
+    ),
+    ('{$SAP.CERT.WARN}', '30d', 'Warn this long before the leaf certificate expires.'),
+    ('{$SAP.PORT.TCP}', '443', 'LM Port check. SIMPLE from the assigned proxy to the host interface.'),
+    (
+        '{$SAP.PORT.CONTROL}',
+        '0',
+        '1 tickets when the TCP port is down. 0 = collect-first (LM Port was often unused).',
+    ),
 )
 
 
@@ -313,16 +380,24 @@ LM had two planes — this template covers both, without inventing a Promonitor 
    ({LINUX_NETSNMP_SYSOBJECTID}). The SAP enterprise tree and
    Net-SNMP extend were empty. Items here are IF-MIB / UCD / HOST-RESOURCES.
 
-2. Application — LM API account {LM_PROMONITOR_USER} on {LM_SAP_HOSTS} SAP hosts,
-   plus the custom datasource on ch-sta-p-sh01 (ABAP runtime/errors, IDoc,
-   qRFC, job alerts, syslog). DNUS scripts (Robert) own that contract. This
-   template exposes trapper keys for those exact LM rows. {{$SAP.APP.CONTROL}}=0
-   keeps application triggers off until DNUS pushes values.
+2. Application — LM Promonitor / {LM_PROMONITOR_USER} on {LM_SAP_HOSTS} SAP
+   hosts: ABAP runtime errors, AS instance status, IDoc, job alerts, lock
+   entries, qRFC in/out, RFC status, spool, syslog, transactional RFC,
+   update requests. DNUS scripts (Robert) own that contract. Trapper keys
+   only. {{$SAP.APP.CONTROL}}=0 until DNUS pushes values.
+
+3. Certificate — LM SSL Certificate Expiration via the Zabbix agent already
+   on SAP Agent+SNMP (not a proxy external script). Set {{$SAP.CERT.HOST}}
+   per host, then {{$SAP.CERT.CONTROL}}=1.
+
+Host OS extras LM also had (CPU cores, disks IO, IP/TCP/UDP stats, ping)
+stay on Linux by agent + the SAP Agent+SNMP ICMP item. This pack does not
+nest ICMP or duplicate those agent keys.
 
 Not in this template: AS Java jstart process stats (ch-sta-p-as02 /
 ch-sta-d-as01) — that is the AS Java agent stub, not SAP HANA / SAP ME.
-Does not nest ICMP (SAP Agent+SNMP CG). Does not link the stock Linux SNMP
-template. Does not walk the enterprise tree unbounded.
+Does not link the stock Linux SNMP template. Does not walk the enterprise
+tree unbounded.
 
 Operator notes: zabbix/notes/sap-snmp-walk.md,
 zabbix/templates/sap_sensirion/LM_PARITY.md.
@@ -334,10 +409,11 @@ Refresh with configure_nbxsync_network.py {APPLY_FLAG}.""",
     for macro, value, descr in MACROS:
         doc.add(4, f'- macro: {q(macro)}')
         doc.add(5, f'value: {q(value)}')
-        doc.add(5, f'description: {descr}')
+        doc.add(5, f'description: {q(descr)}')
     doc.add(3, 'items:')
     _host_items(doc)
     _app_items(doc)
+    _agent_items(doc)
     _discovery(doc)
     _dashboard(doc)
     _valuemaps(doc)
@@ -600,14 +676,8 @@ def _char_item(doc: Doc, key: str, name: str, oid: str, *, inventory: str | None
 
 
 def _app_items(doc: Doc) -> None:
-    thresholds = {
-        'sap.app.abap.errors': ('{$SAP.APP.ABAP.MAX}', APP_ABAP),
-        'sap.app.idoc.errors': ('{$SAP.APP.IDOC.MAX}', APP_IDOC),
-        'sap.app.qrfc.errors': ('{$SAP.APP.QRFC.MAX}', APP_QRFC),
-        'sap.app.job.alerts': ('{$SAP.APP.JOB.MAX}', APP_JOB),
-        'sap.app.syslog.alerts': ('{$SAP.APP.SYSLOG.MAX}', APP_SYSLOG),
-    }
-    for key, name, descr in LM_APP_METRICS:
+    nodata_expr = f'{{$SAP.APP.CONTROL}}=1 and nodata(/{TPL}/sap.app.promonitor,30m)=1'
+    for key, name, kind, macro, trig, descr in LM_APP_METRICS:
         doc.add(4, f'- uuid: {uid("item", key)}')
         doc.add(5, f'name: {name}')
         doc.add(5, 'type: TRAP')
@@ -617,16 +687,16 @@ def _app_items(doc: Doc) -> None:
         doc.literal(
             6,
             descr
-            + f'\nDNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.',
+            + '\nDNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.',
         )
-        if key == 'sap.app.promonitor':
+        if kind in ('heartbeat', 'status'):
             doc.add(5, 'valuemap:')
             doc.add(6, 'name: Service state')
         tags(doc, 5, 'sap-application')
         doc.add(5, 'triggers:')
-        if key == 'sap.app.promonitor':
+        if kind == 'heartbeat':
             doc.add(6, f'- uuid: {uid("tr", "app.nodata")}')
-            doc.add(7, 'expression: ' + q(f'{{$SAP.APP.CONTROL}}=1 and nodata(/{TPL}/sap.app.promonitor,30m)=1'))
+            doc.add(7, 'expression: ' + q(nodata_expr))
             doc.add(7, f'name: {q(APP_NODATA)}')
             doc.add(7, f'event_name: {q(APP_NODATA)}')
             doc.add(7, 'priority: WARNING')
@@ -634,18 +704,127 @@ def _app_items(doc: Doc) -> None:
             doc.literal(8, 'CONTROL=1 after DNUS ships. Default 0 so an empty trapper does not page.')
             scope(doc, 7, 'availability')
             continue
-        macro, trig = thresholds[key]
         doc.add(6, f'- uuid: {uid("tr", key)}')
-        doc.add(7, 'expression: ' + q(f'{{$SAP.APP.CONTROL}}=1 and min(/{TPL}/{key},15m)>{macro}'))
+        if kind == 'status':
+            doc.add(7, 'expression: ' + q(f'{{$SAP.APP.CONTROL}}=1 and last(/{TPL}/{key})=0'))
+        else:
+            doc.add(7, 'expression: ' + q(f'{{$SAP.APP.CONTROL}}=1 and min(/{TPL}/{key},15m)>{macro}'))
         doc.add(7, f'name: {q(trig)}')
         doc.add(7, f'event_name: {q(trig)}')
         doc.add(7, 'priority: AVERAGE')
         doc.add(7, 'description: |')
-        doc.literal(8, f'LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.')
+        doc.literal(8, 'LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.')
         doc.add(7, 'dependencies:')
         doc.add(8, f'- name: {q(APP_NODATA)}')
-        doc.add(9, 'expression: ' + q(f'{{$SAP.APP.CONTROL}}=1 and nodata(/{TPL}/sap.app.promonitor,30m)=1'))
+        doc.add(9, 'expression: ' + q(nodata_expr))
         scope(doc, 7, 'sap-application')
+
+
+def _agent_items(doc: Doc) -> None:
+    cert_master = 'web.certificate.get[{$SAP.CERT.HOST},{$SAP.CERT.PORT},{$SAP.CERT.SNI}]'
+    doc.add(4, f'- uuid: {uid("item", "cert.get")}')
+    doc.add(5, 'name: TLS certificate JSON')
+    doc.add(5, 'type: ZABBIX_PASSIVE')
+    doc.add(5, f'key: {q(cert_master)}')
+    doc.add(5, 'delay: 1h')
+    doc.add(5, 'value_type: TEXT')
+    doc.add(5, 'history: 7d')
+    doc.add(5, "trends: '0'")
+    doc.add(5, 'description: |')
+    doc.literal(
+        6,
+        'LM SSL Certificate Expiration. Zabbix agent on the SAP host (Agent :10050 already '
+        'on SAP Agent+SNMP). Set {$SAP.CERT.HOST} to the ICM/HTTPS name. Empty host is '
+        'caught so the item does not inflate unsupported count.',
+    )
+    doc.add(5, 'preprocessing:')
+    doc.add(6, '- type: CHECK_NOT_SUPPORTED')
+    doc.add(7, 'parameters:')
+    doc.add(8, "- '{}'")
+    doc.add(7, 'error_handler: CUSTOM_VALUE')
+    doc.add(7, "error_handler_params: '{}'")
+    tags(doc, 5, 'certificate')
+
+    doc.add(4, f'- uuid: {uid("item", "cert.not_after")}')
+    doc.add(5, 'name: TLS certificate not after')
+    doc.add(5, 'type: DEPENDENT')
+    doc.add(5, 'key: sap.host.cert.not_after')
+    doc.add(5, "delay: '0'")
+    doc.add(5, 'value_type: UNSIGNED')
+    doc.add(5, 'units: unixtime')
+    doc.add(5, 'description: $.x509.not_after from the agent certificate JSON.')
+    doc.add(5, 'preprocessing:')
+    doc.add(6, '- type: JSONPATH')
+    doc.add(7, 'parameters:')
+    doc.add(8, "- '$.x509.not_after'")
+    doc.add(7, 'error_handler: CUSTOM_VALUE')
+    doc.add(7, "error_handler_params: '0'")
+    doc.add(5, 'master_item:')
+    doc.add(6, f'key: {q(cert_master)}')
+    tags(doc, 5, 'certificate')
+    doc.add(5, 'triggers:')
+    doc.add(6, f'- uuid: {uid("tr", "cert.exp")}')
+    doc.add(7, 'expression: ' + q(f'{{$SAP.CERT.CONTROL}}=1 and last(/{TPL}/sap.host.cert.not_after)>0 and last(/{TPL}/sap.host.cert.not_after)<=now()'))
+    doc.add(7, f'name: {q(CERT_EXPIRED)}')
+    doc.add(7, f'event_name: {q(CERT_EXPIRED)}')
+    doc.add(7, 'priority: AVERAGE')
+    doc.add(7, 'description: |')
+    doc.literal(8, 'Set {$SAP.CERT.HOST} and {$SAP.CERT.CONTROL}=1. Agent check, not Promonitor.')
+    scope(doc, 7, 'availability')
+    doc.add(6, f'- uuid: {uid("tr", "cert.soon")}')
+    doc.add(
+        7,
+        'expression: '
+        + q(
+            f'{{$SAP.CERT.CONTROL}}=1 and last(/{TPL}/sap.host.cert.not_after)>now()'
+            f' and last(/{TPL}/sap.host.cert.not_after)-now()<{{$SAP.CERT.WARN}}'
+        ),
+    )
+    doc.add(7, f'name: {q(CERT_SOON)}')
+    doc.add(7, f'event_name: {q(CERT_SOON)}')
+    doc.add(7, 'priority: WARNING')
+    doc.add(7, 'description: |')
+    doc.literal(8, 'Renew the leaf certificate before {$SAP.CERT.WARN}.')
+    doc.add(7, 'dependencies:')
+    doc.add(8, f'- name: {q(CERT_EXPIRED)}')
+    doc.add(9, 'expression: ' + q(f'{{$SAP.CERT.CONTROL}}=1 and last(/{TPL}/sap.host.cert.not_after)>0 and last(/{TPL}/sap.host.cert.not_after)<=now()'))
+    scope(doc, 7, 'availability')
+
+    doc.add(4, f'- uuid: {uid("item", "cert.days")}')
+    doc.add(5, 'name: TLS certificate days remaining')
+    doc.add(5, 'type: CALCULATED')
+    doc.add(5, 'key: sap.host.cert.days')
+    doc.add(5, 'delay: 1h')
+    doc.add(5, 'value_type: FLOAT')
+    doc.add(5, 'units: d')
+    doc.add(5, "params: '(last(//sap.host.cert.not_after)>0)*(last(//sap.host.cert.not_after)-now())/86400'")
+    doc.add(5, 'description: 0 while {$SAP.CERT.HOST} is unset.')
+    tags(doc, 5, 'certificate')
+
+    doc.add(4, f'- uuid: {uid("item", "port")}')
+    doc.add(5, 'name: TCP port')
+    doc.add(5, 'type: SIMPLE')
+    doc.add(5, f'key: {q(PORT_ITEM_KEY)}')
+    doc.add(5, 'delay: 1m')
+    doc.add(5, 'description: |')
+    doc.literal(
+        6,
+        'LM Port. SIMPLE from the assigned proxy to the host interface (no connection '
+        'macro in the key). Default 443 next to the certificate check. CONTROL=0 because '
+        'the LM Port row was often unused.',
+    )
+    doc.add(5, 'valuemap:')
+    doc.add(6, 'name: Service state')
+    tags(doc, 5, 'health')
+    doc.add(5, 'triggers:')
+    doc.add(6, f'- uuid: {uid("tr", "port")}')
+    doc.add(7, 'expression: ' + q(f'{{$SAP.PORT.CONTROL}}=1 and max(/{TPL}/{PORT_ITEM_KEY},#3)=0'))
+    doc.add(7, f'name: {q(PORT_DOWN)}')
+    doc.add(7, f'event_name: {q(PORT_DOWN)}')
+    doc.add(7, 'priority: AVERAGE')
+    doc.add(7, 'description: |')
+    doc.literal(8, 'Not ICMP. ICMP High stays on the SAP Agent+SNMP CG.')
+    scope(doc, 7, 'availability')
 
 
 def _discovery(doc: Doc) -> None:
@@ -656,7 +835,7 @@ def _discovery(doc: Doc) -> None:
     doc.add(5, "snmp_oid: 'discovery[{#IFDESCR},1.3.6.1.2.1.2.2.1.2,{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFTYPE},1.3.6.1.2.1.2.2.1.3]'")
     doc.add(5, 'key: sap.host.net.if.discovery')
     doc.add(5, 'delay: 1h')
-    doc.add(5, 'description: IF-MIB ifTable from the SH01 probe. 32-bit octet counters. Drops lo.')
+    doc.add(5, 'description: IF-MIB ifTable from the SH01 probe. 64-bit ifXTable octet counters (LM Interfaces 64 bit). Drops lo.')
     doc.add(5, 'filter:')
     doc.add(6, 'evaltype: AND')
     doc.add(6, 'conditions:')
@@ -696,8 +875,8 @@ def _discovery(doc: Doc) -> None:
     scope(doc, 9, 'availability')
 
     for key, name, oid, units, extra_mult in (
-        ('sap.host.net.if.in[ifInOctets.{#SNMPINDEX}]', 'Interface {#IFDESCR}: Bits received', '1.3.6.1.2.1.2.2.1.10.{#SNMPINDEX}', 'bps', True),
-        ('sap.host.net.if.out[ifOutOctets.{#SNMPINDEX}]', 'Interface {#IFDESCR}: Bits sent', '1.3.6.1.2.1.2.2.1.16.{#SNMPINDEX}', 'bps', True),
+        ('sap.host.net.if.in[ifHCInOctets.{#SNMPINDEX}]', 'Interface {#IFDESCR}: Bits received', '1.3.6.1.2.1.31.1.1.1.6.{#SNMPINDEX}', 'bps', True),
+        ('sap.host.net.if.out[ifHCOutOctets.{#SNMPINDEX}]', 'Interface {#IFDESCR}: Bits sent', '1.3.6.1.2.1.31.1.1.1.10.{#SNMPINDEX}', 'bps', True),
         ('sap.host.net.if.in.errors[ifInErrors.{#SNMPINDEX}]', 'Interface {#IFDESCR}: In errors', '1.3.6.1.2.1.2.2.1.14.{#SNMPINDEX}', 'eps', False),
         ('sap.host.net.if.out.errors[ifOutErrors.{#SNMPINDEX}]', 'Interface {#IFDESCR}: Out errors', '1.3.6.1.2.1.2.2.1.20.{#SNMPINDEX}', 'eps', False),
     ):
@@ -741,13 +920,13 @@ def _discovery(doc: Doc) -> None:
     doc.add(9, 'color: 199C0D')
     doc.add(9, 'item:')
     doc.add(10, f'host: {TPL}')
-    doc.add(10, "key: 'sap.host.net.if.in[ifInOctets.{#SNMPINDEX}]'")
+    doc.add(10, "key: 'sap.host.net.if.in[ifHCInOctets.{#SNMPINDEX}]'")
     doc.add(8, "- sortorder: '1'")
     doc.add(9, 'drawtype: BOLD_LINE')
     doc.add(9, 'color: F63100')
     doc.add(9, 'item:')
     doc.add(10, f'host: {TPL}')
-    doc.add(10, "key: 'sap.host.net.if.out[ifOutOctets.{#SNMPINDEX}]'")
+    doc.add(10, "key: 'sap.host.net.if.out[ifHCOutOctets.{#SNMPINDEX}]'")
 
     doc.add(4, f'- uuid: {uid("lld", "fs")}')
     doc.add(5, 'name: Filesystems')
@@ -817,10 +996,12 @@ def _dashboard(doc: Doc) -> None:
     doc.add(5, 'pages:')
     doc.add(6, '- name: Overview')
     doc.add(7, 'widgets:')
-    item_tile(doc, 8, 'sap.host.snmp.available', None, None, 18, 'SSNMP', 'SNMP')
-    item_tile(doc, 8, 'sap.host.cpu.util', 18, None, 18, 'SCPU', 'CPU')
-    item_tile(doc, 8, 'sap.host.memory.pused', 36, None, 18, 'SMEM', 'Memory')
-    item_tile(doc, 8, 'sap.host.load[15m]', 54, None, 18, 'SLOAD', 'Load 15m')
+    item_tile(doc, 8, 'sap.host.snmp.available', None, None, 12, 'SSNMP', 'SNMP')
+    item_tile(doc, 8, 'sap.host.cpu.util', 12, None, 12, 'SCPU', 'CPU')
+    item_tile(doc, 8, 'sap.host.memory.pused', 24, None, 12, 'SMEM', 'Memory')
+    item_tile(doc, 8, 'sap.host.load[15m]', 36, None, 12, 'SLOAD', 'Load 15m')
+    item_tile(doc, 8, 'sap.host.cert.days', 48, None, 12, 'SCERT', 'Cert days')
+    item_tile(doc, 8, PORT_ITEM_KEY, 60, None, 12, 'SPORT', 'TCP port')
     doc.add(8, '- type: problems')
     doc.add(9, 'name: Problems')
     doc.add(9, "y: '4'")
@@ -838,17 +1019,24 @@ def _dashboard(doc: Doc) -> None:
 
     doc.add(6, '- name: Application')
     doc.add(7, 'widgets:')
-    item_tile(doc, 8, 'sap.app.promonitor', None, None, 18, 'SPROMO', 'Promonitor')
-    item_tile(doc, 8, 'sap.app.abap.errors', 18, None, 18, 'SABAP', 'ABAP errors')
-    item_tile(doc, 8, 'sap.app.idoc.errors', 36, None, 18, 'SIDOC', 'IDoc errors')
-    item_tile(doc, 8, 'sap.app.qrfc.errors', 54, None, 18, 'SQRFC', 'qRFC errors')
-    item_tile(doc, 8, 'sap.app.job.alerts', None, 4, 18, 'SJOB', 'Job alerts')
-    item_tile(doc, 8, 'sap.app.syslog.alerts', 18, 4, 18, 'SLOG', 'Syslog')
+    item_tile(doc, 8, 'sap.app.promonitor', None, None, 12, 'SPROMO', 'Promonitor')
+    item_tile(doc, 8, 'sap.app.instance.status', 12, None, 12, 'SINST', 'Instance')
+    item_tile(doc, 8, 'sap.app.rfc.status', 24, None, 12, 'SRFC', 'RFC')
+    item_tile(doc, 8, 'sap.app.abap.errors', 36, None, 12, 'SABAP', 'ABAP errors')
+    item_tile(doc, 8, 'sap.app.idoc.errors', 48, None, 12, 'SIDOC', 'IDoc errors')
+    item_tile(doc, 8, 'sap.app.job.alerts', 60, None, 12, 'SJOB', 'Job alerts')
+    item_tile(doc, 8, 'sap.app.qrfc.in', None, 4, 12, 'SQRIN', 'qRFC in')
+    item_tile(doc, 8, 'sap.app.qrfc.out', 12, 4, 12, 'SQROUT', 'qRFC out')
+    item_tile(doc, 8, 'sap.app.trfc.errors', 24, 4, 12, 'STRFC', 'tRFC')
+    item_tile(doc, 8, 'sap.app.locks', 36, 4, 12, 'SLOCK', 'Locks')
+    item_tile(doc, 8, 'sap.app.spool.errors', 48, 4, 12, 'SSPOOL', 'Spool')
+    item_tile(doc, 8, 'sap.app.update.requests', 60, 4, 12, 'SUPD', 'Updates')
+    item_tile(doc, 8, 'sap.app.syslog.alerts', None, 8, 12, 'SLOG', 'Syslog')
     doc.add(8, '- type: problems')
     doc.add(9, 'name: Application problems')
-    doc.add(9, "x: '36'")
-    doc.add(9, "y: '4'")
-    doc.add(9, "width: '36'")
+    doc.add(9, "x: '12'")
+    doc.add(9, "y: '8'")
+    doc.add(9, "width: '60'")
     doc.add(9, "height: '4'")
     doc.add(9, 'fields:')
     doc.add(10, '- type: STRING')

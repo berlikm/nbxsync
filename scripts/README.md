@@ -137,9 +137,11 @@ Tests: `python3 scripts/test_xiqse_observability.py` and
 
 ## SAP template from Sensirion
 
-LogicMonitor watched two planes: host SNMP (`SAPUSER` MD5/DES) and Promonitor /
-custom ABAP-IDoc-qRFC-job-syslog on `C_PROMONITOR` / `ch-sta-p-sh01`. There is
-no item-level LM export. The SH01 walk proved Linux Net-SNMP only.
+LogicMonitor watched host SNMP (`SAPUSER` MD5/DES), Promonitor application
+rows (ABAP, instance, IDoc, jobs, locks, qRFC in/out, RFC, spool, syslog,
+tRFC, updates), SSL certificate expiry, and Port. There is no item-level LM
+export. The SH01 walk proved Linux Net-SNMP only. Certificate is the Zabbix
+agent (`web.certificate.get`), not a proxy script.
 
 ```bash
 python3 scripts/configure_nbxsync_network.py --check-sap

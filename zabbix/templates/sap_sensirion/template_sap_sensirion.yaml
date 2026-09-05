@@ -18,16 +18,24 @@ zabbix_export:
            (1.3.6.1.4.1.8072.3.2.10). The SAP enterprise tree and
            Net-SNMP extend were empty. Items here are IF-MIB / UCD / HOST-RESOURCES.
 
-        2. Application — LM API account C_PROMONITOR on 11 SAP hosts,
-           plus the custom datasource on ch-sta-p-sh01 (ABAP runtime/errors, IDoc,
-           qRFC, job alerts, syslog). DNUS scripts (Robert) own that contract. This
-           template exposes trapper keys for those exact LM rows. {$SAP.APP.CONTROL}=0
-           keeps application triggers off until DNUS pushes values.
+        2. Application — LM Promonitor / C_PROMONITOR on 11 SAP
+           hosts: ABAP runtime errors, AS instance status, IDoc, job alerts, lock
+           entries, qRFC in/out, RFC status, spool, syslog, transactional RFC,
+           update requests. DNUS scripts (Robert) own that contract. Trapper keys
+           only. {$SAP.APP.CONTROL}=0 until DNUS pushes values.
+
+        3. Certificate — LM SSL Certificate Expiration via the Zabbix agent already
+           on SAP Agent+SNMP (not a proxy external script). Set {$SAP.CERT.HOST}
+           per host, then {$SAP.CERT.CONTROL}=1.
+
+        Host OS extras LM also had (CPU cores, disks IO, IP/TCP/UDP stats, ping)
+        stay on Linux by agent + the SAP Agent+SNMP ICMP item. This pack does not
+        nest ICMP or duplicate those agent keys.
 
         Not in this template: AS Java jstart process stats (ch-sta-p-as02 /
         ch-sta-d-as01) — that is the AS Java agent stub, not SAP HANA / SAP ME.
-        Does not nest ICMP (SAP Agent+SNMP CG). Does not link the stock Linux SNMP
-        template. Does not walk the enterprise tree unbounded.
+        Does not link the stock Linux SNMP template. Does not walk the enterprise
+        tree unbounded.
 
         Operator notes: zabbix/notes/sap-snmp-walk.md,
         zabbix/templates/sap_sensirion/LM_PARITY.md.
@@ -37,67 +45,103 @@ zabbix_export:
       macros:
         - macro: '{$SNMP.TIMEOUT}'
           value: 5m
-          description: SNMP availability trigger window.
+          description: 'SNMP availability trigger window.'
         - macro: '{$UNSUPPORTED.MAX}'
           value: 1
-          description: Average when unsupported SNMP items stay above this for 30m.
+          description: 'Average when unsupported SNMP items stay above this for 30m.'
         - macro: '{$SAP.MEMORY.UTIL.MAX}'
           value: 101
-          description: Host RAM used % Warning. 101 collects first.
+          description: 'Host RAM used % Warning. 101 collects first.'
         - macro: '{$SAP.CPU.UTIL.MAX}'
           value: 101
-          description: Host CPU used % Warning. 101 collects first.
+          description: 'Host CPU used % Warning. 101 collects first.'
         - macro: '{$SAP.CPU.LOAD.MAX}'
           value: 101
-          description: 15-minute load Warning. 101 collects first.
+          description: '15-minute load Warning. 101 collects first.'
         - macro: '{$SAP.SWAP.UTIL.MAX}'
           value: 101
-          description: Swap used % Warning. 101 collects first.
+          description: 'Swap used % Warning. 101 collects first.'
         - macro: '{$SAP.VFS.FS.PUSED.MAX}'
           value: 101
-          description: Filesystem used % Warning. 101 collects first.
+          description: 'Filesystem used % Warning. 101 collects first.'
         - macro: '{$SAP.NET.IF.ERRORS.WARN}'
           value: 2
-          description: IF-MIB in+out errors/s Warning.
+          description: 'IF-MIB in+out errors/s Warning.'
         - macro: '{$IFCONTROL}'
           value: 1
-          description: 1 tickets admin-up link-down. {$IFCONTROL:"eth0"}=0 mutes one NIC.
+          description: '1 tickets admin-up link-down. {$IFCONTROL:"eth0"}=0 mutes one NIC.'
         - macro: '{$NET.IF.IFDESCR.MATCHES}'
           value: ^.+$
-          description: Interface LLD include.
+          description: 'Interface LLD include.'
         - macro: '{$NET.IF.IFDESCR.NOT_MATCHES}'
           value: '^(?i)(lo|loopback)(.*)$'
-          description: Drop loopback. SH01 probe saw lo + eth0.
+          description: 'Drop loopback. SH01 probe saw lo + eth0.'
         - macro: '{$NET.IF.IFTYPE.NOT_MATCHES}'
           value: ^24$
-          description: Drop softwareLoopback(24).
+          description: 'Drop softwareLoopback(24).'
         - macro: '{$VFS.FS.FSNAME.MATCHES}'
           value: ^.+$
-          description: Filesystem LLD include.
+          description: 'Filesystem LLD include.'
         - macro: '{$VFS.FS.FSNAME.NOT_MATCHES}'
           value: '^(?i)(physical memory|virtual memory|memory buffers|cached memory|swap|/dev|/sys|/run|/proc).*$'
-          description: Keep mounted disks; UCD memory is scalars, not this LLD.
+          description: 'Keep mounted disks; UCD memory is scalars, not this LLD.'
         - macro: '{$VFS.FS.FSTYPE.MATCHES}'
           value: '^(\.iso\.org\.dod\.internet\.mgmt\.mib-2\.host\.hrStorage\.hrStorageTypes\.hrStorageFixedDisk|1\.3\.6\.1\.2\.1\.25\.2\.1\.4)$'
-          description: hrStorageFixedDisk only.
+          description: 'hrStorageFixedDisk only.'
         - macro: '{$SAP.APP.CONTROL}'
           value: 0
-          description: 1 enables Promonitor/DNUS nodata and threshold triggers. 0 = collect-first (LM application gap).
+          description: '1 enables Promonitor/DNUS nodata and threshold triggers. 0 = collect-first (LM application gap).'
         - macro: '{$SAP.APP.ABAP.MAX}'
           value: 0
-          description: ABAP dump/runtime-error count Warning when CONTROL=1.
+          description: 'ABAP runtime-error count Warning when CONTROL=1.'
         - macro: '{$SAP.APP.IDOC.MAX}'
           value: 0
-          description: IDoc error count Warning when CONTROL=1.
-        - macro: '{$SAP.APP.QRFC.MAX}'
-          value: 0
-          description: qRFC error count Warning when CONTROL=1.
+          description: 'IDoc error count Warning when CONTROL=1.'
         - macro: '{$SAP.APP.JOB.MAX}'
           value: 0
-          description: Job alert count Warning when CONTROL=1.
+          description: 'Job alert count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.LOCKS.MAX}'
+          value: 0
+          description: 'Lock-entry count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.QRFC.IN.MAX}'
+          value: 0
+          description: 'qRFC inbound queue Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.QRFC.OUT.MAX}'
+          value: 0
+          description: 'qRFC outbound queue Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.SPOOL.MAX}'
+          value: 0
+          description: 'Spool error count Warning when CONTROL=1.'
         - macro: '{$SAP.APP.SYSLOG.MAX}'
           value: 0
-          description: Syslog alert count Warning when CONTROL=1.
+          description: 'Syslog alert count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.TRFC.MAX}'
+          value: 0
+          description: 'Transactional RFC error count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.UPDATE.MAX}'
+          value: 0
+          description: 'Update-request count Warning when CONTROL=1.'
+        - macro: '{$SAP.CERT.HOST}'
+          value: ''
+          description: 'TLS peer the Zabbix agent dials. Empty stays silent (CHECK_NOT_SUPPORTED). Set per host, e.g. the ICM FQDN.'
+        - macro: '{$SAP.CERT.PORT}'
+          value: 443
+          description: 'TLS port for web.certificate.get. LM SSL Certificate Expiration.'
+        - macro: '{$SAP.CERT.SNI}'
+          value: ''
+          description: 'SNI. Leave empty to send {$SAP.CERT.HOST}.'
+        - macro: '{$SAP.CERT.CONTROL}'
+          value: 0
+          description: '1 enables certificate expiry triggers after {$SAP.CERT.HOST} is set. 0 = collect-first.'
+        - macro: '{$SAP.CERT.WARN}'
+          value: 30d
+          description: 'Warn this long before the leaf certificate expires.'
+        - macro: '{$SAP.PORT.TCP}'
+          value: 443
+          description: 'LM Port check. SIMPLE from the assigned proxy to the host interface.'
+        - macro: '{$SAP.PORT.CONTROL}'
+          value: 0
+          description: '1 tickets when the TCP port is down. 0 = collect-first (LM Port was often unused).'
       items:
         - uuid: 1506a7f0938d4c10bf852ce79b75e318
           name: SNMP agent availability
@@ -464,7 +508,7 @@ zabbix_export:
           key: sap.app.promonitor
           delay: 1m
           description: |
-            1 when DNUS reports the Promonitor session is up. LM API account C_PROMONITOR on 11 SAP hosts.
+            LM SAP / C_PROMONITOR session. 1 when DNUS reports Promonitor is up on the 11 SAP hosts.
             DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
           valuemap:
             name: Service state
@@ -482,13 +526,40 @@ zabbix_export:
               tags:
                 - tag: scope
                   value: availability
+        - uuid: c83515ef4cc84a0fa38511994113f975
+          name: Application server instance status
+          type: TRAP
+          key: sap.app.instance.status
+          delay: 1m
+          description: |
+            LM Application Server Instance Status. 1=up 0=down.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          valuemap:
+            name: Service state
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: df7a5ff44ffb4440bcde8e5ee326c0b7
+              expression: '{$SAP.APP.CONTROL}=1 and last(/SAP template from Sensirion/sap.app.instance.status)=0'
+              name: 'SAP application: Application server instance is down'
+              event_name: 'SAP application: Application server instance is down'
+              priority: AVERAGE
+              description: |
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
         - uuid: d1b44708d416473a87688c061012e6a0
-          name: ABAP dumps / runtime errors
+          name: ABAP runtime errors
           type: TRAP
           key: sap.app.abap.errors
           delay: 1m
           description: |
-            LM custom datasource on ch-sta-p-sh01: SAP ABAP runtime/errors. Count in the last poll.
+            LM ABAP Runtime Errors. Count in the last poll.
             DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
           tags:
             - tag: component
@@ -496,11 +567,11 @@ zabbix_export:
           triggers:
             - uuid: de8df13630c840788682aa05f23f440c
               expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.abap.errors,15m)>{$SAP.APP.ABAP.MAX}'
-              name: 'SAP application: ABAP dumps or runtime errors'
-              event_name: 'SAP application: ABAP dumps or runtime errors'
+              name: 'SAP application: ABAP runtime errors'
+              event_name: 'SAP application: ABAP runtime errors'
               priority: AVERAGE
               description: |
-                LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
                 - name: 'SAP application: No Promonitor/DNUS data for 30m'
                   expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
@@ -513,7 +584,7 @@ zabbix_export:
           key: sap.app.idoc.errors
           delay: 1m
           description: |
-            LM custom datasource on ch-sta-p-sh01: IDoc.
+            LM IDoc Errors.
             DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
           tags:
             - tag: component
@@ -525,32 +596,7 @@ zabbix_export:
               event_name: 'SAP application: IDoc errors'
               priority: AVERAGE
               description: |
-                LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
-              dependencies:
-                - name: 'SAP application: No Promonitor/DNUS data for 30m'
-                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
-              tags:
-                - tag: scope
-                  value: sap-application
-        - uuid: 7cb0d313f2d4451da0dd7685937433c9
-          name: qRFC errors
-          type: TRAP
-          key: sap.app.qrfc.errors
-          delay: 1m
-          description: |
-            LM custom datasource on ch-sta-p-sh01: qRFC.
-            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
-          tags:
-            - tag: component
-              value: sap-application
-          triggers:
-            - uuid: 0142b888360241d5a8a5841118185943
-              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.qrfc.errors,15m)>{$SAP.APP.QRFC.MAX}'
-              name: 'SAP application: qRFC errors'
-              event_name: 'SAP application: qRFC errors'
-              priority: AVERAGE
-              description: |
-                LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
                 - name: 'SAP application: No Promonitor/DNUS data for 30m'
                   expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
@@ -563,7 +609,7 @@ zabbix_export:
           key: sap.app.job.alerts
           delay: 1m
           description: |
-            LM custom datasource on ch-sta-p-sh01: job alerts.
+            LM Job Alerts.
             DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
           tags:
             - tag: component
@@ -575,7 +621,134 @@ zabbix_export:
               event_name: 'SAP application: Job alerts'
               priority: AVERAGE
               description: |
-                LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 643ebe66100044a58291d40226e3c931
+          name: Lock entries
+          type: TRAP
+          key: sap.app.locks
+          delay: 1m
+          description: |
+            LM Lock Entries (SM12).
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: e22b20bbc45346c99fbab4a9eeedc43b
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.locks,15m)>{$SAP.APP.LOCKS.MAX}'
+              name: 'SAP application: Lock entries'
+              event_name: 'SAP application: Lock entries'
+              priority: AVERAGE
+              description: |
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 656b0921f5654c88806a3079919942dc
+          name: qRFC inbound queue
+          type: TRAP
+          key: sap.app.qrfc.in
+          delay: 1m
+          description: |
+            LM qRFC Monitor Inbound Queue.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 5aeb4631cab344e5a06e79645d387ef3
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.qrfc.in,15m)>{$SAP.APP.QRFC.IN.MAX}'
+              name: 'SAP application: qRFC inbound queue'
+              event_name: 'SAP application: qRFC inbound queue'
+              priority: AVERAGE
+              description: |
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 0fad094468d94ab4be6e9e2f400cc701
+          name: qRFC outbound queue
+          type: TRAP
+          key: sap.app.qrfc.out
+          delay: 1m
+          description: |
+            LM qRFC Monitor Outbound Queue.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 48b6b6dd369e4babb1f755ba076e93bc
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.qrfc.out,15m)>{$SAP.APP.QRFC.OUT.MAX}'
+              name: 'SAP application: qRFC outbound queue'
+              event_name: 'SAP application: qRFC outbound queue'
+              priority: AVERAGE
+              description: |
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 30795d785df94a639709cb93f62d7e2b
+          name: RFC status
+          type: TRAP
+          key: sap.app.rfc.status
+          delay: 1m
+          description: |
+            LM RFC Status. 1=up 0=down.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          valuemap:
+            name: Service state
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 61d2a87f36f14951b6a9d7e8fe9364a2
+              expression: '{$SAP.APP.CONTROL}=1 and last(/SAP template from Sensirion/sap.app.rfc.status)=0'
+              name: 'SAP application: RFC is down'
+              event_name: 'SAP application: RFC is down'
+              priority: AVERAGE
+              description: |
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 22c19d6cd4c6458fb845c26dd7f78ee6
+          name: Spool errors
+          type: TRAP
+          key: sap.app.spool.errors
+          delay: 1m
+          description: |
+            LM Spool Errors.
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 9463c00cd0f244c78c14b794a0bf9aaf
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.spool.errors,15m)>{$SAP.APP.SPOOL.MAX}'
+              name: 'SAP application: Spool errors'
+              event_name: 'SAP application: Spool errors'
+              priority: AVERAGE
+              description: |
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
                 - name: 'SAP application: No Promonitor/DNUS data for 30m'
                   expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
@@ -588,7 +761,7 @@ zabbix_export:
           key: sap.app.syslog.alerts
           delay: 1m
           description: |
-            LM custom datasource on ch-sta-p-sh01: syslog.
+            LM Syslog.
             DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
           tags:
             - tag: component
@@ -600,13 +773,160 @@ zabbix_export:
               event_name: 'SAP application: Syslog alerts'
               priority: AVERAGE
               description: |
-                LM custom datasource row. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
               dependencies:
                 - name: 'SAP application: No Promonitor/DNUS data for 30m'
                   expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
               tags:
                 - tag: scope
                   value: sap-application
+        - uuid: 321ef21441a7445e841697a9cac8feba
+          name: Transactional RFC errors
+          type: TRAP
+          key: sap.app.trfc.errors
+          delay: 1m
+          description: |
+            LM Transactional RFC (tRFC / SM58).
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 3a80c75c10b84e52ada43ddc3fcff84a
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.trfc.errors,15m)>{$SAP.APP.TRFC.MAX}'
+              name: 'SAP application: Transactional RFC errors'
+              event_name: 'SAP application: Transactional RFC errors'
+              priority: AVERAGE
+              description: |
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 240a0c0a2f6948f49b31ad9522eba267
+          name: Update requests
+          type: TRAP
+          key: sap.app.update.requests
+          delay: 1m
+          description: |
+            LM Update Requests (SM13).
+            DNUS/Robert pushes zabbix_sender to this trapper. Not SNMP. Not UserParameter until that contract exists.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 7b2f14bd6162465fac6e4ba1b4482c42
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP template from Sensirion/sap.app.update.requests,15m)>{$SAP.APP.UPDATE.MAX}'
+              name: 'SAP application: Update requests'
+              event_name: 'SAP application: Update requests'
+              priority: AVERAGE
+              description: |
+                LM application datasource. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: No Promonitor/DNUS data for 30m'
+                  expression: '{$SAP.APP.CONTROL}=1 and nodata(/SAP template from Sensirion/sap.app.promonitor,30m)=1'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: c9dd5218afd2470aba4ab9976d70bd66
+          name: TLS certificate JSON
+          type: ZABBIX_PASSIVE
+          key: 'web.certificate.get[{$SAP.CERT.HOST},{$SAP.CERT.PORT},{$SAP.CERT.SNI}]'
+          delay: 1h
+          value_type: TEXT
+          history: 7d
+          trends: '0'
+          description: |
+            LM SSL Certificate Expiration. Zabbix agent on the SAP host (Agent :10050 already on SAP Agent+SNMP). Set {$SAP.CERT.HOST} to the ICM/HTTPS name. Empty host is caught so the item does not inflate unsupported count.
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '{}'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '{}'
+          tags:
+            - tag: component
+              value: certificate
+        - uuid: eb3e120d6d3f41ca8c13a7ac53d969de
+          name: TLS certificate not after
+          type: DEPENDENT
+          key: sap.host.cert.not_after
+          delay: '0'
+          value_type: UNSIGNED
+          units: unixtime
+          description: $.x509.not_after from the agent certificate JSON.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.x509.not_after'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'web.certificate.get[{$SAP.CERT.HOST},{$SAP.CERT.PORT},{$SAP.CERT.SNI}]'
+          tags:
+            - tag: component
+              value: certificate
+          triggers:
+            - uuid: 611b44945c39450fabe3c658cc1d465a
+              expression: '{$SAP.CERT.CONTROL}=1 and last(/SAP template from Sensirion/sap.host.cert.not_after)>0 and last(/SAP template from Sensirion/sap.host.cert.not_after)<=now()'
+              name: 'SAP host: TLS certificate expired'
+              event_name: 'SAP host: TLS certificate expired'
+              priority: AVERAGE
+              description: |
+                Set {$SAP.CERT.HOST} and {$SAP.CERT.CONTROL}=1. Agent check, not Promonitor.
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: ca554d57735742879425964c4f122280
+              expression: '{$SAP.CERT.CONTROL}=1 and last(/SAP template from Sensirion/sap.host.cert.not_after)>now() and last(/SAP template from Sensirion/sap.host.cert.not_after)-now()<{$SAP.CERT.WARN}'
+              name: 'SAP host: TLS certificate expires soon'
+              event_name: 'SAP host: TLS certificate expires soon'
+              priority: WARNING
+              description: |
+                Renew the leaf certificate before {$SAP.CERT.WARN}.
+              dependencies:
+                - name: 'SAP host: TLS certificate expired'
+                  expression: '{$SAP.CERT.CONTROL}=1 and last(/SAP template from Sensirion/sap.host.cert.not_after)>0 and last(/SAP template from Sensirion/sap.host.cert.not_after)<=now()'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: a5e2209d1c0345c9b539508e7112b66c
+          name: TLS certificate days remaining
+          type: CALCULATED
+          key: sap.host.cert.days
+          delay: 1h
+          value_type: FLOAT
+          units: d
+          params: '(last(//sap.host.cert.not_after)>0)*(last(//sap.host.cert.not_after)-now())/86400'
+          description: 0 while {$SAP.CERT.HOST} is unset.
+          tags:
+            - tag: component
+              value: certificate
+        - uuid: 924022241e8b4fff8bed5e27dc8c5a60
+          name: TCP port
+          type: SIMPLE
+          key: 'net.tcp.service[tcp,,{$SAP.PORT.TCP}]'
+          delay: 1m
+          description: |
+            LM Port. SIMPLE from the assigned proxy to the host interface (no connection macro in the key). Default 443 next to the certificate check. CONTROL=0 because the LM Port row was often unused.
+          valuemap:
+            name: Service state
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: 42e79dca00bb48a683f8d297fa9abdb9
+              expression: '{$SAP.PORT.CONTROL}=1 and max(/SAP template from Sensirion/net.tcp.service[tcp,,{$SAP.PORT.TCP}],#3)=0'
+              name: 'SAP host: TCP port is down'
+              event_name: 'SAP host: TCP port is down'
+              priority: AVERAGE
+              description: |
+                Not ICMP. ICMP High stays on the SAP Agent+SNMP CG.
+              tags:
+                - tag: scope
+                  value: availability
       discovery_rules:
         - uuid: 53957a36a6a740e88f9b8d7273d959b6
           name: Network interfaces
@@ -614,7 +934,7 @@ zabbix_export:
           snmp_oid: 'discovery[{#IFDESCR},1.3.6.1.2.1.2.2.1.2,{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFTYPE},1.3.6.1.2.1.2.2.1.3]'
           key: sap.host.net.if.discovery
           delay: 1h
-          description: IF-MIB ifTable from the SH01 probe. 32-bit octet counters. Drops lo.
+          description: IF-MIB ifTable from the SH01 probe. 64-bit ifXTable octet counters (LM Interfaces 64 bit). Drops lo.
           filter:
             evaltype: AND
             conditions:
@@ -659,11 +979,11 @@ zabbix_export:
                   tags:
                     - tag: scope
                       value: availability
-            - uuid: 30cb4886d6f241e285e8624f23737cb5
+            - uuid: 540056b309ca428991c3b2c33e3f8972
               name: 'Interface {#IFDESCR}: Bits received'
               type: SNMP_AGENT
-              snmp_oid: '1.3.6.1.2.1.2.2.1.10.{#SNMPINDEX}'
-              key: 'sap.host.net.if.in[ifInOctets.{#SNMPINDEX}]'
+              snmp_oid: '1.3.6.1.2.1.31.1.1.1.6.{#SNMPINDEX}'
+              key: 'sap.host.net.if.in[ifHCInOctets.{#SNMPINDEX}]'
               delay: 1m
               value_type: FLOAT
               units: bps
@@ -677,11 +997,11 @@ zabbix_export:
                   value: network
                 - tag: interface
                   value: '{#IFDESCR}'
-            - uuid: ea904ebfa57b4411a4847d6502012843
+            - uuid: 7539e66a9af34d08b1c047c272813d27
               name: 'Interface {#IFDESCR}: Bits sent'
               type: SNMP_AGENT
-              snmp_oid: '1.3.6.1.2.1.2.2.1.16.{#SNMPINDEX}'
-              key: 'sap.host.net.if.out[ifOutOctets.{#SNMPINDEX}]'
+              snmp_oid: '1.3.6.1.2.1.31.1.1.1.10.{#SNMPINDEX}'
+              key: 'sap.host.net.if.out[ifHCOutOctets.{#SNMPINDEX}]'
               delay: 1m
               value_type: FLOAT
               units: bps
@@ -744,13 +1064,13 @@ zabbix_export:
                   color: 199C0D
                   item:
                     host: SAP template from Sensirion
-                    key: 'sap.host.net.if.in[ifInOctets.{#SNMPINDEX}]'
+                    key: 'sap.host.net.if.in[ifHCInOctets.{#SNMPINDEX}]'
                 - sortorder: '1'
                   drawtype: BOLD_LINE
                   color: F63100
                   item:
                     host: SAP template from Sensirion
-                    key: 'sap.host.net.if.out[ifOutOctets.{#SNMPINDEX}]'
+                    key: 'sap.host.net.if.out[ifHCOutOctets.{#SNMPINDEX}]'
         - uuid: 464baba7ba83485a938e28e211416ad8
           name: Filesystems
           type: SNMP_AGENT
@@ -834,7 +1154,7 @@ zabbix_export:
               widgets:
                 - type: item
                   name: SNMP
-                  width: '18'
+                  width: '12'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -856,8 +1176,8 @@ zabbix_export:
                       value: SSNMP
                 - type: item
                   name: CPU
-                  x: '18'
-                  width: '18'
+                  x: '12'
+                  width: '12'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -879,8 +1199,8 @@ zabbix_export:
                       value: SCPU
                 - type: item
                   name: Memory
-                  x: '36'
-                  width: '18'
+                  x: '24'
+                  width: '12'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -902,8 +1222,8 @@ zabbix_export:
                       value: SMEM
                 - type: item
                   name: Load 15m
-                  x: '54'
-                  width: '18'
+                  x: '36'
+                  width: '12'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -923,6 +1243,52 @@ zabbix_export:
                     - type: STRING
                       name: reference
                       value: SLOAD
+                - type: item
+                  name: Cert days
+                  x: '48'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.host.cert.days
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SCERT
+                - type: item
+                  name: TCP port
+                  x: '60'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: 'net.tcp.service[tcp,,{$SAP.PORT.TCP}]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SPORT
                 - type: problems
                   name: Problems
                   y: '4'
@@ -1020,7 +1386,7 @@ zabbix_export:
               widgets:
                 - type: item
                   name: Promonitor
-                  width: '18'
+                  width: '12'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1041,9 +1407,55 @@ zabbix_export:
                       name: reference
                       value: SPROMO
                 - type: item
+                  name: Instance
+                  x: '12'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.instance.status
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SINST
+                - type: item
+                  name: RFC
+                  x: '24'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.rfc.status
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SRFC
+                - type: item
                   name: ABAP errors
-                  x: '18'
-                  width: '18'
+                  x: '36'
+                  width: '12'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1065,8 +1477,8 @@ zabbix_export:
                       value: SABAP
                 - type: item
                   name: IDoc errors
-                  x: '36'
-                  width: '18'
+                  x: '48'
+                  width: '12'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1087,32 +1499,9 @@ zabbix_export:
                       name: reference
                       value: SIDOC
                 - type: item
-                  name: qRFC errors
-                  x: '54'
-                  width: '18'
-                  height: '4'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: SAP template from Sensirion
-                        key: sap.app.qrfc.errors
-                    - type: INTEGER
-                      name: show.0
-                      value: '2'
-                    - type: INTEGER
-                      name: value_bold
-                      value: '1'
-                    - type: INTEGER
-                      name: value_size
-                      value: '28'
-                    - type: STRING
-                      name: reference
-                      value: SQRFC
-                - type: item
                   name: Job alerts
-                  y: '4'
-                  width: '18'
+                  x: '60'
+                  width: '12'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1133,10 +1522,152 @@ zabbix_export:
                       name: reference
                       value: SJOB
                 - type: item
-                  name: Syslog
-                  x: '18'
+                  name: qRFC in
                   y: '4'
-                  width: '18'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.qrfc.in
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SQRIN
+                - type: item
+                  name: qRFC out
+                  x: '12'
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.qrfc.out
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SQROUT
+                - type: item
+                  name: tRFC
+                  x: '24'
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.trfc.errors
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: STRFC
+                - type: item
+                  name: Locks
+                  x: '36'
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.locks
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SLOCK
+                - type: item
+                  name: Spool
+                  x: '48'
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.spool.errors
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SSPOOL
+                - type: item
+                  name: Updates
+                  x: '60'
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP template from Sensirion
+                        key: sap.app.update.requests
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SUPD
+                - type: item
+                  name: Syslog
+                  y: '8'
+                  width: '12'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1158,9 +1689,9 @@ zabbix_export:
                       value: SLOG
                 - type: problems
                   name: Application problems
-                  x: '36'
-                  y: '4'
-                  width: '36'
+                  x: '12'
+                  y: '8'
+                  width: '60'
                   height: '4'
                   fields:
                     - type: STRING

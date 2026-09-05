@@ -48,9 +48,12 @@ No fleet zerotouch was run. `CH-STA-P-SH01` is still not a Zabbix Production hos
 
 The LM-parity template **SAP template from Sensirion** is in
 [`../templates/sap_sensirion/`](../templates/sap_sensirion/). Host SNMP items
-match this probe. Application items are trappers for the LM rows
-(`C_PROMONITOR`, ABAP/IDoc/qRFC/job/syslog). `{$SAP.APP.CONTROL}=0` until DNUS
-pushes values. Do not invent a Promonitor API.
+match this probe (64-bit ifXTable for LM Interfaces 64 bit). Application
+items are trappers for the full Promonitor list (ABAP, instance, IDoc, jobs,
+locks, qRFC in/out, RFC, spool, syslog, tRFC, updates). SSL Certificate
+Expiration is the Zabbix agent `web.certificate.get` (SAP hosts already have
+Agent :10050). `{$SAP.APP.CONTROL}=0` and `{$SAP.CERT.CONTROL}=0` until DNUS
+and the ICM name are set. Do not invent a Promonitor API.
 
 Next:
 
@@ -61,6 +64,9 @@ Next:
    NetBox execution point.
 3. Leave application triggers off until the DNUS/`zabbix_sender` contract
    exists. Then set `{$SAP.APP.CONTROL}=1`.
+4. Set `{$SAP.CERT.HOST}` to the ICM/HTTPS name on the canary, confirm
+   Latest data, then `{$SAP.CERT.CONTROL}=1`. Port stays collect-first
+   (`{$SAP.PORT.CONTROL}=0`) unless LM “Port” was actually in use.
 
 ## Handoff questions
 

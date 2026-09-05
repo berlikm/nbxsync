@@ -15,6 +15,8 @@ from sap_sensirion import (
     APP_TRIGGER_NAMES,
     APPLY_FLAG,
     CANARY_HOST,
+    CERT_ITEM_KEYS,
+    CERT_TRIGGER_NAMES,
     CHECK_FLAG,
     FORBIDDEN_SNIPPETS,
     LINUX_NETSNMP_SYSOBJECTID,
@@ -22,6 +24,8 @@ from sap_sensirion import (
     LM_PROMONITOR_USER,
     LM_SAP_HOSTS,
     LM_SNMP_USER,
+    PORT_ITEM_KEY,
+    PORT_TRIGGER_NAMES,
     SAP_ENTERPRISE_OID,
     SAP_ROLES,
     SNMP_ITEM_KEYS,
@@ -110,7 +114,9 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn(LINUX_NETSNMP_SYSOBJECTID, self.yaml_text)
         self.assertIn('1.3.6.1.4.1.2021.10.1.3', self.yaml_text)
         self.assertIn('1.3.6.1.4.1.2021.4.5.0', self.yaml_text)
-        self.assertIn('1.3.6.1.2.1.2.2.1.10', self.yaml_text)
+        self.assertIn('1.3.6.1.2.1.31.1.1.1.6', self.yaml_text)
+        self.assertIn('1.3.6.1.2.1.31.1.1.1.10', self.yaml_text)
+        self.assertNotIn('ifInOctets', self.yaml_text)
 
     def test_lm_application_trappers(self):
         self.assertTrue(APP_ITEM_KEYS.issubset(self.keys))
@@ -121,6 +127,20 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn(LM_SNMP_USER, self.yaml_text)
         self.assertIn(str(LM_SAP_HOSTS), self.template['description'])
         self.assertIn('ch-sta-p-sh01', self.template['description'].lower())
+        for needle in (
+            'ABAP runtime errors',
+            'Application server instance',
+            'IDoc errors',
+            'Job alerts',
+            'Lock entries',
+            'qRFC inbound',
+            'qRFC outbound',
+            'RFC status',
+            'Spool errors',
+            'Transactional RFC',
+            'Update requests',
+        ):
+            self.assertIn(needle, self.yaml_text, needle)
 
     def test_application_triggers_gated(self):
         self.assertTrue(APP_TRIGGER_NAMES.issubset(self.triggers))
@@ -134,6 +154,27 @@ class SapSensirionTests(unittest.TestCase):
         for trig in app_triggers:
             self.assertIn('{$SAP.APP.CONTROL}=1', trig['expression'])
 
+    def test_agent_certificate_and_port(self):
+        self.assertTrue(CERT_ITEM_KEYS.issubset(self.keys))
+        self.assertIn(PORT_ITEM_KEY, self.keys)
+        cert = next(item for item in self.template['items'] if item['key'].startswith('web.certificate.get['))
+        self.assertEqual(cert['type'], 'ZABBIX_PASSIVE')
+        self.assertIn('CHECK_NOT_SUPPORTED', self.yaml_text)
+        self.assertTrue(CERT_TRIGGER_NAMES.issubset(self.triggers))
+        self.assertTrue(PORT_TRIGGER_NAMES.issubset(self.triggers))
+        cert_triggers = [
+            trig
+            for item in self.template['items']
+            if item.get('key') == 'sap.host.cert.not_after'
+            for trig in item.get('triggers') or []
+        ]
+        self.assertEqual(len(cert_triggers), 2)
+        for trig in cert_triggers:
+            self.assertIn('{$SAP.CERT.CONTROL}=1', trig['expression'])
+        port = next(item for item in self.template['items'] if item['key'] == PORT_ITEM_KEY)
+        self.assertEqual(port['type'], 'SIMPLE')
+        self.assertIn('{$SAP.PORT.CONTROL}=1', port['triggers'][0]['expression'])
+
     def test_host_triggers_present(self):
         self.assertTrue(SNMP_TRIGGER_NAMES.issubset(self.triggers))
         self.assertTrue(SNMP_TRIGGER_PROTOTYPE_NAMES.issubset(self.trigger_prototypes))
@@ -144,6 +185,7 @@ class SapSensirionTests(unittest.TestCase):
         self.assertNotIn(SAP_ENTERPRISE_OID, self.yaml_text)
         self.assertNotIn('icmpping', self.yaml_text)
         self.assertNotIn('Linux by SNMP', self.yaml_text)
+        self.assertNotIn('tls_certificate_expiry.sh', self.yaml_text)
 
     def test_health_pages(self):
         pages = {page['name'] for page in self.template['dashboards'][0]['pages']}
