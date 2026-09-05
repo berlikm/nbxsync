@@ -37,6 +37,33 @@ ME_ASJAVA_HTTPS_PORT = '50001'
 ME_STARTSRV_HTTPS_PORTS = ('50014', '51014')
 ME_SSL_PORTS = (ME_ASJAVA_HTTPS_PORT,) + ME_STARTSRV_HTTPS_PORTS
 HANA_TLS_PORT = '443'
+# LM Alerting tree on me05 (2026-09-05). "Alerting" is the UI section.
+# No Promonitor / ABAP / IDoc / Instance Status / WinProcessStats_jstart.
+ME05_LM_DATASOURCES = (
+    'CPU',
+    'CPU Cores',
+    'Disks',
+    'DotNet',
+    'File Server',
+    'Host Status',
+    'Interfaces',
+    'Memory and Processes',
+    'Memory Stats',
+    'Microsoft_Defender_for_Endpoint_2019',
+    'NoDataMonitoring',
+    'Ping',
+    'SSL Certificate Expiration',
+    'TCP stats',
+    'Terminal Services',
+    'Time Offset',
+    'UDP stats',
+)
+ME05_LM_ABSENT_SAP_DS = (
+    'Promonitor',
+    'Application Server Instance Status',
+    'ABAP',
+    'IDoc',
+)
 _UID_PREFIX = ''
 LINUX_NETSNMP_SYSOBJECTID = '1.3.6.1.4.1.8072.3.2.10'
 SAP_ENTERPRISE_OID = '1.3.6.1.4.1.2312'
@@ -611,8 +638,12 @@ No UCD-SNMP, no Linux UserParameter, no host IF/FS LLD.
    (not ST22 / IDoc / qRFC). {{$SAP.APP.CONTROL}}=0 until the script is
    installed.
 
-3. jstart — LM Windows process check is proc.num[jstart.exe] on this
-   template ({' / '.join(ME_CANARY_HOSTS)}). Not the AS Java stub.
+3. jstart — LM Windows jstart process check is proc.num[jstart.exe] on
+   this template (ch-sta-p-as02 / ch-sta-d-as01). {ME_CANARY_FQDN} LM
+   Alerting tree has no jstart process DS / Promonitor / ABAP / IDoc /
+   Instance Status ({', '.join(ME05_LM_ABSENT_SAP_DS)}). sapcontrol +
+   jstart here are additive because ssl.ports prove sapstartsrv, not
+   because LM collected those KPIs on me05.
 
 4. Certificate / Port — Windows agent web.certificate.get + SIMPLE
    {{$SAP.CERT.PORT}}/{{$SAP.PORT.TCP}} default {ME_ASJAVA_HTTPS_PORT}
@@ -624,8 +655,13 @@ No UCD-SNMP, no Linux UserParameter, no host IF/FS LLD.
    to the FQDN (e.g. {ME_CANARY_FQDN}). system.categories SAP,PCoIP —
    PCoIP is Horizon/Teradici, not a SAP KPI.
 
-This LM page is the host card. {LM_PROMONITOR_USER} and the Groovy
-collection script are not properties there.
+me05 LM Alerting tree (Windows + SSL + NoData only):
+{', '.join(ME05_LM_DATASOURCES)}.
+NoDataMonitoring is the !tlist Groovy. Do not hunt Promonitor /
+{LM_PROMONITOR_USER} on this host card. Look at SH01 / as02 if a SAP
+Collection script is still needed. Do not add Defender / DotNet /
+File Server / Terminal Services here (Windows by agent or a later
+estate pack).
 
 SNMP {LM_SNMP_USER} on the CG is unused here until a Windows SNMP walk
 proves it. Do not poll Linux Net-SNMP OIDs on these hosts.
@@ -1024,7 +1060,8 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(5, 'description: |')
     doc.literal(
         6,
-        f'LM Windows jstart process check on SAP ME ({" / ".join(ME_CANARY_HOSTS)}). '
+        'LM Windows jstart process check on SAP ME (ch-sta-p-as02 / ch-sta-d-as01). '
+        f'{ME_CANARY_FQDN} has no jstart process datasource in the LM tree. '
         'Windows by agent proc.num. Complements sapcontrol GetProcessList. '
         'Not linked on openSUSE HANA.',
     )

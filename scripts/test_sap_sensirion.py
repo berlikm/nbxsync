@@ -29,6 +29,8 @@ from sap_sensirion import (
     LM_PROMONITOR_USER,
     LM_SAP_HOSTS,
     LM_SNMP_USER,
+    ME05_LM_ABSENT_SAP_DS,
+    ME05_LM_DATASOURCES,
     ME_ASJAVA_HTTPS_PORT,
     ME_CANARY_FQDN,
     ME_CANARY_HOSTS,
@@ -338,6 +340,12 @@ class SapMeSensirionTests(unittest.TestCase):
         self.assertIn('PCoIP', self.template['description'])
         self.assertIn('host card', self.template['description'])
         self.assertIn(LM_PROMONITOR_USER, self.template['description'])
+        self.assertIn('NoDataMonitoring', self.template['description'])
+        for name in ME05_LM_DATASOURCES:
+            self.assertIn(name, self.template['description'], name)
+        for name in ME05_LM_ABSENT_SAP_DS:
+            self.assertIn(name, self.template['description'], name)
+        self.assertIn('additive', self.template['description'])
 
 
 if __name__ == '__main__':

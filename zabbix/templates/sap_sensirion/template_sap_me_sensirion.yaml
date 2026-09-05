@@ -24,8 +24,12 @@ zabbix_export:
            (not ST22 / IDoc / qRFC). {$SAP.APP.CONTROL}=0 until the script is
            installed.
 
-        3. jstart — LM Windows process check is proc.num[jstart.exe] on this
-           template (ch-sta-p-as02 / ch-sta-d-as01 / ch-sta-p-me05). Not the AS Java stub.
+        3. jstart — LM Windows jstart process check is proc.num[jstart.exe] on
+           this template (ch-sta-p-as02 / ch-sta-d-as01). ch-sta-p-me05.sensirion.lokal LM
+           Alerting tree has no jstart process DS / Promonitor / ABAP / IDoc /
+           Instance Status (Promonitor, Application Server Instance Status, ABAP, IDoc). sapcontrol +
+           jstart here are additive because ssl.ports prove sapstartsrv, not
+           because LM collected those KPIs on me05.
 
         4. Certificate / Port — Windows agent web.certificate.get + SIMPLE
            {$SAP.CERT.PORT}/{$SAP.PORT.TCP} default 50001
@@ -37,8 +41,13 @@ zabbix_export:
            to the FQDN (e.g. ch-sta-p-me05.sensirion.lokal). system.categories SAP,PCoIP —
            PCoIP is Horizon/Teradici, not a SAP KPI.
 
-        This LM page is the host card. C_PROMONITOR and the Groovy
-        collection script are not properties there.
+        me05 LM Alerting tree (Windows + SSL + NoData only):
+        CPU, CPU Cores, Disks, DotNet, File Server, Host Status, Interfaces, Memory and Processes, Memory Stats, Microsoft_Defender_for_Endpoint_2019, NoDataMonitoring, Ping, SSL Certificate Expiration, TCP stats, Terminal Services, Time Offset, UDP stats.
+        NoDataMonitoring is the !tlist Groovy. Do not hunt Promonitor /
+        C_PROMONITOR on this host card. Look at SH01 / as02 if a SAP
+        Collection script is still needed. Do not add Defender / DotNet /
+        File Server / Terminal Services here (Windows by agent or a later
+        estate pack).
 
         SNMP SAPUSER on the CG is unused here until a Windows SNMP walk
         proves it. Do not poll Linux Net-SNMP OIDs on these hosts.
@@ -573,7 +582,7 @@ zabbix_export:
           key: 'proc.num[jstart.exe]'
           delay: 1m
           description: |
-            LM Windows jstart process check on SAP ME (ch-sta-p-as02 / ch-sta-d-as01 / ch-sta-p-me05). Windows by agent proc.num. Complements sapcontrol GetProcessList. Not linked on openSUSE HANA.
+            LM Windows jstart process check on SAP ME (ch-sta-p-as02 / ch-sta-d-as01). ch-sta-p-me05.sensirion.lokal has no jstart process datasource in the LM tree. Windows by agent proc.num. Complements sapcontrol GetProcessList. Not linked on openSUSE HANA.
           tags:
             - tag: component
               value: sap-application

@@ -65,9 +65,10 @@ SNMP plane (SH01 probe). The ME template does not poll Linux OIDs.
 | System Level IP Stats | Linux by agent | Not duplicated |
 | TCP UDP stats | Linux by agent | Not duplicated |
 
-`WinProcessStats_jstart` on ch-sta-p-as02 / ch-sta-d-as01 / ch-sta-p-me05
-**is SAP ME** (Windows AS Java). It lives on **SAP ME from Sensirion** as
+`WinProcessStats_jstart` on ch-sta-p-as02 / ch-sta-d-as01 **is SAP ME**
+(Windows AS Java). It lives on **SAP ME from Sensirion** as
 `proc.num[jstart.exe]`. Do not put it on openSUSE HANA.
+`ch-sta-p-me05` does **not** have that datasource in LM.
 
 LM Manage Resource `ch-sta-p-me05.sensirion.lokal` (2026-09-05) is the
 **host card**, not the Groovy. Facts taken from it:
@@ -78,7 +79,34 @@ LM Manage Resource `ch-sta-p-me05.sensirion.lokal` (2026-09-05) is the
 | Preferred Collector | `CH-STA-P-LMCO02` | Windows LM collector. Zabbix replacement is the host agent, not that collector |
 | `system.categories` | `SAP,PCoIP` | SAP role only. PCoIP is Horizon/Teradici — not a SAP KPI |
 | `ssl.ports` | `50001,50014,51014` | ME `{$SAP.CERT.PORT}` / `{$SAP.PORT.TCP}` default **50001** (AS Java HTTPS). 50014 / 51014 are sapstartsrv HTTPS (instances 00 and 10) — override per host; do not ticket instance 10 on every ME box |
-| Properties | no `C_PROMONITOR` | That user is not on the host card. Open a live datasource → Collection for the script |
+| Properties | no `C_PROMONITOR` | That user is not on this host. Do not hunt a SAP Collection script on me05 |
+
+### me05 Alerting tree (2026-09-05) — no SAP application datasources
+
+This is the whole applied pack. There is nothing named Promonitor, ABAP,
+IDoc, Instance Status, or `WinProcessStats_jstart`.
+
+| LM datasource | Zabbix | Notes |
+|---|---|---|
+| CPU / CPU Cores | Windows by agent | Do not duplicate on the ME pack |
+| Disks | Windows by agent | |
+| Memory and Processes / Memory Stats | Windows by agent | |
+| Interfaces | Windows by agent | No UCD / IF-MIB on ME |
+| TCP stats / UDP stats | Windows by agent | |
+| Host Status | Agent availability | |
+| Ping | SAP Agent+SNMP CG `icmpping` | Not nested |
+| SSL Certificate Expiration | `web.certificate.get` | `ssl.ports` 50001 / 50014 / 51014 |
+| NoDataMonitoring | unsupported items + sapcontrol heartbeat | The `!tlist` Groovy |
+| Time Offset | Windows by agent `system.localtime` | Listed twice in the UI |
+| DotNet | — | Not a SAP KPI. Do not add here |
+| File Server | — | Not a SAP KPI. Do not add here |
+| Terminal Services | — | Matches `PCoIP` / RDP. Not a SAP KPI |
+| Microsoft_Defender_for_Endpoint_2019 | — | Estate Defender gap, not this pack |
+
+ssl.ports still prove sapstartsrv is on the box (instances 00 and 10).
+sapcontrol + `proc.num[jstart.exe]` on the ME template are **additive**
+for me05, not LM parity. If a Promonitor Collection script still exists,
+it is on another host (SH01 / as02), not this tree.
 
 ## SSL certificate — Zabbix agent, not Promonitor
 
@@ -148,14 +176,11 @@ Do not clone `TlistTask` / `!tlist` onto the Zabbix proxy. There is no
 LM collector in the Zabbix path. The equivalent is already
 `zabbix[host,,items_unsupported]` + `sap.app.promonitor` nodata.
 
-What to open next in LM (a **different** DataSource):
-
-1. Host tree → **Application Server Instance Status**, **ABAP Runtime
-   Errors**, **IDoc**, **Promonitor**, or anything named SAP — **Collection**
-   tab (not Discovery, not “all tasks” / NoData / Collector Task).
-2. **Settings → LogicModules → DataSources** search SAP / ABAP /
-   Promonitor / IDoc.
-3. Strip secrets; keep URLs, RFC names, sapcontrol, ports, property keys.
+Do not open another datasource on **me05** looking for Promonitor — it
+is not in that tree. If a SAP Collection script still exists, open
+**CH-STA-P-SH01** or **ch-sta-p-as02** (hosts that had Promonitor /
+jstart in the Aug 2026 export), or Settings → LogicModules search SAP
+on an LM user who can see modules.
 
 ## What we still do not have
 
@@ -164,8 +189,8 @@ What to open next in LM (a **different** DataSource):
 - A host list beyond “11 SAP hosts” + HANA canary `CH-STA-P-SH01` + ME
   `ch-sta-p-as02` / `ch-sta-d-as01` / `ch-sta-p-me05`
 - SAP enterprise SNMP — probe found none
-- The live LM **SAP application** Collection script (host card + `!tlist`
-  Groovy are not it)
+- The live LM **SAP application** Collection script (me05 has none
+  applied; `!tlist` is NoDataMonitoring)
 - ST22 / IDoc / qRFC / SM13 as RFC tables — CCMS only, 0 on HANA-only
   and typically on ME Java
 

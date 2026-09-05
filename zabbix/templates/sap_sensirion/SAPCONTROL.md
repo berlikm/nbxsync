@@ -37,15 +37,18 @@ zabbix ALL=(sapadm) NOPASSWD: /usr/sap/hostctrl/exe/sapcontrol, /usr/sap/hostctr
 
 ## SAP ME — Windows AS Java
 
-`ch-sta-p-as02` / `ch-sta-d-as01` / `ch-sta-p-me05` are the LM Windows
-ME hosts. That **is** SAP ME, not a leftover stub. OS CPU/memory/disks
-stay on **Windows by Zabbix agent**. LM collector
-`CH-STA-P-LMCO02` (CH Auto Balanced Group - windows) is how LM reached
-`ch-sta-p-me05.sensirion.lokal`; the Zabbix replacement is the host
-agent, not that collector. LM `DataSource_batchscript.powershell` was
-the Windows collector vehicle; the replacement is a PowerShell
-UserParameter calling the Host Agent that is already on a NetWeaver
-Java box:
+`ch-sta-p-as02` / `ch-sta-d-as01` are the LM Windows `jstart` hosts.
+`ch-sta-p-me05` is also Windows SAP ME by name, category `SAP`, and
+`ssl.ports`, but its LM Alerting tree is **Windows + SSL + NoData
+only** — no Promonitor, ABAP, IDoc, Instance Status, or
+`WinProcessStats_jstart`. OS CPU/memory/disks stay on **Windows by
+Zabbix agent**. LM collector `CH-STA-P-LMCO02` (CH Auto Balanced Group
+- windows) is how LM reached `ch-sta-p-me05.sensirion.lokal`; the
+Zabbix replacement is the host agent, not that collector. Do not hunt
+a SAP Collection script on me05. LM `DataSource_batchscript.powershell`
+was the Windows collector vehicle on hosts that had it; the replacement
+is a PowerShell UserParameter calling the Host Agent that is already
+on a NetWeaver Java box:
 
 `C:\Program Files\SAP\hostctrl\exe\sapcontrol.exe`
 
@@ -74,11 +77,11 @@ modules. Identify the user in SU01 (type, roles, last logon) if you
 need to know what LM used. sapcontrol does not use that account.
 
 The Groovy pair that reads `auto.taskTypesList` and calls
-`TlistTask('!tlist h=… summary=true')` is LM **collector** NoData /
-“all tasks” (`taskCount`, `taskNoData` per `sourceType_sourceCollector`).
+`TlistTask('!tlist h=… summary=true')` is me05 **NoDataMonitoring**.
 It is not Promonitor, sapcontrol, or SM37. See [`LM_PARITY.md`](LM_PARITY.md).
-Do not port `!tlist`. Next LM page: Collection on **Application Server
-Instance Status** / ABAP / IDoc / Promonitor — not the all-tasks DS.
+Do not port `!tlist`. Do not open another me05 datasource for SAP
+application collection — that tree has none. If a Promonitor script
+still exists, look at SH01 / as02.
 
 ## Macros
 
