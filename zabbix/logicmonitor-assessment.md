@@ -10,7 +10,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 |---|---|---|---|---|
 | `MONITORING` (global) | MD5/DES | Switches, APs, firewalls, network | `SNMP Monitoring` CG → MONITORING/MD5/DES | ✅ Covered |
 | `MONITORING-LINUX` (group override) | SHA/AES | Linux servers (SNMP) | `SNMP Monitoring (Linux)` CG → MONITORING-LINUX/SHA/AES | ✅ CG built (hosts need tag `snmp`) |
-| `SAPUSER` (group override) | SHA/AES | SAP systems | CG **SAP Agent+SNMP** → Agent + SAPUSER/SHA/AES on roles SAP HANA / SAP ME | ✅ CG built (role-based; no `snmp-sap` tag) |
+| `SAPUSER` (group override) | MD5/DES | SAP systems | CG **SAP Agent+SNMP** → Agent + SAPUSER/MD5/DES on roles SAP HANA / SAP ME | ⚠️ Transport validated and CG credentials stored; targeted HostSync and SAP application template still pending — [probe](notes/sap-snmp-walk.md) |
 | `MONITORING-DELL` (resource override) | SHA/AES | CN-SHA-P-STOD (Dell storage) | HPE MSA 2060 Storage by HTTP template (REST API, not SNMP); Device Type macros `{$HPE.MSA.API.HOST/USERNAME/PASSWORD}` (§11.3) | ✅ Covered |
 | `LogicMonitor` (resource override) | SHA/AES | hu-deb-san01 (Huawei storage) | Huawei OceanStor Dorado by SNMP on `SNMP Monitoring (Huawei)` CG with LogicMonitor SHA/AES on CG Host Interface (§5.6b) | ✅ Covered |
 | v2c community (resource override) | — | CH-STA-P-ENSA01 | `snmp_v2_if()` helper exists in zerotouch (SNMPv2 + `snmp_community`/`snmp_pushcommunity`); unused since ESXi iDRACs moved to SNMPv3. Not a model gap — just not configured. | ⚠️ Not configured (not a gap) |
@@ -75,7 +75,7 @@ All 38 ConfigSources in LM are standard Exchange content. Zabbix doesn't have a 
 | MSSQL | ~30 | ✅ 2 synced (Agent 2) | 0 | `MSSQL by Zabbix agent 2` on MSSQL role |
 | Pure Storage | 7 arrays | ✅ 7 synced | 0 | `Pure Storage FlashArray v2 by HTTP`; `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` per array (§11.4) |
 | Dell/Huawei storage | 2 devices | ✅ 2 synced | 0 | HPE MSA HTTP (Dell); Huawei OceanStor SNMP (Huawei CG) |
-| SAP | 11 hosts | ❌ | 11 | DNUS scripts, post-cutover |
+| SAP | 11 hosts | ⚠️ transport validated; 0 synced | 11 application coverage | `CH-STA-P-SH01` SNMPv3 MD5/DES proves Linux host metrics only; DNUS/SAP integration remains post-cutover — [probe](notes/sap-snmp-walk.md) |
 | CATO SD-WAN | (API) | ✅ collector live | 21/21 Socket ICMP | Cato by HTTP plus stock ICMP Ping on NetBox-backed Socket hosts |
 | Website checks | 11 | ❌ | 11 | Zabbix web scenarios |
 | Custom process/service checks | ~5 datasources | ❌ | 5 | Agent-based, post-cutover |

@@ -23,7 +23,7 @@ Deltas vs the old checklist script:
   Δ5   Multi SNMPv3 profiles via SNMP_PROFILES + env NBX_SNMP_*_{MON,LINUX,SAP,IDRAC}
   Δ5   "SNMP Monitoring (Linux)" CG on NetBox tag snmp (was SNMP by tag / VM by SNMP)
   Δ5   "Agent Monitoring (SPACE)" port 10060 on Space Server role
-  Δ5   "SAP Agent+SNMP" CG (dual-plane: Agent + SAPUSER) on SAP HANA / SAP ME roles
+  Δ5   "SAP Agent+SNMP" CG (dual-plane: Agent + SAPUSER MD5/DES) on SAP HANA / SAP ME roles
   Δ6   Platform TemplateRules attach OS/* hostgroups only — no os_family Zabbix tags
   Δ6b  snmp NetBox tag + compound TemplateRules → Linux by SNMP / Windows by SNMP
        (OS templates; transport from SNMP Monitoring (Linux) CG on the same tag)
@@ -302,11 +302,11 @@ SNMP_PROFILES = {
         'auth_env': ('NBX_SNMP_AUTHPASS_LINUX',),
         'priv_env': ('NBX_SNMP_PRIVPASS_LINUX',),
     },
-    # Provisional — confirm auth/priv with Robert before relying on SAP SNMP.
+    # Validated against CH-STA-P-SH01 on 2026-09-05.
     'sap': {
         'user': 'SAPUSER',
-        'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.SHA1,
-        'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.AES128,
+        'auth': ZabbixInterfaceSNMPV3AuthProtoChoices.MD5,
+        'priv': ZabbixInterfaceSNMPV3PrivProtoChoices.DES,
         'auth_env': ('NBX_SNMP_AUTHPASS_SAP',),
         'priv_env': ('NBX_SNMP_PRIVPASS_SAP',),
     },
@@ -1066,7 +1066,7 @@ def step4_configgroups():
     sap_snmp_group = _rename_cg(
         ['SNMP Monitoring (SAP)'],
         'SAP Agent+SNMP',
-        'SAP: Agent :10050 + SNMPv3 SAPUSER — dual-plane transport (one CG, both interfaces)',
+        'SAP: Agent :10050 + SNMPv3 SAPUSER MD5/DES — dual-plane transport (one CG, both interfaces)',
     )
     space_agent_group, _ = get_or_create(
         M.ZabbixConfigurationGroup,
@@ -1192,7 +1192,7 @@ def step5_host_interfaces(server, groups: dict):
         logger.info('  PRUNED: stale SNMPv2c HostInterface on Dell iDRAC SNMP (now v3)')
     # 5.4 SNMP Monitoring (by tag) — MONITORING-LINUX SHA/AES
     snmp_if(groups['linux_snmp'], profile='linux')
-    # 5.6 SAP Agent+SNMP — dual-plane: Agent :10050 + SNMP SAPUSER (one CG, both interfaces)
+    # 5.6 SAP Agent+SNMP — dual-plane: Agent :10050 + SNMPv3 SAPUSER MD5/DES.
     agent_if(groups['sap_snmp'], port=10050)
     snmp_if(groups['sap_snmp'], profile='sap')
     # 5.6b Huawei SNMP — LogicMonitor SHA1/AES128 (non-fleet credential)

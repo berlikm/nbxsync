@@ -99,7 +99,7 @@ Each group is one **transport + credential** profile. Different SNMPv3 users sta
 | SNMP Monitoring | `MONITORING` MD5/DES | Extreme / Forti / AP / network roles |
 | SNMP Monitoring (by tag) | `MONITORING-LINUX` SHA/AES | Opt-in Linux/Windows SNMP (tag `snmp`) |
 | SNMP Monitoring (Huawei) | `LogicMonitor` SHA/AES | `HU-DEB-SAN01` (non-fleet SNMPv3) |
-| SAP Agent+SNMP | Agent :10050 + `SAPUSER` (confirm auth/priv) | SAP HANA / SAP ME dual-plane (one CG) |
+| SAP Agent+SNMP | Agent :10050 + `SAPUSER` MD5/DES | SAP HANA / SAP ME dual-plane (one CG) |
 | Agent Monitoring | Agent :10050 | Default transport on country Site Groups |
 | Agent Monitoring (SPACE) | Agent :10060 | Space Server role (camLine occupies 10050) |
 | Dell iDRAC SNMP | `MONITORING-IDRAC` **SHA384/AES256** @ oob | ESXi Hypervisor (iDRAC9 7.x / iDRAC10) |
@@ -126,6 +126,7 @@ Store **real passphrases** on the Host Interface (not `{$SNMP_AUTHPASS}` placeho
 |---|---|---|---|---|
 | Network | SNMP Monitoring | MONITORING | MD5 | DES |
 | Linux | SNMP Monitoring (by tag) | MONITORING-LINUX | SHA1* | AES128 |
+| SAP | SAP Agent+SNMP | SAPUSER | MD5 | DES |
 | Huawei | SNMP Monitoring (Huawei) | LogicMonitor | SHA1* | AES128 |
 | Dell iDRAC | Dell iDRAC SNMP | MONITORING-IDRAC | **SHA384** | **AES256** |
 | Dell iDRAC (AES128) | Dell iDRAC SNMP (AES128) | MONITORING-IDRAC | **SHA384** | **AES128** |
@@ -180,7 +181,7 @@ SAP agent templates need Agent; hardware SNMP uses `SAPUSER`. Plugin rule: **one
 | Interface | Type | Port / OOB | Credential |
 |---|---|---|---|
 | Primary | Agent | 10050, Use OOB = No | — |
-| SNMP | SNMP | 161, Use OOB = No | SAP profile (`SAPUSER` — confirm auth/priv) |
+| SNMP | SNMP | 161, Use OOB = No | SAP profile (`SAPUSER`, MD5/DES) |
 
 ### 5.6 SNMP Monitoring (Huawei)
 
@@ -686,7 +687,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 |---|---|---|---|---|
 | Linux server (role Server) | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping (+ Dell iDRAC by SNMP if Dell w/ oob_ip) | Agent :10050 @ primary | Sites/CH/…, Roles/Server, OS/Linux |
 | Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) + ICMP Ping | Agent :10050 | Sites/CH/…, Roles/…, OS/… |
-| SAP HANA / SAP ME | **SAP Agent+SNMP** | Linux by agent + **SAP template from Sensirion** + ICMP Ping | Agent :10050 + SNMP `SAPUSER` | Sites/…, Roles/SAP HANA or SAP ME, OS/Linux |
+| SAP HANA / SAP ME | **SAP Agent+SNMP** | Linux by agent + **SAP template from Sensirion** + ICMP Ping | Agent :10050 + SNMP `SAPUSER` MD5/DES | Sites/…, Roles/SAP HANA or SAP ME, OS/Linux |
 | Host with tag `snmp` only | SNMP Monitoring (by tag) via tag | Linux or Windows by SNMP + ICMP Ping | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
 | EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP (+ role IFALIAS macros) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
 | VOSS Switch Core/Access | SNMP Monitoring | Extreme VOSS by SNMP (**not** Network Generic) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
