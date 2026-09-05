@@ -61,7 +61,7 @@ UserParameter on the Windows host before CONTROL=1.
 3. Winning configuration group (Device Zabbix tab). Wrong CG → wrong interfaces.
 4. Interfaces: Agent and/or SNMP as expected. iDRAC needs `oob_ip`. AES128 exceptions: device CG, no durable per-device HostInterface.
 5. Template needs Agent but host is SNMP-only → silent drop.
-6. Template Rules: platform vs regex; `require_tags`; enabled. All matching rules apply. vCenter + Linux by agent → Linux rule is missing `role_pattern` `^(?!vCenter$).*` (§6.1).
+6. Template Rules: platform vs regex; `require_tags`; enabled. All matching rules apply. vCenter or SAP HANA + Linux by agent → Linux rule is missing `role_pattern` `^(?!vCenter$|SAP HANA$).*` (§6.1).
 7. Status mapping (§12) may disable or delete the host.
 8. Host rejected for duplicate `icmpping` → ICMP Ping is on a Site Group, Role, or Tag as well as an SNMP template. Keep ICMP only on the CGs in §6.4.
 9. Re-sync and compare to §13.

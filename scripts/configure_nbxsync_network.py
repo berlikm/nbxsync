@@ -75,9 +75,10 @@ Owns the Extreme switching half of Track B (see ``zabbix/01-extreme-switching.md
     those six targets. Certificate expiry is collected per appliance by the
     assigned proxy. No Extreme import or zerotouch.
   * SAP: ``--apply-sap`` / ``--check-sap`` import **SAP template from Sensirion**
-    (openSUSE HANA) and **SAP ME from Sensirion** (Windows), assign each on its
-    role, and HostSync only ``CH-STA-P-SH01`` when that device exists and is
-    not onboarding. No Extreme import, no fleet HostSync, no zerotouch.
+    (openSUSE HANA, SNMP OS) and **SAP ME from Sensirion** (Windows), assign each
+    on its role, exclude Linux by agent from role SAP HANA, and HostSync only
+    ``CH-STA-P-SH01`` when that device exists and is not onboarding. No Extreme
+    import, no fleet HostSync, no zerotouch.
   * Global **destination** macros on the Zabbix server object (production end-state).
     ``{$PORTID.LLD.*}`` defaults live on Extreme Port Speed Expect — not globals.
   * Optional ``--cutover-silence`` overlay (999 / MLT=0) for temporary LM migration only
@@ -96,7 +97,7 @@ Stage matrix (what each flag enables):
   ``--check-fmg-faz`` / ``--apply-fmg-faz`` = FortiManager/FortiAnalyzer SNMP pack without zerotouch: import parent + Observability companions, split platform rules, disable leftover Network Generic rule. No HostSync.
   ``--apply-cato`` / ``--check-cato`` = Cato collector refresh without zerotouch: GraphQL preflight, import **Cato Networks by HTTP**, converge ``cato-account-*``. No HostSync, no Socket hold/release.
   ``--apply-xiqse`` / ``--check-xiqse`` = agentless XIQ-SE / ExtremeControl cutover: GraphQL + stock XIQ Cloud on the Site Engine; SNMP on five Control engines; per-host certificate expiry; one Health dashboard; targeted six-host HostSync.
-  ``--apply-sap`` / ``--check-sap`` = SAP LM-parity pack: import **SAP template from Sensirion** (openSUSE HANA, SNMP req) and **SAP ME from Sensirion** (Windows, AGENT req), HostSync only ``CH-STA-P-SH01`` if present and not onboarding. No Extreme import, no fleet sync, no zerotouch.
+  ``--apply-sap`` / ``--check-sap`` = SAP LM-parity pack: import **SAP template from Sensirion** (openSUSE HANA, SNMP OS; no Linux by agent) and **SAP ME from Sensirion** (Windows, AGENT req), HostSync only ``CH-STA-P-SH01`` if present and not onboarding. No Extreme import, no fleet sync, no zerotouch.
   ``--apply --link-speed-expect`` = extra NetBox role assignment. Skip while nested — duplicate link on HostSync.
   ``--apply --cutover-silence``   = cutover overlay: TEMP/OPTIC=999, MLT/VIST=0 (temporary, re-run without to restore)
   Routing / Stage 6 context macros = manual (Extreme switching page)
@@ -5421,9 +5422,10 @@ def _print_sap_plan(server, *, errors: list[str], apply: bool, zbx_names: list[s
         logger.info('  %s ← %s', name, path)
     if zbx_names:
         logger.info('Already in Zabbix: %s', ', '.join(zbx_names) or 'none')
-    logger.info('  SAP HANA → %s (SNMP)', _sap.TEMPLATE_NAME)
+    logger.info('  SAP HANA → %s (SNMP OS; no Linux by agent / no stock Linux by SNMP)', _sap.TEMPLATE_NAME)
     logger.info('  SAP ME → %s (AGENT)', _sap.ME_TEMPLATE_NAME)
-    logger.info('  Prune leftover Linux by SNMP and the wrong SAP pack from those roles')
+    logger.info('  Linux TemplateRule excludes role SAP HANA (openSUSE OS = this pack SNMP)')
+    logger.info('  Prune leftover Linux by SNMP / Linux by agent and the wrong SAP pack from those roles')
     logger.info('  Application triggers stay off until {$SAP.APP.CONTROL}=1')
     canary = Device.objects.filter(name__iexact=_sap.CANARY_HOST).first()
     if canary is None:
@@ -5459,6 +5461,40 @@ def _require_sap_preflight(*, server=None, apply: bool = True):
     return server
 
 
+def _exclude_linux_os_agent_from_hana(server) -> None:
+    """HANA OS is the Sensirion SNMP pack. Do not attach Linux by agent or stock Linux by SNMP."""
+    if ztc is None:
+        logger.warning('  zerotouch helpers missing — cannot retarget the Linux TemplateRule')
+    else:
+        linux_rule = get_template_rule(server, _sap.LINUX_TEMPLATE_RULE)
+        if linux_rule is None:
+            logger.warning('  Linux TemplateRule missing — SAP HANA may still inherit Linux by agent')
+        elif linux_rule.role_pattern != _sap.LINUX_AGENT_ROLE_PATTERN:
+            linux_rule.role_pattern = _sap.LINUX_AGENT_ROLE_PATTERN
+            linux_rule.save(update_fields=['role_pattern'])
+            logger.info('  Linux TemplateRule excludes vCenter and SAP HANA')
+        else:
+            logger.info('  Linux TemplateRule already excludes SAP HANA')
+        snmp_linux = get_template_rule(server, _sap.SNMP_LINUX_TAG_RULE)
+        if snmp_linux is not None and snmp_linux.role_pattern != _sap.SNMP_LINUX_TAG_ROLE_PATTERN:
+            snmp_linux.role_pattern = _sap.SNMP_LINUX_TAG_ROLE_PATTERN
+            snmp_linux.save(update_fields=['role_pattern'])
+            logger.info('  SNMP Linux (tag) TemplateRule excludes SAP HANA')
+    hg = M.ZabbixHostgroup.objects.filter(zabbixserver=server, name=_sap.OS_LINUX_HOSTGROUP).first()
+    role = DeviceRole.objects.filter(name='SAP HANA').first()
+    if hg is None or role is None:
+        logger.warning('  OS/Linux hostgroup or SAP HANA role missing — skip hostgroup assignment')
+        return
+    ensure(
+        M.ZabbixHostgroupAssignment,
+        zabbixhostgroup=hg,
+        assigned_object_type=ct(DeviceRole),
+        assigned_object_id=role.id,
+        defaults={},
+    )
+    logger.info('  %s → role SAP HANA', _sap.OS_LINUX_HOSTGROUP)
+
+
 def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
     """Assign HANA template on SAP HANA (SNMP) and ME template on SAP ME (AGENT)."""
     logger.info('=' * 60)
@@ -5491,7 +5527,10 @@ def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
             defaults={},
         )
         pruned = 0
-        for leftover in ('Linux by SNMP', other_name):
+        leftovers = ['Linux by SNMP', other_name]
+        if role_name == 'SAP HANA':
+            leftovers.extend(_sap.LINUX_AGENT_TEMPLATE_NAMES)
+        for leftover in leftovers:
             deleted, _ = M.ZabbixTemplateAssignment.objects.filter(
                 zabbixtemplate__name=leftover,
                 assigned_object_type=ct(DeviceRole),
@@ -5499,9 +5538,10 @@ def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
             ).delete()
             pruned += deleted
         if pruned:
-            logger.info('  PRUNED: leftover Linux by SNMP / wrong SAP pack from role %s', role.name)
+            logger.info('  PRUNED: leftover Linux OS / wrong SAP pack from role %s', role.name)
         logger.info('  %s → role %s', tpl.name, role.name)
         last = tpl
+    _exclude_linux_os_agent_from_hana(server)
     return last
 
 
@@ -5531,8 +5571,8 @@ def run_apply_sap() -> int:
         logger.info('HostSync %s', canary.name)
         SyncHostJob(instance=canary).run()
     logger.info(
-        'SAP pack written. %s on SAP HANA, %s on SAP ME. '
-        'Application sapcontrol items stay silent until {$SAP.APP.CONTROL}=1 after the Host Agent UserParameter. '
+        'SAP pack written. %s on SAP HANA (SNMP OS, Linux by agent excluded), %s on SAP ME. '
+        'Application sapcontrol items stay silent until {$SAP.APP.CONTROL}=1 after an optional Host Agent UserParameter. '
         'HostSync was only %s (or skipped). Do not re-run zerotouch to refresh this pack.',
         _sap.TEMPLATE_NAME,
         _sap.ME_TEMPLATE_NAME,

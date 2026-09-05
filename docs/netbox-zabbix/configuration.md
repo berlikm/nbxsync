@@ -285,17 +285,18 @@ First create these hostgroups (**Zabbix → Hostgroups → Add**). Name and valu
 | Name | Pattern | Role pattern | Template | Hostgroup | Enabled |
 |---|---|---|---|---|---|
 | Windows catch-all | `Windows` | — | Windows by Zabbix agent | OS/Windows | Yes |
-| Linux | `Linux\|Ubuntu\|Debian\|CentOS\|Alma\|SUSE\|Arch` | `^(?!vCenter$).*` | Linux by Zabbix agent | OS/Linux | Yes |
+| Linux | `Linux\|Ubuntu\|Debian\|CentOS\|Alma\|SUSE\|Arch` | `^(?!vCenter$|SAP HANA$).*` | Linux by Zabbix agent | OS/Linux | Yes |
 | Extreme EXOS | `EXOS` | — | Extreme EXOS by SNMP | OS/Network | Yes |
 | Extreme VOSS | `VOSS` | — | Extreme VOSS by SNMP | OS/Network | Yes |
 | Extreme IQ Engine | `IQ ENGINE` | — | Extreme IQ Engine by SNMP | OS/Network | Yes |
 | FortiOS | `FORTIOS\|FortiOS` | — | FortiGate by SNMP | OS/Network | Yes |
 | FortiAnalyzer/Manager | `FortiAnalyzer\|FortiManager` | — | Network Generic Device by SNMP | OS/Network | Yes |
 
-**vCenter exclusion:** vCenter VMs use platform `VMware Photon OS/Linux 4.0`, which matches the Linux pattern (`Linux`). Rules merge, so without a role filter they would also get **Linux by Zabbix agent** on top of **VMware FQDN** from the role (§7). `role_pattern` `^(?!vCenter$).*` means any role except vCenter:
+**vCenter / SAP HANA exclusion:** vCenter VMs use platform `VMware Photon OS/Linux 4.0`, which matches the Linux pattern (`Linux`). Role **SAP HANA** is openSUSE and would also match. Rules merge, so without a role filter they would get **Linux by Zabbix agent** on top of the intended pack. `role_pattern` `^(?!vCenter$|SAP HANA$).*` means any role except those two:
 
-- role **Server** / **SAP HANA** / … + Linux-like platform → Linux by agent
+- role **Server** / … + Linux-like platform → Linux by agent
 - role **vCenter** + Photon OS/Linux → Linux rule does **not** apply → VMware FQDN + ICMP Ping from the Agent CG only
+- role **SAP HANA** + SUSE/Linux → Linux rule does **not** apply → **SAP template from Sensirion** SNMP OS (`SAPUSER`). No stock Linux by SNMP. OS/Linux hostgroup is assigned on the role. `--apply-sap` writes this exclusion so zerotouch is not required.
 
 ### 6.2 Tag overlays
 
@@ -303,11 +304,11 @@ Use together with the matching configuration group for transport.
 
 | Name | Pattern | Template | Hostgroup | Require tags |
 |---|---|---|---|---|
-| SNMP Linux (tag) | *(same Linux pattern as §6.1)* | Linux by SNMP | OS/Linux | `snmp` |
+| SNMP Linux (tag) | *(same Linux pattern as §6.1)*; role `^(?!SAP HANA$).*` | Linux by SNMP | OS/Linux | `snmp` |
 | SNMP Windows (tag) | `Windows` | Windows by SNMP | OS/Windows | `snmp` |
 | Oracle (tag) | `.*` | Oracle by Zabbix agent 2 | — | `oracle` |
 
-Tag `snmp` also selects CG **SNMP Monitoring (by tag)** (§5b). The agent OS rule still matches; HostSync **drops** the agent template because the host has only an SNMP interface.
+Tag `snmp` also selects CG **SNMP Monitoring (by tag)** (§5b). The agent OS rule still matches on non-SAP Linux; HostSync **drops** the agent template because the host has only an SNMP interface. Role **SAP HANA** is excluded from both the Linux agent rule and this SNMP Linux tag rule — OS stays on **SAP template from Sensirion**.
 
 Tag `oracle` does **not** change transport. Pattern `.*` + require tag `oracle` → **Oracle by Zabbix agent 2** on that Device/VM, merged with whatever OS template the platform rule already attached. Windows with Oracle: tag the host `oracle` (keeps Windows by agent). Space Server with Oracle: same — tag the Device/VM; it stays on **Agent Monitoring (SPACE)** (:10060). The Oracle template needs an **Agent** interface (SPACE has one). SNMP-only hosts drop it. Dedicated DB servers also get Oracle from role **Database** (§7) — the tag is the overlay for any other role.
 
@@ -371,7 +372,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 | Tableau Bridge by Zabbix agent `(stub)` | Device Role Tableau | Assign if the template exists on the Zabbix server |
 | CellMap by Zabbix agent `(stub)` | Device Role CellMap | Assign if the template exists |
 | Oracle by Zabbix agent 2 | Device Role Database | Also tag rule §6.2 |
-| SAP template from Sensirion | Device Role SAP HANA (openSUSE) | Import with `--apply-sap`. Host UCD SNMP + sapcontrol Python UserParameter + `web.certificate.get`. Interface req SNMP. Do not also assign Linux by SNMP. |
+| SAP template from Sensirion | Device Role SAP HANA (openSUSE) | Import with `--apply-sap`. **OS is this pack’s SNMP** (UCD/IF/FS). Do not assign Linux by agent or Linux by SNMP. sapcontrol UserParameter + `web.certificate.get` stay optional until an agent exists. Interface req SNMP. |
 | SAP ME from Sensirion | Device Role SAP ME (Windows) | Same `--apply-sap`. No UCD SNMP. PowerShell sapcontrol + `proc.num[jstart.exe]` + cert/port default **50001** (LM `ssl.ports` on ch-sta-p-me05). Interface req AGENT. OS stays on Windows by agent. |
 | Acronis Cyber Protect Cloud by HTTP | Device Role Acronis Management | Assign if the template exists |
 | SCCM by Zabbix agent `(stub)` | Device Role SCCM | Assign if the template exists |
@@ -688,7 +689,7 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 |---|---|---|---|---|
 | Linux server (role Server) | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping (+ Dell iDRAC by SNMP if Dell w/ oob_ip) | Agent :10050 @ primary | Sites/CH/…, Roles/Server, OS/Linux |
 | Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) + ICMP Ping | Agent :10050 | Sites/CH/…, Roles/…, OS/… |
-| SAP HANA (openSUSE) | **SAP Agent+SNMP** | Linux by agent + **SAP template from Sensirion** + ICMP Ping | Agent :10050 + SNMP `SAPUSER` MD5/DES | Sites/…, Roles/SAP HANA, OS/Linux |
+| SAP HANA (openSUSE) | **SAP Agent+SNMP** | **SAP template from Sensirion** (SNMP OS) + ICMP Ping. **No** Linux by agent | SNMP `SAPUSER` MD5/DES (agent IF unused until an agent is installed) | Sites/…, Roles/SAP HANA, OS/Linux |
 | SAP ME (Windows) | **SAP Agent+SNMP** | Windows by agent + **SAP ME from Sensirion** + ICMP Ping | Agent :10050 + SNMP IF unused until walked | Sites/…, Roles/SAP ME, OS/Windows |
 | Host with tag `snmp` only | SNMP Monitoring (by tag) via tag | Linux or Windows by SNMP + ICMP Ping | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
 | EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP (+ role IFALIAS macros) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |

@@ -28,6 +28,19 @@ ROLE_TEMPLATES = {
     'SAP HANA': TEMPLATE_NAME,
     'SAP ME': ME_TEMPLATE_NAME,
 }
+# There is no official openSUSE template. Stock Linux by SNMP is the generic
+# Net-SNMP pack and must not be linked — this YAML already has those OIDs.
+# Linux by agent is excluded: the HANA appliance may not take a Zabbix agent.
+LINUX_TEMPLATE_RULE = 'Linux'
+LINUX_AGENT_ROLE_PATTERN = r'^(?!vCenter$|SAP HANA$).*'
+SNMP_LINUX_TAG_RULE = 'SNMP Linux (tag)'
+SNMP_LINUX_TAG_ROLE_PATTERN = r'^(?!SAP HANA$).*'
+LINUX_AGENT_TEMPLATE_NAMES = (
+    'Linux by Zabbix agent',
+    'Linux by Zabbix agent active',
+    'Linux by Agent',
+)
+OS_LINUX_HOSTGROUP = 'OS/Linux'
 CANARY_HOST = 'CH-STA-P-SH01'
 CANARY_FQDN = 'ch-sta-p-sh01.sensirion.lokal'
 ME_CANARY_HOSTS = ('ch-sta-p-as02', 'ch-sta-d-as01', 'ch-sta-p-me05')
@@ -412,6 +425,13 @@ LM_APP_METRICS = (
 
 MACROS = (
     ('{$SNMP.TIMEOUT}', '5m', 'SNMP availability trigger window.'),
+    (
+        '{$UNSUPPORTED.CONTROL}',
+        '0',
+        '1 tickets leftover unsupported items. 0 while the optional Linux '
+        'agent/UserParameter is absent (those items are CHECK_NOT_SUPPORTED). '
+        'SNMP down stays on zabbix[host,snmp,available].',
+    ),
     ('{$UNSUPPORTED.MAX}', '1', 'Average when unsupported SNMP items stay above this for 30m.'),
     ('{$SAP.MEMORY.UTIL.MAX}', '101', 'Host RAM used % Warning. 101 collects first.'),
     ('{$SAP.CPU.UTIL.MAX}', '101', 'Host CPU used % Warning. 101 collects first.'),
@@ -541,6 +561,7 @@ def macros_for(flavor: str) -> list[tuple[str, str, str]]:
 HANA_ONLY_MACROS = frozenset(
     {
         '{$SNMP.TIMEOUT}',
+        '{$UNSUPPORTED.CONTROL}',
         '{$UNSUPPORTED.MAX}',
         '{$SAP.MEMORY.UTIL.MAX}',
         '{$SAP.CPU.UTIL.MAX}',
@@ -660,13 +681,16 @@ This template is SAP HANA only ({LM_SAP_HOSTS} LM SAP hosts included HANA +
 ME). SAP ME is Windows — see {ME_TEMPLATE_NAME}.
 Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
 
-1. Host / SNMP — LM {LM_SNMP_USER} MD5/DES. Probe of {CANARY_HOST}
-   (10.0.105.112) proved Linux Net-SNMP only ({LINUX_NETSNMP_SYSOBJECTID}).
-   IF-MIB / UCD / HOST-RESOURCES. Not HANA allocation.
+1. Host / SNMP — this is the OS plane. LM {LM_SNMP_USER} MD5/DES. There is
+   no official openSUSE template. Do not link the stock Linux SNMP template
+   (generic Net-SNMP; duplicates IF-MIB / UCD / HOST-RESOURCES already here).
+   Do not attach Linux by Zabbix agent — the HANA appliance may not take an agent.
+   Probe of {CANARY_HOST} (10.0.105.112) proved Linux Net-SNMP only
+   ({LINUX_NETSNMP_SYSOBJECTID}). Host CPU/RAM, not HANA allocation.
 
-2. Application — the LM {LM_PROMONITOR_USER} names via local sapcontrol
-   (Linux Zabbix agent UserParameter, Host Agent /usr/sap/hostctrl).
-   GetProcessList = hdb* GREEN/YELLOW.
+2. Application — optional. The LM {LM_PROMONITOR_USER} names via local
+   sapcontrol (Linux Zabbix agent UserParameter, Host Agent /usr/sap/hostctrl)
+   only if an agent is installed later. GetProcessList = hdb* GREEN/YELLOW.
    GetAlerts CCMS counts stay 0 on a HANA-only box (not ST22 RFC, not HANA SQL).
    {{$SAP.APP.CONTROL}}=0 until the UserParameter is installed.
    SH01 Alerting tree has one SAP row: {SH01_LM_SAP_DS}. LM
@@ -674,13 +698,14 @@ Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
    on an LM collector *against* that Linux FQDN
    https://{CANARY_FQDN}:{ST22_DEFAULT_PORT}{ST22_DEFAULT_PATH}
    ({ST22_FM}, sap.api.user / sap.api.pass). Zabbix calls it from the
-   Linux agent on SH01 — not from Windows ME. The LMS Groovy that
-   counts LogicMonitor alerts is not ported.
+   Linux agent on SH01 when present — not from Windows ME. The LMS Groovy
+   that counts LogicMonitor alerts is not ported.
 
-3. Certificate — agent web.certificate.get. Set {{$SAP.CERT.HOST}}.
+3. Certificate — agent web.certificate.get when an agent exists. Set
+   {{$SAP.CERT.HOST}}. {{$SAP.CERT.CONTROL}}=0 until then.
 
-OS extras (CPU cores, disk IO, IP/TCP-UDP, ping) stay on Linux by agent +
-SAP Agent+SNMP ICMP. openSUSE matches the Linux platform rule.
+Ping stays on SAP Agent+SNMP ICMP. Agent-only OS extras (CPU cores, disk
+IO, IP/TCP-UDP) are omitted until an agent is installed.
 
 Ungrouped LM DataSource_* are collector methods. Groovy/batch is retired.
 Do not execute collector scripts on the Zabbix proxy.
@@ -806,11 +831,12 @@ def _host_items(doc: Doc) -> None:
     tags(doc, 5, 'health')
     doc.add(5, 'triggers:')
     doc.add(6, f'- uuid: {uid("tr", "unsup")}')
-    doc.add(7, f'expression: min(/{TPL}/zabbix[host,,items_unsupported],30m)>' + '{$UNSUPPORTED.MAX}')
+    doc.add(7, 'expression: ' + q(f'{{$UNSUPPORTED.CONTROL}}=1 and min(/{TPL}/zabbix[host,,items_unsupported],30m)>{{$UNSUPPORTED.MAX}}'))
     doc.add(7, f'name: {q(UNSUPPORTED)}')
     doc.add(7, f'event_name: {q(UNSUPPORTED)}')
     doc.add(7, 'priority: AVERAGE')
-    doc.add(7, 'description: SNMP=1 but host items unsupported — OID/view mismatch.')
+    doc.add(7, 'description: |')
+    doc.literal(8, 'Off until {$UNSUPPORTED.CONTROL}=1. Optional agent/UserParameter items are CHECK_NOT_SUPPORTED without an agent. SNMP down stays on zabbix[host,snmp,available].')
     dep_snmp(doc, 7)
     scope(doc, 7, 'availability')
 

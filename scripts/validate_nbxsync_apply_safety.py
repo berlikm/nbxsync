@@ -534,6 +534,7 @@ def main() -> int:
         'SAP YAML import is mandatory and fail-closed',
     )
     sap_step = _function_source(net_src, net_tree, '_step_sap_nbxsync') or ''
+    sap_exclude = _function_source(net_src, net_tree, '_exclude_linux_os_agent_from_hana') or ''
     record(
         'network_sap_assigns_os_specific_packs',
         'HostInterfaceRequirementChoices.SNMP' in sap_step
@@ -543,6 +544,16 @@ def main() -> int:
         and 'ME_TEMPLATE_NAME' in sap_step
         and 'icmpping' not in sap_step,
         'SAP HANA gets the SNMP pack; SAP ME gets the AGENT pack',
+    )
+    record(
+        'network_sap_hana_os_is_snmp_not_linux_agent',
+        bool(sap_exclude)
+        and 'LINUX_AGENT_ROLE_PATTERN' in sap_exclude
+        and 'LINUX_TEMPLATE_RULE' in sap_exclude
+        and '_exclude_linux_os_agent_from_hana' in sap_step
+        and 'LINUX_AGENT_TEMPLATE_NAMES' in sap_step
+        and 'Linux by SNMP' in sap_step,
+        'apply-sap excludes Linux by agent / stock Linux by SNMP from SAP HANA',
     )
     record(
         'zerotouch_no_sap_cutover',

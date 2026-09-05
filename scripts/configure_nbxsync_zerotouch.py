@@ -1635,9 +1635,11 @@ def step6_template_rules(server, country_slugs=None):
     # Photon is in the Linux pattern (platform name has "Linux" substring).
     # Every matching rule MERGES — priority is not an override.
     # vCenter (platform Photon OS/Linux) must NOT get Linux agent — only VMware FQDN.
+    # SAP HANA (openSUSE) OS is the Sensirion SNMP pack, not Linux by agent
+    # (the appliance may not take a Zabbix agent) and not stock Linux by SNMP.
     rules = [
         ('Windows catch-all', r'Windows', tpl_windows, hg_os_windows, 100, ''),
-        ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100, '^(?!vCenter$).*'),
+        ('Linux', r'Ubuntu|Debian|Linux|Red Hat|CentOS|Alma|SUSE|Arch|Photon|Other.*Linux', tpl_linux, hg_os_linux, 100, r'^(?!vCenter$|SAP HANA$).*'),
         ('Extreme EXOS', r'EXOS|Switch Engine', tpl_exos, hg_os_network, 100, ''),
         ('FortiOS', r'FORTIOS|FortiOS', tpl_fortigate, hg_os_network, 100, ''),
         ('FortiAnalyzer/Manager', r'FortiAnalyzer|FortiManager', tpl_netgeneric, hg_os_network, 50, ''),
@@ -1707,12 +1709,27 @@ def step6_template_rules(server, country_slugs=None):
             'zabbixhostgroup': hostgroup,
             'zabbixtag': None,
             'require_tags': 'snmp',
-            'role_pattern': '',
+            'role_pattern': r'^(?!SAP HANA$).*' if name == 'SNMP Linux (tag)' else '',
             'manufacturer': None,
             'enabled': True,
             'priority': 40,
         }
         ensure_rule(name, defaults)
+
+    try:
+        hana_role = get_role('SAP HANA')
+    except DeviceRole.DoesNotExist:
+        hana_role = None
+        logger.warning("  Role 'SAP HANA' not found — skip OS/Linux hostgroup assignment")
+    if hana_role is not None:
+        get_or_create(
+            M.ZabbixHostgroupAssignment,
+            zabbixhostgroup=hg_os_linux,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=hana_role.id,
+            defaults={},
+        )
+        logger.info('  OS/Linux → Device Role SAP HANA (Sensirion SNMP OS, not Linux by agent)')
 
     # Oracle: tag-gated TemplateRule — tag any VM/Device with 'oracle' tag to get
     # Oracle by Zabbix agent 2. Merges with OS template from platform rule (Linux/Windows).
@@ -3255,8 +3272,10 @@ def run_simulate() -> int:
         objects['win_snmp'] = win_snmp
 
         # Role SAP HANA must win over Site Group Agent so HostSync gets both
-        # planes. Lab ensure_t creates the HANA + ME templates so resolve can
-        # assert openSUSE HANA ≠ Windows ME (not Linux by SNMP on either).
+        # planes. OS is the Sensirion SNMP pack (not Linux by agent — the
+        # appliance may not take an agent). Lab ensure_t creates the HANA + ME
+        # templates so resolve can assert openSUSE HANA ≠ Windows ME
+        # (not Linux by SNMP on either).
         sap = Device.objects.create(
             name=f'{PREFIX}sap-hana-01',
             device_type=dtype,
@@ -3432,11 +3451,18 @@ def run_simulate() -> int:
         sap_tpls = tpl_names(objects['sap'])
         record(
             'sap_host_infra_templates_only',
-            any('Linux by Agent' in n or 'Linux by Zabbix agent' in n for n in sap_tpls)
-            and any('SAP template from Sensirion' in n for n in sap_tpls)
+            any('SAP template from Sensirion' in n for n in sap_tpls)
+            and not any('Linux by Agent' in n or 'Linux by Zabbix agent' in n for n in sap_tpls)
             and not any('Linux by SNMP' in n for n in sap_tpls)
             and not any('SAP ME from Sensirion' in n for n in sap_tpls),
             str(sap_tpls),
+            group='resolve',
+        )
+        linux_rule = get_template_rule(server, 'Linux')
+        record(
+            'linux_rule_excludes_sap_hana',
+            bool(linux_rule and linux_rule.role_pattern == r'^(?!vCenter$|SAP HANA$).*'),
+            getattr(linux_rule, 'role_pattern', None),
             group='resolve',
         )
         sap_me_tpls = tpl_names(objects['sap_me'])

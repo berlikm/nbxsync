@@ -25,7 +25,10 @@ from sap_sensirion import (
     FORBIDDEN_SNIPPETS,
     HANA_TLS_PORT,
     JSTART_ITEM_KEY,
+    LINUX_AGENT_ROLE_PATTERN,
+    LINUX_AGENT_TEMPLATE_NAMES,
     LINUX_NETSNMP_SYSOBJECTID,
+    LINUX_TEMPLATE_RULE,
     LM_APP_METRICS,
     LM_ME_WINDOWS_COLLECTOR,
     LM_PROMONITOR_USER,
@@ -194,6 +197,9 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn('ch-sta-p-sh01', self.template['description'].lower())
         self.assertIn('sapcontrol', self.template['description'])
         self.assertIn('openSUSE', self.template['description'])
+        self.assertIn('no official openSUSE template', self.template['description'])
+        self.assertIn('attach Linux by Zabbix agent', self.template['description'])
+        self.assertNotIn('openSUSE matches the Linux platform rule', self.template['description'])
         self.assertIn(ME_TEMPLATE_NAME, self.template['description'])
         self.assertIn(SH01_LM_SAP_DS, self.template['description'])
         self.assertEqual(SH01_LM_DATASOURCES[0], SH01_LM_SAP_DS)
@@ -258,6 +264,9 @@ class SapSensirionTests(unittest.TestCase):
     def test_host_triggers_present(self):
         self.assertTrue(SNMP_TRIGGER_NAMES.issubset(self.triggers))
         self.assertTrue(SNMP_TRIGGER_PROTOTYPE_NAMES.issubset(self.trigger_prototypes))
+        self.assertIn('{$UNSUPPORTED.CONTROL}=1', self.yaml_text)
+        hana_macros = {row[0]: row[1] for row in macros_for('hana')}
+        self.assertEqual(hana_macros['{$UNSUPPORTED.CONTROL}'], '0')
 
     def test_forbidden_and_no_fake_sap_snmp(self):
         for snippet in FORBIDDEN_SNIPPETS:
@@ -291,6 +300,17 @@ class SapSensirionTests(unittest.TestCase):
         self.assertNotIn("'sap_agent'", optional.group(1))
         self.assertNotIn('import_yaml_templates', src)
 
+    def test_linux_agent_role_pattern_excludes_hana(self):
+        pat = re.compile(LINUX_AGENT_ROLE_PATTERN, re.I)
+        self.assertEqual(LINUX_TEMPLATE_RULE, 'Linux')
+        self.assertFalse(pat.search('SAP HANA'))
+        self.assertFalse(pat.search('vCenter'))
+        self.assertTrue(pat.search('Server'))
+        self.assertTrue(pat.search('Zabbix Proxy'))
+        ztc = (ROOT / 'scripts/configure_nbxsync_zerotouch.py').read_text(encoding='utf-8')
+        self.assertIn(LINUX_AGENT_ROLE_PATTERN, ztc)
+        self.assertNotIn("'^(?!vCenter$).*'", ztc)
+
     def test_network_apply_sap_imports_without_fleet_sync(self):
         src = (ROOT / 'scripts/configure_nbxsync_network.py').read_text(encoding='utf-8')
         self.assertIn(APPLY_FLAG, src)
@@ -303,11 +323,18 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn('SyncHostJob', apply_fn)
         self.assertIn("name__iexact=_sap.CANARY_HOST", apply_fn)
         assign_fn = _function_source(src, '_step_sap_nbxsync') or ''
+        exclude_fn = _function_source(src, '_exclude_linux_os_agent_from_hana') or ''
         for role in SAP_ROLES:
             self.assertIn(role, assign_fn)
         self.assertIn('HostInterfaceRequirementChoices.SNMP', assign_fn)
         self.assertIn('HostInterfaceRequirementChoices.AGENT', assign_fn)
         self.assertIn('ME_TEMPLATE_NAME', assign_fn)
+        self.assertIn('_exclude_linux_os_agent_from_hana', assign_fn)
+        self.assertIn('LINUX_AGENT_ROLE_PATTERN', exclude_fn)
+        self.assertIn('LINUX_TEMPLATE_RULE', exclude_fn)
+        self.assertIn('OS_LINUX_HOSTGROUP', exclude_fn)
+        self.assertIn('LINUX_AGENT_TEMPLATE_NAMES', assign_fn)
+        self.assertTrue(LINUX_AGENT_TEMPLATE_NAMES)
 
 
 class SapMeSensirionTests(unittest.TestCase):

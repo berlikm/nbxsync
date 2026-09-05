@@ -8,7 +8,7 @@ already have the Collection script. Do not invent Promonitor / `Z_*` /
 |---|---|---|
 | `ch-sta-p-me05` (Windows ME) | OS + SSL + Ping + NoData. No SAP app DS | Windows by agent + ICMP + cert/port **50001**. sapcontrol + jstart are **better than LM**, not parity |
 | `ch-sta-p-as02` / `ch-sta-d-as01` | Windows OS + jstart process DS | Same OS path + `proc.num[jstart.exe]` |
-| `CH-STA-P-SH01` (openSUSE HANA) | Linux OS + Ping + Port + SSL + NoData + **`ABAPRuntimeErrorsCount_LMS`** | Linux by agent + UCD SNMP + cert/port **443** + **`Z_GET_ST22` count** |
+| `CH-STA-P-SH01` (openSUSE HANA) | Linux OS + Ping + Port + SSL + NoData + **`ABAPRuntimeErrorsCount_LMS`** | **UCD SNMP in this pack** (not Linux by agent) + cert/port **443** + **`Z_GET_ST22` count** |
 
 ST22 “better”: LM also discovered every dump (user / program / time).
 We keep the **count** (`sap.app.abap.errors`) and a threshold. That is
@@ -70,27 +70,30 @@ SQL contract. Host RAM/CPU is not HANA allocation.
 
 ## Host / OS
 
-**SAP HANA** (openSUSE) already gets **Linux by Zabbix agent**. **SAP ME**
-(Windows) already gets **Windows by Zabbix agent**. Both get **ICMP Ping**
-from CG SAP Agent+SNMP. Only the HANA template adds the LM `SAPUSER` UCD
-SNMP plane (SH01 probe). The ME template does not poll Linux OIDs.
+**SAP HANA** (openSUSE) OS is **this pack’s SNMP** (`SAPUSER` UCD / IF-MIB /
+HOST-RESOURCES from the SH01 probe). There is no official openSUSE template.
+Stock **Linux by SNMP** is the generic Net-SNMP pack — do not link it (duplicate
+OIDs). **Linux by Zabbix agent** is excluded for role SAP HANA: the appliance
+may not take an agent. **SAP ME** (Windows) stays on **Windows by Zabbix
+agent**. Both roles get **ICMP Ping** from CG SAP Agent+SNMP. The ME template
+does not poll Linux OIDs.
 
 | LM datasource | Where it lives | Notes |
 |---|---|---|
-| CPU Cores | Linux by agent `system.cpu.num` | Do not duplicate that key here |
-| CPU Overview | `sap.host.cpu.util` (UCD `ssCpuIdle`) + Linux by agent | Host CPU, not ST06 |
-| Disks | Linux by agent disk IO | This pack does filesystems (space), not disk IO |
+| CPU Cores | omitted on HANA until an agent exists | Do not invent `hrDeviceProcessor` |
+| CPU Overview | `sap.host.cpu.util` (UCD `ssCpuIdle`) | Host CPU, not ST06 |
+| Disks | omitted on HANA (disk IO needs an agent) | This pack does filesystems (space), not disk IO |
 | Filesystems | `sap.host.vfs.fs.*` (hrStorageFixedDisk) | |
-| Host Status | `zabbix[host,snmp,available]` + Linux agent availability | |
+| Host Status | `zabbix[host,snmp,available]` | SNMP plane only. `{$UNSUPPORTED.CONTROL}=0` so missing agent items do not ticket |
 | Interfaces (64 bit) | `sap.host.net.if.in/out[ifHC*]` | ifXTable 64-bit counters |
 | Memory Usage | `sap.host.memory.*` / `sap.host.swap.*` | UCD; not HANA allocation |
 | Network Interfaces | same IF-MIB LLD + oper-status / errors | Drops `lo` |
-| NoDataMonitoring | unsupported-item count + sapcontrol heartbeat | LM vehicle was collector `!tlist` (see Groovy below). Not SAP SM37 |
+| NoDataMonitoring | unsupported-item count (gated) + sapcontrol heartbeat | LM vehicle was collector `!tlist` (see Groovy below). Not SAP SM37 |
 | Ping | SAP Agent+SNMP CG `icmpping` | **Not** nested here |
 | Port | `net.tcp.service[tcp,,{$SAP.PORT.TCP}]` SIMPLE | HANA default 443; ME default **50001** (LM `ssl.ports` on `ch-sta-p-me05`). `{$SAP.PORT.CONTROL}=0` |
-| SSL Certificate Expiration | Zabbix agent `web.certificate.get` | See below |
-| System Level IP Stats | Linux by agent | Not duplicated |
-| TCP UDP stats | Linux by agent | Not duplicated |
+| SSL Certificate Expiration | Zabbix agent `web.certificate.get` | Optional. Needs an agent. `{$SAP.CERT.CONTROL}=0` |
+| System Level IP Stats | omitted on HANA until an agent exists | Not duplicated |
+| TCP UDP stats | omitted on HANA until an agent exists | Not duplicated |
 
 `WinProcessStats_jstart` on ch-sta-p-as02 / ch-sta-d-as01 **is SAP ME**
 (Windows AS Java). It lives on **SAP ME from Sensirion** as
