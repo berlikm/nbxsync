@@ -29,7 +29,14 @@ ROLE_TEMPLATES = {
     'SAP ME': ME_TEMPLATE_NAME,
 }
 CANARY_HOST = 'CH-STA-P-SH01'
-ME_CANARY_HOSTS = ('ch-sta-p-as02', 'ch-sta-d-as01')
+ME_CANARY_HOSTS = ('ch-sta-p-as02', 'ch-sta-d-as01', 'ch-sta-p-me05')
+ME_CANARY_FQDN = 'ch-sta-p-me05.sensirion.lokal'
+LM_ME_WINDOWS_COLLECTOR = 'CH-STA-P-LMCO02'
+# LM Manage Resource ssl.ports on me05 (2026-09-05): AS Java HTTPS + sapstartsrv HTTPS.
+ME_ASJAVA_HTTPS_PORT = '50001'
+ME_STARTSRV_HTTPS_PORTS = ('50014', '51014')
+ME_SSL_PORTS = (ME_ASJAVA_HTTPS_PORT,) + ME_STARTSRV_HTTPS_PORTS
+HANA_TLS_PORT = '443'
 _UID_PREFIX = ''
 LINUX_NETSNMP_SYSOBJECTID = '1.3.6.1.4.1.8072.3.2.10'
 SAP_ENTERPRISE_OID = '1.3.6.1.4.1.2312'
@@ -401,7 +408,7 @@ MACROS = (
         '',
         'TLS peer the Zabbix agent dials. Empty stays silent (CHECK_NOT_SUPPORTED). Set per host, e.g. the ICM FQDN.',
     ),
-    ('{$SAP.CERT.PORT}', '443', 'TLS port for web.certificate.get. LM SSL Certificate Expiration.'),
+    ('{$SAP.CERT.PORT}', HANA_TLS_PORT, 'TLS port for web.certificate.get. LM SSL Certificate Expiration.'),
     ('{$SAP.CERT.SNI}', '', 'SNI. Leave empty to send {$SAP.CERT.HOST}.'),
     (
         '{$SAP.CERT.CONTROL}',
@@ -409,13 +416,40 @@ MACROS = (
         '1 enables certificate expiry triggers after {$SAP.CERT.HOST} is set. 0 = collect-first.',
     ),
     ('{$SAP.CERT.WARN}', '30d', 'Warn this long before the leaf certificate expires.'),
-    ('{$SAP.PORT.TCP}', '443', 'LM Port check. SIMPLE from the assigned proxy to the host interface.'),
+    ('{$SAP.PORT.TCP}', HANA_TLS_PORT, 'LM Port check. SIMPLE from the assigned proxy to the host interface.'),
     (
         '{$SAP.PORT.CONTROL}',
         '0',
         '1 tickets when the TCP port is down. 0 = collect-first (LM Port was often unused).',
     ),
 )
+
+ME_MACRO_OVERRIDES = {
+    '{$SAP.CERT.PORT}': (
+        ME_ASJAVA_HTTPS_PORT,
+        'AS Java HTTPS (5NN01). LM ssl.ports on ch-sta-p-me05: '
+        f'{",".join(ME_SSL_PORTS)}. {ME_STARTSRV_HTTPS_PORTS[0]}/{ME_STARTSRV_HTTPS_PORTS[1]} '
+        'are sapstartsrv HTTPS (instances 00 and 10). Override per host if needed.',
+    ),
+    '{$SAP.PORT.TCP}': (
+        ME_ASJAVA_HTTPS_PORT,
+        'LM Port / first ssl.ports entry (AS Java HTTPS). SIMPLE from the assigned '
+        f'proxy. Override to {ME_STARTSRV_HTTPS_PORTS[0]} or {ME_STARTSRV_HTTPS_PORTS[1]} '
+        'for sapstartsrv. CONTROL=0 because extra instances are host-specific.',
+    ),
+}
+
+
+def macros_for(flavor: str) -> list[tuple[str, str, str]]:
+    rows: list[tuple[str, str, str]] = []
+    for macro, value, descr in MACROS:
+        if flavor == 'me' and macro in HANA_ONLY_MACROS:
+            continue
+        if flavor == 'me' and macro in ME_MACRO_OVERRIDES:
+            value, descr = ME_MACRO_OVERRIDES[macro]
+        rows.append((macro, value, descr))
+    return rows
+
 
 HANA_ONLY_MACROS = frozenset(
     {
@@ -578,9 +612,20 @@ No UCD-SNMP, no Linux UserParameter, no host IF/FS LLD.
    installed.
 
 3. jstart — LM Windows process check is proc.num[jstart.exe] on this
-   template (ch-sta-p-as02 / ch-sta-d-as01). Not the AS Java stub.
+   template ({' / '.join(ME_CANARY_HOSTS)}). Not the AS Java stub.
 
-4. Certificate / Port — Windows agent web.certificate.get + SIMPLE 443.
+4. Certificate / Port — Windows agent web.certificate.get + SIMPLE
+   {{$SAP.CERT.PORT}}/{{$SAP.PORT.TCP}} default {ME_ASJAVA_HTTPS_PORT}
+   (AS Java HTTPS 5NN01). LM Manage Resource {ME_CANARY_FQDN} ssl.ports
+   = {','.join(ME_SSL_PORTS)} ({ME_ASJAVA_HTTPS_PORT} = ICM HTTPS;
+   {ME_STARTSRV_HTTPS_PORTS[0]} = sapstartsrv HTTPS instance 00;
+   {ME_STARTSRV_HTTPS_PORTS[1]} = sapstartsrv HTTPS instance 10).
+   Windows collector {LM_ME_WINDOWS_COLLECTOR}. Set {{$SAP.CERT.HOST}}
+   to the FQDN (e.g. {ME_CANARY_FQDN}). system.categories SAP,PCoIP —
+   PCoIP is Horizon/Teradici, not a SAP KPI.
+
+This LM page is the host card. {LM_PROMONITOR_USER} and the Groovy
+collection script are not properties there.
 
 SNMP {LM_SNMP_USER} on the CG is unused here until a Windows SNMP walk
 proves it. Do not poll Linux Net-SNMP OIDs on these hosts.
@@ -609,9 +654,7 @@ def _render(flavor: str) -> str:
     doc.add(3, 'groups:')
     doc.add(4, f'- name: {TEMPLATE_GROUP}')
     doc.add(3, 'macros:')
-    for macro, value, descr in MACROS:
-        if flavor == 'me' and macro in HANA_ONLY_MACROS:
-            continue
+    for macro, value, descr in macros_for(flavor):
         doc.add(4, f'- macro: {q(macro)}')
         doc.add(5, f'value: {q(value)}')
         doc.add(5, f'description: {q(descr)}')
@@ -619,7 +662,7 @@ def _render(flavor: str) -> str:
     if flavor == 'hana':
         _host_items(doc)
     _app_items(doc, flavor=flavor)
-    _agent_items(doc)
+    _agent_items(doc, flavor=flavor)
     if flavor == 'hana':
         _discovery(doc)
     _dashboard(doc, flavor=flavor)
@@ -981,7 +1024,7 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(5, 'description: |')
     doc.literal(
         6,
-        'LM Windows jstart process check on SAP ME (ch-sta-p-as02 / ch-sta-d-as01). '
+        f'LM Windows jstart process check on SAP ME ({" / ".join(ME_CANARY_HOSTS)}). '
         'Windows by agent proc.num. Complements sapcontrol GetProcessList. '
         'Not linked on openSUSE HANA.',
     )
@@ -1000,7 +1043,7 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
     scope(doc, 7, 'sap-application')
 
 
-def _agent_items(doc: Doc) -> None:
+def _agent_items(doc: Doc, *, flavor: str = 'hana') -> None:
     cert_master = 'web.certificate.get[{$SAP.CERT.HOST},{$SAP.CERT.PORT},{$SAP.CERT.SNI}]'
     doc.add(4, f'- uuid: {uid("item", "cert.get")}')
     doc.add(5, 'name: TLS certificate JSON')
@@ -1090,8 +1133,14 @@ def _agent_items(doc: Doc) -> None:
     doc.literal(
         6,
         'LM Port. SIMPLE from the assigned proxy to the host interface (no connection '
-        'macro in the key). Default 443 next to the certificate check. CONTROL=0 because '
-        'the LM Port row was often unused.',
+        f'macro in the key). Default {ME_ASJAVA_HTTPS_PORT if flavor == "me" else HANA_TLS_PORT} '
+        'next to the certificate check. CONTROL=0 because the LM Port row was often unused.'
+        + (
+            f' ME ssl.ports also listed {",".join(ME_STARTSRV_HTTPS_PORTS)} (sapstartsrv); '
+            'override {$SAP.PORT.TCP} per host — do not ticket instance 10 on every ME box.'
+            if flavor == 'me'
+            else ''
+        ),
     )
     doc.add(5, 'valuemap:')
     doc.add(6, 'name: Service state')

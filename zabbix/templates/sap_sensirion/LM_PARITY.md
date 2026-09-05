@@ -51,14 +51,25 @@ SNMP plane (SH01 probe). The ME template does not poll Linux OIDs.
 | Network Interfaces | same IF-MIB LLD + oper-status / errors | Drops `lo` |
 | NoDataMonitoring | unsupported-item count + sapcontrol heartbeat | |
 | Ping | SAP Agent+SNMP CG `icmpping` | **Not** nested here |
-| Port | `net.tcp.service[tcp,,{$SAP.PORT.TCP}]` SIMPLE | Default 443; `{$SAP.PORT.CONTROL}=0` |
+| Port | `net.tcp.service[tcp,,{$SAP.PORT.TCP}]` SIMPLE | HANA default 443; ME default **50001** (LM `ssl.ports` on `ch-sta-p-me05`). `{$SAP.PORT.CONTROL}=0` |
 | SSL Certificate Expiration | Zabbix agent `web.certificate.get` | See below |
 | System Level IP Stats | Linux by agent | Not duplicated |
 | TCP UDP stats | Linux by agent | Not duplicated |
 
-`WinProcessStats_jstart` on ch-sta-p-as02 / ch-sta-d-as01 **is SAP ME**
-(Windows AS Java). It lives on **SAP ME from Sensirion** as
+`WinProcessStats_jstart` on ch-sta-p-as02 / ch-sta-d-as01 / ch-sta-p-me05
+**is SAP ME** (Windows AS Java). It lives on **SAP ME from Sensirion** as
 `proc.num[jstart.exe]`. Do not put it on openSUSE HANA.
+
+LM Manage Resource `ch-sta-p-me05.sensirion.lokal` (2026-09-05) is the
+**host card**, not the Groovy. Facts taken from it:
+
+| Field | Value | What we do with it |
+|---|---|---|
+| Collector Group | CH (Auto Balanced Group - windows) | Confirms Windows ME |
+| Preferred Collector | `CH-STA-P-LMCO02` | Windows LM collector. Zabbix replacement is the host agent, not that collector |
+| `system.categories` | `SAP,PCoIP` | SAP role only. PCoIP is Horizon/Teradici — not a SAP KPI |
+| `ssl.ports` | `50001,50014,51014` | ME `{$SAP.CERT.PORT}` / `{$SAP.PORT.TCP}` default **50001** (AS Java HTTPS). 50014 / 51014 are sapstartsrv HTTPS (instances 00 and 10) — override per host; do not ticket instance 10 on every ME box |
+| Properties | no `C_PROMONITOR` | That user is not on the host card. Open a live datasource → Collection for the script |
 
 ## SSL certificate — Zabbix agent, not Promonitor
 
@@ -67,8 +78,9 @@ SAP Agent+SNMP already has Agent :10050. Use the agent on the box
 (that is for agentless XIQ-SE / ExtremeControl).
 
 1. Set host macro `{$SAP.CERT.HOST}` to the ICM / HTTPS name (and
-   `{$SAP.CERT.SNI}` if different).
-2. Confirm `{$SAP.CERT.PORT}` (default 443).
+   `{$SAP.CERT.SNI}` if different). ME example:
+   `ch-sta-p-me05.sensirion.lokal`.
+2. Confirm `{$SAP.CERT.PORT}` (HANA default 443; ME default **50001**).
 3. Set `{$SAP.CERT.CONTROL}=1` when Latest data shows a real `not_after`.
 
 Empty `{$SAP.CERT.HOST}` is caught with `CHECK_NOT_SUPPORTED` so it does not
@@ -99,9 +111,12 @@ not SAP KPIs and are not added here.
 
 - A least-privilege SAP RFC / HANA SQL account (the name `C_PROMONITOR` is
   not a contract)
-- A host list beyond “11 SAP hosts” + canary `CH-STA-P-SH01`
+- A host list beyond “11 SAP hosts” + HANA canary `CH-STA-P-SH01` + ME
+  `ch-sta-p-as02` / `ch-sta-d-as01` / `ch-sta-p-me05`
 - SAP enterprise SNMP — probe found none
-- Which TCP port LM “Port” actually used (default 443 next to the cert)
+- The live LM Collection script (the me05 Manage Resource page is the
+  host card; `C_PROMONITOR` is not a property there)
 - ST22 / IDoc / qRFC / SM13 as RFC tables — CCMS only, 0 on HANA-only
+  and typically on ME Java
 
 Do not treat UCD CPU/memory as HANA or ABAP health.

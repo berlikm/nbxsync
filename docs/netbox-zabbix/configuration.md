@@ -372,7 +372,7 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 | CellMap by Zabbix agent `(stub)` | Device Role CellMap | Assign if the template exists |
 | Oracle by Zabbix agent 2 | Device Role Database | Also tag rule §6.2 |
 | SAP template from Sensirion | Device Role SAP HANA (openSUSE) | Import with `--apply-sap`. Host UCD SNMP + sapcontrol Python UserParameter + `web.certificate.get`. Interface req SNMP. Do not also assign Linux by SNMP. |
-| SAP ME from Sensirion | Device Role SAP ME (Windows) | Same `--apply-sap`. No UCD SNMP. PowerShell sapcontrol + `proc.num[jstart.exe]` + cert. Interface req AGENT. OS stays on Windows by agent. |
+| SAP ME from Sensirion | Device Role SAP ME (Windows) | Same `--apply-sap`. No UCD SNMP. PowerShell sapcontrol + `proc.num[jstart.exe]` + cert/port default **50001** (LM `ssl.ports` on ch-sta-p-me05). Interface req AGENT. OS stays on Windows by agent. |
 | Acronis Cyber Protect Cloud by HTTP | Device Role Acronis Management | Assign if the template exists |
 | SCCM by Zabbix agent `(stub)` | Device Role SCCM | Assign if the template exists |
 | Remote Zabbix proxy health | Device Role Zabbix Proxy | ICMP comes from the Agent Monitoring CG (§6.4) |

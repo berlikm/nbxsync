@@ -33,7 +33,7 @@ zabbix_export:
         Ungrouped LM DataSource_* are collector methods. Groovy/batch is retired.
         Do not execute collector scripts on the Zabbix proxy.
 
-        jstart lives on the Windows ME template (ch-sta-p-as02, ch-sta-d-as01).
+        jstart lives on the Windows ME template (ch-sta-p-as02, ch-sta-d-as01, ch-sta-p-me05).
         Does not link the stock Linux SNMP template. Does not invent a Promonitor API.
 
         Operator notes: zabbix/notes/sap-snmp-walk.md,

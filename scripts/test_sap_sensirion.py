@@ -21,13 +21,19 @@ from sap_sensirion import (
     CERT_TRIGGER_NAMES,
     CHECK_FLAG,
     FORBIDDEN_SNIPPETS,
+    HANA_TLS_PORT,
     JSTART_ITEM_KEY,
     LINUX_NETSNMP_SYSOBJECTID,
     LM_APP_METRICS,
+    LM_ME_WINDOWS_COLLECTOR,
     LM_PROMONITOR_USER,
     LM_SAP_HOSTS,
     LM_SNMP_USER,
+    ME_ASJAVA_HTTPS_PORT,
+    ME_CANARY_FQDN,
     ME_CANARY_HOSTS,
+    ME_SSL_PORTS,
+    ME_STARTSRV_HTTPS_PORTS,
     ME_TEMPLATE_NAME,
     ME_TEMPLATE_YAML,
     ME_TRIGGER_NAMES,
@@ -45,6 +51,7 @@ from sap_sensirion import (
     TEMPLATE_NAME,
     TEMPLATE_YAML,
     TPL,
+    macros_for,
     render,
     write_yaml,
 )
@@ -218,6 +225,10 @@ class SapSensirionTests(unittest.TestCase):
         port = next(item for item in self.template['items'] if item['key'] == PORT_ITEM_KEY)
         self.assertEqual(port['type'], 'SIMPLE')
         self.assertIn('{$SAP.PORT.CONTROL}=1', port['triggers'][0]['expression'])
+        hana_macros = {row[0]: row[1] for row in macros_for('hana')}
+        self.assertEqual(hana_macros['{$SAP.CERT.PORT}'], HANA_TLS_PORT)
+        self.assertEqual(hana_macros['{$SAP.PORT.TCP}'], HANA_TLS_PORT)
+        self.assertNotEqual(HANA_TLS_PORT, ME_ASJAVA_HTTPS_PORT)
 
     def test_host_triggers_present(self):
         self.assertTrue(SNMP_TRIGGER_NAMES.issubset(self.triggers))
@@ -311,6 +322,22 @@ class SapMeSensirionTests(unittest.TestCase):
         self.assertNotIn('Interfaces', pages)
         self.assertIn(PORT_ITEM_KEY, self.keys)
         self.assertTrue(CERT_ITEM_KEYS.issubset(self.keys))
+
+    def test_me_ssl_ports_from_lm_resource(self):
+        self.assertEqual(ME_SSL_PORTS, ('50001', '50014', '51014'))
+        self.assertEqual(ME_ASJAVA_HTTPS_PORT, '50001')
+        self.assertEqual(ME_STARTSRV_HTTPS_PORTS, ('50014', '51014'))
+        self.assertIn('ch-sta-p-me05', ME_CANARY_HOSTS)
+        macros = {row['macro']: str(row['value']) for row in self.template['macros']}
+        self.assertEqual(macros['{$SAP.CERT.PORT}'], ME_ASJAVA_HTTPS_PORT)
+        self.assertEqual(macros['{$SAP.PORT.TCP}'], ME_ASJAVA_HTTPS_PORT)
+        self.assertIn(ME_CANARY_FQDN, self.template['description'])
+        self.assertIn(LM_ME_WINDOWS_COLLECTOR, self.template['description'])
+        for port in ME_SSL_PORTS:
+            self.assertIn(port, self.template['description'])
+        self.assertIn('PCoIP', self.template['description'])
+        self.assertIn('host card', self.template['description'])
+        self.assertIn(LM_PROMONITOR_USER, self.template['description'])
 
 
 if __name__ == '__main__':

@@ -37,11 +37,15 @@ zabbix ALL=(sapadm) NOPASSWD: /usr/sap/hostctrl/exe/sapcontrol, /usr/sap/hostctr
 
 ## SAP ME — Windows AS Java
 
-`ch-sta-p-as02` / `ch-sta-d-as01` are the LM Windows `jstart` hosts. That
-**is** SAP ME, not a leftover stub. OS CPU/memory/disks stay on **Windows by
-Zabbix agent**. LM `DataSource_batchscript.powershell` was the Windows
-collector vehicle; the replacement is a PowerShell UserParameter calling
-the Host Agent that is already on a NetWeaver Java box:
+`ch-sta-p-as02` / `ch-sta-d-as01` / `ch-sta-p-me05` are the LM Windows
+ME hosts. That **is** SAP ME, not a leftover stub. OS CPU/memory/disks
+stay on **Windows by Zabbix agent**. LM collector
+`CH-STA-P-LMCO02` (CH Auto Balanced Group - windows) is how LM reached
+`ch-sta-p-me05.sensirion.lokal`; the Zabbix replacement is the host
+agent, not that collector. LM `DataSource_batchscript.powershell` was
+the Windows collector vehicle; the replacement is a PowerShell
+UserParameter calling the Host Agent that is already on a NetWeaver
+Java box:
 
 `C:\Program Files\SAP\hostctrl\exe\sapcontrol.exe`
 
@@ -57,15 +61,26 @@ ME Java has no ST22 / IDoc / qRFC / SM13. Those `sap.app.*` counts stay 0
 unless CCMS nodes exist. Instance status is `jstart` / `jcontrol`. RFC is
 1 while the instance is up (no `gwrd`).
 
+LM Manage Resource `ssl.ports` on me05: **50001**, **50014**, **51014**.
+Those are `5NN01` (AS Java HTTPS) and `5NN14` (sapstartsrv HTTPS) for
+instances **00** and **10**. Template defaults `{$SAP.CERT.PORT}` and
+`{$SAP.PORT.TCP}` to **50001**. Leave `{$SAP.INSTANCE}` empty so
+ListInstances covers both. Override the TCP/TLS macros per host if you
+need sapstartsrv instead of ICM; do not ticket 51014 on single-instance
+ME boxes. `system.categories` also had `PCoIP` — ignore that for this
+pack. `C_PROMONITOR` is not on that host card.
+
 ## Macros
 
-Same application / cert / port macros on both templates. HANA also has the
-UCD / IF / FS macros. `{$SAP.APP.CONTROL}=0` until Latest data is quiet.
+Same application / cert / port macro *names* on both templates. HANA
+defaults TLS/TCP **443**. ME defaults **50001**. HANA also has the UCD /
+IF / FS macros. `{$SAP.APP.CONTROL}=0` until Latest data is quiet.
 
 ## Operator order
 
 1. HANA canary: install the Linux UserParameter on `CH-STA-P-SH01`.
 2. `--apply-sap` (no zerotouch, no fleet HostSync).
 3. Confirm HANA Latest data; set `{$SAP.CERT.HOST}`; then `{$SAP.APP.CONTROL}=1` on HANA only.
-4. ME: install the PowerShell snippet on as02/as01, HostSync those hosts
-   separately, then enable CONTROL on ME.
+4. ME: install the PowerShell snippet on as02/as01/me05, HostSync those
+   hosts separately, set `{$SAP.CERT.HOST}` (e.g.
+   `ch-sta-p-me05.sensirion.lokal`), then enable CONTROL on ME.

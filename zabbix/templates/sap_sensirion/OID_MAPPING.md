@@ -38,6 +38,9 @@ Do not walk `1.3.6.1.4.1` unbounded. Do not poll the SAP enterprise tree.
 `{$SAP.CERT.CONTROL}=0` and `{$SAP.PORT.CONTROL}=0` until the hostname / port
 are confirmed. Empty cert host is `CHECK_NOT_SUPPORTED` → `{}`.
 
+HANA TLS/TCP default is **443**. ME default is **50001** (LM `ssl.ports`
+on `ch-sta-p-me05.sensirion.lokal`: 50001 / 50014 / 51014).
+
 ## Application (LM names, sapcontrol)
 
 Master: `sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]`
