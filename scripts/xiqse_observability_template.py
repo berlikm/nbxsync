@@ -960,7 +960,7 @@ def _honeycomb(
         fields += [
             "                    - type: STRING",
             f"                      name: thresholds.{index}.color",
-            f"                      value: {color}",
+            f"                      value: '{color}'",
             "                    - type: STRING",
             f"                      name: thresholds.{index}.threshold",
             f"                      value: '{threshold}'",

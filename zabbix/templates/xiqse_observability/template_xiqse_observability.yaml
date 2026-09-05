@@ -3298,19 +3298,19 @@ zabbix_export:
                       value: XERAD
                     - type: STRING
                       name: thresholds.0.color
-                      value: FF465C
+                      value: 'FF465C'
                     - type: STRING
                       name: thresholds.0.threshold
                       value: '0'
                     - type: STRING
                       name: thresholds.1.color
-                      value: 0EC9AC
+                      value: '0EC9AC'
                     - type: STRING
                       name: thresholds.1.threshold
                       value: '1'
                     - type: STRING
                       name: thresholds.2.color
-                      value: 878787
+                      value: '878787'
                     - type: STRING
                       name: thresholds.2.threshold
                       value: '2'
@@ -3346,19 +3346,19 @@ zabbix_export:
                       value: XEENF
                     - type: STRING
                       name: thresholds.0.color
-                      value: FF465C
+                      value: 'FF465C'
                     - type: STRING
                       name: thresholds.0.threshold
                       value: '0'
                     - type: STRING
                       name: thresholds.1.color
-                      value: 0EC9AC
+                      value: '0EC9AC'
                     - type: STRING
                       name: thresholds.1.threshold
                       value: '1'
                     - type: STRING
                       name: thresholds.2.color
-                      value: 878787
+                      value: '878787'
                     - type: STRING
                       name: thresholds.2.threshold
                       value: '2'

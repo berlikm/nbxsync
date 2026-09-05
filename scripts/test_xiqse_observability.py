@@ -556,6 +556,9 @@ class YamlContractTests(unittest.TestCase):
                 for key in ('x', 'y', 'width', 'height'):
                     if key in widget:
                         self.assertIsInstance(widget[key], str, (page['name'], widget['name'], key))
+                for field in widget.get('fields') or []:
+                    if field.get('type') == 'STRING':
+                        self.assertIsInstance(field.get('value'), str, (page['name'], widget['name'], field['name']))
 
     def test_nac_template_is_agentless_snmp_companion_with_live_certificate_alerts(self):
         keys = _walk_item_keys(self.nac)
