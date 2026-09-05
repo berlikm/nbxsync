@@ -35,13 +35,29 @@ zabbix ALL=(sapadm) NOPASSWD: /usr/sap/hostctrl/exe/sapcontrol, /usr/sap/hostctr
 
 `zabbix_agentd -t 'sap.sensirion[json,,]'` — JSON `kind` should be `hana`.
 
+SH01 LM row `ABAPRuntimeErrorsCount_LMS` Collection is HTTPS SOAP
+`Z_GET_ST22` to `https://ch-sta-p-sh01.sensirion.lokal:44301/abapruntimeerror`.
+LM `system.displayname` is that **openSUSE** FQDN. The PowerShell ran
+on a collector against Linux, not on Windows ME. Set host macros
+`{$SAP.API.HOST}`=`ch-sta-p-sh01.sensirion.lokal`, `{$SAP.API.USER}`,
+and secret `{$SAP.API.PASS}` on the HANA template only. Empty host
+keeps CCMS. The Groovy that counts LogicMonitor alerts is not
+installed. Rotate any LM API keys that were pasted with that Groovy.
+
 ## SAP ME — Windows AS Java
 
-`ch-sta-p-as02` / `ch-sta-d-as01` are the LM Windows `jstart` hosts. That
-**is** SAP ME, not a leftover stub. OS CPU/memory/disks stay on **Windows by
-Zabbix agent**. LM `DataSource_batchscript.powershell` was the Windows
-collector vehicle; the replacement is a PowerShell UserParameter calling
-the Host Agent that is already on a NetWeaver Java box:
+`ch-sta-p-as02` / `ch-sta-d-as01` are the LM Windows `jstart` hosts.
+`ch-sta-p-me05` is also Windows SAP ME by name, category `SAP`, and
+`ssl.ports`, but its LM Alerting tree is **Windows + SSL + NoData
+only** — no Promonitor, ABAP, IDoc, Instance Status, or
+`WinProcessStats_jstart`. OS CPU/memory/disks stay on **Windows by
+Zabbix agent**. LM collector `CH-STA-P-LMCO02` (CH Auto Balanced Group
+- windows) is how LM reached `ch-sta-p-me05.sensirion.lokal`; the
+Zabbix replacement is the host agent, not that collector. Do not hunt
+a SAP Collection script on me05. LM `DataSource_batchscript.powershell`
+was the Windows collector vehicle on hosts that had it; the replacement
+is a PowerShell UserParameter calling the Host Agent that is already
+on a NetWeaver Java box:
 
 `C:\Program Files\SAP\hostctrl\exe\sapcontrol.exe`
 
@@ -57,15 +73,43 @@ ME Java has no ST22 / IDoc / qRFC / SM13. Those `sap.app.*` counts stay 0
 unless CCMS nodes exist. Instance status is `jstart` / `jcontrol`. RFC is
 1 while the instance is up (no `gwrd`).
 
+LM Manage Resource `ssl.ports` on me05: **50001**, **50014**, **51014**.
+Those are `5NN01` (AS Java HTTPS) and `5NN14` (sapstartsrv HTTPS) for
+instances **00** and **10**. Template defaults `{$SAP.CERT.PORT}` and
+`{$SAP.PORT.TCP}` to **50001**. Leave `{$SAP.INSTANCE}` empty so
+ListInstances covers both. Override the TCP/TLS macros per host if you
+need sapstartsrv instead of ICM; do not ticket 51014 on single-instance
+ME boxes. `system.categories` also had `PCoIP` — ignore that for this
+pack. `C_PROMONITOR` is not on that host card. The name plus a
+password is not a Promonitor API — do not probe ICM or guess RFC
+modules. Identify the user in SU01 (type, roles, last logon) if you
+need to know what LM used. sapcontrol does not use that account.
+
+The Groovy pair that reads `auto.taskTypesList` and calls
+`TlistTask('!tlist h=… summary=true')` is me05 **NoDataMonitoring**.
+It is not Promonitor, sapcontrol, or SM37. See [`LM_PARITY.md`](LM_PARITY.md).
+Do not port `!tlist`. Do not open another me05 datasource for SAP
+application collection — that tree has none. SH01 is Linux HANA, not
+ME. Its one SAP row is `ABAPRuntimeErrorsCount_LMS` → Collection
+(HANA pack only). Windows ME script: as02 / as01 Alerting tree →
+named SAP row → Collection. See [`LM_PARITY.md`](LM_PARITY.md).
+
 ## Macros
 
-Same application / cert / port macros on both templates. HANA also has the
-UCD / IF / FS macros. `{$SAP.APP.CONTROL}=0` until Latest data is quiet.
+Same application / cert / port / ST22 macro *names* on both templates.
+HANA defaults TLS/TCP **443**. ME defaults **50001**. ST22 defaults
+`{$SAP.API.PORT}`=**44301** and `{$SAP.API.PATH}`=`/abapruntimeerror`.
+HANA also has the UCD / IF / FS macros. `{$SAP.APP.CONTROL}=0` until
+Latest data is quiet.
 
 ## Operator order
 
 1. HANA canary: install the Linux UserParameter on `CH-STA-P-SH01`.
 2. `--apply-sap` (no zerotouch, no fleet HostSync).
-3. Confirm HANA Latest data; set `{$SAP.CERT.HOST}`; then `{$SAP.APP.CONTROL}=1` on HANA only.
-4. ME: install the PowerShell snippet on as02/as01, HostSync those hosts
-   separately, then enable CONTROL on ME.
+3. Confirm HANA Latest data; set `{$SAP.CERT.HOST}`; set ST22
+   `{$SAP.API.HOST}`=`ch-sta-p-sh01.sensirion.lokal` /
+   `{$SAP.API.USER}` / secret `{$SAP.API.PASS}` if that openSUSE ICF
+   answers; then `{$SAP.APP.CONTROL}=1` on HANA only. Not on ME.
+4. ME: install the PowerShell snippet on as02/as01/me05, HostSync those
+   hosts separately, set `{$SAP.CERT.HOST}` (e.g.
+   `ch-sta-p-me05.sensirion.lokal`), then enable CONTROL on ME.

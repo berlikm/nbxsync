@@ -1,35 +1,39 @@
 #!/usr/bin/env python3
-"""SAP application collector — Host Agent / sapstartsrv, not Promonitor.
+"""SAP application collector — Host Agent / sapstartsrv + optional ST22 SOAP.
 
-LogicMonitor's C_PROMONITOR / DNUS Groovy talked to the same local SAP
-Start Service that is already on every HANA, NetWeaver ABAP, and ME Java
-host. DNUS is gone. This script is the replacement: one JSON snapshot
-from sapcontrol (preferred) or SOAP to localhost:5NN13.
+LogicMonitor's C_PROMONITOR path for ABAP dumps is the exported
+PowerShell "SAP Monitoring Interface": HTTPS SOAP Z_GET_ST22 to
+https://<host>:44301/abapruntimeerror with Basic auth from host
+properties sap.api.user / sap.api.pass. That is the only extra RFC
+this script will call, and only when {$SAP.API.HOST} and
+{$SAP.API.USER} are set.
 
 What this is:
   GetProcessList  -> instance status, RFC/gateway process, HANA/ABAP/Java kind
   GetAlerts       -> CCMS-style counts mapped onto the old LM names
+  Z_GET_ST22      -> sap.app.abap.errors when API macros are set (LM ST22)
 
 What this is not:
-  ST22 / SM13 / SM37 / SM12 / SM58 / SM21 / EDIDS via RFC
+  SM13 / SM37 / SM12 / SM58 / SM21 / EDIDS via invented RFC
   HANA SQL (indexserver memory, connections, savepoints)
-  A Promonitor REST clone
+  LogicMonitor REST /alert/alerts (the LMS Groovy on SH01)
   Groovy on the Zabbix proxy or arbitrary agent remote commands
 
 Run on the SAP host via the Zabbix agent UserParameter (agent :10050 is
-already on CG SAP Agent+SNMP). Stdlib only. No passwords.
+already on CG SAP Agent+SNMP). Stdlib only. Do not put passphrases in git.
 
 Usage:
-  sap_sensirion.py json [instance] [sid] [host]
-  sap_sensirion.py instance.status [instance] [sid] [host]
+  sap_sensirion.py json [instance] [sid] [host] [apihost] [apiport] [apipath] [apiuser] [apipass]
 """
 
 from __future__ import print_function
 
+import base64
 import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -56,6 +60,22 @@ WIN_SAPHOSTCTRL = (
     r'C:\Program Files (x86)\SAP\hostctrl\exe\saphostctrl.exe',
 )
 SOAP_NS = 'urn:SAPControl'
+ST22_SOAP_NS = 'urn:sap-com:document:sap:rfc:functions'
+ST22_DEFAULT_PORT = '44301'
+ST22_DEFAULT_PATH = '/abapruntimeerror'
+ST22_SOAP_BODY = (
+    '<?xml version="1.0" encoding="UTF-8"?>'
+    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"'
+    ' xmlns:urn="%s">'
+    '<soapenv:Header/>'
+    '<soapenv:Body>'
+    '<urn:Z_GET_ST22>'
+    '<ET_INFOTAB><item></item></ET_INFOTAB>'
+    '<IV_TYPE>0</IV_TYPE>'
+    '</urn:Z_GET_ST22>'
+    '</soapenv:Body>'
+    '</soapenv:Envelope>'
+) % ST22_SOAP_NS
 
 METRIC_KEYS = (
     'promonitor',
@@ -131,6 +151,9 @@ _INST_INFO = re.compile(
 _SID_OK = re.compile(r'^[A-Za-z0-9]{0,3}$')
 _NN_OK = re.compile(r'^\d{1,2}$')
 _HOST_OK = re.compile(r'^[A-Za-z0-9._-]*$')
+_PORT_OK = re.compile(r'^\d{1,5}$')
+_PATH_OK = re.compile(r'^/[A-Za-z0-9._/-]{0,128}$')
+_USER_OK = re.compile(r'^[A-Za-z0-9._-]{0,64}$')
 
 
 def _norm_status(value):
@@ -430,6 +453,39 @@ def parse_soap_process_list(xml_text):
     return rows
 
 
+def count_st22_dumps(xml_text):
+    """Count ET_INFOTAB rows with a program name — same rule as the LM PowerShell."""
+    total = 0
+    for row in parse_soap_items(xml_text, 'item'):
+        if (row.get('programname') or '').strip():
+            total += 1
+    return total
+
+
+def st22_call(host, port, path, user, password, timeout=10):
+    """HTTPS SOAP Z_GET_ST22. LM: https://<displayname>:44301/abapruntimeerror."""
+    if not host or not user:
+        return None
+    path = path or ST22_DEFAULT_PATH
+    if not path.startswith('/'):
+        path = '/' + path
+    url = 'https://%s:%s%s' % (host, port or ST22_DEFAULT_PORT, path)
+    token = base64.b64encode(('%s:%s' % (user, password or '')).encode('utf-8')).decode('ascii')
+    req = Request(url, data=ST22_SOAP_BODY.encode('utf-8'))
+    req.add_header('Authorization', 'Basic %s' % token)
+    req.add_header('Content-Type', 'text/xml;charset=utf-8')
+    req.add_header('SOAPAction', 'Z_GET_ST22')
+    ctx = ssl.create_default_context()
+    try:
+        resp = urlopen(req, timeout=timeout, context=ctx)
+        payload = resp.read()
+        if isinstance(payload, bytes):
+            payload = payload.decode('utf-8', 'replace')
+        return payload
+    except (URLError, OSError, ValueError):
+        return None
+
+
 def parse_soap_alerts(xml_text):
     rows = []
     for row in parse_soap_items(xml_text, 'item'):
@@ -587,7 +643,7 @@ def resolve_instances(instance, sid):
     return list_instances_cli(sid=sid)
 
 
-def collect(instance='', sid='', host=''):
+def collect(instance='', sid='', host='', api=None):
     rows = []
     targets = resolve_instances(instance, sid)
     if not targets and not instance:
@@ -604,19 +660,36 @@ def collect(instance='', sid='', host=''):
             return None
     if not rows:
         return None
-    return merge_metrics(rows)
+    data = merge_metrics(rows)
+    data['abap_source'] = 'ccms'
+    api = api or {}
+    if api.get('host') and api.get('user'):
+        xml_text = st22_call(
+            api.get('host'),
+            api.get('port') or ST22_DEFAULT_PORT,
+            api.get('path') or ST22_DEFAULT_PATH,
+            api.get('user'),
+            api.get('password') or '',
+        )
+        if xml_text is not None:
+            data['abap_errors'] = count_st22_dumps(xml_text)
+            data['abap_source'] = 'st22'
+    return data
+
+
+def _blank_macro(value, macros, localhost=False):
+    text = (value or '').strip()
+    if text in ('-', '--') + macros:
+        return ''
+    if localhost and text == 'localhost':
+        return '127.0.0.1'
+    return text
 
 
 def _validate(instance, sid, host):
-    instance = (instance or '').strip()
-    sid = (sid or '').strip()
-    host = (host or '').strip()
-    if instance in ('-', '--', '{$SAP.INSTANCE}'):
-        instance = ''
-    if sid in ('-', '--', '{$SAP.SID}'):
-        sid = ''
-    if host in ('-', '--', '{$SAP.CONTROL.HOST}', 'localhost'):
-        host = '' if host != 'localhost' else '127.0.0.1'
+    instance = _blank_macro(instance, ('{$SAP.INSTANCE}',))
+    sid = _blank_macro(sid, ('{$SAP.SID}',))
+    host = _blank_macro(host, ('{$SAP.CONTROL.HOST}',), localhost=True)
     if instance and not _NN_OK.match(instance):
         return None
     if sid and not _SID_OK.match(sid):
@@ -626,11 +699,33 @@ def _validate(instance, sid, host):
     return instance, sid, host
 
 
+def _validate_api(host, port, path, user):
+    host = _blank_macro(host, ('{$SAP.API.HOST}',), localhost=True)
+    port = _blank_macro(port, ('{$SAP.API.PORT}',)) or ST22_DEFAULT_PORT
+    path = _blank_macro(path, ('{$SAP.API.PATH}',)) or ST22_DEFAULT_PATH
+    user = _blank_macro(user, ('{$SAP.API.USER}',))
+    if host and not _HOST_OK.match(host):
+        return None
+    if port and not _PORT_OK.match(port):
+        return None
+    if path and not _PATH_OK.match(path):
+        return None
+    if user and not _USER_OK.match(user):
+        return None
+    return {
+        'host': host,
+        'port': port,
+        'path': path,
+        'user': user,
+    }
+
+
 def format_value(data, metric):
     if metric == 'json':
         payload = {key: data.get(key, 0) for key in METRIC_KEYS}
         payload['kind'] = data.get('kind') or 'unknown'
         payload['source'] = data.get('source') or 'none'
+        payload['abap_source'] = data.get('abap_source') or 'ccms'
         return json.dumps(payload, separators=(',', ':'), sort_keys=True)
     field = CLI_TO_JSON.get(metric)
     if field is None:
@@ -640,7 +735,11 @@ def format_value(data, metric):
 
 def main(argv):
     if len(argv) < 2 or argv[1] in ('-h', '--help'):
-        print('usage: sap_sensirion.py <json|metric> [instance] [sid] [host]', file=sys.stderr)
+        print(
+            'usage: sap_sensirion.py <json|metric> [instance] [sid] [host]'
+            ' [apihost] [apiport] [apipath] [apiuser] [apipass]',
+            file=sys.stderr,
+        )
         return 2
     metric = argv[1].strip()
     if metric != 'json' and metric not in CLI_TO_JSON:
@@ -655,7 +754,19 @@ def main(argv):
         print('%s: bad instance/sid/host' % NOTSUPPORTED)
         return 0
     instance, sid, host = parsed
-    data = collect(instance=instance, sid=sid, host=host)
+    api = _validate_api(
+        argv[5] if len(argv) > 5 else '',
+        argv[6] if len(argv) > 6 else '',
+        argv[7] if len(argv) > 7 else '',
+        argv[8] if len(argv) > 8 else '',
+    )
+    if api is None:
+        print('%s: bad api host/port/path/user' % NOTSUPPORTED)
+        return 0
+    api['password'] = argv[9] if len(argv) > 9 else ''
+    if api['password'] in ('-', '--', '{$SAP.API.PASS}'):
+        api['password'] = ''
+    data = collect(instance=instance, sid=sid, host=host, api=api)
     if data is None:
         print('%s: sapcontrol not available' % NOTSUPPORTED)
         return 0

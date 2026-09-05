@@ -24,6 +24,13 @@ zabbix_export:
            GetProcessList = hdb* GREEN/YELLOW.
            GetAlerts CCMS counts stay 0 on a HANA-only box (not ST22 RFC, not HANA SQL).
            {$SAP.APP.CONTROL}=0 until the UserParameter is installed.
+           SH01 Alerting tree has one SAP row: ABAPRuntimeErrorsCount_LMS. LM
+           system.displayname is ch-sta-p-sh01.sensirion.lokal (openSUSE). The PowerShell ran
+           on an LM collector *against* that Linux FQDN
+           https://ch-sta-p-sh01.sensirion.lokal:44301/abapruntimeerror
+           (Z_GET_ST22, sap.api.user / sap.api.pass). Zabbix calls it from the
+           Linux agent on SH01 — not from Windows ME. The LMS Groovy that
+           counts LogicMonitor alerts is not ported.
 
         3. Certificate — agent web.certificate.get. Set {$SAP.CERT.HOST}.
 
@@ -33,7 +40,7 @@ zabbix_export:
         Ungrouped LM DataSource_* are collector methods. Groovy/batch is retired.
         Do not execute collector scripts on the Zabbix proxy.
 
-        jstart lives on the Windows ME template (ch-sta-p-as02, ch-sta-d-as01).
+        jstart lives on the Windows ME template (ch-sta-p-as02, ch-sta-d-as01, ch-sta-p-me05).
         Does not link the stock Linux SNMP template. Does not invent a Promonitor API.
 
         Operator notes: zabbix/notes/sap-snmp-walk.md,
@@ -99,6 +106,21 @@ zabbix_export:
         - macro: '{$SAP.CONTROL.HOST}'
           value: ''
           description: 'sapcontrol -host / SOAP peer. Empty = localhost (the agent box). Do not put a Zabbix host macro here.'
+        - macro: '{$SAP.API.HOST}'
+          value: ''
+          description: 'LM system.displayname for Z_GET_ST22: ch-sta-p-sh01.sensirion.lokal (openSUSE HANA). Empty skips ST22. Do not put a Zabbix host macro here.'
+        - macro: '{$SAP.API.PORT}'
+          value: 44301
+          description: 'LM SAP Monitoring Interface HTTPS port (44301).'
+        - macro: '{$SAP.API.PATH}'
+          value: /abapruntimeerror
+          description: 'LM ICF path /abapruntimeerror.'
+        - macro: '{$SAP.API.USER}'
+          value: ''
+          description: 'LM property sap.api.user (often C_PROMONITOR). Empty skips ST22.'
+        - macro: '{$SAP.API.PASS}'
+          value: ''
+          description: 'LM property sap.api.pass. Use a Zabbix secret macro. Never commit the value.'
         - macro: '{$SAP.APP.ABAP.MAX}'
           value: 0
           description: 'ABAP runtime-error count Warning when CONTROL=1.'
@@ -513,13 +535,13 @@ zabbix_export:
         - uuid: 16daa2a2d41a4dd89254fa610a853ae8
           name: SAP Control JSON
           type: ZABBIX_PASSIVE
-          key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           delay: 1m
           value_type: TEXT
           history: 7d
           trends: '0'
           description: |
-            One sapcontrol snapshot from the Linux Zabbix agent already on SAP Agent+SNMP. UserParameter sap.sensirion[*] runs zabbix/externalscripts/sap_sensirion.py on the openSUSE HANA host (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). Empty {$SAP.INSTANCE} / {$SAP.SID} is fine on a single-instance HANA box. Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).
+            One sapcontrol snapshot from the Linux Zabbix agent already on SAP Agent+SNMP. UserParameter sap.sensirion[*] runs zabbix/externalscripts/sap_sensirion.py on the openSUSE HANA host ch-sta-p-sh01.sensirion.lokal (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). Empty {$SAP.INSTANCE} / {$SAP.SID} is fine on a single-instance HANA box. Z_GET_ST22 uses LM system.displayname ch-sta-p-sh01.sensirion.lokal:44301/abapruntimeerror when API macros are set. Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).
           preprocessing:
             - type: CHECK_NOT_SUPPORTED
               parameters:
@@ -544,7 +566,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           valuemap:
             name: Service state
           tags:
@@ -576,7 +598,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           valuemap:
             name: Service state
           tags:
@@ -602,7 +624,7 @@ zabbix_export:
           key: sap.app.abap.errors
           delay: '0'
           description: |
-            LM ABAP Runtime Errors. CCMS GetAlerts (Shortdumps), not ST22 RFC. 0 on a HANA-only host.
+            LM ABAPRuntimeErrorsCount_LMS on openSUSE SH01 (system.displayname ch-sta-p-sh01.sensirion.lokal). Z_GET_ST22 when {$SAP.API.HOST} is set; else CCMS.
             JSONPath from the sapcontrol master. Not SNMP.
           preprocessing:
             - type: JSONPATH
@@ -611,7 +633,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           tags:
             - tag: component
               value: sap-application
@@ -644,7 +666,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           tags:
             - tag: component
               value: sap-application
@@ -677,7 +699,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           tags:
             - tag: component
               value: sap-application
@@ -710,7 +732,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           tags:
             - tag: component
               value: sap-application
@@ -743,7 +765,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           tags:
             - tag: component
               value: sap-application
@@ -776,7 +798,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           tags:
             - tag: component
               value: sap-application
@@ -809,7 +831,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           valuemap:
             name: Service state
           tags:
@@ -844,7 +866,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           tags:
             - tag: component
               value: sap-application
@@ -877,7 +899,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           tags:
             - tag: component
               value: sap-application
@@ -910,7 +932,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           tags:
             - tag: component
               value: sap-application
@@ -943,7 +965,7 @@ zabbix_export:
               error_handler: CUSTOM_VALUE
               error_handler_params: '0'
           master_item:
-            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
           tags:
             - tag: component
               value: sap-application

@@ -29,7 +29,63 @@ ROLE_TEMPLATES = {
     'SAP ME': ME_TEMPLATE_NAME,
 }
 CANARY_HOST = 'CH-STA-P-SH01'
-ME_CANARY_HOSTS = ('ch-sta-p-as02', 'ch-sta-d-as01')
+CANARY_FQDN = 'ch-sta-p-sh01.sensirion.lokal'
+ME_CANARY_HOSTS = ('ch-sta-p-as02', 'ch-sta-d-as01', 'ch-sta-p-me05')
+ME_CANARY_FQDN = 'ch-sta-p-me05.sensirion.lokal'
+LM_ME_WINDOWS_COLLECTOR = 'CH-STA-P-LMCO02'
+# LM Manage Resource ssl.ports on me05 (2026-09-05): AS Java HTTPS + sapstartsrv HTTPS.
+ME_ASJAVA_HTTPS_PORT = '50001'
+ME_STARTSRV_HTTPS_PORTS = ('50014', '51014')
+ME_SSL_PORTS = (ME_ASJAVA_HTTPS_PORT,) + ME_STARTSRV_HTTPS_PORTS
+HANA_TLS_PORT = '443'
+# LM Alerting tree on me05 (2026-09-05). "Alerting" is the UI section.
+# No Promonitor / ABAP / IDoc / Instance Status / WinProcessStats_jstart.
+ME05_LM_DATASOURCES = (
+    'CPU',
+    'CPU Cores',
+    'Disks',
+    'DotNet',
+    'File Server',
+    'Host Status',
+    'Interfaces',
+    'Memory and Processes',
+    'Memory Stats',
+    'Microsoft_Defender_for_Endpoint_2019',
+    'NoDataMonitoring',
+    'Ping',
+    'SSL Certificate Expiration',
+    'TCP stats',
+    'Terminal Services',
+    'Time Offset',
+    'UDP stats',
+)
+ME05_LM_ABSENT_SAP_DS = (
+    'Promonitor',
+    'Application Server Instance Status',
+    'ABAP',
+    'IDoc',
+)
+# LM Alerting tree on CH-STA-P-SH01 (Linux HANA, 2026-09-05).
+# One SAP application row. Do not copy onto Windows ME.
+SH01_LM_SAP_DS = 'ABAPRuntimeErrorsCount_LMS'
+SH01_LM_DATASOURCES = (
+    SH01_LM_SAP_DS,
+    'CPU Cores',
+    'CPU Overview',
+    'Disks',
+    'Filesystems',
+    'Host Status',
+    'Interfaces (64 bit)',
+    'Memory Usage',
+    'Monitored Processes',
+    'Network Interfaces',
+    'NoDataMonitoring',
+    'Ping',
+    'Port',
+    'SSL Certificate Expiration',
+    'System Level IP Stats',
+    'TCP UDP stats',
+)
 _UID_PREFIX = ''
 LINUX_NETSNMP_SYSOBJECTID = '1.3.6.1.4.1.8072.3.2.10'
 SAP_ENTERPRISE_OID = '1.3.6.1.4.1.2312'
@@ -156,7 +212,18 @@ CERT_ITEM_KEYS = {
 }
 
 PORT_ITEM_KEY = 'net.tcp.service[tcp,,{$SAP.PORT.TCP}]'
-APP_MASTER_KEY = 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+APP_MASTER_KEY = (
+    'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST},'
+    '{$SAP.API.HOST},{$SAP.API.PORT},{$SAP.API.PATH},{$SAP.API.USER},{$SAP.API.PASS}]'
+)
+ME_APP_MASTER_KEY = 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+ST22_FM = 'Z_GET_ST22'
+ST22_DEFAULT_PORT = '44301'
+ST22_DEFAULT_PATH = '/abapruntimeerror'
+
+
+def app_master_key(flavor: str) -> str:
+    return APP_MASTER_KEY if flavor == 'hana' else ME_APP_MASTER_KEY
 JSTART_ITEM_KEY = 'proc.num[jstart.exe]'
 
 SNMP_LLD_KEYS = {
@@ -248,7 +315,8 @@ LM_APP_METRICS = (
         '{$SAP.APP.ABAP.MAX}',
         APP_ABAP,
         'abap_errors',
-        'LM ABAP Runtime Errors. CCMS GetAlerts (Shortdumps), not ST22 RFC. 0 on a HANA-only host.',
+        'LM ABAPRuntimeErrorsCount_LMS on openSUSE SH01 (system.displayname '
+        'ch-sta-p-sh01.sensirion.lokal). Z_GET_ST22 when {$SAP.API.HOST} is set; else CCMS.',
     ),
     (
         'sap.app.idoc.errors',
@@ -386,6 +454,32 @@ MACROS = (
         '',
         'sapcontrol -host / SOAP peer. Empty = localhost (the agent box). Do not put a Zabbix host macro here.',
     ),
+    (
+        '{$SAP.API.HOST}',
+        '',
+        'LM system.displayname for Z_GET_ST22: ch-sta-p-sh01.sensirion.lokal '
+        '(openSUSE HANA). Empty skips ST22. Do not put a Zabbix host macro here.',
+    ),
+    (
+        '{$SAP.API.PORT}',
+        ST22_DEFAULT_PORT,
+        'LM SAP Monitoring Interface HTTPS port (44301).',
+    ),
+    (
+        '{$SAP.API.PATH}',
+        ST22_DEFAULT_PATH,
+        'LM ICF path /abapruntimeerror.',
+    ),
+    (
+        '{$SAP.API.USER}',
+        '',
+        'LM property sap.api.user (often C_PROMONITOR). Empty skips ST22.',
+    ),
+    (
+        '{$SAP.API.PASS}',
+        '',
+        'LM property sap.api.pass. Use a Zabbix secret macro. Never commit the value.',
+    ),
     ('{$SAP.APP.ABAP.MAX}', '0', 'ABAP runtime-error count Warning when CONTROL=1.'),
     ('{$SAP.APP.IDOC.MAX}', '0', 'IDoc error count Warning when CONTROL=1.'),
     ('{$SAP.APP.JOB.MAX}', '0', 'Job alert count Warning when CONTROL=1.'),
@@ -401,7 +495,7 @@ MACROS = (
         '',
         'TLS peer the Zabbix agent dials. Empty stays silent (CHECK_NOT_SUPPORTED). Set per host, e.g. the ICM FQDN.',
     ),
-    ('{$SAP.CERT.PORT}', '443', 'TLS port for web.certificate.get. LM SSL Certificate Expiration.'),
+    ('{$SAP.CERT.PORT}', HANA_TLS_PORT, 'TLS port for web.certificate.get. LM SSL Certificate Expiration.'),
     ('{$SAP.CERT.SNI}', '', 'SNI. Leave empty to send {$SAP.CERT.HOST}.'),
     (
         '{$SAP.CERT.CONTROL}',
@@ -409,13 +503,40 @@ MACROS = (
         '1 enables certificate expiry triggers after {$SAP.CERT.HOST} is set. 0 = collect-first.',
     ),
     ('{$SAP.CERT.WARN}', '30d', 'Warn this long before the leaf certificate expires.'),
-    ('{$SAP.PORT.TCP}', '443', 'LM Port check. SIMPLE from the assigned proxy to the host interface.'),
+    ('{$SAP.PORT.TCP}', HANA_TLS_PORT, 'LM Port check. SIMPLE from the assigned proxy to the host interface.'),
     (
         '{$SAP.PORT.CONTROL}',
         '0',
         '1 tickets when the TCP port is down. 0 = collect-first (LM Port was often unused).',
     ),
 )
+
+ME_MACRO_OVERRIDES = {
+    '{$SAP.CERT.PORT}': (
+        ME_ASJAVA_HTTPS_PORT,
+        'AS Java HTTPS (5NN01). LM ssl.ports on ch-sta-p-me05: '
+        f'{",".join(ME_SSL_PORTS)}. {ME_STARTSRV_HTTPS_PORTS[0]}/{ME_STARTSRV_HTTPS_PORTS[1]} '
+        'are sapstartsrv HTTPS (instances 00 and 10). Override per host if needed.',
+    ),
+    '{$SAP.PORT.TCP}': (
+        ME_ASJAVA_HTTPS_PORT,
+        'LM Port / first ssl.ports entry (AS Java HTTPS). SIMPLE from the assigned '
+        f'proxy. Override to {ME_STARTSRV_HTTPS_PORTS[0]} or {ME_STARTSRV_HTTPS_PORTS[1]} '
+        'for sapstartsrv. CONTROL=0 because extra instances are host-specific.',
+    ),
+}
+
+
+def macros_for(flavor: str) -> list[tuple[str, str, str]]:
+    rows: list[tuple[str, str, str]] = []
+    for macro, value, descr in MACROS:
+        if flavor == 'me' and macro in HANA_ONLY_MACROS:
+            continue
+        if flavor == 'me' and macro in ME_MACRO_OVERRIDES:
+            value, descr = ME_MACRO_OVERRIDES[macro]
+        rows.append((macro, value, descr))
+    return rows
+
 
 HANA_ONLY_MACROS = frozenset(
     {
@@ -434,6 +555,11 @@ HANA_ONLY_MACROS = frozenset(
         '{$VFS.FS.FSNAME.MATCHES}',
         '{$VFS.FS.FSNAME.NOT_MATCHES}',
         '{$VFS.FS.FSTYPE.MATCHES}',
+        '{$SAP.API.HOST}',
+        '{$SAP.API.PORT}',
+        '{$SAP.API.PATH}',
+        '{$SAP.API.USER}',
+        '{$SAP.API.PASS}',
     }
 )
 
@@ -543,6 +669,13 @@ Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
    GetProcessList = hdb* GREEN/YELLOW.
    GetAlerts CCMS counts stay 0 on a HANA-only box (not ST22 RFC, not HANA SQL).
    {{$SAP.APP.CONTROL}}=0 until the UserParameter is installed.
+   SH01 Alerting tree has one SAP row: {SH01_LM_SAP_DS}. LM
+   system.displayname is {CANARY_FQDN} (openSUSE). The PowerShell ran
+   on an LM collector *against* that Linux FQDN
+   https://{CANARY_FQDN}:{ST22_DEFAULT_PORT}{ST22_DEFAULT_PATH}
+   ({ST22_FM}, sap.api.user / sap.api.pass). Zabbix calls it from the
+   Linux agent on SH01 — not from Windows ME. The LMS Groovy that
+   counts LogicMonitor alerts is not ported.
 
 3. Certificate — agent web.certificate.get. Set {{$SAP.CERT.HOST}}.
 
@@ -577,10 +710,29 @@ No UCD-SNMP, no Linux UserParameter, no host IF/FS LLD.
    (not ST22 / IDoc / qRFC). {{$SAP.APP.CONTROL}}=0 until the script is
    installed.
 
-3. jstart — LM Windows process check is proc.num[jstart.exe] on this
-   template (ch-sta-p-as02 / ch-sta-d-as01). Not the AS Java stub.
+3. jstart — LM Windows jstart process check is proc.num[jstart.exe] on
+   this template (ch-sta-p-as02 / ch-sta-d-as01). {ME_CANARY_FQDN} LM
+   Alerting tree has no jstart process DS / Promonitor / ABAP / IDoc /
+   Instance Status ({', '.join(ME05_LM_ABSENT_SAP_DS)}). sapcontrol +
+   jstart here are additive because ssl.ports prove sapstartsrv, not
+   because LM collected those KPIs on me05.
 
-4. Certificate / Port — Windows agent web.certificate.get + SIMPLE 443.
+4. Certificate / Port — Windows agent web.certificate.get + SIMPLE
+   {{$SAP.CERT.PORT}}/{{$SAP.PORT.TCP}} default {ME_ASJAVA_HTTPS_PORT}
+   (AS Java HTTPS 5NN01). LM Manage Resource {ME_CANARY_FQDN} ssl.ports
+   = {','.join(ME_SSL_PORTS)} ({ME_ASJAVA_HTTPS_PORT} = ICM HTTPS;
+   {ME_STARTSRV_HTTPS_PORTS[0]} = sapstartsrv HTTPS instance 00;
+   {ME_STARTSRV_HTTPS_PORTS[1]} = sapstartsrv HTTPS instance 10).
+   Windows collector {LM_ME_WINDOWS_COLLECTOR}. Set {{$SAP.CERT.HOST}}
+   to the FQDN (e.g. {ME_CANARY_FQDN}). system.categories SAP,PCoIP —
+   PCoIP is Horizon/Teradici, not a SAP KPI.
+
+me05 LM Alerting tree (Windows + SSL + NoData only):
+{', '.join(ME05_LM_DATASOURCES)}.
+NoDataMonitoring is the !tlist Groovy. Do not hunt Promonitor /
+{LM_PROMONITOR_USER} on this host card. Look at as02 / as01 (Windows
+ME), not SH01 (Linux HANA). Do not add Defender / DotNet / File Server
+/ Terminal Services here (Windows by agent or a later estate pack).
 
 SNMP {LM_SNMP_USER} on the CG is unused here until a Windows SNMP walk
 proves it. Do not poll Linux Net-SNMP OIDs on these hosts.
@@ -609,9 +761,7 @@ def _render(flavor: str) -> str:
     doc.add(3, 'groups:')
     doc.add(4, f'- name: {TEMPLATE_GROUP}')
     doc.add(3, 'macros:')
-    for macro, value, descr in MACROS:
-        if flavor == 'me' and macro in HANA_ONLY_MACROS:
-            continue
+    for macro, value, descr in macros_for(flavor):
         doc.add(4, f'- macro: {q(macro)}')
         doc.add(5, f'value: {q(value)}')
         doc.add(5, f'description: {q(descr)}')
@@ -619,7 +769,7 @@ def _render(flavor: str) -> str:
     if flavor == 'hana':
         _host_items(doc)
     _app_items(doc, flavor=flavor)
-    _agent_items(doc)
+    _agent_items(doc, flavor=flavor)
     if flavor == 'hana':
         _discovery(doc)
     _dashboard(doc, flavor=flavor)
@@ -890,7 +1040,7 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(4, f'- uuid: {uid("item", "sap.sensirion.json")}')
     doc.add(5, 'name: SAP Control JSON')
     doc.add(5, 'type: ZABBIX_PASSIVE')
-    doc.add(5, f'key: {q(APP_MASTER_KEY)}')
+    doc.add(5, f'key: {q(app_master_key(flavor))}')
     doc.add(5, 'delay: 1m')
     doc.add(5, 'value_type: TEXT')
     doc.add(5, 'history: 7d')
@@ -908,8 +1058,9 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
         master_descr = (
             'One sapcontrol snapshot from the Linux Zabbix agent already on SAP Agent+SNMP. '
             'UserParameter sap.sensirion[*] runs zabbix/externalscripts/sap_sensirion.py '
-            'on the openSUSE HANA host (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). '
+            f'on the openSUSE HANA host {CANARY_FQDN} (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). '
             'Empty {$SAP.INSTANCE} / {$SAP.SID} is fine on a single-instance HANA box. '
+            f'Z_GET_ST22 uses LM system.displayname {CANARY_FQDN}:44301/abapruntimeerror when API macros are set. '
             'Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).'
         )
     doc.literal(6, master_descr)
@@ -928,6 +1079,11 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
         doc.add(5, f'key: {key}')
         doc.add(5, "delay: '0'")
         doc.add(5, 'description: |')
+        if flavor == 'me' and key == 'sap.app.abap.errors':
+            descr = (
+                'CCMS GetAlerts only on Windows ME. Z_GET_ST22 is the Linux HANA '
+                f'ICF on {CANARY_FQDN}, not this pack.'
+            )
         doc.literal(6, descr + '\nJSONPath from the sapcontrol master. Not SNMP.')
         doc.add(5, 'preprocessing:')
         doc.add(6, '- type: JSONPATH')
@@ -936,7 +1092,7 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
         doc.add(7, 'error_handler: CUSTOM_VALUE')
         doc.add(7, "error_handler_params: '0'")
         doc.add(5, 'master_item:')
-        doc.add(6, f'key: {q(APP_MASTER_KEY)}')
+        doc.add(6, f'key: {q(app_master_key(flavor))}')
         if kind in ('heartbeat', 'status'):
             doc.add(5, 'valuemap:')
             doc.add(6, 'name: Service state')
@@ -982,6 +1138,7 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.literal(
         6,
         'LM Windows jstart process check on SAP ME (ch-sta-p-as02 / ch-sta-d-as01). '
+        f'{ME_CANARY_FQDN} has no jstart process datasource in the LM tree. '
         'Windows by agent proc.num. Complements sapcontrol GetProcessList. '
         'Not linked on openSUSE HANA.',
     )
@@ -1000,7 +1157,7 @@ def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
     scope(doc, 7, 'sap-application')
 
 
-def _agent_items(doc: Doc) -> None:
+def _agent_items(doc: Doc, *, flavor: str = 'hana') -> None:
     cert_master = 'web.certificate.get[{$SAP.CERT.HOST},{$SAP.CERT.PORT},{$SAP.CERT.SNI}]'
     doc.add(4, f'- uuid: {uid("item", "cert.get")}')
     doc.add(5, 'name: TLS certificate JSON')
@@ -1090,8 +1247,14 @@ def _agent_items(doc: Doc) -> None:
     doc.literal(
         6,
         'LM Port. SIMPLE from the assigned proxy to the host interface (no connection '
-        'macro in the key). Default 443 next to the certificate check. CONTROL=0 because '
-        'the LM Port row was often unused.',
+        f'macro in the key). Default {ME_ASJAVA_HTTPS_PORT if flavor == "me" else HANA_TLS_PORT} '
+        'next to the certificate check. CONTROL=0 because the LM Port row was often unused.'
+        + (
+            f' ME ssl.ports also listed {",".join(ME_STARTSRV_HTTPS_PORTS)} (sapstartsrv); '
+            'override {$SAP.PORT.TCP} per host — do not ticket instance 10 on every ME box.'
+            if flavor == 'me'
+            else ''
+        ),
     )
     doc.add(5, 'valuemap:')
     doc.add(6, 'name: Service state')

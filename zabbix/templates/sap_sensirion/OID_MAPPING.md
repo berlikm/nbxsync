@@ -38,6 +38,9 @@ Do not walk `1.3.6.1.4.1` unbounded. Do not poll the SAP enterprise tree.
 `{$SAP.CERT.CONTROL}=0` and `{$SAP.PORT.CONTROL}=0` until the hostname / port
 are confirmed. Empty cert host is `CHECK_NOT_SUPPORTED` → `{}`.
 
+HANA TLS/TCP default is **443**. ME default is **50001** (LM `ssl.ports`
+on `ch-sta-p-me05.sensirion.lokal`: 50001 / 50014 / 51014).
+
 ## Application (LM names, sapcontrol)
 
 Master: `sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]`
@@ -48,7 +51,7 @@ See [`SAPCONTROL.md`](SAPCONTROL.md).
 |---|---|---|---|
 | `sap.app.promonitor` | SAP / API `C_PROMONITOR` (11 hosts) | `$.promonitor` | sapcontrol answers |
 | `sap.app.instance.status` | Application Server Instance Status | `$.instance_status` | `GetProcessList` |
-| `sap.app.abap.errors` | ABAP Runtime Errors | `$.abap_errors` | `GetAlerts` CCMS |
+| `sap.app.abap.errors` | ABAP Runtime Errors (`ABAPRuntimeErrorsCount_LMS`) | `$.abap_errors` | `Z_GET_ST22` when API macros set; else `GetAlerts` CCMS |
 | `sap.app.idoc.errors` | IDoc Errors | `$.idoc_errors` | `GetAlerts` CCMS |
 | `sap.app.job.alerts` | Job Alerts | `$.job_alerts` | `GetAlerts` CCMS |
 | `sap.app.locks` | Lock Entries | `$.locks` | `GetAlerts` CCMS |

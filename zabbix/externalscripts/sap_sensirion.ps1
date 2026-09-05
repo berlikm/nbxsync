@@ -1,12 +1,18 @@
-# SAP ME (Windows) collector — sapcontrol.exe / sapstartsrv, not Promonitor.
+# SAP ME (Windows) collector — sapcontrol.exe / sapstartsrv + optional ST22.
 # Same JSON keys as zabbix/externalscripts/sap_sensirion.py (openSUSE HANA).
-# Stdlib PowerShell 5.1. No passwords. No Groovy on the Zabbix proxy.
+# Z_GET_ST22 is the exported LM SAP Monitoring Interface only. No LM REST.
+# Stdlib PowerShell 5.1. Do not put passphrases in git.
 
 param(
     [Parameter(Position = 0)][string]$Metric = 'json',
     [Parameter(Position = 1)][string]$Instance = '',
     [Parameter(Position = 2)][string]$Sid = '',
-    [Parameter(Position = 3)][string]$Peer = ''
+    [Parameter(Position = 3)][string]$Peer = '',
+    [Parameter(Position = 4)][string]$ApiHost = '',
+    [Parameter(Position = 5)][string]$ApiPort = '44301',
+    [Parameter(Position = 6)][string]$ApiPath = '/abapruntimeerror',
+    [Parameter(Position = 7)][string]$ApiUser = '',
+    [Parameter(Position = 8)][string]$ApiPass = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -200,6 +206,39 @@ function Invoke-Sapcontrol([string]$Nr, [string]$Function, [string]$HostName) {
     return $null
 }
 
+function Invoke-St22([string]$HostName, [string]$Port, [string]$Path, [string]$User, [string]$Password) {
+    if (-not $HostName -or -not $User) { return $null }
+    if (-not $Path.StartsWith('/')) { $Path = '/' + $Path }
+    $uri = 'https://{0}:{1}{2}' -f $HostName, $Port, $Path
+    $body = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:sap-com:document:sap:rfc:functions">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <urn:Z_GET_ST22>
+      <ET_INFOTAB><item></item></ET_INFOTAB>
+      <IV_TYPE>0</IV_TYPE>
+    </urn:Z_GET_ST22>
+  </soapenv:Body>
+</soapenv:Envelope>
+'@
+    $auth = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(('{0}:{1}' -f $User, $Password)))
+    try {
+        $resp = Invoke-WebRequest -Uri $uri -Method POST -ContentType 'text/xml;charset=utf-8' -Body $body -Headers @{ Authorization = ('Basic {0}' -f $auth); SOAPAction = 'Z_GET_ST22' } -UseBasicParsing -TimeoutSec 10
+        return [string]$resp.Content
+    } catch {
+        return $null
+    }
+}
+
+function Count-St22([string]$XmlText) {
+    $total = 0
+    foreach ($row in (Parse-SoapItems $XmlText)) {
+        if (([string]$row.programname).Trim()) { $total++ }
+    }
+    return $total
+}
+
 function Invoke-Soap([string]$HostName, [int]$Port, [string]$Function) {
     $body = @"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -229,7 +268,7 @@ function Parse-SoapItems([string]$XmlText) {
         foreach ($child in $node.ChildNodes) {
             $row[$child.LocalName.ToLower()] = [string]$child.InnerText
         }
-        if ($row.ContainsKey('name') -or $row.ContainsKey('description')) { $rows += $row }
+        if ($row.ContainsKey('name') -or $row.ContainsKey('description') -or $row.ContainsKey('programname')) { $rows += $row }
     }
     return $rows
 }
@@ -282,12 +321,14 @@ if ($Metric -eq '-h' -or $Metric -eq '--help') {
     exit 2
 }
 
-foreach ($name in @('Instance', 'Sid', 'Peer')) {
+foreach ($name in @('Instance', 'Sid', 'Peer', 'ApiHost', 'ApiPort', 'ApiPath', 'ApiUser', 'ApiPass')) {
     $val = Get-Variable $name -ValueOnly
-    if ($val -in @('-', '--', '{$SAP.INSTANCE}', '{$SAP.SID}', '{$SAP.CONTROL.HOST}')) {
+    if ($val -in @('-', '--', '{$SAP.INSTANCE}', '{$SAP.SID}', '{$SAP.CONTROL.HOST}', '{$SAP.API.HOST}', '{$SAP.API.PORT}', '{$SAP.API.PATH}', '{$SAP.API.USER}', '{$SAP.API.PASS}')) {
         Set-Variable $name ''
     }
 }
+if (-not $ApiPort) { $ApiPort = '44301' }
+if (-not $ApiPath) { $ApiPath = '/abapruntimeerror' }
 if ($Peer -eq 'localhost') { $Peer = '127.0.0.1' }
 if ($Instance -and $Instance -notmatch '^\d{1,2}$') { Write-NotSupported 'bad instance' }
 if ($Sid -and $Sid -notmatch '^[A-Za-z0-9]{0,3}$') { Write-NotSupported 'bad sid' }
@@ -320,6 +361,14 @@ foreach ($target in $targets) {
 }
 
 if (-not $merged) { Write-NotSupported 'sapcontrol not available' }
+$merged['abap_source'] = 'ccms'
+if ($ApiHost -and $ApiUser) {
+    $st22 = Invoke-St22 $ApiHost $ApiPort $ApiPath $ApiUser $ApiPass
+    if ($null -ne $st22) {
+        $merged.abap_errors = Count-St22 $st22
+        $merged['abap_source'] = 'st22'
+    }
+}
 
 $cli = @{
     'promonitor' = 'promonitor'
@@ -339,7 +388,7 @@ $cli = @{
 
 if ($Metric -eq 'json') {
     $payload = [ordered]@{}
-    foreach ($key in @('promonitor', 'instance_status', 'abap_errors', 'idoc_errors', 'job_alerts', 'locks', 'qrfc_in', 'qrfc_out', 'rfc_status', 'spool_errors', 'syslog_alerts', 'trfc_errors', 'update_requests', 'kind', 'source')) {
+    foreach ($key in @('promonitor', 'instance_status', 'abap_errors', 'idoc_errors', 'job_alerts', 'locks', 'qrfc_in', 'qrfc_out', 'rfc_status', 'spool_errors', 'syslog_alerts', 'trfc_errors', 'update_requests', 'kind', 'source', 'abap_source')) {
         $payload[$key] = $merged[$key]
     }
     Write-Output ($payload | ConvertTo-Json -Compress)

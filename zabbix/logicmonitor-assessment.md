@@ -45,10 +45,10 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 
 | LM custom datasource | Scope | Zabbix equivalent | Status |
 |---|---|---|---|
-| SAP ABAP / instance / IDoc / jobs / locks / qRFC in+out / RFC / spool / syslog / tRFC / updates | Promonitor / `C_PROMONITOR` (11 hosts; SH01 custom DS) | sapcontrol dependents on **SAP template from Sensirion** (Host Agent). `{$SAP.APP.CONTROL}=0` until the UserParameter is installed | ⚠️ Template built; install UserParameter on the host |
-| SSL Certificate Expiration + Port | SAP hosts | Agent `web.certificate.get` + SIMPLE TCP; `{$SAP.CERT.CONTROL}` / `{$SAP.PORT.CONTROL}=0` until the ICM name is set | ⚠️ Built; host macros pending |
+| SAP ABAP / instance / IDoc / jobs / locks / qRFC in+out / RFC / spool / syslog / tRFC / updates | Promonitor / `C_PROMONITOR` (11 hosts). SH01 live row is `ABAPRuntimeErrorsCount_LMS` | sapcontrol + optional `Z_GET_ST22` on **SAP template from Sensirion**. Other RFC names still CCMS | ⚠️ ST22 SOAP ported; install UserParameter; set API macros |
+| SSL Certificate Expiration + Port | SAP hosts | Agent `web.certificate.get` + SIMPLE TCP; HANA 443 / ME **50001** from me05 `ssl.ports`; `{$SAP.CERT.CONTROL}` / `{$SAP.PORT.CONTROL}=0` until the ICM name is set | ⚠️ Built; host macros pending |
 | Ungrouped `DataSource_*` (ping, snmp.v3, groovy/batch, powershell, webpage, dns) | LM **collector methods**, not SAP KPIs | Ping + SNMPv3 = SAP CG. Groovy/batch retired; local sapcontrol replaces it. Do not import Groovy/PowerShell. Webpage/DNS are collector self-tests / estate webchecks (§4) | ⚠️ Documented — [LM parity](templates/sap_sensirion/LM_PARITY.md) |
-| WinProcessStats_jstart (AS Java) | ch-sta-p-as02, ch-sta-d-as01 | **SAP ME** Windows `proc.num[jstart.exe]` on **SAP ME from Sensirion** | ⚠️ Template built; install PowerShell UserParameter |
+| WinProcessStats_jstart (AS Java) | ch-sta-p-as02, ch-sta-d-as01 (not me05) | **SAP ME** Windows `proc.num[jstart.exe]` on **SAP ME from Sensirion**. me05 LM tree has no jstart DS | ⚠️ Template built; install PowerShell UserParameter |
 | tableauBridgeWorker_service | 15 Tableau servers | Agent service check | ❌ Not built |
 | WinProcessStats_cellmap | ch-sta-p-cmap03 | Agent process monitoring | ❌ Not built |
 | Reporting Service QUEUE | MSSQL servers | MSSQL by Zabbix agent 2 | ⚠️ Template linked, queue item not built |

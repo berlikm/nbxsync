@@ -9,7 +9,7 @@ zabbix_export:
       name: SAP ME from Sensirion
       description: |
         Sensirion SAP ME pack (Windows AS Java). LogicMonitor parity from
-        zabbix/logicmonitor-assessment.md. Hosts like ch-sta-p-as02, ch-sta-d-as01.
+        zabbix/logicmonitor-assessment.md. Hosts like ch-sta-p-as02, ch-sta-d-as01, ch-sta-p-me05.
 
         This template is SAP ME only. SAP HANA is openSUSE — see SAP template from Sensirion.
         No UCD-SNMP, no Linux UserParameter, no host IF/FS LLD.
@@ -24,10 +24,29 @@ zabbix_export:
            (not ST22 / IDoc / qRFC). {$SAP.APP.CONTROL}=0 until the script is
            installed.
 
-        3. jstart — LM Windows process check is proc.num[jstart.exe] on this
-           template (ch-sta-p-as02 / ch-sta-d-as01). Not the AS Java stub.
+        3. jstart — LM Windows jstart process check is proc.num[jstart.exe] on
+           this template (ch-sta-p-as02 / ch-sta-d-as01). ch-sta-p-me05.sensirion.lokal LM
+           Alerting tree has no jstart process DS / Promonitor / ABAP / IDoc /
+           Instance Status (Promonitor, Application Server Instance Status, ABAP, IDoc). sapcontrol +
+           jstart here are additive because ssl.ports prove sapstartsrv, not
+           because LM collected those KPIs on me05.
 
-        4. Certificate / Port — Windows agent web.certificate.get + SIMPLE 443.
+        4. Certificate / Port — Windows agent web.certificate.get + SIMPLE
+           {$SAP.CERT.PORT}/{$SAP.PORT.TCP} default 50001
+           (AS Java HTTPS 5NN01). LM Manage Resource ch-sta-p-me05.sensirion.lokal ssl.ports
+           = 50001,50014,51014 (50001 = ICM HTTPS;
+           50014 = sapstartsrv HTTPS instance 00;
+           51014 = sapstartsrv HTTPS instance 10).
+           Windows collector CH-STA-P-LMCO02. Set {$SAP.CERT.HOST}
+           to the FQDN (e.g. ch-sta-p-me05.sensirion.lokal). system.categories SAP,PCoIP —
+           PCoIP is Horizon/Teradici, not a SAP KPI.
+
+        me05 LM Alerting tree (Windows + SSL + NoData only):
+        CPU, CPU Cores, Disks, DotNet, File Server, Host Status, Interfaces, Memory and Processes, Memory Stats, Microsoft_Defender_for_Endpoint_2019, NoDataMonitoring, Ping, SSL Certificate Expiration, TCP stats, Terminal Services, Time Offset, UDP stats.
+        NoDataMonitoring is the !tlist Groovy. Do not hunt Promonitor /
+        C_PROMONITOR on this host card. Look at as02 / as01 (Windows
+        ME), not SH01 (Linux HANA). Do not add Defender / DotNet / File Server
+        / Terminal Services here (Windows by agent or a later estate pack).
 
         SNMP SAPUSER on the CG is unused here until a Windows SNMP walk
         proves it. Do not poll Linux Net-SNMP OIDs on these hosts.
@@ -87,8 +106,8 @@ zabbix_export:
           value: ''
           description: 'TLS peer the Zabbix agent dials. Empty stays silent (CHECK_NOT_SUPPORTED). Set per host, e.g. the ICM FQDN.'
         - macro: '{$SAP.CERT.PORT}'
-          value: 443
-          description: 'TLS port for web.certificate.get. LM SSL Certificate Expiration.'
+          value: 50001
+          description: 'AS Java HTTPS (5NN01). LM ssl.ports on ch-sta-p-me05: 50001,50014,51014. 50014/51014 are sapstartsrv HTTPS (instances 00 and 10). Override per host if needed.'
         - macro: '{$SAP.CERT.SNI}'
           value: ''
           description: 'SNI. Leave empty to send {$SAP.CERT.HOST}.'
@@ -99,8 +118,8 @@ zabbix_export:
           value: 30d
           description: 'Warn this long before the leaf certificate expires.'
         - macro: '{$SAP.PORT.TCP}'
-          value: 443
-          description: 'LM Port check. SIMPLE from the assigned proxy to the host interface.'
+          value: 50001
+          description: 'LM Port / first ssl.ports entry (AS Java HTTPS). SIMPLE from the assigned proxy. Override to 50014 or 51014 for sapstartsrv. CONTROL=0 because extra instances are host-specific.'
         - macro: '{$SAP.PORT.CONTROL}'
           value: 0
           description: '1 tickets when the TCP port is down. 0 = collect-first (LM Port was often unused).'
@@ -197,7 +216,7 @@ zabbix_export:
           key: sap.app.abap.errors
           delay: '0'
           description: |
-            LM ABAP Runtime Errors. CCMS GetAlerts (Shortdumps), not ST22 RFC. 0 on a HANA-only host.
+            CCMS GetAlerts only on Windows ME. Z_GET_ST22 is the Linux HANA ICF on ch-sta-p-sh01.sensirion.lokal, not this pack.
             JSONPath from the sapcontrol master. Not SNMP.
           preprocessing:
             - type: JSONPATH
@@ -562,7 +581,7 @@ zabbix_export:
           key: 'proc.num[jstart.exe]'
           delay: 1m
           description: |
-            LM Windows jstart process check on SAP ME (ch-sta-p-as02 / ch-sta-d-as01). Windows by agent proc.num. Complements sapcontrol GetProcessList. Not linked on openSUSE HANA.
+            LM Windows jstart process check on SAP ME (ch-sta-p-as02 / ch-sta-d-as01). ch-sta-p-me05.sensirion.lokal has no jstart process datasource in the LM tree. Windows by agent proc.num. Complements sapcontrol GetProcessList. Not linked on openSUSE HANA.
           tags:
             - tag: component
               value: sap-application
@@ -660,7 +679,7 @@ zabbix_export:
           key: 'net.tcp.service[tcp,,{$SAP.PORT.TCP}]'
           delay: 1m
           description: |
-            LM Port. SIMPLE from the assigned proxy to the host interface (no connection macro in the key). Default 443 next to the certificate check. CONTROL=0 because the LM Port row was often unused.
+            LM Port. SIMPLE from the assigned proxy to the host interface (no connection macro in the key). Default 50001 next to the certificate check. CONTROL=0 because the LM Port row was often unused. ME ssl.ports also listed 50014,51014 (sapstartsrv); override {$SAP.PORT.TCP} per host — do not ticket instance 10 on every ME box.
           valuemap:
             name: Service state
           tags:
