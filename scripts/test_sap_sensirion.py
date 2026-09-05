@@ -49,6 +49,9 @@ from sap_sensirion import (
     ST22_DEFAULT_PATH,
     ST22_DEFAULT_PORT,
     ST22_FM,
+    ST22_HOST_MACRO_NAMES,
+    ST22_HOST_MACROS,
+    ST22_SECRET_MACROS,
     PORT_ITEM_KEY,
     PORT_TRIGGER_NAMES,
     ROLE_TEMPLATES,
@@ -162,6 +165,11 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn(ST22_DEFAULT_PORT, self.yaml_text)
         self.assertIn(ST22_DEFAULT_PATH, self.yaml_text)
         self.assertIn(CANARY_FQDN, self.yaml_text)
+        self.assertIn('device CH-STA-P-SH01 only', self.template['description'])
+        self.assertIn('not role SAP HANA', self.template['description'])
+        api_host = next(row for row in self.template['macros'] if row['macro'] == '{$SAP.API.HOST}')
+        self.assertEqual(api_host.get('value', ''), '')
+        self.assertIn('CH-STA-P-SH01 only', api_host['description'])
         self.assertNotIn('santaba/rest', self.yaml_text)
         hana_macros = {row['macro'] for row in self.template['macros']}
         self.assertIn('{$SAP.API.HOST}', hana_macros)
@@ -335,6 +343,16 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn('OS_LINUX_HOSTGROUP', exclude_fn)
         self.assertIn('LINUX_AGENT_TEMPLATE_NAMES', assign_fn)
         self.assertTrue(LINUX_AGENT_TEMPLATE_NAMES)
+        st22_fn = _function_source(src, '_assign_st22_macros_on_sh01_only') or ''
+        self.assertIn('_assign_st22_macros_on_sh01_only', assign_fn)
+        self.assertIn('ST22_HOST_MACROS', st22_fn)
+        self.assertIn('CANARY_HOST', st22_fn)
+        self.assertIn('DeviceRole', st22_fn)
+        self.assertIn('ST22_SECRET_MACROS', st22_fn)
+        self.assertNotIn("value=_sap.ST22_SECRET", st22_fn)
+        self.assertEqual(dict(ST22_HOST_MACROS)['{$SAP.API.HOST}'], CANARY_FQDN)
+        self.assertEqual(ST22_HOST_MACRO_NAMES, ('{$SAP.API.HOST}', '{$SAP.API.PORT}', '{$SAP.API.PATH}'))
+        self.assertEqual(ST22_SECRET_MACROS, ('{$SAP.API.USER}', '{$SAP.API.PASS}'))
 
 
 class SapMeSensirionTests(unittest.TestCase):

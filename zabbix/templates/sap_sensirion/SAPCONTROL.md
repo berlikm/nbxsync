@@ -42,11 +42,13 @@ zabbix ALL=(sapadm) NOPASSWD: /usr/sap/hostctrl/exe/sapcontrol, /usr/sap/hostctr
 SH01 LM row `ABAPRuntimeErrorsCount_LMS` Collection is HTTPS SOAP
 `Z_GET_ST22` to `https://ch-sta-p-sh01.sensirion.lokal:44301/abapruntimeerror`.
 LM `system.displayname` is that **openSUSE** FQDN. The PowerShell ran
-on a collector against Linux, not on Windows ME. Set host macros
-`{$SAP.API.HOST}`=`ch-sta-p-sh01.sensirion.lokal`, `{$SAP.API.USER}`,
-and secret `{$SAP.API.PASS}` on the HANA template only. Empty host
-keeps CCMS. The Groovy that counts LogicMonitor alerts is not
-installed. Rotate any LM API keys that were pasted with that Groovy.
+on a collector against Linux, not on Windows ME. `--apply-sap` writes
+`{$SAP.API.HOST}`=`ch-sta-p-sh01.sensirion.lokal` plus port/path on
+**device `CH-STA-P-SH01` only**. Do not put those macros on role SAP
+HANA or the template (every other HANA box would call this ICF). Set
+`{$SAP.API.USER}` and secret `{$SAP.API.PASS}` on that same device.
+Empty user keeps CCMS. The Groovy that counts LogicMonitor alerts is
+not installed. Rotate any LM API keys that were pasted with that Groovy.
 
 ## SAP ME — Windows AS Java
 
@@ -103,17 +105,19 @@ named SAP row → Collection. See [`LM_PARITY.md`](LM_PARITY.md).
 Same application / cert / port / ST22 macro *names* on both templates.
 HANA defaults TLS/TCP **443**. ME defaults **50001**. ST22 defaults
 `{$SAP.API.PORT}`=**44301** and `{$SAP.API.PATH}`=`/abapruntimeerror`.
-HANA also has the UCD / IF / FS macros. `{$SAP.APP.CONTROL}=0` until
-Latest data is quiet.
+HANA also has the UCD / IF / FS macros. ST22 URL macros are host-level
+on `CH-STA-P-SH01` only. `{$SAP.APP.CONTROL}=0` until Latest data is quiet.
 
 ## Operator order
 
-1. HANA canary: install the Linux UserParameter on `CH-STA-P-SH01`.
-2. `--apply-sap` (no zerotouch, no fleet HostSync).
-3. Confirm HANA Latest data; set `{$SAP.CERT.HOST}`; set ST22
-   `{$SAP.API.HOST}`=`ch-sta-p-sh01.sensirion.lokal` /
-   `{$SAP.API.USER}` / secret `{$SAP.API.PASS}` if that openSUSE ICF
-   answers; then `{$SAP.APP.CONTROL}=1` on HANA only. Not on ME.
+1. HANA canary: install the Linux UserParameter on `CH-STA-P-SH01` only
+   if you want sapcontrol / ST22 (OS is SNMP and does not need it).
+2. `--apply-sap` (no zerotouch, no fleet HostSync). Writes ST22 URL
+   macros on `CH-STA-P-SH01` only.
+3. Confirm HANA Latest data; set `{$SAP.CERT.HOST}` if an agent exists;
+   set ST22 `{$SAP.API.USER}` / secret `{$SAP.API.PASS}` on **SH01** if
+   that openSUSE ICF answers; then `{$SAP.APP.CONTROL}=1` on that host
+   only. Not on ME, not on other HANA boxes.
 4. ME: install the PowerShell snippet on as02/as01/me05, HostSync those
    hosts separately, set `{$SAP.CERT.HOST}` (e.g.
    `ch-sta-p-me05.sensirion.lokal`), then enable CONTROL on ME.

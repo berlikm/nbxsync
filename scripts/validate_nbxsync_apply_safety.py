@@ -555,6 +555,18 @@ def main() -> int:
         and 'Linux by SNMP' in sap_step,
         'apply-sap excludes Linux by agent / stock Linux by SNMP from SAP HANA',
     )
+    sap_st22 = _function_source(net_src, net_tree, '_assign_st22_macros_on_sh01_only') or ''
+    record(
+        'network_sap_st22_macros_on_sh01_only',
+        bool(sap_st22)
+        and 'ST22_HOST_MACROS' in sap_st22
+        and 'CANARY_HOST' in sap_st22
+        and 'DeviceRole' in sap_st22
+        and 'ST22_SECRET_MACROS' in sap_st22
+        and '_assign_st22_macros_on_sh01_only' in sap_step
+        and 'SAP.API.PASS' not in (sap or ''),
+        'Z_GET_ST22 URL macros on CH-STA-P-SH01 only; no password writes',
+    )
     record(
         'zerotouch_no_sap_cutover',
         'apply-sap' not in ztc_src and 'import_sap_templates' not in ztc_src,

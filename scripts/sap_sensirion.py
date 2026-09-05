@@ -233,6 +233,14 @@ ME_APP_MASTER_KEY = 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL
 ST22_FM = 'Z_GET_ST22'
 ST22_DEFAULT_PORT = '44301'
 ST22_DEFAULT_PATH = '/abapruntimeerror'
+# URL only — never user/pass. Assigned on device CH-STA-P-SH01, not the HANA role.
+ST22_HOST_MACROS = (
+    ('{$SAP.API.HOST}', CANARY_FQDN),
+    ('{$SAP.API.PORT}', ST22_DEFAULT_PORT),
+    ('{$SAP.API.PATH}', ST22_DEFAULT_PATH),
+)
+ST22_SECRET_MACROS = ('{$SAP.API.USER}', '{$SAP.API.PASS}')
+ST22_HOST_MACRO_NAMES = tuple(name for name, _value in ST22_HOST_MACROS)
 
 
 def app_master_key(flavor: str) -> str:
@@ -477,8 +485,8 @@ MACROS = (
     (
         '{$SAP.API.HOST}',
         '',
-        'LM system.displayname for Z_GET_ST22: ch-sta-p-sh01.sensirion.lokal '
-        '(openSUSE HANA). Empty skips ST22. Do not put a Zabbix host macro here.',
+        'Empty on this template. --apply-sap sets ch-sta-p-sh01.sensirion.lokal '
+        'on device CH-STA-P-SH01 only. Empty skips ST22.',
     ),
     (
         '{$SAP.API.PORT}',
@@ -697,9 +705,10 @@ Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
    system.displayname is {CANARY_FQDN} (openSUSE). The PowerShell ran
    on an LM collector *against* that Linux FQDN
    https://{CANARY_FQDN}:{ST22_DEFAULT_PORT}{ST22_DEFAULT_PATH}
-   ({ST22_FM}, sap.api.user / sap.api.pass). Zabbix calls it from the
-   Linux agent on SH01 when present — not from Windows ME. The LMS Groovy
-   that counts LogicMonitor alerts is not ported.
+   ({ST22_FM}, sap.api.user / sap.api.pass). --apply-sap writes the URL
+   macros on device {CANARY_HOST} only — not role SAP HANA, not ME.
+   User/pass stay operator secrets. The LMS Groovy that counts
+   LogicMonitor alerts is not ported.
 
 3. Certificate — agent web.certificate.get when an agent exists. Set
    {{$SAP.CERT.HOST}}. {{$SAP.CERT.CONTROL}}=0 until then.

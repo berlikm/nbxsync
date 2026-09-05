@@ -5427,6 +5427,10 @@ def _print_sap_plan(server, *, errors: list[str], apply: bool, zbx_names: list[s
     logger.info('  Linux TemplateRule excludes role SAP HANA (openSUSE OS = this pack SNMP)')
     logger.info('  Prune leftover Linux by SNMP / Linux by agent and the wrong SAP pack from those roles')
     logger.info('  Application triggers stay off until {$SAP.APP.CONTROL}=1')
+    logger.info(
+        '  Z_GET_ST22 URL macros on device %s only (not role SAP HANA). No user/pass writes',
+        _sap.CANARY_HOST,
+    )
     canary = Device.objects.filter(name__iexact=_sap.CANARY_HOST).first()
     if canary is None:
         logger.info('  Canary %s: not in NetBox — HostSync will be skipped', _sap.CANARY_HOST)
@@ -5495,6 +5499,36 @@ def _exclude_linux_os_agent_from_hana(server) -> None:
     logger.info('  %s → role SAP HANA', _sap.OS_LINUX_HOSTGROUP)
 
 
+def _assign_st22_macros_on_sh01_only(server) -> None:
+    """Z_GET_ST22 URL lives on CH-STA-P-SH01. Never on role SAP HANA / ME. No secrets."""
+    for role_name in _sap.SAP_ROLES:
+        role = DeviceRole.objects.filter(name=role_name).first()
+        if role is None:
+            continue
+        deleted, _ = M.ZabbixMacroAssignment.objects.filter(
+            zabbixmacro__macro__in=_sap.ST22_HOST_MACRO_NAMES + _sap.ST22_SECRET_MACROS,
+            assigned_object_type=ct(DeviceRole),
+            assigned_object_id=role.id,
+        ).delete()
+        if deleted:
+            logger.info('  PRUNED: ST22 macros from role %s', role.name)
+    canary = Device.objects.filter(name__iexact=_sap.CANARY_HOST).first()
+    if canary is None:
+        logger.info('  ST22 macros: %s not in NetBox — skipped', _sap.CANARY_HOST)
+        return
+    for macro_name, value in _sap.ST22_HOST_MACROS:
+        _upsert_object_macro_assignment(
+            server,
+            canary,
+            macro_name,
+            value,
+            mtype=ZabbixMacroTypeChoices.TEXT,
+            description=f'nwn:sap:{macro_name}',
+        )
+        logger.info('  %s=%s → device %s', macro_name, value, canary.name)
+    logger.info('  ST22 user/pass stay unset — operator secret on %s only', canary.name)
+
+
 def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
     """Assign HANA template on SAP HANA (SNMP) and ME template on SAP ME (AGENT)."""
     logger.info('=' * 60)
@@ -5542,6 +5576,7 @@ def _step_sap_nbxsync(server, imported: dict[str, tuple[int, str]]):
         logger.info('  %s → role %s', tpl.name, role.name)
         last = tpl
     _exclude_linux_os_agent_from_hana(server)
+    _assign_st22_macros_on_sh01_only(server)
     return last
 
 
@@ -5572,10 +5607,12 @@ def run_apply_sap() -> int:
         SyncHostJob(instance=canary).run()
     logger.info(
         'SAP pack written. %s on SAP HANA (SNMP OS, Linux by agent excluded), %s on SAP ME. '
+        'Z_GET_ST22 URL macros are on %s only. '
         'Application sapcontrol items stay silent until {$SAP.APP.CONTROL}=1 after an optional Host Agent UserParameter. '
         'HostSync was only %s (or skipped). Do not re-run zerotouch to refresh this pack.',
         _sap.TEMPLATE_NAME,
         _sap.ME_TEMPLATE_NAME,
+        _sap.CANARY_HOST,
         _sap.CANARY_HOST,
     )
     return 0

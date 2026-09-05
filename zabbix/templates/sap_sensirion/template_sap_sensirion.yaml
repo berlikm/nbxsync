@@ -31,9 +31,10 @@ zabbix_export:
            system.displayname is ch-sta-p-sh01.sensirion.lokal (openSUSE). The PowerShell ran
            on an LM collector *against* that Linux FQDN
            https://ch-sta-p-sh01.sensirion.lokal:44301/abapruntimeerror
-           (Z_GET_ST22, sap.api.user / sap.api.pass). Zabbix calls it from the
-           Linux agent on SH01 when present — not from Windows ME. The LMS Groovy
-           that counts LogicMonitor alerts is not ported.
+           (Z_GET_ST22, sap.api.user / sap.api.pass). --apply-sap writes the URL
+           macros on device CH-STA-P-SH01 only — not role SAP HANA, not ME.
+           User/pass stay operator secrets. The LMS Groovy that counts
+           LogicMonitor alerts is not ported.
 
         3. Certificate — agent web.certificate.get when an agent exists. Set
            {$SAP.CERT.HOST}. {$SAP.CERT.CONTROL}=0 until then.
@@ -115,7 +116,7 @@ zabbix_export:
           description: 'sapcontrol -host / SOAP peer. Empty = localhost (the agent box). Do not put a Zabbix host macro here.'
         - macro: '{$SAP.API.HOST}'
           value: ''
-          description: 'LM system.displayname for Z_GET_ST22: ch-sta-p-sh01.sensirion.lokal (openSUSE HANA). Empty skips ST22. Do not put a Zabbix host macro here.'
+          description: 'Empty on this template. --apply-sap sets ch-sta-p-sh01.sensirion.lokal on device CH-STA-P-SH01 only. Empty skips ST22.'
         - macro: '{$SAP.API.PORT}'
           value: 44301
           description: 'LM SAP Monitoring Interface HTTPS port (44301).'
