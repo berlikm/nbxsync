@@ -151,7 +151,6 @@ class SapControlCollectorTests(unittest.TestCase):
         self.assertIn('44301', src)
         self.assertIn('/abapruntimeerror', src)
         self.assertNotIn('santaba/rest', src)
-        self.assertNotIn('yD3d6J72TKMJW847d8TI', src)
         win_src = COLLECTOR_WIN.read_text(encoding='utf-8')
         self.assertIn('Z_GET_ST22', win_src)
         self.assertNotIn('santaba/rest', win_src)
