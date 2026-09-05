@@ -1,0 +1,1190 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 7c4e2b91a06f4d8e9b15c3a8d0e4f217
+      name: Templates/Applications
+  templates:
+    - uuid: eeba521f01b348ebaf61489646b7c7d2
+      template: SAP ME from Sensirion
+      name: SAP ME from Sensirion
+      description: |
+        Sensirion SAP ME pack (Windows AS Java). LogicMonitor parity from
+        zabbix/logicmonitor-assessment.md. Hosts like ch-sta-p-as02, ch-sta-d-as01.
+
+        This template is SAP ME only. SAP HANA is openSUSE — see SAP template from Sensirion.
+        No UCD-SNMP, no Linux UserParameter, no host IF/FS LLD.
+
+        1. OS — Windows by Zabbix agent (platform rule). CPU / memory / disks /
+           IP / TCP-UDP stay there. Do not duplicate those keys. Ping stays on
+           CG SAP Agent+SNMP.
+
+        2. Application — sapcontrol.exe via PowerShell UserParameter (SAP Host
+           Agent C:\Program Files\SAP\hostctrl). GetProcessList = jstart /
+           jcontrol GREEN/YELLOW. GetAlerts CCMS is usually empty on ME Java
+           (not ST22 / IDoc / qRFC). {$SAP.APP.CONTROL}=0 until the script is
+           installed.
+
+        3. jstart — LM Windows process check is proc.num[jstart.exe] on this
+           template (ch-sta-p-as02 / ch-sta-d-as01). Not the AS Java stub.
+
+        4. Certificate / Port — Windows agent web.certificate.get + SIMPLE 443.
+
+        SNMP SAPUSER on the CG is unused here until a Windows SNMP walk
+        proves it. Do not poll Linux Net-SNMP OIDs on these hosts.
+
+        Ungrouped LM DataSource_batchscript.powershell is the Windows ME vehicle,
+        replaced by the PowerShell sapcontrol snippet. Do not execute collector
+        scripts on the Zabbix proxy. Does not invent a Promonitor API.
+
+        Operator notes: zabbix/templates/sap_sensirion/SAPCONTROL.md.
+        Refresh with configure_nbxsync_network.py --apply-sap.
+      groups:
+        - name: Templates/Applications
+      macros:
+        - macro: '{$SAP.APP.CONTROL}'
+          value: 0
+          description: '1 enables sapcontrol heartbeat and threshold triggers. 0 = collect-first until the Host Agent UserParameter is installed and quiet.'
+        - macro: '{$SAP.INSTANCE}'
+          value: ''
+          description: 'sapstartsrv instance number (00). Empty = saphostctrl ListInstances, then 00/01/02.'
+        - macro: '{$SAP.SID}'
+          value: ''
+          description: 'SAP SID filter for ListInstances (HDB, MEP). Empty = every instance on the host.'
+        - macro: '{$SAP.CONTROL.HOST}'
+          value: ''
+          description: 'sapcontrol -host / SOAP peer. Empty = localhost (the agent box). Do not put a Zabbix host macro here.'
+        - macro: '{$SAP.APP.ABAP.MAX}'
+          value: 0
+          description: 'ABAP runtime-error count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.IDOC.MAX}'
+          value: 0
+          description: 'IDoc error count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.JOB.MAX}'
+          value: 0
+          description: 'Job alert count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.LOCKS.MAX}'
+          value: 0
+          description: 'Lock-entry count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.QRFC.IN.MAX}'
+          value: 0
+          description: 'qRFC inbound queue Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.QRFC.OUT.MAX}'
+          value: 0
+          description: 'qRFC outbound queue Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.SPOOL.MAX}'
+          value: 0
+          description: 'Spool error count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.SYSLOG.MAX}'
+          value: 0
+          description: 'Syslog alert count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.TRFC.MAX}'
+          value: 0
+          description: 'Transactional RFC error count Warning when CONTROL=1.'
+        - macro: '{$SAP.APP.UPDATE.MAX}'
+          value: 0
+          description: 'Update-request count Warning when CONTROL=1.'
+        - macro: '{$SAP.CERT.HOST}'
+          value: ''
+          description: 'TLS peer the Zabbix agent dials. Empty stays silent (CHECK_NOT_SUPPORTED). Set per host, e.g. the ICM FQDN.'
+        - macro: '{$SAP.CERT.PORT}'
+          value: 443
+          description: 'TLS port for web.certificate.get. LM SSL Certificate Expiration.'
+        - macro: '{$SAP.CERT.SNI}'
+          value: ''
+          description: 'SNI. Leave empty to send {$SAP.CERT.HOST}.'
+        - macro: '{$SAP.CERT.CONTROL}'
+          value: 0
+          description: '1 enables certificate expiry triggers after {$SAP.CERT.HOST} is set. 0 = collect-first.'
+        - macro: '{$SAP.CERT.WARN}'
+          value: 30d
+          description: 'Warn this long before the leaf certificate expires.'
+        - macro: '{$SAP.PORT.TCP}'
+          value: 443
+          description: 'LM Port check. SIMPLE from the assigned proxy to the host interface.'
+        - macro: '{$SAP.PORT.CONTROL}'
+          value: 0
+          description: '1 tickets when the TCP port is down. 0 = collect-first (LM Port was often unused).'
+      items:
+        - uuid: f60f92a59d1543e58c4e3857ebc340ba
+          name: SAP Control JSON
+          type: ZABBIX_PASSIVE
+          key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          delay: 1m
+          value_type: TEXT
+          history: 7d
+          trends: '0'
+          description: |
+            One sapcontrol snapshot from the Windows Zabbix agent already on SAP Agent+SNMP. UserParameter sap.sensirion[*] runs sap_sensirion.ps1 (Host Agent C:\Program Files\SAP\hostctrl\exe\sapcontrol.exe, then SOAP 5NN13). Empty {$SAP.INSTANCE} / {$SAP.SID} uses ListInstances. Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '{}'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '{}'
+          tags:
+            - tag: component
+              value: sap-application
+        - uuid: d8e5c218ba484c748f24c836a043555b
+          name: SAP Control heartbeat
+          type: DEPENDENT
+          key: sap.app.promonitor
+          delay: '0'
+          description: |
+            LM SAP / C_PROMONITOR session replacement. 1 when local sapcontrol answers. Not a Promonitor API.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.promonitor'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          valuemap:
+            name: Service state
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 142ad164e911452ea427fe9646efde8f
+              expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              name: 'SAP application: sapcontrol is down'
+              event_name: 'SAP application: sapcontrol is down'
+              priority: WARNING
+              description: |
+                CONTROL=1 after the Host Agent UserParameter works. Default 0 so a missing script does not page. last=0 covers CHECK_NOT_SUPPORTED; nodata covers a dead agent.
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 3382b833775b43f39f9f9ace432b16fd
+          name: Application server instance status
+          type: DEPENDENT
+          key: sap.app.instance.status
+          delay: '0'
+          description: |
+            LM Application Server Instance Status. sapcontrol GetProcessList: HANA hdb* / ABAP disp+work / ME jstart GREEN or YELLOW = 1.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.instance_status'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          valuemap:
+            name: Service state
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 938a3fece23243178cd1b663791d1f53
+              expression: '{$SAP.APP.CONTROL}=1 and last(/SAP ME from Sensirion/sap.app.instance.status)=0'
+              name: 'SAP application: Application server instance is down'
+              event_name: 'SAP application: Application server instance is down'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: a3d678d5dd894cf6a40e20882f803e73
+          name: ABAP runtime errors
+          type: DEPENDENT
+          key: sap.app.abap.errors
+          delay: '0'
+          description: |
+            LM ABAP Runtime Errors. CCMS GetAlerts (Shortdumps), not ST22 RFC. 0 on a HANA-only host.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.abap_errors'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 0b87d6245dd7446493444a875fe83782
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP ME from Sensirion/sap.app.abap.errors,15m)>{$SAP.APP.ABAP.MAX}'
+              name: 'SAP application: ABAP runtime errors'
+              event_name: 'SAP application: ABAP runtime errors'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: a46b24f1a65640d8856b8a1afba2afc8
+          name: IDoc errors
+          type: DEPENDENT
+          key: sap.app.idoc.errors
+          delay: '0'
+          description: |
+            LM IDoc Errors. CCMS GetAlerts, not EDIDS.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.idoc_errors'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: cf891967e74149799f8262728abdd20e
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP ME from Sensirion/sap.app.idoc.errors,15m)>{$SAP.APP.IDOC.MAX}'
+              name: 'SAP application: IDoc errors'
+              event_name: 'SAP application: IDoc errors'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: cabb242420a24161b2deed63ac2e6a7f
+          name: Job alerts
+          type: DEPENDENT
+          key: sap.app.job.alerts
+          delay: '0'
+          description: |
+            LM Job Alerts. CCMS GetAlerts, not SM37 RFC.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.job_alerts'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 3b2298b7fa244b32864c3125e622ddd4
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP ME from Sensirion/sap.app.job.alerts,15m)>{$SAP.APP.JOB.MAX}'
+              name: 'SAP application: Job alerts'
+              event_name: 'SAP application: Job alerts'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: d65bc2d1d1f14de395e3981093f85fc1
+          name: Lock entries
+          type: DEPENDENT
+          key: sap.app.locks
+          delay: '0'
+          description: |
+            LM Lock Entries. CCMS GetAlerts / enqueue, not SM12 RFC.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.locks'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 4851e2df3e804089891ff4065c5c6fee
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP ME from Sensirion/sap.app.locks,15m)>{$SAP.APP.LOCKS.MAX}'
+              name: 'SAP application: Lock entries'
+              event_name: 'SAP application: Lock entries'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 0fbd9de033f546d093bd0f5f53e173b6
+          name: qRFC inbound queue
+          type: DEPENDENT
+          key: sap.app.qrfc.in
+          delay: '0'
+          description: |
+            LM qRFC Monitor Inbound Queue. CCMS GetAlerts, not SMQ2.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.qrfc_in'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 0064af37afa94bf996383e0c1f7df74e
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP ME from Sensirion/sap.app.qrfc.in,15m)>{$SAP.APP.QRFC.IN.MAX}'
+              name: 'SAP application: qRFC inbound queue'
+              event_name: 'SAP application: qRFC inbound queue'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 62423692ad9a4753a6cef816a6f22f5f
+          name: qRFC outbound queue
+          type: DEPENDENT
+          key: sap.app.qrfc.out
+          delay: '0'
+          description: |
+            LM qRFC Monitor Outbound Queue. CCMS GetAlerts, not SMQ1.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.qrfc_out'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 80a11670db6f449fb36e25e19fc43e91
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP ME from Sensirion/sap.app.qrfc.out,15m)>{$SAP.APP.QRFC.OUT.MAX}'
+              name: 'SAP application: qRFC outbound queue'
+              event_name: 'SAP application: qRFC outbound queue'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 2ac1f29011554e029a596d49209096f9
+          name: RFC status
+          type: DEPENDENT
+          key: sap.app.rfc.status
+          delay: '0'
+          description: |
+            LM RFC Status. gwrd GREEN/YELLOW on ABAP. HANA/Java have no gateway — 1 when the instance is up. Not SM59.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.rfc_status'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          valuemap:
+            name: Service state
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: c3278b1325b64b6db07fcd2c420a0abd
+              expression: '{$SAP.APP.CONTROL}=1 and last(/SAP ME from Sensirion/sap.app.rfc.status)=0'
+              name: 'SAP application: RFC is down'
+              event_name: 'SAP application: RFC is down'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: f3aacf8f82284cc390c94c1ce172122e
+          name: Spool errors
+          type: DEPENDENT
+          key: sap.app.spool.errors
+          delay: '0'
+          description: |
+            LM Spool Errors. CCMS GetAlerts, not SP01.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.spool_errors'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 9272abe521e2417099c2c43369532b82
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP ME from Sensirion/sap.app.spool.errors,15m)>{$SAP.APP.SPOOL.MAX}'
+              name: 'SAP application: Spool errors'
+              event_name: 'SAP application: Spool errors'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: d58783ff11a5464086954d727863fb34
+          name: SAP syslog alerts
+          type: DEPENDENT
+          key: sap.app.syslog.alerts
+          delay: '0'
+          description: |
+            LM Syslog. CCMS GetAlerts, not SM21 RFC.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.syslog_alerts'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 02af03953951476cb1ce0db728a1036e
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP ME from Sensirion/sap.app.syslog.alerts,15m)>{$SAP.APP.SYSLOG.MAX}'
+              name: 'SAP application: Syslog alerts'
+              event_name: 'SAP application: Syslog alerts'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 60e34d3677054796af892e87b3c9cfc0
+          name: Transactional RFC errors
+          type: DEPENDENT
+          key: sap.app.trfc.errors
+          delay: '0'
+          description: |
+            LM Transactional RFC. CCMS GetAlerts, not SM58.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.trfc_errors'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 8859ac15da724c71807b5fef51c07fac
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP ME from Sensirion/sap.app.trfc.errors,15m)>{$SAP.APP.TRFC.MAX}'
+              name: 'SAP application: Transactional RFC errors'
+              event_name: 'SAP application: Transactional RFC errors'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: d41ad32ee97f4923a324c9d5099ad95c
+          name: Update requests
+          type: DEPENDENT
+          key: sap.app.update.requests
+          delay: '0'
+          description: |
+            LM Update Requests. CCMS GetAlerts, not SM13.
+            JSONPath from the sapcontrol master. Not SNMP.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.update_requests'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 93a95b6be5804365b02de5a0ee1f724d
+              expression: '{$SAP.APP.CONTROL}=1 and min(/SAP ME from Sensirion/sap.app.update.requests,15m)>{$SAP.APP.UPDATE.MAX}'
+              name: 'SAP application: Update requests'
+              event_name: 'SAP application: Update requests'
+              priority: AVERAGE
+              description: |
+                LM application datasource via sapcontrol. Disabled while CONTROL=0. Ticket, not SMS, until a quiet baseline.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 46e2b85d708143a4a39abc9c73d17b6d
+          name: jstart process count
+          type: ZABBIX_PASSIVE
+          key: 'proc.num[jstart.exe]'
+          delay: 1m
+          description: |
+            LM Windows jstart process check on SAP ME (ch-sta-p-as02 / ch-sta-d-as01). Windows by agent proc.num. Complements sapcontrol GetProcessList. Not linked on openSUSE HANA.
+          tags:
+            - tag: component
+              value: sap-application
+          triggers:
+            - uuid: 82730d657e544463a76daacd297a30b9
+              expression: '{$SAP.APP.CONTROL}=1 and last(/SAP ME from Sensirion/proc.num[jstart.exe])=0'
+              name: 'SAP application: jstart is not running'
+              event_name: 'SAP application: jstart is not running'
+              priority: AVERAGE
+              description: |
+                ME Java node is down when jstart.exe is not running. CONTROL=0 until quiet.
+              dependencies:
+                - name: 'SAP application: sapcontrol is down'
+                  expression: '{$SAP.APP.CONTROL}=1 and (nodata(/SAP ME from Sensirion/sap.app.promonitor,30m)=1 or last(/SAP ME from Sensirion/sap.app.promonitor)=0)'
+              tags:
+                - tag: scope
+                  value: sap-application
+        - uuid: 779bdb49521f49c1a2a690d12f5749f6
+          name: TLS certificate JSON
+          type: ZABBIX_PASSIVE
+          key: 'web.certificate.get[{$SAP.CERT.HOST},{$SAP.CERT.PORT},{$SAP.CERT.SNI}]'
+          delay: 1h
+          value_type: TEXT
+          history: 7d
+          trends: '0'
+          description: |
+            LM SSL Certificate Expiration. Zabbix agent on the SAP host (Agent :10050 already on SAP Agent+SNMP). Set {$SAP.CERT.HOST} to the ICM/HTTPS name. Empty host is caught so the item does not inflate unsupported count.
+          preprocessing:
+            - type: CHECK_NOT_SUPPORTED
+              parameters:
+                - '{}'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '{}'
+          tags:
+            - tag: component
+              value: certificate
+        - uuid: 42129a3a15d743ca91edf6718483170e
+          name: TLS certificate not after
+          type: DEPENDENT
+          key: sap.host.cert.not_after
+          delay: '0'
+          value_type: UNSIGNED
+          units: unixtime
+          description: $.x509.not_after from the agent certificate JSON.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.x509.not_after'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'web.certificate.get[{$SAP.CERT.HOST},{$SAP.CERT.PORT},{$SAP.CERT.SNI}]'
+          tags:
+            - tag: component
+              value: certificate
+          triggers:
+            - uuid: 2416768b9c6b457d87a58b83584e9b52
+              expression: '{$SAP.CERT.CONTROL}=1 and last(/SAP ME from Sensirion/sap.host.cert.not_after)>0 and last(/SAP ME from Sensirion/sap.host.cert.not_after)<=now()'
+              name: 'SAP host: TLS certificate expired'
+              event_name: 'SAP host: TLS certificate expired'
+              priority: AVERAGE
+              description: |
+                Set {$SAP.CERT.HOST} and {$SAP.CERT.CONTROL}=1. Agent check, not Promonitor.
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: f124af354ebb4976859f84d42d71d8ee
+              expression: '{$SAP.CERT.CONTROL}=1 and last(/SAP ME from Sensirion/sap.host.cert.not_after)>now() and last(/SAP ME from Sensirion/sap.host.cert.not_after)-now()<{$SAP.CERT.WARN}'
+              name: 'SAP host: TLS certificate expires soon'
+              event_name: 'SAP host: TLS certificate expires soon'
+              priority: WARNING
+              description: |
+                Renew the leaf certificate before {$SAP.CERT.WARN}.
+              dependencies:
+                - name: 'SAP host: TLS certificate expired'
+                  expression: '{$SAP.CERT.CONTROL}=1 and last(/SAP ME from Sensirion/sap.host.cert.not_after)>0 and last(/SAP ME from Sensirion/sap.host.cert.not_after)<=now()'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: d1fda3a0e3c6468989be416bb97b827a
+          name: TLS certificate days remaining
+          type: CALCULATED
+          key: sap.host.cert.days
+          delay: 1h
+          value_type: FLOAT
+          units: d
+          params: '(last(//sap.host.cert.not_after)>0)*(last(//sap.host.cert.not_after)-now())/86400'
+          description: 0 while {$SAP.CERT.HOST} is unset.
+          tags:
+            - tag: component
+              value: certificate
+        - uuid: a2de5809813841b6b56731fae9dfc2f9
+          name: TCP port
+          type: SIMPLE
+          key: 'net.tcp.service[tcp,,{$SAP.PORT.TCP}]'
+          delay: 1m
+          description: |
+            LM Port. SIMPLE from the assigned proxy to the host interface (no connection macro in the key). Default 443 next to the certificate check. CONTROL=0 because the LM Port row was often unused.
+          valuemap:
+            name: Service state
+          tags:
+            - tag: component
+              value: health
+          triggers:
+            - uuid: 7abb00b09ad243829715799f804313f7
+              expression: '{$SAP.PORT.CONTROL}=1 and max(/SAP ME from Sensirion/net.tcp.service[tcp,,{$SAP.PORT.TCP}],#3)=0'
+              name: 'SAP host: TCP port is down'
+              event_name: 'SAP host: TCP port is down'
+              priority: AVERAGE
+              description: |
+                Not ICMP. ICMP High stays on the SAP Agent+SNMP CG.
+              tags:
+                - tag: scope
+                  value: availability
+      dashboards:
+        - uuid: f1ef97646c1b483994c13ac2f7b3eeb9
+          name: Health
+          pages:
+            - name: Overview
+              widgets:
+                - type: item
+                  name: SAP Control
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.promonitor
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SSNMP
+                - type: item
+                  name: Instance
+                  x: '12'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.instance.status
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SCPU
+                - type: item
+                  name: jstart
+                  x: '24'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: 'proc.num[jstart.exe]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SMEM
+                - type: item
+                  name: RFC
+                  x: '36'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.rfc.status
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SLOAD
+                - type: item
+                  name: Cert days
+                  x: '48'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.host.cert.days
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SCERT
+                - type: item
+                  name: TCP port
+                  x: '60'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: 'net.tcp.service[tcp,,{$SAP.PORT.TCP}]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SPORT
+                - type: problems
+                  name: Problems
+                  y: '4'
+                  width: '72'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: SPROB
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+            - name: Application
+              widgets:
+                - type: item
+                  name: SAP Control
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.promonitor
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SPROMO
+                - type: item
+                  name: Instance
+                  x: '12'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.instance.status
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SINST
+                - type: item
+                  name: RFC
+                  x: '24'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.rfc.status
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SRFC
+                - type: item
+                  name: ABAP errors
+                  x: '36'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.abap.errors
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SABAP
+                - type: item
+                  name: IDoc errors
+                  x: '48'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.idoc.errors
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SIDOC
+                - type: item
+                  name: Job alerts
+                  x: '60'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.job.alerts
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SJOB
+                - type: item
+                  name: qRFC in
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.qrfc.in
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SQRIN
+                - type: item
+                  name: qRFC out
+                  x: '12'
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.qrfc.out
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SQROUT
+                - type: item
+                  name: tRFC
+                  x: '24'
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.trfc.errors
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: STRFC
+                - type: item
+                  name: Locks
+                  x: '36'
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.locks
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SLOCK
+                - type: item
+                  name: Spool
+                  x: '48'
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.spool.errors
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SSPOOL
+                - type: item
+                  name: Updates
+                  x: '60'
+                  y: '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.update.requests
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SUPD
+                - type: item
+                  name: Syslog
+                  y: '8'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: sap.app.syslog.alerts
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SLOG
+                - type: item
+                  name: jstart
+                  x: '12'
+                  y: '8'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: SAP ME from Sensirion
+                        key: 'proc.num[jstart.exe]'
+                    - type: INTEGER
+                      name: show.0
+                      value: '2'
+                    - type: INTEGER
+                      name: value_bold
+                      value: '1'
+                    - type: INTEGER
+                      name: value_size
+                      value: '28'
+                    - type: STRING
+                      name: reference
+                      value: SJST
+                - type: problems
+                  name: Application problems
+                  x: '24'
+                  y: '8'
+                  width: '48'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: SAPPROB
+                    - type: INTEGER
+                      name: show
+                      value: '3'
+                    - type: STRING
+                      name: tags.0.tag
+                      value: component
+                    - type: STRING
+                      name: tags.0.value
+                      value: sap-application
+      valuemaps:
+        - uuid: 1cb1921e8b67439881db7819c09d4072
+          name: Service state
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up

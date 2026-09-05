@@ -371,7 +371,8 @@ Set each template’s interface requirement (Agent / SNMP / ANY) to match the tr
 | Tableau Bridge by Zabbix agent `(stub)` | Device Role Tableau | Assign if the template exists on the Zabbix server |
 | CellMap by Zabbix agent `(stub)` | Device Role CellMap | Assign if the template exists |
 | Oracle by Zabbix agent 2 | Device Role Database | Also tag rule §6.2 |
-| SAP template from Sensirion | Device Role SAP ME, SAP HANA | Import with `--apply-sap`. Host SNMP + 64-bit IF + agent `web.certificate.get` (set `{$SAP.CERT.HOST}` per host). Application rows are sapcontrol dependents (install Host Agent UserParameter on the SAP host; `--apply-sap` cannot push it). Interface req SNMP (agent IF already from Linux by agent + CG). Do not also assign Linux by SNMP. |
+| SAP template from Sensirion | Device Role SAP HANA (openSUSE) | Import with `--apply-sap`. Host UCD SNMP + sapcontrol Python UserParameter + `web.certificate.get`. Interface req SNMP. Do not also assign Linux by SNMP. |
+| SAP ME from Sensirion | Device Role SAP ME (Windows) | Same `--apply-sap`. No UCD SNMP. PowerShell sapcontrol + `proc.num[jstart.exe]` + cert. Interface req AGENT. OS stays on Windows by agent. |
 | Acronis Cyber Protect Cloud by HTTP | Device Role Acronis Management | Assign if the template exists |
 | SCCM by Zabbix agent `(stub)` | Device Role SCCM | Assign if the template exists |
 | Remote Zabbix proxy health | Device Role Zabbix Proxy | ICMP comes from the Agent Monitoring CG (§6.4) |
@@ -687,7 +688,8 @@ Keep Site / Site Group inheritance **after** role and platform in the inheritanc
 |---|---|---|---|---|
 | Linux server (role Server) | Agent Monitoring (Site Group) | Linux by agent + ICMP Ping (+ Dell iDRAC by SNMP if Dell w/ oob_ip) | Agent :10050 @ primary | Sites/CH/…, Roles/Server, OS/Linux |
 | Linux or Windows VM | Agent Monitoring (from Site Group) | OS by agent (Template Rule) + ICMP Ping | Agent :10050 | Sites/CH/…, Roles/…, OS/… |
-| SAP HANA / SAP ME | **SAP Agent+SNMP** | Linux by agent + **SAP template from Sensirion** + ICMP Ping | Agent :10050 + SNMP `SAPUSER` MD5/DES | Sites/…, Roles/SAP HANA or SAP ME, OS/Linux |
+| SAP HANA (openSUSE) | **SAP Agent+SNMP** | Linux by agent + **SAP template from Sensirion** + ICMP Ping | Agent :10050 + SNMP `SAPUSER` MD5/DES | Sites/…, Roles/SAP HANA, OS/Linux |
+| SAP ME (Windows) | **SAP Agent+SNMP** | Windows by agent + **SAP ME from Sensirion** + ICMP Ping | Agent :10050 + SNMP IF unused until walked | Sites/…, Roles/SAP ME, OS/Windows |
 | Host with tag `snmp` only | SNMP Monitoring (by tag) via tag | Linux or Windows by SNMP + ICMP Ping | SNMP `MONITORING-LINUX` | Sites/CH/…, Roles/…, OS/… |
 | EXOS Switch Core/Dist/Mgmt | SNMP Monitoring | Extreme EXOS by SNMP (+ role IFALIAS macros) | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |
 | VOSS Switch Core/Access | SNMP Monitoring | Extreme VOSS by SNMP (**not** Network Generic) + role IFALIAS | SNMP `MONITORING` MD5/DES | Sites/CH/…, Roles/Switch …, OS/Network |

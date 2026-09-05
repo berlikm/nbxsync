@@ -45,6 +45,16 @@ NOTSUPPORTED = 'ZBX_NOTSUPPORTED'
 TIMEOUT_SEC = 8
 HOSTCTRL_SAPCONTROL = '/usr/sap/hostctrl/exe/sapcontrol'
 HOSTCTRL_SAPHOSTCTRL = '/usr/sap/hostctrl/exe/saphostctrl'
+WIN_SAPCONTROL = (
+    r'C:\Program Files\SAP\hostctrl\exe\sapcontrol.exe',
+    r'C:\usr\sap\hostctrl\exe\sapcontrol.exe',
+    r'C:\Program Files (x86)\SAP\hostctrl\exe\sapcontrol.exe',
+)
+WIN_SAPHOSTCTRL = (
+    r'C:\Program Files\SAP\hostctrl\exe\saphostctrl.exe',
+    r'C:\usr\sap\hostctrl\exe\saphostctrl.exe',
+    r'C:\Program Files (x86)\SAP\hostctrl\exe\saphostctrl.exe',
+)
 SOAP_NS = 'urn:SAPControl'
 
 METRIC_KEYS = (
@@ -445,17 +455,27 @@ def _cli_ok(text):
 
 
 def _which(path):
-    if path and os.path.isfile(path) and os.access(path, os.X_OK):
+    if not path or not os.path.isfile(path):
+        return None
+    if os.name == 'nt' or os.access(path, os.X_OK):
         return path
     return None
 
 
 def find_sapcontrol():
-    return _which(HOSTCTRL_SAPCONTROL) or shutil.which('sapcontrol')
+    for path in (HOSTCTRL_SAPCONTROL,) + WIN_SAPCONTROL:
+        found = _which(path)
+        if found:
+            return found
+    return shutil.which('sapcontrol.exe' if os.name == 'nt' else 'sapcontrol')
 
 
 def find_saphostctrl():
-    return _which(HOSTCTRL_SAPHOSTCTRL) or shutil.which('saphostctrl')
+    for path in (HOSTCTRL_SAPHOSTCTRL,) + WIN_SAPHOSTCTRL:
+        found = _which(path)
+        if found:
+            return found
+    return shutil.which('saphostctrl.exe' if os.name == 'nt' else 'saphostctrl')
 
 
 def run_cmd(argv, timeout=TIMEOUT_SEC):
@@ -474,7 +494,7 @@ def run_cmd(argv, timeout=TIMEOUT_SEC):
 
 def _prefix_cmds(binary):
     prefixes = [[]]
-    if os.geteuid() != 0:
+    if os.name != 'nt' and os.geteuid() != 0:
         prefixes.append(['sudo', '-n', '-u', 'sapadm'])
         prefixes.append(['sudo', '-n'])
     out = []

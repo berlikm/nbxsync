@@ -34,9 +34,10 @@ SQL contract. Host RAM/CPU is not HANA allocation.
 
 ## Host / OS
 
-SAP hosts already get **Linux by Zabbix agent** (platform rule) and **ICMP
-Ping** (SAP Agent+SNMP CG). This template adds the LM `SAPUSER` SNMP plane
-plus the certificate/port extras that stock Linux-by-agent does not have.
+**SAP HANA** (openSUSE) already gets **Linux by Zabbix agent**. **SAP ME**
+(Windows) already gets **Windows by Zabbix agent**. Both get **ICMP Ping**
+from CG SAP Agent+SNMP. Only the HANA template adds the LM `SAPUSER` UCD
+SNMP plane (SH01 probe). The ME template does not poll Linux OIDs.
 
 | LM datasource | Where it lives | Notes |
 |---|---|---|
@@ -55,8 +56,9 @@ plus the certificate/port extras that stock Linux-by-agent does not have.
 | System Level IP Stats | Linux by agent | Not duplicated |
 | TCP UDP stats | Linux by agent | Not duplicated |
 
-`WinProcessStats_jstart` on ch-sta-p-as02 / ch-sta-d-as01 is the **AS Java**
-stub, not this HANA / ME pack.
+`WinProcessStats_jstart` on ch-sta-p-as02 / ch-sta-d-as01 **is SAP ME**
+(Windows AS Java). It lives on **SAP ME from Sensirion** as
+`proc.num[jstart.exe]`. Do not put it on openSUSE HANA.
 
 ## SSL certificate — Zabbix agent, not Promonitor
 
@@ -85,7 +87,7 @@ that method. Do not clone Groovy/PowerShell into Zabbix.
 | `DataSource_script.groovy` | Groovy script from the collector | Was the Promonitor/DNUS vehicle. Replaced by local sapcontrol |
 | `DataSource_batchscript.groovy` | Groovy batch (multi-instance) | Same. `{$SAP.INSTANCE}` / ListInstances. Do not add agent remote commands |
 | `DataSource_script.others` | Other collector scripts | Same sapcontrol path |
-| `DataSource_batchscript.powershell` | PowerShell batch | Windows **collector** capability. SH01 is Linux Net-SNMP; not a SAP HANA/ME item |
+| `DataSource_batchscript.powershell` | PowerShell batch | Windows **SAP ME** vehicle. Replaced by `sap_sensirion.ps1` on the ME host. Not for openSUSE HANA |
 | `DataSource_webpage` | Collector HTTP GET | Estate website checks are still a gap (`logicmonitor-assessment.md` §4). SAP ICM reachability is the agent cert + SIMPLE port, not a invented URL |
 | `DataSource_dns` | Collector DNS lookup | Collector self-test. Not a SAP application metric. Linux/resolver stays on the OS agent if needed |
 

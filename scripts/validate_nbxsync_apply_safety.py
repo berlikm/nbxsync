@@ -535,12 +535,14 @@ def main() -> int:
     )
     sap_step = _function_source(net_src, net_tree, '_step_sap_nbxsync') or ''
     record(
-        'network_sap_assigns_snmp_on_sap_roles',
+        'network_sap_assigns_os_specific_packs',
         'HostInterfaceRequirementChoices.SNMP' in sap_step
+        and 'HostInterfaceRequirementChoices.AGENT' in sap_step
         and 'SAP HANA' in sap_step
         and 'SAP ME' in sap_step
+        and 'ME_TEMPLATE_NAME' in sap_step
         and 'icmpping' not in sap_step,
-        'roles SAP HANA / SAP ME get the SAP template with SNMP req',
+        'SAP HANA gets the SNMP pack; SAP ME gets the AGENT pack',
     )
     record(
         'zerotouch_no_sap_cutover',

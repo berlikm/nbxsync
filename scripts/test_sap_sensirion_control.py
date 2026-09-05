@@ -10,7 +10,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 COLLECTOR = ROOT / 'zabbix/externalscripts/sap_sensirion.py'
+COLLECTOR_WIN = ROOT / 'zabbix/externalscripts/sap_sensirion.ps1'
 USERPARAMETER = ROOT / 'zabbix/userparameters/sap_sensirion.conf'
+USERPARAMETER_WIN = ROOT / 'zabbix/userparameters/sap_sensirion.win.conf'
 
 HANA_CLI = """\
 05.09.2026 17:00:00
@@ -128,10 +130,17 @@ class SapControlCollectorTests(unittest.TestCase):
 
     def test_files_ship_in_repo(self):
         self.assertTrue(COLLECTOR.is_file())
+        self.assertTrue(COLLECTOR_WIN.is_file())
         self.assertTrue(USERPARAMETER.is_file())
+        self.assertTrue(USERPARAMETER_WIN.is_file())
         conf = USERPARAMETER.read_text(encoding='utf-8')
         self.assertIn('UserParameter=sap.sensirion[*]', conf)
         self.assertNotIn('system.run', conf)
+        win = USERPARAMETER_WIN.read_text(encoding='utf-8')
+        self.assertIn('UserParameter=sap.sensirion[*]', win)
+        self.assertIn('sap_sensirion.ps1', win)
+        self.assertNotIn('system.run', win)
+        self.assertNotIn('system.run', COLLECTOR_WIN.read_text(encoding='utf-8'))
         src = COLLECTOR.read_text(encoding='utf-8')
         self.assertNotIn('verify=False', src)
         self.assertNotIn('system.run', src)

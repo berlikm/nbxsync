@@ -1,78 +1,71 @@
-# SAP application collection — use what is already on the host
+# SAP collection — openSUSE HANA vs Windows ME
 
-DNUS / Promonitor is gone. Do not invent a Promonitor REST API and do not
-run Groovy on the Zabbix proxy. Every Sensirion SAP HANA and SAP ME host
-already has the stack Promonitor was wrapping.
+DNUS / Promonitor is gone. The estate is two operating systems. Do not put
+Linux Net-SNMP (UCD `2021`) on Windows ME, and do not put `jstart.exe` on
+openSUSE HANA.
 
-## What is already there
+| Role | OS | Template | OS agent (already) | Application |
+|---|---|---|---|---|
+| **SAP HANA** | openSUSE | `SAP template from Sensirion` | Linux by Zabbix agent (SUSE matches the Linux rule) | `sapcontrol` via Python UserParameter (`/usr/sap/hostctrl`) |
+| **SAP ME** | Windows | `SAP ME from Sensirion` | Windows by Zabbix agent | `sapcontrol.exe` via PowerShell + `proc.num[jstart.exe]` |
 
-| Already on the box | Use it for |
-|---|---|
-| SAP Host Agent `/usr/sap/hostctrl` (`sapcontrol`, `saphostctrl`) | Instance list + process list + CCMS alerts |
-| sapstartsrv HTTP `5{NN}13` / HTTPS `5{NN}14` | Same SOAP (`urn:SAPControl`) if the CLI needs sudo |
-| Zabbix agent :10050 (CG **SAP Agent+SNMP**) | Local UserParameter — no extra hop, no `{HOST.CONN}` |
-| SNMPv3 `SAPUSER` MD5/DES | Host IF / UCD / filesystems only (SH01 probe: Linux Net-SNMP) |
-| Linux by Zabbix agent | CPU cores, disk IO, IP / TCP-UDP. Do not duplicate those keys |
-| ICMP Ping on the SAP CG | Ping. Do not nest `icmpping` here |
-| `web.certificate.get` | ICM / HTTPS leaf expiry |
+CG **SAP Agent+SNMP** stays one dual-plane CG (Agent :10050 + `SAPUSER`
+MD5/DES) on both roles. ICMP Ping stays on that CG. The SNMP interface on
+ME is unused until someone walks a Windows ME box — do not poll UCD there.
 
-`--apply-sap` cannot push the UserParameter. Copy the script and the
-agent snippet onto each SAP host, then HostSync.
+`--apply-sap` cannot push UserParameters. HostSync only `CH-STA-P-SH01`.
 
-| File | Install on the SAP host |
+## SAP HANA — openSUSE
+
+Canary `CH-STA-P-SH01` is Linux Net-SNMP (`1.3.6.1.4.1.8072.3.2.10`). Host
+IF / UCD / filesystems belong on the HANA template. Host RAM/CPU is **not**
+HANA allocation. No `hdbsql`.
+
+| File | Install on the HANA host |
 |---|---|
 | [`../../externalscripts/sap_sensirion.py`](../../externalscripts/sap_sensirion.py) | `/usr/lib/zabbix/externalscripts/sap_sensirion.py` (0755) |
 | [`../../userparameters/sap_sensirion.conf`](../../userparameters/sap_sensirion.conf) | `/etc/zabbix/zabbix_agentd.d/sap_sensirion.conf` |
 
-Agent `Timeout=15`. sudoers (no password in the repo):
+Agent `Timeout=15`. sudoers:
 
 ```
 Defaults:zabbix !requiretty
 zabbix ALL=(sapadm) NOPASSWD: /usr/sap/hostctrl/exe/sapcontrol, /usr/sap/hostctrl/exe/saphostctrl
 ```
 
-Check on the host: `zabbix_agentd -t 'sap.sensirion[json,,]'`.
+`zabbix_agentd -t 'sap.sensirion[json,,]'` — JSON `kind` should be `hana`.
 
-## Think like Basis: HANA vs ME vs ABAP
+## SAP ME — Windows AS Java
 
-**`CH-STA-P-SH01` is a HANA box.** `GetProcessList` is the real instance
-status: `hdbdaemon`, `hdbnameserver`, `hdbindexserver`, … GREEN/YELLOW = up,
-GRAY/RED = down. Host RAM/CPU from SNMP is **not** HANA allocation. This
-collector does **not** log on with `hdbsql` — we have no HANA SQL contract.
+`ch-sta-p-as02` / `ch-sta-d-as01` are the LM Windows `jstart` hosts. That
+**is** SAP ME, not a leftover stub. OS CPU/memory/disks stay on **Windows by
+Zabbix agent**. LM `DataSource_batchscript.powershell` was the Windows
+collector vehicle; the replacement is a PowerShell UserParameter calling
+the Host Agent that is already on a NetWeaver Java box:
 
-**SAP ME** is NetWeaver Java (and sometimes ABAP in front). Instance status
-is `jstart` / `jcontrol` (and `disp+work` when an ABAP stack is on the same
-host). `WinProcessStats_jstart` on ch-sta-p-as02 / ch-sta-d-as01 is the
-Windows AS Java stub — not this pack.
+`C:\Program Files\SAP\hostctrl\exe\sapcontrol.exe`
 
-**RFC status** here is the **gateway process** (`gwrd`), not SM59 destination
-health. A HANA-only or Java-only instance has no `gwrd`; the item is 1 when
-the instance is up.
+| File | Install on the ME host |
+|---|---|
+| [`../../externalscripts/sap_sensirion.ps1`](../../externalscripts/sap_sensirion.ps1) | `C:\Program Files\Zabbix Agent\externalscripts\sap_sensirion.ps1` |
+| [`../../userparameters/sap_sensirion.win.conf`](../../userparameters/sap_sensirion.win.conf) | agent UserParameter include dir |
 
-**CCMS `GetAlerts`** is how Promonitor often filled ST22 / IDoc / job /
-lock / qRFC / spool / syslog / tRFC / update **when those CCMS nodes
-exist**. On a HANA appliance they usually do not — counts stay 0. That is
-honest, not a failed poll. Those named LM rows are **not** RFC_READ_TABLE
-and not SM13/SM21/SM37/SM58/SM12/EDIDS until someone gives a real SAP
-account and a written RFC/`hdbsql` contract.
+`zabbix_agentd.exe -t sap.sensirion[json,,]` — JSON `kind` should be `java`.
+`proc.num[jstart.exe]` is the LM Windows process check.
+
+ME Java has no ST22 / IDoc / qRFC / SM13. Those `sap.app.*` counts stay 0
+unless CCMS nodes exist. Instance status is `jstart` / `jcontrol`. RFC is
+1 while the instance is up (no `gwrd`).
 
 ## Macros
 
-| Macro | Default | Meaning |
-|---|---|---|
-| `{$SAP.INSTANCE}` | empty | sapstartsrv instance number. Empty = `saphostctrl ListInstances`, then 00/01/02 |
-| `{$SAP.SID}` | empty | Filter ListInstances (HDB, MEP, …) |
-| `{$SAP.CONTROL.HOST}` | empty | localhost. Only set if sapcontrol must talk to another hostname on the box |
-| `{$SAP.APP.CONTROL}` | 0 | 1 tickets heartbeat / thresholds after Latest data is quiet |
-
-Master item: `sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]`.
-Dependents keep the LM `sap.app.*` keys.
+Same application / cert / port macros on both templates. HANA also has the
+UCD / IF / FS macros. `{$SAP.APP.CONTROL}=0` until Latest data is quiet.
 
 ## Operator order
 
-1. Install Host Agent UserParameter on the canary (`CH-STA-P-SH01`).
-2. `configure_nbxsync_network.py --apply-sap` (no zerotouch, no fleet HostSync).
-3. Targeted HostSync of `CH-STA-P-SH01` if it exists and is not onboarding.
-4. Confirm Latest data: heartbeat 1, `kind` in the JSON is `hana` on SH01.
-5. Set `{$SAP.CERT.HOST}` to the ICM / HTTPS name; then `{$SAP.CERT.CONTROL}=1`.
-6. Only then `{$SAP.APP.CONTROL}=1`.
+1. HANA canary: install the Linux UserParameter on `CH-STA-P-SH01`.
+2. `--apply-sap` (no zerotouch, no fleet HostSync).
+3. Confirm HANA Latest data; set `{$SAP.CERT.HOST}`; then `{$SAP.APP.CONTROL}=1` on HANA only.
+4. ME: install the PowerShell snippet on as02/as01, HostSync those hosts
+   separately, then enable CONTROL on ME.

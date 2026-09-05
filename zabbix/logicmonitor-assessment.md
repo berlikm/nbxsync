@@ -10,7 +10,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 |---|---|---|---|---|
 | `MONITORING` (global) | MD5/DES | Switches, APs, firewalls, network | `SNMP Monitoring` CG → MONITORING/MD5/DES | ✅ Covered |
 | `MONITORING-LINUX` (group override) | SHA/AES | Linux servers (SNMP) | `SNMP Monitoring (Linux)` CG → MONITORING-LINUX/SHA/AES | ✅ CG built (hosts need tag `snmp`) |
-| `SAPUSER` (group override) | MD5/DES | SAP systems | CG **SAP Agent+SNMP** → Agent + SAPUSER/MD5/DES on roles SAP HANA / SAP ME; **SAP template from Sensirion** host SNMP | ⚠️ Transport validated; template built — [probe](notes/sap-snmp-walk.md), [template](templates/sap_sensirion/LM_PARITY.md). Operator: `--apply-sap` then targeted HostSync of `CH-STA-P-SH01` |
+| `SAPUSER` (group override) | MD5/DES | SAP systems | CG **SAP Agent+SNMP** on SAP HANA / SAP ME. Host SNMP items are **HANA/openSUSE only** (SH01 probe). ME is Windows — no UCD | ⚠️ HANA transport validated; ME Windows SNMP not walked — [probe](notes/sap-snmp-walk.md), [sapcontrol](templates/sap_sensirion/SAPCONTROL.md) |
 | `MONITORING-DELL` (resource override) | SHA/AES | CN-SHA-P-STOD (Dell storage) | HPE MSA 2060 Storage by HTTP template (REST API, not SNMP); Device Type macros `{$HPE.MSA.API.HOST/USERNAME/PASSWORD}` (§11.3) | ✅ Covered |
 | `LogicMonitor` (resource override) | SHA/AES | hu-deb-san01 (Huawei storage) | Huawei OceanStor Dorado by SNMP on `SNMP Monitoring (Huawei)` CG with LogicMonitor SHA/AES on CG Host Interface (§5.6b) | ✅ Covered |
 | v2c community (resource override) | — | CH-STA-P-ENSA01 | `snmp_v2_if()` helper exists in zerotouch (SNMPv2 + `snmp_community`/`snmp_pushcommunity`); unused since ESXi iDRACs moved to SNMPv3. Not a model gap — just not configured. | ⚠️ Not configured (not a gap) |
@@ -48,7 +48,7 @@ Note: Sync counts (§6) reflect dev-environment verification. Prod has 553 objec
 | SAP ABAP / instance / IDoc / jobs / locks / qRFC in+out / RFC / spool / syslog / tRFC / updates | Promonitor / `C_PROMONITOR` (11 hosts; SH01 custom DS) | sapcontrol dependents on **SAP template from Sensirion** (Host Agent). `{$SAP.APP.CONTROL}=0` until the UserParameter is installed | ⚠️ Template built; install UserParameter on the host |
 | SSL Certificate Expiration + Port | SAP hosts | Agent `web.certificate.get` + SIMPLE TCP; `{$SAP.CERT.CONTROL}` / `{$SAP.PORT.CONTROL}=0` until the ICM name is set | ⚠️ Built; host macros pending |
 | Ungrouped `DataSource_*` (ping, snmp.v3, groovy/batch, powershell, webpage, dns) | LM **collector methods**, not SAP KPIs | Ping + SNMPv3 = SAP CG. Groovy/batch retired; local sapcontrol replaces it. Do not import Groovy/PowerShell. Webpage/DNS are collector self-tests / estate webchecks (§4) | ⚠️ Documented — [LM parity](templates/sap_sensirion/LM_PARITY.md) |
-| WinProcessStats_jstart (AS Java) | ch-sta-p-as02, ch-sta-d-as01 | Agent process monitoring | ❌ Not built |
+| WinProcessStats_jstart (AS Java) | ch-sta-p-as02, ch-sta-d-as01 | **SAP ME** Windows `proc.num[jstart.exe]` on **SAP ME from Sensirion** | ⚠️ Template built; install PowerShell UserParameter |
 | tableauBridgeWorker_service | 15 Tableau servers | Agent service check | ❌ Not built |
 | WinProcessStats_cellmap | ch-sta-p-cmap03 | Agent process monitoring | ❌ Not built |
 | Reporting Service QUEUE | MSSQL servers | MSSQL by Zabbix agent 2 | ⚠️ Template linked, queue item not built |
@@ -77,7 +77,7 @@ All 38 ConfigSources in LM are standard Exchange content. Zabbix doesn't have a 
 | MSSQL | ~30 | ✅ 2 synced (Agent 2) | 0 | `MSSQL by Zabbix agent 2` on MSSQL role |
 | Pure Storage | 7 arrays | ✅ 7 synced | 0 | `Pure Storage FlashArray v2 by HTTP`; `{$PURE.FLASHARRAY.API.TOKEN}` + `{$PURE.FLASHARRAY.API.URL}` per array (§11.4) |
 | Dell/Huawei storage | 2 devices | ✅ 2 synced | 0 | HPE MSA HTTP (Dell); Huawei OceanStor SNMP (Huawei CG) |
-| SAP | 11 hosts | ⚠️ template built; 0 synced | 11 application values | Host SNMP (UCD + 64-bit ifXTable) + agent cert + sapcontrol (Host Agent); install UserParameter then HostSync SH01 — [probe](notes/sap-snmp-walk.md), [sapcontrol](templates/sap_sensirion/SAPCONTROL.md) |
+| SAP | 11 hosts | ⚠️ templates built; 0 synced | 11 application values | HANA openSUSE vs ME Windows (two YAMLs). UserParameter per OS, then HostSync SH01 — [sapcontrol](templates/sap_sensirion/SAPCONTROL.md) |
 | CATO SD-WAN | (API) | ✅ collector live | 21/21 Socket ICMP | Cato by HTTP plus stock ICMP Ping on NetBox-backed Socket hosts |
 | Website checks | 11 | ❌ | 11 | Zabbix web scenarios |
 | Custom process/service checks | ~5 datasources | ❌ | 5 | Agent-based, post-cutover |

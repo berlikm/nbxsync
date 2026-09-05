@@ -8,46 +8,35 @@ zabbix_export:
       template: SAP template from Sensirion
       name: SAP template from Sensirion
       description: |
-        Sensirion SAP pack. LogicMonitor parity from zabbix/logicmonitor-assessment.md
-        (LM account export Aug 2026) plus the 2026-09-05 SNMP probe of CH-STA-P-SH01.
+        Sensirion SAP HANA pack (openSUSE). LogicMonitor parity from
+        zabbix/logicmonitor-assessment.md plus the 2026-09-05 SNMP probe of CH-STA-P-SH01.
 
-        LM had two planes — this template covers both with what is already on the box:
+        This template is SAP HANA only (11 LM SAP hosts included HANA +
+        ME). SAP ME is Windows — see SAP ME from Sensirion.
+        Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
 
-        1. Host / SNMP — LM group credential SAPUSER (MD5/DES) on SAP systems.
-           Probe of CH-STA-P-SH01 (10.0.105.112) proved Linux Net-SNMP only
-           (1.3.6.1.4.1.8072.3.2.10). The SAP enterprise tree and
-           Net-SNMP extend were empty. Items here are IF-MIB / UCD / HOST-RESOURCES.
+        1. Host / SNMP — LM SAPUSER MD5/DES. Probe of CH-STA-P-SH01
+           (10.0.105.112) proved Linux Net-SNMP only (1.3.6.1.4.1.8072.3.2.10).
+           IF-MIB / UCD / HOST-RESOURCES. Not HANA allocation.
 
-        2. Application — the same 11 LM Promonitor / C_PROMONITOR
-           names (ABAP runtime errors, AS instance status, IDoc, job alerts, lock
-           entries, qRFC in/out, RFC status, spool, syslog, transactional RFC,
-           update requests). DNUS is gone. Collection is local sapcontrol /
-           sapstartsrv via the Zabbix agent UserParameter (SAP Host Agent
-           /usr/sap/hostctrl). GetProcessList is instance health (HANA hdb*,
-           ABAP disp+work, ME jstart). GetAlerts is CCMS counts, not ST22/SM13
-           RFC and not HANA SQL. {$SAP.APP.CONTROL}=0 until the UserParameter
-           is installed and Latest data is quiet.
+        2. Application — the LM C_PROMONITOR names via local sapcontrol
+           (Linux Zabbix agent UserParameter, Host Agent /usr/sap/hostctrl).
+           GetProcessList = hdb* GREEN/YELLOW.
+           GetAlerts CCMS counts stay 0 on a HANA-only box (not ST22 RFC, not HANA SQL).
+           {$SAP.APP.CONTROL}=0 until the UserParameter is installed.
 
-        3. Certificate — LM SSL Certificate Expiration via the Zabbix agent already
-           on SAP Agent+SNMP (not a proxy external script). Set {$SAP.CERT.HOST}
-           per host, then {$SAP.CERT.CONTROL}=1.
+        3. Certificate — agent web.certificate.get. Set {$SAP.CERT.HOST}.
 
-        Host OS extras LM also had (CPU cores, disks IO, IP/TCP/UDP stats, ping)
-        stay on Linux by agent + the SAP Agent+SNMP ICMP item. This pack does not
-        nest ICMP or duplicate those agent keys.
+        OS extras (CPU cores, disk IO, IP/TCP-UDP, ping) stay on Linux by agent +
+        SAP Agent+SNMP ICMP. openSUSE matches the Linux platform rule.
 
-        Ungrouped LM DataSource_ping / snmp.v3 / script.groovy / batchscript /
-        webpage / dns are collector methods, not more SAP counters. Groovy/batch
-        was the old DNUS vehicle; sapcontrol replaces it. Do not execute collector
-        scripts on the Zabbix proxy.
+        Ungrouped LM DataSource_* are collector methods. Groovy/batch is retired.
+        Do not execute collector scripts on the Zabbix proxy.
 
-        Not in this template: AS Java jstart process stats (ch-sta-p-as02 /
-        ch-sta-d-as01) — that is the AS Java agent stub, not SAP HANA / SAP ME.
-        Does not link the stock Linux SNMP template. Does not walk the enterprise
-        tree unbounded. Does not invent a Promonitor API or HANA SQL logon.
+        jstart lives on the Windows ME template (ch-sta-p-as02, ch-sta-d-as01).
+        Does not link the stock Linux SNMP template. Does not invent a Promonitor API.
 
         Operator notes: zabbix/notes/sap-snmp-walk.md,
-        zabbix/templates/sap_sensirion/LM_PARITY.md,
         zabbix/templates/sap_sensirion/SAPCONTROL.md.
         Refresh with configure_nbxsync_network.py --apply-sap.
       groups:
@@ -530,7 +519,7 @@ zabbix_export:
           history: 7d
           trends: '0'
           description: |
-            One sapcontrol snapshot from the Zabbix agent already on SAP Agent+SNMP. UserParameter sap.sensirion[*] runs zabbix/externalscripts/sap_sensirion.py on the SAP host (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). Empty {$SAP.INSTANCE} / {$SAP.SID} is fine on a single-instance HANA box. Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).
+            One sapcontrol snapshot from the Linux Zabbix agent already on SAP Agent+SNMP. UserParameter sap.sensirion[*] runs zabbix/externalscripts/sap_sensirion.py on the openSUSE HANA host (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). Empty {$SAP.INSTANCE} / {$SAP.SID} is fine on a single-instance HANA box. Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).
           preprocessing:
             - type: CHECK_NOT_SUPPORTED
               parameters:
@@ -1864,6 +1853,13 @@ zabbix_export:
                       name: reference
                       value: SIFG
       valuemaps:
+        - uuid: 56b69681500e4e35bba573354a6fa880
+          name: Service state
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
         - uuid: 751d4c71b0744e1881b732782928bb41
           name: zabbix.host.available
           mappings:
@@ -1873,13 +1869,6 @@ zabbix_export:
               newvalue: Up
             - value: '2'
               newvalue: Unknown
-        - uuid: 56b69681500e4e35bba573354a6fa880
-          name: Service state
-          mappings:
-            - value: '0'
-              newvalue: Down
-            - value: '1'
-              newvalue: Up
         - uuid: f9e590eac9ba4aec9a387751c9ab90c0
           name: SAP host identity
           mappings:

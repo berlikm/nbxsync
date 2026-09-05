@@ -46,11 +46,11 @@ The live probe proves the SAP profile is **MD5/DES**, not SHA1/AES128. The repos
 
 No fleet zerotouch was run. `CH-STA-P-SH01` is still not a Zabbix Production host.
 
-The LM-parity template **SAP template from Sensirion** is in
+The HANA (openSUSE) template **SAP template from Sensirion** is in
 [`../templates/sap_sensirion/`](../templates/sap_sensirion/). Host SNMP items
-match this probe (64-bit ifXTable for LM Interfaces 64 bit). Application
-items keep the Promonitor names and collect via local sapcontrol (Host Agent
-`/usr/sap/hostctrl`) — see
+match this probe (64-bit ifXTable for LM Interfaces 64 bit). SAP ME is
+Windows — **SAP ME from Sensirion** has no UCD items. Application items keep
+the Promonitor names and collect via local sapcontrol — see
 [`../templates/sap_sensirion/SAPCONTROL.md`](../templates/sap_sensirion/SAPCONTROL.md).
 SSL Certificate Expiration is the Zabbix agent `web.certificate.get` (SAP
 hosts already have Agent :10050). `{$SAP.APP.CONTROL}=0` and

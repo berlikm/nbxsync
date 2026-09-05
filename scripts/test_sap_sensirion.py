@@ -12,6 +12,7 @@ import yaml
 
 from sap_sensirion import (
     APP_ITEM_KEYS,
+    APP_JSTART,
     APP_MASTER_KEY,
     APP_TRIGGER_NAMES,
     APPLY_FLAG,
@@ -20,13 +21,19 @@ from sap_sensirion import (
     CERT_TRIGGER_NAMES,
     CHECK_FLAG,
     FORBIDDEN_SNIPPETS,
+    JSTART_ITEM_KEY,
     LINUX_NETSNMP_SYSOBJECTID,
     LM_APP_METRICS,
     LM_PROMONITOR_USER,
     LM_SAP_HOSTS,
     LM_SNMP_USER,
+    ME_CANARY_HOSTS,
+    ME_TEMPLATE_NAME,
+    ME_TEMPLATE_YAML,
+    ME_TRIGGER_NAMES,
     PORT_ITEM_KEY,
     PORT_TRIGGER_NAMES,
+    ROLE_TEMPLATES,
     SAP_ENTERPRISE_OID,
     SAP_ROLES,
     SNMP_ITEM_KEYS,
@@ -34,6 +41,7 @@ from sap_sensirion import (
     SNMP_PROTOTYPE_KEYS,
     SNMP_TRIGGER_NAMES,
     SNMP_TRIGGER_PROTOTYPE_NAMES,
+    TEMPLATE_FILES,
     TEMPLATE_NAME,
     TEMPLATE_YAML,
     TPL,
@@ -93,7 +101,11 @@ class SapSensirionTests(unittest.TestCase):
         cls.trigger_prototypes = _walk_names(cls.template, ('trigger_prototypes',))
 
     def test_render_matches_written_yaml(self):
-        self.assertEqual(self.yaml_text, render())
+        self.assertEqual(self.yaml_text, render('hana'))
+        self.assertEqual(ME_TEMPLATE_YAML.read_text(encoding='utf-8'), render('me'))
+        self.assertEqual(set(TEMPLATE_FILES), {TEMPLATE_NAME, ME_TEMPLATE_NAME})
+        self.assertEqual(ROLE_TEMPLATES['SAP HANA'], TEMPLATE_NAME)
+        self.assertEqual(ROLE_TEMPLATES['SAP ME'], ME_TEMPLATE_NAME)
 
     def test_template_identity(self):
         self.assertEqual(self.tpl['zabbix_export']['version'], '7.0')
@@ -153,7 +165,10 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn(str(LM_SAP_HOSTS), self.template['description'])
         self.assertIn('ch-sta-p-sh01', self.template['description'].lower())
         self.assertIn('sapcontrol', self.template['description'])
+        self.assertIn('openSUSE', self.template['description'])
+        self.assertIn(ME_TEMPLATE_NAME, self.template['description'])
         self.assertIn('UserParameter', self.yaml_text)
+        self.assertNotIn(JSTART_ITEM_KEY, self.keys)
         self.assertIn('{$SAP.INSTANCE}', self.yaml_text)
         self.assertNotIn('zabbix_sender', self.yaml_text)
         for needle in (
@@ -225,15 +240,19 @@ class SapSensirionTests(unittest.TestCase):
         self.assertIn('+(last(//sap.host.memory.total)=0)', self.yaml_text)
         self.assertIn('+(last(//sap.host.swap.total)=0)', self.yaml_text)
 
-    def test_zerotouch_soft_assigns_snmp(self):
+    def test_zerotouch_soft_assigns_os_specific(self):
         src = (ROOT / 'scripts/configure_nbxsync_zerotouch.py').read_text(encoding='utf-8')
         self.assertIn(f"'{TEMPLATE_NAME}'", src)
-        self.assertIn("('sap_agent', 'SAP ME')", src)
-        self.assertIn("('sap_agent', 'SAP HANA')", src)
-        self.assertIn("'sap_agent': [HostInterfaceRequirementChoices.SNMP]", src)
+        self.assertIn(f"'{ME_TEMPLATE_NAME}'", src)
+        self.assertIn("('sap_me', 'SAP ME')", src)
+        self.assertIn("('sap_hana', 'SAP HANA')", src)
+        self.assertIn("'sap_hana': [HostInterfaceRequirementChoices.SNMP]", src)
+        self.assertIn("'sap_me': [HostInterfaceRequirementChoices.AGENT]", src)
         optional = re.search(r'OPTIONAL_TPL_KEYS = frozenset\(\{([^}]+)\}\)', src, re.S)
         self.assertIsNotNone(optional)
-        self.assertIn("'sap_agent'", optional.group(1))
+        self.assertIn("'sap_hana'", optional.group(1))
+        self.assertIn("'sap_me'", optional.group(1))
+        self.assertNotIn("'sap_agent'", optional.group(1))
         self.assertNotIn('import_yaml_templates', src)
 
     def test_network_apply_sap_imports_without_fleet_sync(self):
@@ -251,6 +270,47 @@ class SapSensirionTests(unittest.TestCase):
         for role in SAP_ROLES:
             self.assertIn(role, assign_fn)
         self.assertIn('HostInterfaceRequirementChoices.SNMP', assign_fn)
+        self.assertIn('HostInterfaceRequirementChoices.AGENT', assign_fn)
+        self.assertIn('ME_TEMPLATE_NAME', assign_fn)
+
+
+class SapMeSensirionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        write_yaml()
+        cls.yaml_text = ME_TEMPLATE_YAML.read_text(encoding='utf-8')
+        cls.tpl = yaml.safe_load(cls.yaml_text)
+        cls.template = cls.tpl['zabbix_export']['templates'][0]
+        cls.keys = _walk_item_keys(cls.template)
+        cls.triggers = _walk_names(cls.template, ('triggers',))
+
+    def test_me_identity_and_no_linux_snmp(self):
+        self.assertEqual(self.template['name'], ME_TEMPLATE_NAME)
+        self.assertIn('Windows', self.template['description'])
+        self.assertIn('AS Java', self.template['description'])
+        for host in ME_CANARY_HOSTS:
+            self.assertIn(host, self.template['description'])
+        self.assertNotIn('1.3.6.1.4.1.2021', self.yaml_text)
+        self.assertNotIn('ifHCInOctets', self.yaml_text)
+        self.assertNotIn('sap.host.cpu.util', self.keys)
+        self.assertNotIn('sap.host.net.if.discovery', self.keys)
+        for snippet in FORBIDDEN_SNIPPETS:
+            self.assertNotIn(snippet, self.yaml_text, snippet)
+
+    def test_me_application_and_jstart(self):
+        self.assertTrue(APP_ITEM_KEYS.issubset(self.keys))
+        self.assertIn(APP_MASTER_KEY, self.keys)
+        self.assertIn(JSTART_ITEM_KEY, self.keys)
+        self.assertTrue(APP_TRIGGER_NAMES.issubset(self.triggers))
+        self.assertTrue(ME_TRIGGER_NAMES.issubset(self.triggers))
+        self.assertIn(APP_JSTART, self.triggers)
+        jstart = next(item for item in self.template['items'] if item['key'] == JSTART_ITEM_KEY)
+        self.assertEqual(jstart['type'], 'ZABBIX_PASSIVE')
+        pages = {page['name'] for page in self.template['dashboards'][0]['pages']}
+        self.assertEqual(pages, {'Overview', 'Application'})
+        self.assertNotIn('Interfaces', pages)
+        self.assertIn(PORT_ITEM_KEY, self.keys)
+        self.assertTrue(CERT_ITEM_KEYS.issubset(self.keys))
 
 
 if __name__ == '__main__':

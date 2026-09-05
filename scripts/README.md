@@ -17,7 +17,7 @@ If a script and that document disagree, **fix the script or the document so they
 | — | `test_mssql_observability.py` | MSSQL Observability named-instance LLD, host-prototype YAML contract, and database/backup-inventory fixtures (no live SQL) |
 | — | `test_xiqse_observability.py` | XIQ-SE / ExtremeControl Observability: 24h unique MAC license count, engine LLD, YAML contract (no live NBI) |
 | — | `test_extremecontrol_snmp.py` | ExtremeControl by SNMP: live ENAC canary counters, ENTERASYS-NAC-APPLIANCE-MIB OIDs, YAML contract |
-| — | `test_sap_sensirion.py` | SAP template from Sensirion: LM-parity host SNMP + sapcontrol application contract (no live sapcontrol / SNMP) |
+| — | `test_sap_sensirion.py` | SAP HANA + SAP ME templates: openSUSE UCD vs Windows jstart (no live sapcontrol / SNMP) |
 | — | `test_sap_sensirion_control.py` | sapcontrol collector fixtures (HANA / ABAP / Java / CCMS / SOAP; no live Host Agent) |
 | — | `zabbix_api.py` | Shared JSON-RPC helper |
 | — | `configure_cato_zabbix.py` | Zabbix-API implementation for the Cato collector (lab `--simulate`, used by `--apply-cato`). Never manages NetBox Socket hosts |
@@ -143,8 +143,8 @@ rows (ABAP, instance, IDoc, jobs, locks, qRFC in/out, RFC, spool, syslog,
 tRFC, updates), SSL certificate expiry, and Port. There is no item-level LM
 export. The SH01 walk proved Linux Net-SNMP only. Certificate is the Zabbix
 agent (`web.certificate.get`), not a proxy script. Application rows are
-local sapcontrol (SAP Host Agent) via the Zabbix agent UserParameter — DNUS
-is gone. `--apply-sap` cannot push that file; see
+local sapcontrol. HANA is openSUSE (Python UserParameter). ME is Windows
+(PowerShell + `jstart.exe`). `--apply-sap` cannot push those files; see
 [`zabbix/templates/sap_sensirion/SAPCONTROL.md`](../zabbix/templates/sap_sensirion/SAPCONTROL.md).
 
 ```bash
@@ -152,8 +152,9 @@ python3 scripts/configure_nbxsync_network.py --check-sap
 python3 scripts/configure_nbxsync_network.py --apply-sap
 ```
 
-That imports **SAP template from Sensirion**, assigns it on SAP HANA / SAP ME
-(SNMP interface requirement), and HostSyncs only `CH-STA-P-SH01` when that
+That imports **SAP template from Sensirion** (HANA, SNMP req) and **SAP ME
+from Sensirion** (Windows, AGENT req), assigns each on its role, and
+HostSyncs only `CH-STA-P-SH01` when that
 device exists and is not onboarding. It never imports the Extreme pack, never
 runs zerotouch, and never fleet-syncs. Application triggers stay off until
 `{$SAP.APP.CONTROL}=1` after the UserParameter works. Tests:
@@ -209,6 +210,6 @@ Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **
 | FortiOS → FortiGate Observability (nests Cloud **Zabbix, 7.0-2**, never import 7.0-3), ZBX-27082 patch, prune Forti/ICMP **and SNMP Monitoring** from role Firewall, CG **FortiGate HTTP** on Platform FortiOS, SNMP Monitoring on FMG/FAZ platforms, Zabbix monitoring TOKEN + FQDN Jinja on Platform FortiOS | **do not re-run** (still SNMP on role Firewall) | `--apply-fortigate-http` (fail-closed preflight, no Extreme YAML, no HostSync) |
 | Cato account collector (`Cato Networks by HTTP`, GraphQL preflight, `cato-account-*`) | **do not re-run** | `--apply-cato` / `--check-cato` (no HostSync, no Socket role mutation) |
 | XIQ-SE / ExtremeControl Observability (GraphQL NBI, 24h unique MAC license, engine LLD; thin role NAC companion) | soft-assign ExtremeControl on role **NAC** if the template exists | `--apply-xiqse` / `--check-xiqse` (no HostSync, no Extreme import) |
-| SAP template from Sensirion (LM host SNMP + sapcontrol) | soft-assign on SAP HANA / SAP ME if the template exists | `--apply-sap` / `--check-sap` (HostSync only `CH-STA-P-SH01` if present and not onboarding; no Extreme import) |
+| SAP HANA + SAP ME from Sensirion (openSUSE vs Windows) | soft-assign HANA / ME templates on the matching role | `--apply-sap` / `--check-sap` (HostSync only `CH-STA-P-SH01` if present and not onboarding; no Extreme import) |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |

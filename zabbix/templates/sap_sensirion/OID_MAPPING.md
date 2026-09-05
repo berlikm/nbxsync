@@ -1,9 +1,13 @@
-# SAP template from Sensirion — OID, agent, and sapcontrol map
+# SAP HANA (openSUSE) + SAP ME (Windows) — OID, agent, and sapcontrol map
 
 Canary: `CH-STA-P-SH01` / `10.0.105.112`, SNMPv3 `SAPUSER` authPriv MD5/DES,
 2026-09-05. See [`../../notes/sap-snmp-walk.md`](../../notes/sap-snmp-walk.md).
 
-## Host SNMP (live)
+Host SNMP below is **openSUSE HANA only**. Windows ME uses
+[`template_sap_me_sensirion.yaml`](template_sap_me_sensirion.yaml) (agent
+sapcontrol + `proc.num[jstart.exe]`, no UCD).
+
+## Host SNMP (live, HANA / openSUSE)
 
 | Item key | Object | OID |
 |---|---|---|

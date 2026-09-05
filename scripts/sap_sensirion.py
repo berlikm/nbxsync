@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SAP template from Sensirion — LM-parity host SNMP + agent cert + sapcontrol."""
+"""SAP HANA (openSUSE) + SAP ME (Windows) templates — sapcontrol, not Promonitor."""
 
 from __future__ import annotations
 
@@ -9,16 +9,28 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = ROOT / 'zabbix/templates/sap_sensirion'
 TEMPLATE_YAML = TEMPLATE_DIR / 'template_sap_sensirion.yaml'
+ME_TEMPLATE_YAML = TEMPLATE_DIR / 'template_sap_me_sensirion.yaml'
 
 TEMPLATE_NAME = 'SAP template from Sensirion'
+ME_TEMPLATE_NAME = 'SAP ME from Sensirion'
+HANA_TEMPLATE_NAME = TEMPLATE_NAME
 TPL = TEMPLATE_NAME
-TEMPLATE_FILES = {TEMPLATE_NAME: TEMPLATE_YAML}
+TEMPLATE_FILES = {
+    TEMPLATE_NAME: TEMPLATE_YAML,
+    ME_TEMPLATE_NAME: ME_TEMPLATE_YAML,
+}
 TEMPLATE_GROUP = 'Templates/Applications'
 GROUP_UUID = '7c4e2b91a06f4d8e9b15c3a8d0e4f217'
 APPLY_FLAG = '--apply-sap'
 CHECK_FLAG = '--check-sap'
 SAP_ROLES = ('SAP HANA', 'SAP ME')
+ROLE_TEMPLATES = {
+    'SAP HANA': TEMPLATE_NAME,
+    'SAP ME': ME_TEMPLATE_NAME,
+}
 CANARY_HOST = 'CH-STA-P-SH01'
+ME_CANARY_HOSTS = ('ch-sta-p-as02', 'ch-sta-d-as01')
+_UID_PREFIX = ''
 LINUX_NETSNMP_SYSOBJECTID = '1.3.6.1.4.1.8072.3.2.10'
 SAP_ENTERPRISE_OID = '1.3.6.1.4.1.2312'
 LM_PROMONITOR_USER = 'C_PROMONITOR'
@@ -29,7 +41,8 @@ _NS = uuid.UUID('8a1c0e22-91b4-4d7a-8c33-b7e2f4a1c908')
 
 
 def uid(*parts: str) -> str:
-    return uuid.UUID(bytes=uuid.uuid5(_NS, '|'.join(parts)).bytes, version=4).hex
+    key = '|'.join(((_UID_PREFIX,) + parts) if _UID_PREFIX else parts)
+    return uuid.UUID(bytes=uuid.uuid5(_NS, key).bytes, version=4).hex
 
 
 class Doc:
@@ -92,6 +105,7 @@ APP_SPOOL = 'SAP application: Spool errors'
 APP_SYSLOG = 'SAP application: Syslog alerts'
 APP_TRFC = 'SAP application: Transactional RFC errors'
 APP_UPDATE = 'SAP application: Update requests'
+APP_JSTART = 'SAP application: jstart is not running'
 CERT_EXPIRED = 'SAP host: TLS certificate expired'
 CERT_SOON = 'SAP host: TLS certificate expires soon'
 PORT_DOWN = 'SAP host: TCP port is down'
@@ -143,6 +157,7 @@ CERT_ITEM_KEYS = {
 
 PORT_ITEM_KEY = 'net.tcp.service[tcp,,{$SAP.PORT.TCP}]'
 APP_MASTER_KEY = 'sap.sensirion[json,{$SAP.INSTANCE},{$SAP.SID},{$SAP.CONTROL.HOST}]'
+JSTART_ITEM_KEY = 'proc.num[jstart.exe]'
 
 SNMP_LLD_KEYS = {
     'sap.host.net.if.discovery',
@@ -189,6 +204,7 @@ APP_TRIGGER_NAMES = {
 
 CERT_TRIGGER_NAMES = {CERT_EXPIRED, CERT_SOON}
 PORT_TRIGGER_NAMES = {PORT_DOWN}
+ME_TRIGGER_NAMES = {APP_JSTART}
 
 SNMP_TRIGGER_PROTOTYPE_NAMES = {IF_DOWN, IF_ERR, FS_WARN}
 
@@ -401,6 +417,26 @@ MACROS = (
     ),
 )
 
+HANA_ONLY_MACROS = frozenset(
+    {
+        '{$SNMP.TIMEOUT}',
+        '{$UNSUPPORTED.MAX}',
+        '{$SAP.MEMORY.UTIL.MAX}',
+        '{$SAP.CPU.UTIL.MAX}',
+        '{$SAP.CPU.LOAD.MAX}',
+        '{$SAP.SWAP.UTIL.MAX}',
+        '{$SAP.VFS.FS.PUSED.MAX}',
+        '{$SAP.NET.IF.ERRORS.WARN}',
+        '{$IFCONTROL}',
+        '{$NET.IF.IFDESCR.MATCHES}',
+        '{$NET.IF.IFDESCR.NOT_MATCHES}',
+        '{$NET.IF.IFTYPE.NOT_MATCHES}',
+        '{$VFS.FS.FSNAME.MATCHES}',
+        '{$VFS.FS.FSNAME.NOT_MATCHES}',
+        '{$VFS.FS.FSTYPE.MATCHES}',
+    }
+)
+
 
 def dep_snmp(doc: Doc, indent: int) -> None:
     doc.add(indent, 'dependencies:')
@@ -476,7 +512,88 @@ def svg_graph(doc: Doc, indent: int, name: str, series: list[tuple[str, str]], *
     doc.add(indent + 3, 'value: now')
 
 
-def render() -> str:
+def render(flavor: str = 'hana') -> str:
+    global TPL, _UID_PREFIX
+    if flavor not in ('hana', 'me'):
+        raise ValueError(flavor)
+    prev_tpl, prev_uid = TPL, _UID_PREFIX
+    TPL = TEMPLATE_NAME if flavor == 'hana' else ME_TEMPLATE_NAME
+    _UID_PREFIX = '' if flavor == 'hana' else 'me'
+    try:
+        return _render(flavor)
+    finally:
+        TPL = prev_tpl
+        _UID_PREFIX = prev_uid
+
+
+def _hana_description() -> str:
+    return f"""Sensirion SAP HANA pack (openSUSE). LogicMonitor parity from
+zabbix/logicmonitor-assessment.md plus the 2026-09-05 SNMP probe of {CANARY_HOST}.
+
+This template is SAP HANA only ({LM_SAP_HOSTS} LM SAP hosts included HANA +
+ME). SAP ME is Windows — see {ME_TEMPLATE_NAME}.
+Do not link this YAML on role SAP ME (UCD-SNMP 2021 is Linux Net-SNMP).
+
+1. Host / SNMP — LM {LM_SNMP_USER} MD5/DES. Probe of {CANARY_HOST}
+   (10.0.105.112) proved Linux Net-SNMP only ({LINUX_NETSNMP_SYSOBJECTID}).
+   IF-MIB / UCD / HOST-RESOURCES. Not HANA allocation.
+
+2. Application — the LM {LM_PROMONITOR_USER} names via local sapcontrol
+   (Linux Zabbix agent UserParameter, Host Agent /usr/sap/hostctrl).
+   GetProcessList = hdb* GREEN/YELLOW.
+   GetAlerts CCMS counts stay 0 on a HANA-only box (not ST22 RFC, not HANA SQL).
+   {{$SAP.APP.CONTROL}}=0 until the UserParameter is installed.
+
+3. Certificate — agent web.certificate.get. Set {{$SAP.CERT.HOST}}.
+
+OS extras (CPU cores, disk IO, IP/TCP-UDP, ping) stay on Linux by agent +
+SAP Agent+SNMP ICMP. openSUSE matches the Linux platform rule.
+
+Ungrouped LM DataSource_* are collector methods. Groovy/batch is retired.
+Do not execute collector scripts on the Zabbix proxy.
+
+jstart lives on the Windows ME template ({', '.join(ME_CANARY_HOSTS)}).
+Does not link the stock Linux SNMP template. Does not invent a Promonitor API.
+
+Operator notes: zabbix/notes/sap-snmp-walk.md,
+zabbix/templates/sap_sensirion/SAPCONTROL.md.
+Refresh with configure_nbxsync_network.py {APPLY_FLAG}."""
+
+
+def _me_description() -> str:
+    return f"""Sensirion SAP ME pack (Windows AS Java). LogicMonitor parity from
+zabbix/logicmonitor-assessment.md. Hosts like {', '.join(ME_CANARY_HOSTS)}.
+
+This template is SAP ME only. SAP HANA is openSUSE — see {TEMPLATE_NAME}.
+No UCD-SNMP, no Linux UserParameter, no host IF/FS LLD.
+
+1. OS — Windows by Zabbix agent (platform rule). CPU / memory / disks /
+   IP / TCP-UDP stay there. Do not duplicate those keys. Ping stays on
+   CG SAP Agent+SNMP.
+
+2. Application — sapcontrol.exe via PowerShell UserParameter (SAP Host
+   Agent C:\\Program Files\\SAP\\hostctrl). GetProcessList = jstart /
+   jcontrol GREEN/YELLOW. GetAlerts CCMS is usually empty on ME Java
+   (not ST22 / IDoc / qRFC). {{$SAP.APP.CONTROL}}=0 until the script is
+   installed.
+
+3. jstart — LM Windows process check is proc.num[jstart.exe] on this
+   template (ch-sta-p-as02 / ch-sta-d-as01). Not the AS Java stub.
+
+4. Certificate / Port — Windows agent web.certificate.get + SIMPLE 443.
+
+SNMP {LM_SNMP_USER} on the CG is unused here until a Windows SNMP walk
+proves it. Do not poll Linux Net-SNMP OIDs on these hosts.
+
+Ungrouped LM DataSource_batchscript.powershell is the Windows ME vehicle,
+replaced by the PowerShell sapcontrol snippet. Do not execute collector
+scripts on the Zabbix proxy. Does not invent a Promonitor API.
+
+Operator notes: zabbix/templates/sap_sensirion/SAPCONTROL.md.
+Refresh with configure_nbxsync_network.py {APPLY_FLAG}."""
+
+
+def _render(flavor: str) -> str:
     doc = Doc()
     doc.add(0, 'zabbix_export:')
     doc.add(1, "version: '7.0'")
@@ -488,65 +605,25 @@ def render() -> str:
     doc.add(3, f'template: {TPL}')
     doc.add(3, f'name: {TPL}')
     doc.add(3, 'description: |')
-    doc.literal(
-        4,
-        f"""Sensirion SAP pack. LogicMonitor parity from zabbix/logicmonitor-assessment.md
-(LM account export Aug 2026) plus the 2026-09-05 SNMP probe of {CANARY_HOST}.
-
-LM had two planes — this template covers both with what is already on the box:
-
-1. Host / SNMP — LM group credential {LM_SNMP_USER} (MD5/DES) on SAP systems.
-   Probe of {CANARY_HOST} (10.0.105.112) proved Linux Net-SNMP only
-   ({LINUX_NETSNMP_SYSOBJECTID}). The SAP enterprise tree and
-   Net-SNMP extend were empty. Items here are IF-MIB / UCD / HOST-RESOURCES.
-
-2. Application — the same {LM_SAP_HOSTS} LM Promonitor / {LM_PROMONITOR_USER}
-   names (ABAP runtime errors, AS instance status, IDoc, job alerts, lock
-   entries, qRFC in/out, RFC status, spool, syslog, transactional RFC,
-   update requests). DNUS is gone. Collection is local sapcontrol /
-   sapstartsrv via the Zabbix agent UserParameter (SAP Host Agent
-   /usr/sap/hostctrl). GetProcessList is instance health (HANA hdb*,
-   ABAP disp+work, ME jstart). GetAlerts is CCMS counts, not ST22/SM13
-   RFC and not HANA SQL. {{$SAP.APP.CONTROL}}=0 until the UserParameter
-   is installed and Latest data is quiet.
-
-3. Certificate — LM SSL Certificate Expiration via the Zabbix agent already
-   on SAP Agent+SNMP (not a proxy external script). Set {{$SAP.CERT.HOST}}
-   per host, then {{$SAP.CERT.CONTROL}}=1.
-
-Host OS extras LM also had (CPU cores, disks IO, IP/TCP/UDP stats, ping)
-stay on Linux by agent + the SAP Agent+SNMP ICMP item. This pack does not
-nest ICMP or duplicate those agent keys.
-
-Ungrouped LM DataSource_ping / snmp.v3 / script.groovy / batchscript /
-webpage / dns are collector methods, not more SAP counters. Groovy/batch
-was the old DNUS vehicle; sapcontrol replaces it. Do not execute collector
-scripts on the Zabbix proxy.
-
-Not in this template: AS Java jstart process stats (ch-sta-p-as02 /
-ch-sta-d-as01) — that is the AS Java agent stub, not SAP HANA / SAP ME.
-Does not link the stock Linux SNMP template. Does not walk the enterprise
-tree unbounded. Does not invent a Promonitor API or HANA SQL logon.
-
-Operator notes: zabbix/notes/sap-snmp-walk.md,
-zabbix/templates/sap_sensirion/LM_PARITY.md,
-zabbix/templates/sap_sensirion/SAPCONTROL.md.
-Refresh with configure_nbxsync_network.py {APPLY_FLAG}.""",
-    )
+    doc.literal(4, _hana_description() if flavor == 'hana' else _me_description())
     doc.add(3, 'groups:')
     doc.add(4, f'- name: {TEMPLATE_GROUP}')
     doc.add(3, 'macros:')
     for macro, value, descr in MACROS:
+        if flavor == 'me' and macro in HANA_ONLY_MACROS:
+            continue
         doc.add(4, f'- macro: {q(macro)}')
         doc.add(5, f'value: {q(value)}')
         doc.add(5, f'description: {q(descr)}')
     doc.add(3, 'items:')
-    _host_items(doc)
-    _app_items(doc)
+    if flavor == 'hana':
+        _host_items(doc)
+    _app_items(doc, flavor=flavor)
     _agent_items(doc)
-    _discovery(doc)
-    _dashboard(doc)
-    _valuemaps(doc)
+    if flavor == 'hana':
+        _discovery(doc)
+    _dashboard(doc, flavor=flavor)
+    _valuemaps(doc, flavor=flavor)
     return doc.dumps()
 
 
@@ -805,7 +882,7 @@ def _char_item(doc: Doc, key: str, name: str, oid: str, *, inventory: str | None
     tags(doc, 5, 'system')
 
 
-def _app_items(doc: Doc) -> None:
+def _app_items(doc: Doc, *, flavor: str = 'hana') -> None:
     heartbeat_expr = (
         f'{{$SAP.APP.CONTROL}}=1 and '
         f'(nodata(/{TPL}/sap.app.promonitor,30m)=1 or last(/{TPL}/sap.app.promonitor)=0)'
@@ -819,14 +896,23 @@ def _app_items(doc: Doc) -> None:
     doc.add(5, 'history: 7d')
     doc.add(5, "trends: '0'")
     doc.add(5, 'description: |')
-    doc.literal(
-        6,
-        'One sapcontrol snapshot from the Zabbix agent already on SAP Agent+SNMP. '
-        'UserParameter sap.sensirion[*] runs zabbix/externalscripts/sap_sensirion.py '
-        'on the SAP host (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). '
-        'Empty {$SAP.INSTANCE} / {$SAP.SID} is fine on a single-instance HANA box. '
-        'Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).',
-    )
+    if flavor == 'me':
+        master_descr = (
+            'One sapcontrol snapshot from the Windows Zabbix agent already on SAP Agent+SNMP. '
+            'UserParameter sap.sensirion[*] runs sap_sensirion.ps1 (Host Agent '
+            'C:\\Program Files\\SAP\\hostctrl\\exe\\sapcontrol.exe, then SOAP 5NN13). '
+            'Empty {$SAP.INSTANCE} / {$SAP.SID} uses ListInstances. '
+            'Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).'
+        )
+    else:
+        master_descr = (
+            'One sapcontrol snapshot from the Linux Zabbix agent already on SAP Agent+SNMP. '
+            'UserParameter sap.sensirion[*] runs zabbix/externalscripts/sap_sensirion.py '
+            'on the openSUSE HANA host (Host Agent /usr/sap/hostctrl, then SOAP 5NN13). '
+            'Empty {$SAP.INSTANCE} / {$SAP.SID} is fine on a single-instance HANA box. '
+            'Missing UserParameter stays silent (CHECK_NOT_SUPPORTED).'
+        )
+    doc.literal(6, master_descr)
     doc.add(5, 'preprocessing:')
     doc.add(6, '- type: CHECK_NOT_SUPPORTED')
     doc.add(7, 'parameters:')
@@ -884,6 +970,34 @@ def _app_items(doc: Doc) -> None:
         doc.add(8, f'- name: {q(APP_NODATA)}')
         doc.add(9, 'expression: ' + q(heartbeat_expr))
         scope(doc, 7, 'sap-application')
+
+    if flavor != 'me':
+        return
+    doc.add(4, f'- uuid: {uid("item", "jstart")}')
+    doc.add(5, 'name: jstart process count')
+    doc.add(5, 'type: ZABBIX_PASSIVE')
+    doc.add(5, f'key: {q(JSTART_ITEM_KEY)}')
+    doc.add(5, 'delay: 1m')
+    doc.add(5, 'description: |')
+    doc.literal(
+        6,
+        'LM Windows jstart process check on SAP ME (ch-sta-p-as02 / ch-sta-d-as01). '
+        'Windows by agent proc.num. Complements sapcontrol GetProcessList. '
+        'Not linked on openSUSE HANA.',
+    )
+    tags(doc, 5, 'sap-application')
+    doc.add(5, 'triggers:')
+    doc.add(6, f'- uuid: {uid("tr", "jstart")}')
+    doc.add(7, 'expression: ' + q(f'{{$SAP.APP.CONTROL}}=1 and last(/{TPL}/{JSTART_ITEM_KEY})=0'))
+    doc.add(7, f'name: {q(APP_JSTART)}')
+    doc.add(7, f'event_name: {q(APP_JSTART)}')
+    doc.add(7, 'priority: AVERAGE')
+    doc.add(7, 'description: |')
+    doc.literal(8, 'ME Java node is down when jstart.exe is not running. CONTROL=0 until quiet.')
+    doc.add(7, 'dependencies:')
+    doc.add(8, f'- name: {q(APP_NODATA)}')
+    doc.add(9, 'expression: ' + q(heartbeat_expr))
+    scope(doc, 7, 'sap-application')
 
 
 def _agent_items(doc: Doc) -> None:
@@ -1155,19 +1269,27 @@ def _discovery(doc: Doc) -> None:
     doc.add(10, "key: 'sap.host.vfs.fs.pused[{#SNMPINDEX}]'")
 
 
-def _dashboard(doc: Doc) -> None:
+def _dashboard(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(3, 'dashboards:')
     doc.add(4, f'- uuid: {uid("dash", "health")}')
     doc.add(5, 'name: Health')
     doc.add(5, 'pages:')
     doc.add(6, '- name: Overview')
     doc.add(7, 'widgets:')
-    item_tile(doc, 8, 'sap.host.snmp.available', None, None, 12, 'SSNMP', 'SNMP')
-    item_tile(doc, 8, 'sap.host.cpu.util', 12, None, 12, 'SCPU', 'CPU')
-    item_tile(doc, 8, 'sap.host.memory.pused', 24, None, 12, 'SMEM', 'Memory')
-    item_tile(doc, 8, 'sap.host.load[15m]', 36, None, 12, 'SLOAD', 'Load 15m')
-    item_tile(doc, 8, 'sap.host.cert.days', 48, None, 12, 'SCERT', 'Cert days')
-    item_tile(doc, 8, PORT_ITEM_KEY, 60, None, 12, 'SPORT', 'TCP port')
+    if flavor == 'me':
+        item_tile(doc, 8, 'sap.app.promonitor', None, None, 12, 'SSNMP', 'SAP Control')
+        item_tile(doc, 8, 'sap.app.instance.status', 12, None, 12, 'SCPU', 'Instance')
+        item_tile(doc, 8, JSTART_ITEM_KEY, 24, None, 12, 'SMEM', 'jstart')
+        item_tile(doc, 8, 'sap.app.rfc.status', 36, None, 12, 'SLOAD', 'RFC')
+        item_tile(doc, 8, 'sap.host.cert.days', 48, None, 12, 'SCERT', 'Cert days')
+        item_tile(doc, 8, PORT_ITEM_KEY, 60, None, 12, 'SPORT', 'TCP port')
+    else:
+        item_tile(doc, 8, 'sap.host.snmp.available', None, None, 12, 'SSNMP', 'SNMP')
+        item_tile(doc, 8, 'sap.host.cpu.util', 12, None, 12, 'SCPU', 'CPU')
+        item_tile(doc, 8, 'sap.host.memory.pused', 24, None, 12, 'SMEM', 'Memory')
+        item_tile(doc, 8, 'sap.host.load[15m]', 36, None, 12, 'SLOAD', 'Load 15m')
+        item_tile(doc, 8, 'sap.host.cert.days', 48, None, 12, 'SCERT', 'Cert days')
+        item_tile(doc, 8, PORT_ITEM_KEY, 60, None, 12, 'SPORT', 'TCP port')
     doc.add(8, '- type: problems')
     doc.add(9, 'name: Problems')
     doc.add(9, "y: '4'")
@@ -1180,8 +1302,9 @@ def _dashboard(doc: Doc) -> None:
     doc.add(10, '- type: INTEGER')
     doc.add(11, 'name: show')
     doc.add(11, "value: '3'")
-    svg_graph(doc, 8, 'CPU / load', [('2774A4', 'sap.host.cpu.util'), ('F2B90D', 'sap.host.load[15m]')], y=7, ref='SCPUG')
-    svg_graph(doc, 8, 'Memory / swap', [('199C0D', 'sap.host.memory.pused'), ('E97659', 'sap.host.swap.pused')], x=36, y=7, ref='SMEMG')
+    if flavor == 'hana':
+        svg_graph(doc, 8, 'CPU / load', [('2774A4', 'sap.host.cpu.util'), ('F2B90D', 'sap.host.load[15m]')], y=7, ref='SCPUG')
+        svg_graph(doc, 8, 'Memory / swap', [('199C0D', 'sap.host.memory.pused'), ('E97659', 'sap.host.swap.pused')], x=36, y=7, ref='SMEMG')
 
     doc.add(6, '- name: Application')
     doc.add(7, 'widgets:')
@@ -1198,11 +1321,13 @@ def _dashboard(doc: Doc) -> None:
     item_tile(doc, 8, 'sap.app.spool.errors', 48, 4, 12, 'SSPOOL', 'Spool')
     item_tile(doc, 8, 'sap.app.update.requests', 60, 4, 12, 'SUPD', 'Updates')
     item_tile(doc, 8, 'sap.app.syslog.alerts', None, 8, 12, 'SLOG', 'Syslog')
+    if flavor == 'me':
+        item_tile(doc, 8, JSTART_ITEM_KEY, 12, 8, 12, 'SJST', 'jstart')
     doc.add(8, '- type: problems')
     doc.add(9, 'name: Application problems')
-    doc.add(9, "x: '12'")
+    doc.add(9, f"x: '{'24' if flavor == 'me' else '12'}'")
     doc.add(9, "y: '8'")
-    doc.add(9, "width: '60'")
+    doc.add(9, f"width: '{'48' if flavor == 'me' else '60'}'")
     doc.add(9, "height: '4'")
     doc.add(9, 'fields:')
     doc.add(10, '- type: STRING')
@@ -1218,6 +1343,8 @@ def _dashboard(doc: Doc) -> None:
     doc.add(11, 'name: tags.0.value')
     doc.add(11, 'value: sap-application')
 
+    if flavor != 'hana':
+        return
     doc.add(6, '- name: Interfaces')
     doc.add(7, 'widgets:')
     doc.add(8, '- type: graphprototype')
@@ -1235,14 +1362,8 @@ def _dashboard(doc: Doc) -> None:
     doc.add(11, 'value: SIFG')
 
 
-def _valuemaps(doc: Doc) -> None:
+def _valuemaps(doc: Doc, *, flavor: str = 'hana') -> None:
     doc.add(3, 'valuemaps:')
-    doc.add(4, f'- uuid: {uid("vm", "avail")}')
-    doc.add(5, 'name: zabbix.host.available')
-    doc.add(5, 'mappings:')
-    for value, label in (('0', 'Down'), ('1', 'Up'), ('2', 'Unknown')):
-        doc.add(6, f"- value: '{value}'")
-        doc.add(7, f'newvalue: {label}')
     doc.add(4, f'- uuid: {uid("vm", "svc")}')
     doc.add(5, 'name: Service state')
     doc.add(5, 'mappings:')
@@ -1250,6 +1371,14 @@ def _valuemaps(doc: Doc) -> None:
     doc.add(7, 'newvalue: Down')
     doc.add(6, "- value: '1'")
     doc.add(7, 'newvalue: Up')
+    if flavor != 'hana':
+        return
+    doc.add(4, f'- uuid: {uid("vm", "avail")}')
+    doc.add(5, 'name: zabbix.host.available')
+    doc.add(5, 'mappings:')
+    for value, label in (('0', 'Down'), ('1', 'Up'), ('2', 'Unknown')):
+        doc.add(6, f"- value: '{value}'")
+        doc.add(7, f'newvalue: {label}')
     doc.add(4, f'- uuid: {uid("vm", "ident")}')
     doc.add(5, 'name: SAP host identity')
     doc.add(5, 'mappings:')
@@ -1275,9 +1404,12 @@ def _valuemaps(doc: Doc) -> None:
 
 def write_yaml() -> Path:
     TEMPLATE_YAML.parent.mkdir(parents=True, exist_ok=True)
-    TEMPLATE_YAML.write_text(render(), encoding='utf-8')
+    TEMPLATE_YAML.write_text(render('hana'), encoding='utf-8')
+    ME_TEMPLATE_YAML.write_text(render('me'), encoding='utf-8')
     return TEMPLATE_YAML
 
 
 if __name__ == '__main__':
-    print(write_yaml())
+    written = write_yaml()
+    print(written)
+    print(ME_TEMPLATE_YAML)

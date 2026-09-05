@@ -230,8 +230,9 @@ TPL_NAMES = {
     'oracle_agent2': 'Oracle by Zabbix agent 2',
     # Imported by the network SAP pack. Soft-resolve so HostSync of
     # SAP HANA / SAP ME still succeeds before that import.
-    # Do not treat Linux SNMP as SAP health — zabbix/notes/sap-snmp-walk.md.
-    'sap_agent': 'SAP template from Sensirion',
+    # HANA is openSUSE; ME is Windows. Do not treat Linux SNMP as SAP health.
+    'sap_hana': 'SAP template from Sensirion',
+    'sap_me': 'SAP ME from Sensirion',
     'acronis_agent': 'Acronis Cyber Protect Cloud by HTTP',
     'sccm_agent': 'SCCM by Zabbix agent (stub)',
     'print_spool_agent': 'Print Spool by Zabbix agent (stub)',
@@ -601,7 +602,8 @@ OPTIONAL_TPL_KEYS = frozenset({
     'tableau_bridge_agent',
     'cellmap_agent',
     'oracle_agent2',
-    'sap_agent',
+    'sap_hana',
+    'sap_me',
     'acronis_agent',
     'sccm_agent',
     'print_spool_agent',
@@ -628,7 +630,7 @@ TPL_NAME_ALIASES: dict[str, tuple[str, ...]] = {
 }
 # Stub template aliases — try the real Zabbix name if the (stub) name isn't found.
 for _key in ('as_java_agent', 'tableau_bridge_agent', 'cellmap_agent', 'oracle_agent2',
-             'sap_agent', 'acronis_agent', 'sccm_agent', 'print_spool_agent'):
+             'sap_hana', 'sap_me', 'acronis_agent', 'sccm_agent', 'print_spool_agent'):
     _real_name = TPL_NAMES[_key].replace(' (stub)', '')
     TPL_NAME_ALIASES[_key] = (_real_name,)
 
@@ -1939,14 +1941,14 @@ def step7_template_assignments(server):
         # Only assign when the template was resolved (soft-resolve may skip if absent).
     ]
     # Stub template assignments — guarded so missing templates don't KeyError.
-    # sap_agent is imported by the network SAP pack; assignment is a no-op until then.
-    # HostSync of SAP roles does not wait for it.
+    # sap_hana / sap_me are imported by the network SAP pack; assignment is a
+    # no-op until then. HostSync of SAP roles does not wait for them.
     stub_assignments = [
         ('tableau_bridge_agent', 'Tableau'),
         ('cellmap_agent', 'CellMap'),
         ('oracle_agent2', 'Database'),
-        ('sap_agent', 'SAP ME'),
-        ('sap_agent', 'SAP HANA'),
+        ('sap_me', 'SAP ME'),
+        ('sap_hana', 'SAP HANA'),
         ('acronis_agent', 'Acronis Management'),
         ('sccm_agent', 'SCCM'),
         # Companion YAML may not be imported yet — skip without failing apply.
@@ -1958,7 +1960,8 @@ def step7_template_assignments(server):
     stub_req = {
         'extremecontrol_observability': [HostInterfaceRequirementChoices.NONE],
         'extremecontrol_snmp': [HostInterfaceRequirementChoices.SNMP],
-        'sap_agent': [HostInterfaceRequirementChoices.SNMP],
+        'sap_hana': [HostInterfaceRequirementChoices.SNMP],
+        'sap_me': [HostInterfaceRequirementChoices.AGENT],
     }
     for tpl_key, role_name in stub_assignments:
         if tpl_key in TPL:
@@ -3098,9 +3101,13 @@ def run_simulate() -> int:
             TPL['huawei_storage_snmp'] = (int(ensure_t(f'{PREFIX}huawei.storage', f'{PREFIX}Huawei OceanStor Dorado by SNMP')), f'{PREFIX}Huawei OceanStor Dorado by SNMP')
             TPL['synology_storage_snmp'] = (int(ensure_t(f'{PREFIX}synology.nas', f'{PREFIX}Synology DiskStation SNMPv3')), f'{PREFIX}Synology DiskStation SNMPv3')
             TPL['icmp_ping'] = (int(ensure_t(f'{PREFIX}icmp', f'{PREFIX}ICMP Ping')), f'{PREFIX}ICMP Ping')
-            TPL['sap_agent'] = (
-                int(ensure_t(f'{PREFIX}sap.agent', f'{PREFIX}SAP template from Sensirion')),
+            TPL['sap_hana'] = (
+                int(ensure_t(f'{PREFIX}sap.hana', f'{PREFIX}SAP template from Sensirion')),
                 f'{PREFIX}SAP template from Sensirion',
+            )
+            TPL['sap_me'] = (
+                int(ensure_t(f'{PREFIX}sap.me', f'{PREFIX}SAP ME from Sensirion')),
+                f'{PREFIX}SAP ME from Sensirion',
             )
 
         step6_template_rules(server, country_slugs=country_slugs)
@@ -3248,8 +3255,8 @@ def run_simulate() -> int:
         objects['win_snmp'] = win_snmp
 
         # Role SAP HANA must win over Site Group Agent so HostSync gets both
-        # planes. Lab ensure_t creates SAP template from Sensirion so resolve
-        # can assert the LM-parity assignment (not Linux by SNMP).
+        # planes. Lab ensure_t creates the HANA + ME templates so resolve can
+        # assert openSUSE HANA ≠ Windows ME (not Linux by SNMP on either).
         sap = Device.objects.create(
             name=f'{PREFIX}sap-hana-01',
             device_type=dtype,
@@ -3260,6 +3267,16 @@ def run_simulate() -> int:
         )
         attach_dev(sap, next_ip())
         objects['sap'] = sap
+        sap_me = Device.objects.create(
+            name=f'{PREFIX}sap-me-01',
+            device_type=dtype,
+            role=roles['SAP ME'],
+            site=site,
+            platform=plat_win,
+            status='active',
+        )
+        attach_dev(sap_me, next_ip())
+        objects['sap_me'] = sap_me
         # Cato starts with both legacy holds. Exercise the production migration's
         # exact role-slug query without touching any real Socket records that may
         # share the development database behind this simulation.
@@ -3417,8 +3434,20 @@ def run_simulate() -> int:
             'sap_host_infra_templates_only',
             any('Linux by Agent' in n or 'Linux by Zabbix agent' in n for n in sap_tpls)
             and any('SAP template from Sensirion' in n for n in sap_tpls)
-            and not any('Linux by SNMP' in n for n in sap_tpls),
+            and not any('Linux by SNMP' in n for n in sap_tpls)
+            and not any('SAP ME from Sensirion' in n for n in sap_tpls),
             str(sap_tpls),
+            group='resolve',
+        )
+        sap_me_tpls = tpl_names(objects['sap_me'])
+        record(
+            'sap_me_windows_templates_only',
+            any('Windows by Agent' in n or 'Windows by Zabbix agent' in n for n in sap_me_tpls)
+            and any('SAP ME from Sensirion' in n for n in sap_me_tpls)
+            and not any('Linux by SNMP' in n for n in sap_me_tpls)
+            and not any('Linux by Agent' in n or 'Linux by Zabbix agent' in n for n in sap_me_tpls)
+            and not any('SAP template from Sensirion' in n for n in sap_me_tpls),
+            str(sap_me_tpls),
             group='resolve',
         )
         record(
