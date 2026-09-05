@@ -467,8 +467,9 @@ def main() -> int:
         and 'import_extreme_templates' not in xiqse
         and 'for vm in targets' in xiqse
         and 'SyncHostJob(instance=vm).run()' in xiqse
-        and '_unlink_xiqse_agent_templates(api, targets)' in xiqse
-        and xiqse.index('_unlink_xiqse_agent_templates(api, targets)') < xiqse.index('SyncHostJob(instance=vm).run()')
+        and '_unlink_xiqse_agent_templates' not in xiqse
+        and '_detach_xiqse_interface_independent_items(api, targets)' in xiqse
+        and xiqse.index('_detach_xiqse_interface_independent_items(api, targets)') < xiqse.index('SyncHostJob(instance=vm).run()')
         and 'configure_nbxsync_zerotouch' not in xiqse,
         'no Extreme import / zerotouch; HostSync only the explicit XIQ-SE and Control-engine targets',
     )
@@ -489,13 +490,15 @@ def main() -> int:
     )
     xiqse_step = _function_source(net_src, net_tree, '_step_xiqse_nbxsync') or ''
     record(
-        'network_xiqse_assigns_control_snmp_without_agent',
+        'network_xiqse_assigns_control_agent_and_snmp',
         'SNMP_TEMPLATE_NAME' in xiqse_step
         and 'HostInterfaceRequirementChoices.SNMP' in xiqse_step
-        and 'SNMP_CONFIGURATION_GROUP' in xiqse_step
-        and 'ZabbixHostInterfaceTypeChoices.AGENT' in xiqse_step
+        and 'HostInterfaceRequirementChoices.AGENT' in xiqse_step
+        and 'AGENT_SNMP_CONFIGURATION_GROUP' in xiqse_step
+        and 'LEGACY_NAC_CONFIGURATION_GROUP' in xiqse_step
+        and 'ZabbixHostInterface.objects.filter' not in xiqse_step
         and 'icmpping' not in xiqse_step,
-        'role NAC gets the SNMP configuration group; explicit agent interfaces are removed',
+        'role NAC gets Agent+SNMP while inherited agent monitoring remains intact',
     )
     record(
         'network_xiqse_has_no_license_configuration_group',

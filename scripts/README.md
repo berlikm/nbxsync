@@ -122,15 +122,17 @@ python3 scripts/configure_nbxsync_network.py --check-xiqse
 python3 scripts/configure_nbxsync_network.py --apply-xiqse
 ```
 
-That fail-closes on missing YAML, stock Cloud Pilot items, credentials, or the
-shared SNMP interface. It imports **XIQ-SE Observability**,
-**ExtremeControl Observability**, and **ExtremeControl by SNMP**. The Site
-Engine uses exact platform **ExtremeCloud IQ Site Engine**, receives its NBI
-credentials and FQDN through platform inheritance, and keeps an address
-interface only for inherited ICMP (no Linux agent checks). Role **NAC** gets
-the no-interface companion plus the SNMP pack and shared SNMPv3 configuration;
-the five Control engines retain only SNMP interfaces. Apply runs HostSync only
-for those six VMs. It never imports the general Extreme pack or runs zerotouch.
+That fail-closes on missing YAML, stock Cloud Pilot or Linux-agent templates,
+credentials, or an **Agent+SNMP** configuration group missing either required
+interface. It imports **XIQ-SE Observability**, **ExtremeControl
+Observability**, and **ExtremeControl by SNMP**. The Site Engine uses exact
+platform **ExtremeCloud IQ Site Engine**, receives its NBI credentials and FQDN
+through platform inheritance, and retains **Linux by Zabbix agent** plus its
+inherited Agent Monitoring interface and ICMP template. Role **NAC** gets the
+no-interface companion plus the SNMP pack and shared **Agent+SNMP**
+configuration group; the five Control engines retain both Agent and SNMP
+interfaces. Apply runs HostSync only for those six VMs. It never imports the
+general Extreme pack or runs zerotouch.
 If zerotouch is re-run by mistake, run `--apply-xiqse` again.
 Tests: `python3 scripts/test_xiqse_observability.py` and
 `python3 scripts/test_extremecontrol_snmp.py`.
@@ -209,7 +211,7 @@ Optional: `--verify` (census), `--cutover-silence` (temporary LM overlay). Do **
 | Firewall FortiGate HTTP fleet macros (https/20443, WAN/HA/mgmt LLD with `mgmt` link trigger context-disabled, CPU/mem CRIT 101, FQDN Jinja) | — | yes on **Platform FortiOS** (`--apply-firewall-macros` or `--apply`; no Forti HostSync). Not role Firewall. |
 | FortiOS → FortiGate Observability (nests Cloud **Zabbix, 7.0-2**, never import 7.0-3), ZBX-27082 patch, prune Forti/ICMP **and SNMP Monitoring** from role Firewall, CG **FortiGate HTTP** on Platform FortiOS, SNMP Monitoring on FMG/FAZ platforms, Zabbix monitoring TOKEN + FQDN Jinja on Platform FortiOS | **do not re-run** (still SNMP on role Firewall) | `--apply-fortigate-http` (fail-closed preflight, no Extreme YAML, no HostSync) |
 | Cato account collector (`Cato Networks by HTTP`, GraphQL preflight, `cato-account-*`) | **do not re-run** | `--apply-cato` / `--check-cato` (no HostSync, no Socket role mutation) |
-| XIQ-SE / ExtremeControl Observability (GraphQL NBI, 24h unique MAC license, engine LLD; thin role NAC companion) | soft-assign ExtremeControl on role **NAC** if the template exists | `--apply-xiqse` / `--check-xiqse` (no HostSync, no Extreme import) |
+| XIQ-SE / ExtremeControl Observability (GraphQL NBI, 24h unique MAC license, engine LLD; thin role NAC companion) | soft-assign ExtremeControl on role **NAC** if the template exists | `--apply-xiqse` / `--check-xiqse` (targeted six-host HostSync; no Extreme import) |
 | SAP HANA + SAP ME from Sensirion (openSUSE vs Windows) | soft-assign HANA / ME templates on the matching role | `--apply-sap` / `--check-sap` (HostSync only `CH-STA-P-SH01` if present and not onboarding; no Extreme import) |
 | Stock EXOS EtherLike IFALIAS + IF LLD 15m + TEMP_* + ICMP loss off + 3×2 interface grid; companion owns Health | — | yes |
 | Extreme destination globals | — | yes |

@@ -4907,10 +4907,12 @@ def _xiqse_target_vms() -> dict[str, VirtualMachine]:
     return {vm.name: vm for vm in rows}
 
 def _xiqse_credential_values(server) -> dict[str, str]:
-    """Resolve credentials from the agentless platform, then the retired agent group."""
+    """Resolve Site Engine credentials from the platform, then legacy credential storage."""
     sources = list(Platform.objects.filter(name=_xiqse.SE_PLATFORM_NAME))
     sources.extend(
-        M.ZabbixConfigurationGroup.objects.filter(name__in=_xiqse.STALE_AGENT_CONFIGURATION_GROUPS).order_by('name')
+        M.ZabbixConfigurationGroup.objects.filter(
+            name__in=_xiqse.LEGACY_XIQSE_CREDENTIAL_CONFIGURATION_GROUPS
+        ).order_by('name')
     )
     values: dict[str, str] = {}
     for macro_name in _xiqse.XIQSE_CREDENTIAL_MACROS:
@@ -4939,14 +4941,28 @@ def _preflight_xiqse(server) -> tuple[list[str], dict[str, tuple[int, str]]]:
         vm = targets.get(name)
         if vm is not None and (vm.role is None or vm.role.name != _xiqse.NAC_ROLE):
             errors.append(f'{name} is not role {_xiqse.NAC_ROLE}')
-    snmp_group = M.ZabbixConfigurationGroup.objects.filter(name=_xiqse.SNMP_CONFIGURATION_GROUP).first()
-    if snmp_group is None:
-        errors.append(f'missing NetBox configuration group: {_xiqse.SNMP_CONFIGURATION_GROUP}')
-    elif not M.ZabbixHostInterface.objects.filter(
-        zabbixconfigurationgroup=snmp_group,
-        type=ZabbixHostInterfaceTypeChoices.SNMP,
-    ).exists():
-        errors.append(f'{_xiqse.SNMP_CONFIGURATION_GROUP} has no SNMP interface')
+    agent_snmp_group = M.ZabbixConfigurationGroup.objects.filter(
+        name=_xiqse.AGENT_SNMP_CONFIGURATION_GROUP
+    ).first()
+    if agent_snmp_group is None:
+        errors.append(f'missing NetBox configuration group: {_xiqse.AGENT_SNMP_CONFIGURATION_GROUP}')
+    else:
+        present_types = set(
+            M.ZabbixHostInterface.objects.filter(
+                zabbixconfigurationgroup=agent_snmp_group
+            ).values_list('type', flat=True)
+        )
+        required_types = {
+            ZabbixHostInterfaceTypeChoices.AGENT: 'Agent',
+            ZabbixHostInterfaceTypeChoices.SNMP: 'SNMP',
+        }
+        missing_types = set(required_types) - present_types
+        if missing_types:
+            errors.append(
+                f'{_xiqse.AGENT_SNMP_CONFIGURATION_GROUP} is missing '
+                + ', '.join(sorted(required_types[choice] for choice in missing_types))
+                + ' interface(s)'
+            )
     missing_credentials = [
         macro_name
         for macro_name, value in _xiqse_credential_values(server).items()
@@ -4975,6 +4991,11 @@ def _preflight_xiqse(server) -> tuple[list[str], dict[str, tuple[int, str]]]:
                     f'{_xiqse.CLOUD_TEMPLATE_NAME} missing Pilot Cloud item keys: '
                     + ', '.join(sorted(missing_keys))
                 )
+        linux = _lookup_zabbix_template(api, _xiqse.LINUX_AGENT_TEMPLATE_NAME)
+        if linux is None:
+            errors.append(f'missing stock Zabbix template: {_xiqse.LINUX_AGENT_TEMPLATE_NAME}')
+        else:
+            existing[_xiqse.LINUX_AGENT_TEMPLATE_NAME] = (int(linux[0]), linux[1])
         for name in _xiqse.TEMPLATE_FILES:
             row = _lookup_zabbix_template(api, name)
             if row is not None:
@@ -4996,20 +5017,21 @@ def _print_xiqse_plan(
         logger.info('  %s ← %s', name, path)
     logger.info('Already in Zabbix: %s', ', '.join(sorted(existing)) or 'none')
     logger.info(
-        '  VM %s → platform %s → %s + %s (agentless)',
+        '  VM %s → platform %s → %s + %s + %s via inherited Agent Monitoring',
         _xiqse.SE_VM_NAME,
         _xiqse.SE_PLATFORM_NAME,
         _xiqse.SE_TEMPLATE_NAME,
         _xiqse.CLOUD_TEMPLATE_NAME,
+        _xiqse.LINUX_AGENT_TEMPLATE_NAME,
     )
     logger.info(
-        '  VMs %s → platform %s; role %s → %s (no interface) + %s via %s (SNMP only)',
+        '  VMs %s → platform %s; role %s → %s + %s via %s (Agent + SNMP)',
         ', '.join(_xiqse.NAC_VM_NAMES),
         _xiqse.NAC_PLATFORM_NAME,
         _xiqse.NAC_ROLE,
         _xiqse.NAC_TEMPLATE_NAME,
         _xiqse.SNMP_TEMPLATE_NAME,
-        _xiqse.SNMP_CONFIGURATION_GROUP,
+        _xiqse.AGENT_SNMP_CONFIGURATION_GROUP,
     )
     logger.info('  TLS certificate expiry is per Site Engine and per Control engine, collected by each assigned proxy')
     logger.info('  HostSync only the six named VMs; no zerotouch')
@@ -5076,9 +5098,9 @@ def _step_xiqse_nbxsync(
     server,
     imported: dict[str, tuple[int, str]],
 ) -> list[VirtualMachine]:
-    """Converge the one Site Engine and five Control engines without agents."""
+    """Converge the Site Engine and five Control engines with agent and SNMP monitoring."""
     logger.info('=' * 60)
-    logger.info('Network: XIQ-SE / ExtremeControl agentless nbxSync cutover')
+    logger.info('Network: XIQ-SE / ExtremeControl agent and SNMP nbxSync convergence')
     logger.info('=' * 60)
     se = ensure_nbx_template(
         server,
@@ -5103,6 +5125,12 @@ def _step_xiqse_nbxsync(
         imported[_xiqse.CLOUD_TEMPLATE_NAME][0],
         imported[_xiqse.CLOUD_TEMPLATE_NAME][1],
         req=[HostInterfaceRequirementChoices.NONE],
+    )
+    linux = ensure_nbx_template(
+        server,
+        imported[_xiqse.LINUX_AGENT_TEMPLATE_NAME][0],
+        imported[_xiqse.LINUX_AGENT_TEMPLATE_NAME][1],
+        req=[HostInterfaceRequirementChoices.AGENT],
     )
 
     targets = _xiqse_target_vms()
@@ -5160,6 +5188,13 @@ def _step_xiqse_nbxsync(
     )
     ensure(
         M.ZabbixTemplateAssignment,
+        zabbixtemplate=linux,
+        assigned_object_type=ct(Platform),
+        assigned_object_id=se_platform.id,
+        defaults={},
+    )
+    ensure(
+        M.ZabbixTemplateAssignment,
         zabbixtemplate=nac,
         assigned_object_type=ct(DeviceRole),
         assigned_object_id=nac_role.id,
@@ -5172,12 +5207,26 @@ def _step_xiqse_nbxsync(
         assigned_object_id=nac_role.id,
         defaults={},
     )
-    snmp_group = M.ZabbixConfigurationGroup.objects.get(name=_xiqse.SNMP_CONFIGURATION_GROUP)
-    ensure(
-        M.ZabbixConfigurationGroupAssignment,
-        zabbixconfigurationgroup=snmp_group,
+    agent_snmp_group = M.ZabbixConfigurationGroup.objects.get(
+        name=_xiqse.AGENT_SNMP_CONFIGURATION_GROUP
+    )
+    M.ZabbixConfigurationGroupAssignment.objects.filter(
+        zabbixconfigurationgroup__name=_xiqse.LEGACY_NAC_CONFIGURATION_GROUP,
         assigned_object_type=ct(DeviceRole),
         assigned_object_id=nac_role.id,
+    ).delete()
+    ensure(
+        M.ZabbixConfigurationGroupAssignment,
+        zabbixconfigurationgroup=agent_snmp_group,
+        assigned_object_type=ct(DeviceRole),
+        assigned_object_id=nac_role.id,
+        defaults={},
+    )
+    ensure(
+        M.ZabbixTemplateAssignment,
+        zabbixtemplate=linux,
+        assigned_object_type=ct(M.ZabbixConfigurationGroup),
+        assigned_object_id=agent_snmp_group.id,
         defaults={},
     )
 
@@ -5212,23 +5261,10 @@ def _step_xiqse_nbxsync(
         description=f'nwn:xiqse:{_xiqse.NAC_PORTAL_FQDN_MACRO}',
     )
 
-    linux_templates = {'Linux by Zabbix agent', 'Linux by Zabbix agent active'}
-    scoped_objects = [se_vm, nac_role, *nac_vms, se_platform, nac_platform]
-    for obj in scoped_objects:
-        object_type = ct(type(obj))
+    for obj in (se_vm, se_platform):
         M.ZabbixConfigurationGroupAssignment.objects.filter(
-            zabbixconfigurationgroup__name__in=_xiqse.STALE_AGENT_CONFIGURATION_GROUPS,
-            assigned_object_type=object_type,
-            assigned_object_id=obj.id,
-        ).delete()
-        M.ZabbixTemplateAssignment.objects.filter(
-            zabbixtemplate__name__in=linux_templates,
-            assigned_object_type=object_type,
-            assigned_object_id=obj.id,
-        ).delete()
-        M.ZabbixHostInterface.objects.filter(
-            type=ZabbixHostInterfaceTypeChoices.AGENT,
-            assigned_object_type=object_type,
+            zabbixconfigurationgroup__name__in=_xiqse.LEGACY_XIQSE_CREDENTIAL_CONFIGURATION_GROUPS,
+            assigned_object_type=ct(type(obj)),
             assigned_object_id=obj.id,
         ).delete()
 
@@ -5255,65 +5291,58 @@ def _step_xiqse_nbxsync(
     ).delete()
 
     logger.info(
-        '  %s → %s; templates %s + %s; ICMP address interface only (no agent checks)',
+        '  %s → %s; templates %s + %s + %s; inherited Agent Monitoring remains',
         se_vm.name,
         se_platform.name,
         se.name,
         cloud.name,
+        linux.name,
     )
     logger.info(
-        '  %s → %s; role %s → %s + %s via %s; SNMP interface only',
+        '  %s → %s; role %s → %s + %s via %s (Agent + SNMP)',
         ', '.join(vm.name for vm in nac_vms),
         nac_platform.name,
         nac_role.name,
         nac.name,
         snmp.name,
-        snmp_group.name,
+        agent_snmp_group.name,
     )
     return [se_vm, *nac_vms]
 
-
-def _unlink_xiqse_agent_templates(api, targets: list[VirtualMachine]) -> None:
-    """Unlink Linux parents and detach external checks from obsolete agent bindings."""
-    linux_templates = {'Linux by Zabbix agent', 'Linux by Zabbix agent active'}
+def _detach_xiqse_interface_independent_items(api, targets: list[VirtualMachine]) -> None:
+    """Keep endpoint-addressed simple and external checks off mutable host interfaces."""
     names = [vm.name for vm in targets]
-    hosts = api.host.get(
-        filter={'host': names},
-        output=['hostid', 'host'],
-        selectParentTemplates=['templateid', 'name'],
-    ) or []
+    hosts = api.host.get(filter={'host': names}, output=['hostid', 'host']) or []
     found = {host['host'] for host in hosts}
     missing = set(names) - found
     if missing:
         raise SystemExit('XIQ-SE HostSync targets missing in Zabbix: ' + ', '.join(sorted(missing)))
-    for host in hosts:
-        remove = [
-            {'templateid': row['templateid']}
-            for row in host.get('parentTemplates') or []
-            if row.get('name') in linux_templates
-        ]
-        if remove:
-            api.host.update(hostid=host['hostid'], templates_clear=remove)
-            logger.info('  Unlinked Linux agent template(s) from %s before interface removal', host['host'])
-
-        agent_interfaces = api.hostinterface.get(
-            hostids=[host['hostid']],
-            filter={'type': '1'},
-            output=['interfaceid'],
-        ) or []
-        agent_ids = {str(row['interfaceid']) for row in agent_interfaces}
-        if not agent_ids:
+    hostids = [host['hostid'] for host in hosts]
+    items = []
+    for key in ('net.tcp.service', _xiqse.TLS_EXTERNAL_SCRIPT):
+        items.extend(
+            api.item.get(
+                hostids=hostids,
+                search={'key_': key},
+                output=['itemid', 'key_', 'type', 'interfaceid'],
+            )
+            or []
+        )
+    for item in items:
+        key = item['key_']
+        if (
+            item.get('interfaceid') in (None, '', '0', 0)
+            or str(item.get('type')) not in {'3', '10'}
+            or not (
+                key.startswith('net.tcp.service[')
+                or key.startswith(f'{_xiqse.TLS_EXTERNAL_SCRIPT}[')
+            )
+        ):
             continue
-        external_items = api.item.get(
-            hostids=[host['hostid']],
-            search={'key_': _xiqse.TLS_EXTERNAL_SCRIPT},
-            output=['itemid', 'key_', 'interfaceid', 'type'],
-        ) or []
-        for item in external_items:
-            if str(item.get('type')) != '10' or str(item.get('interfaceid') or '0') not in agent_ids:
-                continue
-            api.item.update(itemid=item['itemid'], interfaceid='0')
-            logger.info('  Detached %s from the obsolete agent interface on %s', item['key_'], host['host'])
+        api.item.update(itemid=item['itemid'], interfaceid='0')
+        logger.info('  Detached interface-independent item %s', key)
+
+
 
 def _write_xiqse_host_secret(api, vm: VirtualMachine, value: str) -> None:
     """Write the secret explicitly because Zabbix masks existing secret values on host reads."""
@@ -5350,15 +5379,16 @@ def run_check_xiqse() -> int:
 
 
 def run_apply_xiqse() -> int:
-    """Import the agentless XIQ-SE / ExtremeControl pack and sync six named VMs."""
+    """Import the XIQ-SE / ExtremeControl pack and sync six named VMs."""
     server, existing = _require_xiqse_preflight(apply=True)
     logger.info('Preflight OK — importing templates and converging the six monitoring hosts')
     with ZabbixConnection(server) as api:
         imported = import_xiqse_templates(api)
     imported[_xiqse.CLOUD_TEMPLATE_NAME] = existing[_xiqse.CLOUD_TEMPLATE_NAME]
+    imported[_xiqse.LINUX_AGENT_TEMPLATE_NAME] = existing[_xiqse.LINUX_AGENT_TEMPLATE_NAME]
     targets = _step_xiqse_nbxsync(server, imported)
     with ZabbixConnection(server) as api:
-        _unlink_xiqse_agent_templates(api, targets)
+        _detach_xiqse_interface_independent_items(api, targets)
     for vm in targets:
         logger.info('HostSync %s', vm.name)
         SyncHostJob(instance=vm).run()
@@ -5370,8 +5400,8 @@ def run_apply_xiqse() -> int:
         )
     logger.info(
         'XIQ-SE / ExtremeControl pack written and six VMs synchronized. '
-        'Site Engine keeps NBI credentials, inherited ICMP, and the stock XIQ Cloud template; '
-        'Control engines use SNMP only. No Linux agent templates or agent checks remain. '
+        'Site Engine keeps NBI credentials, inherited ICMP, Linux agent monitoring, and the stock XIQ Cloud template; '
+        'Control engines use Agent + SNMP monitoring. '
         'Do not re-run zerotouch to refresh this pack.'
     )
     return 0

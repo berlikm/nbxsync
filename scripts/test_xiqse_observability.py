@@ -13,25 +13,25 @@ import yaml
 from xiqse_observability import (
     APPLY_FLAG,
     CHECK_FLAG,
-    DASHBOARD_NAMES,
     CLOUD_TEMPLATE_NAME,
-    HEALTH_PAGES,
+    DASHBOARD_NAMES,
     FIXTURES,
     FORBIDDEN_SNIPPETS,
+    HEALTH_PAGES,
     JS_DIR,
     NAC_ITEM_KEYS,
     NAC_PORTAL_FQDN_MACRO,
+    NAC_PLATFORM_NAME,
     NAC_ROLE,
     NAC_TEMPLATE_NAME,
     NAC_TRIGGER_NAMES,
-    NAC_PLATFORM_NAME,
     NAC_VM_NAMES,
     NAC_YAML,
     SE_DISCOVERY_KEYS,
     SE_ITEM_KEYS,
     SE_ITEM_PROTOTYPE_KEYS,
-    SE_PLATFORM_PATTERN,
     SE_PLATFORM_NAME,
+    SE_PLATFORM_PATTERN,
     SE_TEMPLATE_NAME,
     SE_TEMPLATE_RULE,
     SE_TRIGGER_NAMES,
@@ -595,25 +595,30 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertFalse(platform_is_xiqse('EXOS'))
         self.assertEqual(SE_PLATFORM_PATTERN, f'^{SE_PLATFORM_NAME}$')
 
-    def test_network_script_owns_agentless_cutover_and_targeted_hostsync(self):
+    def test_network_script_preserves_site_engine_agent_and_control_agent_snmp_monitoring(self):
         src = network_source()
         self.assertIn(APPLY_FLAG, src)
         self.assertIn(CHECK_FLAG, src)
         apply_fn = _function_source(src, 'run_apply_xiqse')
         step_fn = _function_source(src, '_step_xiqse_nbxsync')
+        preflight_fn = _function_source(src, '_preflight_xiqse')
         import_fn = _function_source(src, 'import_xiqse_templates')
         cleanup_fn = _function_source(src, '_unlink_xiqse_agent_templates')
+        detach_fn = _function_source(src, '_detach_xiqse_interface_independent_items')
         secret_fn = _function_source(src, '_write_xiqse_host_secret')
         self.assertIsNotNone(apply_fn)
         self.assertIsNotNone(step_fn)
+        self.assertIsNotNone(preflight_fn)
         self.assertIsNotNone(import_fn)
-        self.assertIsNotNone(cleanup_fn)
+        self.assertIsNone(cleanup_fn)
+        self.assertIsNotNone(detach_fn)
         self.assertIsNotNone(secret_fn)
         self.assertNotIn('import_extreme_templates', apply_fn)
         self.assertIn('SyncHostJob(instance=vm).run()', apply_fn)
-        self.assertIn('_unlink_xiqse_agent_templates(api, targets)', apply_fn)
+        self.assertIn('_detach_xiqse_interface_independent_items(api, targets)', apply_fn)
+        self.assertNotIn('_unlink_xiqse_agent_templates', apply_fn)
         self.assertLess(
-            apply_fn.index('_unlink_xiqse_agent_templates(api, targets)'),
+            apply_fn.index('_detach_xiqse_interface_independent_items(api, targets)'),
             apply_fn.index('SyncHostJob(instance=vm).run()'),
         )
         self.assertIn('_write_xiqse_host_secret(', apply_fn)
@@ -625,9 +630,18 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertIn('strict=True', import_fn)
         self.assertIn('_xiqse.STALE_SE_ITEM_KEYS', import_fn)
         self.assertIn('api.item.delete', import_fn)
-        self.assertIn("filter={'type': '1'}", cleanup_fn)
-        self.assertIn("search={'key_': _xiqse.TLS_EXTERNAL_SCRIPT}", cleanup_fn)
-        self.assertNotIn('api.hostinterface.delete', cleanup_fn)
+        self.assertIn('_xiqse.AGENT_SNMP_CONFIGURATION_GROUP', step_fn)
+        self.assertIn('_xiqse.LEGACY_NAC_CONFIGURATION_GROUP', step_fn)
+        self.assertIn('_xiqse.LINUX_AGENT_TEMPLATE_NAME', step_fn)
+        self.assertIn('zabbixconfigurationgroup=agent_snmp_group', step_fn)
+        self.assertIn('HostInterfaceRequirementChoices.AGENT', step_fn)
+        self.assertNotIn('ZabbixHostInterface.objects.filter', step_fn)
+        self.assertIn('_xiqse.AGENT_SNMP_CONFIGURATION_GROUP', preflight_fn)
+        self.assertIn('required_types', preflight_fn)
+        self.assertIn('ZabbixHostInterfaceTypeChoices.SNMP', preflight_fn)
+        self.assertIn("key.startswith('net.tcp.service[')", detach_fn)
+        self.assertIn('_xiqse.TLS_EXTERNAL_SCRIPT', detach_fn)
+        self.assertIn("interfaceid='0'", detach_fn)
         self.assertIn('api.usermacro.update', secret_fn)
         self.assertIn('api.usermacro.create', secret_fn)
         self.assertIn(SE_TEMPLATE_RULE, src)
@@ -635,14 +649,11 @@ class ApplyWiringTests(unittest.TestCase):
         self.assertIn('_xiqse.NAC_PLATFORM_NAME', src)
         self.assertIn('_xiqse.NAC_VM_NAMES', src)
         self.assertIn('_xiqse.XIQSE_CREDENTIAL_MACROS', src)
-        self.assertIn('ZabbixMacroTypeChoices.SECRET', step_fn)
         self.assertIn('_xiqse.CLOUD_TEMPLATE_NAME', src)
-        self.assertIn('_xiqse.STALE_AGENT_CONFIGURATION_GROUPS', step_fn)
-        self.assertIn('ZabbixHostInterfaceTypeChoices.AGENT', step_fn)
-        self.assertIn('_xiqse.SNMP_CONFIGURATION_GROUP', step_fn)
+        self.assertNotIn('STALE_AGENT_CONFIGURATION_GROUPS', src)
         self.assertIn("'deleteMissing': False", src)
 
-    def test_zerotouch_soft_assigns_nac_without_agent_requirement(self):
+    def test_zerotouch_does_not_own_xiqse_cutover(self):
         src = zerotouch_source()
         self.assertNotIn(APPLY_FLAG, src)
         self.assertIn("'extremecontrol_observability': 'ExtremeControl Observability'", src)

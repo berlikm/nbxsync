@@ -1,8 +1,8 @@
 # ExtremeControl / XIQ-SE
 
-Site Engine is the NBI and log brain. ExtremeControl engines are the RADIUS boxes users hit. Same bar as [01](01-extreme-switching.md): **page what users feel, never fail silent, one incident per root cause**. OS + ICMP stay on [06](06-network-vms.md) / nbxSync. This page is **application** only.
+Site Engine is the NBI and log brain. ExtremeControl engines are the RADIUS boxes users hit. Same bar as [01](01-extreme-switching.md): **page what users feel, never fail silent, one incident per root cause**. OS + ICMP remain nbxSync-owned monitoring layers. This page is **application** only.
 
-Official Zabbix Extreme pack has **no** SE / NAC template. Collection is **HTTPS GraphQL on Site Engine** (OAuth client credentials). Do **not** put GraphQL on each engine. Do **not** install a Zabbix agent on vendor OVAs for this (BIN upgrades). Keep Linux agent if it is already there (CPU / disk).
+Official Zabbix Extreme pack has **no** SE / NAC template. Collection is **HTTPS GraphQL on Site Engine** (OAuth client credentials). Do **not** put GraphQL on each engine. This pack never installs an agent; retain supported Linux-agent monitoring where it exists.
 
 This page is the **target contract**. YAML lives in `templates/xiqse_observability/`, `templates/extremecontrol_observability/`, and `templates/extremecontrol_snmp/`. Refresh with `configure_nbxsync_network.py --apply-xiqse`.
 
@@ -83,7 +83,7 @@ Platform ONE / Advanced / Standard is not purchased and is not collected. Pendin
 | Navigator used ≥ `{$XIQ.NAV.TOTAL}` | yes | Warning | Cannot onboard a Navigator-tier device. `TOTAL=0` silences |
 | Navigator remaining ≤ `{$XIQ.NAV.REMAIN.WARN}` | yes | Warning | Default 2 |
 | Unplanned SE reboot (`upTime`) | yes | Warning | |
-| Cert on 8443 | **no** | — | No agent on the OVA for this pack; YAML cannot carry `web.certificate.get`. TLS verify stays on the GraphQL SCRIPT |
+| Cert on 8443 | **no** | — | Proxy-side external TLS certificate check; the agent is not required |
 | Heap / RAM / threads | **no** until baseline | — | Items + Health graphs |
 | Version change | yes | Info | |
 | `network { devices { up } }` | **no** | — | Switches already have SNMP/ICMP |
@@ -152,7 +152,7 @@ On each **Control engine → Health** (SNMP):
 | Role / class | In | Out |
 |---|---|---|
 | Site Engine | GraphQL NBI + 8443 + licenses + engine LLD | SNMP walk of the OVA, Cloud XIQ |
-| Role **NAC** (Control engine) | ICMP + RADIUS monitor + optional existing Linux agent + **ExtremeControl by SNMP** (`ENTERASYS-NAC-APPLIANCE-MIB`) | GraphQL to the engine, second ping, EXOS/VOSS/IQ templates |
+| Role **NAC** (Control engine) | Linux agent + ICMP + RADIUS monitor + **ExtremeControl by SNMP** (`ENTERASYS-NAC-APPLIANCE-MIB`) through **Agent+SNMP** | GraphQL to the engine, second ping, EXOS/VOSS/IQ templates |
 | Switches / APs already in 01/02 | — | Do not double-ticket `up` from SE inventory |
 
 NBI lives on **SE only**. Client: Administration → Client API Access; rights **Northbound Interface** + **Access Control NBI**. Queries only — never `enforceNacEnginesAll` or MAC add.
